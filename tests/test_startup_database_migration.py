@@ -1,8 +1,89 @@
+from types import SimpleNamespace
+
 import pytest
 
 from backend import app as app_module
+from backend.db.db_utils import (
+    DB_RUNTIME_MAX_SCHEMA_VERSION,
+    DB_RUNTIME_MIN_SCHEMA_VERSION,
+    DB_SCHEMA_VERSION,
+)
 from backend.lifecycle import database_auto_migration_enabled
+from backend.startup import (
+    REQUIRED_APPLICATION_TABLES,
+    StartupValidationError,
+    verify_database_readiness,
+    verify_database_responsive,
+)
 from scripts import manage_database
+
+
+class _RuntimeSchemaConnection:
+    def __init__(self, version):
+        self.version = version
+
+    def execute(self, statement, _parameters=()):
+        normalized = " ".join(statement.split())
+        if "SELECT schema_version FROM database_metadata" in normalized:
+            rows = [(self.version,)]
+        elif "FROM information_schema.tables" in normalized:
+            rows = [(table,) for table in REQUIRED_APPLICATION_TABLES]
+        elif "FROM pg_constraint" in normalized:
+            rows = []
+        elif "FROM tai_khoan AS users" in normalized:
+            rows = [(1,)]
+        elif normalized == "SELECT 1 FROM tai_khoan LIMIT 1":
+            rows = [(1,)]
+        else:
+            rows = []
+        return SimpleNamespace(
+            fetchone=lambda: rows[0] if rows else None,
+            fetchall=lambda: rows,
+        )
+
+    def rollback(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class _RuntimeSchemaDatabase:
+    def __init__(self, version):
+        self.version = version
+
+    def get_connection(self):
+        return _RuntimeSchemaConnection(self.version)
+
+
+def test_v63_expand_contract_runtime_accepts_only_schema_62_through_63():
+    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
+        62,
+        63,
+    )
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 63
+    for version in (62, 63):
+        verify_database_readiness(
+            _RuntimeSchemaDatabase(version),
+            DB_RUNTIME_MIN_SCHEMA_VERSION,
+            DB_RUNTIME_MAX_SCHEMA_VERSION,
+        )
+        verify_database_responsive(
+            _RuntimeSchemaDatabase(version),
+            DB_RUNTIME_MIN_SCHEMA_VERSION,
+            DB_RUNTIME_MAX_SCHEMA_VERSION,
+        )
+    for version in (61, 64):
+        for verification in (
+            verify_database_readiness,
+            verify_database_responsive,
+        ):
+            with pytest.raises(StartupValidationError):
+                verification(
+                    _RuntimeSchemaDatabase(version),
+                    DB_RUNTIME_MIN_SCHEMA_VERSION,
+                    DB_RUNTIME_MAX_SCHEMA_VERSION,
+                )
 
 
 def test_auto_migration_defaults_to_enabled_outside_production():

@@ -59,11 +59,13 @@ from backend.shared.async_io import (
 from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
 from backend.shared.access_policy import (
     authorize_record_write,
+    can_read_table,
     has_module_permission,
 )
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object
 from backend.shared.workspace_scope import is_personal_scope_for_user
+from backend.sync.visibility_scope import VisibilityScope
 
 
 LOGGER = logging.getLogger(__name__)
@@ -2152,12 +2154,20 @@ def _apply_notice_blocking(request, payload):
 
 
 def _get_operation_blocking(request, operation_id):
-    _session, organization_id, _lease = _request_context(request, None)
+    session, organization_id, _lease = _request_context(request, None)
     connection = database.get_connection()
     try:
-        operation = ProcurementImportRepository(connection.cursor()).get_operation(
+        cursor = connection.cursor()
+        operation = ProcurementImportRepository(cursor).get_operation(
             organization_id, operation_id
         )
+        if operation is not None:
+            _require_operation_read(
+                cursor,
+                session,
+                organization_id,
+                operation,
+            )
     finally:
         connection.close()
     if operation is None:
@@ -2170,6 +2180,69 @@ def _get_operation_blocking(request, operation_id):
     operation.pop("actorUserId", None)
     operation.pop("requestHash", None)
     return operation
+
+
+def _require_operation_read(cursor, session, organization_id, operation):
+    first_entry = next(iter(operation.get("revisionResults") or []), {})
+    is_notice = first_entry.get("importKind") == "NOTICE"
+    payload_key = "goithau" if is_notice else "kehoach"
+    table_name = "goi_thau" if is_notice else "ke_hoach_lcnt"
+    if not can_read_table(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+        payload_key,
+        table_name,
+    ):
+        raise ProcurementRouteError(
+            "ORGANIZATION_ACCESS_DENIED",
+            "Không có quyền xem tiến trình nhập trong phân hệ hiện tại.",
+            403,
+        )
+
+    if is_notice:
+        target_value = str(first_entry.get("targetPackageRootId") or "").strip()
+        target_sql = (
+            "COALESCE(NULLIF(source_row.id_goc, ''), source_row.id) = ?"
+        )
+    else:
+        target_value = str(operation.get("familyNo") or "").strip().upper()
+        target_sql = "upper(source_row.ma_ke_hoach) = ? AND source_row.is_latest = 1"
+    if not target_value:
+        return
+
+    target_exists = cursor.execute(
+        f"""SELECT 1 FROM {table_name} AS source_row
+             WHERE source_row.organization_id = ?
+               AND source_row.archived_at IS NULL
+               AND {target_sql}
+             LIMIT 1""",  # noqa: S608 - table and target SQL are fixed above.
+        (organization_id, target_value),
+    ).fetchone()
+    if target_exists is None:
+        return
+
+    predicate = VisibilityScope.resolve(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+    ).live_predicate(table_name, "source_row")
+    visible = cursor.execute(
+        f"""SELECT 1 FROM {table_name} AS source_row
+             WHERE {predicate.sql}
+               AND source_row.archived_at IS NULL
+               AND {target_sql}
+             LIMIT 1""",  # noqa: S608 - predicate is registry-built; target SQL fixed.
+        (*predicate.parameters, target_value),
+    ).fetchone()
+    if visible is None:
+        raise ProcurementRouteError(
+            "ORGANIZATION_ACCESS_DENIED",
+            "Không có quyền xem bản ghi của tiến trình nhập này.",
+            403,
+        )
 
 
 def _public_operation_result(row):

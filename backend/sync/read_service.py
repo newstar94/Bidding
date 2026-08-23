@@ -36,63 +36,16 @@ from backend.sync.queries import (
 from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
 from backend.sync.visibility_epoch import build_visibility_token
 from backend.sync.visibility_scope import VisibilityScope, scoped_deletion_branches
+from backend.sync.version_metadata import (
+    VERSIONED_TABLES,
+    load_visible_version_metadata,
+)
 from backend.sync.request_contract import parse_sync_read_window
 from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
 from backend.observability.recording import record_database_phase
-
-
-_VERSION_FAMILY_SQL = {
-    "goi_thau": """
-        SELECT id, phien_ban FROM goi_thau
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-          AND ke_hoach_id = (
-              SELECT current_package.ke_hoach_id FROM goi_thau AS current_package
-               WHERE current_package.organization_id = goi_thau.organization_id
-                 AND current_package.id = ?
-          )
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-    "ke_hoach_lcnt": """
-        SELECT id, phien_ban FROM ke_hoach_lcnt
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-    "hop_dong": """
-        SELECT id, phien_ban FROM hop_dong
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-    "chu_dau_tu": """
-        SELECT id, phien_ban FROM chu_dau_tu
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-    "nha_thau": """
-        SELECT id, phien_ban FROM nha_thau
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-    "chuyen_gia": """
-        SELECT id, phien_ban FROM chuyen_gia
-        WHERE organization_id = ? AND archived_at IS NULL
-          AND ((id_goc IS NOT NULL AND id_goc != '' AND id_goc = ?)
-               OR ((id_goc IS NULL OR id_goc = '') AND id = ?))
-        ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC
-    """,
-}
 
 
 def _load_visible_deletions(
@@ -776,19 +729,19 @@ def _read_single_record_blocking(request):
         elif table_name == "hop_dong":
             item["goiThauIds"] = _get_contract_package_ids(cursor, [row_dict["id"]], org_name).get(row_dict["id"], [])
 
-        version_family_sql = _VERSION_FAMILY_SQL.get(table_name)
-        if version_family_sql:
+        if table_name in VERSIONED_TABLES:
             root_id = row_dict.get("id_goc") or row_dict.get("id")
-            version_params = (
-                (org_name, root_id, root_id, row_dict["id"])
-                if table_name == "goi_thau"
-                else (org_name, root_id, root_id)
-            )
-            cursor.execute(version_family_sql, version_params)
-            item["allVersions"] = [
-                {"id": version_row[0], "phienBan": version_row[1]}
-                for version_row in cursor.fetchall()
-            ]
+            item["allVersions"] = load_visible_version_metadata(
+                cursor,
+                visibility_scope,
+                table_name,
+                [root_id],
+                plan_snapshot_id=(
+                    row_dict.get("ke_hoach_id")
+                    if table_name == "goi_thau"
+                    else None
+                ),
+            ).get(str(root_id), [])
 
         sensitive_read_policy = resolve_sensitive_read_policy(
             cursor,

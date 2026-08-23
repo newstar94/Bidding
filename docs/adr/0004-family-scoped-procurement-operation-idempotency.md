@@ -35,9 +35,17 @@ schema 62 và 63.
 
 ## Migration và rollout
 
-Thực hiện đúng runbook `deploy/runbooks/database-upgrade-v63.md`: backup, deploy
-binary mới với auto-migrate tắt, smoke schema 62, preflight, dry-run, apply v63,
-rồi smoke idempotency/replay.
+V63 triển khai theo expand/contract qua **hai release độc lập**:
+
+1. Release 1 (expand/code-first) deploy binary mới với auto-migrate tắt nhưng giữ
+   database ở v62. Runtime của binary này chấp nhận đúng schema 62–63, trong khi
+   migrator vẫn target v63.
+2. Release 2 (contract/schema) chỉ apply v63 sau khi Release 1 đã ổn định, toàn bộ
+   process binary cũ đã dừng, backup/preflight/dry-run và lock budget được duyệt.
+
+Hai release không được gộp trong cùng cửa sổ triển khai. Thực hiện đúng runbook
+`deploy/runbooks/database-upgrade-v63.md`, bao gồm smoke và evidence gate riêng
+cho từng release.
 
 Migration không rewrite row. Canonical schema 62 vốn có unique constraint chặt
 hơn nên không dự kiến duplicate family-scoped; preflight/migration vẫn fail rõ
@@ -55,6 +63,8 @@ restore backup schema 62 đã verify vào database riêng trước khi chuyển 
 - `tests/test_procurement_operation_idempotency.py`: hai family cùng key, replay
   cùng family, binary mới trên schema legacy, duplicate guard và migration DDL.
 - `tests/test_database_upgrade_preflight.py`: report v63 read-only.
+- `tests/test_startup_database_migration.py`: production không auto-migrate;
+  runtime chấp nhận v62/v63, từ chối schema cũ hơn hoặc mới hơn; migrator vẫn
+  target v63.
 - `tests/test_postgres_migration_chain.py` và
   `tests/test_postgres_schema_contract.py`: fresh/upgrade catalog v63.
-

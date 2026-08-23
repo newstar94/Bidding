@@ -603,8 +603,12 @@ def validate_startup_configuration(database, environ=None):
         )
 
 
-def verify_database_readiness(database, expected_schema_version):
-    """Verify PostgreSQL meets the application's minimum schema requirements."""
+def verify_database_readiness(
+    database,
+    minimum_schema_version,
+    maximum_schema_version=None,
+):
+    """Verify PostgreSQL is inside the runtime-compatible schema range."""
     conn = None
     transaction_started = False
     try:
@@ -617,15 +621,21 @@ def verify_database_readiness(database, expected_schema_version):
         if not version_row:
             raise StartupValidationError("Database schema metadata is missing.")
         actual_version = int(version_row[0])
-        expected_version = int(expected_schema_version)
-        if actual_version < expected_version:
+        minimum_version = int(minimum_schema_version)
+        maximum_version = int(
+            minimum_version
+            if maximum_schema_version is None
+            else maximum_schema_version
+        )
+        if actual_version < minimum_version or actual_version > maximum_version:
             guidance = (
                 "Run `python scripts/manage_database.py` before starting "
                 "the application."
             )
             raise StartupValidationError(
                 "Database schema version mismatch: "
-                f"installed={actual_version}, required={expected_version}. "
+                f"installed={actual_version}, supported="
+                f"{minimum_version}..{maximum_version}. "
                 f"{guidance}"
             )
 
@@ -675,8 +685,12 @@ def verify_database_readiness(database, expected_schema_version):
             conn.close()
 
 
-def verify_database_responsive(database, expected_schema_version):
-    """Run lightweight minimum-schema checks for the readiness endpoint."""
+def verify_database_responsive(
+    database,
+    minimum_schema_version,
+    maximum_schema_version=None,
+):
+    """Run lightweight runtime-schema checks for the readiness endpoint."""
     conn = None
     try:
         conn = database.get_connection()
@@ -686,9 +700,15 @@ def verify_database_responsive(database, expected_schema_version):
         if not row:
             raise StartupValidationError("Database schema metadata is unavailable.")
         version = int(row[0])
-        if version < int(expected_schema_version):
+        minimum_version = int(minimum_schema_version)
+        maximum_version = int(
+            minimum_version
+            if maximum_schema_version is None
+            else maximum_schema_version
+        )
+        if version < minimum_version or version > maximum_version:
             raise StartupValidationError(
-                "Database schema version is older than the application requires."
+                "Database schema version is outside the application runtime range."
             )
         if conn.execute("SELECT 1 FROM tai_khoan LIMIT 1").fetchone() is None:
             raise StartupValidationError("No application user is available.")

@@ -28,11 +28,11 @@ class _VersionedRecordCursor:
         }
 
     def fetchall(self):
-        if "SELECT id, phien_ban" not in self._query:
+        if "AS version_row" not in self._query:
             return []
         return [
-            ("plan-v01", "01"),
-            ("plan-v00", "00"),
+            ("plan-v01", "plan-root", "01"),
+            ("plan-v00", "plan-root", "00"),
         ]
 
 
@@ -123,7 +123,7 @@ def test_single_record_lookup_includes_version_family_metadata(monkeypatch):
     versions_index = next(
         index
         for index, event in enumerate(cursor.events)
-        if event[0] == "sql" and "SELECT id, phien_ban" in event[1]
+        if event[0] == "sql" and "AS version_row" in event[1]
     )
     assert root_query_index < authorization_index < versions_index
     assert cursor.events[root_query_index][2][0] == "org-1"

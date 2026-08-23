@@ -56,6 +56,14 @@ _Avoid_: Trạng thái giao diện, lựa chọn materialize của client
 Sự kiện một tài khoản không còn được phép giữ hoặc xem bản ghi đã đồng bộ trước đó do thay đổi membership, phân công, quyền phân hệ hoặc record scope. Không được dùng capability cấp trường để che một phần bản ghi mà người dùng vẫn có quyền đọc.
 _Avoid_: Xóa bản ghi nghiệp vụ, tombstone xóa dữ liệu
 
+**Phạm vi đọc tiến trình nhập liệu**:
+Quyền xem trạng thái một tiến trình nhập procurement được suy ra từ tenant, phân hệ, vai trò hoạt động và phạm vi bản ghi mà tiến trình tác động; người tạo tiến trình không mặc nhiên là người duy nhất được xem. Khi tiến trình chưa có bản ghi đích để đánh giá, quyền xem phân hệ là ranh giới bản ghi khả dụng.
+_Avoid_: Tenant-only, actor-only, quyền sở hữu tiến trình riêng
+
+**Phạm vi metadata dòng phiên bản**:
+Tập phiên bản được công bố trong metadata của một bản ghi chính xác là tập phiên bản mà cùng người dùng được phép đọc riêng lẻ ở thời điểm yêu cầu; quyền với một phiên bản không tự mở metadata của cả dòng phiên bản.
+_Avoid_: Family-wide metadata, latest-only metadata, kế thừa quyền ngầm theo dòng phiên bản
+
 **Xuất bản chính thức**:
 Tài liệu được tạo từ snapshot đã commit trên máy chủ, có kiểm tra quyền và entitlement tại thời điểm phát hành, dùng làm kết quả nghiệp vụ hoặc tuân thủ.
 _Avoid_: Xuất bản nháp cục bộ, tải mẫu rỗng

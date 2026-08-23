@@ -41,6 +41,10 @@ from backend.db.postgres_schema import postgres_column_definition
 from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES
 from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.version_metadata import (
+    VERSIONED_TABLES,
+    load_visible_version_metadata,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
@@ -228,7 +232,6 @@ def _paginate_records_blocking(request):
 
 
 
-        versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "hop_dong", "chuyen_gia"]
         plan_snapshot_id = params.get("keHoachId", "").strip()
         if table_name == "goi_thau" and plan_snapshot_id:
             query_parts.append("ke_hoach_id = ?")
@@ -259,7 +262,7 @@ def _paginate_records_blocking(request):
                 )
             """)
             query_params.extend([plan_snapshot_id, org_name, plan_snapshot_id])
-        elif table_name in versioned_tables:
+        elif table_name in VERSIONED_TABLES:
             query_parts.append("is_latest = 1")
             if table_name == "goi_thau":
                 query_parts.append("""
@@ -499,32 +502,15 @@ def _paginate_records_blocking(request):
 
 
         versions_by_root = {}
-        if table_name in versioned_tables and rows:
+        if table_name in VERSIONED_TABLES and rows:
             all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
-            v_placeholders = ", ".join(["?"] * len(all_root_vals))
-            version_query_parts = [
-                "organization_id = ?",
-                "archived_at IS NULL",
-                f"""(
-                    (id_goc IS NOT NULL AND id_goc != '' AND id_goc IN ({v_placeholders})) OR
-                    ((id_goc IS NULL OR id_goc = '') AND id IN ({v_placeholders}))
-                )"""
-            ]
-            version_query_params = [org_name] + all_root_vals + all_root_vals
-            if table_name == "goi_thau" and plan_snapshot_id:
-                version_query_parts.append("ke_hoach_id = ?")
-                version_query_params.append(plan_snapshot_id)
-
-            cursor.execute(f"""
-                SELECT id, id_goc, phien_ban FROM {table_name}
-                WHERE {" AND ".join(version_query_parts)}
-                ORDER BY CAST(phien_ban AS INTEGER) DESC
-            """, version_query_params)
-            for v_row in cursor.fetchall():
-                v_root = v_row[1] or v_row[0]
-                if v_root not in versions_by_root:
-                    versions_by_root[v_root] = []
-                versions_by_root[v_root].append({"id": v_row[0], "phienBan": v_row[2]})
+            versions_by_root = load_visible_version_metadata(
+                cursor,
+                visibility_scope,
+                table_name,
+                all_root_vals,
+                plan_snapshot_id=plan_snapshot_id,
+            )
 
         items = []
         for row in rows:
@@ -574,7 +560,7 @@ def _paginate_records_blocking(request):
                 item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
 
 
-            if table_name in versioned_tables:
+            if table_name in VERSIONED_TABLES:
                 root_val = row_dict.get("id_goc") or row_dict.get("id")
                 item["allVersions"] = versions_by_root.get(root_val, [])
 

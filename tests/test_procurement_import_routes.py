@@ -2559,7 +2559,7 @@ def test_completed_operation_resume_locks_operation_before_authorizing_replay(
     )
 
 
-def test_operation_get_keeps_current_tenant_scope_and_strips_private_metadata(
+def test_operation_get_strips_private_metadata_after_read_authorization(
     monkeypatch,
 ):
     observed = []
@@ -2610,6 +2610,7 @@ def test_operation_get_keeps_current_tenant_scope_and_strips_private_metadata(
     )
     monkeypatch.setattr(routes_module.database, "get_connection", Connection)
     monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "can_read_table", lambda *_args: True)
 
     result = routes_module._get_operation_blocking(object(), "operation-1")
 

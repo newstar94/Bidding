@@ -52,7 +52,7 @@
     "backend/sync/opening_uniqueness.py": 2,
     "backend/sync/ownership.py": 9,
     "backend/sync/package_goods.py": 1,
-    "backend/sync/pagination.py": 5,
+    "backend/sync/pagination.py": 4,
     "backend/sync/queries.py": 2,
     "backend/sync/record_serializer.py": 2,
     "backend/sync/record_validator.py": 1,

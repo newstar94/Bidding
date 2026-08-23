@@ -2671,6 +2671,11 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
+# V63 is the contract phase of a code-first rollout. This binary must run on
+# v62 during the expand release and v63 after the separately approved migration.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 62
+DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
+
 
 def read_database_version(cursor):
     """Return the installed version, or ``None`` for a database without metadata."""

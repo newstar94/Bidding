@@ -577,7 +577,11 @@ from backend.shared.access_policy import (
 )
 from backend.shared.media_helper import protected_image_signature_is_valid
 from backend.db.db_helper import DatabaseError
-from backend.db.db_utils import DB_SCHEMA_VERSION
+from backend.db.db_utils import (
+    DB_RUNTIME_MAX_SCHEMA_VERSION,
+    DB_RUNTIME_MIN_SCHEMA_VERSION,
+    DB_SCHEMA_VERSION,
+)
 from backend.startup import validate_startup_configuration, verify_database_responsive
 from backend.lifecycle_policy_routes import lifecycle_policy_routes
 
@@ -739,7 +743,8 @@ async def health_ready_api(request):
         await run_database_read(
             verify_database_responsive,
             database,
-            DB_SCHEMA_VERSION,
+            DB_RUNTIME_MIN_SCHEMA_VERSION,
+            DB_RUNTIME_MAX_SCHEMA_VERSION,
             timeout_seconds=3.0,
         )
     except Exception as readiness_error:
@@ -1267,6 +1272,7 @@ async def lifespan(application):
         application,
         database=database,
         schema_version=DB_SCHEMA_VERSION,
+        minimum_schema_version=DB_RUNTIME_MIN_SCHEMA_VERSION,
         initialize_database=_initialize_database,
         build_index_response=_build_index_response_payload,
         prewarm_frontend_assets=_prewarm_frontend_assets,

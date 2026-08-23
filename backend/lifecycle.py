@@ -324,6 +324,7 @@ async def application_lifespan(
     *,
     database,
     schema_version,
+    minimum_schema_version=None,
     initialize_database,
     build_index_response,
     prewarm_frontend_assets,
@@ -359,7 +360,15 @@ async def application_lifespan(
         prewarm_frontend_assets()
         if database_auto_migration_enabled():
             initialize_database()
-        verify_database_readiness(database, schema_version)
+        verify_database_readiness(
+            database,
+            (
+                schema_version
+                if minimum_schema_version is None
+                else minimum_schema_version
+            ),
+            schema_version,
+        )
         reconcile_asset_journal(database)
         if is_production:
             verify_database_runtime_role(
