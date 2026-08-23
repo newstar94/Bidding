@@ -173,6 +173,86 @@ test("new lookup fields complete and restage an existing incomplete contractor",
 });
 
 
+test("a joint-venture member is enriched and its incomplete contractor is restaged", async () => {
+  const leadCode = "vn0107713765";
+  const memberCode = "vn0107351723";
+  const row = openingRow(leadCode);
+  row.querySelector(".mt-loai-nha-thau").value = "Liên danh";
+  row.querySelector(".mt-ten-nha-thau").value = "Liên danh Bình Mai - SMC";
+  row._leadMemberName = "Công ty Bình Mai";
+  row._thanhVienLienDanh = [{
+    id: "member-1",
+    thanhVienNhaThauId: "contractor-member",
+    maNhaThau: memberCode,
+    tenNhaThau: "SMC Engineering",
+    nguoiDaiDien: "",
+    chucVuDaiDien: "",
+  }];
+  const lead = {
+    id: "contractor-lead",
+    rootId: "contractor-lead",
+    phienBan: "00",
+    isLatest: 1,
+    maNhaThau: leadCode,
+    tenNhaThau: "Công ty Bình Mai",
+    nguoiDaiDien: "Người đại diện Bình Mai",
+  };
+  const member = {
+    id: "contractor-member",
+    rootId: "contractor-member",
+    phienBan: "00",
+    isLatest: 1,
+    maNhaThau: memberCode,
+    tenNhaThau: "SMC Engineering",
+    nguoiDaiDien: "",
+    chucVuDaiDien: "",
+  };
+  const model = {
+    state: {
+      goithau: [{ id: "package-1", thoiGianMoThau: "2026-08-17" }],
+      nhathau: [lead, member],
+      thongtinmothau: [],
+    },
+    getLatestNhaThau: () => [lead, member],
+    parseVND: (value) => Number(value || 0),
+  };
+  const lookedUpCodes = [];
+
+  await withLookupFetch(async (url) => {
+    const code = new URL(String(url), "http://local").searchParams.get("orgCode");
+    lookedUpCodes.push(code);
+    return new Response(JSON.stringify({
+      found: true,
+      name: "Công ty cổ phần phát triển thương mại và công nghệ SMC Engineering",
+      org_code: memberCode,
+      tax_code: "0107351723",
+      representative_name: "Nguyễn Anh Tuấn",
+      representative_position: "Giám đốc",
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }, () => enrichOpeningRowsWithPartnerInfo([row], model));
+
+  const changedContractors = [];
+  const [bid] = collectOpeningBidsFromRows({
+    rows: [row],
+    gtId: "package-1",
+    model,
+    isDirectOrSpecial: false,
+    changedContractors,
+  });
+
+  assert.deepEqual(lookedUpCodes, [memberCode]);
+  assert.equal(row._thanhVienLienDanh[0].nguoiDaiDien, "Nguyễn Anh Tuấn");
+  assert.equal(row._thanhVienLienDanh[0].chucVuDaiDien, "Giám đốc");
+  assert.equal(member.nguoiDaiDien, "Nguyễn Anh Tuấn");
+  assert.equal(member.chucVuDaiDien, "Giám đốc");
+  assert.equal(bid.thanhVienLienDanh[1].nguoiDaiDien, "Nguyễn Anh Tuấn");
+  assert.deepEqual(changedContractors, [member]);
+});
+
+
 test("saved-opening violation refresh is also concurrency bounded", async () => {
   const bids = Array.from({ length: 10 }, (_, index) => ({
     id: `bid-${index}`,

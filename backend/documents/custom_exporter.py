@@ -30,7 +30,9 @@ from backend.documents.docx_context_policy import (
     BASE_IMAGE_FIELDS,
     validate_docx_context_manifest,
 )
+from backend.db.schema import MONEY_COLUMNS
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
+from backend.shared.text_utils import VietnameseFloat
 from backend.shared.logging_utils import append_runtime_log, log_error
 from backend.shared.media_helper import (
     managed_image_path_matches_tenant,
@@ -41,6 +43,7 @@ from backend.shared.media_helper import (
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
 _WORD_CONFIG_LOCK = threading.RLock()
 _WORD_CONFIG_LOCK_TIMEOUT_SECONDS = 5.0
+_DOCX_MONEY_FIELD_NAMES = frozenset(column for _table, column in MONEY_COLUMNS)
 
 
 class WordTemplateConfigError(OSError):
@@ -256,10 +259,14 @@ DATETIME_FIELD_NAMES = {
 }
 
 
-def is_datetime_field_name(key_name):
+def is_datetime_field_name(key_name, datetime_field_names=None):
     key = str(key_name or '').strip().strip('{}')
     key = re.sub(r'(?<!^)(?=[A-Z])', '_', key).lower()
-    return key in DATETIME_FIELD_NAMES or any(
+    configured_names = {
+        str(name or '').strip().strip('{}').lower()
+        for name in (datetime_field_names or ())
+    }
+    return key in configured_names or key in DATETIME_FIELD_NAMES or any(
         key.endswith(suffix)
         for suffix in (
             'thoi_gian_dang_tai', 'thoi_gian_dang_ma', 'thoi_gian_dong_thau',
@@ -268,7 +275,11 @@ def is_datetime_field_name(key_name):
         )
     )
 
-def format_vietnamese_datetime(val_str, key_name=None):
+def format_vietnamese_datetime(
+    val_str,
+    key_name=None,
+    datetime_field_names=None,
+):
     if not isinstance(val_str, str):
         return val_str
     val_str = normalize_date_str(val_str)
@@ -279,7 +290,7 @@ def format_vietnamese_datetime(val_str, key_name=None):
         d, m, y, hh, mm = dt_match.groups()
         m_int = int(m)
         m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
-        if is_datetime_field_name(key_name):
+        if is_datetime_field_name(key_name, datetime_field_names):
             return f"{hh}:{mm} ngày {d}/{m_str}/{y}"
         return f"ngày {d} tháng {m_str} năm {y}"
 
@@ -352,12 +363,12 @@ class SmartDate(str):
             pass
         return ''
 
-def format_context_dates(data):
+def format_context_dates(data, datetime_field_names=None):
     if isinstance(data, dict):
         new_items = {}
         for k, v in list(data.items()):
 
-            format_context_dates(v)
+            format_context_dates(v, datetime_field_names)
 
             if isinstance(v, str):
                 is_date_key = any(x in k.lower() for x in ['ngay', 'thoi_gian', 'date', 'time', 'mo_thau', 'dong_thau', 'dang_tai', 'ky'])
@@ -388,7 +399,11 @@ def format_context_dates(data):
 
                 if is_date:
 
-                    data[k] = SmartDate(format_vietnamese_datetime(v_norm, key_name=k))
+                    data[k] = SmartDate(format_vietnamese_datetime(
+                        v_norm,
+                        key_name=k,
+                        datetime_field_names=datetime_field_names,
+                    ))
 
 
                     clean_k = k
@@ -424,7 +439,7 @@ def format_context_dates(data):
         data.update(new_items)
     elif isinstance(data, list):
         for item in data:
-            format_context_dates(item)
+            format_context_dates(item, datetime_field_names)
 project_root = str(PROJECT_ROOT)
 TEMPLATE_DIR = str(WORD_TEMPLATE_DIR)
 DEFAULT_TEMPLATE = ''
@@ -1187,6 +1202,32 @@ def replace_placeholders_with_empty(data):
         return ''
     return data
 
+
+def format_context_money_values(data):
+    """Format persisted money fields for display without mutating stored data."""
+
+    if isinstance(data, dict):
+        formatted = {}
+        for key, value in data.items():
+            child = format_context_money_values(value)
+            if (
+                key in _DOCX_MONEY_FIELD_NAMES
+                and isinstance(child, (int, float))
+                and not isinstance(child, bool)
+            ):
+                child = str(VietnameseFloat(child))
+            elif (
+                key in _DOCX_MONEY_FIELD_NAMES
+                and isinstance(child, str)
+                and re.fullmatch(r"-?\d+(?:\.\d+)?", child.strip())
+            ):
+                child = str(VietnameseFloat(child.strip()))
+            formatted[key] = child
+        return formatted
+    if isinstance(data, list):
+        return [format_context_money_values(item) for item in data]
+    return data
+
 _OPTIMIZED_IMAGE_CACHE = {}
 
 def optimize_image_for_docx(filepath, max_width=800):
@@ -1453,15 +1494,19 @@ def generate_report_from_custom_template(
         allowed_root_keys = render_policy["allowed_root_keys"]
         allowed_image_fields = render_policy["allowed_image_fields"]
         media_organization_id = render_policy["media_organization_id"]
+        datetime_root_keys = render_policy["datetime_root_keys"]
     else:
         allowed_root_keys = set(context or {})
         allowed_image_fields = BASE_IMAGE_FIELDS
         media_organization_id = None
+        datetime_root_keys = set()
     context = replace_placeholders_with_empty(context)
 
     enrich_context_with_words(context)
 
-    format_context_dates(context)
+    format_context_dates(context, datetime_root_keys)
+
+    context = format_context_money_values(context)
 
     doc = None
     try:

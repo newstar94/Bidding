@@ -2755,6 +2755,13 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách hợp đồng hiện hành liên kết với gói thầu",
+    "name": "ds_hop_dong",
+    "sourceColumn": "",
+    "sourceTable": "hop_dong_list"
+  },
+  {
+    "format": "text",
     "label": "Danh sách mặc định từ schema hệ thống: Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
     "name": "ds_bao_cao_dgct",
     "sourceColumn": "",

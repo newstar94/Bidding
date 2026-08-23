@@ -2,6 +2,7 @@ from backend.db.db_helper import CompatRow
 from backend.documents.docx_context_policy import (
     filter_mapping_rows,
     project_docx_context,
+    seal_docx_context,
 )
 from backend.documents.docx_mapping_service import apply_custom_mappings
 
@@ -54,3 +55,72 @@ def test_contract_context_preserves_opening_rows_separately_from_contractor():
         "ten_nha_thau": "Nhà thầu tham dự mở thầu",
         "hieu_luc_hsdt": "90 ngày",
     }]
+
+
+def test_contract_context_preserves_every_current_linked_contract():
+    projected = project_docx_context(
+        "contract",
+        {
+            "hop_dong": {
+                "id": "contract-appraisal",
+                "ten_hop_dong": "Hợp đồng thẩm định",
+            },
+            "hop_dong_list": [
+                {
+                    "id": "contract-appraisal",
+                    "phan_loai": "Thẩm định",
+                    "ten_hop_dong": "Hợp đồng thẩm định",
+                },
+                {
+                    "id": "contract-consulting",
+                    "phan_loai": "Tư vấn",
+                    "ten_hop_dong": "Hợp đồng tư vấn",
+                },
+            ],
+        },
+    )
+
+    assert [item["id"] for item in projected["hop_dong_list"]] == [
+        "contract-appraisal",
+        "contract-consulting",
+    ]
+
+
+def test_evaluation_context_preserves_linked_contracts_for_composite_templates():
+    projected = project_docx_context(
+        "evaluation",
+        {
+            "hop_dong_list": [
+                {
+                    "id": "contract-appraisal",
+                    "phan_loai": "Thẩm định",
+                    "ten_hop_dong": "Hợp đồng thẩm định",
+                },
+                {
+                    "id": "contract-consulting",
+                    "phan_loai": "Tư vấn",
+                    "ten_hop_dong": "Hợp đồng tư vấn",
+                },
+            ],
+        },
+    )
+
+    assert [item["id"] for item in projected["hop_dong_list"]] == [
+        "contract-appraisal",
+        "contract-consulting",
+    ]
+
+
+def test_context_manifest_marks_datetime_mapping_aliases():
+    context, manifest = seal_docx_context(
+        "evaluation",
+        {
+            "goi_thau": {"id": "package-1"},
+            "custom_publish_time": "2026-03-05 14:55:00",
+        },
+        [("custom_publish_time", "ke_hoach_lcnt", "thoi_gian_dang_tai")],
+        organization_id="org-a",
+    )
+
+    assert context["custom_publish_time"] == "2026-03-05 14:55:00"
+    assert manifest["datetime_root_keys"] == ["custom_publish_time"]

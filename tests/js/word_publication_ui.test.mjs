@@ -341,7 +341,7 @@ test("Word export opens a multi-file selection table before sending the request"
       await page.locator("[data-document-id]").evaluateAll((cards) => (
         cards.map((card) => card.dataset.documentId)
       )),
-      ["procurement_plan", "contractor_selection_result"],
+      ["procurement_plan", "package_full_profile", "contractor_selection_result"],
     );
     const resultButton = page.locator('[data-word-publication-export="contractor_selection_result"]');
     await resultButton.click();

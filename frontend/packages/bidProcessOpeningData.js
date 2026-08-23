@@ -146,6 +146,9 @@ function ensureContractor({
     const memberCode = member.maNhaThau || member.maSoThue;
     if (!memberCode) return;
     let subNt = findLatestContractorByCode(latestNhaThauList, memberCode);
+    if (completeMissingContractorFields(subNt, member)) {
+      changedContractors.push(subNt);
+    }
     if (!subNt) {
       subNt = createIndependentContractor({
         id: generateRecordId("nhathau"),

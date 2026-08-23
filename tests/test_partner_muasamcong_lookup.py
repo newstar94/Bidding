@@ -97,3 +97,78 @@ def test_muasamcong_partner_fields_are_normalized_before_form_mapping():
     assert result["phone"] == "+842763875052"
     assert result["business_type"] == "NON_BUSINESS_UNIT"
     assert result["procurement_data"]["officePhone"] == " (+84) 2763.875052 "
+
+
+def test_partner_enrichment_retries_when_only_representative_fields_are_missing():
+    contractor = {
+        "ten_nha_thau": "SMC Engineering",
+        "dia_chi": "Hà Nội",
+        "ma_so_thue": "0107351723",
+        "nguoi_dai_dien": "",
+        "chuc_vu_dai_dien": "",
+    }
+
+    assert partner_lookup_service._needs_partner_enrichment(contractor) is True
+
+    contractor["nguoi_dai_dien"] = "Nguyễn Anh Tuấn"
+    contractor["chuc_vu_dai_dien"] = "Giám đốc"
+    assert partner_lookup_service._needs_partner_enrichment(contractor) is False
+
+
+def test_partner_enrichment_persists_missing_representative_fields(monkeypatch):
+    class Result:
+        def __init__(self, row=None):
+            self.row = row
+
+        def fetchone(self):
+            return self.row
+
+    class Connection:
+        def __init__(self):
+            self.contractor_update = None
+
+        def execute(self, statement, params=()):
+            if "SELECT ten_nha_thau" in statement:
+                return Result({"ten_nha_thau": "SMC Engineering"})
+            if "UPDATE sync_metadata" in statement:
+                return Result((42,))
+            if "UPDATE nha_thau" in statement:
+                self.contractor_update = (statement, params)
+            return Result()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    connection = Connection()
+    monkeypatch.setattr(
+        partner_lookup_service.database,
+        "get_connection",
+        lambda: connection,
+    )
+    monkeypatch.setattr(
+        "backend.sync.websocket.enqueue_websocket_event",
+        lambda *_args, **_kwargs: None,
+    )
+
+    partner_lookup_service._apply_partner_enrichment(
+        {"organization_id": "org-1", "contractor_id": "contractor-1"},
+        {"ten_nha_thau": "SMC Engineering"},
+        {
+            "name": "SMC Engineering",
+            "tax_code": "0107351723",
+            "representative_name": "Nguyễn Anh Tuấn",
+            "representative_position": "Giám đốc",
+        },
+    )
+
+    statement, params = connection.contractor_update
+    assert "nguoi_dai_dien = CASE" in statement
+    assert "chuc_vu_dai_dien = CASE" in statement
+    assert "Nguyễn Anh Tuấn" in params
+    assert "Giám đốc" in params

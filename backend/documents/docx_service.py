@@ -11,6 +11,7 @@ from backend.documents.detailed_evaluation_context import (
 )
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 from backend.shared.date_utils import vietnam_now
+from backend.versioning.relation_policy import load_contracts_for_package_lineage
 
 
 def _date_only(value):
@@ -241,6 +242,26 @@ def enrich_bids_with_contractor_fields(cursor, bids, organization_id):
         ):
             bid[field] = contractor.get(field) or ''
     return bids
+
+
+def load_current_contracts_for_package(cursor, organization_id, package_id):
+    """Return every current contract linked to the selected package lineage."""
+
+    related = load_contracts_for_package_lineage(
+        cursor,
+        organization_id,
+        package_id,
+    )
+    current = [
+        parse_json_fields(dict(item))
+        for item in related
+        if item.get('is_latest') in (1, True, '1')
+    ]
+    if current:
+        return current
+    # Legacy rows may predate ``is_latest``. Preserve export compatibility while
+    # the relation loader still supplies deterministic ordering.
+    return [parse_json_fields(dict(item)) for item in related]
 
 def extract_evaluation_dates(pkg):
     if not pkg:
@@ -513,18 +534,18 @@ def build_report_context(
         clear_competitive_quotation_appraisal(v)
 
     contract_data = {}
+    # Linked contracts are package-level data used by composite templates.
+    # Keep them available for every package report context; only the dedicated
+    # contract/liquidation contexts may replace the primary investor and bidder
+    # with parties from one selected contract.
+    contract_list = load_current_contracts_for_package(
+        cursor,
+        org_name,
+        package_id,
+    )
     if type_param in ('contract', 'liquidation'):
-        cursor.execute("""
-            SELECT hd.*
-            FROM hop_dong hd
-            JOIN hop_dong_goi_thau hdgt ON hdgt.hop_dong_id = hd.id
-            WHERE hd.organization_id = ? AND hdgt.organization_id = ? AND hdgt.goi_thau_id = ?
-            ORDER BY CAST(hd.phien_ban AS INTEGER) DESC
-            LIMIT 1
-        """, (org_name, org_name, package_id))
-        row_contract = cursor.fetchone()
-        if row_contract:
-            contract_data = parse_json_fields(dict(row_contract))
+        if contract_list:
+            contract_data = dict(contract_list[0])
             cursor.execute(
                 "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE organization_id = ? AND hop_dong_id = ?",
                 (org_name, contract_data.get('id'))
@@ -585,6 +606,7 @@ def build_report_context(
         'to_chuyen_gia': to_chuyen_gia,
         'to_tham_dinh': to_tham_dinh,
         'hop_dong': contract_data,
+        'hop_dong_list': contract_list,
         'investor_name': investor_name,
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,

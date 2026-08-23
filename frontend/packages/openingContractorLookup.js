@@ -225,6 +225,35 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
   const latestContractors = model.getLatestNhaThau();
   const pendingByCode = new Map();
 
+  const completeMissingMemberFields = (member, lookupData) => {
+    if (!member || !lookupData) return;
+    for (const field of [
+      "tenNhaThau",
+      "maNhaThau",
+      "maSoThue",
+      "tenVietTat",
+      "nguoiDaiDien",
+      "chucVuDaiDien",
+      "soDienThoai",
+      "diaChi",
+      "diaChiGoc",
+    ]) {
+      if (String(member[field] || "").trim()) continue;
+      if (!String(lookupData[field] || "").trim()) continue;
+      member[field] = lookupData[field];
+    }
+  };
+
+  const queueLookup = (code, targetType, target) => {
+    const lookupInput = getPartnerLookupInput(code);
+    if (!lookupInput) return;
+    const normalizedCode = normalizeContractorLookupCode(code);
+    if (!pendingByCode.has(normalizedCode)) {
+      pendingByCode.set(normalizedCode, { code, lookupInput, rows: [], members: [] });
+    }
+    pendingByCode.get(normalizedCode)[targetType].push(target);
+  };
+
   const applyInfoToRow = async (row, code, info) => {
     const nameInput = row.querySelector(".mt-ten-nha-thau");
     row._leadMemberLookupData = await mapPartnerLookupToContractor(
@@ -251,20 +280,27 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
       await applyInfoToRow(row, code, existing);
       if (String(existing.nguoiDaiDien || "").trim()) continue;
     }
-    const lookupInput = getPartnerLookupInput(code);
-    if (!lookupInput) continue;
-    const normalizedCode = normalizeContractorLookupCode(code);
-    if (!pendingByCode.has(normalizedCode)) {
-      pendingByCode.set(normalizedCode, { code, lookupInput, rows: [] });
+    queueLookup(code, "rows", row);
+  }
+
+  for (const row of Array.from(rows || [])) {
+    for (const member of row._thanhVienLienDanh || []) {
+      const code = member?.maNhaThau || member?.maSoThue || "";
+      if (!code) continue;
+      const existing = findContractorByCode(latestContractors, code);
+      if (existing) {
+        completeMissingMemberFields(member, existing);
+        if (String(member.nguoiDaiDien || "").trim()) continue;
+      }
+      queueLookup(code, "members", member);
     }
-    pendingByCode.get(normalizedCode).rows.push(row);
   }
 
   const deadline = Date.now() + OPENING_SAVE_LOOKUP_TIMEOUT_MS;
   await runWithConcurrency(
     pendingByCode.values(),
     OPENING_LOOKUP_CONCURRENCY,
-    async ({ code, lookupInput, rows: matchingRows }) => {
+    async ({ code, lookupInput, rows: matchingRows, members: matchingMembers }) => {
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) return;
       const codeInputs = matchingRows
@@ -275,6 +311,12 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
         const info = await lookupPartnerInfoBeforeSave(lookupInput, remainingMs);
         if (!info?.name) return;
         await Promise.all(matchingRows.map((row) => applyInfoToRow(row, code, info)));
+        const lookupData = await mapPartnerLookupToContractor(
+          code,
+          info,
+          { normalizeAddress: false },
+        );
+        matchingMembers.forEach((member) => completeMissingMemberFields(member, lookupData));
       } catch (error) {
         console.error("Contractor lookup before saving bid opening failed:", error);
       } finally {

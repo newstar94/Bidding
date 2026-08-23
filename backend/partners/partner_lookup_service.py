@@ -857,7 +857,8 @@ def _load_partner_job_contractor(job):
         row = connection.execute(
             """
             SELECT id, organization_id, ma_nha_thau, ma_so_thue,
-                   ten_nha_thau, dia_chi, dia_chi_goc, ten_viet_tat
+                   ten_nha_thau, dia_chi, dia_chi_goc, ten_viet_tat,
+                   nguoi_dai_dien, chuc_vu_dai_dien
             FROM nha_thau
             WHERE organization_id = ? AND id = ?
             LIMIT 1
@@ -896,6 +897,12 @@ def _apply_partner_enrichment(job, contractor, info):
                 else ""
             )
             new_short_name = str(info.get("short_name") or "").strip()
+            new_representative_name = str(
+                info.get("representative_name") or ""
+            ).strip()
+            new_representative_position = str(
+                info.get("representative_position") or ""
+            ).strip()
             returned_tax_code = str(info.get("tax_code") or "").strip()
             connection.execute(
                 """
@@ -927,6 +934,12 @@ def _apply_partner_enrichment(job, contractor, info):
                     ten_viet_tat = CASE
                         WHEN ten_viet_tat IS NULL OR ten_viet_tat = '' THEN ?
                         ELSE ten_viet_tat END,
+                    nguoi_dai_dien = CASE
+                        WHEN nguoi_dai_dien IS NULL OR nguoi_dai_dien = '' THEN ?
+                        ELSE nguoi_dai_dien END,
+                    chuc_vu_dai_dien = CASE
+                        WHEN chuc_vu_dai_dien IS NULL OR chuc_vu_dai_dien = '' THEN ?
+                        ELSE chuc_vu_dai_dien END,
                     ma_so_thue = CASE WHEN ? <> '' THEN ? ELSE ma_so_thue END,
                     sync_version = ?,
                     updated_at = CURRENT_TIMESTAMP
@@ -937,6 +950,8 @@ def _apply_partner_enrichment(job, contractor, info):
                     new_address,
                     new_address_raw,
                     new_short_name,
+                    new_representative_name,
+                    new_representative_position,
                     returned_tax_code,
                     returned_tax_code,
                     new_sync_version,
@@ -992,6 +1007,16 @@ def _apply_partner_enrichment(job, contractor, info):
     finally:
         connection.close()
 
+
+def _needs_partner_enrichment(contractor):
+    return (
+        _is_placeholder_contractor_name(contractor.get("ten_nha_thau"))
+        or not str(contractor.get("dia_chi") or "").strip()
+        or str(contractor.get("ma_so_thue") or "").lower().startswith("vn")
+        or not str(contractor.get("nguoi_dai_dien") or "").strip()
+        or not str(contractor.get("chuc_vu_dai_dien") or "").strip()
+    )
+
 def _process_partner_enrichment_job(job):
     contractor = _load_partner_job_contractor(job)
     if contractor is None:
@@ -999,11 +1024,7 @@ def _process_partner_enrichment_job(job):
         return
     tax_code = extract_clean_tax_code(contractor.get("ma_so_thue"))
     org_code = normalize_procurement_org_code(contractor.get("ma_nha_thau"))
-    needs_enrichment = (
-        _is_placeholder_contractor_name(contractor.get("ten_nha_thau"))
-        or not str(contractor.get("dia_chi") or "").strip()
-        or str(contractor.get("ma_so_thue") or "").lower().startswith("vn")
-    )
+    needs_enrichment = _needs_partner_enrichment(contractor)
     if not needs_enrichment:
         _finish_partner_enrichment_job(job)
         return

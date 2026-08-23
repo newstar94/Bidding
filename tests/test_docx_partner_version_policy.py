@@ -177,6 +177,14 @@ def test_report_context_passes_its_milestone_to_investor_version_loading(
     monkeypatch.setattr(docx_service, "load_effective_investor", load_investor)
     monkeypatch.setattr(
         docx_service,
+        "load_current_contracts_for_package",
+        lambda *_args: [
+            {"id": "contract-appraisal", "phan_loai": "Thẩm định"},
+            {"id": "contract-consulting", "phan_loai": "Tư vấn"},
+        ],
+    )
+    monkeypatch.setattr(
+        docx_service,
         "project_docx_context",
         lambda _type, context, _capabilities, **_kwargs: context,
     )
@@ -194,4 +202,8 @@ def test_report_context_passes_its_milestone_to_investor_version_loading(
     )
 
     assert context["chu_dau_tu"]["id"] == "selected-investor"
+    assert [item["id"] for item in context["hop_dong_list"]] == [
+        "contract-appraisal",
+        "contract-consulting",
+    ]
     assert captured == [("investor-v1", "org-1", expected_date)]

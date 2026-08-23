@@ -9,6 +9,8 @@ from backend.documents.custom_exporter import (
     generate_report_from_custom_template,
 )
 from backend.documents.docx_context_policy import MANIFEST_VERSION
+from backend.documents.docx_context_policy import project_docx_context
+from backend.documents.docx_mapping_service import apply_custom_mappings
 
 
 def _all_document_text(document):
@@ -92,6 +94,161 @@ def test_combined_sample_template_renders_evaluation_list_source_fields():
     assert "Nguyễn Văn Chuyên Gia" in text
     assert "Trần Thị Thẩm Định" in text
     assert "Công ty Nhà thầu A" in text
+
+
+def test_combined_sample_template_renders_all_contracts_and_formats_money():
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+    )
+    context = {
+        "ds_hop_dong": [
+            {
+                "phan_loai": "Thẩm định",
+                "ten_hop_dong": "Hợp đồng thẩm định",
+                "so_hop_dong": "01/2026/HĐTĐ",
+                "ngay_ky": "2026-08-01",
+                "gia_tri": 9000000,
+                "loai_hop_dong": "Trọn gói",
+                "thoi_gian_thuc_hien": "30 ngày",
+                "trang_thai_hop_dong": "Đang thực hiện",
+            },
+            {
+                "phan_loai": "Tư vấn",
+                "ten_hop_dong": "Hợp đồng tư vấn",
+                "so_hop_dong": "01/2026/HĐTV",
+                "ngay_ky": "2026-07-01",
+                "gia_tri": 12000000,
+                "loai_hop_dong": "Trọn gói",
+                "thoi_gian_thuc_hien": "45 ngày",
+                "trang_thai_hop_dong": "Đang thực hiện",
+            },
+        ],
+        "ds_mo_thau": [{
+            "ten_nha_thau": "Công ty Nhà thầu A",
+            "loai_nha_thau": "Độc lập",
+            "gia_du_thau": 100000000,
+            "ty_le_giam_gia": 5,
+            "gia_sau_giam_gia": 95000000,
+            "hieu_luc_hsdt": "90 ngày",
+            "gia_tri_dam_bao": 10000000,
+            "danh_gia_hop_le": "Đạt",
+            "danh_gia_nang_luc": "Đạt",
+            "danh_gia_ky_thuat": "Đạt",
+            "danh_gia_tai_chinh": "Đạt",
+            "gia_xep_hang": "895000000",
+            "danh_gia_ket_luan": "Xếp hạng 1",
+        }],
+        **{
+            key: ""
+            for key in (
+                "hd_phan_loai", "ten_hd", "so_hd", "ngay_ky_hd",
+                "hd_gia_tri", "loai_hd", "tg_thuc_hien_hd",
+                "trang_thai_hd",
+            )
+        },
+    }
+
+    output = generate_report_from_custom_template(
+        str(template_path),
+        context,
+        {
+            "version": MANIFEST_VERSION,
+            "document_type": "contract",
+            "root_keys": sorted(context),
+            "custom_root_keys": sorted(context),
+            "image_fields": {},
+            "media_organization_id": "org-a",
+        },
+    )
+
+    text = _all_document_text(Document(BytesIO(output.getvalue())))
+    assert "Hợp đồng thẩm định" in text
+    assert "Hợp đồng tư vấn" in text
+    assert "9.000.000" in text
+    assert "12.000.000" in text
+    assert "10.000.000" in text
+    assert "895.000.000" in text
+    assert "10000000" not in text
+    assert "895000000" not in text
+
+
+def test_combined_template_renders_contracts_from_evaluation_context():
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+    )
+    context = project_docx_context(
+        "evaluation",
+        {
+            "hop_dong_list": [
+                {
+                    "id": "contract-appraisal",
+                    "phan_loai": "Thẩm định",
+                    "ten_hop_dong": "Tư vấn thẩm định HSMT",
+                    "so_hop_dong": "01/2026/HĐTĐ",
+                    "gia_tri": 9000000,
+                },
+                {
+                    "id": "contract-consulting",
+                    "phan_loai": "Tư vấn",
+                    "ten_hop_dong": "Tư vấn lập HSMT",
+                    "so_hop_dong": "01/2026/HĐTV",
+                    "gia_tri": 12000000,
+                },
+            ],
+        },
+    )
+    apply_custom_mappings(
+        context,
+        [("ds_hop_dong", "hop_dong_list", "")],
+    )
+
+    output = generate_report_from_custom_template(
+        str(template_path),
+        context,
+        {
+            "version": MANIFEST_VERSION,
+            "document_type": "evaluation",
+            "root_keys": sorted(context),
+            "custom_root_keys": ["ds_hop_dong"],
+            "image_fields": {},
+            "media_organization_id": "org-a",
+        },
+    )
+
+    text = _all_document_text(Document(BytesIO(output.getvalue())))
+    assert "Tư vấn thẩm định HSMT" in text
+    assert "Tư vấn lập HSMT" in text
+    assert "9.000.000" in text
+    assert "12.000.000" in text
+
+
+def test_datetime_mapping_alias_keeps_hours_and_minutes(tmp_path):
+    template_path = tmp_path / "datetime-alias.docx"
+    template = Document()
+    template.add_paragraph("Thời gian đăng tải: {tg_dang_tai_kh}")
+    template.save(template_path)
+    context = {"tg_dang_tai_kh": "2026-03-05 14:55:00"}
+
+    output = generate_report_from_custom_template(
+        str(template_path),
+        context,
+        {
+            "version": MANIFEST_VERSION,
+            "document_type": "evaluation",
+            "root_keys": ["tg_dang_tai_kh"],
+            "custom_root_keys": ["tg_dang_tai_kh"],
+            "datetime_root_keys": ["tg_dang_tai_kh"],
+            "image_fields": {},
+            "media_organization_id": "org-a",
+        },
+    )
+
+    text = _all_document_text(Document(BytesIO(output.getvalue())))
+    assert "14:55 ngày 05/3/2026" in text
 
 
 def test_template_skips_unavailable_list_when_assigned_to_plan_context(tmp_path):

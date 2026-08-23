@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Mapping
 
+from backend.documents.field_manifest import field_format
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
 from backend.shared.media_helper import (
     managed_image_path_matches_tenant,
@@ -388,6 +389,11 @@ REPORT_ROOT_SPECS = {
         for key in _REPORT_LOT_ROOTS
     },
     "detailed_evaluation_reports": "detailed_evaluation_report_list",
+    # Composite package templates may be explicitly assigned to any package
+    # publication.  Contracts remain tenant/record-authorized by the package
+    # context and are exposed as a list without changing the primary report
+    # investor or bidder bindings.
+    "hop_dong_list": "contract_list",
     **{
         key: "detailed_evaluation_row_list"
         for key in _DETAILED_EVALUATION_ROW_ROOTS
@@ -432,6 +438,7 @@ _SOURCE_FIELDS = {
     "to_tham_dinh": _EXPERT_FIELDS,
     "chu_dau_tu": ENTITY_SPECS["investor"].fields,
     "hop_dong": _CONTRACT_FIELDS,
+    "hop_dong_list": _CONTRACT_FIELDS,
     "tai_khoan": _USER_FIELDS,
     "to_chuc": ENTITY_SPECS["organization"].fields,
     "goi_dich_vu": ENTITY_SPECS["service_package"].fields,
@@ -471,6 +478,7 @@ _LIST_ONLY_SOURCES = {
     "ds_phan_lo_co_nha_thau_trung",
     "ds_phan_lo_co_nha_thau_tham_du_khong_trung",
     "detailed_evaluation_reports",
+    "hop_dong_list",
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
 _CONTEXT_SOURCE_FIELDS = _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS
@@ -504,6 +512,7 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "to_tham_dinh": "expert",
     "chu_dau_tu": "investor",
     "hop_dong": "contract",
+    "hop_dong_list": "contract",
     "tai_khoan": "user",
     "to_chuc": "organization",
     "goi_dich_vu": "service_package",
@@ -829,6 +838,7 @@ def seal_docx_context(
     )
     safe_mappings = filter_mapping_rows(mapping_rows, document_type, capabilities)
     custom_roots = []
+    datetime_roots = []
     image_fields = (
         dict(BASE_IMAGE_FIELDS)
         if _capability_enabled(capabilities, "signature")
@@ -845,6 +855,8 @@ def seal_docx_context(
             organization_id,
         )
         custom_roots.append(variable_name)
+        if field_format(source_column) == "datetime":
+            datetime_roots.append(variable_name)
         image_subfolder = _IMAGE_SOURCE_FIELDS.get((source_table, source_column))
         if image_subfolder:
             image_fields[variable_name] = image_subfolder
@@ -854,6 +866,7 @@ def seal_docx_context(
         "document_type": document_type,
         "root_keys": sorted(safe_context),
         "custom_root_keys": sorted(set(custom_roots)),
+        "datetime_root_keys": sorted(set(datetime_roots)),
         "image_fields": image_fields,
         "media_organization_id": str(organization_id or "").strip(),
     }
@@ -910,6 +923,20 @@ def validate_docx_context_manifest(context, manifest):
     if not declared_set <= set(root_specs) | custom_set:
         raise ValueError("Context Word chứa khóa gốc không được phép.")
 
+    datetime_roots = manifest.get("datetime_root_keys", [])
+    if not isinstance(datetime_roots, list):
+        raise ValueError("Danh sách biến ngày giờ Word không hợp lệ.")
+    datetime_set = set(datetime_roots)
+    if len(datetime_set) != len(datetime_roots):
+        raise ValueError("Manifest Word chứa biến ngày giờ trùng lặp.")
+    if any(
+        not isinstance(key, str) or not _SAFE_ROOT_RE.fullmatch(key)
+        for key in datetime_set
+    ):
+        raise ValueError("Manifest Word chứa biến ngày giờ không hợp lệ.")
+    if not datetime_set <= declared_set:
+        raise ValueError("Manifest Word khai báo biến ngày giờ ngoài ngữ cảnh.")
+
     image_fields = manifest.get("image_fields")
     if not isinstance(image_fields, dict):
         raise ValueError("Manifest ảnh Word không hợp lệ.")
@@ -953,5 +980,6 @@ def validate_docx_context_manifest(context, manifest):
         "document_type": document_type,
         "allowed_root_keys": declared_set,
         "allowed_image_fields": dict(image_fields),
+        "datetime_root_keys": datetime_set,
         "media_organization_id": media_organization_id,
     }

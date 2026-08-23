@@ -8,7 +8,7 @@ from backend.shared.workspace_scope import (
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 14
+WORD_DEFAULT_MAPPINGS_VERSION = 15
 
 
 WORD_SINGLE_SOURCES = {
@@ -390,6 +390,7 @@ WORD_LIST_MAPPINGS = [
     ("ds_to_chuyen_gia", "to_chuyen_gia", "Tổ chuyên gia của gói thầu"),
     ("ds_to_tham_dinh", "to_tham_dinh", "Tổ thẩm định của gói thầu"),
     ("ds_mo_thau", "thong_tin_mo_thau", "Danh sách thông tin mở thầu"),
+    ("ds_hop_dong", "hop_dong_list", "Danh sách hợp đồng hiện hành liên kết với gói thầu"),
     ("ds_bao_cao_dgct", "detailed_evaluation_reports", "Báo cáo đánh giá chi tiết theo nhà thầu và vòng"),
     ("ds_dgct", "detailed_evaluation_rows", "Tất cả dòng đánh giá chi tiết"),
     ("ds_dgct_hop_le", "detailed_evaluation_validity_rows", "Đánh giá chi tiết tính hợp lệ"),
