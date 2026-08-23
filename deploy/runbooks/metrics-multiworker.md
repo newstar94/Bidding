@@ -61,9 +61,10 @@ Exercise the deterministic repository verification before release:
 pytest -q tests/test_metrics_multiprocess.py
 ```
 
-The test proves two-worker counter/gauge aggregation, dead-worker archival,
-invocation isolation, atomic publication, and integration with the Prometheus
-renderer.
+The test proves two-worker counter/gauge aggregation, atomic dead-worker rename,
+generation de-duplication across an interrupted archive boundary, malformed-shard
+failure reporting, invocation isolation, atomic publication, and integration with
+the Prometheus renderer.
 
 ## Failure handling
 

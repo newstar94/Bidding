@@ -1,4 +1,43 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+
+export function setPackageEditorState(modal, state) {
+  if (!modal) return;
+  modal.dataset.editorState = String(state || "");
+  if (["loading", "saving", "closing"].includes(state)) {
+    modal.setAttribute("aria-busy", "true");
+  } else {
+    modal.removeAttribute("aria-busy");
+  }
+}
+
+export async function runPackageFormSubmission(controller, event) {
+  event?.preventDefault?.();
+  const form = event?.currentTarget || event?.target;
+  if (!form || form.dataset.submitState === "saving") return false;
+  const submitButton = form.querySelector?.('button[type="submit"]');
+  const modal = form.closest?.(".modal-overlay");
+  form.dataset.submitState = "saving";
+  form.setAttribute?.("aria-busy", "true");
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.setAttribute?.("aria-busy", "true");
+  }
+  setPackageEditorState(modal, "saving");
+  try {
+    await controller.handleGoiThauSubmit(event);
+    return true;
+  } finally {
+    const editorStillActive = Boolean(modal?.classList?.contains("active"));
+    form.dataset.submitState = editorStillActive ? "ready" : "saved";
+    form.removeAttribute?.("aria-busy");
+    setPackageEditorState(modal, editorStillActive ? "ready" : "closed");
+    if (submitButton) {
+      submitButton.disabled = !editorStillActive;
+      submitButton.removeAttribute?.("aria-busy");
+    }
+  }
+}
+
 export function resetPackageFormEditableState(form) {
   if (!form) return;
   form.querySelectorAll(".form-group").forEach((group) => group.classList.remove("invalid"));

@@ -10,6 +10,7 @@ from backend.documents.custom_exporter import (
 )
 from backend.documents.docx_context_policy import MANIFEST_VERSION
 from backend.documents.docx_context_policy import project_docx_context, seal_docx_context
+from backend.documents.docx_formula_service import apply_computed_mappings
 from backend.documents.docx_mapping_service import apply_custom_mappings
 from backend.documents.routes_docx import _scope_contracts_for_word_publication
 
@@ -329,6 +330,14 @@ def test_datetime_mapping_alias_keeps_hours_and_minutes(tmp_path):
         ("2026-01-05 14:55:00", "05/01/2026"),
         ("2026-02-05 14:55:00", "05/02/2026"),
         ("2026-03-05 14:55:00", "05/3/2026"),
+        ("2026-04-05 14:55:00", "05/4/2026"),
+        ("2026-05-05 14:55:00", "05/5/2026"),
+        ("2026-06-05 14:55:00", "05/6/2026"),
+        ("2026-07-05 14:55:00", "05/7/2026"),
+        ("2026-08-05 14:55:00", "05/8/2026"),
+        ("2026-09-05 14:55:00", "05/9/2026"),
+        ("2026-10-05 14:55:00", "05/10/2026"),
+        ("2026-11-05 14:55:00", "05/11/2026"),
         ("2026-12-05 14:55:00", "05/12/2026"),
     ],
 )
@@ -361,6 +370,45 @@ def test_short_date_uses_leading_zero_only_for_january_and_february(
 
     text = _all_document_text(Document(BytesIO(output.getvalue())))
     assert f"Ngày ngắn: {expected}" in text
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("2026-01-05", "05/01/2026"),
+        ("2026-02-05", "05/02/2026"),
+        ("2026-03-05", "05/3/2026"),
+        ("2026-04-05", "05/4/2026"),
+        ("2026-05-05", "05/5/2026"),
+        ("2026-06-05", "05/6/2026"),
+        ("2026-07-05", "05/7/2026"),
+        ("2026-08-05", "05/8/2026"),
+        ("2026-09-05", "05/9/2026"),
+        ("2026-10-05", "05/10/2026"),
+        ("2026-11-05", "05/11/2026"),
+        ("2026-12-05", "05/12/2026"),
+    ],
+)
+@pytest.mark.parametrize(
+    "formula",
+    [
+        "formatDate(source_date)",
+        'formatDate(source_date, "dd/MM/yyyy")',
+    ],
+)
+def test_computed_word_date_uses_the_same_approved_short_date_rule(
+    source,
+    expected,
+    formula,
+):
+    context = {"source_date": source}
+
+    apply_computed_mappings(
+        context,
+        [("computed_short_date", "__computed__", formula)],
+    )
+
+    assert context["computed_short_date"] == expected
 
 
 def test_money_mapping_alias_supports_amount_in_words_for_numbers_and_numeric_strings(

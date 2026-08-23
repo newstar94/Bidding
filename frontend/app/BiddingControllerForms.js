@@ -14,6 +14,7 @@ import {
 } from "../packages/evaluationMethodRules.js";
 import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 import { trackPackageInheritance } from "../packages/packageRebidWorkflow.js";
+import { runPackageFormSubmission } from "../packages/packageFormState.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -291,7 +292,9 @@ export function setupActionListeners() {
     this.closeModal(modalId);
   });
   onById("form-kehoach", "submit", (e) => this.handleKeHoachSubmit(e));
-  onById("form-goithau", "submit", (e) => this.handleGoiThauSubmit(e));
+  onById("form-goithau", "submit", (event) => (
+    runPackageFormSubmission(this, event)
+  ));
   onById("form-phathanh-hsmt", "submit", (e) => this.handlePhatHanhHsmtSubmit(e));
   const btnPhathanhExport = document.getElementById("btn-phathanh-export-excel");
   const btnPhathanhImport = document.getElementById("btn-phathanh-import-excel");

@@ -40,19 +40,33 @@ Business contract hiện hành xác nhận:
 4. Plan apply kiểm tra plan hiện hữu và mọi package hiện hành thuộc family;
    notice apply kiểm tra target package. Một record bị từ chối làm rollback toàn
    bộ phần mutation còn lại của operation.
+   Các assignment thuộc lineage đang được dùng để quyết định quyền ghi được khóa
+   `FOR UPDATE` trước khi đánh giá record scope. Nếu assignment bị thay đổi sau
+   khi transaction `SERIALIZABLE` đã chụp snapshot, PostgreSQL phải hủy
+   transaction bằng serialization conflict; API dùng lỗi hiện hữu
+   `PROCUREMENT_PREVIEW_STALE` (409), không tiếp tục ghi theo snapshot cũ.
 5. Actor của operation được kiểm tra lại sau khi row operation đã lock. Permission
    bị thu hồi trước resume có hiệu lực cả với replay operation đã completed.
+   Cùng phép tái ủy quyền family/target record này được áp dụng cho direct
+   idempotent replay qua endpoint apply, không chỉ endpoint resume.
    Resume reload manifest sau khi khóa operation và giữ cùng transaction
    `SERIALIZABLE` đó xuyên suốt các revision còn lại.
 6. Các revision còn lại của một multi-revision apply dùng một transaction business
    chung. Failure ở revision sau rollback toàn bộ các revision còn lại; progress
-   chỉ cập nhật sau commit hoặc đánh dấu failed sau rollback.
+   chỉ cập nhật sau commit hoặc đánh dấu failed sau rollback. Vì toàn bộ batch đã
+   rollback, durable cursor phải trở về `start_index` của lần thử và trạng thái
+   các revision đã chạy trong lần thử đó phải được khôi phục trước khi đánh dấu
+   đúng revision gây lỗi; resume không được bỏ qua mutation đã bị rollback.
 7. `is_assignment_scoped_active_role()` là seam chuẩn để quyết định persona hiện
    hành có chịu assignment scope hay không.
-8. AI workspace search và analytics dùng active persona thay vì membership role
-   để quyết định assignment filter.
-9. Sync lấy module view qua `has_module_permission()` để giữ inherited view hợp
-   lệ, đồng thời vẫn áp assignment scope khi active persona là Employee.
+8. `VisibilityScope.live_predicate()` là projection SQL có thẩm quyền cho record
+   scope của kế hoạch, gói thầu và hợp đồng. Pagination/list, detail, sync,
+   AI workspace search và analytics đều dùng projection này thay vì duy trì các
+   nhánh SQL assignment riêng.
+9. AI workspace search và analytics dùng active persona thay vì membership role
+   để quyết định assignment filter. Sync và pagination resolve module view qua
+   `has_module_permission()` để giữ inherited view hợp lệ, đồng thời vẫn áp
+   assignment scope khi active persona là Employee.
 
 Quyết định này không thay đổi field visibility, role, module permission,
 entitlement, inheritance hay default allow/deny. Nó thực thi contract đã có tại
@@ -63,6 +77,9 @@ entitlement, inheritance hay default allow/deny. Nó thực thi contract đã c�
 - Request prepare hợp lệ trước đây vẫn hợp lệ.
 - Apply/resume dùng permission snapshot cũ hoặc operation của actor khác giờ trả
   lỗi authorization hiện hành và không ghi; đây là sửa TOCTOU theo contract.
+- Assignment thay đổi đồng thời trong đúng cửa sổ apply có thể trả 409 và yêu cầu
+  người dùng tải lại; không còn trả kết quả completed hoặc ghi theo snapshot quyền
+  đã cũ.
 - Manager đang dùng persona Manager giữ phạm vi hiện hành.
 - Manager đang dùng persona Employee chỉ thấy record assigned/in-scope nhưng vẫn
   có inherited module view; edit không được kế thừa.
@@ -91,9 +108,13 @@ fix sớm nhất có thể.
 - `tests/test_procurement_import_routes.py`: reauthorization trong transaction,
   session/persona reload, từng record scope, actor/operation lock, permission
   revocation, notice scope, cross-tenant denial, resume và atomic multi-revision
-  rollback.
+  rollback; direct replay plan/notice và PostgreSQL concurrency test chứng minh
+  assignment bị thu hồi giữa snapshot và record authorization làm transaction
+  abort trước reconcile.
 - `tests/ai/test_ai_permission_context.py` và
   `tests/ai/test_ai_workspace_search.py`: active persona và assignment scope.
 - `tests/test_sync_delta_paging.py`: inherited module view cùng assignment scope.
 - `tests/test_record_access_projection.py`: record projection/field visibility
-  contract hiện hành và ma trận cùng tập ID qua list/detail/sync/AI/analytics.
+  contract hiện hành và ma trận cùng tập ID qua endpoint HTTP list/detail/sync,
+  AI/analytics; đồng thời khóa việc plans/packages/contracts cùng tiêu thụ
+  `VisibilityScope` có thẩm quyền.

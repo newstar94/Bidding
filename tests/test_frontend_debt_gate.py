@@ -1,4 +1,5 @@
 from scripts.check_frontend_debt import (
+    collect_css_debt_metrics,
     collect_debt_metrics,
     find_unauthorized_persist_and_sync_calls,
     find_unauthorized_synced_persist_calls,
@@ -28,6 +29,26 @@ def test_frontend_debt_gate_reports_only_increases(tmp_path):
     assert validate_debt_metrics(metrics, {**metrics, "important": 0}) == [
         "important increased from 0 to 1"
     ]
+
+
+def test_frontend_debt_gate_counts_route_css_outside_views(tmp_path):
+    views_css = tmp_path / "views" / "css"
+    frontend = tmp_path / "frontend"
+    views_css.mkdir(parents=True)
+    frontend.mkdir()
+    (views_css / "views.css").write_text(
+        ".legacy { color: #fff !important; }",
+        encoding="utf-8",
+    )
+    (frontend / "DashboardView.css").write_text(
+        ".route { color: rgb(1, 2, 3) !important; }",
+        encoding="utf-8",
+    )
+
+    assert collect_css_debt_metrics((views_css, frontend)) == {
+        "important": 2,
+        "raw_colors": 2,
+    }
 
 
 def test_frontend_debt_gate_rejects_new_synced_persist_data_callers(tmp_path):

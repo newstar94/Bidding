@@ -46,6 +46,13 @@ async function openCreateModal(page, route, buttonSelector, modalSelector) {
 
 async function submitModal(page, formSelector, modalSelector) {
   await page.locator(`${formSelector} button[type='submit']`).click();
+  if (formSelector === "#form-goithau") {
+    await expect(page.locator(modalSelector)).toHaveAttribute(
+      "data-editor-state",
+      "closed",
+      { timeout: 20_000 },
+    );
+  }
   await expect(page.locator(`${modalSelector}.active`)).toBeHidden({ timeout: 20_000 });
 }
 
@@ -84,14 +91,42 @@ async function savePlanBreakdown(page, timeout = 30_000) {
   await dismissOptionalDialog(page);
 }
 
-async function selectVisibleVersion(packageRow, label) {
+async function selectVisibleVersion(page, packageRow, label) {
   const nativeSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
-  await nativeSelect.evaluate((select, requestedLabel) => {
-    const option = [...select.options].find((candidate) => candidate.textContent.trim() === requestedLabel);
-    if (!option) throw new Error(`Version option not found: ${requestedLabel}`);
-    select.value = option.value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  }, label);
+  const option = nativeSelect.locator("option").filter({ hasText: label });
+  await expect(option).toHaveCount(1);
+  const selectedId = await option.getAttribute("value");
+  expect(selectedId).toBeTruthy();
+  const combobox = packageRow.locator(".bf-combobox-input");
+  await expect(combobox).toHaveAttribute("role", "combobox");
+  await combobox.click();
+  const listboxId = await combobox.getAttribute("aria-controls");
+  expect(listboxId).toBeTruthy();
+  await page.locator(`#${listboxId}`).getByRole("option", {
+    name: label,
+    exact: true,
+  }).click();
+  await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
+    .toHaveValue(selectedId);
+}
+
+async function searchPackageRow(page, packageCode) {
+  const normalizedCode = String(packageCode).toLocaleLowerCase("vi");
+  const input = page.locator("#search-goithau");
+  await input.fill("");
+  const responsePromise = page.waitForResponse((response) => {
+    if (response.request().method() !== "GET") return false;
+    const url = new URL(response.url());
+    return url.pathname === "/api/paginate"
+      && url.searchParams.get("table") === "goithau"
+      && String(url.searchParams.get("search") || "").toLocaleLowerCase("vi") === normalizedCode;
+  });
+  await input.fill(packageCode);
+  const response = await responsePromise;
+  expect(response.ok(), await response.text().catch(() => "")).toBe(true);
+  const row = page.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
+  await expect(row).toBeVisible();
+  return row;
 }
 
 async function createOwner(page, { code, name }) {
@@ -212,21 +247,12 @@ async function createPlan01(page, { planCode }) {
 
 async function openLatestPackageForEdit(page, packageCode) {
   await gotoReady(page, "/goi-thau");
-  await page.locator("#search-goithau").fill(packageCode);
-  const row = page.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
-  await expect(row).toBeVisible();
-  const editorReady = page.evaluate(() => new Promise((resolve) => {
-    window.addEventListener(
-      "bf:package-editor-ready",
-      (event) => resolve(event.detail),
-      { once: true },
-    );
-  }));
+  const row = await searchPackageRow(page, packageCode);
   await row.locator('[data-bf-action="edit-package"]').click();
-  const readyDetail = await editorReady;
-  await expect(page.locator("#modal-goithau.active")).toBeVisible();
+  const editor = page.locator('#modal-goithau.active[data-editor-state="ready"]');
+  await expect(editor).toBeVisible();
+  await expect(page.locator('#form-goithau[data-submit-state="ready"]')).toBeVisible();
   const packageId = await page.locator("#form-goithau-id").inputValue();
-  expect(readyDetail.packageId).toBe(packageId);
   return packageId;
 }
 
@@ -267,7 +293,7 @@ async function createPackageVersion01(page, {
   ))?.id || "";
   expect(createdPackageId).toBeTruthy();
   await gotoReady(page, "/goi-thau");
-  await page.locator("#search-goithau").fill(packageCode);
+  await searchPackageRow(page, packageCode);
   const latest = (await readServerRows(page, {
     table: "goithau",
     filters: { keHoachId: planId },
@@ -524,6 +550,10 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
       }
     });
     await pageA.locator("#form-goithau button[type='submit']").click();
+    await expect(pageA.locator("#modal-goithau")).toHaveAttribute(
+      "data-editor-state",
+      "closed",
+    );
     await expect(pageA.locator("#modal-goithau.active")).toBeHidden();
     await expect(pageA.locator("#modal-plan-breakdown.active")).toBeVisible();
     expect(breakdownSyncRequests, "package/expert assignment save must remain memory-only").toHaveLength(0);
@@ -586,19 +616,18 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect(Number.parseInt(latestPackage.version, 10)).toBe(1);
 
     await gotoReady(pageA, "/goi-thau");
-    await pageA.locator("#search-goithau").fill(packageCode);
-    let packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
+    let packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow).toContainText(packageName01);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
     const versionSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
     await expect(versionSelect.locator("option")).toHaveCount(2);
-    await selectVisibleVersion(packageRow, "00");
+    await selectVisibleVersion(pageA, packageRow, "00");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(0);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(0);
     await expect(packageRow.locator('.action-btn[data-bf-action="show-package"]')).toHaveCount(1);
-    await selectVisibleVersion(packageRow, "01");
+    await selectVisibleVersion(pageA, packageRow, "01");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
@@ -606,8 +635,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await pageA.reload({ waitUntil: "domcontentloaded" });
     await waitForApp(pageA);
     await waitForInitialReconciliation(pageA);
-    await pageA.locator("#search-goithau").fill(packageCode);
-    packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
+    packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow.locator('select[data-bf-change="change-package-version"]')).toHaveValue(latestPackage.id);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
@@ -638,6 +666,11 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect((clientBBody.rowVersions || []).some((entry) => (
       entry.table === "goithau" && String(entry.id) === String(latestPackage.id)
     ))).toBe(true);
+    await expect(pageB.locator("#modal-goithau")).toHaveAttribute(
+      "data-editor-state",
+      "closed",
+    );
+    await expect(pageB.locator("#modal-goithau.active")).toBeHidden();
 
     await pageA.locator("#gt-nguonvon").fill("Nguồn vốn Local A");
     const conflictResponsePromise = pageA.waitForResponse((response) => (
@@ -657,6 +690,8 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
         && String(error.id) === String(latestPackage.id)
     ))).toBe(true);
     await expect(pageA.locator("#modal-goithau.active")).toBeVisible();
+    await expect(pageA.locator('#form-goithau[data-submit-state="ready"]')).toBeVisible();
+    await expect(pageA.locator("#form-goithau button[type='submit']")).toBeEnabled();
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
     await expect(pageA.locator(".bf-toast").filter({ hasText: "Nhấn F5" }).last()).toBeVisible();
 
@@ -666,8 +701,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await waitForInitialReconciliation(pageA);
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
     await gotoReady(pageA, "/goi-thau");
-    await pageA.locator("#search-goithau").fill(packageCode);
-    packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
+    packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow).toContainText(packageNameB);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);

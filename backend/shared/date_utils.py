@@ -72,6 +72,19 @@ def normalize_date_value(value):
     return parsed.strftime("%Y-%m-%d")
 
 
+def format_short_vietnamese_month(month):
+    """Use a leading zero only for January and February."""
+
+    month_number = int(month)
+    return f"{month_number:02d}" if month_number in {1, 2} else str(month_number)
+
+
+def format_short_vietnamese_date(day, month, year):
+    """Format an approved short date without changing its persisted value."""
+
+    return f"{int(day):02d}/{format_short_vietnamese_month(month)}/{int(year):04d}"
+
+
 def vietnam_now():
     """Return the current timezone-aware Vietnam business time."""
     return datetime.now(VIETNAM_TIMEZONE)

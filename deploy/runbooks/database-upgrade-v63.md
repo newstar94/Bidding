@@ -5,19 +5,25 @@
 V63 thay unique constraint của `procurement_import_operation` từ tenant/provider/key
 sang tenant/provider/family/key. Migration chỉ đổi catalog, không rewrite business
 row. Việc tạo unique constraint cần lock budget và phải chạy bằng migrator role
-trước khi web workers mới nhận write traffic.
+sau khi toàn bộ web worker đã chạy binary mới trên schema v62.
+
+V63 là contract migration: schema v63 không còn arbiter ba cột mà binary cũ chỉ
+định trong `ON CONFLICT`. Không chạy migration nếu chưa có phê duyệt rollout và
+chưa chứng minh toàn bộ process binary cũ đã dừng; sau migration không rollback
+riêng binary về bản cũ.
 
 ## Compatibility sequence
 
 1. Tạo và verify backup theo runbook hiện hành.
 2. Đặt `DATABASE_AUTO_MIGRATE=false`.
-3. Deploy binary mới trong repository này khi database vẫn ở v62. Repository dùng
-   `ON CONFLICT DO NOTHING`, nên create/replay operation hiện hữu tiếp tục chạy.
-4. Smoke prepare/apply/replay trên một family. Chưa kỳ vọng hai family cùng key
-   hoạt động trước migration.
+3. Deploy và roll **toàn bộ** worker sang binary mới khi database vẫn ở v62.
+   Repository dùng `ON CONFLICT DO NOTHING`, nên create/replay hiện hữu tiếp tục
+   chạy trong pha code-first.
+4. Chứng minh không còn process binary cũ, rồi smoke prepare/apply/replay trên một
+   family. Chưa kỳ vọng hai family cùng key hoạt động trước migration.
 5. Chạy preflight và dry-run v63.
 6. Apply v63 bằng migrator credential.
-7. Restart/roll workers và smoke hai family cùng key cùng replay trong một family.
+7. Smoke hai family cùng key và replay trong một family trên các worker mới.
 
 Không đảo thứ tự bằng cách migrate v63 rồi chạy binary cũ.
 

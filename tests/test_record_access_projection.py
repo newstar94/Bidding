@@ -5,6 +5,9 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.testclient import TestClient
 
 from backend.auth.auth_helper import SessionRole
 from backend.ai.errors import AiError
@@ -27,7 +30,9 @@ from tests.test_sync_conflict_authorization import (
 )
 from backend.sync.visibility_epoch import VISIBILITY_POLICY_VERSION
 from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.api import sync_http_routes
 import backend.sync.pagination as pagination_module
+import backend.sync.read_service as read_service_module
 
 
 def _enable_organization_word_export(cursor, organization_id):
@@ -419,6 +424,54 @@ def test_manager_employee_persona_reads_only_assigned_records_without_matrix():
         database.close()
 
 
+@pytest.mark.parametrize(
+    ("entity", "table_name", "module_name"),
+    [
+        ("plans", "ke_hoach_lcnt", "kehoach"),
+        ("packages", "goi_thau", "goithau"),
+        ("contracts", "hop_dong", "hopdong"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("active_role", "unrestricted"),
+    [("manager", True), ("employee", False)],
+)
+def test_ai_and_analytics_use_authoritative_visibility_scope_for_all_entities(
+    entity,
+    table_name,
+    module_name,
+    active_role,
+    unrestricted,
+):
+    context = AiRequestContext(
+        user_id="employee-1",
+        organization_id="org-1",
+        organization_name="Tổ chức kiểm thử",
+        platform_role="user",
+        membership_role="manager",
+        scope_type="organization",
+        active_role=active_role,
+        permissions={module_name: "view"},
+    )
+
+    actual_sql, actual_parameters = visibility_clause(
+        context,
+        entity,
+        "record",
+    )
+    expected = VisibilityScope(
+        organization_id=context.organization_id,
+        user_id=context.user_id,
+        unrestricted=unrestricted,
+        permissions={module_name: "view"},
+    ).live_predicate(table_name, "record")
+
+    assert (actual_sql, actual_parameters) == (
+        expected.sql,
+        expected.parameters,
+    )
+
+
 def test_active_persona_returns_same_package_ids_across_read_channels(monkeypatch):
     database = _test_database()
     connection = database.get_connection()
@@ -656,6 +709,343 @@ def test_active_persona_returns_same_package_ids_across_read_channels(monkeypatc
     finally:
         connection.rollback()
         connection.close()
+        database.close()
+
+
+def test_active_persona_package_parity_through_http_read_endpoints(monkeypatch):
+    database = _test_database()
+    setup = database.get_connection()
+    organization_ids = []
+    member_ids = []
+    try:
+        cursor = setup.cursor()
+        organization_id, user_id, unassigned_id = _seed_denied_package(cursor)
+        foreign_organization_id, foreign_user_id, foreign_id = (
+            _seed_denied_package(cursor)
+        )
+        organization_ids.extend((organization_id, foreign_organization_id))
+        plan_id = cursor.execute(
+            "SELECT ke_hoach_id FROM goi_thau WHERE id = ?",
+            (unassigned_id,),
+        ).fetchone()[0]
+        assigned_id = f"package-http-assigned-{uuid.uuid4().hex}"
+        cursor.execute(
+            """INSERT INTO goi_thau
+                   (id, organization_id, id_goc, ke_hoach_id, ten_goi_thau,
+                    gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                    thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PREPARING')""",
+            (
+                assigned_id,
+                organization_id,
+                assigned_id,
+                plan_id,
+                "Gói thầu HTTP được phân công",
+                345_000_000,
+                "60 ngày",
+                "Ngân sách kiểm thử",
+                "Quý III/2026",
+                "Tháng 8/2026",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+                   (id, organization_id, id_nhan_vien, id_muc_tieu,
+                    loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (
+                f"assignment-http-{uuid.uuid4().hex}",
+                organization_id,
+                user_id,
+                assigned_id,
+            ),
+        )
+        member_ids.extend(
+            row[0]
+            for row in cursor.execute(
+                """SELECT user_id FROM thanh_vien_to_chuc
+                   WHERE organization_id IN (?, ?)""",
+                (organization_id, foreign_organization_id),
+            ).fetchall()
+        )
+        assert user_id in member_ids
+        assert foreign_user_id in member_ids
+        setup.commit()
+
+        current_role = {"value": None}
+
+        async def inline_database_read(function, *args, **kwargs):
+            kwargs.pop("timeout_seconds", None)
+            return function(*args, **kwargs)
+
+        for module in (pagination_module, read_service_module):
+            monkeypatch.setattr(module, "database", database)
+            monkeypatch.setattr(
+                module,
+                "verify_session",
+                lambda _request: (True, current_role["value"]),
+            )
+            monkeypatch.setattr(
+                module,
+                "get_active_org",
+                lambda *_args, **_kwargs: organization_id,
+            )
+            monkeypatch.setattr(
+                module,
+                "run_database_read",
+                inline_database_read,
+            )
+
+        app = Starlette(routes=sync_http_routes(Route))
+        candidates = (assigned_id, unassigned_id, foreign_id)
+
+        def ids_for_channels(client, role, permissions):
+            current_role["value"] = role
+            headers = {"X-Active-Org": organization_id}
+            list_response = client.get(
+                "/api/paginate",
+                params={"table": "goithau", "pageSize": "20"},
+                headers=headers,
+            )
+            assert list_response.status_code == 200
+            list_items = list_response.json()["items"]
+            list_ids = {item["id"] for item in list_items}
+
+            detail_ids = set()
+            detail_items = {}
+            for record_id in candidates:
+                response = client.get(
+                    "/api/record",
+                    params={"table": "goithau", "id": record_id},
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    item = response.json()["item"]
+                    detail_ids.add(item["id"])
+                    detail_items[item["id"]] = item
+                else:
+                    assert response.status_code in {403, 404}
+
+            sync_response = client.get(
+                "/api/get-all-data",
+                params={
+                    "tables": "goithau",
+                    "since": "2000-01-01 00:00:00",
+                },
+                headers=headers,
+            )
+            assert sync_response.status_code == 200
+            sync_items = sync_response.json()["goithau"]
+            sync_ids = {item["id"] for item in sync_items}
+
+            channel_connection = database.get_connection()
+            try:
+                channel_cursor = channel_connection.cursor()
+                membership_role = channel_cursor.execute(
+                    """SELECT vai_tro_trong_to_chuc
+                       FROM thanh_vien_to_chuc
+                       WHERE organization_id = ? AND user_id = ?""",
+                    (organization_id, user_id),
+                ).fetchone()[0]
+                context = AiRequestContext(
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    organization_name="Tổ chức kiểm thử",
+                    platform_role="user",
+                    membership_role=str(membership_role),
+                    scope_type="organization",
+                    active_role=role.active_role,
+                    permissions=permissions,
+                )
+                try:
+                    ai_result = search_workspace_records(
+                        channel_cursor,
+                        context,
+                        {
+                            "entity": "packages",
+                            "operation": "list",
+                            "query": "",
+                            "status": "",
+                            "packageId": "",
+                            "limit": 20,
+                        },
+                    )
+                    ai_ids = {row["id"] for row in ai_result.records}
+                except AiError as error:
+                    assert error.code == "AI_PERMISSION_DENIED"
+                    ai_ids = set()
+
+                try:
+                    clause, parameters = visibility_clause(
+                        context,
+                        "packages",
+                        "record",
+                    )
+                    analytics_ids = {
+                        row[0]
+                        for row in channel_cursor.execute(
+                            "SELECT record.id FROM goi_thau AS record WHERE "  # noqa: S608 - predicate is registry-built
+                            + clause
+                            + " AND record.is_latest = 1 "
+                            "AND record.archived_at IS NULL",
+                            parameters,
+                        ).fetchall()
+                    }
+                except AiError as error:
+                    assert error.code == "AI_PERMISSION_DENIED"
+                    analytics_ids = set()
+            finally:
+                channel_connection.close()
+
+            if assigned_id in detail_items:
+                assert str(detail_items[assigned_id]["giaGoiThau"]) == "345000000"
+                assert str(next(
+                    item for item in list_items if item["id"] == assigned_id
+                )["giaGoiThau"]) == "345000000"
+                assert str(next(
+                    item for item in sync_items if item["id"] == assigned_id
+                )["giaGoiThau"]) == "345000000"
+
+            return {
+                "list": list_ids,
+                "detail": detail_ids,
+                "sync": sync_ids,
+                "ai": ai_ids,
+                "analytics": analytics_ids,
+            }
+
+        def assert_channels(client, expected, role, permissions):
+            observed = ids_for_channels(client, role, permissions)
+            assert observed == {channel: expected for channel in observed}
+            assert foreign_id not in set().union(*observed.values())
+
+        with TestClient(app) as client:
+            control = database.get_connection()
+            try:
+                control.execute(
+                    """UPDATE thanh_vien_to_chuc
+                       SET vai_tro_trong_to_chuc = 'manager'
+                       WHERE organization_id = ? AND user_id = ?""",
+                    (organization_id, user_id),
+                )
+                control.execute(
+                    """DELETE FROM ma_tran_phan_quyen
+                       WHERE organization_id = ? AND emp_id = ?""",
+                    (organization_id, user_id),
+                )
+                control.commit()
+            finally:
+                control.close()
+            assert_channels(
+                client,
+                {assigned_id, unassigned_id},
+                SessionRole(
+                    "user",
+                    user_id,
+                    platform_role="user",
+                    active_role="manager",
+                ),
+                {"goithau": "view"},
+            )
+            assert_channels(
+                client,
+                {assigned_id},
+                SessionRole(
+                    "user",
+                    user_id,
+                    platform_role="user",
+                    active_role="employee",
+                ),
+                {"goithau": "view"},
+            )
+
+            control = database.get_connection()
+            try:
+                control.execute(
+                    """UPDATE thanh_vien_to_chuc
+                       SET vai_tro_trong_to_chuc = 'employee'
+                       WHERE organization_id = ? AND user_id = ?""",
+                    (organization_id, user_id),
+                )
+                control.execute(
+                    """INSERT INTO ma_tran_phan_quyen
+                           (id, organization_id, emp_id, goithau)
+                       VALUES (?, ?, ?, 'view')""",
+                    (
+                        f"permission-http-{uuid.uuid4().hex}",
+                        organization_id,
+                        user_id,
+                    ),
+                )
+                control.commit()
+            finally:
+                control.close()
+            employee_role = SessionRole(
+                "user",
+                user_id,
+                platform_role="user",
+                active_role="employee",
+            )
+            assert_channels(
+                client,
+                {assigned_id},
+                employee_role,
+                {"goithau": "view"},
+            )
+
+            control = database.get_connection()
+            try:
+                control.execute(
+                    """DELETE FROM ma_tran_phan_quyen
+                       WHERE organization_id = ? AND emp_id = ?""",
+                    (organization_id, user_id),
+                )
+                control.commit()
+            finally:
+                control.close()
+            assert_channels(client, set(), employee_role, {})
+    finally:
+        setup.close()
+        if organization_ids:
+            cleanup = database.get_connection()
+            try:
+                for organization_id in organization_ids:
+                    cleanup.execute(
+                        "DELETE FROM phan_cong_nhan_su WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM goi_thau WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM ke_hoach_lcnt WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM chu_dau_tu WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM thanh_vien_to_chuc WHERE organization_id = ?",
+                        (organization_id,),
+                    )
+                    cleanup.execute(
+                        "DELETE FROM to_chuc WHERE id = ?",
+                        (organization_id,),
+                    )
+                for member_id in set(member_ids):
+                    cleanup.execute(
+                        "DELETE FROM tai_khoan WHERE id = ?",
+                        (member_id,),
+                    )
+                cleanup.commit()
+            finally:
+                cleanup.close()
         database.close()
 
 

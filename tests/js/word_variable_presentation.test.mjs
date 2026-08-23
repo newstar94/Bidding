@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getApprovedShortDateFormulaSuggestion,
   getDerivedWordVariableCodes,
   matchesWordVariableSearch,
   normalizeWordVariableSearch,
@@ -33,4 +34,11 @@ test("Word-variable search is accent-insensitive across code, meaning and source
   assert.equal(matchesWordVariableSearch("gia goi thau", searchableValues), true);
   assert.equal(matchesWordVariableSearch("nguồn không tồn tại", searchableValues), false);
   assert.equal(normalizeWordVariableSearch("Gói thầu"), "goi thau");
+});
+
+test("computed Word date guidance uses the approved short-date convention", () => {
+  assert.deepEqual(getApprovedShortDateFormulaSuggestion(), {
+    label: "Ngày ngắn (05/3/2026)",
+    formula: "formatDate(__var__)",
+  });
 });

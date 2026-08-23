@@ -62,7 +62,9 @@ biểu mẫu tương thích.
     rút gọn và `bangchu_<biến>`/`BangChu_<biến>` cho tiền bằng chữ. Giá trị tiền
     có thể là số hoặc chuỗi chỉ chứa số. Ngày rút gọn giữ ngày ở hai chữ số;
     tháng chỉ có số `0` phía trước với tháng 1 và tháng 2, ví dụ `05/01/2026`,
-    `05/02/2026`, `05/3/2026`.
+    `05/02/2026`, `05/3/2026`. Công thức `formatDate(...)` dùng cùng quy tắc này;
+    giao diện cấu hình không được mô tả quy tắc bằng ký hiệu `dd/MM/yyyy` vì ký
+    hiệu đó ngụ ý sai rằng tháng 3–9 cũng có số `0` phía trước.
 13. Phạm vi hợp đồng được xác định từ `publicationType` ổn định và trường phân
     loại hợp đồng, không suy đoán từ tên file biểu mẫu hoặc tên hợp đồng. So sánh
     phân loại không phụ thuộc chữ hoa/thường, dấu tiếng Việt hoặc khoảng trắng.
@@ -104,7 +106,9 @@ biểu mẫu tương thích.
   `14:55 ngày 05/3/2026`; biến ánh xạ từ trường ngày thuần không thay đổi.
 - Mẫu có thể dùng `bangchu_<biến-tiền>` để trình bày tiền bằng chữ và
   `S_<biến-ngày>` để trình bày ngày rút gọn theo quy tắc tháng 1–2 có số `0`,
-  các tháng còn lại không thêm số `0`. Biến không ánh xạ
+  các tháng còn lại không thêm số `0`. Biến kết quả dùng `formatDate(...)` nhận
+  cùng cách trình bày; gợi ý công thức cũ có tham số `"dd/MM/yyyy"` được đổi sang
+  công thức không tham số định dạng. Biến không ánh xạ
   từ đúng kiểu schema không được tự suy đoán là tiền hoặc ngày; điều này giữ
   nguyên phạm vi dữ liệu và tránh tạo biến dẫn xuất ngoài manifest.
 
@@ -126,7 +130,9 @@ biểu mẫu tương thích.
    manifest ở mỗi lần xuất Word.
 8. Không có migration dữ liệu cho biến dẫn xuất tiền/ngày. Các mẫu hiện hữu tiếp
    tục hoạt động; người quản lý chỉ thêm tiền tố khi chủ động muốn cách trình bày
-   mới. File mẫu kiểm thử được bổ sung hướng dẫn và ví dụ ngay trong tài liệu.
+   mới. Công thức `formatDate(...)` hiện hữu tiếp tục được đọc; thay đổi chỉ làm
+   gợi ý tạo công thức mới không còn hiển thị ký hiệu `dd/MM/yyyy` gây hiểu sai.
+   File mẫu kiểm thử được bổ sung hướng dẫn và ví dụ ngay trong tài liệu.
 9. Không có migration schema hoặc dữ liệu hợp đồng cho phạm vi theo chức năng.
    Phạm vi được tính lại ở mỗi lần xuất từ `publicationType` và `phan_loai` hiện
    có; hợp đồng thiếu hoặc có phân loại khác không được đưa vào bốn tài liệu tư
@@ -165,7 +171,8 @@ biểu mẫu tương thích.
   alias ánh xạ từ `datetime` được khai báo trong manifest và giữ giờ/phút khi render.
 - `tests/test_docx_cross_context_template.py`: pipeline ánh xạ thật giữ số tiền
   đến bước sinh chữ, biến tiền bằng chữ chấp nhận cả số và chuỗi số; biến ngày
-  ngắn áp quy tắc tháng 1–2 có số `0`; file mẫu có hướng dẫn cùng cú pháp minh họa.
+  ngắn và công thức `formatDate(...)` áp quy tắc tháng 1–2 có số `0` cho đủ 12
+  tháng; file mẫu có hướng dẫn cùng cú pháp minh họa.
 - `tests/test_docx_mapping_policy.py`: manifest chỉ đánh dấu alias tiền, ngày và
   ngày giờ theo định dạng của cột nguồn.
 - `tests/test_word_publication_template_assignments.py`: context được lọc trước
@@ -176,4 +183,5 @@ biểu mẫu tương thích.
 - `tests/js/word_resources_layout.test.mjs` và
   `tests/js/word_variable_presentation.test.mjs`: màn hình Biểu mẫu đưa mã tiền
   bằng chữ/ngày rút gọn vào đúng dòng biến tương ứng và cho phép tìm không phân
-  biệt dấu theo mã biến, ý nghĩa hoặc nguồn ánh xạ.
+  biệt dấu theo mã biến, ý nghĩa hoặc nguồn ánh xạ; gợi ý công thức ngày dùng
+  đúng nhãn và cú pháp ngày ngắn đã phê duyệt.

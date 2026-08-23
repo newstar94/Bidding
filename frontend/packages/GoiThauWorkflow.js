@@ -3,7 +3,11 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
+import {
+  resetPackageFormEditableState,
+  setPackageEditorState,
+  setPackageSubTableActionsVisible,
+} from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
 import {
@@ -240,7 +244,10 @@ export async function editGoiThau(id, isReadOnly = false) {
     await this.ensureLazyModal?.("modal-goithau");
   }
   assertEditWorkspaceCurrent();
+  const packageModal = document.getElementById("modal-goithau");
   const form = document.getElementById("form-goithau");
+  setPackageEditorState(packageModal, "loading");
+  form.dataset.submitState = "loading";
   const storedPackage = id
     ? this.model.state.goithau.find((g) => String(g.id) === String(id))
     : null;
@@ -348,6 +355,8 @@ export async function editGoiThau(id, isReadOnly = false) {
       "Không thể tải danh sách chuyên gia để lập tổ. Vui lòng thử lại.",
       "error",
     );
+    setPackageEditorState(packageModal, "error");
+    form.dataset.submitState = "error";
     return;
   }
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
@@ -831,13 +840,9 @@ export async function editGoiThau(id, isReadOnly = false) {
     }),
   });
   assertEditWorkspaceCurrent();
+  form.dataset.submitState = "ready";
+  setPackageEditorState(packageModal, "ready");
   this.view.openModal("modal-goithau");
-  window.dispatchEvent(new CustomEvent("bf:package-editor-ready", {
-    detail: {
-      packageId: String(id || ""),
-      readOnly: Boolean(isReadOnly),
-    },
-  }));
 }
 // eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.
 export async function handleGoiThauSubmit(e) {
@@ -1347,10 +1352,13 @@ export async function handleGoiThauSubmit(e) {
     );
     return;
   }
+  const packageModal = document.getElementById("modal-goithau");
+  setPackageEditorState(packageModal, "closing");
   await this.closeModal("modal-goithau", {
     restoreRoute: false,
     preserveProcurementImport: true,
   });
+  setPackageEditorState(packageModal, "closed");
   if (this.procurementPackageImport?.controller) {
     await this.completeProcurementPackageImportRevision?.(finalGtId);
     return;

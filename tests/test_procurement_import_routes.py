@@ -1,5 +1,9 @@
 from copy import deepcopy
+import os
+from threading import Event, Thread
+import time
 from types import SimpleNamespace
+import uuid
 
 import pytest
 from starlette.applications import Starlette
@@ -10,6 +14,7 @@ from backend.integrations.muasamcong_browser.procurement_source import (
     MuaSamCongProcurementSource,
 )
 import backend.procurement_import.routes as routes_module
+from backend.db.db_helper import PostgresDatabase
 from backend.procurement_import.routes import (
     ProcurementRouteError,
     _bundle_local_authority_signature,
@@ -795,6 +800,9 @@ class _AuthorizationCursor:
             return ((self.operation_actor,) if self.operation_actor else None)
         return None
 
+    def fetchall(self):
+        return []
+
 
 class _AuthorizationConnection:
     def __init__(self, cursor):
@@ -847,6 +855,274 @@ class _CurrentAuthorityCursor(_AuthorizationCursor):
         if "FROM ma_tran_phan_quyen" in self.statement:
             return None
         return super().fetchone()
+
+
+@pytest.mark.parametrize(
+    ("payload_key", "table_name", "item"),
+    [
+        (
+            "kehoach",
+            "ke_hoach_lcnt",
+            {"id": "plan-current", "rootId": "plan-root"},
+        ),
+        (
+            "goithau",
+            "goi_thau",
+            {"id": "package-current", "rootId": "package-root"},
+        ),
+    ],
+)
+def test_procurement_record_authorization_locks_assignment_lineage_before_decision(
+    monkeypatch,
+    payload_key,
+    table_name,
+    item,
+):
+    statements = []
+
+    class Cursor:
+        def execute(self, statement, _parameters=()):
+            statements.append(" ".join(str(statement).split()))
+            return self
+
+        def fetchall(self):
+            return []
+
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda *_args: AccessDecision(True),
+    )
+
+    routes_module._require_record_write(
+        Cursor(),
+        SimpleNamespace(user_id="employee-1", active_role="employee"),
+        "org-1",
+        payload_key,
+        table_name,
+        item,
+    )
+
+    assert any(
+        "FOR UPDATE OF assignment" in statement
+        for statement in statements
+    )
+
+
+def test_real_postgres_assignment_revocation_during_apply_aborts_before_reconcile(
+    monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for PostgreSQL TOCTOU test")
+    test_database = PostgresDatabase(database_url)
+    suffix = uuid.uuid4().hex
+    organization_id = f"org-procurement-toctou-{suffix}"
+    user_id = f"employee-procurement-toctou-{suffix}"
+    investor_id = f"investor-procurement-toctou-{suffix}"
+    plan_id = f"plan-procurement-toctou-{suffix}"
+    assignment_id = f"assignment-procurement-toctou-{suffix}"
+    session_id = f"session-procurement-toctou-{suffix}"
+    family_no = f"PL{suffix[:10].upper()}"
+    now = int(time.time())
+    setup = test_database.get_connection()
+    try:
+        cursor = setup.cursor()
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            (organization_id, "Tổ chức kiểm thử procurement TOCTOU"),
+        )
+        cursor.execute(
+            """INSERT INTO tai_khoan
+                   (id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
+                    vai_tro, email, email_norm, da_xac_minh, username_da_dat)
+               VALUES (?, ?, ?, ?, ?, 'user', ?, ?, 1, 1)""",
+            (
+                user_id,
+                user_id,
+                user_id,
+                "test-password-hash",
+                "Chuyên viên kiểm thử TOCTOU",
+                f"{user_id}@example.test",
+                f"{user_id}@example.test",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO auth_sessions
+                   (id, user_id, token_hash, created_at, last_seen_at,
+                    idle_expires_at, absolute_expires_at, remember_me,
+                    active_role, active_role_organization_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'employee', ?)""",
+            (
+                session_id,
+                user_id,
+                f"token-hash-{suffix}",
+                now,
+                now,
+                now + 3_600,
+                now + 7_200,
+                organization_id,
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO thanh_vien_to_chuc
+                   (user_id, organization_id, vai_tro_trong_to_chuc,
+                    ten_nhan_su)
+               VALUES (?, ?, 'employee', ?)""",
+            (user_id, organization_id, "Chuyên viên kiểm thử TOCTOU"),
+        )
+        cursor.execute(
+            """INSERT INTO ma_tran_phan_quyen
+                   (id, organization_id, emp_id, kehoach)
+               VALUES (?, ?, ?, 'edit')""",
+            (f"permission-{suffix}", organization_id, user_id),
+        )
+        cursor.execute(
+            """INSERT INTO chu_dau_tu
+                   (id, organization_id, id_goc, ten_chu_dau_tu)
+               VALUES (?, ?, ?, ?)""",
+            (
+                investor_id,
+                organization_id,
+                investor_id,
+                "Chủ đầu tư kiểm thử TOCTOU",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO ke_hoach_lcnt
+                   (id, organization_id, id_goc, ma_ke_hoach, ten_ke_hoach,
+                    ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id,
+                    ngay_phe_duyet, quyet_dinh_phe_duyet)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE, ?)""",
+            (
+                plan_id,
+                organization_id,
+                plan_id,
+                family_no,
+                "Kế hoạch kiểm thử TOCTOU",
+                "Dự án kiểm thử TOCTOU",
+                "Mua sắm thường xuyên",
+                investor_id,
+                "QĐ-TOCTOU",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+                   (id, organization_id, id_nhan_vien, id_muc_tieu,
+                    loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'kehoach')""",
+            (assignment_id, organization_id, user_id, plan_id),
+        )
+        setup.commit()
+    finally:
+        setup.close()
+
+    lock_reached = Event()
+    revocation_committed = Event()
+    reconciled = Event()
+    outcome = []
+    original_lock = routes_module._lock_record_assignment_scope
+
+    def pause_before_assignment_lock(*args, **kwargs):
+        lock_reached.set()
+        assert revocation_committed.wait(10)
+        return original_lock(*args, **kwargs)
+
+    class Reconciler:
+        def __init__(self, _repository):
+            pass
+
+        def reconcile_revision(self, **_kwargs):
+            reconciled.set()
+            return {
+                "operation": "APPLIED",
+                "createdPlans": [],
+                "createdPackages": [],
+            }
+
+    monkeypatch.setattr(routes_module, "database", test_database)
+    monkeypatch.setattr(
+        routes_module,
+        "_lock_record_assignment_scope",
+        pause_before_assignment_lock,
+    )
+    monkeypatch.setattr(routes_module, "ProcurementPlanReconciler", Reconciler)
+
+    def apply_after_prepare():
+        try:
+            outcome.append(
+                routes_module._apply_one(
+                    organization_id,
+                    SimpleNamespace(
+                        user_id=user_id,
+                        session_id=session_id,
+                        active_role="employee",
+                    ),
+                    "MUASAMCONG",
+                    {
+                        "familyNo": family_no,
+                        "revisionId": "revision-1",
+                    },
+                    "apply-toctou-1",
+                    1,
+                    investor_id,
+                )
+            )
+        except Exception as error:  # noqa: BLE001 - asserted below.
+            outcome.append(error)
+
+    worker = Thread(target=apply_after_prepare, daemon=True)
+    try:
+        worker.start()
+        assert lock_reached.wait(10)
+        revocation = test_database.get_connection()
+        try:
+            revocation.execute(
+                "DELETE FROM phan_cong_nhan_su WHERE organization_id = ? AND id = ?",
+                (organization_id, assignment_id),
+            )
+            revocation.commit()
+        finally:
+            revocation.close()
+        revocation_committed.set()
+        worker.join(timeout=10)
+
+        assert not worker.is_alive()
+        assert len(outcome) == 1
+        assert getattr(outcome[0], "sqlstate", None) == "40001"
+        assert not reconciled.is_set()
+    finally:
+        revocation_committed.set()
+        worker.join(timeout=10)
+        cleanup = test_database.get_connection()
+        try:
+            cleanup.execute(
+                "DELETE FROM phan_cong_nhan_su WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cleanup.execute(
+                "DELETE FROM ke_hoach_lcnt WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cleanup.execute(
+                "DELETE FROM chu_dau_tu WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cleanup.execute(
+                "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cleanup.execute(
+                "DELETE FROM thanh_vien_to_chuc WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cleanup.execute("DELETE FROM auth_sessions WHERE id = ?", (session_id,))
+            cleanup.execute("DELETE FROM to_chuc WHERE id = ?", (organization_id,))
+            cleanup.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
+            cleanup.commit()
+        finally:
+            cleanup.close()
+            test_database.close()
 
 
 def test_plan_apply_uses_persona_reloaded_inside_write_transaction(monkeypatch):
@@ -1152,6 +1428,308 @@ def test_notice_apply_rechecks_current_target_assignment_before_reconcile(
             "apply-1",
             3,
             "package-root",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_notice_apply_rechecks_current_edit_permission_inside_write_transaction(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor()
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        active_role="employee",
+    )
+    permission_checks = []
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+
+    def deny_permission(_cursor, role, *_args):
+        permission_checks.append((role, connection.events.copy()))
+        return False
+
+    monkeypatch.setattr(routes_module, "has_module_permission", deny_permission)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementNoticeReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("revoked notice edit permission must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_notice_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"noticeNo": "IB2600000002", "revisionId": "notice-1"},
+            "apply-1",
+            3,
+            "package-root",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert permission_checks[0][0].active_role == "employee"
+    assert permission_checks[0][1][0] == "BEGIN ISOLATION LEVEL SERIALIZABLE"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_notice_apply_uses_persona_reloaded_inside_write_transaction(monkeypatch):
+    cursor = _CurrentAuthorityCursor()
+    connection = _AuthorizationConnection(cursor)
+    stale_session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        platform_role="user",
+        active_role="employee",
+        active_role_organization_id="org-1",
+    )
+    observed_roles = []
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def lock_family(self, *_args):
+            return None
+
+        def resolve_notice_target(self, *_args, **_kwargs):
+            return None
+
+    class Reconciler:
+        def __init__(self, _repository):
+            pass
+
+        def reconcile_revision(self, **_kwargs):
+            return {
+                "operation": "APPLIED",
+                "createdPlans": [],
+                "createdPackages": [],
+            }
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "ProcurementNoticeReconciler", Reconciler)
+
+    def current_permission(_cursor, role, *_args):
+        observed_roles.append(role)
+        return getattr(role, "active_role", None) == "manager"
+
+    monkeypatch.setattr(routes_module, "has_module_permission", current_permission)
+
+    result = routes_module._apply_notice_one(
+        "org-1",
+        stale_session,
+        "MUASAMCONG",
+        {"noticeNo": "IB2600000002", "revisionId": "notice-1"},
+        "apply-1",
+        3,
+        "package-root",
+    )
+
+    assert result["operation"] == "APPLIED"
+    assert len(observed_roles) == 1
+    assert observed_roles[0] is not stale_session
+    assert observed_roles[0].active_role == "manager"
+    assert "FROM auth_sessions AS sessions" in cursor.statements[0]
+    assert "FOR UPDATE OF sessions, accounts" in cursor.statements[0]
+    assert connection.events[:2] == ["BEGIN ISOLATION LEVEL SERIALIZABLE", "commit"]
+
+
+def test_notice_apply_rejects_operation_from_another_tenant_before_reconcile(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor=None)
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        active_role="employee",
+    )
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementNoticeReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("foreign-tenant notice operation must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_notice_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"noticeNo": "IB2600000002", "revisionId": "notice-1"},
+            "apply-1",
+            3,
+            "package-root",
+            operation_id="operation-in-another-tenant",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert any(
+        "FROM procurement_import_operation" in statement
+        and "FOR UPDATE" in statement
+        for statement in cursor.statements
+    )
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_completed_plan_operation_direct_replay_rechecks_current_record_scope(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor="owner-user")
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="owner-user",
+        session_id="session-1",
+        active_role="employee",
+    )
+    revision = {
+        "familyNo": "PL2600000001",
+        "revisionId": "revision-1",
+        "revisionDigest": "sha256:" + "a" * 64,
+    }
+    completed_operation = {
+        "operationId": "operation-1",
+        "provider": "MUASAMCONG",
+        "familyNo": revision["familyNo"],
+        "status": "COMPLETED",
+        "nextRevisionIndex": 1,
+        "actorUserId": session.user_id,
+        "revisionResults": [
+            {
+                "status": "COMPLETED",
+                "canonicalRevision": deepcopy(revision),
+                "investorId": "investor-1",
+            }
+        ],
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def create_operation(self, _operation):
+            return deepcopy(completed_operation)
+
+        def lock_family(self, *_args):
+            return None
+
+        def load_family(self, *_args):
+            return {
+                "latestPlan": {"id": "plan-current", "rootId": "plan-root"},
+                "packages": [],
+            }
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda *_args: AccessDecision(False, "assignment revoked"),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._create_operation(
+            "org-1",
+            session,
+            {
+                "provider": "MUASAMCONG",
+                "plan": {"familyNo": revision["familyNo"]},
+            },
+            SimpleNamespace(preview_id="preview-1", bundle_digest="digest-1"),
+            "idempotency-1",
+            {"investorId": "investor-1"},
+            1,
+            [revision],
+            [{}],
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_completed_notice_operation_direct_replay_rechecks_current_record_scope(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor="owner-user")
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="owner-user",
+        session_id="session-1",
+        active_role="employee",
+    )
+    revision = {
+        "noticeNo": "IB2600000002",
+        "revisionId": "notice-1",
+        "revisionDigest": "sha256:" + "b" * 64,
+        "relationship": {},
+    }
+    completed_operation = {
+        "operationId": "operation-1",
+        "provider": "MUASAMCONG",
+        "familyNo": revision["noticeNo"],
+        "status": "COMPLETED",
+        "nextRevisionIndex": 1,
+        "actorUserId": session.user_id,
+        "revisionResults": [
+            {
+                "importKind": "NOTICE",
+                "status": "COMPLETED",
+                "canonicalRevision": deepcopy(revision),
+                "targetPackageRootId": "package-root",
+            }
+        ],
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def create_operation(self, _operation):
+            return deepcopy(completed_operation)
+
+        def lock_family(self, *_args):
+            return None
+
+        def resolve_notice_target(self, *_args, **_kwargs):
+            return {"id": "package-current", "rootId": "package-root"}
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda *_args: AccessDecision(False, "assignment revoked"),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._create_notice_operation(
+            "org-1",
+            session,
+            {
+                "provider": "MUASAMCONG",
+                "notice": {"noticeNo": revision["noticeNo"]},
+                "targetPackageRootId": "package-root",
+                "revisions": [revision],
+            },
+            SimpleNamespace(preview_id="preview-1", bundle_digest="digest-1"),
+            "idempotency-1",
+            3,
         )
 
     assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
@@ -1946,6 +2524,12 @@ def test_completed_operation_resume_locks_operation_before_authorizing_replay(
         def get_operation(self, _organization_id, _operation_id):
             return deepcopy(operation)
 
+        def lock_family(self, *_args):
+            return None
+
+        def load_family(self, *_args):
+            return {"latestPlan": None, "packages": []}
+
     monkeypatch.setattr(
         routes_module,
         "_request_context",
@@ -2111,6 +2695,104 @@ def test_completed_operation_resume_rechecks_permission_after_revocation(monkeyp
     assert permission_checks == ["kehoach"]
 
 
+def test_serializable_authorization_conflict_returns_existing_stale_response(
+    monkeypatch,
+):
+    class SerializationConflict(Exception):
+        sqlstate = "40001"
+
+    async def conflict(*_args, **_kwargs):
+        raise SerializationConflict("concurrent assignment revocation")
+
+    monkeypatch.setattr(routes_module, "run_blocking_io", conflict)
+    app = Starlette(routes=procurement_import_routes(Route))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/procurement/imports/operations/operation-1/resume"
+        )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "PROCUREMENT_PREVIEW_STALE"
+
+
+def test_completed_operation_resume_rechecks_record_scope_after_revocation(
+    monkeypatch,
+):
+    revision = {
+        "familyNo": "PL2600000001",
+        "revisionId": "revision-1",
+        "revisionDigest": "sha256:" + "a" * 64,
+    }
+    operation = {
+        "operationId": "operation-1",
+        "provider": "MUASAMCONG",
+        "familyNo": revision["familyNo"],
+        "mode": "ALL",
+        "status": "COMPLETED",
+        "nextRevisionIndex": 1,
+        "totalRevisions": 1,
+        "bundleDigest": "sha256:" + "b" * 64,
+        "revisionResults": [
+            {
+                "status": "COMPLETED",
+                "canonicalRevision": deepcopy(revision),
+                "investorId": "investor-1",
+            }
+        ],
+        "idempotencyKey": "all-1",
+        "actorUserId": "owner-user",
+        "requestHash": "c" * 64,
+    }
+    cursor = _AuthorizationCursor(operation_actor="owner-user")
+    connection = _AuthorizationConnection(cursor)
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+        def lock_family(self, *_args):
+            return None
+
+        def load_family(self, *_args):
+            return {
+                "latestPlan": {"id": "plan-current", "rootId": "plan-root"},
+                "packages": [],
+            }
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(
+                user_id="owner-user",
+                session_id="session-1",
+                active_role="employee",
+            ),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda *_args: AccessDecision(False, "assignment revoked"),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._resume_blocking(object(), "operation-1")
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
 def test_resume_rolls_back_all_remaining_revisions_when_one_fails(monkeypatch):
     operation = {
         "operationId": "operation-atomic",
@@ -2236,6 +2918,322 @@ def test_resume_rolls_back_all_remaining_revisions_when_one_fails(monkeypatch):
 
     assert persisted == []
     assert transaction_connection.pending == []
+    assert updates[-1][2] == operation["nextRevisionIndex"]
+    assert updates[-1][3][0]["status"] != "COMPLETED"
+    assert updates[-1][-1] == "FAILED"
+
+
+def test_plan_apply_failure_resets_cursor_to_atomic_batch_start(monkeypatch):
+    revisions = [
+        {"revisionId": "rev-00", "revisionDigest": "sha256:" + "b" * 64},
+        {"revisionId": "rev-01", "revisionDigest": "sha256:" + "c" * 64},
+    ]
+    bundle = {
+        "provider": "VNEPS",
+        "plan": {"familyNo": "PL2600000001"},
+        "revisionMode": "ALL",
+        "revisions": revisions,
+        "revisionPreviews": [],
+        "reconciliationByRevision": {},
+    }
+    manifest = [
+        {**revision, "status": "PENDING", "canonicalRevision": deepcopy(revision)}
+        for revision in revisions
+    ]
+    updates = []
+
+    class BatchConnection:
+        def __init__(self):
+            self.events = []
+
+        def execute(self, statement):
+            self.events.append(statement)
+            return self
+
+        def rollback(self):
+            self.events.append("rollback")
+
+        def close(self):
+            self.events.append("close")
+
+    connection = BatchConnection()
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda *_args: (SimpleNamespace(user_id="owner-user"), "org-1", "org-1"),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module,
+        "PREVIEW_STORE",
+        SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(
+            canonical_bundle=bundle,
+        )),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "resolve_plan_decision_authority",
+        lambda active_bundle, _decisions: {
+            "resolvedRevisions": active_bundle["revisions"],
+            "packageDecisionsByRevision": {
+                revision["revisionId"]: {} for revision in revisions
+            },
+        },
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "_create_operation",
+        lambda *_args: ("operation-atomic", deepcopy(manifest), "PENDING", 0),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+
+    calls = []
+
+    def apply_one(_organization, _session, _provider, revision, *_args):
+        calls.append(revision["revisionId"])
+        if revision["revisionId"] == "rev-01":
+            raise routes_module.ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        return {"operation": "APPLIED", "createdPlans": [], "createdPackages": []}
+
+    monkeypatch.setattr(routes_module, "_apply_one", apply_one)
+    monkeypatch.setattr(
+        routes_module, "_update_operation", lambda *args: updates.append(args)
+    )
+
+    with pytest.raises(routes_module.ImportConflict):
+        routes_module._apply_blocking(object(), {
+            "previewId": "preview-1",
+            "idempotencyKey": "all-atomic",
+            "decisions": {"investorId": "investor-1"},
+            "expectedPlanRowVersion": 1,
+        })
+
+    assert calls == ["rev-00", "rev-01"]
+    assert "rollback" in connection.events
+    assert updates[-1][2] == 0
+    assert updates[-1][3][0]["status"] == "PENDING"
+    assert updates[-1][3][1]["status"] == "FAILED"
+
+
+def test_notice_apply_failure_resets_cursor_to_atomic_batch_start(monkeypatch):
+    revisions = [
+        {"revisionId": "notice-00", "revisionDigest": "sha256:" + "b" * 64},
+        {"revisionId": "notice-01", "revisionDigest": "sha256:" + "c" * 64},
+    ]
+    bundle = {
+        "provider": "MUASAMCONG",
+        "importKind": "NOTICE",
+        "notice": {"expectedPackageRowVersion": 3},
+        "targetPackageRootId": "package-root",
+        "revisionMode": "ALL",
+        "revisions": revisions,
+    }
+    manifest = [
+        {**revision, "status": "PENDING", "canonicalRevision": deepcopy(revision)}
+        for revision in revisions
+    ]
+    updates = []
+
+    class BatchConnection:
+        def __init__(self):
+            self.events = []
+
+        def execute(self, statement):
+            self.events.append(statement)
+            return self
+
+        def rollback(self):
+            self.events.append("rollback")
+
+        def close(self):
+            self.events.append("close")
+
+    connection = BatchConnection()
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda *_args: (SimpleNamespace(user_id="owner-user"), "org-1", "org-1"),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module,
+        "PREVIEW_STORE",
+        SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(
+            canonical_bundle=bundle,
+        )),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "_create_notice_operation",
+        lambda *_args: ("notice-operation-atomic", deepcopy(manifest), "PENDING", 0),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+
+    calls = []
+
+    def apply_notice(_organization, _session, _provider, revision, *_args):
+        calls.append(revision["revisionId"])
+        if revision["revisionId"] == "notice-01":
+            raise routes_module.ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        return {"operation": "APPLIED", "createdPlans": [], "createdPackages": []}
+
+    monkeypatch.setattr(routes_module, "_apply_notice_one", apply_notice)
+    monkeypatch.setattr(
+        routes_module, "_update_operation", lambda *args: updates.append(args)
+    )
+
+    with pytest.raises(routes_module.ImportConflict):
+        routes_module._apply_notice_blocking(object(), {
+            "previewId": "preview-1",
+            "idempotencyKey": "notice-all-atomic",
+            "expectedPackageRowVersion": 3,
+        })
+
+    assert calls == ["notice-00", "notice-01"]
+    assert "rollback" in connection.events
+    assert updates[-1][2] == 0
+    assert updates[-1][3][0]["status"] == "PENDING"
+    assert updates[-1][3][1]["status"] == "FAILED"
+
+
+def test_notice_resume_rolls_back_all_revisions_when_later_scope_is_revoked(
+    monkeypatch,
+):
+    operation = {
+        "operationId": "notice-operation-atomic",
+        "provider": "MUASAMCONG",
+        "familyNo": "IB2600000002",
+        "mode": "ALL",
+        "status": "FAILED",
+        "nextRevisionIndex": 0,
+        "totalRevisions": 2,
+        "bundleDigest": "sha256:" + "a" * 64,
+        "revisionResults": [
+            {
+                "importKind": "NOTICE",
+                "revisionId": "notice-00",
+                "revisionDigest": "sha256:" + "b" * 64,
+                "status": "FAILED",
+                "canonicalRevision": {
+                    "noticeNo": "IB2600000002",
+                    "revisionId": "notice-00",
+                    "revisionDigest": "sha256:" + "b" * 64,
+                    "relationship": {},
+                },
+                "expectedPackageRowVersion": 3,
+                "targetPackageRootId": "package-root",
+            },
+            {
+                "importKind": "NOTICE",
+                "revisionId": "notice-01",
+                "revisionDigest": "sha256:" + "c" * 64,
+                "status": "FAILED",
+                "canonicalRevision": {
+                    "noticeNo": "IB2600000002",
+                    "revisionId": "notice-01",
+                    "revisionDigest": "sha256:" + "c" * 64,
+                    "relationship": {},
+                },
+                "expectedPackageRowVersion": None,
+                "targetPackageRootId": "package-root",
+            },
+        ],
+        "idempotencyKey": "notice-all-atomic",
+        "actorUserId": "owner-user",
+        "requestHash": "d" * 64,
+    }
+    persisted = []
+    resolved_targets = []
+    updates = []
+
+    class BatchConnection(_AuthorizationConnection):
+        def __init__(self, cursor):
+            super().__init__(cursor)
+            self.pending = []
+
+        def commit(self):
+            persisted.extend(self.pending)
+            self.pending.clear()
+            super().commit()
+
+        def rollback(self):
+            self.pending.clear()
+            super().rollback()
+
+    cursor = _AuthorizationCursor(operation_actor="owner-user")
+    connection = BatchConnection(cursor)
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+        def lock_family(self, *_args):
+            return None
+
+        def resolve_notice_target(self, *_args, **_kwargs):
+            target_id = (
+                "package-allowed"
+                if not resolved_targets
+                else "package-revoked"
+            )
+            resolved_targets.append(target_id)
+            return {"id": target_id, "rootId": "package-root"}
+
+    class Reconciler:
+        def __init__(self, _repository):
+            pass
+
+        def reconcile_revision(self, **kwargs):
+            connection.pending.append(kwargs["notice"]["revisionId"])
+            return {
+                "operation": "UPDATED",
+                "createdPlans": [],
+                "createdPackages": [],
+            }
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(
+                user_id="owner-user",
+                session_id="session-1",
+                active_role="employee",
+            ),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "ProcurementNoticeReconciler", Reconciler)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda _cursor, _role, _user, _organization, _key, _table, item: (
+            AccessDecision(item["id"] != "package-revoked", "assignment revoked")
+        ),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "_update_operation",
+        lambda *args: updates.append(args),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._resume_blocking(object(), "notice-operation-atomic")
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert resolved_targets == ["package-allowed", "package-revoked"]
+    assert persisted == []
+    assert connection.pending == []
+    assert "commit" not in connection.events
+    assert updates[-1][2] == operation["nextRevisionIndex"]
+    assert updates[-1][3][0]["status"] != "COMPLETED"
     assert updates[-1][-1] == "FAILED"
 
 

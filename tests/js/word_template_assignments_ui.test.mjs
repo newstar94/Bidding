@@ -261,6 +261,13 @@ test("manager assigns searchable Word templates by function and saves once", asy
     assert.deepEqual(axe.violations, []);
 
     await page.setViewportSize({ width: 320, height: 800 });
+    await page.waitForFunction(() => {
+      const save = document.querySelector("#word-template-assignment-save");
+      return window.matchMedia("(max-width: 560px)").matches
+        && save
+        && Number.parseFloat(getComputedStyle(save).minHeight) >= 44
+        && save.getBoundingClientRect().height >= 44;
+    });
     const mobile = await page.locator(".word-template-assignment-card").evaluate((root) => ({
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       columns: getComputedStyle(root.querySelector(".word-template-assignment-row")).gridTemplateColumns,

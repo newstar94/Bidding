@@ -63,6 +63,7 @@ from backend.observability.recording import (
     websocket_disconnected,
     websocket_rejected,
 )
+from backend.shared.logging_utils import log_error
 
 
 __all__ = [
@@ -798,9 +799,17 @@ async def monitor_multiprocess_metrics(application):
     except ValueError:
         interval = 1.0
     interval = min(10.0, max(0.25, interval))
-    while True:
-        publish_snapshot(_local_multiprocess_snapshot(application))
-        await asyncio.sleep(interval)
+    try:
+        while True:
+            publish_snapshot(_local_multiprocess_snapshot(application))
+            await asyncio.sleep(interval)
+    finally:
+        try:
+            # Capture counters recorded after the last interval before this
+            # worker shard is archived during graceful recycling.
+            publish_snapshot(_local_multiprocess_snapshot(application))
+        except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            log_error(exc, "multiprocess_metrics_final_publish", level="WARN")
 
 
 def _pool_samples(lines: list[str], pools=None) -> None:

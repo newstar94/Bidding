@@ -121,6 +121,27 @@ test("route shell reveals an accessible retry UI when app bootstrap cannot run",
   assert.equal(harness.reloaded, 1);
 });
 
+test("Retry reload can complete a subsequent application bootstrap", async () => {
+  const failedAttempt = runRouteShell("/dang-nhap");
+  failedAttempt.window.__BF_BOOTSTRAP_FATAL__(new Error("first request failed"));
+  const fatal = failedAttempt.body.children.find(
+    (child) => child.attributes.get("id") === "bf-bootstrap-fatal",
+  );
+  fatal.children.find((child) => child.tagName === "BUTTON").click();
+  assert.equal(failedAttempt.reloaded, 1);
+
+  const retriedAttempt = runRouteShell("/dang-nhap");
+  const completed = await runApplicationBootstrap(async () => {}, {
+    onSuccess: () => retriedAttempt.window.__BF_BOOTSTRAP_COMPLETE__(),
+    onFailure: (error) => retriedAttempt.window.__BF_BOOTSTRAP_FATAL__(error),
+  });
+
+  assert.equal(completed, true);
+  assert.equal(retriedAttempt.window.document.documentElement.dataset.bfBootstrap, "ready");
+  assert.equal(retriedAttempt.body.attributes.has("hidden"), false);
+  assert.equal(retriedAttempt.workspace.attributes.has("hidden"), false);
+});
+
 test("public route fatal fallback keeps the safe public shell available", () => {
   const harness = runRouteShell("/legal");
 

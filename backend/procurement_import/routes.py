@@ -1311,6 +1311,69 @@ def _require_module_edit(cursor, session, organization_id, module):
         )
 
 
+def _lock_record_assignment_scope(
+    cursor,
+    organization_id,
+    user_id,
+    table_name,
+    item,
+):
+    """Lock current assignment rows used by procurement write authorization."""
+
+    lineage_root = str(
+        item.get("rootId")
+        or item.get("id_goc")
+        or item.get("id")
+        or ""
+    ).strip()
+    if not lineage_root:
+        return
+    if table_name == "ke_hoach_lcnt":
+        cursor.execute(
+            """SELECT assignment.id
+                 FROM ke_hoach_lcnt AS record
+                 JOIN phan_cong_nhan_su AS assignment
+                   ON assignment.organization_id = record.organization_id
+                  AND assignment.id_muc_tieu = record.id
+                  AND assignment.loai_doi_tuong = 'kehoach'
+                WHERE record.organization_id = ?
+                  AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
+                  AND assignment.id_nhan_vien = ?
+                FOR UPDATE OF assignment""",
+            (organization_id, lineage_root, user_id),
+        ).fetchall()
+        cursor.execute(
+            """SELECT assignment.id
+                 FROM ke_hoach_lcnt AS record
+                 JOIN goi_thau AS package
+                   ON package.organization_id = record.organization_id
+                  AND package.ke_hoach_id = record.id
+                 JOIN phan_cong_nhan_su AS assignment
+                   ON assignment.organization_id = package.organization_id
+                  AND assignment.id_muc_tieu = package.id
+                  AND assignment.loai_doi_tuong = 'goithau'
+                WHERE record.organization_id = ?
+                  AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
+                  AND assignment.id_nhan_vien = ?
+                FOR UPDATE OF assignment""",
+            (organization_id, lineage_root, user_id),
+        ).fetchall()
+    elif table_name == "goi_thau":
+        cursor.execute(
+            """SELECT assignment.id
+                 FROM goi_thau AS record
+                 JOIN phan_cong_nhan_su AS assignment
+                   ON assignment.organization_id = record.organization_id
+                  AND assignment.id_muc_tieu = record.id
+                  AND assignment.loai_doi_tuong = 'goithau'
+                WHERE record.organization_id = ?
+                  AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
+                  AND assignment.id_nhan_vien = ?
+                FOR UPDATE OF assignment""",
+            (organization_id, lineage_root, user_id),
+        ).fetchall()
+
+
 def _require_record_write(
     cursor,
     session,
@@ -1319,6 +1382,13 @@ def _require_record_write(
     table_name,
     item,
 ):
+    _lock_record_assignment_scope(
+        cursor,
+        organization_id,
+        session.user_id,
+        table_name,
+        item,
+    )
     decision = authorize_record_write(
         cursor,
         session,
@@ -1431,6 +1501,45 @@ def _authorize_notice_revision_write(
             "goi_thau",
             target,
         )
+
+
+def _authorize_completed_operation_replay(
+    cursor,
+    session,
+    organization_id,
+    operation,
+):
+    """Reapply current write scope before returning an idempotent result."""
+
+    first_entry = next(iter(operation.get("revisionResults") or []), {})
+    is_notice = first_entry.get("importKind") == "NOTICE"
+    revision = first_entry.get("canonicalRevision")
+    if not isinstance(revision, dict):
+        family_no = str(operation.get("familyNo") or "").strip().upper()
+        revision = (
+            {"noticeNo": family_no, "relationship": {}}
+            if is_notice
+            else {"familyNo": family_no}
+        )
+    if is_notice:
+        _authorize_notice_revision_write(
+            cursor,
+            session,
+            organization_id,
+            operation["provider"],
+            revision,
+            first_entry.get("targetPackageRootId"),
+            operation.get("operationId"),
+        )
+        return
+    _authorize_plan_revision_write(
+        cursor,
+        session,
+        organization_id,
+        operation["provider"],
+        revision,
+        operation.get("operationId"),
+    )
 
 
 def _apply_one(
@@ -1598,6 +1707,13 @@ def _create_operation(
             _deny_procurement_write(
                 "Idempotency key đã thuộc về một tiến trình khác."
             )
+        if operation.get("status") == "COMPLETED":
+            _authorize_completed_operation_replay(
+                cursor,
+                session,
+                organization_id,
+                operation,
+            )
         connection.commit()
     except Exception:
         connection.rollback()
@@ -1671,6 +1787,13 @@ def _create_notice_operation(
         if str(operation.get("actorUserId")) != str(session.user_id):
             _deny_procurement_write(
                 "Idempotency key đã thuộc về một tiến trình khác."
+            )
+        if operation.get("status") == "COMPLETED":
+            _authorize_completed_operation_replay(
+                cursor,
+                session,
+                organization_id,
+                operation,
             )
         connection.commit()
     except Exception:
@@ -1788,6 +1911,7 @@ def _apply_blocking(request, payload):
     if start_index:
         expected = results[start_index].get("expectedPlanRowVersion")
     current_index = start_index
+    results_before_attempt = deepcopy(results)
     batch_connection = None
     if operation_id:
         batch_connection = database.get_connection()
@@ -1823,14 +1947,16 @@ def _apply_blocking(request, payload):
         if batch_connection is not None:
             batch_connection.rollback()
         if operation_id:
-            if current_index < len(results):
-                results[current_index]["status"] = "FAILED"
-                results[current_index]["errorCode"] = (
+            results = _failed_operation_results(
+                results_before_attempt,
+                current_index,
+                (
                     str(error) if isinstance(error, ImportConflict)
                     else "PROCUREMENT_APPLY_FAILED"
-                )
+                ),
+            )
             _update_operation(
-                organization_id, operation_id, current_index, results, "FAILED"
+                organization_id, operation_id, start_index, results, "FAILED"
             )
         raise
     finally:
@@ -1925,6 +2051,7 @@ def _apply_notice_blocking(request, payload):
                 ],
             }
     current_index = start_index
+    results_before_attempt = deepcopy(results)
     if start_index:
         expected = results[start_index - 1].get(
             "nextExpectedPackageRowVersion", expected
@@ -1976,16 +2103,19 @@ def _apply_notice_blocking(request, payload):
         if batch_connection is not None:
             batch_connection.rollback()
         if operation_id:
-            results[current_index]["status"] = "FAILED"
-            results[current_index]["errorCode"] = (
-                str(error)
-                if isinstance(error, ImportConflict)
-                else "PROCUREMENT_APPLY_FAILED"
+            results = _failed_operation_results(
+                results_before_attempt,
+                current_index,
+                (
+                    str(error)
+                    if isinstance(error, ImportConflict)
+                    else "PROCUREMENT_APPLY_FAILED"
+                ),
             )
             _update_operation(
                 organization_id,
                 operation_id,
-                current_index,
+                start_index,
                 results,
                 "FAILED",
             )
@@ -2055,11 +2185,21 @@ def _public_operation_result(row):
     }
 
 
+def _failed_operation_results(results_before_attempt, failed_index, error_code):
+    restored = deepcopy(results_before_attempt)
+    if failed_index < len(restored):
+        restored[failed_index]["status"] = "FAILED"
+        restored[failed_index]["errorCode"] = error_code
+    return restored
+
+
 def _resume_blocking(request, operation_id):
     session, organization_id, _lease = _request_context(request, None)
     batch_connection = database.get_connection()
     operation = None
     results = []
+    results_before_attempt = []
+    start_index = 0
     current_index = 0
     resume_started = False
     try:
@@ -2085,6 +2225,21 @@ def _resume_blocking(request, operation_id):
             organization_id, operation_id
         )
         first_entry = next(iter(operation.get("revisionResults") or []), {})
+        if operation["status"] == "COMPLETED":
+            _authorize_completed_operation_replay(
+                cursor,
+                session,
+                organization_id,
+                operation,
+            )
+            batch_connection.rollback()
+            operation["revisionResults"] = [
+                _public_operation_result(row)
+                for row in operation["revisionResults"]
+            ]
+            operation.pop("actorUserId", None)
+            operation.pop("requestHash", None)
+            return operation
         _require_module_edit(
             cursor,
             session,
@@ -2095,17 +2250,10 @@ def _resume_blocking(request, operation_id):
                 else "kehoach"
             ),
         )
-        if operation["status"] == "COMPLETED":
-            batch_connection.rollback()
-            operation["revisionResults"] = [
-                _public_operation_result(row)
-                for row in operation["revisionResults"]
-            ]
-            operation.pop("actorUserId", None)
-            operation.pop("requestHash", None)
-            return operation
         results = operation["revisionResults"]
         start = operation["nextRevisionIndex"]
+        start_index = start
+        results_before_attempt = deepcopy(results)
         current_index = start
         resume_started = True
         for index in range(start, len(results)):
@@ -2163,18 +2311,21 @@ def _resume_blocking(request, operation_id):
         batch_connection.commit()
     except Exception as error:
         batch_connection.rollback()
-        if resume_started and current_index < len(results):
-            results[current_index]["status"] = "FAILED"
-            results[current_index]["errorCode"] = (
+        if resume_started:
+            error_code = (
                 error.code
                 if isinstance(error, ProcurementRouteError)
                 else str(error)
                 if isinstance(error, ImportConflict)
                 else "PROCUREMENT_APPLY_FAILED"
             )
-        if resume_started:
+            results = _failed_operation_results(
+                results_before_attempt,
+                current_index,
+                error_code,
+            )
             _update_operation(
-                organization_id, operation_id, current_index, results, "FAILED"
+                organization_id, operation_id, start_index, results, "FAILED"
             )
         raise
     finally:
@@ -2198,6 +2349,13 @@ def _resume_blocking(request, operation_id):
 
 
 def _public_error(request, error):
+    if getattr(error, "sqlstate", None) in {"40001", "40P01"}:
+        return error_response(
+            request,
+            "PROCUREMENT_PREVIEW_STALE",
+            "Dữ liệu hoặc quyền đã thay đổi đồng thời. Vui lòng tải lại và thử lại.",
+            status_code=409,
+        )
     if isinstance(error, ProcurementDecisionError):
         return error_response(
             request, error.code, error.message, status_code=error.status_code

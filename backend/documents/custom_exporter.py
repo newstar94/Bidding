@@ -31,6 +31,10 @@ from backend.documents.docx_context_policy import (
     validate_docx_context_manifest,
 )
 from backend.db.schema import MONEY_COLUMNS
+from backend.shared.date_utils import (
+    format_short_vietnamese_date,
+    format_short_vietnamese_month,
+)
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
 from backend.shared.text_utils import VietnameseFloat
 from backend.shared.logging_utils import append_runtime_log, log_error
@@ -307,8 +311,7 @@ def format_vietnamese_datetime(
     dt_match = re.match(r'^(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})$', val_str)
     if dt_match:
         d, m, y, hh, mm = dt_match.groups()
-        m_int = int(m)
-        m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
+        m_str = format_short_vietnamese_month(m)
         if is_datetime_field_name(key_name, datetime_field_names):
             return f"{hh}:{mm} ngày {d}/{m_str}/{y}"
         return f"ngày {d} tháng {m_str} năm {y}"
@@ -317,22 +320,10 @@ def format_vietnamese_datetime(
     d_match = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', val_str)
     if d_match:
         d, m, y = d_match.groups()
-        m_int = int(m)
-        if m_int in [1, 2]:
-            m_str = f"{m_int:02d}"
-        else:
-            m_str = str(m_int)
+        m_str = format_short_vietnamese_month(m)
         return f"ngày {d} tháng {m_str} năm {y}"
 
     return val_str
-
-
-def format_short_vietnamese_date(day, month, year):
-    """Format short dates using the approved administrative month convention."""
-
-    month_number = int(month)
-    month_text = f"{month_number:02d}" if month_number in {1, 2} else str(month_number)
-    return f"{int(day):02d}/{month_text}/{year}"
 
 
 class SmartDate(str):

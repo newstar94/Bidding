@@ -7,6 +7,7 @@ from __future__ import annotations
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext
 from backend.shared.access_policy import is_assignment_scoped_active_role
+from backend.sync.visibility_scope import VisibilityScope
 
 
 TABLES = {
@@ -31,43 +32,18 @@ def validate_module_permission(context: AiRequestContext, entity: str) -> None:
 
 
 def visibility_clause(context: AiRequestContext, entity: str, alias: str) -> tuple[str, tuple[str, ...]]:
-    table_name, module_name, assignment_type = table_for_entity(entity)
-    del table_name
+    table_name, module_name, _assignment_type = table_for_entity(entity)
     validate_module_permission(context, entity)
-    if not is_assignment_scoped_active_role(
-        context.active_role,
-        context.scope_type,
-    ):
-        return f"{alias}.organization_id = ?", (context.organization_id,)
-    if entity == "packages":
-        return (  # noqa: S608 - all SQL fragments are fixed by the entity branch
-            f"{alias}.organization_id = ? AND EXISTS ("
-            "SELECT 1 FROM phan_cong_nhan_su pc "
-            "WHERE pc.organization_id = " + alias + ".organization_id "
-            "AND pc.id_muc_tieu = " + alias + ".id "
-            "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = 'goithau'"
-            ")",
-            (context.organization_id, context.user_id),
-        )
-    if entity == "plans":
-        return (  # noqa: S608 - all SQL fragments are fixed by the entity branch
-            f"{alias}.organization_id = ? AND (EXISTS ("
-            "SELECT 1 FROM phan_cong_nhan_su pc "
-            "WHERE pc.organization_id = " + alias + ".organization_id "
-            "AND pc.id_muc_tieu = " + alias + ".id AND pc.id_nhan_vien = ? "
-            "AND pc.loai_doi_tuong = 'kehoach') OR EXISTS ("
-            "SELECT 1 FROM goi_thau p JOIN phan_cong_nhan_su pc "
-            "ON pc.organization_id = p.organization_id AND pc.id_muc_tieu = p.id "
-            "WHERE p.organization_id = " + alias + ".organization_id AND p.ke_hoach_id = " + alias + ".id "
-            "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = 'goithau'))",
-            (context.organization_id, context.user_id, context.user_id),
-        )
-    return (  # noqa: S608 - all SQL fragments are fixed by the entity branch
-        f"{alias}.organization_id = ? AND EXISTS ("
-        "SELECT 1 FROM phan_cong_nhan_su pc "
-        "WHERE pc.organization_id = " + alias + ".organization_id "
-        "AND pc.id_muc_tieu = " + alias + ".id "
-        "AND pc.id_nhan_vien = ? AND pc.loai_doi_tuong = '" + assignment_type + "'"
-        ")",
-        (context.organization_id, context.user_id),
+    predicate = VisibilityScope(
+        organization_id=context.organization_id,
+        user_id=context.user_id,
+        unrestricted=not is_assignment_scoped_active_role(
+            context.active_role,
+            context.scope_type,
+        ),
+        permissions={module_name: context.permissions[module_name]},
+    ).live_predicate(table_name, alias)
+    return (
+        predicate.sql,
+        predicate.parameters,
     )

@@ -51,6 +51,14 @@ def split_series_key(value: str) -> tuple[str, ...]:
     return tuple(str(item) for item in decoded)
 
 
+def _validated_series_key(value: object) -> str:
+    encoded = str(value)
+    decoded = split_series_key(encoded)
+    if series_key(*decoded) != encoded:
+        raise ValueError("Multiprocess metric series key is not canonical.")
+    return encoded
+
+
 def _safe_component(value: object, *, name: str) -> str:
     text = str(value or "").strip()
     if not _SAFE_COMPONENT.fullmatch(text):
@@ -121,14 +129,15 @@ def _normalize_snapshot(snapshot: Mapping[str, object]) -> dict[str, object]:
             for key, sample in source.items():
                 if not isinstance(sample, Mapping):
                     raise ValueError("Latest multiprocess samples require timestamp/value.")
-                latest[str(key)] = {
+                latest[_validated_series_key(key)] = {
                     "timestamp": _number(sample.get("timestamp", 0)),
                     "value": _number(sample.get("value", 0)),
                 }
             normalized[category] = latest
         else:
             normalized[category] = {
-                str(key): _number(value) for key, value in source.items()
+                _validated_series_key(key): _number(value)
+                for key, value in source.items()
             }
     return normalized
 
@@ -202,22 +211,30 @@ def publish_snapshot(
 def _read_snapshot(path: Path, instance_id: str) -> dict[str, object] | None:
     try:
         if path.stat().st_size > _MAX_SNAPSHOT_BYTES:
-            return None
+            raise ValueError("Multiprocess metric snapshot is too large.")
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Multiprocess metric snapshot must be an object.")
         if (
             payload.get("format") != _FORMAT
             or payload.get("version") != _VERSION
             or payload.get("instanceId") != instance_id
         ):
-            return None
+            raise ValueError("Multiprocess metric snapshot identity is invalid.")
         payload.update(_normalize_snapshot(payload))
-        payload["pid"] = int(payload["pid"])
+        payload["pid"] = int(payload.get("pid"))
         payload["startToken"] = _safe_component(
-            payload["startToken"], name="process start token"
+            payload.get("startToken"), name="process start token"
         )
         return payload
-    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+    except FileNotFoundError:
+        # Another scraper may have atomically archived this generation after
+        # globbing but before it was opened.
         return None
+    except (OSError, UnicodeError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"Cannot read multiprocess metric shard {path.name}."
+        ) from error
 
 
 def _archive_dead_worker(path: Path, payload: dict[str, object]) -> None:
@@ -225,34 +242,13 @@ def _archive_dead_worker(path: Path, payload: dict[str, object]) -> None:
     archive = path.with_name(
         f"archive-{instance_id}-{payload['pid']}-{payload['startToken']}.json"
     )
-    archived = {
-        **payload,
-        "archived": True,
-        "liveSums": {},
-        "liveMax": {},
-        "liveMin": {},
-    }
-    encoded = json.dumps(
-        archived,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    temporary = archive.with_name(
-        f".{archive.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp"
-    )
     try:
-        with temporary.open("xb") as output:
-            output.write(encoded)
-            output.flush()
-            os.fsync(output.fileno())
-        try:
-            os.replace(temporary, archive)
-            path.unlink(missing_ok=True)
-        except FileNotFoundError:
-            pass
-    finally:
-        temporary.unlink(missing_ok=True)
+        # The filename determines archive semantics during aggregation. A
+        # single atomic rename prevents scrapers from observing the same
+        # generation as both a worker shard and an archive.
+        os.replace(path, archive)
+    except FileNotFoundError:
+        pass
 
 
 def aggregate_snapshots(
@@ -272,10 +268,19 @@ def aggregate_snapshots(
     if target_directory is None or target_instance is None:
         return None
     alive = worker_alive or _worker_alive
-    documents: list[tuple[dict[str, object], bool]] = []
-    for path in sorted(target_directory.glob(f"archive-{target_instance}-*.json")):
-        if payload := _read_snapshot(path, target_instance):
-            documents.append((payload, False))
+    documents_by_generation: dict[
+        tuple[int, str], tuple[dict[str, object], bool]
+    ] = {}
+    def load_archives() -> None:
+        for path in sorted(
+            target_directory.glob(f"archive-{target_instance}-*.json")
+        ):
+            payload = _read_snapshot(path, target_instance)
+            if payload is not None:
+                generation = (int(payload["pid"]), str(payload["startToken"]))
+                documents_by_generation.setdefault(generation, (payload, False))
+
+    load_archives()
     for path in sorted(target_directory.glob(f"worker-{target_instance}-*.json")):
         payload = _read_snapshot(path, target_instance)
         if payload is None:
@@ -283,7 +288,15 @@ def aggregate_snapshots(
         is_live = alive(int(payload["pid"]), str(payload["startToken"]))
         if not is_live:
             _archive_dead_worker(path, payload)
-        documents.append((payload, is_live))
+        generation = (int(payload["pid"]), str(payload["startToken"]))
+        documents_by_generation[generation] = (payload, is_live)
+
+    # A concurrent scraper can rename a worker after the first archive scan but
+    # before this scraper opens that worker. Re-scan so the generation is not
+    # omitted from this scrape; the generation map still prevents duplicates.
+    load_archives()
+
+    documents = list(documents_by_generation.values())
 
     result: dict[str, object] = {
         "counters": {},

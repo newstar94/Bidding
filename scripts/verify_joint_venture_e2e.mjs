@@ -92,6 +92,45 @@ function fixture(action, extra = {}) {
   return JSON.parse(execution.stdout || "{}");
 }
 
+async function assignAwardResultWordTemplate(context, filename) {
+  const csrfCookie = (await context.cookies(baseURL))
+    .find((cookie) => cookie.name === "csrf_token");
+  if (!csrfCookie?.value) throw new Error("Word assignment request is missing the CSRF cookie");
+  const endpoint = `${baseURL}/api/word-publication-template-assignments`;
+  const headers = {
+    Origin: baseURL,
+    "X-Active-Org": encodeURIComponent(organizationId),
+    "X-CSRF-Token": decodeURIComponent(csrfCookie.value),
+  };
+  const currentResponse = await context.request.get(endpoint, { headers });
+  const current = await currentResponse.json().catch(() => ({}));
+  if (!currentResponse.ok()) {
+    throw new Error(`Cannot read Word publication assignments: ${JSON.stringify(current)}`);
+  }
+  const assignmentSets = {
+    ...(current.assignmentSets || current.assignments || {}),
+    award_result_appraisal_report: [filename],
+  };
+  const saveResponse = await context.request.put(endpoint, {
+    headers,
+    data: {
+      expectedRevision: current.revision,
+      assignmentSets,
+    },
+  });
+  const saved = await saveResponse.json().catch(() => ({}));
+  if (!saveResponse.ok()) {
+    throw new Error(`Cannot save Word publication assignment: ${JSON.stringify(saved)}`);
+  }
+  const assigned = saved.assignmentSets?.award_result_appraisal_report
+    || saved.assignments?.award_result_appraisal_report
+    || [];
+  if (!assigned.includes(filename)) {
+    throw new Error(`Saved Word publication assignment is incomplete: ${JSON.stringify(saved)}`);
+  }
+  return { filename, revision: saved.revision };
+}
+
 async function waitForApp(page) {
   await page.waitForFunction(() => {
     const loader = document.getElementById("system-init-loader");
@@ -571,7 +610,16 @@ try {
   }
   await page.locator("#word-templates-tbody tr").filter({ hasText: runId })
     .filter({ hasText: "Sẵn sàng" }).waitFor({ state: "visible", timeout: 20_000 });
-  mark("word-template-uploaded-and-activated", wordTemplateEvidence);
+  const uploadedTemplateFilename = await uploadedTemplateRow.getAttribute("data-filename");
+  if (!uploadedTemplateFilename) throw new Error("Uploaded Word template has no filename identity");
+  const assignmentEvidence = await assignAwardResultWordTemplate(
+    context,
+    uploadedTemplateFilename,
+  );
+  mark("word-template-uploaded-and-assigned", {
+    ...wordTemplateEvidence,
+    ...assignmentEvidence,
+  });
 
   await openPackage(page, "opening");
 
@@ -973,9 +1021,32 @@ try {
   await resultJointVentureModal.locator("#btn-ok-mothau-jv-view").click();
   mark("joint-venture-award-approved");
 
-  const wordExportButton = page.locator("#btn-export-docx-report");
-  await wordExportButton.waitFor({ state: "visible", timeout: 10_000 });
-  if (await wordExportButton.isDisabled()) throw new Error("Word export entitlement is unexpectedly disabled");
+  if (await page.locator('[id="btn-export-docx-report"]').count()) {
+    throw new Error("Legacy award-result Word export action must remain absent");
+  }
+  mark("legacy-award-word-export-absent");
+
+  await page.goto(`${baseURL}/xuat-ban-word`, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.locator("#tab-xuatban-word.active").waitFor({ state: "visible", timeout: 20_000 });
+  await select(page, "#word-publication-plan-select", { value: `${runId}-plan` });
+  await page.locator(
+    `#word-publication-package-select option[value="${packageData.id}"]`,
+  ).waitFor({ state: "attached", timeout: 20_000 });
+  await select(page, "#word-publication-package-select", { value: packageData.id });
+  const wordExportButton = page.locator(
+    '[data-word-publication-export="award_result_appraisal_report"]',
+  );
+  await wordExportButton.waitFor({ state: "visible", timeout: 20_000 });
+  if (await wordExportButton.isDisabled()) {
+    throw new Error("Assigned award-result Word publication is unexpectedly disabled");
+  }
+  await wordExportButton.click();
+  const wordSelectionDialog = page.locator("#word-publication-export-dialog");
+  await wordSelectionDialog.waitFor({ state: "visible", timeout: 10_000 });
+  await wordSelectionDialog.locator(
+    `[data-word-publication-template-row][data-filename="${uploadedTemplateFilename}"]`,
+  ).waitFor({ state: "visible", timeout: 10_000 });
   const wordDownloadPromise = page.waitForEvent("download", { timeout: 30_000 })
     .then((download) => ({ type: "download", download }))
     .catch(() => null);
@@ -983,7 +1054,7 @@ try {
     .waitFor({ state: "visible", timeout: 30_000 })
     .then(async () => ({ type: "error", message: await page.locator("#modal-custom-dialog").innerText() }))
     .catch(() => null);
-  await wordExportButton.click();
+  await wordSelectionDialog.locator("[data-word-publication-confirm]").click();
   const wordOutcome = await Promise.race([
     wordDownloadPromise,
     wordErrorPromise,

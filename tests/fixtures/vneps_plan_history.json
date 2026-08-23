@@ -24,6 +24,8 @@
               "capitalDetail": "Ngân sách nhà nước",
               "selectionDuration": "30 ngày",
               "selectionStart": "2026-02",
+              "onlineMode": "Qua mạng",
+              "domesticOrInternational": "Trong nước",
               "expectedNotice": true,
               "noticeLink": {"state": "UNLINKED", "noticeNo": null, "kind": "UNKNOWN"}
             }
@@ -49,6 +51,8 @@
               "capitalDetail": "Ngân sách nhà nước",
               "selectionDuration": "30 ngày",
               "selectionStart": "2026-02",
+              "onlineMode": "Qua mạng",
+              "domesticOrInternational": "Trong nước",
               "expectedNotice": true,
               "noticeLink": {"state": "UNLINKED", "noticeNo": null, "kind": "UNKNOWN"}
             },
@@ -61,6 +65,11 @@
               "capitalDetail": "Ngân sách nhà nước",
               "selectionDuration": "30 ngày",
               "selectionStart": "2026-03",
+              "onlineMode": "Qua mạng",
+              "domesticOrInternational": "Trong nước",
+              "publishedAt": "2026-02-10 08:00:00",
+              "bidClosingAt": "2026-02-20 08:00:00",
+              "bidValidityDays": 90,
               "expectedNotice": true,
               "noticeLink": {"state": "LINKED", "noticeNo": "IB2600000002", "kind": "UNKNOWN"}
             }

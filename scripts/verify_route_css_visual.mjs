@@ -38,6 +38,11 @@ const routes = {
     shell: "workspace",
     body: '<section class="bf-assistant-panel"><header class="bf-assistant-header"><div class="bf-assistant-heading"><span class="bf-assistant-eyebrow">Trợ lý</span><h2 class="bf-assistant-title">BiddingFlow Assistant</h2></div></header><div class="bf-assistant-context">Không gian làm việc hiện tại</div><div class="bf-assistant-messages"></div></section>',
   },
+  dashboard: {
+    css: routeCss("frontend/app/DashboardView.js"),
+    shell: "workspace",
+    body: '<main class="dashboard-operations"><section class="dashboard-metric-grid"><article class="dashboard-metric-card metric-blue"><div class="dashboard-metric-head"><span class="dashboard-metric-icon"></span><div><span>Gói thầu</span><strong>12</strong></div></div></article><article class="dashboard-metric-card metric-green"><div class="dashboard-metric-head"><span class="dashboard-metric-icon"></span><div><span>Hợp đồng</span><strong>4</strong></div></div></article></section></main>',
+  },
 };
 
 const server = http.createServer((request, response) => {
@@ -194,7 +199,11 @@ const createMeasuredContext = async () => {
   return context;
 };
 try {
-  for (const viewport of [{ width: 1280, height: 800 }, { width: 320, height: 720 }]) {
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 768, height: 800 },
+    { width: 320, height: 720 },
+  ]) {
     for (const routeName of Object.keys(routes)) {
       const page = await browser.newPage({ viewport });
       await page.goto("http://127.0.0.1:" + port + "/" + routeName, { waitUntil: "networkidle" });
@@ -204,7 +213,9 @@ try {
           ? document.querySelector(".landing-header")
           : name === "legal"
             ? document.querySelector(".legal-header")
-            : document.querySelector(".bf-assistant-panel");
+            : name === "assistant"
+              ? document.querySelector(".bf-assistant-panel")
+              : document.querySelector(".dashboard-metric-grid");
         const style = getComputedStyle(target);
         return {
           horizontalOverflow: root.scrollWidth - root.clientWidth,
@@ -217,8 +228,16 @@ try {
       if (metrics.horizontalOverflow > 1) {
         throw new Error(routeName + " overflows horizontally at " + viewport.width + "px");
       }
-      const expectedPosition = routeName === "landing" ? "sticky" : "fixed";
-      if (metrics.position !== expectedPosition || metrics.display === "none" || metrics.width <= 0) {
+      const expectedPosition = routeName === "landing"
+        ? "sticky"
+        : routeName === "dashboard" ? "static" : "fixed";
+      const expectedDisplay = routeName === "dashboard" ? "grid" : null;
+      if (
+        metrics.position !== expectedPosition
+        || metrics.display === "none"
+        || (expectedDisplay && metrics.display !== expectedDisplay)
+        || metrics.width <= 0
+      ) {
         throw new Error(routeName + " route CSS did not apply at " + viewport.width + "px");
       }
       if (screenshot.byteLength < 2_000) {

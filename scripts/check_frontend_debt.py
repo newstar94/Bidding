@@ -10,8 +10,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = {
-    "important": 421,
-    "raw_colors": 842,
+    "important": 427,
+    "raw_colors": 929,
     "runtime_styles": 541,
     "inferred_actions": 6,
     "direct_state_writes": 59,
@@ -40,6 +40,10 @@ _SYNCED_STATE_KEYS = {
     "permissionmatrix",
     "thongtinmothau",
 }
+CSS_ROOTS = (
+    PROJECT_ROOT / "views" / "css",
+    PROJECT_ROOT / "frontend",
+)
 _LITERAL_PERSIST_DATA = re.compile(
     r"\.persistData\(\s*(['\"])(?P<table>[a-z0-9_]+)\1(?P<options>[^)]*)\)",
     re.DOTALL,
@@ -128,6 +132,15 @@ def collect_debt_metrics(root: Path) -> dict[str, int]:
     return metrics
 
 
+def collect_css_debt_metrics(roots=CSS_ROOTS) -> dict[str, int]:
+    metrics = {"important": 0, "raw_colors": 0}
+    for root in roots:
+        collected = collect_debt_metrics(root)
+        for key in metrics:
+            metrics[key] += collected[key]
+    return metrics
+
+
 def validate_debt_metrics(
     metrics: dict[str, int],
     baseline: dict[str, int] = BASELINE,
@@ -198,10 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--print", action="store_true", dest="print_only")
     args = parser.parse_args(argv)
-    metrics = {
-        key: collect_debt_metrics(PROJECT_ROOT / "views" / "css").get(key, 0)
-        for key in ("important", "raw_colors")
-    }
+    metrics = collect_css_debt_metrics()
     frontend = collect_debt_metrics(PROJECT_ROOT / "frontend")
     metrics.update({
         key: frontend[key]

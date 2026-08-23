@@ -18,6 +18,13 @@ export function getDerivedWordVariableCodes(variableName, format) {
   }
 }
 
+export function getApprovedShortDateFormulaSuggestion() {
+  return {
+    label: "Ngày ngắn (05/3/2026)",
+    formula: "formatDate(__var__)",
+  };
+}
+
 export function normalizeWordVariableSearch(value) {
   return String(value || "")
     .normalize("NFD")

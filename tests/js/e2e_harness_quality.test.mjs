@@ -162,3 +162,30 @@ test("production E2E harnesses do not import development source modules", () => 
     assert.doesNotMatch(source, /import\(["']\/frontend\//u, harness);
   }
 });
+
+test("joint-venture E2E exports Word through explicit publication assignments", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_joint_venture_e2e.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /#btn-export-docx-report/u);
+  assert.match(source, /\/api\/word-publication-template-assignments/u);
+  assert.match(source, /award_result_appraisal_report/u);
+  assert.match(source, /\/xuat-ban-word/u);
+});
+
+test("fixture-backed specs use the current package and inline procurement flows", () => {
+  const contractorSource = fs.readFileSync(
+    path.resolve("e2e/specs/contractor-violation.spec.mjs"),
+    "utf8",
+  );
+  assert.match(contractorSource, /data-bf-action=\\?"show-package/u);
+  assert.doesNotMatch(contractorSource, /\?evaluationPackage=/u);
+
+  const procurementSource = fs.readFileSync(
+    path.resolve("e2e/specs/procurement-plan-import.spec.mjs"),
+    "utf8",
+  );
+  assert.match(procurementSource, /#procurement-lookup-plan-enabled/u);
+  assert.doesNotMatch(procurementSource, /#btn-open-procurement-import/u);
+});

@@ -6,6 +6,7 @@ import {
   DEFAULT_WORD_VARIABLES,
   getWordSourceTableLabel,
 } from "./wordVariableManifest.js";
+import { getApprovedShortDateFormulaSuggestion } from "./wordVariablePresentation.js";
 import { apiFetch } from "../shared/apiClient.js";
 import {
   canManageWorkspaceWordVariables,
@@ -534,7 +535,7 @@ export function setupWordTemplatesEvents() {
       { label: "Trừ ngày", formula: "subtractDays(__var__, 1)" },
       { label: "Cộng ngày làm việc", formula: "addWorkingDays(__var__, 1)" },
       { label: "Trừ ngày làm việc", formula: "subtractWorkingDays(__var__, 1)" },
-      { label: "Định dạng ngày", formula: 'formatDate(__var__, "dd/MM/yyyy")' }
+      getApprovedShortDateFormulaSuggestion()
     ],
     number: [
       { label: "Làm tròn", formula: "round(__var__)" },

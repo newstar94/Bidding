@@ -217,7 +217,31 @@ def resolve_pending_imported_investor(cursor, payload, organization_id):
     return authoritative_id
 
 
-def _validate_trusted_revision_records(context, revision, expected_digest):
+def _trusted_linked_notice_versions(
+    linked_notice_revisions, notice_number, latest_version,
+):
+    if not isinstance(linked_notice_revisions, dict):
+        return set()
+    normalized_notice_number = str(notice_number or "").strip().upper()
+    if not normalized_notice_number:
+        return set()
+    revisions = next((
+        rows for key, rows in linked_notice_revisions.items()
+        if str(key or "").strip().upper() == normalized_notice_number
+    ), [])
+    latest_key = _revision_number_key(latest_version)
+    return {
+        str(row.get("revisionNumber") or "").strip().zfill(2)
+        for row in revisions
+        if isinstance(row, dict)
+        and str(row.get("revisionNumber") or "").strip()
+        and _revision_number_key(row.get("revisionNumber")) <= latest_key
+    }
+
+
+def _validate_trusted_revision_records(
+    context, revision, expected_digest, linked_notice_revisions=None,
+):
     for record in context["plans"]:
         source = _source(record)
         if (
@@ -262,11 +286,29 @@ def _validate_trusted_revision_records(context, revision, expected_digest):
         ).strip()
         if expected_package_version:
             expected_package_version = expected_package_version.zfill(2)
-            if (
-                declared_package_version.zfill(2) != expected_package_version
-                or str(record.get("phienBan") or "").zfill(2)
-                != expected_package_version
-            ):
+            has_declared_package_version = bool(declared_package_version)
+            declared_package_version = declared_package_version.zfill(2)
+            stored_package_version = str(
+                record.get("phienBan") or ""
+            ).strip().zfill(2)
+            notice_number = str(
+                (canonical.get("noticeLink") or {}).get("noticeNo") or ""
+            ).strip()
+            trusted_versions = _trusted_linked_notice_versions(
+                linked_notice_revisions,
+                notice_number,
+                expected_package_version,
+            )
+            is_current_version = (
+                declared_package_version == expected_package_version
+                and stored_package_version == expected_package_version
+            )
+            is_trusted_historical_version = (
+                has_declared_package_version
+                and declared_package_version == stored_package_version
+                and declared_package_version in trusted_versions
+            )
+            if not (is_current_version or is_trusted_historical_version):
                 raise ValueError("PROCUREMENT_SOURCE_VERSION_CONFLICT")
         elif (
             declared_package_version
@@ -292,7 +334,12 @@ def _load_trusted_revision(cursor, context, organization_id, user_id):
     if revision is None:
         raise ValueError("PROCUREMENT_REVISION_INVALID")
     expected_digest = str(revision.get("revisionDigest") or canonical_digest(revision))
-    _validate_trusted_revision_records(context, revision, expected_digest)
+    _validate_trusted_revision_records(
+        context,
+        revision,
+        expected_digest,
+        (session.get("canonicalBundle") or {}).get("linkedNoticeRevisions"),
+    )
     return session, revision, expected_digest
 
 
@@ -432,7 +479,12 @@ def validate_plan_draft_import_mutation(
         expected_digest = str(
             revision.get("revisionDigest") or canonical_digest(revision)
         )
-        _validate_trusted_revision_records(context, revision, expected_digest)
+        _validate_trusted_revision_records(
+            context,
+            revision,
+            expected_digest,
+            (session.get("canonicalBundle") or {}).get("linkedNoticeRevisions"),
+        )
     return {
         "sessionId": session["id"],
         "revisionNumbers": tuple(provided_numbers),

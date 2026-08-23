@@ -678,6 +678,92 @@ def test_plan_revision_validates_linked_notice_version_independently(monkeypatch
         _load_trusted_revision(object(), context, "org-1", "user-1")
 
 
+def test_plan_revision_accepts_trusted_linked_notice_history(monkeypatch):
+    notice_number = "IB2600000002"
+    revision = {
+        "revisionId": "revision-01",
+        "revisionNumber": "01",
+        "revisionDigest": "sha256:" + "a" * 64,
+        "packages": [{
+            "planDetailRevisionId": "detail-b-01",
+            "noticeLink": {
+                "state": "LINKED",
+                "noticeNo": notice_number,
+                "noticeVersion": "01",
+            },
+        }],
+    }
+    session = {
+        "id": "session-1", "provider": "MUASAMCONG",
+        "familyNo": "PL2600000001", "workspaceLease": "lease-1",
+        "status": "READY", "currentIndex": 0,
+        "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "revisions": [{"revisionNumber": "01", "status": "READY"}],
+        "canonicalBundle": {
+            "revisions": [revision],
+            "linkedNoticeRevisions": {
+                notice_number: [
+                    {"revisionId": "notice-00", "revisionNumber": "00"},
+                    {"revisionId": "notice-01", "revisionNumber": "01"},
+                ],
+            },
+        },
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_for_commit(self, *_args, **_kwargs):
+            return session
+
+    monkeypatch.setattr(
+        "backend.procurement_import.sync_binding.ProcurementImportSessionRepository",
+        Repository,
+    )
+    context = {
+        "sessionId": "session-1", "revisionNumber": "01",
+        "provider": "MUASAMCONG", "familyNo": "PL2600000001",
+        "workspaceLease": "lease-1",
+        "plans": [{
+            "id": "plan-01", "phienBan": "01",
+            "sourceRevision": _authority("01"),
+        }],
+        "packages": [
+            {
+                "id": "package-b-00", "maGoiThau": notice_number,
+                "phienBan": "00",
+                "sourceRevision": {
+                    **_authority("01"),
+                    "packageObservationId": "detail-b-01",
+                    "packageRevisionNumber": "00",
+                },
+            },
+            {
+                "id": "package-b-01", "maGoiThau": notice_number,
+                "phienBan": "01",
+                "sourceRevision": {
+                    **_authority("01"),
+                    "packageObservationId": "detail-b-01",
+                    "packageRevisionNumber": "01",
+                },
+            },
+        ],
+    }
+
+    _load_trusted_revision(object(), context, "org-1", "user-1")
+
+    historical_source = context["packages"][0]["sourceRevision"]
+    historical_source.pop("packageRevisionNumber")
+    with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        _load_trusted_revision(object(), context, "org-1", "user-1")
+
+    historical_source["packageRevisionNumber"] = "02"
+    context["packages"][0]["phienBan"] = "02"
+    with pytest.raises(ValueError, match="PROCUREMENT_SOURCE_VERSION_CONFLICT"):
+        _load_trusted_revision(object(), context, "org-1", "user-1")
+
+
 def test_real_postgres_concurrent_investor_resolution_creates_one_identity():
     database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
     if not database_url:

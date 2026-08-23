@@ -6,6 +6,11 @@ import os
 import re
 from datetime import date, datetime, timedelta
 
+from backend.shared.date_utils import (
+    format_short_vietnamese_date,
+    format_short_vietnamese_month,
+)
+
 
 COMPUTED_SOURCE_TABLE = "__computed__"
 
@@ -44,8 +49,7 @@ def _parse_formula_date(value):
 
 def _format_formula_date(value):
     if isinstance(value, (datetime, date)):
-        month = f'{value.month:02d}' if value.month in (1, 2) else str(value.month)
-        return f'{value.day:02d}/{month}/{value.year:04d}'
+        return format_short_vietnamese_date(value.day, value.month, value.year)
     return value
 
 
@@ -213,7 +217,9 @@ class _FormulaEvaluator(ast.NodeVisitor):
 
 def _format_date_custom(day, fmt):
     fmt = str(fmt or 'dd/MM/yyyy')
-    month = f'{day.month:02d}' if day.month in (1, 2) else str(day.month)
+    if fmt == 'dd/MM/yyyy':
+        return format_short_vietnamese_date(day.day, day.month, day.year)
+    month = format_short_vietnamese_month(day.month)
     return fmt.replace('dd', f'{day.day:02d}').replace('MM', month).replace('yyyy', f'{day.year:04d}')
 
 
@@ -270,4 +276,3 @@ def apply_computed_mappings(context, mappings_rows):
 
     for ten_bien, formula in pending.items():
         context[ten_bien] = '-- Lỗi công thức: vòng lặp hoặc thiếu biến nguồn'
-

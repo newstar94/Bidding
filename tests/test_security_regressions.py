@@ -11,6 +11,7 @@ from backend.auth import admin_user_routes
 from backend.auth.auth_helper import SessionRole
 from backend.shared import access_policy
 from backend.sync import pagination
+from backend.sync.visibility_scope import VisibilityScope
 from scripts.backup import _stage_restore_assets, _verify_snapshot
 
 
@@ -293,14 +294,16 @@ def test_goods_pagination_filters_unassigned_packages(
     )
     monkeypatch.setattr(pagination, "can_read_table", lambda *_args: True)
     monkeypatch.setattr(
-        pagination,
-        "is_personal_scope_for_user",
-        lambda *_args: False,
-    )
-    monkeypatch.setattr(
-        pagination,
-        "is_organization_manager",
-        lambda *_args: False,
+        pagination.VisibilityScope,
+        "resolve",
+        classmethod(
+            lambda cls, *_args: VisibilityScope(
+                organization_id="org-1",
+                user_id="specialist-1",
+                unrestricted=False,
+                permissions={"goithau": "view"},
+            )
+        ),
     )
     monkeypatch.setattr(
         pagination,
@@ -355,8 +358,18 @@ def test_package_goods_pagination_can_filter_one_plan_snapshot(monkeypatch):
         lambda _request, _user_id, cursor=None: "org-1",
     )
     monkeypatch.setattr(pagination, "can_read_table", lambda *_args: True)
-    monkeypatch.setattr(pagination, "is_personal_scope_for_user", lambda *_args: False)
-    monkeypatch.setattr(pagination, "is_organization_manager", lambda *_args: True)
+    monkeypatch.setattr(
+        pagination.VisibilityScope,
+        "resolve",
+        classmethod(
+            lambda cls, *_args: VisibilityScope(
+                organization_id="org-1",
+                user_id="manager-1",
+                unrestricted=True,
+                permissions={},
+            )
+        ),
+    )
     monkeypatch.setattr(
         pagination,
         "resolve_sensitive_read_policy",

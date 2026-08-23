@@ -21,7 +21,6 @@ from backend.shared.access_policy import (
     OWNERSHIP_SCOPED_TABLES,
     authorize_record_write,
     can_read_table,
-    is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
 from backend.shared.sensitive_data import (
@@ -41,10 +40,10 @@ from backend.sync.queries import (
 from backend.db.postgres_schema import postgres_column_definition
 from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES
+from backend.sync.visibility_scope import VisibilityScope
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
-from backend.shared.workspace_scope import is_personal_scope_for_user
 
 
 def _urlsafe_b64encode(payload):
@@ -211,69 +210,20 @@ def _paginate_records_blocking(request):
         can_view_sensitive_expert = True
 
 
-        query_parts = ["organization_id = ?"]
-        query_params = [org_name]
+        visibility_scope = VisibilityScope.resolve(
+            cursor,
+            role_str,
+            user_id,
+            org_name,
+        )
+        record_visibility = visibility_scope.live_predicate(
+            table_name,
+            table_name,
+        )
+        query_parts = [record_visibility.sql]
+        query_params = list(record_visibility.parameters)
         if table_name in ARCHIVED_TABLES:
             query_parts.append("archived_at IS NULL")
-        if (
-            not is_personal_scope_for_user(org_name, user_id)
-            and not is_organization_manager(cursor, role_str, user_id, org_name)
-        ):
-            if table_name == "phan_cong_nhan_su":
-                query_parts.append("id_nhan_vien = ?")
-                query_params.append(user_id)
-            elif table_name == "ma_tran_phan_quyen":
-                query_parts.append("emp_id = ?")
-                query_params.append(user_id)
-            elif table_name == "ke_hoach_lcnt":
-                query_parts.append("""
-                    (
-                        id IN (
-                            SELECT id_muc_tieu FROM phan_cong_nhan_su
-                            WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'kehoach'
-                        )
-                        OR id IN (
-                            SELECT gt.ke_hoach_id FROM goi_thau gt
-                            JOIN phan_cong_nhan_su pc
-                              ON pc.organization_id = gt.organization_id
-                             AND pc.id_muc_tieu = gt.id
-                             AND pc.loai_doi_tuong = 'goithau'
-                            WHERE gt.organization_id = ? AND pc.id_nhan_vien = ?
-                        )
-                    )
-                """)
-                query_params.extend([org_name, user_id, org_name, user_id])
-            elif table_name in ["goi_thau", "hop_dong"]:
-                assignment_type = {
-                    "goi_thau": "goithau",
-                    "hop_dong": "hopdong",
-                }[table_name]
-                query_parts.append("""
-                    id IN (
-                        SELECT id_muc_tieu FROM phan_cong_nhan_su
-                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = ?
-                    )
-                """)
-                query_params.extend([org_name, user_id, assignment_type])
-            elif table_name == "thong_tin_mo_thau":
-                query_parts.append("""
-                    goi_thau_id IN (
-                        SELECT id_muc_tieu FROM phan_cong_nhan_su
-                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'goithau'
-                    )
-                """)
-                query_params.extend([org_name, user_id])
-            elif table_name in {
-                "goi_thau_hang_hoa",
-                "hang_hoa_du_thau_nha_thau",
-            }:
-                query_parts.append("""
-                    goi_thau_id IN (
-                        SELECT id_muc_tieu FROM phan_cong_nhan_su
-                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'goithau'
-                    )
-                """)
-                query_params.extend([org_name, user_id])
 
 
 
