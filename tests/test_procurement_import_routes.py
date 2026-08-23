@@ -20,6 +20,7 @@ from backend.procurement_import.routes import (
     procurement_import_routes,
 )
 from backend.procurement_import.domain import canonical_digest
+from backend.shared.access_policy import AccessDecision
 
 
 class _PackageAuthorityCursor:
@@ -755,6 +756,452 @@ def test_apply_rejects_browser_supplied_canonical_payload(monkeypatch):
     assert called is False
 
 
+class _AuthorizationCursor:
+    def __init__(self, operation_actor=None, *, session_revoked=False):
+        self.operation_actor = operation_actor
+        self.session_revoked = session_revoked
+        self.statement = ""
+        self.parameters = ()
+        self.statements = []
+
+    def execute(self, statement, parameters=()):
+        self.statement = " ".join(str(statement).split())
+        self.parameters = parameters
+        self.statements.append(self.statement)
+        return self
+
+    def fetchone(self):
+        if "FROM auth_sessions AS sessions" in self.statement:
+            return {
+                "id": self.parameters[1],
+                "vai_tro": "user",
+                "account_status": "active",
+                "session_id": self.parameters[0],
+                "idle_expires_at": 4_000_000_000,
+                "absolute_expires_at": 4_000_000_000,
+                "revoked_at": 1 if self.session_revoked else None,
+                "active_role": "employee",
+                "active_role_organization_id": "org-1",
+            }
+        if "FROM thanh_vien_to_chuc AS membership" in self.statement:
+            return {
+                "vai_tro_trong_to_chuc": "employee",
+                "trang_thai_thanh_vien": "active",
+                "organization_status": "active",
+            }
+        if "FROM ma_tran_phan_quyen" in self.statement:
+            return None
+        if "FROM procurement_import_operation" in self.statement:
+            return ((self.operation_actor,) if self.operation_actor else None)
+        return None
+
+
+class _AuthorizationConnection:
+    def __init__(self, cursor):
+        self.cursor_value = cursor
+        self.events = []
+
+    def execute(self, statement):
+        self.events.append(str(statement))
+        return self
+
+    def cursor(self):
+        return self.cursor_value
+
+    def commit(self):
+        self.events.append("commit")
+
+    def rollback(self):
+        self.events.append("rollback")
+
+    def close(self):
+        self.events.append("close")
+
+
+class _CurrentAuthorityCursor(_AuthorizationCursor):
+    def execute(self, statement, parameters=()):
+        self.statement = " ".join(str(statement).split())
+        self.parameters = parameters
+        self.statements.append(self.statement)
+        return self
+
+    def fetchone(self):
+        if "FROM auth_sessions AS sessions" in self.statement:
+            return {
+                "id": "employee-1",
+                "vai_tro": "user",
+                "account_status": "active",
+                "session_id": "session-1",
+                "idle_expires_at": 4_000_000_000,
+                "absolute_expires_at": 4_000_000_000,
+                "revoked_at": None,
+                "active_role": "manager",
+                "active_role_organization_id": "org-1",
+            }
+        if "FROM thanh_vien_to_chuc AS membership" in self.statement:
+            return {
+                "vai_tro_trong_to_chuc": "manager",
+                "trang_thai_thanh_vien": "active",
+                "organization_status": "active",
+            }
+        if "FROM ma_tran_phan_quyen" in self.statement:
+            return None
+        return super().fetchone()
+
+
+def test_plan_apply_uses_persona_reloaded_inside_write_transaction(monkeypatch):
+    cursor = _CurrentAuthorityCursor()
+    connection = _AuthorizationConnection(cursor)
+    stale_session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        platform_role="user",
+        active_role="employee",
+        active_role_organization_id="org-1",
+    )
+    observed_roles = []
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def lock_family(self, *_args):
+            return None
+
+        def load_family(self, *_args):
+            return {"latestPlan": None, "packages": []}
+
+    class Reconciler:
+        def __init__(self, _repository):
+            pass
+
+        def reconcile_revision(self, **_kwargs):
+            return {
+                "operation": "APPLIED",
+                "createdPlans": [],
+                "createdPackages": [],
+            }
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "ProcurementPlanReconciler", Reconciler)
+    monkeypatch.setattr(routes_module, "_validate_investor", lambda *_args: None)
+
+    def current_permission(_cursor, role, *_args):
+        observed_roles.append(role)
+        return getattr(role, "active_role", None) == "manager"
+
+    monkeypatch.setattr(routes_module, "has_module_permission", current_permission)
+
+    result = routes_module._apply_one(
+        "org-1",
+        stale_session,
+        "MUASAMCONG",
+        {"familyNo": "PL2600000001", "revisionId": "revision-1"},
+        "apply-1",
+        None,
+        "investor-1",
+    )
+
+    assert result["operation"] == "APPLIED"
+    assert len(observed_roles) == 1
+    assert observed_roles[0] is not stale_session
+    assert observed_roles[0].active_role == "manager"
+    assert "FROM auth_sessions AS sessions" in cursor.statements[0]
+    assert "FOR UPDATE OF sessions, accounts" in cursor.statements[0]
+    assert "FROM thanh_vien_to_chuc AS membership" in cursor.statements[1]
+    assert "FOR UPDATE OF membership, organization" in cursor.statements[1]
+    assert "FROM ma_tran_phan_quyen" in cursor.statements[2]
+    assert "FOR UPDATE" in cursor.statements[2]
+    assert connection.events[:2] == ["BEGIN ISOLATION LEVEL SERIALIZABLE", "commit"]
+
+
+def test_plan_apply_rejects_session_revoked_inside_write_transaction(monkeypatch):
+    cursor = _AuthorizationCursor(session_revoked=True)
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        active_role="employee",
+    )
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementPlanReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("revoked session must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"familyNo": "PL2600000001", "revisionId": "revision-1"},
+            "apply-1",
+            None,
+            "investor-1",
+        )
+
+    assert caught.value.code == "AUTHENTICATION_REQUIRED"
+    assert cursor.statements == [cursor.statement]
+    assert "FOR UPDATE OF sessions, accounts" in cursor.statement
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_plan_apply_rechecks_current_edit_permission_inside_write_transaction(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor()
+    connection = _AuthorizationConnection(cursor)
+    observed = []
+    session = SimpleNamespace(
+        user_id="employee-1", session_id="session-1", active_role="employee"
+    )
+
+    monkeypatch.setattr(
+        routes_module.database,
+        "get_connection",
+        lambda: connection,
+    )
+
+    def permission(*args):
+        observed.append((connection.events.copy(), args[1], args[-1]))
+        return False
+
+    monkeypatch.setattr(routes_module, "has_module_permission", permission)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementPlanReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("denied apply must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"familyNo": "PL2600000001", "revisionId": "revision-1"},
+            "apply-1",
+            None,
+            "investor-1",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert observed[0][0][0] == "BEGIN ISOLATION LEVEL SERIALIZABLE"
+    assert observed[0][1].user_id == session.user_id
+    assert observed[0][1].active_role == "employee"
+    assert observed[0][2] == "edit"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_plan_apply_rechecks_every_existing_record_scope_before_reconcile(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor()
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1", session_id="session-1", active_role="employee"
+    )
+    checked = []
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def lock_family(self, *_args):
+            return None
+
+        def load_family(self, *_args):
+            return {
+                "latestPlan": {"id": "plan-1", "rootId": "plan-root"},
+                "packages": [
+                    {"id": "package-allowed", "rootId": "package-allowed"},
+                    {"id": "package-denied", "rootId": "package-denied"},
+                ],
+            }
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+
+    def authorize(_cursor, role, user_id, organization_id, key, table, item):
+        checked.append((role, user_id, organization_id, key, table, item["id"]))
+        return AccessDecision(item["id"] != "package-denied", "outside assignment")
+
+    monkeypatch.setattr(routes_module, "authorize_record_write", authorize)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementPlanReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("mixed-scope apply must not reconcile any record")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"familyNo": "PL2600000001", "revisionId": "revision-1"},
+            "apply-1",
+            1,
+            "investor-1",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert [row[-1] for row in checked] == [
+        "plan-1",
+        "package-allowed",
+        "package-denied",
+    ]
+    assert all(row[0].user_id == session.user_id for row in checked)
+    assert all(row[0].active_role == "employee" for row in checked)
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_notice_resume_locks_operation_and_rejects_stale_actor_in_write_transaction(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor="original-user")
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="replacement-user",
+        session_id="session-1",
+        active_role="employee",
+    )
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementNoticeReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("foreign operation must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_notice_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"noticeNo": "IB2600000002", "revisionId": "notice-1"},
+            "resume-1",
+            3,
+            "package-root",
+            "operation-1",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert "FOR UPDATE" in cursor.statement
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_notice_apply_rechecks_current_target_assignment_before_reconcile(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor()
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        active_role="employee",
+    )
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def lock_family(self, *_args):
+            return None
+
+        def resolve_notice_target(self, *_args, **_kwargs):
+            return {"id": "package-current", "rootId": "package-root"}
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "authorize_record_write",
+        lambda *_args: AccessDecision(False, "assignment changed"),
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementNoticeReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("out-of-scope notice must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_notice_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"noticeNo": "IB2600000002", "revisionId": "notice-1"},
+            "apply-1",
+            3,
+            "package-root",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
+def test_plan_apply_rejects_operation_from_another_tenant_before_reconcile(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor=None)
+    connection = _AuthorizationConnection(cursor)
+    session = SimpleNamespace(
+        user_id="employee-1",
+        session_id="session-1",
+        active_role="employee",
+    )
+
+    monkeypatch.setattr(routes_module.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+    monkeypatch.setattr(
+        routes_module,
+        "ProcurementPlanReconciler",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("foreign-tenant operation must not reconcile")
+        ),
+    )
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._apply_one(
+            "org-1",
+            session,
+            "MUASAMCONG",
+            {"familyNo": "PL2600000001", "revisionId": "revision-1"},
+            "apply-1",
+            None,
+            "investor-1",
+            operation_id="operation-in-another-tenant",
+        )
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert any(
+        "FROM procurement_import_operation" in statement
+        and "FOR UPDATE" in statement
+        for statement in cursor.statements
+    )
+    assert "rollback" in connection.events
+    assert "commit" not in connection.events
+
+
 def test_prepare_returns_only_server_result(monkeypatch):
     async def fake_run(_function, _request, payload, **_kwargs):
         assert payload["code"] == "PL2600000001"
@@ -1419,6 +1866,15 @@ def test_completed_operation_resume_rejects_another_user_in_same_workspace(monke
         def cursor(self):
             return object()
 
+        def execute(self, _statement):
+            return self
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
         def close(self):
             return None
 
@@ -1442,6 +1898,18 @@ def test_completed_operation_resume_rejects_another_user_in_same_workspace(monke
     )
     monkeypatch.setattr(routes_module.database, "get_connection", FakeConnection)
     monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
+    monkeypatch.setattr(
+        routes_module,
+        "_reload_write_authority",
+        lambda _cursor, session, _organization_id: session,
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "_lock_and_authorize_operation",
+        lambda *_args: routes_module._deny_procurement_write(
+            "foreign operation"
+        ),
+    )
     app = Starlette(routes=procurement_import_routes(Route))
     with TestClient(app) as client:
         response = client.post(
@@ -1449,6 +1917,326 @@ def test_completed_operation_resume_rejects_another_user_in_same_workspace(monke
         )
     assert response.status_code == 403
     assert response.json()["code"] == "ORGANIZATION_ACCESS_DENIED"
+
+
+def test_completed_operation_resume_locks_operation_before_authorizing_replay(
+    monkeypatch,
+):
+    cursor = _AuthorizationCursor(operation_actor="owner-user")
+    connection = _AuthorizationConnection(cursor)
+    operation = {
+        "operationId": "operation-1",
+        "provider": "VNEPS",
+        "familyNo": "PL2600000001",
+        "mode": "ALL",
+        "status": "COMPLETED",
+        "nextRevisionIndex": 1,
+        "totalRevisions": 1,
+        "bundleDigest": "sha256:" + "a" * 64,
+        "revisionResults": [{"status": "COMPLETED"}],
+        "idempotencyKey": "all-1",
+        "actorUserId": "owner-user",
+        "requestHash": "a" * 64,
+    }
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(
+                user_id="owner-user",
+                session_id="session-1",
+                active_role="employee",
+            ),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(
+        routes_module.database, "get_connection", lambda: connection
+    )
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
+
+    result = routes_module._resume_blocking(object(), "operation-1")
+
+    assert result["status"] == "COMPLETED"
+    assert any(
+        "FROM procurement_import_operation" in statement
+        and "FOR UPDATE" in statement
+        for statement in cursor.statements
+    )
+
+
+def test_operation_get_keeps_current_tenant_scope_and_strips_private_metadata(
+    monkeypatch,
+):
+    observed = []
+    operation = {
+        "operationId": "operation-1",
+        "organizationId": "org-1",
+        "status": "FAILED",
+        "actorUserId": "owner-user",
+        "requestHash": "private-request-hash",
+        "revisionResults": [
+            {
+                "revisionId": "revision-1",
+                "status": "FAILED",
+                "canonicalRevision": {"secret": "server-only"},
+                "investorId": "investor-1",
+                "expectedPlanRowVersion": 7,
+                "packageDecisions": {"package-1": "UPDATE"},
+                "targetPackageRootId": "package-root",
+                "expectedPackageRowVersion": 3,
+                "errorCode": "PROCUREMENT_PREVIEW_STALE",
+            }
+        ],
+    }
+
+    class Connection:
+        def cursor(self):
+            return object()
+
+        def close(self):
+            return None
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, organization_id, operation_id):
+            observed.append((organization_id, operation_id))
+            return deepcopy(operation)
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="reader-user"),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", Connection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+
+    result = routes_module._get_operation_blocking(object(), "operation-1")
+
+    assert observed == [("org-1", "operation-1")]
+    assert "actorUserId" not in result
+    assert "requestHash" not in result
+    assert result["revisionResults"] == [
+        {
+            "revisionId": "revision-1",
+            "status": "FAILED",
+            "errorCode": "PROCUREMENT_PREVIEW_STALE",
+        }
+    ]
+
+
+def test_completed_operation_resume_rechecks_permission_after_revocation(monkeypatch):
+    operation = {
+        "operationId": "operation-1",
+        "provider": "VNEPS",
+        "familyNo": "PL2600000001",
+        "mode": "ALL",
+        "status": "COMPLETED",
+        "nextRevisionIndex": 1,
+        "totalRevisions": 1,
+        "bundleDigest": "sha256:" + "a" * 64,
+        "revisionResults": [{"status": "COMPLETED"}],
+        "idempotencyKey": "all-1",
+        "actorUserId": "owner-user",
+        "requestHash": "a" * 64,
+    }
+
+    class FakeConnection:
+        def cursor(self):
+            return object()
+
+        def execute(self, _statement):
+            return self
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    class FakeRepository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="owner-user", active_role="employee"),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(routes_module.database, "get_connection", FakeConnection)
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
+    monkeypatch.setattr(
+        routes_module,
+        "_reload_write_authority",
+        lambda _cursor, session, _organization_id: session,
+    )
+    monkeypatch.setattr(
+        routes_module, "_lock_and_authorize_operation", lambda *_args: None
+    )
+    permission_checks = []
+
+    def deny_current_permission(*args):
+        permission_checks.append(args[-1])
+        routes_module._deny_procurement_write("permission revoked")
+
+    monkeypatch.setattr(routes_module, "_require_module_edit", deny_current_permission)
+
+    with pytest.raises(ProcurementRouteError) as caught:
+        routes_module._resume_blocking(object(), "operation-1")
+
+    assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+    assert permission_checks == ["kehoach"]
+
+
+def test_resume_rolls_back_all_remaining_revisions_when_one_fails(monkeypatch):
+    operation = {
+        "operationId": "operation-atomic",
+        "provider": "VNEPS",
+        "familyNo": "PL2600000001",
+        "mode": "ALL",
+        "status": "FAILED",
+        "nextRevisionIndex": 0,
+        "totalRevisions": 2,
+        "bundleDigest": "sha256:" + "a" * 64,
+        "revisionResults": [
+            {
+                "revisionId": "rev-00",
+                "revisionDigest": "sha256:" + "b" * 64,
+                "status": "FAILED",
+                "canonicalRevision": {
+                    "revisionId": "rev-00",
+                    "revisionDigest": "sha256:" + "b" * 64,
+                },
+                "expectedPlanRowVersion": 1,
+                "investorId": "investor-1",
+                "packageDecisions": {},
+            },
+            {
+                "revisionId": "rev-01",
+                "revisionDigest": "sha256:" + "c" * 64,
+                "status": "FAILED",
+                "canonicalRevision": {
+                    "revisionId": "rev-01",
+                    "revisionDigest": "sha256:" + "c" * 64,
+                },
+                "expectedPlanRowVersion": 1,
+                "investorId": "investor-1",
+                "packageDecisions": {},
+            },
+        ],
+        "idempotencyKey": "all-atomic",
+        "actorUserId": "owner-user",
+        "requestHash": "a" * 64,
+    }
+    persisted = []
+
+    class FakeConnection:
+        def __init__(self):
+            self.pending = []
+
+        def cursor(self):
+            return object()
+
+        def execute(self, _statement):
+            return self
+
+        def commit(self):
+            persisted.extend(self.pending)
+            self.pending.clear()
+
+        def rollback(self):
+            self.pending.clear()
+
+        def close(self):
+            return None
+
+    transaction_connection = FakeConnection()
+
+    class FakeRepository:
+        def __init__(self, _cursor):
+            pass
+
+        def get_operation(self, _organization_id, _operation_id):
+            return deepcopy(operation)
+
+    def apply_revision(
+        _organization_id,
+        _session,
+        _provider,
+        revision,
+        *_args,
+    ):
+        connection = _args[-1]
+        connection.pending.append(revision["revisionId"])
+        if revision["revisionId"] == "rev-01":
+            raise routes_module.ImportConflict("PROCUREMENT_PREVIEW_STALE")
+        return {
+            "operation": "APPLIED",
+            "createdPlans": [],
+            "createdPackages": [],
+        }
+
+    updates = []
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _lease: (
+            SimpleNamespace(user_id="owner-user", active_role="employee"),
+            "org-1",
+            "org-1",
+        ),
+    )
+    monkeypatch.setattr(
+        routes_module.database,
+        "get_connection",
+        lambda: transaction_connection,
+    )
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
+    monkeypatch.setattr(
+        routes_module,
+        "_reload_write_authority",
+        lambda _cursor, session, _organization_id: session,
+    )
+    monkeypatch.setattr(
+        routes_module, "_lock_and_authorize_operation", lambda *_args: None
+    )
+    monkeypatch.setattr(routes_module, "_require_module_edit", lambda *_args: None)
+    monkeypatch.setattr(routes_module, "_apply_one", apply_revision)
+    monkeypatch.setattr(
+        routes_module,
+        "_update_operation",
+        lambda *args: updates.append(args),
+    )
+
+    with pytest.raises(routes_module.ImportConflict):
+        routes_module._resume_blocking(object(), "operation-atomic")
+
+    assert persisted == []
+    assert transaction_connection.pending == []
+    assert updates[-1][-1] == "FAILED"
 
 
 def test_resume_persists_failed_cursor_before_returning_conflict(monkeypatch):
@@ -1474,6 +2262,15 @@ def test_resume_persists_failed_cursor_before_returning_conflict(monkeypatch):
         def cursor(self):
             return object()
 
+        def execute(self, _statement):
+            return self
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
         def close(self):
             return None
 
@@ -1498,11 +2295,20 @@ def test_resume_persists_failed_cursor_before_returning_conflict(monkeypatch):
     monkeypatch.setattr(routes_module.database, "get_connection", FakeConnection)
     monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
     monkeypatch.setattr(
+        routes_module,
+        "_reload_write_authority",
+        lambda _cursor, session, _organization_id: session,
+    )
+    monkeypatch.setattr(
+        routes_module, "_lock_and_authorize_operation", lambda *_args: None
+    )
+    monkeypatch.setattr(
         routes_module, "_apply_one",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             routes_module.ImportConflict("PROCUREMENT_PREVIEW_STALE")
         ),
     )
+    monkeypatch.setattr(routes_module, "_require_module_edit", lambda *_args: None)
     monkeypatch.setattr(
         routes_module, "_update_operation",
         lambda organization_id, operation_id, cursor, results, status: updates.append(
@@ -1560,6 +2366,15 @@ def test_notice_all_resume_continues_from_durable_cursor(monkeypatch):
         def cursor(self):
             return object()
 
+        def execute(self, _statement):
+            return self
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
         def close(self):
             return None
 
@@ -1576,13 +2391,14 @@ def test_notice_all_resume_continues_from_durable_cursor(monkeypatch):
 
     def apply_notice(
         organization_id, actor_user_id, provider, revision, idempotency_key,
-        expected_row_version, target_root_id, operation_id,
+        expected_row_version, target_root_id, operation_id, connection,
     ):
         applied.append(
             (
                 organization_id, actor_user_id, provider, revision["revisionId"],
                 idempotency_key, expected_row_version, target_root_id,
                 operation_id,
+                connection,
             )
         )
         return {
@@ -1598,7 +2414,16 @@ def test_notice_all_resume_continues_from_durable_cursor(monkeypatch):
     )
     monkeypatch.setattr(routes_module.database, "get_connection", FakeConnection)
     monkeypatch.setattr(routes_module, "ProcurementImportRepository", FakeRepository)
+    monkeypatch.setattr(
+        routes_module,
+        "_reload_write_authority",
+        lambda _cursor, session, _organization_id: session,
+    )
+    monkeypatch.setattr(
+        routes_module, "_lock_and_authorize_operation", lambda *_args: None
+    )
     monkeypatch.setattr(routes_module, "_apply_notice_one", apply_notice)
+    monkeypatch.setattr(routes_module, "_require_module_edit", lambda *_args: None)
     monkeypatch.setattr(
         routes_module, "_update_operation",
         lambda organization_id, operation_id, cursor, results, status: updates.append(

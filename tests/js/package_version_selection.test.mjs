@@ -9,6 +9,9 @@ import {
   normalizePackageVersionSelection,
   selectPackageVersion,
 } from "../../frontend/shared/versionResolver.js";
+import {
+  resolvePackageTableVersionState,
+} from "../../frontend/packages/GoiThauTable.js";
 
 /**
  * Mirrors the selection logic of renderGoiThauTable: which row of the version
@@ -154,4 +157,53 @@ test("force sync preserves an explicitly selected historical package", () => {
 
   assert.equal(state.selectedPackageVersion["pkg-a"], historicalRow.id);
   assert.equal(state.selectedPackageVersionIntent["pkg-a"], "historical");
+});
+
+test("authoritative page row replaces a stale physical row of the same package version", () => {
+  const historical = {
+    id: "pkg-00",
+    rootId: "pkg-root",
+    phienBan: "00",
+    isLatest: 0,
+    keHoachId: "plan-01",
+  };
+  const staleCurrent = {
+    id: "pkg-stale-01",
+    rootId: "pkg-root",
+    phienBan: "01",
+    isLatest: 1,
+    keHoachId: "plan-01",
+  };
+  const authoritativeCurrent = {
+    ...staleCurrent,
+    id: "pkg-authoritative-01",
+  };
+  const model = {
+    state: {
+      kehoach: [
+        { id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1 },
+      ],
+      goithau: [historical, staleCurrent],
+      selectedPackageVersion: {
+        "pkg-root": staleCurrent.id,
+      },
+    },
+  };
+
+  const resolved = resolvePackageTableVersionState(
+    model,
+    authoritativeCurrent,
+  );
+
+  assert.equal(resolved.displayedGt.id, authoritativeCurrent.id);
+  assert.equal(resolved.isHistorical, false);
+  assert.deepEqual(
+    resolved.uniqueVersions.map((row) => row.id),
+    [authoritativeCurrent.id, historical.id],
+  );
+  assert.equal(
+    model.state.selectedPackageVersion["pkg-root"],
+    undefined,
+    "the stale remembered physical ID must not keep current actions view-only",
+  );
 });

@@ -28,6 +28,25 @@ test("landing and legal styles are owned by their dynamic route modules", () => 
   assert.match(assistantLoader, /new URL\("\.\/assistant\.css", import\.meta\.url\)/u);
 });
 
+test("dashboard styles load through the raw-module compatible route seam", () => {
+  const biddingView = read("frontend/app/BiddingView.js");
+  const dashboard = read("frontend/app/DashboardView.js");
+  const mainViews = read("views/css/views.css");
+  const dashboardCss = read("frontend/app/DashboardView.css");
+
+  assert.match(
+    biddingView,
+    /await module\.ensureDashboardStyles\(\);[\s\S]*return module;/u,
+  );
+  assert.match(dashboard, /loadStyleOnce\(DASHBOARD_STYLESHEET_URL\)/u);
+  assert.match(
+    dashboard,
+    /new URL\(\s*"\.\/DashboardView\.css\?no-inline",\s*import\.meta\.url/u,
+  );
+  assert.match(dashboardCss, /\.dashboard-visually-hidden/u);
+  assert.doesNotMatch(mainViews, /\.dashboard-visually-hidden/u);
+});
+
 test("secure build enforces hashed route CSS and its main-bundle budget", () => {
   const packageJson = JSON.parse(read("package.json"));
   const trustedTypes = read("frontend/shared/trustedTypes.js");
@@ -44,6 +63,7 @@ test("secure build enforces hashed route CSS and its main-bundle budget", () => 
   assert.match(checker, /frontend\/landing\/LandingPage\.js/u);
   assert.match(checker, /frontend\/legal\/LegalPage\.js/u);
   assert.match(checker, /frontend\/errors\/NotFoundPage\.js/u);
+  assert.match(checker, /frontend\/app\/DashboardView\.js/u);
 });
 
 test("secure main stylesheet preserves the shared debug cascade", () => {

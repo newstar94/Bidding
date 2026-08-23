@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
 
-const viewsStylesheet = fileURLToPath(new URL("../../views/css/views.css", import.meta.url));
+const dashboardStylesheet = fileURLToPath(
+  new URL("../../frontend/app/DashboardView.css", import.meta.url),
+);
 
 test("contract counts and values keep aligned columns", async () => {
   const browser = await chromium.launch({ headless: true });
@@ -26,7 +28,7 @@ test("contract counts and values keep aligned columns", async () => {
         </div>
       </div>
     `);
-    await page.addStyleTag({ path: viewsStylesheet });
+    await page.addStyleTag({ path: dashboardStylesheet });
 
     const countBoxes = await page.locator(".dashboard-contract-values strong").evaluateAll(
       (elements) => elements.map((element) => element.getBoundingClientRect().right),

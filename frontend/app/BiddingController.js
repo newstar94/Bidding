@@ -469,6 +469,10 @@ export class BiddingController {
       );
       if (!confirmed) return { changed: false, cancelled: true, organizationId: currentOrganizationId };
     }
+    const startupState = this.getStartupReconciliationState?.();
+    const startupReconciliationInFlight = Boolean(
+      startupState?.promise || this._startupReconciliationPromise,
+    );
     this._workspaceTransitionPromise = (async () => {
       this._workspaceSwitching = true;
       this.model.beginWorkspaceTransition?.();
@@ -478,7 +482,14 @@ export class BiddingController {
         this._backgroundSyncTimer = null;
       }
       this._backgroundSyncQueued = false;
-      if (currentOrganizationId && !options.skipPendingFlush && navigator.onLine && typeof this.autoSync === "function") {
+      if (
+        currentOrganizationId
+        && !options.skipPendingFlush
+        && navigator.onLine
+        && typeof this.autoSync === "function"
+        && !startupReconciliationInFlight
+        && !this._startupReconciliationPromise
+      ) {
         try {
           await this.autoSync();
         } catch (error) {

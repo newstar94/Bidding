@@ -9,6 +9,10 @@ User=biddingflow
 Group=biddingflow
 WorkingDirectory=/opt/biddingflow/current
 EnvironmentFile=/etc/biddingflow/web.env
+RuntimeDirectory=biddingflow-metrics
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=no
+Environment=BIDDING_METRICS_MULTIPROCESS_DIR=/run/biddingflow-metrics
 ExecStart=/opt/biddingflow/venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers ${UVICORN_WORKERS} --no-proxy-headers --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY} --backlog ${UVICORN_BACKLOG} --timeout-keep-alive ${UVICORN_TIMEOUT_KEEP_ALIVE} --limit-max-requests ${UVICORN_MAX_REQUESTS} --limit-max-requests-jitter ${UVICORN_MAX_REQUESTS_JITTER} --ws-max-size ${UVICORN_WS_MAX_SIZE} --ws-max-queue ${UVICORN_WS_MAX_QUEUE}
 Restart=on-failure
 RestartSec=3s

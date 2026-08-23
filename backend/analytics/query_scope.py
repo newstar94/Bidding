@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext
+from backend.shared.access_policy import is_assignment_scoped_active_role
 
 
 TABLES = {
@@ -33,8 +34,10 @@ def visibility_clause(context: AiRequestContext, entity: str, alias: str) -> tup
     table_name, module_name, assignment_type = table_for_entity(entity)
     del table_name
     validate_module_permission(context, entity)
-    role_restricted = context.membership_role != "manager" and context.active_role not in {"manager", "super_admin"}
-    if context.scope_type == "personal" or not role_restricted:
+    if not is_assignment_scoped_active_role(
+        context.active_role,
+        context.scope_type,
+    ):
         return f"{alias}.organization_id = ?", (context.organization_id,)
     if entity == "packages":
         return (  # noqa: S608 - all SQL fragments are fixed by the entity branch

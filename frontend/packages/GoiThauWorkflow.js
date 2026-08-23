@@ -832,6 +832,12 @@ export async function editGoiThau(id, isReadOnly = false) {
   });
   assertEditWorkspaceCurrent();
   this.view.openModal("modal-goithau");
+  window.dispatchEvent(new CustomEvent("bf:package-editor-ready", {
+    detail: {
+      packageId: String(id || ""),
+      readOnly: Boolean(isReadOnly),
+    },
+  }));
 }
 // eslint-disable-next-line complexity -- Legacy package persistence orchestration is isolated for a dedicated refactor.
 export async function handleGoiThauSubmit(e) {

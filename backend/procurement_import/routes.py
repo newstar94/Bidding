@@ -13,6 +13,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from starlette.responses import JSONResponse
 
+from backend.auth.auth_helper import SessionRole
+from backend.auth.roles import resolve_workspace_active_role
+from backend.auth.session_store import session_invalid_reason
 from backend.auth.auth_service import get_client_ip, get_rate_limit_decision
 from backend.integrations.vneps.fake_procurement_provider import FixtureProcurementSource
 from backend.integrations.vneps.procurement_provider import VnepsProcurementSource
@@ -54,9 +57,13 @@ from backend.shared.async_io import (
     run_blocking_io,
 )
 from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
-from backend.shared.access_policy import has_module_permission
+from backend.shared.access_policy import (
+    authorize_record_write,
+    has_module_permission,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object
+from backend.shared.workspace_scope import is_personal_scope_for_user
 
 
 LOGGER = logging.getLogger(__name__)
@@ -1182,9 +1189,253 @@ def _resolve_revision_decisions(revision, preview_rows, decisions):
         ) from error
 
 
+def _deny_procurement_write(message):
+    raise ProcurementRouteError(
+        "ORGANIZATION_ACCESS_DENIED",
+        message,
+        403,
+    )
+
+
+def _reload_write_authority(cursor, session, organization_id):
+    """Lock and rebuild the current write authority inside its transaction."""
+
+    user_id = str(getattr(session, "user_id", "") or "").strip()
+    session_id = str(getattr(session, "session_id", "") or "").strip()
+    if not user_id or not session_id:
+        raise ProcurementRouteError(
+            "AUTHENTICATION_REQUIRED",
+            "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại.",
+            401,
+        )
+    row = cursor.execute(
+        """SELECT accounts.id,
+                  accounts.vai_tro,
+                  accounts.trang_thai AS account_status,
+                  sessions.id AS session_id,
+                  sessions.idle_expires_at,
+                  sessions.absolute_expires_at,
+                  sessions.revoked_at,
+                  sessions.active_role,
+                  sessions.active_role_organization_id
+             FROM auth_sessions AS sessions
+             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
+            WHERE sessions.id = ? AND sessions.user_id = ?
+            FOR UPDATE OF sessions, accounts""",
+        (session_id, user_id),
+    ).fetchone()
+    session_user = dict(row) if row is not None else None
+    if session_invalid_reason(session_user):
+        raise ProcurementRouteError(
+            "AUTHENTICATION_REQUIRED",
+            "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại.",
+            401,
+        )
+
+    if is_personal_scope_for_user(organization_id, user_id):
+        membership_role = "employee"
+        scope_type = "personal"
+    else:
+        membership = cursor.execute(
+            """SELECT membership.vai_tro_trong_to_chuc,
+                      membership.trang_thai_thanh_vien,
+                      organization.trang_thai AS organization_status
+                 FROM thanh_vien_to_chuc AS membership
+                 JOIN to_chuc AS organization
+                   ON organization.id = membership.organization_id
+                WHERE membership.user_id = ?
+                  AND membership.organization_id = ?
+                FOR UPDATE OF membership, organization""",
+            (user_id, organization_id),
+        ).fetchone()
+        if (
+            membership is None
+            or str(membership["trang_thai_thanh_vien"] or "").strip().lower()
+            != "active"
+            or str(membership["organization_status"] or "").strip().lower()
+            != "active"
+        ):
+            _deny_procurement_write(
+                "Không có quyền truy cập workspace hiện tại."
+            )
+        membership_role = str(
+            membership["vai_tro_trong_to_chuc"] or ""
+        ).strip().lower()
+        if membership_role not in {"manager", "employee"}:
+            _deny_procurement_write(
+                "Vai trò thành viên trong workspace không hợp lệ."
+            )
+        scope_type = "organization"
+
+    active_role = resolve_workspace_active_role(
+        platform_role=session_user["vai_tro"],
+        membership_role=membership_role,
+        scope_type=scope_type,
+        organization_id=organization_id,
+        selected_role=session_user.get("active_role"),
+        selected_organization_id=session_user.get(
+            "active_role_organization_id"
+        ),
+    )
+    return SessionRole(
+        active_role,
+        user_id,
+        session_id,
+        platform_role=session_user["vai_tro"],
+        active_role=active_role,
+        active_role_organization_id=(
+            str(session_user.get("active_role_organization_id") or "").strip()
+            or None
+        ),
+    )
+
+
+def _require_module_edit(cursor, session, organization_id, module):
+    cursor.execute(
+        """SELECT 1
+             FROM ma_tran_phan_quyen
+            WHERE organization_id = ? AND emp_id = ?
+            FOR UPDATE""",
+        (organization_id, session.user_id),
+    ).fetchone()
+    if not has_module_permission(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+        module,
+        "edit",
+    ):
+        _deny_procurement_write(
+            "Không có quyền áp dụng dữ liệu nhập trong workspace hiện tại."
+        )
+
+
+def _require_record_write(
+    cursor,
+    session,
+    organization_id,
+    payload_key,
+    table_name,
+    item,
+):
+    decision = authorize_record_write(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+        payload_key,
+        table_name,
+        item,
+    )
+    if not decision.allowed:
+        _deny_procurement_write(
+            decision.message
+            or "Không có quyền sửa bản ghi trong tiến trình nhập."
+        )
+
+
+def _lock_and_authorize_operation(
+    cursor,
+    organization_id,
+    operation_id,
+    actor_user_id,
+):
+    if not operation_id:
+        return
+    row = cursor.execute(
+        """SELECT actor_user_id
+             FROM procurement_import_operation
+            WHERE organization_id = ? AND id = ?
+            FOR UPDATE""",
+        (organization_id, operation_id),
+    ).fetchone()
+    if row is None or str(row[0]) != str(actor_user_id):
+        _deny_procurement_write(
+            "Chỉ người tạo tiến trình được tiếp tục áp dụng."
+        )
+
+
+def _authorize_plan_revision_write(
+    cursor,
+    session,
+    organization_id,
+    provider,
+    revision,
+    operation_id,
+):
+    _require_module_edit(cursor, session, organization_id, "kehoach")
+    _lock_and_authorize_operation(
+        cursor,
+        organization_id,
+        operation_id,
+        session.user_id,
+    )
+    family_no = str(revision.get("familyNo") or "").strip().upper()
+    repository = ProcurementImportRepository(cursor)
+    repository.lock_family(organization_id, provider, family_no)
+    family = repository.load_family(organization_id, provider, family_no)
+    plan = family.get("latestPlan")
+    if plan is not None:
+        _require_record_write(
+            cursor,
+            session,
+            organization_id,
+            "kehoach",
+            "ke_hoach_lcnt",
+            plan,
+        )
+    for package in family.get("packages") or []:
+        _require_record_write(
+            cursor,
+            session,
+            organization_id,
+            "goithau",
+            "goi_thau",
+            package,
+        )
+
+
+def _authorize_notice_revision_write(
+    cursor,
+    session,
+    organization_id,
+    provider,
+    notice,
+    target_package_root_id,
+    operation_id,
+):
+    _require_module_edit(cursor, session, organization_id, "goithau")
+    _lock_and_authorize_operation(
+        cursor,
+        organization_id,
+        operation_id,
+        session.user_id,
+    )
+    notice_no = str(notice.get("noticeNo") or "").strip().upper()
+    repository = ProcurementImportRepository(cursor)
+    repository.lock_family(organization_id, provider, notice_no)
+    target = repository.resolve_notice_target(
+        organization_id,
+        provider,
+        notice_no,
+        notice.get("relationship") or {},
+        target_root_id=target_package_root_id,
+    )
+    if target is not None:
+        _require_record_write(
+            cursor,
+            session,
+            organization_id,
+            "goithau",
+            "goi_thau",
+            target,
+        )
+
+
 def _apply_one(
     organization_id,
-    actor_user_id,
+    session,
     provider,
     revision,
     idempotency_key,
@@ -1192,11 +1443,23 @@ def _apply_one(
     investor_id,
     package_decisions=None,
     operation_id=None,
+    connection=None,
 ):
-    connection = database.get_connection()
+    owns_connection = connection is None
+    connection = connection or database.get_connection()
     try:
-        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        if owns_connection:
+            connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
         cursor = connection.cursor()
+        session = _reload_write_authority(cursor, session, organization_id)
+        _authorize_plan_revision_write(
+            cursor,
+            session,
+            organization_id,
+            provider,
+            revision,
+            operation_id,
+        )
         _validate_investor(cursor, organization_id, investor_id)
         normalized = deepcopy(revision)
         normalized["investorId"] = investor_id
@@ -1204,7 +1467,7 @@ def _apply_one(
             ProcurementImportRepository(cursor)
         ).reconcile_revision(
             organization_id=organization_id,
-            actor_user_id=actor_user_id,
+            actor_user_id=session.user_id,
             provider=provider,
             revision=normalized,
             idempotency_key=idempotency_key,
@@ -1212,33 +1475,50 @@ def _apply_one(
             package_decisions=package_decisions,
             operation_id=operation_id,
         )
-        connection.commit()
+        if owns_connection:
+            connection.commit()
         return result
     except Exception:
-        connection.rollback()
+        if owns_connection:
+            connection.rollback()
         raise
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def _apply_notice_one(
     organization_id,
-    actor_user_id,
+    session,
     provider,
     notice,
     idempotency_key,
     expected_package_row_version,
     target_package_root_id,
     operation_id=None,
+    connection=None,
 ):
-    connection = database.get_connection()
+    owns_connection = connection is None
+    connection = connection or database.get_connection()
     try:
-        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        if owns_connection:
+            connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        cursor = connection.cursor()
+        session = _reload_write_authority(cursor, session, organization_id)
+        _authorize_notice_revision_write(
+            cursor,
+            session,
+            organization_id,
+            provider,
+            notice,
+            target_package_root_id,
+            operation_id,
+        )
         result = ProcurementNoticeReconciler(
-            ProcurementImportRepository(connection.cursor())
+            ProcurementImportRepository(cursor)
         ).reconcile_revision(
             organization_id=organization_id,
-            actor_user_id=actor_user_id,
+            actor_user_id=session.user_id,
             provider=provider,
             notice=deepcopy(notice),
             idempotency_key=idempotency_key,
@@ -1246,13 +1526,16 @@ def _apply_notice_one(
             target_package_root_id=target_package_root_id,
             operation_id=operation_id,
         )
-        connection.commit()
+        if owns_connection:
+            connection.commit()
         return result
     except Exception:
-        connection.rollback()
+        if owns_connection:
+            connection.rollback()
         raise
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def _operation_id(organization_id, provider, family_no, idempotency_key):
@@ -1261,7 +1544,7 @@ def _operation_id(organization_id, provider, family_no, idempotency_key):
 
 
 def _create_operation(
-    organization_id, actor_user_id, bundle, stored, idempotency_key, decisions,
+    organization_id, session, bundle, stored, idempotency_key, decisions,
     expected_plan_row_version, resolved_revisions, package_decision_maps,
 ):
     operation_id = _operation_id(
@@ -1296,7 +1579,10 @@ def _create_operation(
     connection = database.get_connection()
     try:
         connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
-        operation = ProcurementImportRepository(connection.cursor()).create_operation({
+        cursor = connection.cursor()
+        session = _reload_write_authority(cursor, session, organization_id)
+        _require_module_edit(cursor, session, organization_id, "kehoach")
+        operation = ProcurementImportRepository(cursor).create_operation({
             "id": operation_id,
             "organizationId": organization_id,
             "provider": bundle["provider"],
@@ -1305,9 +1591,13 @@ def _create_operation(
             "bundleDigest": stored.bundle_digest,
             "idempotencyKey": idempotency_key,
             "requestHash": request_hash,
-            "actorUserId": actor_user_id,
+            "actorUserId": session.user_id,
             "revisionResults": manifest,
         })
+        if str(operation.get("actorUserId")) != str(session.user_id):
+            _deny_procurement_write(
+                "Idempotency key đã thuộc về một tiến trình khác."
+            )
         connection.commit()
     except Exception:
         connection.rollback()
@@ -1324,7 +1614,7 @@ def _create_operation(
 
 def _create_notice_operation(
     organization_id,
-    actor_user_id,
+    session,
     bundle,
     stored,
     idempotency_key,
@@ -1363,7 +1653,10 @@ def _create_notice_operation(
     connection = database.get_connection()
     try:
         connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
-        operation = ProcurementImportRepository(connection.cursor()).create_operation({
+        cursor = connection.cursor()
+        session = _reload_write_authority(cursor, session, organization_id)
+        _require_module_edit(cursor, session, organization_id, "goithau")
+        operation = ProcurementImportRepository(cursor).create_operation({
             "id": operation_id,
             "organizationId": organization_id,
             "provider": bundle["provider"],
@@ -1372,9 +1665,13 @@ def _create_notice_operation(
             "bundleDigest": stored.bundle_digest,
             "idempotencyKey": idempotency_key,
             "requestHash": request_hash,
-            "actorUserId": actor_user_id,
+            "actorUserId": session.user_id,
             "revisionResults": manifest,
         })
+        if str(operation.get("actorUserId")) != str(session.user_id):
+            _deny_procurement_write(
+                "Idempotency key đã thuộc về một tiến trình khác."
+            )
         connection.commit()
     except Exception:
         connection.rollback()
@@ -1475,7 +1772,7 @@ def _apply_blocking(request, payload):
     operation_status = None
     if all_history:
         operation_id, results, operation_status, start_index = _create_operation(
-            organization_id, session.user_id, bundle, stored, idempotency_key,
+            organization_id, session, bundle, stored, idempotency_key,
             decisions, payload.get("expectedPlanRowVersion"),
             resolved_revisions, package_decision_maps,
         )
@@ -1491,16 +1788,21 @@ def _apply_blocking(request, payload):
     if start_index:
         expected = results[start_index].get("expectedPlanRowVersion")
     current_index = start_index
+    batch_connection = None
+    if operation_id:
+        batch_connection = database.get_connection()
+        batch_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
     try:
         for index in range(start_index, len(resolved_revisions)):
             current_index = index
             revision = resolved_revisions[index]
             per_revision_key = f"{idempotency_key}:{revision['revisionId']}:{revision['revisionDigest']}"
             result = _apply_one(
-                organization_id, session.user_id, bundle["provider"], revision,
+                organization_id, session, bundle["provider"], revision,
                 per_revision_key, expected, decisions["investorId"],
                 package_decision_maps[index],
                 operation_id,
+                batch_connection,
             )
             public_result = {
                 "revisionId": revision["revisionId"],
@@ -1515,12 +1817,11 @@ def _apply_blocking(request, payload):
             else:
                 results.append(public_result)
             expected = 1
-            if operation_id:
-                _update_operation(
-                    organization_id, operation_id, index + 1, results,
-                    "COMPLETED" if index + 1 == len(resolved_revisions) else "RUNNING",
-                )
+        if batch_connection is not None:
+            batch_connection.commit()
     except Exception as error:
+        if batch_connection is not None:
+            batch_connection.rollback()
         if operation_id:
             if current_index < len(results):
                 results[current_index]["status"] = "FAILED"
@@ -1532,7 +1833,17 @@ def _apply_blocking(request, payload):
                 organization_id, operation_id, current_index, results, "FAILED"
             )
         raise
+    finally:
+        if batch_connection is not None:
+            batch_connection.close()
     if operation_id:
+        _update_operation(
+            organization_id,
+            operation_id,
+            len(results),
+            results,
+            "COMPLETED",
+        )
         return {
             "statusCode": 202, "operationId": operation_id,
             "status": "COMPLETED", "nextRevisionIndex": len(results),
@@ -1596,7 +1907,7 @@ def _apply_notice_blocking(request, payload):
         operation_id, results, operation_status, start_index = (
             _create_notice_operation(
                 organization_id,
-                session.user_id,
+                session,
                 bundle,
                 stored,
                 idempotency_key,
@@ -1618,6 +1929,10 @@ def _apply_notice_blocking(request, payload):
         expected = results[start_index - 1].get(
             "nextExpectedPackageRowVersion", expected
         )
+    batch_connection = None
+    if operation_id:
+        batch_connection = database.get_connection()
+        batch_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
     try:
         for index in range(start_index, len(revisions)):
             current_index = index
@@ -1628,13 +1943,14 @@ def _apply_notice_blocking(request, payload):
             )
             result = _apply_notice_one(
                 organization_id,
-                session.user_id,
+                session,
                 bundle["provider"],
                 revision,
                 per_revision_key,
                 expected,
                 bundle.get("targetPackageRootId"),
                 operation_id,
+                batch_connection,
             )
             package_ids = [
                 row["id"] for row in result.get("createdPackages", [])
@@ -1651,17 +1967,14 @@ def _apply_notice_blocking(request, payload):
             if operation_id:
                 results[index].update(public_result)
                 results[index]["status"] = "COMPLETED"
-                _update_operation(
-                    organization_id,
-                    operation_id,
-                    index + 1,
-                    results,
-                    "COMPLETED" if index + 1 == len(revisions) else "RUNNING",
-                )
             else:
                 results.append(public_result)
             expected = next_expected
+        if batch_connection is not None:
+            batch_connection.commit()
     except Exception as error:
+        if batch_connection is not None:
+            batch_connection.rollback()
         if operation_id:
             results[current_index]["status"] = "FAILED"
             results[current_index]["errorCode"] = (
@@ -1677,7 +1990,17 @@ def _apply_notice_blocking(request, payload):
                 "FAILED",
             )
         raise
+    finally:
+        if batch_connection is not None:
+            batch_connection.close()
     if operation_id:
+        _update_operation(
+            organization_id,
+            operation_id,
+            len(results),
+            results,
+            "COMPLETED",
+        )
         return {
             "statusCode": 202,
             "operationId": operation_id,
@@ -1734,32 +2057,57 @@ def _public_operation_result(row):
 
 def _resume_blocking(request, operation_id):
     session, organization_id, _lease = _request_context(request, None)
-    connection = database.get_connection()
+    batch_connection = database.get_connection()
+    operation = None
+    results = []
+    current_index = 0
+    resume_started = False
     try:
-        operation = ProcurementImportRepository(connection.cursor()).get_operation(
+        batch_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        cursor = batch_connection.cursor()
+        session = _reload_write_authority(cursor, session, organization_id)
+        operation = ProcurementImportRepository(cursor).get_operation(
             organization_id, operation_id
         )
-    finally:
-        connection.close()
-    if operation is None:
-        raise ProcurementRouteError(
-            "PROCUREMENT_OPERATION_NOT_FOUND", "Không tìm thấy tiến trình nhập.", 404
+        if operation is None:
+            raise ProcurementRouteError(
+                "PROCUREMENT_OPERATION_NOT_FOUND",
+                "Không tìm thấy tiến trình nhập.",
+                404,
+            )
+        _lock_and_authorize_operation(
+            cursor,
+            organization_id,
+            operation_id,
+            session.user_id,
         )
-    if operation["actorUserId"] != session.user_id:
-        raise ProcurementRouteError(
-            "ORGANIZATION_ACCESS_DENIED", "Chỉ người tạo tiến trình được resume.", 403
+        operation = ProcurementImportRepository(cursor).get_operation(
+            organization_id, operation_id
         )
-    if operation["status"] == "COMPLETED":
-        operation["revisionResults"] = [
-            _public_operation_result(row) for row in operation["revisionResults"]
-        ]
-        operation.pop("actorUserId", None)
-        operation.pop("requestHash", None)
-        return operation
-    results = operation["revisionResults"]
-    start = operation["nextRevisionIndex"]
-    current_index = start
-    try:
+        first_entry = next(iter(operation.get("revisionResults") or []), {})
+        _require_module_edit(
+            cursor,
+            session,
+            organization_id,
+            (
+                "goithau"
+                if first_entry.get("importKind") == "NOTICE"
+                else "kehoach"
+            ),
+        )
+        if operation["status"] == "COMPLETED":
+            batch_connection.rollback()
+            operation["revisionResults"] = [
+                _public_operation_result(row)
+                for row in operation["revisionResults"]
+            ]
+            operation.pop("actorUserId", None)
+            operation.pop("requestHash", None)
+            return operation
+        results = operation["revisionResults"]
+        start = operation["nextRevisionIndex"]
+        current_index = start
+        resume_started = True
         for index in range(start, len(results)):
             current_index = index
             entry = results[index]
@@ -1782,20 +2130,22 @@ def _resume_blocking(request, operation_id):
                     )
                 result = _apply_notice_one(
                     organization_id,
-                    session.user_id,
+                    session,
                     operation["provider"],
                     revision,
                     key,
                     expected,
                     entry.get("targetPackageRootId"),
                     operation_id,
+                    batch_connection,
                 )
             else:
                 result = _apply_one(
-                    organization_id, session.user_id, operation["provider"], revision,
+                    organization_id, session, operation["provider"], revision,
                     key, entry.get("expectedPlanRowVersion"), entry.get("investorId"),
                     entry.get("packageDecisions") or {},
                     operation_id,
+                    batch_connection,
                 )
             created_package_ids = [
                 row["id"] for row in result["createdPackages"]
@@ -1810,12 +2160,10 @@ def _resume_blocking(request, operation_id):
                     1 if created_package_ids else expected
                 )
             entry.pop("errorCode", None)
-            _update_operation(
-                organization_id, operation_id, index + 1, results,
-                "COMPLETED" if index + 1 == len(results) else "RUNNING",
-            )
+        batch_connection.commit()
     except Exception as error:
-        if current_index < len(results):
+        batch_connection.rollback()
+        if resume_started and current_index < len(results):
             results[current_index]["status"] = "FAILED"
             results[current_index]["errorCode"] = (
                 error.code
@@ -1824,10 +2172,20 @@ def _resume_blocking(request, operation_id):
                 if isinstance(error, ImportConflict)
                 else "PROCUREMENT_APPLY_FAILED"
             )
-        _update_operation(
-            organization_id, operation_id, current_index, results, "FAILED"
-        )
+        if resume_started:
+            _update_operation(
+                organization_id, operation_id, current_index, results, "FAILED"
+            )
         raise
+    finally:
+        batch_connection.close()
+    _update_operation(
+        organization_id,
+        operation_id,
+        len(results),
+        results,
+        "COMPLETED",
+    )
     public_operation = {
         **operation,
         "status": "COMPLETED",

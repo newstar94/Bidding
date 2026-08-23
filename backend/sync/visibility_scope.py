@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from backend.shared.access_policy import (
     WRITE_PROTECTED_KEYS,
     has_active_organization_membership,
+    has_module_permission,
     is_organization_manager,
     is_personal_workspace_owner,
 )
@@ -70,17 +71,27 @@ class VisibilityScope:
         )
         permissions = {}
         if active and not unrestricted:
-            columns = sorted(set(TABLE_TO_MODULE.values()))
-            row = cursor.execute(
-                f"SELECT {', '.join(columns)} FROM ma_tran_phan_quyen "  # noqa: S608 - columns come from canonical module registry
-                "WHERE organization_id = ? AND emp_id = ?",  # noqa: S608 - columns come from canonical module registry
-                (organization_id, user_id),
-            ).fetchone()
-            if row:
-                permissions = {
-                    column: str(row[index] or "").strip().lower()
-                    for index, column in enumerate(columns)
-                }
+            for module in sorted(set(TABLE_TO_MODULE.values())):
+                if has_module_permission(
+                    cursor,
+                    role_str,
+                    user_id,
+                    organization_id,
+                    module,
+                    "view",
+                ):
+                    permissions[module] = (
+                        "edit"
+                        if has_module_permission(
+                            cursor,
+                            role_str,
+                            user_id,
+                            organization_id,
+                            module,
+                            "edit",
+                        )
+                        else "view"
+                    )
         return cls(
             organization_id=str(organization_id),
             user_id=str(user_id),

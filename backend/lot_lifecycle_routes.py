@@ -241,6 +241,23 @@ async def create_lot_batch_api(request):
             authorization_basis=data.get("authorizationBasis", ""),
             actor_user_id=session.user_id,
         )
+        log_audit(
+            "lot_batch.created",
+            actor_user_id=session.user_id,
+            organization_id=organization_id,
+            target_type="lot_batch",
+            target_id=batch["id"],
+            request=request,
+            metadata={
+                "packageId": package_id,
+                "lotIds": batch["lotIds"],
+                "approvalMode": batch["approvalMode"],
+                "stagedApprovalAuthorized": staged_authorized,
+                "policyVersion": batch.get("policyVersion"),
+            },
+            cursor=cursor,
+            required=True,
+        )
         enqueue_websocket_event(
             cursor,
             "broadcast",

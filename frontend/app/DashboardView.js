@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { loadStyleOnce } from "../shared/externalAssets.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
@@ -19,6 +20,14 @@ import {
 } from "../shared/statusPresentation.js";
 
 export const DASHBOARD_STATUS_COLORS = STATUS_COLORS;
+const DASHBOARD_STYLESHEET_URL = new URL(
+  "./DashboardView.css?no-inline",
+  import.meta.url,
+).pathname;
+
+export function ensureDashboardStyles() {
+  return loadStyleOnce(DASHBOARD_STYLESHEET_URL);
+}
 export { CONTRACT_STATUS_COLORS, PACKAGE_STATUS_COLORS, PLAN_STATUS_COLORS };
 const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
 const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];

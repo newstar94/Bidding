@@ -9,9 +9,11 @@ from backend.sync.visibility_scope import SqlPredicate
 class _VersionedRecordCursor:
     def __init__(self):
         self._query = ""
+        self.events = []
 
-    def execute(self, sql, _params=()):
+    def execute(self, sql, params=()):
         self._query = sql
+        self.events.append(("sql", " ".join(sql.split()), tuple(params)))
         return self
 
     def fetchone(self):
@@ -59,7 +61,11 @@ def test_single_record_lookup_includes_version_family_metadata(monkeypatch):
         lambda: _Connection(cursor),
     )
     monkeypatch.setattr(read_service, "can_read_table", lambda *_args: True)
-    monkeypatch.setattr(read_service, "can_read_record", lambda *_args: True)
+    def authorize_root_record(*_args):
+        cursor.events.append(("authorized", "root-record", ()))
+        return True
+
+    monkeypatch.setattr(read_service, "can_read_record", authorize_root_record)
     monkeypatch.setattr(
         read_service.VisibilityScope,
         "resolve",
@@ -104,6 +110,24 @@ def test_single_record_lookup_includes_version_family_metadata(monkeypatch):
         {"id": "plan-v01", "phienBan": "01"},
         {"id": "plan-v00", "phienBan": "00"},
     ]
+    root_query_index = next(
+        index
+        for index, event in enumerate(cursor.events)
+        if event[0] == "sql" and "SELECT * FROM ke_hoach_lcnt" in event[1]
+    )
+    authorization_index = next(
+        index
+        for index, event in enumerate(cursor.events)
+        if event[0] == "authorized"
+    )
+    versions_index = next(
+        index
+        for index, event in enumerate(cursor.events)
+        if event[0] == "sql" and "SELECT id, phien_ban" in event[1]
+    )
+    assert root_query_index < authorization_index < versions_index
+    assert cursor.events[root_query_index][2][0] == "org-1"
+    assert cursor.events[versions_index][2][0] == "org-1"
 
 
 def test_single_record_lookup_supports_historical_expert(monkeypatch):

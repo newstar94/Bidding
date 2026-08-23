@@ -11,6 +11,11 @@ const BASELINE = Object.freeze({
   brotli: 52_725,
 });
 const ROUTES = Object.freeze([
+  [
+    "frontend/app/DashboardView.js",
+    ".dashboard-visually-hidden",
+    "frontend/app/BiddingView.js",
+  ],
   ["frontend/landing/LandingPage.js", ".landing-eyebrow-dot", "frontend/app/app.js"],
   ["frontend/legal/LegalPage.js", ".legal-document-note", "frontend/app/app.js"],
   ["frontend/errors/NotFoundPage.js", ".bf-not-found", "frontend/app/app.js"],

@@ -45,7 +45,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     getElementById() { return null; },
     querySelector() { return null; },
   });
-  installGlobal("navigator", { onLine: false });
+  installGlobal("navigator", { onLine: true });
   installGlobal("CustomEvent", class CustomEvent {
     constructor(type, options = {}) {
       this.type = type;
@@ -59,6 +59,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
 
   try {
     const syncCalls = [];
+    const pushCalls = [];
     const activeUser = {
       id: "user-1",
       name: "Chuyên viên",
@@ -99,6 +100,11 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     Object.assign(controller, {
       _pendingDetailRecordLoads: new Map(),
       _workspacePullGenerations: new Map(),
+      _startupReconciliationPromise: Promise.resolve({ ok: false, stale: true }),
+      autoSync: async () => {
+        pushCalls.push("push");
+        return { ok: true };
+      },
       disconnectWebSocket() {},
       forceSyncData: async (...args) => {
         syncCalls.push(args);
@@ -115,7 +121,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
       },
     });
 
-    await controller.switchWorkspaceContext("org-hcp", { skipPendingFlush: true });
+    await controller.switchWorkspaceContext("org-hcp");
 
     assert.deepEqual(
       syncCalls,
@@ -124,6 +130,11 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     );
     assert.equal(model.workspaceScope.organizationId, "org-hcp");
     assert.equal(session.getItem("bf_active_org"), "org-hcp");
+    assert.deepEqual(
+      pushCalls,
+      [],
+      "workspace switching must not wait on a stale startup pull before changing scope",
+    );
   } finally {
     globalNames.forEach((name) => {
       const descriptor = previousGlobals[name];

@@ -2312,6 +2312,51 @@ def _upgrade_to_v62_add_ai_message_idempotency(cursor, _context):
            WHERE client_request_id IS NOT NULL"""
     )
 
+
+def _upgrade_to_v63_scope_procurement_operation_idempotency(cursor, _context):
+    """Align import-operation idempotency with its family-scoped identity."""
+
+    row = cursor.execute(
+        """SELECT COUNT(*)
+             FROM (
+               SELECT 1
+                 FROM procurement_import_operation
+                GROUP BY organization_id, provider, family_key, idempotency_key
+               HAVING COUNT(*) > 1
+             ) duplicate_groups"""
+    ).fetchone()
+    duplicate_groups = int(row[0]) if row else 0
+    if duplicate_groups:
+        raise RuntimeError(
+            "v63 procurement operation idempotency preflight failed: "
+            f"{duplicate_groups} duplicate family-scoped groups require repair."
+        )
+
+    cursor.execute(
+        """ALTER TABLE procurement_import_operation
+           DROP CONSTRAINT IF EXISTS
+           procurement_import_operation_organization_id_provider_idemp_key"""
+    )
+    cursor.execute(
+        """DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE connamespace = current_schema()::regnamespace
+                   AND conrelid = 'procurement_import_operation'::regclass
+                   AND conname =
+                       'procurement_import_operation_family_idempotency_unique'
+              ) THEN
+                ALTER TABLE procurement_import_operation
+                  ADD CONSTRAINT
+                    procurement_import_operation_family_idempotency_unique
+                  UNIQUE (
+                    organization_id, provider, family_key, idempotency_key
+                  );
+              END IF;
+            END $$"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2613,6 +2658,11 @@ UPGRADES = (
         62,
         "add_ai_message_idempotency",
         _upgrade_to_v62_add_ai_message_idempotency,
+    ),
+    DatabaseUpgrade(
+        63,
+        "scope_procurement_operation_idempotency",
+        _upgrade_to_v63_scope_procurement_operation_idempotency,
     ),
 )
 

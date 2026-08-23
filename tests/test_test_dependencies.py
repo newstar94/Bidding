@@ -58,9 +58,11 @@ def test_full_ci_runs_independent_gates_and_installs_required_browsers():
     assert set(jobs["release"]["needs"]) == set(jobs) - {"release"}
 
     e2e_runs = _job_runs(workflow, "e2e")
+    unit_js_runs = _job_runs(workflow, "unit-js")
     performance_runs = _job_runs(workflow, "performance")
     package_runs = _job_runs(workflow, "package")
     assert "npx playwright install --with-deps chromium firefox webkit" in e2e_runs
+    assert "npx playwright install --with-deps chromium" in unit_js_runs
     assert "npx playwright install --with-deps chromium" in performance_runs
     for gate, runs in (
         ("npm run test:e2e:smoke", e2e_runs),

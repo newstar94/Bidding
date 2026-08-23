@@ -16,9 +16,11 @@ test("the application shell stays hidden until render-blocking styles are ready"
   const legalPage = read("frontend/legal/LegalPage.js");
 
   assert.match(index, /<body\b[^>]*\bhidden\b[^>]*>/u);
-  assert.match(routeShell, /shell\s*!==\s*"workspace"/u);
   assert.match(routeShell, /DOMContentLoaded/u);
   assert.match(routeShell, /document\.body\?\.removeAttribute\("hidden"\)/u);
+  assert.match(routeShell, /__BF_BOOTSTRAP_FATAL__/u);
+  assert.match(routeShell, /setTimeout\(showBootstrapFailure/u);
+  assert.match(routeShell, /shell\s*===\s*"workspace"/u);
   assert.match(landingPage, /await loadStyleOnce\(LANDING_STYLESHEET_URL\)[\s\S]*document\.body\.removeAttribute\("hidden"\)/u);
   assert.match(legalPage, /await loadStyleOnce\(LEGAL_STYLESHEET_URL\)[\s\S]*document\.body\.removeAttribute\("hidden"\)/u);
 });

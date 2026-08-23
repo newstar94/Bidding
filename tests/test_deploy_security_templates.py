@@ -178,6 +178,12 @@ def test_systemd_template_passes_every_validated_uvicorn_limit():
 
     assert "--host 127.0.0.1" in service
     assert "--no-proxy-headers" in service
+    assert "RuntimeDirectory=biddingflow-metrics" in service
+    assert "RuntimeDirectoryPreserve=no" in service
+    assert (
+        "Environment=BIDDING_METRICS_MULTIPROCESS_DIR=/run/biddingflow-metrics"
+        in service
+    )
     for variable, option in variables.items():
         assert re.search(rf"^{variable}=\d+$", environment, re.MULTILINE)
         assert f"{option} ${{{variable}}}" in service

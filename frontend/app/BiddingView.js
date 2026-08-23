@@ -68,7 +68,11 @@ function applyDialogTone(modal, iconName) {
 }
 
 const VIEW_MODULE_LOADERS = Object.freeze({
-  dashboard: () => import("./DashboardView.js"),
+  dashboard: async () => {
+    const module = await import("./DashboardView.js");
+    await module.ensureDashboardStyles();
+    return module;
+  },
   plan: () => import("./PlanView.js"),
   partner: () => import("../partners/PartnerView.js"),
   timeline: () => import("../packages/PackageTimelineView.js")
@@ -466,8 +470,42 @@ export class BiddingView {
       this.enhanceVisibleContent(modal);
       this.createIconsScoped(modal);
     } else if (getAppController()?.ensureLazyModal) {
-      getAppController().ensureLazyModal(modalId).then(() => this.openModal(modalId)).catch((err) => console.error("Failed to lazy-load modal:", modalId, err));
+      return getAppController().ensureLazyModal(modalId)
+        .then(() => this.openModal(modalId))
+        .catch((error) => this.handleLazyModalFailure(modalId, error));
     }
+    return modal || null;
+  }
+  async handleLazyModalFailure(modalId, error) {
+    console.error("Failed to lazy-load modal:", modalId, error);
+    this._lazyModalFailureDialogs ||= new Map();
+    if (this._lazyModalFailureDialogs.has(modalId)) {
+      return this._lazyModalFailureDialogs.get(modalId);
+    }
+    const recovery = (async () => {
+      const retry = await this.customConfirm(
+        "Không thể mở biểu mẫu",
+        "Biểu mẫu chưa tải được. Bạn có thể thử lại hoặc đóng thông báo để tiếp tục làm việc.",
+        "alert-triangle",
+        { confirmLabel: "Thử lại", cancelLabel: "Đóng" },
+      );
+      if (!retry) return false;
+      try {
+        await getAppController()?.ensureLazyModal?.(modalId);
+        this.openModal(modalId);
+        return true;
+      } catch (retryError) {
+        console.error("Failed to retry lazy modal:", modalId, retryError);
+        this.showToast(
+          "Không thể mở biểu mẫu",
+          "Vui lòng kiểm tra kết nối và thử lại sau.",
+          "error",
+        );
+        return false;
+      }
+    })().finally(() => this._lazyModalFailureDialogs.delete(modalId));
+    this._lazyModalFailureDialogs.set(modalId, recovery);
+    return recovery;
   }
   initFlatpickr(container = document) {
     const hasDateInputs = container.querySelector?.("input.flatpickr-date, input.flatpickr-datetime");

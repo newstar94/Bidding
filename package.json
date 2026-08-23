@@ -76,7 +76,6 @@
     "vite": "8.1.4"
   },
   "dependencies": {
-    "@openai/codex-security": "^0.1.16",
     "dompurify": "3.4.13",
     "playwright": "1.62.0",
     "puppeteer": "^25.6.0"

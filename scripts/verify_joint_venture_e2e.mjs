@@ -556,11 +556,21 @@ try {
     await page.locator("#btn-dialog-ok").click();
     await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   }
-  if (await uploadedTemplateRow.locator(".btn-activate-template").count()) {
-    await uploadedTemplateRow.locator(".btn-activate-template").last().click();
+  const availabilityToggle = uploadedTemplateRow.locator(".btn-toggle-template-availability");
+  if (await availabilityToggle.count() && await availabilityToggle.getAttribute("aria-pressed") !== "true") {
+    const activationResponsePromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/templates/active"
+    ), { timeout: 20_000 });
+    await availabilityToggle.click();
+    const activationResponse = await activationResponsePromise;
+    const activationBody = await activationResponse.text();
+    if (!activationResponse.ok()) {
+      throw new Error(`Word template activation returned ${activationResponse.status()}: ${activationBody}`);
+    }
   }
   await page.locator("#word-templates-tbody tr").filter({ hasText: runId })
-    .filter({ hasText: "Đang hoạt động" }).waitFor({ state: "visible", timeout: 20_000 });
+    .filter({ hasText: "Sẵn sàng" }).waitFor({ state: "visible", timeout: 20_000 });
   mark("word-template-uploaded-and-activated", wordTemplateEvidence);
 
   await openPackage(page, "opening");

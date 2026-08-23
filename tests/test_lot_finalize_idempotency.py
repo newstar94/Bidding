@@ -144,6 +144,16 @@ class _Request:
         self.path_params = {"package_id": "package-1", "batch_id": "batch-1"}
 
 
+class _CreateRequest:
+    def __init__(self):
+        self.payload = {
+            "lotIds": ["lot-1", "lot-2"],
+            "approvalMode": "CONSOLIDATED_APPROVAL",
+        }
+        self.headers = {}
+        self.path_params = {"package_id": "package-1"}
+
+
 class _Connection:
     def __init__(self, cursor, events):
         self._cursor = cursor
@@ -168,6 +178,98 @@ class _Connection:
 
 def _response_json(response):
     return json.loads(bytes(response.body).decode("utf-8"))
+
+
+def _configure_create_route(monkeypatch, connection, *, audit):
+    async def read_json(request):
+        return request.payload, None
+
+    monkeypatch.setattr(lot_lifecycle_routes, "read_json_object", read_json)
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "validate_or_response",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-1")),
+    )
+    monkeypatch.setattr(lot_lifecycle_routes, "get_active_org", lambda *_: "org-1")
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "authorize_record_write",
+        lambda *_args, **_kwargs: SimpleNamespace(allowed=True, reason=""),
+    )
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "package_mutability_error",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        lot_lifecycle_routes.database,
+        "get_connection",
+        lambda: connection,
+    )
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "create_batch",
+        lambda *_args, **_kwargs: {
+            "id": "batch-1",
+            "lotIds": ["lot-1", "lot-2"],
+            "approvalMode": "CONSOLIDATED_APPROVAL",
+            "syncVersion": 23,
+        },
+    )
+    monkeypatch.setattr(lot_lifecycle_routes, "log_audit", audit)
+
+
+def test_create_lot_batch_writes_required_audit_before_commit(monkeypatch):
+    cursor = _IdempotencyCursor()
+    events = []
+    connection = _Connection(cursor, events)
+    audit_calls = []
+
+    def audit(action, **kwargs):
+        audit_calls.append((action, kwargs))
+        events.append("audit")
+
+    _configure_create_route(monkeypatch, connection, audit=audit)
+
+    response = asyncio.run(
+        lot_lifecycle_routes.create_lot_batch_api(_CreateRequest())
+    )
+
+    assert response.status_code == 201
+    assert events.index("audit") < events.index("commit")
+    assert audit_calls[0][0] == "lot_batch.created"
+    assert audit_calls[0][1]["cursor"] is cursor
+    assert audit_calls[0][1]["required"] is True
+
+
+def test_create_lot_batch_rolls_back_when_required_audit_fails(monkeypatch):
+    cursor = _IdempotencyCursor()
+    events = []
+    connection = _Connection(cursor, events)
+
+    def fail_audit(*_args, **_kwargs):
+        events.append("audit_failed")
+        raise RuntimeError("audit unavailable")
+
+    _configure_create_route(monkeypatch, connection, audit=fail_audit)
+    monkeypatch.setattr(
+        lot_lifecycle_routes,
+        "log_and_error",
+        lambda *_args, **_kwargs: JSONResponse({"error": "failed"}, status_code=500),
+    )
+
+    response = asyncio.run(
+        lot_lifecycle_routes.create_lot_batch_api(_CreateRequest())
+    )
+
+    assert response.status_code == 500
+    assert "rollback" in events
+    assert "commit" not in events
 
 
 def test_finalize_route_replays_committed_result_after_response_path_fails(

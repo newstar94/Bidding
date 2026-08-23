@@ -31,9 +31,13 @@ def increment(name: str, value: float = 1) -> None:
         _values[name] += float(value)
 
 
-def render_prometheus_lines() -> list[str]:
+def snapshot_values() -> dict[str, float]:
     with _lock:
-        snapshot = dict(_values)
+        return dict(_values)
+
+
+def render_prometheus_lines(values=None) -> list[str]:
+    snapshot = snapshot_values() if values is None else dict(values)
     lines = []
     for name in sorted(_allowed):
         metric_type = "gauge" if name == "ai_active_streams" else "counter"

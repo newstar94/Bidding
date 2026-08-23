@@ -264,6 +264,59 @@ def test_full_refresh_projection_keeps_assigned_package_and_child_only():
         database.close()
 
 
+def test_manager_employee_persona_sync_inherits_view_without_matrix():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, manager_id, package_id = _seed_denied_package(cursor)
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+               SET vai_tro_trong_to_chuc = 'manager'
+               WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, manager_id),
+        )
+        cursor.execute(
+            "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
+            (organization_id, manager_id),
+        )
+        cursor.execute(
+            """UPDATE phan_cong_nhan_su
+               SET id_nhan_vien = ?
+               WHERE organization_id = ? AND id_muc_tieu = ?""",
+            (manager_id, organization_id, package_id),
+        )
+        scope = VisibilityScope.resolve(
+            cursor,
+            SessionRole(
+                "user",
+                manager_id,
+                platform_role="user",
+                active_role="employee",
+            ),
+            manager_id,
+            organization_id,
+        )
+
+        predicate = scope.live_predicate("goi_thau", "source_row")
+        visible_ids = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT source_row.id FROM goi_thau AS source_row WHERE "  # noqa: S608 - predicate is registry-built
+                + predicate.sql,
+                predicate.parameters,
+            ).fetchall()
+        }
+
+        assert scope.unrestricted is False
+        assert scope.permissions["goithau"] == "view"
+        assert visible_ids == {package_id}
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
 def test_deletion_scope_accepts_historical_assignment_snapshot_without_broadening_scope():
     scope = VisibilityScope(
         organization_id="org-a",

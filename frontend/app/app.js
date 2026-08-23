@@ -12,6 +12,7 @@ import {
   preferredWorkspaceId
 } from "../auth/sessionBootstrapPolicy.js";
 import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
+import { runApplicationBootstrap } from "./bootstrapRecovery.js";
 installReleaseDiagnostics();
 const startupMark = (name) => {
   try {
@@ -195,8 +196,18 @@ const scheduleServiceWorkerRegistration = () => {
     window.setTimeout(register, 1000);
   }
 };
+const startApplication = () => runApplicationBootstrap(
+  bootstrapApplication,
+  {
+    onSuccess: () => window.__BF_BOOTSTRAP_COMPLETE__?.(),
+    onFailure: (error) => {
+      console.error("Application bootstrap failed:", error);
+      window.__BF_BOOTSTRAP_FATAL__?.(error);
+    },
+  },
+);
 if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", bootstrapApplication, { once: true });
+  window.addEventListener("DOMContentLoaded", startApplication, { once: true });
 } else {
-  bootstrapApplication();
+  void startApplication();
 }

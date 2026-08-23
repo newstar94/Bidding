@@ -2577,8 +2577,8 @@
       "table": "phan_cong_nhan_su",
       "valid": true
     },
-    "procurement_import_operation_organization_id_provider_idemp_key": {
-      "definition": "CREATE UNIQUE INDEX procurement_import_operation_organization_id_provider_idemp_key ON $SCHEMA.procurement_import_operation USING btree (organization_id, provider, idempotency_key)",
+    "procurement_import_operation_family_idempotency_unique": {
+      "definition": "CREATE UNIQUE INDEX procurement_import_operation_family_idempotency_unique ON $SCHEMA.procurement_import_operation USING btree (organization_id, provider, family_key, idempotency_key)",
       "live": true,
       "ready": true,
       "table": "procurement_import_operation",
@@ -2838,7 +2838,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 62,
+  "schemaVersion": 63,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -14498,6 +14498,13 @@
           "kind": "c",
           "validated": true
         },
+        "procurement_import_operation_family_idempotency_unique": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, provider, family_key, idempotency_key)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
         "procurement_import_operation_family_key_check": {
           "deferrable": false,
           "definition": "CHECK (TRIM(BOTH FROM family_key) <> ''::text)",
@@ -14538,13 +14545,6 @@
           "definition": "CHECK (TRIM(BOTH FROM organization_id) <> ''::text)",
           "initiallyDeferred": false,
           "kind": "c",
-          "validated": true
-        },
-        "procurement_import_operation_organization_id_provider_idemp_key": {
-          "deferrable": false,
-          "definition": "UNIQUE (organization_id, provider, idempotency_key)",
-          "initiallyDeferred": false,
-          "kind": "u",
           "validated": true
         },
         "procurement_import_operation_pkey": {

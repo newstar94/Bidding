@@ -1,10 +1,16 @@
+import json
 import sqlite3
 import time
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
 from backend.auth.auth_helper import SessionRole
+from backend.ai.errors import AiError
+from backend.ai.types import AiRequestContext
+from backend.ai.workspace_search import search_workspace_records
+from backend.analytics.query_scope import visibility_clause
 from backend.documents.docx_context_policy import project_docx_context
 from backend.shared.access_policy import (
     can_read_record,
@@ -20,6 +26,8 @@ from tests.test_sync_conflict_authorization import (
     _test_database,
 )
 from backend.sync.visibility_epoch import VISIBILITY_POLICY_VERSION
+from backend.sync.visibility_scope import VisibilityScope
+import backend.sync.pagination as pagination_module
 
 
 def _enable_organization_word_export(cursor, organization_id):
@@ -405,6 +413,246 @@ def test_manager_employee_persona_reads_only_assigned_records_without_matrix():
             cursor, role, manager_id, organization_id,
             "goithau", "goi_thau", package,
         )
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_active_persona_returns_same_package_ids_across_read_channels(monkeypatch):
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, user_id, unassigned_id = _seed_denied_package(cursor)
+        foreign_organization_id, _foreign_user_id, foreign_id = (
+            _seed_denied_package(cursor)
+        )
+        plan_id = cursor.execute(
+            "SELECT ke_hoach_id FROM goi_thau WHERE id = ?",
+            (unassigned_id,),
+        ).fetchone()[0]
+        assigned_id = f"package-assigned-{uuid.uuid4().hex}"
+        cursor.execute(
+            """INSERT INTO goi_thau
+               (id, organization_id, id_goc, ke_hoach_id, ten_goi_thau,
+                gia_goi_thau, thoi_gian_thuc_hien, nguon_von,
+                thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, trang_thai)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PREPARING')""",
+            (
+                assigned_id,
+                organization_id,
+                assigned_id,
+                plan_id,
+                "Gói thầu được phân công",
+                200_000_000,
+                "45 ngày",
+                "Ngân sách kiểm thử",
+                "Quý III/2026",
+                "Tháng 8/2026",
+            ),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+               (id, organization_id, id_nhan_vien, id_muc_tieu,
+                loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (
+                f"assignment-{uuid.uuid4().hex}",
+                organization_id,
+                user_id,
+                assigned_id,
+            ),
+        )
+
+        class BorrowedConnection:
+            def cursor(self):
+                return connection.cursor()
+
+            def close(self):
+                return None
+
+        monkeypatch.setattr(
+            pagination_module.database,
+            "get_connection",
+            lambda: BorrowedConnection(),
+        )
+        monkeypatch.setattr(
+            pagination_module,
+            "get_active_org",
+            lambda *_args, **_kwargs: organization_id,
+        )
+
+        candidates = (assigned_id, unassigned_id, foreign_id)
+
+        def ids_for_channels(role, permissions):
+            monkeypatch.setattr(
+                pagination_module,
+                "verify_session",
+                lambda _request: (True, role),
+            )
+            request = SimpleNamespace(
+                query_params={"table": "goithau", "pageSize": "20"},
+                cookies={},
+                headers={"X-Active-Org": organization_id},
+            )
+            list_response = pagination_module._paginate_records_blocking(request)
+            assert list_response.status_code == 200
+            list_ids = {
+                item["id"]
+                for item in json.loads(list_response.body)["items"]
+            }
+
+            detail_ids = set()
+            for record_id in candidates:
+                row = cursor.execute(
+                    """SELECT * FROM goi_thau
+                       WHERE organization_id = ? AND id = ?""",
+                    (organization_id, record_id),
+                ).fetchone()
+                if row is not None and can_read_record(
+                    cursor,
+                    role,
+                    user_id,
+                    organization_id,
+                    "goithau",
+                    "goi_thau",
+                    dict(row),
+                ):
+                    detail_ids.add(record_id)
+
+            sync_scope = VisibilityScope.resolve(
+                cursor, role, user_id, organization_id
+            )
+            sync_predicate = sync_scope.live_predicate(
+                "goi_thau", "record"
+            )
+            sync_ids = {
+                row[0]
+                for row in cursor.execute(
+                    "SELECT record.id FROM goi_thau AS record WHERE "  # noqa: S608 - predicate is registry-built
+                    + sync_predicate.sql
+                    + " AND record.is_latest = 1 AND record.archived_at IS NULL",
+                    sync_predicate.parameters,
+                ).fetchall()
+            }
+
+            context = AiRequestContext(
+                user_id=user_id,
+                organization_id=organization_id,
+                organization_name="Tổ chức kiểm thử",
+                platform_role="user",
+                membership_role=str(
+                    cursor.execute(
+                        """SELECT vai_tro_trong_to_chuc
+                           FROM thanh_vien_to_chuc
+                           WHERE organization_id = ? AND user_id = ?""",
+                        (organization_id, user_id),
+                    ).fetchone()[0]
+                ),
+                scope_type="organization",
+                active_role=role.active_role,
+                permissions=permissions,
+            )
+            try:
+                ai_result = search_workspace_records(
+                    cursor,
+                    context,
+                    {
+                        "entity": "packages",
+                        "operation": "list",
+                        "query": "",
+                        "status": "",
+                        "packageId": "",
+                        "limit": 20,
+                    },
+                )
+                ai_ids = {row["id"] for row in ai_result.records}
+            except AiError as error:
+                assert error.code == "AI_PERMISSION_DENIED"
+                ai_ids = set()
+
+            try:
+                clause, parameters = visibility_clause(
+                    context, "packages", "record"
+                )
+                analytics_ids = {
+                    row[0]
+                    for row in cursor.execute(
+                        "SELECT record.id FROM goi_thau AS record WHERE "  # noqa: S608 - clause is fixed by entity registry
+                        + clause
+                        + " AND record.is_latest = 1 "
+                        "AND record.archived_at IS NULL",
+                        parameters,
+                    ).fetchall()
+                }
+            except AiError as error:
+                assert error.code == "AI_PERMISSION_DENIED"
+                analytics_ids = set()
+
+            return {
+                "list": list_ids,
+                "detail": detail_ids,
+                "sync": sync_ids,
+                "ai": ai_ids,
+                "analytics": analytics_ids,
+            }
+
+        def assert_channels(expected, role, permissions):
+            observed = ids_for_channels(role, permissions)
+            assert observed == {channel: expected for channel in observed}
+            assert foreign_id not in set().union(*observed.values())
+
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+               SET vai_tro_trong_to_chuc = 'manager'
+               WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, user_id),
+        )
+        cursor.execute(
+            "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
+            (organization_id, user_id),
+        )
+        assert_channels(
+            {assigned_id, unassigned_id},
+            SessionRole(
+                "user", user_id, platform_role="user", active_role="manager"
+            ),
+            {"goithau": "view"},
+        )
+        assert_channels(
+            {assigned_id},
+            SessionRole(
+                "user", user_id, platform_role="user", active_role="employee"
+            ),
+            {"goithau": "view"},
+        )
+
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+               SET vai_tro_trong_to_chuc = 'employee'
+               WHERE organization_id = ? AND user_id = ?""",
+            (organization_id, user_id),
+        )
+        cursor.execute(
+            """INSERT INTO ma_tran_phan_quyen
+               (id, organization_id, emp_id, goithau)
+               VALUES (?, ?, ?, 'view')""",
+            (f"permission-{uuid.uuid4().hex}", organization_id, user_id),
+        )
+        employee_role = SessionRole(
+            "user", user_id, platform_role="user", active_role="employee"
+        )
+        assert_channels(
+            {assigned_id}, employee_role, {"goithau": "view"}
+        )
+
+        cursor.execute(
+            "DELETE FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
+            (organization_id, user_id),
+        )
+        assert_channels(set(), employee_role, {})
+        assert foreign_organization_id != organization_id
     finally:
         connection.rollback()
         connection.close()

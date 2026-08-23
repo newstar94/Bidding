@@ -512,7 +512,7 @@ def test_raw_snapshot_schema_and_migration_are_append_only():
         and upgrade.name == "add_procurement_raw_snapshots"
         for upgrade in UPGRADES
     )
-    assert UPGRADES[-1].version == 62
+    assert UPGRADES[-1].version == 63
 
 
 def test_real_postgres_raw_snapshot_round_trip_dedup_and_immutability():

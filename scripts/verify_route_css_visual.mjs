@@ -116,8 +116,31 @@ const percentile = (values, ratio) => {
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)];
 };
 const measureNavigation = async (page) => {
+  const diagnostics = [];
+  page.on("console", (message) => diagnostics.push(`console:${message.type()}:${message.text()}`));
+  page.on("pageerror", (error) => diagnostics.push(`pageerror:${error.message}`));
+  page.on("requestfailed", (request) => diagnostics.push(
+    `requestfailed:${request.url()}:${request.failure()?.errorText || "unknown"}`,
+  ));
   await page.goto("http://127.0.0.1:" + port + "/", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => document.body.classList.contains("landing-ready"));
+  try {
+    await page.waitForFunction(
+      () => document.body.classList.contains("landing-ready"),
+    );
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      bodyClass: document.body.className,
+      shell: document.documentElement.dataset.bfShell || "",
+      fatal: document.getElementById("bf-bootstrap-fatal")?.textContent || "",
+    }));
+    throw new Error(
+      `Built landing route did not become ready: ${JSON.stringify({
+        state,
+        diagnostics: diagnostics.slice(-12),
+      })}`,
+      { cause: error },
+    );
+  }
   const metrics = await page.evaluate(() => {
     const readyMs = Math.round(performance.now() * 100) / 100;
     const longestTaskMs = Math.round(

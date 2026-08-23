@@ -584,6 +584,10 @@ async function importAndPersist(page, packageData, workflowTab) {
     const verified = runFixture("verify", fixturePayload);
     mark("postgres-verified", verified);
 
+    // A new login intentionally replaces the account's previous server session.
+    // Close the completed writer page so its background sync cannot report that
+    // expected replacement as an unrelated workflow HTTP failure.
+    await page.close();
     const secondContext = await browser.newContext({
       locale: "vi-VN",
       timezoneId: "Asia/Ho_Chi_Minh",

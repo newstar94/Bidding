@@ -21,6 +21,7 @@ WEBSOCKET_DISPATCH_MIGRATION_VERSION = 59
 SYNCED_DELETE_SNAPSHOT_MIGRATION_VERSION = 60
 DEFAULT_WORKSPACE_RENAME_MIGRATION_VERSION = 61
 AI_MESSAGE_IDEMPOTENCY_MIGRATION_VERSION = 62
+PROCUREMENT_OPERATION_IDEMPOTENCY_MIGRATION_VERSION = 63
 
 
 def inspect_database_upgrade(
@@ -310,6 +311,33 @@ def inspect_database_upgrade(
         "newColumnStartsNull": crosses_v62,
     }
 
+    crosses_v63 = (
+        current is not None
+        and current < PROCUREMENT_OPERATION_IDEMPOTENCY_MIGRATION_VERSION <= target
+    )
+    procurement_operation_idempotency_report = {
+        "applies": crosses_v63,
+        "duplicateFamilyScopedGroups": 0,
+        "requiresDataRepair": False,
+        "requiresLockBudget": crosses_v63,
+    }
+    if crosses_v63:
+        row = cursor.execute(
+            """SELECT COUNT(*)
+                 FROM (
+                   SELECT 1
+                     FROM procurement_import_operation
+                    GROUP BY organization_id, provider, family_key,
+                             idempotency_key
+                   HAVING COUNT(*) > 1
+                 ) duplicate_groups"""
+        ).fetchone()
+        duplicate_groups = int(row[0]) if row else 0
+        procurement_operation_idempotency_report.update({
+            "duplicateFamilyScopedGroups": duplicate_groups,
+            "requiresDataRepair": duplicate_groups > 0,
+        })
+
     return {
         "currentVersion": current,
         "targetVersion": target,
@@ -326,4 +354,7 @@ def inspect_database_upgrade(
         "v60SyncedDeleteSnapshot": synced_delete_report,
         "v61DefaultWorkspaceRename": workspace_rename_report,
         "v62AiMessageIdempotency": ai_idempotency_report,
+        "v63ProcurementOperationIdempotency": (
+            procurement_operation_idempotency_report
+        ),
     }

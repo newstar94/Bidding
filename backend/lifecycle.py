@@ -26,7 +26,10 @@ from backend.documents.award_result_excel_service import (
     run_validation_artifact_janitor,
     validate_artifact_store_configuration,
 )
-from backend.observability.metrics import monitor_operational_artifacts
+from backend.observability.metrics import (
+    monitor_multiprocess_metrics,
+    monitor_operational_artifacts,
+)
 from backend.shared.async_io import run_blocking_io
 from backend.shared.audit_monitor import (
     monitor_audit_chain,
@@ -338,6 +341,7 @@ async def application_lifespan(
     monitor_task = None
     audit_monitor_task = None
     artifact_monitor_task = None
+    multiprocess_metrics_task = None
     broker_task = None
     email_delivery_task = None
     document_queue_task = None
@@ -397,6 +401,9 @@ async def application_lifespan(
         monitor_audit_chain(database, application=application)
     )
     artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
+    multiprocess_metrics_task = asyncio.create_task(
+        monitor_multiprocess_metrics(application)
+    )
     validation_artifact_janitor_task = asyncio.create_task(
         run_validation_artifact_janitor()
     )
@@ -414,6 +421,7 @@ async def application_lifespan(
             monitor_task,
             audit_monitor_task,
             artifact_monitor_task,
+            multiprocess_metrics_task,
             email_delivery_task,
             document_queue_task,
             validation_artifact_janitor_task,
@@ -450,6 +458,7 @@ async def application_lifespan(
             monitor_task,
             audit_monitor_task,
             artifact_monitor_task,
+            multiprocess_metrics_task,
             broker_task,
             email_delivery_task,
             document_queue_task,

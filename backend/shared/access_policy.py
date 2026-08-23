@@ -127,6 +127,21 @@ def is_manager_role(role_str):
     return bool(_roles(role_str) & PLATFORM_ADMIN_ROLES)
 
 
+def is_assignment_scoped_active_role(active_role, scope_type="organization"):
+    """Return whether the selected workspace persona is assignment-scoped.
+
+    Membership role is deliberately not an input.  A manager who explicitly
+    selects the employee persona must use the same record scope as an employee
+    across every read channel; personal workspaces remain owner-scoped.
+    """
+
+    return (
+        str(scope_type or "organization").strip().lower() != "personal"
+        and str(active_role or "").strip().lower()
+        not in {"manager", "super_admin"}
+    )
+
+
 def organization_membership_role(cursor, user_id, organization_id):
     if not user_id or not organization_id:
         return None

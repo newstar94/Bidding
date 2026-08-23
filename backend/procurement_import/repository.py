@@ -974,6 +974,25 @@ class ProcurementImportRepository:
                     canonical_digest(canonical_fields),
                 ),
             )
+        if not evidence.get("previousDigest"):
+            log_audit(
+                "procurement.source_revision_reconciled",
+                actor_user_id=evidence.get("actorUserId"),
+                organization_id=organization_id,
+                target_type=str(evidence.get("kind") or "").lower(),
+                target_id=evidence.get("localRootId"),
+                metadata={
+                    "provider": evidence["provider"],
+                    "familyNo": evidence["familyNo"],
+                    "revisionId": evidence["revisionId"],
+                    "revisionNumber": evidence["revisionNumber"],
+                    "digest": evidence["digest"],
+                    "disposition": evidence["disposition"],
+                    "operationId": evidence.get("operationId"),
+                },
+                cursor=self.cursor,
+                required=True,
+            )
         enqueue_websocket_event(
             self.cursor,
             "broadcast",
@@ -990,7 +1009,7 @@ class ProcurementImportRepository:
                    revision_results_json, idempotency_key, request_hash,
                    actor_user_id)
                VALUES (?, ?, ?, ?, 'ALL', 'PENDING', 0, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (organization_id, provider, idempotency_key) DO NOTHING""",
+               ON CONFLICT DO NOTHING""",
             (
                 operation["id"], operation["organizationId"], operation["provider"],
                 operation["familyNo"], operation["totalRevisions"],

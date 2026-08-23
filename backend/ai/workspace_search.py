@@ -17,6 +17,7 @@ from typing import Any
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext, ToolResult
 from backend.analytics.query_scope import visibility_clause
+from backend.shared.access_policy import is_assignment_scoped_active_role
 from backend.shared.domain_enums import enum_filter_value, is_user_defined_enum_filter
 
 
@@ -237,7 +238,10 @@ ENTITY_SPECS: dict[str, EntitySpec] = {
 
 
 def _restricted(context: AiRequestContext) -> bool:
-    return context.scope_type != "personal" and context.membership_role != "manager" and context.active_role not in {"manager", "super_admin"}
+    return is_assignment_scoped_active_role(
+        context.active_role,
+        context.scope_type,
+    )
 
 
 def _scope(spec: EntitySpec, context: AiRequestContext, alias: str) -> tuple[list[str], list[Any]]:

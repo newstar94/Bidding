@@ -1970,7 +1970,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "unique_constraints": [
-            "UNIQUE(organization_id, provider, idempotency_key)"
+            "CONSTRAINT procurement_import_operation_family_idempotency_unique "
+            "UNIQUE(organization_id, provider, family_key, idempotency_key)"
         ]
     },
     "procurement_import_session": {

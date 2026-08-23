@@ -215,9 +215,19 @@ async function openLatestPackageForEdit(page, packageCode) {
   await page.locator("#search-goithau").fill(packageCode);
   const row = page.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
   await expect(row).toBeVisible();
+  const editorReady = page.evaluate(() => new Promise((resolve) => {
+    window.addEventListener(
+      "bf:package-editor-ready",
+      (event) => resolve(event.detail),
+      { once: true },
+    );
+  }));
   await row.locator('[data-bf-action="edit-package"]').click();
+  const readyDetail = await editorReady;
   await expect(page.locator("#modal-goithau.active")).toBeVisible();
-  return page.locator("#form-goithau-id").inputValue();
+  const packageId = await page.locator("#form-goithau-id").inputValue();
+  expect(readyDetail.packageId).toBe(packageId);
+  return packageId;
 }
 
 async function createPackageVersion01(page, {

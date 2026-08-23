@@ -75,5 +75,5 @@ def test_add_message_reuses_one_user_message_for_the_same_client_request(monkeyp
 
 def test_ai_message_idempotency_is_part_of_fresh_and_upgrade_schemas():
     assert "client_request_id" in SCHEMA_DINH_NGHIA["ai_messages"]["columns"]
-    assert UPGRADES[-1].name == "add_ai_message_idempotency"
-    assert DB_SCHEMA_VERSION == 62
+    assert any(item.name == "add_ai_message_idempotency" for item in UPGRADES)
+    assert DB_SCHEMA_VERSION >= 62

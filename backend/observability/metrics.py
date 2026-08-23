@@ -25,6 +25,7 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -33,7 +34,14 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
 from backend.shared.client_ip import get_client_ip
-from backend.ai.metrics import render_prometheus_lines
+from backend.ai.metrics import render_prometheus_lines, snapshot_values as snapshot_ai_metrics
+from backend.observability.multiprocess import (
+    aggregate_snapshots,
+    enabled as multiprocess_metrics_enabled,
+    publish_snapshot,
+    series_key,
+    split_series_key,
+)
 from backend.observability.recording import (
     DATABASE_DURATION_BUCKETS as _DATABASE_DURATION_BUCKETS,
     document_worker_acquired,
@@ -589,17 +597,214 @@ def _process_resource_metrics() -> dict[str, float]:
     }
 
 
-def _pool_samples(lines: list[str]) -> None:
+def _worker_pool_stats():
     from backend.shared.async_io import get_blocking_io_stats
     from backend.shared.cpu_io import get_cpu_io_stats
     from backend.shared.database_io import get_database_io_stats
 
-    pools = {
+    return {
         "blocking_io": get_blocking_io_stats(),
         "cpu": get_cpu_io_stats(),
         "database_read": get_database_io_stats()["read"],
         "database_write": get_database_io_stats()["write"],
     }
+
+
+def _add_counter_series(target, family, values) -> None:
+    for raw_key, value in values.items():
+        labels = raw_key if isinstance(raw_key, tuple) else (raw_key,)
+        target[series_key(family, *labels)] = value
+
+
+def _local_multiprocess_snapshot(application=None) -> dict[str, object]:
+    recorded = snapshot_recorded_metrics()
+    resources = _process_resource_metrics()
+    pools = _worker_pool_stats()
+    ai = snapshot_ai_metrics()
+    with _lock:
+        active_http = _active_http_requests
+        http_log_failures = _http_request_log_failures
+        http_requests = _http_requests.copy()
+        http_rate_limited = _http_rate_limited.copy()
+        http_duration_count = _http_duration_count.copy()
+        http_duration_sum = _http_duration_sum.copy()
+        http_duration_buckets = _http_duration_buckets.copy()
+        turnstile = _turnstile_validations.copy()
+
+    counters = {
+        series_key("http_request_log_failures"): http_log_failures,
+        series_key("runtime_log_dropped"): recorded.runtime_log_dropped,
+        series_key("document_worker_queue_wait_seconds"): (
+            recorded.document_worker_queue_wait_seconds
+        ),
+        series_key("document_worker_duration_seconds"): (
+            recorded.document_worker_duration_seconds
+        ),
+        series_key("audit_chain_check_duration_seconds"): (
+            recorded.audit_chain_check_duration_seconds
+        ),
+        series_key("process_cpu_seconds"): resources["cpu_seconds"],
+    }
+    for family, values in (
+        ("http_requests", http_requests),
+        ("http_rate_limited", http_rate_limited),
+        ("http_duration_count", http_duration_count),
+        ("http_duration_sum", http_duration_sum),
+        ("http_duration_buckets", http_duration_buckets),
+        ("turnstile", turnstile),
+        ("database_operations", recorded.database_operations),
+        ("database_busy", recorded.database_busy),
+        ("database_duration_count", recorded.database_duration_count),
+        ("database_duration_sum", recorded.database_duration_sum),
+        ("database_duration_buckets", recorded.database_duration_buckets),
+        ("database_phase_count", recorded.database_phase_count),
+        ("database_phase_sum", recorded.database_phase_sum),
+        ("database_phase_buckets", recorded.database_phase_buckets),
+        ("partner_lookup_requests", recorded.partner_lookup_requests),
+        ("partner_upstreams", recorded.partner_upstreams),
+        ("audit_chain_checks", recorded.audit_chain_checks),
+        ("audit_checkpoints", recorded.audit_checkpoints),
+    ):
+        _add_counter_series(counters, family, values)
+    for key, value in recorded.document_worker.items():
+        if key not in {"active", "waiting"}:
+            counters[series_key("document_worker", key)] = value
+    for key, value in recorded.websocket.items():
+        if key != "active":
+            counters[series_key("websocket", key)] = value
+    for pool, stats in pools.items():
+        for field in (
+            "submitted",
+            "completed",
+            "rejected",
+            "timed_out",
+            "queue_wait_seconds",
+            "execution_seconds",
+        ):
+            counters[series_key("worker_pool", pool, field)] = getattr(stats, field)
+    for name, value in ai.items():
+        if name != "ai_active_streams":
+            counters[series_key("ai", name)] = value
+
+    live_sums = {
+        series_key("active_http"): active_http,
+        series_key("process_resident_memory_bytes"): resources[
+            "resident_memory_bytes"
+        ],
+        series_key("process_open_descriptors"): resources["open_descriptors"],
+        series_key("document_worker", "active"): recorded.document_worker["active"],
+        series_key("document_worker", "waiting"): recorded.document_worker["waiting"],
+        series_key("websocket", "active"): recorded.websocket["active"],
+        series_key("ai", "ai_active_streams"): ai.get("ai_active_streams", 0),
+    }
+    for pool, stats in pools.items():
+        for field in ("in_flight", "queued", "capacity", "workers"):
+            live_sums[series_key("worker_pool", pool, field)] = getattr(stats, field)
+
+    lifetime_max = {}
+    _add_counter_series(
+        lifetime_max, "database_phase_max", recorded.database_phase_max
+    )
+    checked_at = recorded.audit_chain_last_check_timestamp
+    latest = {
+        series_key("audit_chain_available"): {
+            "timestamp": checked_at,
+            "value": recorded.audit_chain_available,
+        },
+        series_key("audit_chain_valid"): {
+            "timestamp": checked_at,
+            "value": recorded.audit_chain_valid,
+        },
+        series_key("audit_chain_rows"): {
+            "timestamp": checked_at,
+            "value": recorded.audit_chain_rows,
+        },
+        series_key("audit_chain_last_check_timestamp"): {
+            "timestamp": checked_at,
+            "value": checked_at,
+        },
+        series_key("audit_chain_last_valid_timestamp"): {
+            "timestamp": recorded.audit_chain_last_valid_timestamp,
+            "value": recorded.audit_chain_last_valid_timestamp,
+        },
+        series_key("audit_checkpoint_last_success_timestamp"): {
+            "timestamp": recorded.audit_checkpoint_last_success_timestamp,
+            "value": recorded.audit_checkpoint_last_success_timestamp,
+        },
+    }
+    lag_ms = max(
+        0.0,
+        float(
+            getattr(
+                getattr(application, "state", None), "event_loop_lag_ms", 0.0
+            )
+            or 0.0
+        ),
+    )
+    return {
+        "counters": counters,
+        "liveSums": live_sums,
+        "lifetimeMax": lifetime_max,
+        "liveMax": {series_key("event_loop_lag_ms"): lag_ms},
+        "liveMin": {series_key("process_started_at"): _PROCESS_STARTED_AT},
+        "latest": latest,
+    }
+
+
+def _series_counter(aggregated, family, *, category="counters") -> Counter:
+    result = Counter()
+    for encoded, value in aggregated.get(category, {}).items():
+        identity = split_series_key(encoded)
+        if identity[0] != family:
+            continue
+        labels = list(identity[1:])
+        if family in {
+            "http_duration_buckets",
+            "database_duration_buckets",
+            "database_phase_buckets",
+        } and labels:
+            labels[-1] = float(labels[-1])
+        key = labels[0] if len(labels) == 1 else tuple(labels)
+        result[key] = value
+    return result
+
+
+def _series_value(aggregated, category, family, *labels, default=0):
+    sample = aggregated.get(category, {}).get(series_key(family, *labels))
+    if category == "latest" and sample is not None:
+        return sample.get("value", default)
+    return default if sample is None else sample
+
+
+def _publish_and_aggregate(application=None):
+    if not multiprocess_metrics_enabled():
+        return None, False, True
+    try:
+        publish_snapshot(_local_multiprocess_snapshot(application))
+        return aggregate_snapshots(), True, True
+    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+        return None, True, False
+
+
+async def monitor_multiprocess_metrics(application):
+    """Keep every worker shard fresh even when Prometheus hits another worker."""
+
+    if not multiprocess_metrics_enabled():
+        return
+    try:
+        interval = float(
+            os.environ.get("BIDDING_METRICS_PUBLISH_INTERVAL_SECONDS", "1")
+        )
+    except ValueError:
+        interval = 1.0
+    interval = min(10.0, max(0.25, interval))
+    while True:
+        publish_snapshot(_local_multiprocess_snapshot(application))
+        await asyncio.sleep(interval)
+
+
+def _pool_samples(lines: list[str], pools=None) -> None:
+    pools = _worker_pool_stats() if pools is None else pools
     gauges = ("in_flight", "queued", "capacity", "workers")
     counters = ("submitted", "completed", "rejected", "timed_out")
     for field in gauges:
@@ -632,40 +837,216 @@ def render_prometheus(application: object | None = None) -> str:
         http_duration_buckets = _http_duration_buckets.copy()
         turnstile_validations = _turnstile_validations.copy()
 
-    db_operations = recorded_metrics.database_operations
-    db_busy = recorded_metrics.database_busy
-    db_duration_count = recorded_metrics.database_duration_count
-    db_duration_sum = recorded_metrics.database_duration_sum
-    db_duration_buckets = recorded_metrics.database_duration_buckets
-    db_phase_count = recorded_metrics.database_phase_count
-    db_phase_sum = recorded_metrics.database_phase_sum
-    db_phase_buckets = recorded_metrics.database_phase_buckets
-    db_phase_max = recorded_metrics.database_phase_max
-    runtime_log_drop_count = recorded_metrics.runtime_log_dropped
-    document_worker = recorded_metrics.document_worker
-    document_wait_seconds = recorded_metrics.document_worker_queue_wait_seconds
-    document_duration_seconds = recorded_metrics.document_worker_duration_seconds
-    partner_lookup_requests = recorded_metrics.partner_lookup_requests
-    partner_upstreams = recorded_metrics.partner_upstreams
-    websocket = recorded_metrics.websocket
-    audit_chain_checks = recorded_metrics.audit_chain_checks
-    audit_chain_available = recorded_metrics.audit_chain_available
-    audit_chain_valid = recorded_metrics.audit_chain_valid
-    audit_chain_rows = recorded_metrics.audit_chain_rows
-    audit_chain_last_check = recorded_metrics.audit_chain_last_check_timestamp
-    audit_chain_last_valid = recorded_metrics.audit_chain_last_valid_timestamp
-    audit_chain_duration = recorded_metrics.audit_chain_check_duration_seconds
-    audit_checkpoints = recorded_metrics.audit_checkpoints
+    process_resources = _process_resource_metrics()
+    process_started_at = _PROCESS_STARTED_AT
+    pool_stats = None
+    ai_metrics = None
+    event_loop_lag_ms = max(
+        0.0,
+        float(
+            getattr(
+                getattr(application, "state", None), "event_loop_lag_ms", 0.0
+            )
+            or 0.0
+        ),
+    )
+    multiprocess, multiprocess_enabled, multiprocess_ok = (
+        _publish_and_aggregate(application)
+    )
+    if multiprocess is not None:
+        active_http = _series_value(
+            multiprocess, "liveSums", "active_http"
+        )
+        http_request_log_failures = _series_value(
+            multiprocess, "counters", "http_request_log_failures"
+        )
+        http_requests = _series_counter(multiprocess, "http_requests")
+        http_rate_limited = _series_counter(multiprocess, "http_rate_limited")
+        http_duration_count = _series_counter(multiprocess, "http_duration_count")
+        http_duration_sum = _series_counter(multiprocess, "http_duration_sum")
+        http_duration_buckets = _series_counter(
+            multiprocess, "http_duration_buckets"
+        )
+        turnstile_validations = _series_counter(multiprocess, "turnstile")
+        document_worker = _series_counter(multiprocess, "document_worker")
+        document_worker["active"] = _series_value(
+            multiprocess, "liveSums", "document_worker", "active"
+        )
+        document_worker["waiting"] = _series_value(
+            multiprocess, "liveSums", "document_worker", "waiting"
+        )
+        websocket = _series_counter(multiprocess, "websocket")
+        websocket["active"] = _series_value(
+            multiprocess, "liveSums", "websocket", "active"
+        )
+        process_started_at = _series_value(
+            multiprocess,
+            "liveMin",
+            "process_started_at",
+            default=_PROCESS_STARTED_AT,
+        )
+        process_resources = {
+            "cpu_seconds": _series_value(
+                multiprocess, "counters", "process_cpu_seconds"
+            ),
+            "resident_memory_bytes": _series_value(
+                multiprocess, "liveSums", "process_resident_memory_bytes"
+            ),
+            "open_descriptors": _series_value(
+                multiprocess, "liveSums", "process_open_descriptors"
+            ),
+        }
+        event_loop_lag_ms = _series_value(
+            multiprocess, "liveMax", "event_loop_lag_ms"
+        )
+        pool_stats = {
+            pool: SimpleNamespace(**{
+                field: _series_value(
+                    multiprocess,
+                    "liveSums" if field in {
+                        "in_flight", "queued", "capacity", "workers"
+                    } else "counters",
+                    "worker_pool",
+                    pool,
+                    field,
+                )
+                for field in (
+                    "in_flight", "queued", "capacity", "workers",
+                    "submitted", "completed", "rejected", "timed_out",
+                    "queue_wait_seconds", "execution_seconds",
+                )
+            })
+            for pool in (
+                "blocking_io", "cpu", "database_read", "database_write"
+            )
+        }
+        ai_metrics = dict(_series_counter(multiprocess, "ai"))
+        ai_metrics["ai_active_streams"] = _series_value(
+            multiprocess, "liveSums", "ai", "ai_active_streams"
+        )
+
+    db_operations = (
+        _series_counter(multiprocess, "database_operations")
+        if multiprocess is not None else recorded_metrics.database_operations
+    )
+    db_busy = (
+        _series_counter(multiprocess, "database_busy")
+        if multiprocess is not None else recorded_metrics.database_busy
+    )
+    db_duration_count = (
+        _series_counter(multiprocess, "database_duration_count")
+        if multiprocess is not None else recorded_metrics.database_duration_count
+    )
+    db_duration_sum = (
+        _series_counter(multiprocess, "database_duration_sum")
+        if multiprocess is not None else recorded_metrics.database_duration_sum
+    )
+    db_duration_buckets = (
+        _series_counter(multiprocess, "database_duration_buckets")
+        if multiprocess is not None else recorded_metrics.database_duration_buckets
+    )
+    db_phase_count = (
+        _series_counter(multiprocess, "database_phase_count")
+        if multiprocess is not None else recorded_metrics.database_phase_count
+    )
+    db_phase_sum = (
+        _series_counter(multiprocess, "database_phase_sum")
+        if multiprocess is not None else recorded_metrics.database_phase_sum
+    )
+    db_phase_buckets = (
+        _series_counter(multiprocess, "database_phase_buckets")
+        if multiprocess is not None else recorded_metrics.database_phase_buckets
+    )
+    db_phase_max = (
+        _series_counter(
+            multiprocess, "database_phase_max", category="lifetimeMax"
+        )
+        if multiprocess is not None else recorded_metrics.database_phase_max
+    )
+    runtime_log_drop_count = (
+        _series_value(multiprocess, "counters", "runtime_log_dropped")
+        if multiprocess is not None else recorded_metrics.runtime_log_dropped
+    )
+    document_worker = document_worker if multiprocess is not None else recorded_metrics.document_worker
+    document_wait_seconds = (
+        _series_value(
+            multiprocess, "counters", "document_worker_queue_wait_seconds"
+        )
+        if multiprocess is not None
+        else recorded_metrics.document_worker_queue_wait_seconds
+    )
+    document_duration_seconds = (
+        _series_value(
+            multiprocess, "counters", "document_worker_duration_seconds"
+        )
+        if multiprocess is not None
+        else recorded_metrics.document_worker_duration_seconds
+    )
+    partner_lookup_requests = (
+        _series_counter(multiprocess, "partner_lookup_requests")
+        if multiprocess is not None else recorded_metrics.partner_lookup_requests
+    )
+    partner_upstreams = (
+        _series_counter(multiprocess, "partner_upstreams")
+        if multiprocess is not None else recorded_metrics.partner_upstreams
+    )
+    websocket = websocket if multiprocess is not None else recorded_metrics.websocket
+    audit_chain_checks = (
+        _series_counter(multiprocess, "audit_chain_checks")
+        if multiprocess is not None else recorded_metrics.audit_chain_checks
+    )
+    audit_chain_available = (
+        _series_value(multiprocess, "latest", "audit_chain_available")
+        if multiprocess is not None else recorded_metrics.audit_chain_available
+    )
+    audit_chain_valid = (
+        _series_value(multiprocess, "latest", "audit_chain_valid")
+        if multiprocess is not None else recorded_metrics.audit_chain_valid
+    )
+    audit_chain_rows = (
+        _series_value(multiprocess, "latest", "audit_chain_rows")
+        if multiprocess is not None else recorded_metrics.audit_chain_rows
+    )
+    audit_chain_last_check = (
+        _series_value(
+            multiprocess, "latest", "audit_chain_last_check_timestamp"
+        )
+        if multiprocess is not None
+        else recorded_metrics.audit_chain_last_check_timestamp
+    )
+    audit_chain_last_valid = (
+        _series_value(
+            multiprocess, "latest", "audit_chain_last_valid_timestamp"
+        )
+        if multiprocess is not None
+        else recorded_metrics.audit_chain_last_valid_timestamp
+    )
+    audit_chain_duration = (
+        _series_value(
+            multiprocess, "counters", "audit_chain_check_duration_seconds"
+        )
+        if multiprocess is not None
+        else recorded_metrics.audit_chain_check_duration_seconds
+    )
+    audit_checkpoints = (
+        _series_counter(multiprocess, "audit_checkpoints")
+        if multiprocess is not None else recorded_metrics.audit_checkpoints
+    )
     audit_checkpoint_last_success = (
-        recorded_metrics.audit_checkpoint_last_success_timestamp
+        _series_value(
+            multiprocess,
+            "latest",
+            "audit_checkpoint_last_success_timestamp",
+        )
+        if multiprocess is not None
+        else recorded_metrics.audit_checkpoint_last_success_timestamp
     )
 
     lines: list[str] = []
     _metric_header(lines, "biddingflow_process_start_time_seconds", "Unix time when this process started.", "gauge")
-    lines.append(_sample("biddingflow_process_start_time_seconds", _PROCESS_STARTED_AT))
+    lines.append(_sample("biddingflow_process_start_time_seconds", process_started_at))
     _metric_header(lines, "biddingflow_process_id", "Operating-system process identifier for per-worker diagnostics.", "gauge")
     lines.append(_sample("biddingflow_process_id", os.getpid()))
-    process_resources = _process_resource_metrics()
     _metric_header(lines, "biddingflow_process_cpu_seconds_total", "Process CPU time consumed in seconds.", "counter")
     lines.append(_sample("biddingflow_process_cpu_seconds_total", process_resources["cpu_seconds"]))
     _metric_header(lines, "biddingflow_process_resident_memory_bytes", "Resident memory used by this process.", "gauge")
@@ -738,7 +1119,7 @@ def render_prometheus(application: object | None = None) -> str:
             labels,
         ))
 
-    _pool_samples(lines)
+    _pool_samples(lines, pool_stats)
 
     _metric_header(lines, "biddingflow_document_worker_active", "Document subprocess jobs currently active.", "gauge")
     lines.append(_sample("biddingflow_document_worker_active", document_worker["active"]))
@@ -799,9 +1180,44 @@ def render_prometheus(application: object | None = None) -> str:
         if key.startswith("auth_failed:"):
             lines.append(_sample("biddingflow_websocket_authentication_failures_total", value, {"reason": key.split(":", 1)[1]}))
 
-    lag_ms = max(0.0, float(getattr(getattr(application, "state", None), "event_loop_lag_ms", 0.0) or 0.0))
     _metric_header(lines, "biddingflow_event_loop_lag_seconds", "Latest measured ASGI event-loop scheduling lag.", "gauge")
-    lines.append(_sample("biddingflow_event_loop_lag_seconds", lag_ms / 1000.0))
+    lines.append(_sample("biddingflow_event_loop_lag_seconds", event_loop_lag_ms / 1000.0))
+    _metric_header(
+        lines,
+        "biddingflow_metrics_multiprocess_enabled",
+        "Whether file-backed multi-worker metric aggregation is configured.",
+        "gauge",
+    )
+    lines.append(
+        _sample(
+            "biddingflow_metrics_multiprocess_enabled",
+            1 if multiprocess_enabled else 0,
+        )
+    )
+    _metric_header(
+        lines,
+        "biddingflow_metrics_multiprocess_collection_success",
+        "Whether the latest multi-worker publish and aggregation succeeded.",
+        "gauge",
+    )
+    lines.append(
+        _sample(
+            "biddingflow_metrics_multiprocess_collection_success",
+            1 if multiprocess_ok else 0,
+        )
+    )
+    _metric_header(
+        lines,
+        "biddingflow_metrics_worker_shards",
+        "Live Uvicorn worker metric shards in this service invocation.",
+        "gauge",
+    )
+    lines.append(
+        _sample(
+            "biddingflow_metrics_worker_shards",
+            multiprocess.get("workerCount", 0) if multiprocess else 1,
+        )
+    )
     _metric_header(lines, "biddingflow_runtime_log_dropped_total", "Structured request log lines dropped because the bounded writer queue was full.", "counter")
     lines.append(_sample("biddingflow_runtime_log_dropped_total", runtime_log_drop_count))
     _metric_header(lines, "biddingflow_audit_chain_check_available", "Whether the latest audit-chain verification completed.", "gauge")
@@ -879,7 +1295,7 @@ def render_prometheus(application: object | None = None) -> str:
         lines.append(_sample(timestamp_name, filesystem[timestamp_key] or 0))
         _metric_header(lines, age_name, f"Age in seconds of the latest verified {prefix.replace('_', ' ')}.", "gauge")
         lines.append(_sample(age_name, filesystem[age_key] or 0))
-    lines.extend(render_prometheus_lines())
+    lines.extend(render_prometheus_lines(ai_metrics))
     return "\n".join(lines) + "\n"
 
 

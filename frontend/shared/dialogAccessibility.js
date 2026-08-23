@@ -1,4 +1,5 @@
 const modalState = new WeakMap();
+const backgroundState = new Map();
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
   "[href]",
@@ -126,27 +127,90 @@ export function deactivateDialogAccessibility(modal) {
   setTimeout(restoreFocus, 0);
 }
 
+function rememberBackgroundState(element) {
+  if (backgroundState.has(element)) return;
+  backgroundState.set(element, {
+    inert: element.hasAttribute?.("inert") || false,
+    ariaHidden: element.getAttribute?.("aria-hidden"),
+  });
+}
+
+function restoreBackgroundState() {
+  backgroundState.forEach((state, element) => {
+    if (state.inert) element.setAttribute?.("inert", "");
+    else element.removeAttribute?.("inert");
+    if (state.ariaHidden === null || state.ariaHidden === undefined) {
+      element.removeAttribute?.("aria-hidden");
+    } else {
+      element.setAttribute?.("aria-hidden", state.ariaHidden);
+    }
+  });
+  backgroundState.clear();
+}
+
+function inertBackgroundForDialog(root, topmost) {
+  const bodyChildren = [...(root?.body?.children || [])];
+  bodyChildren.forEach((element) => {
+    const tagName = String(element.tagName || "").toUpperCase();
+    if (
+      element === topmost
+      || element.contains?.(topmost)
+      || ["SCRIPT", "STYLE", "LINK", "TEMPLATE"].includes(tagName)
+    ) return;
+    rememberBackgroundState(element);
+    element.setAttribute?.("inert", "");
+    element.setAttribute?.("aria-hidden", "true");
+  });
+}
+
+export function syncDialogStackAccessibility(root = globalThis.document) {
+  restoreBackgroundState();
+  const modals = [...(root?.querySelectorAll?.(".modal-overlay") || [])];
+  const topmost = getTopmostActiveDialog(root);
+  modals.forEach((modal) => {
+    const active = modal.classList.contains("active");
+    const accessible = active && modal === topmost;
+    if (accessible) {
+      modal.removeAttribute?.("inert");
+      modal.removeAttribute?.("aria-hidden");
+    } else {
+      modal.setAttribute?.("inert", "");
+      modal.setAttribute?.("aria-hidden", "true");
+    }
+    if (active) activateDialogAccessibility(modal);
+    else deactivateDialogAccessibility(modal);
+  });
+  if (topmost) inertBackgroundForDialog(root, topmost);
+  return topmost;
+}
+
+export function dialogStackMutationRequiresSync(mutation) {
+  if (mutation?.type === "attributes" && mutation.target?.matches?.(".modal-overlay")) {
+    return true;
+  }
+  const changedNodes = [
+    ...(mutation?.addedNodes || []),
+    ...(mutation?.removedNodes || []),
+  ];
+  return changedNodes.some((node) => (
+    node?.nodeType === 1
+    && (
+      node.matches?.(".modal-overlay")
+      || node.querySelector?.(".modal-overlay")
+    )
+  ));
+}
+
 export function installDialogAccessibility(root = globalThis.document) {
   if (!root?.querySelectorAll || !globalThis.MutationObserver) return null;
   root.addEventListener?.("keydown", (event) => handleGlobalDialogEscape(event, root));
-  const syncModal = (modal) => {
-    const active = modal.classList.contains("active");
-    modal.toggleAttribute("inert", !active);
-    if (active) modal.removeAttribute("aria-hidden");
-    else modal.setAttribute("aria-hidden", "true");
-    if (active) activateDialogAccessibility(modal);
-    else deactivateDialogAccessibility(modal);
-  };
-  root.querySelectorAll(".modal-overlay").forEach(syncModal);
+  syncDialogStackAccessibility(root);
   const observer = new MutationObserver((mutations) => {
+    let shouldSync = false;
     mutations.forEach((mutation) => {
-      if (mutation.type === "attributes" && mutation.target.matches?.(".modal-overlay")) syncModal(mutation.target);
-      mutation.addedNodes?.forEach?.((node) => {
-        if (node.nodeType !== 1) return;
-        if (node.matches?.(".modal-overlay")) syncModal(node);
-        node.querySelectorAll?.(".modal-overlay").forEach(syncModal);
-      });
+      if (dialogStackMutationRequiresSync(mutation)) shouldSync = true;
     });
+    if (shouldSync) syncDialogStackAccessibility(root);
   });
   observer.observe(root.documentElement || root, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   return observer;

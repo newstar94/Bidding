@@ -14,6 +14,28 @@ export function bindImageUploadPreview(config) {
   if (!uploadZone || !fileInput || !previewContainer || !previewImg) return;
   if (fileInput.__bfImageUploadBound) return;
   fileInput.__bfImageUploadBound = true;
+  if (!uploadZone.hasAttribute("role")) uploadZone.setAttribute("role", "button");
+  if (!uploadZone.hasAttribute("tabindex")) uploadZone.setAttribute("tabindex", "0");
+  if (fileInput.id && !uploadZone.hasAttribute("aria-controls")) {
+    uploadZone.setAttribute("aria-controls", fileInput.id);
+  }
+  if (
+    !uploadZone.hasAttribute("aria-label")
+    && !uploadZone.hasAttribute("aria-labelledby")
+  ) {
+    uploadZone.setAttribute(
+      "aria-label",
+      String(uploadZone.textContent || "Chọn ảnh tải lên").trim(),
+    );
+  }
+  const syncDisabledState = () => {
+    uploadZone.setAttribute("aria-disabled", String(Boolean(fileInput.disabled)));
+  };
+  const triggerFilePicker = () => {
+    syncDisabledState();
+    if (!fileInput.disabled) fileInput.click();
+  };
+  syncDisabledState();
   const handleFile = (file) => {
     if (!file || fileInput.disabled) return;
     if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) {
@@ -34,8 +56,12 @@ export function bindImageUploadPreview(config) {
     };
     reader.readAsDataURL(file);
   };
-  uploadZone.addEventListener("click", () => {
-    if (!fileInput.disabled) fileInput.click();
+  uploadZone.addEventListener("click", triggerFilePicker);
+  uploadZone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    triggerFilePicker();
   });
   uploadZone.addEventListener("dragover", (event) => {
     event.preventDefault();

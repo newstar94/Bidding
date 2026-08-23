@@ -6,7 +6,7 @@ from backend.ai.types import AiRequestContext
 from backend.ai.workspace_search import search_workspace_records
 
 
-def context(*, permissions=None, membership_role="manager"):
+def context(*, permissions=None, membership_role="manager", active_role=None):
     return AiRequestContext(
         user_id="user-1",
         organization_id="org-1",
@@ -14,7 +14,7 @@ def context(*, permissions=None, membership_role="manager"):
         platform_role="user",
         membership_role=membership_role,
         scope_type="organization",
-        active_role=membership_role,
+        active_role=active_role or membership_role,
         permissions=permissions or {
             "chuyengia": "view",
             "goithau": "view",
@@ -151,6 +151,27 @@ def test_workspace_search_requires_module_permission():
             {"entity": "experts", "operation": "count", "query": "", "status": "", "packageId": "", "limit": 20},
         )
     assert error.value.code == "AI_PERMISSION_DENIED"
+
+
+def test_workspace_search_scopes_manager_membership_in_employee_persona():
+    scoped = context(membership_role="manager", active_role="employee")
+    cursor = Cursor([{"record_count": 1}])
+
+    search_workspace_records(
+        cursor,
+        scoped,
+        {
+            "entity": "packages",
+            "operation": "count",
+            "query": "",
+            "status": "",
+            "packageId": "",
+            "limit": 20,
+        },
+    )
+
+    assert "pc.id_nhan_vien = ?" in cursor.statement
+    assert cursor.parameters == ("org-1", "user-1")
 
 
 def test_opening_search_inherits_the_canonical_package_permission():

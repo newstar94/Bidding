@@ -31,6 +31,7 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
         (True, True, True),
         (1_000, 50, 10_000),
         (2, 10),
+        (0,),
     )
 
     report = inspect_database_upgrade(cursor, 35, target_version=DB_SCHEMA_VERSION)
@@ -116,8 +117,14 @@ def test_v36_preflight_reports_exact_cardinality_and_relation_bytes():
             "requiresIndexBuildBudget": True,
             "newColumnStartsNull": True,
         },
+        "v63ProcurementOperationIdempotency": {
+            "applies": True,
+            "duplicateFamilyScopedGroups": 0,
+            "requiresDataRepair": False,
+            "requiresLockBudget": True,
+        },
     }
-    assert len(cursor.statements) == 6
+    assert len(cursor.statements) == 7
     assert "COUNT(*) FILTER (WHERE archived_at IS NULL)" in cursor.statements[0][0]
     assert "pg_total_relation_size" in cursor.statements[0][0]
 
@@ -131,10 +138,11 @@ def test_v36_preflight_skips_cardinality_when_historical_upgrade_does_not_apply(
             (
                 (0, 0),
                 (0, 0, 0, 0, 0, 0),
-                (True, True, True),
-                (0, 0, 0),
-                (0, 0),
-            )
+                    (True, True, True),
+                    (0, 0, 0),
+                    (0, 0),
+                    (0,),
+                )
             if current_version == 36
             else ()
         ))
@@ -271,6 +279,20 @@ def test_v61_preflight_counts_candidates_without_exposing_or_rewriting_tenants()
     assert len(cursor.statements) == 1
     assert cursor.statements[0][0].startswith("SELECT")
     assert "UPDATE" not in cursor.statements[0][0]
+
+
+def test_v63_preflight_reports_family_scoped_idempotency_duplicates():
+    cursor = _CardinalityCursor((3,))
+
+    report = inspect_database_upgrade(cursor, 62, target_version=63)
+
+    assert report["v63ProcurementOperationIdempotency"] == {
+        "applies": True,
+        "duplicateFamilyScopedGroups": 3,
+        "requiresDataRepair": True,
+        "requiresLockBudget": True,
+    }
+    assert "family_key" in cursor.statements[0][0]
 
 
 def test_database_dry_run_rolls_back_successful_upgrade(monkeypatch):

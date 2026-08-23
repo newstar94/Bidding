@@ -122,6 +122,22 @@ def test_manager_role_from_org_a_cannot_expand_employee_scope_in_org_b(monkeypat
     assert search_cursor.parameters == ("org-b", "user-1")
 
 
+def test_manager_membership_with_employee_persona_is_assignment_scoped():
+    context = SimpleNamespace(
+        user_id="manager-1",
+        organization_id="org-a",
+        membership_role="manager",
+        active_role="employee",
+        scope_type="organization",
+        permissions={"goithau": "view"},
+    )
+
+    clause, parameters = visibility_clause(context, "packages", "pkg")
+
+    assert "pc.id_nhan_vien = ?" in clause
+    assert parameters == ("org-a", "manager-1")
+
+
 @pytest.mark.parametrize(
     (
         "selected_role",

@@ -19,8 +19,45 @@ import { parseLotListForDisplay } from "./lotJsonParser.js";
 import {
   packageVersionResolutionOptions,
   selectVersionRepresentatives,
+  versionNumber,
   versionRootId,
 } from "../shared/versionResolver.js";
+
+export function resolvePackageTableVersionState(model, authoritativeRow) {
+  const state = model?.state || {};
+  const root = versionRootId(authoritativeRow);
+  const authoritativeVersion = versionNumber(authoritativeRow);
+  const family = (state.goithau || []).filter(
+    (pkg) => versionRootId(pkg) === root
+      && versionNumber(pkg) !== authoritativeVersion,
+  );
+  // The paginated/list row is the server-authoritative representative for its
+  // logical package version. A background pull may leave an older physical ID
+  // for that same version in model state for one render; retaining it would
+  // incorrectly make the current version look historical and hide actions.
+  family.push(authoritativeRow);
+  const uniqueVersions = selectVersionRepresentatives(
+    family,
+    packageVersionResolutionOptions(state.kehoach),
+  );
+  state.selectedPackageVersion ||= {};
+  const rememberedId = state.selectedPackageVersion[root];
+  const rememberedGt = rememberedId
+    ? uniqueVersions.find(
+      (version) => String(version.id) === String(rememberedId),
+    )
+    : null;
+  if (rememberedId && !rememberedGt) {
+    delete state.selectedPackageVersion[root];
+  }
+  const displayedGt = rememberedGt || uniqueVersions[0] || authoritativeRow;
+  return {
+    root,
+    uniqueVersions,
+    displayedGt,
+    isHistorical: String(displayedGt.id) !== String(authoritativeRow.id),
+  };
+}
 
 function bindLotWinnerActions(tableBody, view) {
   tableBody?.querySelectorAll('[data-bf-action="show-lot-winners"]').forEach((action) => {
@@ -101,29 +138,12 @@ export async function renderGoiThauTable() {
     const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (gt) => {
       const assigneeLabels = assigneeLabelsForTarget(this.model, gt.id, "goithau");
-      const root = versionRootId(gt);
-      const allRelated = this.model.state.goithau.filter((pkg) => versionRootId(pkg) === root);
-      const uniqueVersions = selectVersionRepresentatives(
-        allRelated,
-        packageVersionResolutionOptions(this.model.state.kehoach),
-      );
-      if (!this.model.state.selectedPackageVersion) {
-        this.model.state.selectedPackageVersion = {};
-      }
-      // A remembered selection can outlive the row it points at, for example
-      // when a plan version froze a new copy of the package or the row was
-      // deleted. Falling back to the current row keeps the actions correct
-      // instead of silently degrading them to view-only.
-      const rememberedId = this.model.state.selectedPackageVersion[root];
-      const rememberedGt = rememberedId
-        ? uniqueVersions.find((version) => String(version.id) === String(rememberedId))
-        : null;
-      if (rememberedId && !rememberedGt) {
-        delete this.model.state.selectedPackageVersion[root];
-      }
-      const displayedGt = rememberedGt
-        || this.model.state.goithau.find((g) => String(g.id) === String(uniqueVersions[0]?.id))
-        || gt;
+      const {
+        root,
+        uniqueVersions,
+        displayedGt,
+        isHistorical,
+      } = resolvePackageTableVersionState(this.model, gt);
       const displayedStatus = resolvePackageResultStatus(displayedGt);
       const kh = this.model.getLatestPlan(displayedGt.keHoachId);
       const nt = displayedGt.nhaThauTrungThauId ? this.model.state.nhathau.find((n) => n.id === displayedGt.nhaThauTrungThauId) : null;
@@ -237,7 +257,7 @@ export async function renderGoiThauTable() {
       const isCompletedPackage = ["Đã có kết quả một phần", "Đã có kết quả"].includes(displayedStatus);
       const allowDelete = this.model.state.activerole !== "employee";
       let packageActions;
-      if (displayedGt.id !== gt.id) {
+      if (isHistorical) {
         packageActions = [{ id: displayedGt.id, command: "show-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" }];
       } else if (isCanceledPackage || isCompletedPackage) {
         packageActions = [
