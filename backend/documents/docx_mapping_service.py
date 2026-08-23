@@ -1,7 +1,5 @@
 """Apply configured Word field and list mappings to an export context."""
 
-from backend.shared.helpers import VietnameseFloat
-
 
 CONTEXT_SOURCE_TABLE = "__context__"
 PARTNER_IDENTITY_COLUMNS = {"ma_chu_dau_tu", "ma_nha_thau"}
@@ -58,11 +56,9 @@ def apply_custom_mappings(context, mappings_rows):
     def format_mapped_value(val, col_name):
         if val is None:
             return '--'
-        if isinstance(val, (int, float)) and ('gia' in col_name or 'tong_muc' in col_name or 'gia_tri' in col_name or 'tong_tien' in col_name):
-            try:
-                return f'{VietnameseFloat(val)}'
-            except (TypeError, ValueError, OverflowError):
-                pass
+        # Keep typed values intact until the document renderer has derived
+        # amount-in-words variables from the manifest-declared money fields.
+        # Display formatting happens afterwards on the renderer-owned DTO.
         return val
 
     def apply_field_to_value(target, src_column, ten_bien):

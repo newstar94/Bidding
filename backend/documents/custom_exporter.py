@@ -325,6 +325,16 @@ def format_vietnamese_datetime(
         return f"ngày {d} tháng {m_str} năm {y}"
 
     return val_str
+
+
+def format_short_vietnamese_date(day, month, year):
+    """Format short dates using the approved administrative month convention."""
+
+    month_number = int(month)
+    month_text = f"{month_number:02d}" if month_number in {1, 2} else str(month_number)
+    return f"{int(day):02d}/{month_text}/{year}"
+
+
 class SmartDate(str):
     def __sub__(self, other):
         try:
@@ -401,7 +411,7 @@ def format_context_dates(data, datetime_field_names=None):
                 if dt_match:
                     is_date = True
                     d, m, y = dt_match.group(1), dt_match.group(2), dt_match.group(3)
-                    date_only_val = f"{d}/{int(m):02d}/{y}"
+                    date_only_val = format_short_vietnamese_date(d, m, y)
                     year_val = y
 
 
@@ -409,7 +419,7 @@ def format_context_dates(data, datetime_field_names=None):
                 if d_match:
                     is_date = True
                     d, m, y = d_match.group(1), d_match.group(2), d_match.group(3)
-                    date_only_val = f"{d}/{int(m):02d}/{y}"
+                    date_only_val = format_short_vietnamese_date(d, m, y)
                     year_val = y
 
                 if is_date:
@@ -1218,21 +1228,31 @@ def replace_placeholders_with_empty(data):
     return data
 
 
-def format_context_money_values(data):
+def format_context_money_values(data, money_field_names=None):
     """Format persisted money fields for display without mutating stored data."""
+
+    configured_money_fields = {
+        str(name or '').strip().strip('{}').lower()
+        for name in (money_field_names or ())
+    }
 
     if isinstance(data, dict):
         formatted = {}
         for key, value in data.items():
-            child = format_context_money_values(value)
+            child = format_context_money_values(value, money_field_names)
+            is_money_field = (
+                str(key or '').strip().strip('{}').lower()
+                in configured_money_fields
+                or key in _DOCX_MONEY_FIELD_NAMES
+            )
             if (
-                key in _DOCX_MONEY_FIELD_NAMES
+                is_money_field
                 and isinstance(child, (int, float))
                 and not isinstance(child, bool)
             ):
                 child = str(VietnameseFloat(child))
             elif (
-                key in _DOCX_MONEY_FIELD_NAMES
+                is_money_field
                 and isinstance(child, str)
                 and re.fullmatch(r"-?\d+(?:\.\d+)?", child.strip())
             ):
@@ -1240,7 +1260,7 @@ def format_context_money_values(data):
             formatted[key] = child
         return formatted
     if isinstance(data, list):
-        return [format_context_money_values(item) for item in data]
+        return [format_context_money_values(item, money_field_names) for item in data]
     return data
 
 _OPTIMIZED_IMAGE_CACHE = {}
@@ -1528,7 +1548,7 @@ def generate_report_from_custom_template(
     if legacy_manifest:
         allowed_root_keys.update(context)
 
-    context = format_context_money_values(context)
+    context = format_context_money_values(context, money_root_keys)
 
     doc = None
     try:

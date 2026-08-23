@@ -12,10 +12,10 @@ test("Word money and date mappings expose their derived copy-ready codes", () =>
     { code: "{bangchu_gia_gt}", label: "Bằng chữ" },
   ]);
   assert.deepEqual(getDerivedWordVariableCodes("tg_dang_tai_kh", "datetime"), [
-    { code: "{S_tg_dang_tai_kh}", label: "Ngày ngắn" },
+    { code: "{S_tg_dang_tai_kh}", label: "Ngày ngắn (05/3/2026)" },
   ]);
   assert.deepEqual(getDerivedWordVariableCodes("{ngay_phe_duyet}", "date"), [
-    { code: "{S_ngay_phe_duyet}", label: "Ngày ngắn" },
+    { code: "{S_ngay_phe_duyet}", label: "Ngày ngắn (05/3/2026)" },
   ]);
   assert.deepEqual(getDerivedWordVariableCodes("ten_goi_thau", "text"), []);
 });

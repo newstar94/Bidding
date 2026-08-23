@@ -60,7 +60,9 @@ biểu mẫu tương thích.
 12. Manifest kết xuất khai báo riêng root của trường `date`/`datetime` và trường
     tiền. Chỉ các root này được sinh biến dẫn xuất: `S_<biến>`/`s_<biến>` cho ngày
     rút gọn và `bangchu_<biến>`/`BangChu_<biến>` cho tiền bằng chữ. Giá trị tiền
-    có thể là số hoặc chuỗi chỉ chứa số; ngày rút gọn dùng dạng `dd/MM/yyyy`.
+    có thể là số hoặc chuỗi chỉ chứa số. Ngày rút gọn giữ ngày ở hai chữ số;
+    tháng chỉ có số `0` phía trước với tháng 1 và tháng 2, ví dụ `05/01/2026`,
+    `05/02/2026`, `05/3/2026`.
 13. Phạm vi hợp đồng được xác định từ `publicationType` ổn định và trường phân
     loại hợp đồng, không suy đoán từ tên file biểu mẫu hoặc tên hợp đồng. So sánh
     phân loại không phụ thuộc chữ hoa/thường, dấu tiếng Việt hoặc khoảng trắng.
@@ -101,7 +103,8 @@ biểu mẫu tương thích.
   xuất cả giờ/phút. Ví dụ `2026-03-05 14:55:00` được trình bày thành
   `14:55 ngày 05/3/2026`; biến ánh xạ từ trường ngày thuần không thay đổi.
 - Mẫu có thể dùng `bangchu_<biến-tiền>` để trình bày tiền bằng chữ và
-  `S_<biến-ngày>` để trình bày ngày rút gọn theo `dd/MM/yyyy`. Biến không ánh xạ
+  `S_<biến-ngày>` để trình bày ngày rút gọn theo quy tắc tháng 1–2 có số `0`,
+  các tháng còn lại không thêm số `0`. Biến không ánh xạ
   từ đúng kiểu schema không được tự suy đoán là tiền hoặc ngày; điều này giữ
   nguyên phạm vi dữ liệu và tránh tạo biến dẫn xuất ngoài manifest.
 
@@ -160,9 +163,9 @@ biểu mẫu tương thích.
   dạng cả tiền kiểu số lẫn chuỗi số trong các danh sách.
 - `tests/test_docx_cross_context_template.py` và `tests/test_docx_mapping_policy.py`:
   alias ánh xạ từ `datetime` được khai báo trong manifest và giữ giờ/phút khi render.
-- `tests/test_docx_cross_context_template.py`: biến tiền bằng chữ chấp nhận cả số
-  và chuỗi số; biến ngày ngắn xuất `dd/MM/yyyy`; file mẫu có hướng dẫn cùng cú
-  pháp minh họa.
+- `tests/test_docx_cross_context_template.py`: pipeline ánh xạ thật giữ số tiền
+  đến bước sinh chữ, biến tiền bằng chữ chấp nhận cả số và chuỗi số; biến ngày
+  ngắn áp quy tắc tháng 1–2 có số `0`; file mẫu có hướng dẫn cùng cú pháp minh họa.
 - `tests/test_docx_mapping_policy.py`: manifest chỉ đánh dấu alias tiền, ngày và
   ngày giờ theo định dạng của cột nguồn.
 - `tests/test_word_publication_template_assignments.py`: context được lọc trước

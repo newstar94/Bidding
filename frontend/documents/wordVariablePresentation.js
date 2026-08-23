@@ -12,7 +12,7 @@ export function getDerivedWordVariableCodes(variableName, format) {
       return [{ code: `{bangchu_${name}}`, label: "Bằng chữ" }];
     case "date":
     case "datetime":
-      return [{ code: `{S_${name}}`, label: "Ngày ngắn" }];
+      return [{ code: `{S_${name}}`, label: "Ngày ngắn (05/3/2026)" }];
     default:
       return [];
   }
