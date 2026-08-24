@@ -312,6 +312,64 @@
                 </div>
             </div>
 
+            <section class="dashboard-card word-template-catalog-card" id="word-template-catalog-card"
+                aria-labelledby="word-template-catalog-title" hidden>
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title" id="word-template-catalog-title">Vòng đời biểu mẫu Word</h3>
+                        <p class="word-template-catalog-intro">
+                            Theo dõi các phiên bản bất biến, kiểm tra trước khi phát hành và khôi phục một phiên bản cũ thành bản nháp mới.
+                        </p>
+                        <label class="word-template-catalog-preview-context" for="word-template-preview-document-type">
+                            Ngữ cảnh xem trước
+                            <select class="form-control" id="word-template-preview-document-type">
+                                <option value="plan">Kế hoạch lựa chọn nhà thầu</option>
+                                <option value="evaluation">Báo cáo đánh giá</option>
+                                <option value="hsmt">Hồ sơ mời thầu</option>
+                                <option value="opening">Mở thầu</option>
+                                <option value="result">Kết quả lựa chọn nhà thầu</option>
+                                <option value="contract">Hợp đồng</option>
+                                <option value="liquidation">Thanh lý hợp đồng</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="word-template-catalog-header-actions">
+                        <button type="button" class="btn btn-primary" id="word-template-catalog-create" hidden>
+                            <i data-lucide="plus" aria-hidden="true"></i>
+                            Thêm biểu mẫu
+                        </button>
+                        <button type="button" class="btn btn-outline" id="word-template-catalog-new-draft" hidden>
+                            <i data-lucide="file-plus" aria-hidden="true"></i>
+                            Tạo bản nháp từ tệp
+                        </button>
+                        <button type="button" class="btn btn-outline word-template-catalog-refresh"
+                            id="word-template-catalog-refresh" aria-label="Tải lại vòng đời biểu mẫu Word">
+                            <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                            Tải lại
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="word-template-catalog-layout">
+                        <section class="word-template-catalog-pane" aria-labelledby="word-template-catalog-list-title">
+                            <h4 id="word-template-catalog-list-title">Biểu mẫu logic</h4>
+                            <div class="word-template-catalog-list" id="word-template-catalog-list" aria-busy="true">
+                                <p class="word-template-catalog-empty">Đang tải danh mục biểu mẫu...</p>
+                            </div>
+                        </section>
+                        <section class="word-template-catalog-pane word-template-catalog-detail"
+                            aria-labelledby="word-template-catalog-detail-title">
+                            <h4 id="word-template-catalog-detail-title">Lịch sử phiên bản</h4>
+                            <div class="word-template-version-timeline" id="word-template-version-timeline" aria-busy="false">
+                                <p class="word-template-catalog-empty">Chọn một biểu mẫu để xem lịch sử phiên bản.</p>
+                            </div>
+                        </section>
+                    </div>
+                    <p class="word-template-catalog-status" id="word-template-catalog-status"
+                        role="status" aria-live="polite"></p>
+                </div>
+            </section>
+
             <div class="dashboard-card word-template-assignment-card">
                 <div class="card-header">
                     <div>

@@ -12,11 +12,21 @@ from backend.shared.helpers import database, get_active_org, verify_session
 _TARGETS = {
     "goithau": ("goithau", "goi_thau"),
     "hopdong": ("hopdong", "hop_dong"),
+    "procurement_case": ("procurement_case", "procurement_case"),
 }
 _ACTIONS = frozenset({
     "goithau.created", "goithau.updated", "hopdong.created", "hopdong.updated",
     "package_document.uploaded", "package_document.replaced",
     "package_document.deleted", "assignment.added", "assignment.removed",
+    "procurement_case.created", "procurement_case.response_revision_saved",
+    "procurement_case.assign", "procurement_case.start_review",
+    "procurement_case.draft_response", "procurement_case.submit_review",
+    "procurement_case.return", "procurement_case.approve",
+    "procurement_case.issue", "procurement_case.close",
+    "procurement_case.reject", "procurement_case.withdraw",
+    "procurement_case.reopen", "procurement_case.due_date_set",
+    "procurement_case.party_added", "procurement_case.legal_basis_added",
+    "procurement_case.source_observed", "procurement_case.attachment_added",
 })
 
 
@@ -48,17 +58,32 @@ async def list_activity_timeline_api(request):
     organization_id = get_active_org(request, session.user_id)
     with database.get_connection() as connection:
         cursor = connection.cursor()
-        row = cursor.execute(
-            f"""SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS root_id
-                FROM {table_name}
-                WHERE organization_id = ? AND id = ? LIMIT 1""",
-            (organization_id, target_id),
-        ).fetchone()
+        if target_type == "procurement_case":
+            row = cursor.execute(
+                """SELECT case_row.id, case_row.id,
+                          target.current_package_version_id
+                     FROM procurement_case AS case_row
+                     JOIN procurement_case_package_target AS target
+                       ON target.organization_id = case_row.organization_id
+                      AND target.case_id = case_row.id
+                    WHERE case_row.organization_id = ? AND case_row.id = ?""",
+                (organization_id, target_id),
+            ).fetchone()
+        else:
+            row = cursor.execute(
+                f"""SELECT id, COALESCE(NULLIF(id_goc, ''), id) AS root_id
+                    FROM {table_name}
+                    WHERE organization_id = ? AND id = ? LIMIT 1""",  # noqa: S608
+                (organization_id, target_id),
+            ).fetchone()
         if not row:
             return _error("Không tìm thấy đối tượng.", "ACTIVITY_TARGET_NOT_FOUND", 404)
+        authorization_id = row[2] if target_type == "procurement_case" else target_id
+        authorization_key = "goithau" if target_type == "procurement_case" else payload_key
+        authorization_table = "goi_thau" if target_type == "procurement_case" else table_name
         if not can_read_record(
             cursor, session, session.user_id, organization_id,
-            payload_key, table_name, target_id,
+            authorization_key, authorization_table, authorization_id,
         ):
             return _error("Không có quyền xem lịch sử thực hiện.", "ACTIVITY_ACCESS_DENIED", 403)
 
@@ -113,4 +138,3 @@ async def list_activity_timeline_api(request):
                 "beforeId": items[-1]["id"],
             }
         return JSONResponse({"items": items, "nextCursor": next_cursor})
-

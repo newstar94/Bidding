@@ -31,7 +31,7 @@
     "scripts/run_document_worker.py": 1
   },
   "S608": {
-    "backend/activity/routes.py": 2,
+    "backend/activity/routes.py": 1,
     "backend/activity/service.py": 2,
     "backend/api/org_routes.py": 6,
     "backend/auth/admin_user_routes.py": 3,

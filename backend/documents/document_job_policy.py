@@ -38,6 +38,7 @@ def build_document_job_policy(
     package_revision,
     required_sensitive_groups=(),
     document_format="docx",
+    artifact_provenance=None,
 ):
     policy = {
         "version": POLICY_VERSION,
@@ -54,6 +55,8 @@ def build_document_job_policy(
             if str(value).strip()
         }),
     }
+    if artifact_provenance is not None:
+        policy["artifactProvenance"] = dict(artifact_provenance)
     return policy, document_job_policy_hash(policy)
 
 
@@ -82,6 +85,17 @@ def validate_document_job_policy_snapshot(policy, fingerprint):
         or not isinstance(parsed.get("packageRevision"), int)
         or int(parsed["packageRevision"]) < 1
         or not isinstance(parsed.get("requiredSensitiveGroups"), list)
+    ):
+        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+    provenance = parsed.get("artifactProvenance")
+    if provenance is not None and (
+        not isinstance(provenance, dict)
+        or not str(provenance.get("templateVersionId") or "").strip()
+        or len(str(provenance.get("templateSha256") or "")) != 64
+        or str(provenance.get("recordType") or "") != "goi_thau"
+        or not str(provenance.get("recordId") or "").strip()
+        or not isinstance(provenance.get("recordRowVersion"), int)
+        or int(provenance["recordRowVersion"]) < 1
     ):
         raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
     return parsed

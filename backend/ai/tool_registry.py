@@ -68,4 +68,15 @@ def validate_tool_arguments(mode: str, name: str, arguments: object) -> dict:
                 raise ai_error("AI_TOOL_INVALID_ARGUMENTS", f"{field} query không hợp lệ.")
         if not isinstance(arguments.get("limit"), int) or isinstance(arguments["limit"], bool) or not 1 <= arguments["limit"] <= 50:
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit query phải nằm trong khoảng 1-50.")
+    if name == "get_compliance_context":
+        if arguments.get("targetType") not in {"kehoach", "goithau"}:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "targetType is invalid.")
+        target_id = arguments.get("targetId")
+        if not isinstance(target_id, str) or not target_id.strip() or len(target_id) > 200:
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "targetId is invalid.")
+        version_id = arguments.get("versionId")
+        if version_id is not None and (
+            not isinstance(version_id, str) or not version_id.strip() or len(version_id) > 200
+        ):
+            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "versionId is invalid.")
     return dict(arguments)

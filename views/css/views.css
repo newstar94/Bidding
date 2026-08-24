@@ -2244,6 +2244,7 @@ table th {
 #tab-goithau-detail #mothau-table .package-lot-name-column,
 #tab-goithau-detail #mothau-table td:has(.mt-ten-phan-lo),
 #tab-goithau-detail #mothau-table td.package-lot-name-cell,
+#danhgiahsdt-table td.package-lot-name-cell,
 .package-lot-name-cell {
   /* 80% of the 18rem contractor-name column. */
   width: 14.4rem;

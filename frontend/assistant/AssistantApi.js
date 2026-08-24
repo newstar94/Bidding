@@ -32,10 +32,10 @@ export const assistantApi = {
   listMessages(id, { limit = 40, offset = 0 } = {}) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}/messages?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, { method: "GET", timeoutMs: 15000, retries: 0 }); },
   deleteConversation(id) { return requestJson(`/api/ai/conversations/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: 15000, retries: 0 }); },
   getSuggestedQuestions(route) { return requestJson(`/api/ai/suggested-questions?route=${encodeURIComponent(route || "/")}`, { method: "GET", timeoutMs: 10000, retries: 0 }); },
-  sendMessage(id, content, signal, route = globalThis.location?.pathname || "/", requestId = "") {
+  sendMessage(id, content, signal, route = globalThis.location?.pathname || "/", requestId = "", targetHint = null) {
     return apiFetch(`/api/ai/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content, route, requestId }),
+      body: JSON.stringify({ content, route, requestId, ...(targetHint ? { targetHint } : {}) }),
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       timeoutMs: 120000,
       retries: 0,

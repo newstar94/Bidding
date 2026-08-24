@@ -135,3 +135,71 @@ _Avoid_: Pull ngay trước commit làm mất draft, thay identity assignment kh
 **Plan version draft session**:
 Chuỗi snapshot của một kế hoạch mới chưa từng persist, được lưu bền vững theo workspace và chỉ commit toàn bộ qua final save nguyên tử; intermediate save chỉ sinh snapshot local và phiên bản kế tiếp.
 _Avoid_: Ghi từng phiên bản trung gian lên server, dùng outbox như draft chain, clear draft trước server acknowledgement
+
+**Bản nháp giải quyết xung đột bền vững**:
+Ảnh chụp base/local/server của một mutation bị xung đột, được giữ qua tải lại trang để đúng người tạo xem và quyết định nhưng không bao giờ tự phát lại mutation.
+_Avoid_: Outbox đang hoạt động, force overwrite, auto replay sau F5
+
+**Văn bản pháp lý**:
+Định danh ổn định của một văn bản pháp lý xuyên suốt các lần công bố nội dung; mỗi nội dung bất biến là một phiên bản văn bản pháp lý riêng.
+_Avoid_: Tài liệu RAG mới nhất, file luật hiện hành
+
+**Hồ sơ nguồn pháp lý**:
+Manifest bất biến chứa chính xác các phiên bản văn bản pháp lý dùng làm nguồn cho một lần phân giải; hồ sơ nguồn không tự chứa quy tắc tuân thủ thực thi.
+_Avoid_: Danh sách luật mới nhất, kết quả tìm kiếm web
+
+**Ràng buộc pháp lý**:
+Kết quả bất biến gắn một phiên bản kế hoạch hoặc gói thầu với đúng hồ sơ nguồn pháp lý, hoặc ghi rõ trạng thái chưa thể phân giải.
+_Avoid_: Luật áp dụng suy ra theo ngày hiện tại, fallback latest
+
+**Finding tuân thủ xác định**:
+Kết quả do bộ quy tắc đã được duyệt tạo ra từ snapshot và bằng chứng cụ thể; AI chỉ được giải thích finding chứ không tạo hoặc đổi trạng thái finding.
+_Avoid_: Kết luận do mô hình suy đoán, lời khuyên RAG chung
+
+**Biểu mẫu Word logic**:
+Định danh bền vững của một biểu mẫu xuyên suốt các bản nháp, phiên bản xuất bản và việc đổi tên; tên file chỉ là alias tương thích.
+_Avoid_: File Word đang active, filename là identity
+
+**Phiên bản biểu mẫu Word đã xuất bản**:
+Bytes, mapping và manifest bất biến của một biểu mẫu Word logic đã qua preflight và được phép dùng để tạo tài liệu.
+_Avoid_: Config revision, file bị replace tại chỗ
+
+**Provenance tài liệu Word**:
+Bằng chứng một artifact đã được tạo từ exact phiên bản biểu mẫu, checksum, mapping và snapshot nghiệp vụ nào.
+_Avoid_: Suy luận từ filename hoặc thời gian sửa file
+
+**Sự kiện lịch công việc**:
+Projection có định danh và revision ổn định của một mốc timeline đã được phép đưa ra lịch; projection lịch không thay đổi dữ liệu hoặc quyền đọc bản ghi nguồn.
+_Avoid_: Raw timeline row, calendar connector record
+
+**Hồ sơ nghiệp vụ đấu thầu**:
+Aggregate vận hành dùng chung cho làm rõ và kiến nghị, thuộc một dòng phiên bản gói thầu và giữ bằng chứng exact phiên bản tại từng response hoặc transition.
+_Avoid_: Hai hệ thống làm rõ/kiến nghị song song, danh sách text trong gói thầu
+
+**Trách nhiệm hồ sơ**:
+Metadata chỉ người hoặc đơn vị chịu trách nhiệm xử lý hồ sơ; trách nhiệm không cấp hoặc mở rộng quyền truy cập.
+_Avoid_: Assignment cấp quyền, owner có toàn quyền
+
+**Bên tham gia hồ sơ**:
+Chủ thể nghiệp vụ được nhắc tới trong hồ sơ nhưng không mặc nhiên là tài khoản hoặc principal của workspace.
+_Avoid_: User ngoài tổ chức, external login
+
+**Quan sát nguồn**:
+Ảnh chụp bất biến của một revision từ hệ thống ngoài; quan sát nguồn không phải hồ sơ chính thức và không ghi đè response hoặc state nội bộ.
+_Avoid_: Auto-import case, nguồn ngoài là write authority
+
+**Phiên bản nội dung phản hồi**:
+Nội dung phản hồi bất biến của hồ sơ tại một lần lưu; review, approve và issue luôn tham chiếu chính xác phiên bản đã dùng, còn chỉnh sửa tiếp theo tạo phiên bản mới không kế thừa phê duyệt cũ.
+_Avoid_: Nội dung phản hồi mutable, approval gắn với response mới nhất
+
+**Chuyển trạng thái hồ sơ**:
+Bằng chứng bất biến rằng một command hợp lệ đã đưa hồ sơ từ trạng thái nguồn sang trạng thái đích và đã ghim exact phiên bản nội dung/gói thầu cần thiết.
+_Avoid_: Set state trực tiếp, sửa lịch sử trạng thái
+
+**Hạn xử lý hồ sơ**:
+Mốc thời gian của hồ sơ có provenance từ policy pháp lý đã duyệt hoặc do người dùng nhập rõ ràng; hạn nhập tay không tự trở thành kết luận quá hạn pháp lý.
+_Avoid_: SLA suy đoán, overdue pháp lý không có policy
+
+**Thao tác hàng loạt**:
+Một hành động đã đăng ký rõ, chạy trên tập bản ghi được máy chủ chuẩn bị và authorize, rồi được authorize lại trước khi thực thi; thao tác hàng loạt không phải generic sync hoặc permission shortcut.
+_Avoid_: Arbitrary table patch, select-all không snapshot

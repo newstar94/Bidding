@@ -1806,10 +1806,10 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
-            "target_type": "TEXT NOT NULL CHECK(target_type IN ('goithau', 'hopdong'))",
+            "target_type": "TEXT NOT NULL CHECK(target_type IN ('goithau', 'hopdong', 'procurement_case'))",
             "target_id": "TEXT NOT NULL CHECK(target_id != '')",
             "target_root_id": "TEXT NOT NULL CHECK(target_root_id != '')",
-            "action": "TEXT NOT NULL CHECK(action IN ('goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated', 'package_document.uploaded', 'package_document.replaced', 'package_document.deleted', 'assignment.added', 'assignment.removed'))",
+            "action": "TEXT NOT NULL CHECK(action IN ('goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated', 'package_document.uploaded', 'package_document.replaced', 'package_document.deleted', 'assignment.added', 'assignment.removed', 'procurement_case.created', 'procurement_case.response_revision_saved', 'procurement_case.assign', 'procurement_case.start_review', 'procurement_case.draft_response', 'procurement_case.submit_review', 'procurement_case.return', 'procurement_case.approve', 'procurement_case.issue', 'procurement_case.close', 'procurement_case.reject', 'procurement_case.withdraw', 'procurement_case.reopen', 'procurement_case.due_date_set', 'procurement_case.party_added', 'procurement_case.legal_basis_added', 'procurement_case.source_observed', 'procurement_case.attachment_added'))",
             "actor_user_id": "TEXT",
             "actor_name_snapshot": "TEXT NOT NULL DEFAULT 'Không xác định'",
             "occurred_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
@@ -2026,6 +2026,747 @@ SCHEMA_DINH_NGHIA = {
         "unique_constraints": [
             "UNIQUE(organization_id, provider, dedup_key)"
         ]
+    },
+    "conflict_resolution_drafts": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "actor_user_id": "TEXT NOT NULL CHECK(actor_user_id != '')",
+            "workspace_fingerprint": "TEXT NOT NULL CHECK(length(workspace_fingerprint) BETWEEN 1 AND 200)",
+            "batch_id": "TEXT NOT NULL CHECK(length(batch_id) BETWEEN 1 AND 200)",
+            "mutation_id": "TEXT NOT NULL CHECK(length(mutation_id) BETWEEN 1 AND 200)",
+            "entity_type": "TEXT NOT NULL CHECK(entity_type IN ('kehoach', 'goithau'))",
+            "table_name": "TEXT NOT NULL CHECK(table_name IN ('ke_hoach_lcnt', 'goi_thau'))",
+            "record_id": "TEXT NOT NULL CHECK(record_id != '')",
+            "expected_row_version": "INTEGER NOT NULL CHECK(expected_row_version > 0)",
+            "server_row_version": "INTEGER NOT NULL CHECK(server_row_version > 0)",
+            "payload_ciphertext": "TEXT",
+            "payload_sha256": "TEXT NOT NULL CHECK(length(payload_sha256) = 64)",
+            "status": "TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'RESOLVED'))",
+            "resolution_mutation_id": "TEXT",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > created_at)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, actor_user_id, workspace_fingerprint, batch_id, mutation_id, table_name, record_id)",
+            "CHECK((status = 'ACTIVE' AND payload_ciphertext IS NOT NULL) OR (status = 'RESOLVED' AND payload_ciphertext IS NULL))"
+        ]
+    },
+    "word_template": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL CHECK(owner_type IN ('organization', 'personal'))",
+            "stable_code": "TEXT NOT NULL CHECK(length(stable_code) BETWEEN 1 AND 160)",
+            "display_name": "TEXT NOT NULL CHECK(length(display_name) BETWEEN 1 AND 255)",
+            "legacy_alias": "TEXT NOT NULL CHECK(length(legacy_alias) BETWEEN 1 AND 255)",
+            "draft_version_id": "TEXT",
+            "published_version_id": "TEXT",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "retired_at": "TEXT"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (draft_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (published_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, stable_code)",
+            "UNIQUE(organization_id, legacy_alias)"
+        ]
+    },
+    "word_template_version": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "template_id": "TEXT NOT NULL",
+            "version_no": "INTEGER NOT NULL CHECK(version_no > 0)",
+            "storage_key": "TEXT NOT NULL CHECK(length(storage_key) BETWEEN 1 AND 512)",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "byte_size": "INTEGER NOT NULL CHECK(byte_size > 0)",
+            "original_filename": "TEXT NOT NULL CHECK(length(original_filename) BETWEEN 1 AND 255)",
+            "creation_manifest_json": "TEXT NOT NULL CHECK(length(creation_manifest_json) BETWEEN 2 AND 262144)",
+            "manifest_hash": "TEXT NOT NULL CHECK(length(manifest_hash) = 64)",
+            "sanitizer_version": "TEXT NOT NULL CHECK(sanitizer_version != '')",
+            "source_version_id": "TEXT",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_id) REFERENCES word_template(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (source_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, template_id, version_no)"
+        ]
+    },
+    "word_template_preflight_run": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "template_version_id": "TEXT NOT NULL",
+            "template_sha256": "TEXT NOT NULL CHECK(length(template_sha256) = 64)",
+            "parser_version": "TEXT NOT NULL CHECK(parser_version != '')",
+            "mapping_base_version": "TEXT NOT NULL CHECK(mapping_base_version != '')",
+            "mapping_snapshot_hash": "TEXT NOT NULL CHECK(length(mapping_snapshot_hash) = 64)",
+            "required_registry_version": "TEXT NOT NULL CHECK(required_registry_version != '')",
+            "context_policy_version": "TEXT NOT NULL CHECK(context_policy_version != '')",
+            "report_json": "TEXT NOT NULL CHECK(length(report_json) BETWEEN 2 AND 1048576)",
+            "report_hash": "TEXT NOT NULL CHECK(length(report_hash) = 64)",
+            "result": "TEXT NOT NULL CHECK(result IN ('PASS', 'BLOCKED'))",
+            "run_by_id": "TEXT",
+            "run_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (run_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
+    "word_template_publication_event": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "template_id": "TEXT NOT NULL",
+            "from_version_id": "TEXT",
+            "to_version_id": "TEXT",
+            "action": "TEXT NOT NULL CHECK(action IN ('PUBLISH', 'RESTORE', 'RETIRE'))",
+            "accepted_preflight_run_id": "TEXT",
+            "actor_user_id": "TEXT",
+            "reason": "TEXT",
+            "config_revision": "INTEGER",
+            "audit_reference": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_id) REFERENCES word_template(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (from_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (to_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (accepted_preflight_run_id) REFERENCES word_template_preflight_run(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
+    "word_template_projection_outbox": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "template_id": "TEXT",
+            "template_version_id": "TEXT",
+            "event_type": "TEXT NOT NULL CHECK(event_type IN ('PUBLICATION', 'RETIREMENT', 'ASSIGNMENT'))",
+            "desired_alias": "TEXT NOT NULL CHECK(desired_alias != '')",
+            "desired_checksum": "TEXT",
+            "payload_json": "TEXT NOT NULL CHECK(length(payload_json) BETWEEN 2 AND 262144)",
+            "status": "TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'RETRY', 'FAILED'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "locked_at": "TEXT",
+            "last_error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_id) REFERENCES word_template(id) ON DELETE CASCADE",
+            "FOREIGN KEY (template_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, template_id, event_type, desired_checksum)"
+        ]
+    },
+    "word_publication_assignment_v2": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL CHECK(owner_type IN ('organization', 'personal'))",
+            "document_type": "TEXT NOT NULL CHECK(document_type != '')",
+            "context_key": "TEXT NOT NULL DEFAULT 'default' CHECK(context_key != '')",
+            "template_id": "TEXT NOT NULL",
+            "resolution_mode": "TEXT NOT NULL DEFAULT 'FOLLOW_PUBLISHED' CHECK(resolution_mode IN ('FOLLOW_PUBLISHED', 'PIN_VERSION'))",
+            "pinned_version_id": "TEXT",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(sort_order >= 0)",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_id) REFERENCES word_template(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (pinned_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "CONSTRAINT word_assignment_target_unique UNIQUE(organization_id, document_type, context_key, template_id)",
+            "CONSTRAINT word_assignment_order_unique UNIQUE(organization_id, document_type, context_key, sort_order)",
+            "CHECK((resolution_mode = 'FOLLOW_PUBLISHED' AND pinned_version_id IS NULL) OR (resolution_mode = 'PIN_VERSION' AND pinned_version_id IS NOT NULL))"
+        ]
+    },
+    "word_template_assignment_config": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL CHECK(owner_type IN ('organization', 'personal'))",
+            "revision": "INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0)",
+            "updated_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (updated_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id)"
+        ]
+    },
+    "legal_instrument": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "stable_code": "TEXT NOT NULL CHECK(stable_code != '')",
+            "title": "TEXT NOT NULL CHECK(title != '')",
+            "document_type": "TEXT NOT NULL CHECK(document_type != '')",
+            "document_number": "TEXT NOT NULL CHECK(document_number != '')",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(stable_code)"]
+    },
+    "legal_instrument_draft": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "instrument_id": "TEXT NOT NULL",
+            "draft_revision": "INTEGER NOT NULL DEFAULT 1 CHECK(draft_revision > 0)",
+            "source_uri": "TEXT NOT NULL CHECK(source_uri != '')",
+            "source_content": "TEXT NOT NULL CHECK(source_content != '')",
+            "issued_date": "TEXT NOT NULL CHECK(date(issued_date) IS NOT NULL)",
+            "effective_from": "TEXT NOT NULL CHECK(date(effective_from) IS NOT NULL)",
+            "effective_to": "TEXT",
+            "relation_manifest_json": "TEXT NOT NULL DEFAULT '{}'",
+            "updated_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (instrument_id) REFERENCES legal_instrument(id) ON DELETE CASCADE",
+            "FOREIGN KEY (updated_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "CHECK(effective_to IS NULL OR effective_to >= effective_from)"
+        ]
+    },
+    "legal_instrument_version": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "instrument_id": "TEXT NOT NULL",
+            "version_no": "INTEGER NOT NULL CHECK(version_no > 0)",
+            "source_uri": "TEXT NOT NULL CHECK(source_uri != '')",
+            "source_content": "TEXT NOT NULL CHECK(source_content != '')",
+            "content_sha256": "TEXT NOT NULL CHECK(length(content_sha256) = 64)",
+            "issued_date": "TEXT NOT NULL CHECK(date(issued_date) IS NOT NULL)",
+            "effective_from": "TEXT NOT NULL CHECK(date(effective_from) IS NOT NULL)",
+            "effective_to": "TEXT",
+            "relation_manifest_json": "TEXT NOT NULL",
+            "relation_manifest_hash": "TEXT NOT NULL CHECK(length(relation_manifest_hash) = 64)",
+            "published_by_id": "TEXT",
+            "published_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (instrument_id) REFERENCES legal_instrument(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (published_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(instrument_id, version_no)",
+            "CHECK(effective_to IS NULL OR effective_to >= effective_from)"
+        ]
+    },
+    "legal_source_profile": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "stable_code": "TEXT NOT NULL CHECK(stable_code != '')",
+            "display_name": "TEXT NOT NULL CHECK(display_name != '')",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(stable_code)"]
+    },
+    "legal_source_profile_draft": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "profile_id": "TEXT NOT NULL",
+            "draft_revision": "INTEGER NOT NULL DEFAULT 1 CHECK(draft_revision > 0)",
+            "effective_from": "TEXT NOT NULL CHECK(date(effective_from) IS NOT NULL)",
+            "effective_to": "TEXT",
+            "priority": "INTEGER NOT NULL DEFAULT 0",
+            "manual_review_required": "INTEGER NOT NULL DEFAULT 0 CHECK(manual_review_required IN (0,1))",
+            "instrument_version_ids_json": "TEXT NOT NULL DEFAULT '[]'",
+            "updated_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (profile_id) REFERENCES legal_source_profile(id) ON DELETE CASCADE",
+            "FOREIGN KEY (updated_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "CHECK(effective_to IS NULL OR effective_to >= effective_from)"
+        ]
+    },
+    "legal_source_profile_version": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "profile_id": "TEXT NOT NULL",
+            "version_no": "INTEGER NOT NULL CHECK(version_no > 0)",
+            "effective_from": "TEXT NOT NULL CHECK(date(effective_from) IS NOT NULL)",
+            "effective_to": "TEXT",
+            "priority": "INTEGER NOT NULL DEFAULT 0",
+            "manual_review_required": "INTEGER NOT NULL DEFAULT 0 CHECK(manual_review_required IN (0,1))",
+            "manifest_hash": "TEXT NOT NULL CHECK(length(manifest_hash) = 64)",
+            "published_by_id": "TEXT",
+            "published_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (profile_id) REFERENCES legal_source_profile(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (published_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(profile_id, version_no)",
+            "CHECK(effective_to IS NULL OR effective_to >= effective_from)"
+        ]
+    },
+    "legal_source_profile_member": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "profile_version_id": "TEXT NOT NULL",
+            "instrument_version_id": "TEXT NOT NULL",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(sort_order >= 0)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (profile_version_id) REFERENCES legal_source_profile_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (instrument_version_id) REFERENCES legal_instrument_version(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(profile_version_id, instrument_version_id)",
+            "UNIQUE(profile_version_id, sort_order)"
+        ]
+    },
+    "legal_applicability_policy_version": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "policy_code": "TEXT NOT NULL CHECK(policy_code != '')",
+            "version": "TEXT NOT NULL CHECK(version != '')",
+            "config_json": "TEXT NOT NULL CHECK(config_json != '')",
+            "config_hash": "TEXT NOT NULL CHECK(length(config_hash) = 64)",
+            "published_by_id": "TEXT",
+            "published_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (published_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(policy_code, version)"]
+    },
+    "plan_legal_binding": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "plan_id": "TEXT NOT NULL",
+            "binding_revision": "INTEGER NOT NULL CHECK(binding_revision > 0)",
+            "target_row_version": "INTEGER NOT NULL CHECK(target_row_version > 0)",
+            "policy_version_id": "TEXT NOT NULL",
+            "profile_version_id": "TEXT",
+            "status": "TEXT NOT NULL CHECK(status IN ('RESOLVED','AMBIGUOUS','UNRESOLVED','MANUAL_REVIEW_REQUIRED'))",
+            "reason": "TEXT NOT NULL CHECK(reason != '')",
+            "anchor_date": "TEXT",
+            "anchor_source": "TEXT NOT NULL",
+            "evidence_json": "TEXT NOT NULL",
+            "evidence_hash": "TEXT NOT NULL CHECK(length(evidence_hash) = 64)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (plan_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (policy_version_id) REFERENCES legal_applicability_policy_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (profile_version_id) REFERENCES legal_source_profile_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, plan_id, binding_revision)"]
+    },
+    "package_legal_binding": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "package_id": "TEXT NOT NULL",
+            "binding_revision": "INTEGER NOT NULL CHECK(binding_revision > 0)",
+            "target_row_version": "INTEGER NOT NULL CHECK(target_row_version > 0)",
+            "policy_version_id": "TEXT NOT NULL",
+            "profile_version_id": "TEXT",
+            "status": "TEXT NOT NULL CHECK(status IN ('RESOLVED','AMBIGUOUS','UNRESOLVED','MANUAL_REVIEW_REQUIRED'))",
+            "reason": "TEXT NOT NULL CHECK(reason != '')",
+            "anchor_date": "TEXT",
+            "anchor_source": "TEXT NOT NULL",
+            "evidence_json": "TEXT NOT NULL",
+            "evidence_hash": "TEXT NOT NULL CHECK(length(evidence_hash) = 64)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (package_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (policy_version_id) REFERENCES legal_applicability_policy_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (profile_version_id) REFERENCES legal_source_profile_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, package_id, binding_revision)"]
+    },
+    "plan_legal_binding_head": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "plan_id": "TEXT NOT NULL",
+            "current_binding_id": "TEXT NOT NULL",
+            "binding_revision": "INTEGER NOT NULL CHECK(binding_revision > 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (plan_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (current_binding_id) REFERENCES plan_legal_binding(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, plan_id)"]
+    },
+    "package_legal_binding_head": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "package_id": "TEXT NOT NULL",
+            "current_binding_id": "TEXT NOT NULL",
+            "binding_revision": "INTEGER NOT NULL CHECK(binding_revision > 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (package_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (current_binding_id) REFERENCES package_legal_binding(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, package_id)"]
+    },
+    "generated_document_provenance": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "artifact_id": "TEXT NOT NULL CHECK(artifact_id != '')",
+            "template_version_id": "TEXT NOT NULL",
+            "template_sha256": "TEXT NOT NULL CHECK(length(template_sha256) = 64)",
+            "record_type": "TEXT",
+            "record_id": "TEXT",
+            "record_row_version": "INTEGER",
+            "artifact_sha256": "TEXT NOT NULL CHECK(length(artifact_sha256) = 64)",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (template_version_id) REFERENCES word_template_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, artifact_id)"
+        ]
+    },
+    "procurement_case": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "case_no": "TEXT NOT NULL CHECK(case_no != '')",
+            "case_type": "TEXT NOT NULL CHECK(case_type IN ('CLARIFICATION', 'PETITION'))",
+            "direction": "TEXT CHECK(direction IN ('INBOUND', 'OUTBOUND'))",
+            "category": "TEXT CHECK(category IN ('E_HSMT', 'CONTRACTOR_SELECTION_RESULT', 'OTHER'))",
+            "other_description": "TEXT",
+            "subject": "TEXT NOT NULL CHECK(subject != '')",
+            "state": "TEXT NOT NULL",
+            "policy_version": "TEXT NOT NULL",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "due_at": "TEXT",
+            "due_provenance": "TEXT CHECK(due_provenance IN ('MANUAL', 'POLICY'))",
+            "deadline_status": "TEXT NOT NULL DEFAULT 'NOT_EVALUATED' CHECK(deadline_status IN ('ACTIVE', 'DUE_SOON', 'OVERDUE', 'NOT_EVALUATED'))",
+            "created_by_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, case_no)"]
+    },
+    "procurement_case_package_target": {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "case_id": "TEXT NOT NULL",
+            "package_lineage_root_id": "TEXT NOT NULL",
+            "current_package_version_id": "TEXT NOT NULL",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, package_lineage_root_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, current_package_version_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, case_id)"]
+    },
+    "procurement_case_party": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "party_role": "TEXT NOT NULL",
+            "display_name": "TEXT NOT NULL", "contact_json": "TEXT NOT NULL DEFAULT '{}'",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": ["FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT"]
+    },
+    "procurement_case_responsibility": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "responsible_user_id": "TEXT",
+            "responsible_unit": "TEXT", "assigned_by_id": "TEXT",
+            "assigned_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (responsible_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+            "FOREIGN KEY (assigned_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
+    "procurement_case_response_revision": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "revision_no": "INTEGER NOT NULL CHECK(revision_no > 0)",
+            "package_version_id": "TEXT NOT NULL", "content": "TEXT NOT NULL",
+            "content_sha256": "TEXT NOT NULL CHECK(length(content_sha256) = 64)",
+            "created_by_id": "TEXT", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, package_version_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, case_id, revision_no)"]
+    },
+    "procurement_case_transition": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "sequence_no": "INTEGER NOT NULL CHECK(sequence_no > 0)",
+            "from_state": "TEXT", "to_state": "TEXT NOT NULL", "action": "TEXT NOT NULL",
+            "package_version_id": "TEXT NOT NULL", "response_revision_id": "TEXT",
+            "reason": "TEXT", "actor_user_id": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, package_version_id) REFERENCES goi_thau(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (response_revision_id) REFERENCES procurement_case_response_revision(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, case_id, sequence_no)"]
+    },
+    "procurement_case_attachment": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "response_revision_id": "TEXT",
+            "filename": "TEXT NOT NULL", "storage_key": "TEXT NOT NULL",
+            "media_type": "TEXT NOT NULL", "byte_size": "INTEGER NOT NULL CHECK(byte_size >= 0)",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "created_by_id": "TEXT", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (response_revision_id) REFERENCES procurement_case_response_revision(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, storage_key)"]
+    },
+    "procurement_case_legal_basis": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT NOT NULL", "response_revision_id": "TEXT",
+            "profile_version_id": "TEXT", "instrument_version_id": "TEXT",
+            "note": "TEXT", "verification_status": "TEXT NOT NULL DEFAULT 'VERIFIED' CHECK(verification_status IN ('VERIFIED', 'UNVERIFIED_NOTE'))",
+            "created_by_id": "TEXT", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (response_revision_id) REFERENCES procurement_case_response_revision(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (profile_version_id) REFERENCES legal_source_profile_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (instrument_version_id) REFERENCES legal_instrument_version(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
+    "procurement_case_source_observation": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_type": "TEXT NOT NULL CHECK(case_type IN ('CLARIFICATION', 'PETITION'))",
+            "provider": "TEXT NOT NULL", "upstream_identity": "TEXT NOT NULL",
+            "upstream_revision": "TEXT NOT NULL", "source_sha256": "TEXT NOT NULL CHECK(length(source_sha256) = 64)",
+            "canonical_json": "TEXT NOT NULL", "linked_case_id": "TEXT",
+            "observed_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": ["FOREIGN KEY (organization_id, linked_case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT"],
+        "unique_constraints": ["UNIQUE(organization_id, provider, upstream_identity, upstream_revision)"]
+    },
+    "procurement_case_command": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "case_id": "TEXT", "actor_user_id": "TEXT NOT NULL",
+            "idempotency_key": "TEXT NOT NULL", "command_name": "TEXT NOT NULL",
+            "request_hash": "TEXT NOT NULL CHECK(length(request_hash) = 64)",
+            "result_json": "TEXT NOT NULL", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, case_id) REFERENCES procurement_case(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, actor_user_id, idempotency_key)"]
+    },
+    "calendar_event_head": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "event_key": "TEXT NOT NULL", "uid": "TEXT NOT NULL",
+            "source_type": "TEXT", "source_id": "TEXT",
+            "significant_payload_hash": "TEXT NOT NULL CHECK(length(significant_payload_hash) = 64)",
+            "sequence": "INTEGER NOT NULL DEFAULT 0 CHECK(sequence >= 0)",
+            "canonical_revision_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "source_fingerprint": "TEXT NOT NULL", "policy_version": "TEXT NOT NULL",
+            "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, id)", "UNIQUE(organization_id, event_key)",
+            "UNIQUE(uid)"
+        ]
+    },
+    "calendar_event_revision": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "event_head_id": "TEXT NOT NULL", "sequence": "INTEGER NOT NULL CHECK(sequence >= 0)",
+            "significant_payload_hash": "TEXT NOT NULL CHECK(length(significant_payload_hash) = 64)",
+            "canonical_revision_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "source_fingerprint": "TEXT NOT NULL", "policy_version": "TEXT NOT NULL"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, event_head_id) REFERENCES calendar_event_head(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, event_head_id, sequence)"]
+    },
+    "bulk_operation": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "actor_user_id": "TEXT NOT NULL", "action_key": "TEXT NOT NULL",
+            "contract_version": "TEXT NOT NULL", "target_type": "TEXT NOT NULL CHECK(target_type IN ('kehoach', 'goithau'))",
+            "selection_mode": "TEXT NOT NULL CHECK(selection_mode = 'EXPLICIT_IDS')",
+            "selection_json": "TEXT NOT NULL", "selection_hash": "TEXT NOT NULL CHECK(length(selection_hash) = 64)",
+            "dependency_json": "TEXT NOT NULL", "preview_json": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL CHECK(status IN ('PREVIEW_READY', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'STALE'))",
+            "idempotency_key": "TEXT", "request_hash": "TEXT",
+            "result_json": "TEXT", "expires_at": "TEXT NOT NULL",
+            "confirmed_at": "TEXT", "completed_at": "TEXT", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": ["FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"],
+        "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, actor_user_id, idempotency_key)"]
+    },
+    "bulk_operation_item": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "operation_id": "TEXT NOT NULL", "target_id": "TEXT NOT NULL",
+            "expected_row_version": "INTEGER NOT NULL CHECK(expected_row_version > 0)",
+            "display_code": "TEXT NOT NULL", "display_title": "TEXT NOT NULL"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, operation_id) REFERENCES bulk_operation(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, operation_id, target_id)"]
+    },
+    "bulk_operation_artifact": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "operation_id": "TEXT NOT NULL", "storage_key": "TEXT NOT NULL",
+            "filename": "TEXT NOT NULL", "media_type": "TEXT NOT NULL",
+            "byte_size": "INTEGER NOT NULL CHECK(byte_size >= 0)",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "expires_at": "TEXT NOT NULL", "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, operation_id) REFERENCES bulk_operation(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, operation_id)", "UNIQUE(organization_id, storage_key)"]
+    },
+    "calendar_oauth_state": {
+        "columns": {
+            "state_hash": "TEXT PRIMARY KEY CHECK(length(state_hash) = 64)",
+            "organization_id": "TEXT NOT NULL", "user_id": "TEXT NOT NULL",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('GOOGLE', 'MICROSOFT'))",
+            "code_verifier_ciphertext": "TEXT NOT NULL", "redirect_uri": "TEXT NOT NULL",
+            "calendar_id": "TEXT NOT NULL", "active_role": "TEXT",
+            "expires_at": "INTEGER NOT NULL", "used_at": "INTEGER",
+            "created_at": "INTEGER NOT NULL"
+        },
+        "foreign_keys": ["FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"]
+    },
+    "calendar_connection": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "user_id": "TEXT NOT NULL", "provider": "TEXT NOT NULL CHECK(provider IN ('GOOGLE', 'MICROSOFT'))",
+            "calendar_id": "TEXT NOT NULL", "account_label": "TEXT NOT NULL DEFAULT ''",
+            "active_role": "TEXT", "token_ciphertext": "TEXT NOT NULL",
+            "scopes_json": "TEXT NOT NULL", "outbound_profile_version": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL CHECK(status IN ('ACTIVE', 'REAUTH_REQUIRED', 'REVOKED'))",
+            "token_expires_at": "INTEGER", "row_version": "INTEGER NOT NULL DEFAULT 1 CHECK(row_version > 0)",
+            "consented_at": "INTEGER NOT NULL", "revoked_at": "INTEGER",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": ["FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"],
+        "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, user_id, provider, calendar_id)"]
+    },
+    "calendar_event_binding": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "connection_id": "TEXT NOT NULL", "event_head_id": "TEXT NOT NULL",
+            "remote_event_id": "TEXT NOT NULL", "remote_etag": "TEXT",
+            "last_delivered_sequence": "INTEGER NOT NULL CHECK(last_delivered_sequence >= 0)",
+            "last_delivered_hash": "TEXT NOT NULL CHECK(length(last_delivered_hash) = 64)",
+            "status": "TEXT NOT NULL CHECK(status IN ('ACTIVE', 'CANCELLED'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, connection_id) REFERENCES calendar_connection(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, event_head_id) REFERENCES calendar_event_head(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, connection_id, event_head_id)"]
+    },
+    "calendar_delivery_outbox": {
+        "columns": {
+            "id": "TEXT NOT NULL", "organization_id": "TEXT NOT NULL",
+            "connection_id": "TEXT NOT NULL", "event_head_id": "TEXT NOT NULL",
+            "action": "TEXT NOT NULL CHECK(action IN ('UPSERT', 'CANCEL'))",
+            "event_sequence": "INTEGER NOT NULL CHECK(event_sequence >= 0)",
+            "payload_hash": "TEXT NOT NULL CHECK(length(payload_hash) = 64)",
+            "payload_json": "TEXT NOT NULL", "status": "TEXT NOT NULL CHECK(status IN ('PENDING', 'PROCESSING', 'RETRY', 'DELIVERED', 'FAILED'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL", "locked_at": "INTEGER",
+            "last_error_code": "TEXT", "created_at": "INTEGER NOT NULL",
+            "updated_at": "INTEGER NOT NULL"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, connection_id) REFERENCES calendar_connection(organization_id, id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, event_head_id) REFERENCES calendar_event_head(organization_id, id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, connection_id, event_head_id, action, event_sequence, payload_hash)"]
     }
 }
 

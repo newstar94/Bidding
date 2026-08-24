@@ -18,7 +18,9 @@ _RUNTIME_PATH_DEFAULTS = {
     "BIDDING_LOG_DIR": Path("logs"),
     "BIDDING_UPLOAD_DIR": Path("templates") / "images",
     "BIDDING_WORD_TEMPLATE_DIR": Path("templates") / "words",
+    "BIDDING_WORD_TEMPLATE_CATALOG_DIR": Path("templates") / "word-catalog",
     "DOCUMENT_WORKER_TEMP_DIR": Path("document-worker-temp"),
+    "BIDDING_BULK_EXPORT_DIR": Path("bulk-exports"),
 }
 
 
@@ -44,3 +46,7 @@ def resolve_runtime_path(name, *, environ=None, allow_empty=False):
 LOG_DIR = resolve_runtime_path("BIDDING_LOG_DIR")
 IMAGE_DIR = resolve_runtime_path("BIDDING_UPLOAD_DIR")
 WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
+WORD_TEMPLATE_CATALOG_DIR = resolve_runtime_path(
+    "BIDDING_WORD_TEMPLATE_CATALOG_DIR"
+)
+BULK_EXPORT_DIR = resolve_runtime_path("BIDDING_BULK_EXPORT_DIR")

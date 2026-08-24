@@ -12,6 +12,8 @@ import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { selectVersionRepresentatives, versionRootId } from "../shared/versionResolver.js";
+import { bindVersionComparisonAction } from "../version-comparison/VersionComparisonPanel.js";
+import { bindLegalBindingAction } from "../legal-versioning/LegalBindingPanel.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -362,6 +364,7 @@ export async function renderPlanVersionDetails(versionId) {
                     </div>
                 </div>
                 <h4 class="detail-title bf-s-4749e65682">${escapeHtml(kh.tenKeHoach)}</h4>
+                <div id="fullpage-kh-version-actions"></div>
             </div>
 
             <div class="detail-grid">
@@ -446,5 +449,25 @@ export async function renderPlanVersionDetails(versionId) {
     };
     initCustomSelect("fullpage-kh-version-select");
   }
+  bindVersionComparisonAction(
+    document.getElementById("fullpage-kh-version-actions"),
+    {
+      entityType: "kehoach",
+      selectedId: versionId,
+      versions: allVersions.map((version) => ({
+        id: version.id,
+        label: getVersionLabel(version.phienBan),
+      })),
+    },
+  );
+  bindLegalBindingAction(
+    document.getElementById("fullpage-kh-version-actions"),
+    {
+      targetType: "plan",
+      targetId: versionId,
+      targetRowVersion: kh.rowVersion || 1,
+      canResolve: this.model.state.activerole === "super_admin",
+    },
+  );
   lucide.createIcons();
 }

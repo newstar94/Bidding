@@ -1140,6 +1140,7 @@ export async function saveKetQuaChiDinhThau(gtId) {
   }
   const tbodyResult = document.getElementById("approve-bidders-tbody");
   const winnerRows = getWinnerRows(tbodyResult, { isDirectOrSpecial });
+  const packageBaseSnapshot = structuredClone(gt);
   try {
     if (!gt.thoiGianMoThau) {
       gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
@@ -1170,7 +1171,10 @@ export async function saveKetQuaChiDinhThau(gtId) {
     gt.trangThai = "Đã có kết quả";
     await this.model.persistChanges("goithau", { upserts: [gt] }, { throwOnError: true });
     await this.model.persistChanges("thongtinmothau", { upserts: tempBids }, { throwOnError: true });
-    this.model.commitLocalMutation("goithau", { records: [gt] });
+    this.model.commitLocalMutation("goithau", {
+      records: [gt],
+      baseRecords: [packageBaseSnapshot],
+    });
     this.model.commitLocalMutation("thongtinmothau", { records: tempBids });
     this.view.renderGoiThauTable();
     const syncResult = await this.autoSync();

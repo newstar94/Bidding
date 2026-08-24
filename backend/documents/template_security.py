@@ -183,8 +183,20 @@ def validate_template_root_keys(
     Loop target names are local variables, while the iterable and condition
     expressions must still originate from an allowlisted context root.
     """
-    parts = list(xml_parts)
     allowed = {str(key) for key in allowed_root_keys}
+    referenced = extract_template_root_keys(xml_parts)
+    unknown = sorted(referenced - allowed)
+    if unknown:
+        raise ValueError(
+            "Mẫu Word tham chiếu khóa ngữ cảnh không được phép: "
+            + ", ".join(unknown[:10])
+        )
+
+
+def extract_template_root_keys(xml_parts: Iterable[str]) -> set[str]:
+    """Return external context roots while excluding loop-local identifiers."""
+
+    parts = list(xml_parts)
     local_names = {"loop"}
     expressions = []
 
@@ -220,12 +232,22 @@ def validate_template_root_keys(
     for expression in expressions:
         if expression:
             referenced.update(_expression_root_names(expression))
-    unknown = sorted(referenced - allowed - local_names)
-    if unknown:
-        raise ValueError(
-            "Mẫu Word tham chiếu khóa ngữ cảnh không được phép: "
-            + ", ".join(unknown[:10])
-        )
+    return referenced - local_names
+
+
+def extract_docx_template_root_keys(content: bytes) -> set[str]:
+    """Validate and extract context roots from every Word XML part."""
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        parts = []
+        try:
+            for name in archive.namelist():
+                if name.startswith("word/") and name.lower().endswith(".xml"):
+                    parts.append(archive.read(name).decode("utf-8", errors="strict"))
+        except UnicodeDecodeError as exc:
+            raise ValueError("Mẫu Word chứa XML không đúng mã hóa UTF-8.") from exc
+    validate_template_statements(parts)
+    return extract_template_root_keys(parts)
 
 
 def validate_docx_template_statements(content: bytes) -> None:

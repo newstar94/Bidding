@@ -51,6 +51,12 @@ class _FileSource:
     materialize_as: str
 
 
+@dataclass(frozen=True)
+class _InlineFileSource:
+    content: bytes
+    materialize_as: str
+
+
 def _operation_allowed(operation: object) -> bool:
     return operation in ALLOWED_OPERATIONS or (
         operation == "test_delay"
@@ -186,6 +192,13 @@ def _json_tree(value: Any, job_dir: Path, state: dict[str, int], *, depth: int =
         _copy_source(value.path, path)
         state["bytes"] += path.stat().st_size
         return _file_metadata(path, value.materialize_as)
+    if isinstance(value, _InlineFileSource):
+        index = state["files"]
+        state["files"] += 1
+        path = job_dir / f"input-{index:04d}.bin"
+        _write_bytes(path, value.content)
+        state["bytes"] += path.stat().st_size
+        return _file_metadata(path, value.materialize_as)
     if isinstance(value, list):
         state["items"] += len(value)
         if state["items"] > MAX_COLLECTION_ITEMS:
@@ -212,6 +225,11 @@ def write_job_manifest(path: Path, operation: str, payload: dict[str, Any], *, i
         prepared["content"] = _FileSource(Path(str(prepared.pop("content_path"))), "bytes")
     if "template_path" in prepared:
         prepared["template_path"] = _FileSource(Path(str(prepared["template_path"])), "path")
+    if "template_content" in prepared:
+        content = prepared.pop("template_content")
+        if not isinstance(content, bytes):
+            raise DocumentIpcError("Nội dung biểu mẫu IPC không hợp lệ.")
+        prepared["template_path"] = _InlineFileSource(content, "path")
     image_bytes = 0
     if "context" in prepared:
         context_manifest = prepared.get("context_manifest")

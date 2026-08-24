@@ -7,6 +7,8 @@ import { renderWorkflowActions } from "./WorkflowActions.js";
 import { getAppController } from "../../app/controllerRef.js";
 import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
 import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
+import { bindVersionComparisonAction } from "../../version-comparison/VersionComparisonPanel.js";
+import { bindLegalBindingAction } from "../../legal-versioning/LegalBindingPanel.js";
 
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return () => {};
@@ -79,6 +81,17 @@ export function bindPackageDetailChrome(view, detail) {
       view.showPackageDetails(detail.packageId);
     },
   });
+  const disposeVersionComparison = bindVersionComparisonAction(actions, {
+    ...detail,
+    entityType: "goithau",
+    selectedId: detail.packageId,
+  });
+  const disposeLegalBinding = bindLegalBindingAction(actions, {
+    targetType: "package",
+    targetId: detail.packageId,
+    targetRowVersion: detail.pkg.rowVersion || 1,
+    canResolve: view.model?.state?.activerole === "super_admin",
+  });
   const disposeVersionSelector = renderVersionSelector(view, detail);
 
   const disposeTabs = renderPackageTabHeaders(
@@ -118,5 +131,7 @@ export function bindPackageDetailChrome(view, detail) {
     content?.removeEventListener?.("change", markDraftDirty, true);
     disposeTabs();
     disposeVersionSelector();
+    disposeVersionComparison();
+    disposeLegalBinding();
   };
 }

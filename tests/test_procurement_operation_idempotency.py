@@ -123,8 +123,12 @@ def test_v63_migration_checks_duplicates_before_replacing_constraint():
 
     _upgrade_to_v63_scope_procurement_operation_idempotency(cursor, None)
 
-    assert DB_SCHEMA_VERSION == 63
-    assert UPGRADES[-1].name == "scope_procurement_operation_idempotency"
+    assert DB_SCHEMA_VERSION >= 63
+    assert any(
+        upgrade.version == 63
+        and upgrade.name == "scope_procurement_operation_idempotency"
+        for upgrade in UPGRADES
+    )
     assert "GROUP BY organization_id, provider, family_key" in cursor.statements[0][0]
     assert "DROP CONSTRAINT IF EXISTS" in cursor.statements[1][0]
     assert "family_idempotency_unique" in cursor.statements[2][0]

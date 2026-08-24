@@ -103,6 +103,9 @@ class AssistantController {
     this.historyList = null;
     this.sourceList = null;
     this.sourceKeys = new Set();
+    this.targetHint = null;
+    this.targetChip = null;
+    this.modeSelect = null;
     this.triggerDrag = null;
     this.suppressTriggerClick = false;
     this.positionPanel = this.positionPanel.bind(this);
@@ -161,6 +164,9 @@ class AssistantController {
       this.setHistoryOpen(false);
     });
     window.addEventListener("bf:workspace-changed", () => this.resetForWorkspace());
+    window.addEventListener("bf:assistant-target", (event) => {
+      void this.setTargetHint(event.detail);
+    });
     window.addEventListener("resize", this.positionPanel);
     window.lucide?.createIcons?.({ root: this.panel });
   }
@@ -278,6 +284,7 @@ class AssistantController {
     const context = make("div", "bf-assistant-context");
     context.append(icon("building-2"), make("span", "bf-assistant-workspace", activeWorkspaceName(this.controller)));
     const modeSelect = make("select", "bf-assistant-mode");
+    this.modeSelect = modeSelect;
     modeSelect.id = "bf-assistant-mode-select";
     modeSelect.dataset.dropdownInline = "true";
     modeSelect.setAttribute("aria-label", "Chế độ trợ lý");
@@ -285,6 +292,15 @@ class AssistantController {
     modeSelect.value = this.mode;
     modeSelect.addEventListener("change", () => this.changeMode(modeSelect.value));
     context.append(modeSelect);
+    this.targetChip = make("div", "bf-assistant-target-chip");
+    this.targetChip.hidden = true;
+    const targetLabel = make("span", "bf-assistant-target-label");
+    const clearTarget = make("button", "bf-assistant-target-clear", "×");
+    clearTarget.type = "button";
+    clearTarget.setAttribute("aria-label", "Bỏ target tuân thủ");
+    clearTarget.addEventListener("click", () => this.clearTargetHint());
+    this.targetChip.append(targetLabel, clearTarget);
+    context.append(this.targetChip);
 
     this.historyPanel = make("section", "bf-assistant-history-panel");
     this.historyPanel.id = "bf-assistant-history-panel";
@@ -424,6 +440,34 @@ class AssistantController {
   }
 
   setStatus(text) { if (this.status) this.status.textContent = text; }
+
+  async setTargetHint(value) {
+    const targetType = String(value?.targetType || "").trim();
+    const targetId = String(value?.targetId || "").trim();
+    const versionId = String(value?.versionId || targetId).trim();
+    if (!["kehoach", "goithau"].includes(targetType) || !targetId || !versionId) return;
+    this.targetHint = { targetType, targetId, versionId };
+    if (this.mode !== "procurement_advice") {
+      this.modeSelect.value = "procurement_advice";
+      this.modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await this.historyReady;
+    } else {
+      await this.newConversation();
+    }
+    const label = this.targetChip?.querySelector(".bf-assistant-target-label");
+    if (label) label.textContent = `${targetType === "goithau" ? "Gói thầu" : "Kế hoạch"} · ${versionId}`;
+    if (this.targetChip) this.targetChip.hidden = false;
+    this.open();
+    this.setStatus("Target/version đã được ghim; server sẽ kiểm tra lại quyền khi gọi tool.");
+  }
+
+  clearTargetHint() {
+    this.targetHint = null;
+    if (this.targetChip) this.targetChip.hidden = true;
+    this.showWelcome();
+    this.setStatus("Đã bỏ target tuân thủ và kết quả cũ.");
+  }
 
   setHistoryOpen(open) {
     if (!this.historyPanel || !this.historyButton) return;
@@ -647,12 +691,34 @@ class AssistantController {
       const item = make("div", "bf-assistant-stat"); item.append(make("span", "bf-assistant-stat-label", key === "recordCount" ? "Bản ghi" : key === "value" ? "Giá trị" : key), make("strong", "bf-assistant-stat-value", typeof value === "object" ? JSON.stringify(value) : formatValue(value))); summary.appendChild(item);
     });
     card.append(title, summary);
+    const compliance = result.records?.[0];
+    if (compliance?.findings && compliance?.target) {
+      title.textContent = "Kiểm tra tuân thủ xác định";
+      const target = make("p", "bf-assistant-compliance-target", `${compliance.target.type} · ${compliance.target.exactVersionId}`);
+      card.appendChild(target);
+      compliance.findings.forEach((finding) => {
+        const item = make("article", "bf-assistant-finding");
+        item.dataset.result = finding.result || "";
+        item.append(
+          make("strong", "", `${finding.ruleId} · ${finding.result}`),
+          make("span", "", `Mức: ${finding.severity}`),
+          make("code", "", (finding.evidencePaths || []).join(" · ") || "Chưa có evidence path"),
+        );
+        card.appendChild(item);
+      });
+      if (compliance.notEvaluated?.length) {
+        const unavailable = make("section", "bf-assistant-not-evaluated");
+        unavailable.appendChild(make("strong", "", "Chưa đánh giá"));
+        compliance.notEvaluated.forEach((item) => unavailable.appendChild(make("code", "", `${item.code}: ${item.reason}`)));
+        card.appendChild(unavailable);
+      }
+    }
     if (result.filters && Object.keys(result.filters).length) {
       const filters = make("div", "bf-assistant-filter-row", "Bộ lọc");
       Object.entries(result.filters).forEach(([key, value]) => { if (value === null || value === "") return; filters.appendChild(make("span", "bf-assistant-filter", `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)); });
       card.appendChild(filters);
     }
-    (result.records || []).slice(0, 20).forEach((record) => {
+    (compliance ? [] : result.records || []).slice(0, 20).forEach((record) => {
       const line = make("div", "bf-assistant-record");
       line.append(make("span", "bf-assistant-record-name", record.name || record.group || record.code || record.id), make("span", "bf-assistant-record-meta", record.value ? formatValue(record.value) : record.status || ""));
       const link = (result.sourceLinks || []).find((source) => source.url?.endsWith(`/${record.id}`));
@@ -721,6 +787,7 @@ class AssistantController {
         operation.signal,
         globalThis.location?.pathname || "/",
         clientRequestId,
+        this.targetHint,
       );
       await consumeAssistantStream(response, (event) => this.onEvent(event), operation.signal);
     } catch (error) {
@@ -743,6 +810,10 @@ class AssistantController {
     if (event.type === "tool.started") this.setStatus("Đang kiểm tra dữ liệu được phân quyền…");
     if (event.type === "tool.completed") {
       this.setStatus(event.status === "completed" ? "Đã kiểm tra dữ liệu và nguồn." : "Không thể hoàn tất truy vấn dữ liệu.");
+      if (
+        event.status === "completed"
+        && event.result?.records?.[0]?.findings
+      ) this.renderToolResult(event.result);
     }
     if (event.type === "source.added") this.setStatus("Đã thêm nguồn kiểm chứng.");
     if (event.type === "message.completed" && this.activeMessage) {
@@ -826,6 +897,8 @@ class AssistantController {
     this.historyRequestId += 1;
     this.conversationRequestId += 1;
     this.workspaceId = getActiveOrganizationId();
+    this.targetHint = null;
+    if (this.targetChip) this.targetChip.hidden = true;
     this.conversationId = "";
     this.conversations = [];
     this.historyReady = Promise.resolve();

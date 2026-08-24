@@ -94,6 +94,31 @@ APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "").strip().rstrip("/")
 BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
 ENABLE_IMAGE_CACHE_PREWARM = os.environ.get("ENABLE_IMAGE_CACHE_PREWARM", "true").lower() == "true"
 ENABLE_PARTNER_LOOKUP_WORKER = os.environ.get("ENABLE_PARTNER_LOOKUP_WORKER", "true").lower() == "true"
+VERSION_COMPARISON_ENABLED = os.environ.get(
+    "VERSION_COMPARISON_ENABLED",
+    "false" if IS_PRODUCTION else "true",
+).lower() == "true"
+LEGAL_VERSIONING_ENABLED = os.environ.get(
+    "LEGAL_VERSIONING_ENABLED", "false"
+).lower() == "true"
+PROCUREMENT_CASE_ENABLED = os.environ.get(
+    "PROCUREMENT_CASE_ENABLED", "false"
+).lower() == "true"
+WORK_CALENDAR_ICS_ENABLED = os.environ.get(
+    "WORK_CALENDAR_ICS_ENABLED", "false"
+).lower() == "true"
+WORK_CALENDAR_CONNECTORS_ENABLED = os.environ.get(
+    "WORK_CALENDAR_CONNECTORS_ENABLED", "false"
+).lower() == "true"
+WORK_CALENDAR_GOOGLE_ENABLED = os.environ.get(
+    "WORK_CALENDAR_GOOGLE_ENABLED", "false"
+).lower() == "true"
+WORK_CALENDAR_MICROSOFT_ENABLED = os.environ.get(
+    "WORK_CALENDAR_MICROSOFT_ENABLED", "false"
+).lower() == "true"
+BULK_EXPORT_ENABLED = os.environ.get(
+    "BULK_EXPORT_ENABLED", "false"
+).lower() == "true"
 
 
 def _split_env_list(value):
@@ -298,6 +323,38 @@ def _build_index_response_payload():
     html_content = html_content.replace(
         "__TURNSTILE_SITE_KEY__",
         html.escape(str(turnstile["siteKey"]), quote=True),
+    )
+    html_content = html_content.replace(
+        "__VERSION_COMPARISON_ENABLED__",
+        "true" if VERSION_COMPARISON_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__LEGAL_VERSIONING_ENABLED__",
+        "true" if LEGAL_VERSIONING_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__PROCUREMENT_CASE_ENABLED__",
+        "true" if PROCUREMENT_CASE_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__WORK_CALENDAR_ICS_ENABLED__",
+        "true" if WORK_CALENDAR_ICS_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__WORK_CALENDAR_CONNECTORS_ENABLED__",
+        "true" if WORK_CALENDAR_CONNECTORS_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__WORK_CALENDAR_GOOGLE_ENABLED__",
+        "true" if WORK_CALENDAR_GOOGLE_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__WORK_CALENDAR_MICROSOFT_ENABLED__",
+        "true" if WORK_CALENDAR_MICROSOFT_ENABLED else "false",
+    )
+    html_content = html_content.replace(
+        "__BULK_EXPORT_ENABLED__",
+        "true" if BULK_EXPORT_ENABLED else "false",
     )
     etag = f'"{hashlib.sha256(html_content.encode("utf-8")).hexdigest()}"'
     if IS_PRODUCTION:
@@ -676,6 +733,13 @@ from backend.ai.routes import ai_routes
 from backend.contractor_risk.routes import contractor_risk_routes
 from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
+from backend.version_comparison.routes import version_comparison_routes
+from backend.sync.conflict_resolution.routes import conflict_resolution_routes
+from backend.documents.template_catalog.routes import word_template_catalog_routes
+from backend.legal_versioning.routes import legal_versioning_routes
+from backend.procurement_cases.routes import procurement_case_routes
+from backend.work_calendar.routes import work_calendar_routes
+from backend.bulk_operations.routes import bulk_operation_routes
 
 
 _holidays_cache = None
@@ -986,6 +1050,13 @@ routes = [
     *contractor_risk_routes(Route),
     *procurement_import_routes(Route),
     *procurement_lookup_routes(Route),
+    *version_comparison_routes(Route),
+    *conflict_resolution_routes(Route),
+    *word_template_catalog_routes(Route),
+    *legal_versioning_routes(Route),
+    *procurement_case_routes(Route),
+    *work_calendar_routes(Route),
+    *bulk_operation_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),

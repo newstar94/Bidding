@@ -88,6 +88,14 @@ async def create_package_export_job_api(request):
         return _error("AUTH_REQUIRED", 403)
     package_id = clean_id(request.path_params.get("package_id"))
     report_type = str(request.query_params.get("type") or "evaluation").strip()
+    publication_type = str(
+        request.query_params.get("publicationType") or ""
+    ).strip()
+    requested_template_filenames = (
+        request.query_params.getlist("templateFilename")
+        if "templateFilename" in request.query_params
+        else None
+    )
     if not package_id or report_type not in REPORT_DOCUMENT_TYPES:
         return _error("DOCUMENT_EXPORT_INPUT_INVALID", 400)
     connection = database.get_connection()
@@ -112,8 +120,31 @@ async def create_package_export_job_api(request):
         organization_id,
         role,
         report_type,
+        publication_type or None,
+        requested_template_filenames,
         timeout_seconds=30,
     )
+    template_payload = {"template_path": template_path}
+    artifact_provenance = None
+    if isinstance(template_path, list):
+        if len(template_path) != 1:
+            return _error("DOCUMENT_EXPORT_TEMPLATE_SELECTION_REQUIRED", 400)
+        target = template_path[0]
+        template_payload = (
+            {"template_content": target["content"]}
+            if "content" in target
+            else {"template_path": target["path"]}
+        )
+        if target.get("templateVersionId") and target.get("templateSha256"):
+            artifact_provenance = {
+                "templateVersionId": target["templateVersionId"],
+                "templateSha256": target["templateSha256"],
+                "recordType": "goi_thau",
+                "recordId": package_id,
+                "recordRowVersion": int(
+                    (context.get("goi_thau") or {}).get("row_version") or 1
+                ),
+            }
     connection = database.get_connection()
     try:
         package_revision_row = connection.execute(
@@ -127,6 +158,7 @@ async def create_package_export_job_api(request):
             package_revision=int(package_revision_row[0] or 1),
             required_sensitive_groups=sensitive_groups,
             document_format="docx",
+            artifact_provenance=artifact_provenance,
         )
     finally:
         connection.close()
@@ -135,7 +167,7 @@ async def create_package_export_job_api(request):
         enqueue_document_export,
         "render_docx",
         {
-            "template_path": template_path,
+            **template_payload,
             "context": context,
             "context_manifest": manifest,
         },

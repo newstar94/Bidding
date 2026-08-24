@@ -5,6 +5,7 @@ export function createEmptyMutationQueue(baseSyncVersion = "0", clientMutationId
     dirtyTables: {},
     upserts: {},
     patches: {},
+    baseSnapshots: {},
     deletes: [],
     revision: 0
   };
@@ -20,6 +21,9 @@ export function normalizeMutationQueue(queue, { baseSyncVersion = "0", createId 
   normalized.upserts = normalized.upserts && typeof normalized.upserts === "object" ? normalized.upserts : {};
   normalized.patches = normalized.patches && typeof normalized.patches === "object"
     ? normalized.patches
+    : {};
+  normalized.baseSnapshots = normalized.baseSnapshots && typeof normalized.baseSnapshots === "object"
+    ? normalized.baseSnapshots
     : {};
   normalized.deletes = Array.isArray(normalized.deletes) ? normalized.deletes : [];
   normalized.revision = Number.isFinite(Number(normalized.revision)) ? Number(normalized.revision) : 0;

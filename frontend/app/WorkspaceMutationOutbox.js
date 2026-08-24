@@ -256,6 +256,11 @@ export class WorkspaceMutationOutbox {
           if (!record) return;
           queue[operation][table] ||= {};
           queue[operation][table][id] = cloneValue(record);
+          const base = this.queue.baseSnapshots?.[table]?.[id];
+          if (base) {
+            queue.baseSnapshots[table] ||= {};
+            queue.baseSnapshots[table][id] = cloneValue(base);
+          }
         });
       });
     };
@@ -361,9 +366,9 @@ export class WorkspaceMutationOutbox {
   enqueue(command = {}) {
     const kind = String(command.kind || "");
     let changed = false;
-    if (kind === "upsert") changed = this._enqueueUpserts(command.table, command.records);
-    else if (kind === "patch") changed = this._enqueuePatches(command.table, command.records);
-    else if (kind === "replace-table") changed = this._replaceTable(command.table, command.records);
+    if (kind === "upsert") changed = this._enqueueUpserts(command.table, command.records, command.baseRecords);
+    else if (kind === "patch") changed = this._enqueuePatches(command.table, command.records, command.baseRecords);
+    else if (kind === "replace-table") changed = this._replaceTable(command.table, command.records, command.baseRecords);
     else if (kind === "delete") changed = this._enqueueDeletes(command.table, command.records);
     else if (kind === "server-row-version") changed = this._applyServerRowVersions(command.entries);
     else if (kind === "ack-server-deletions") changed = this._acknowledgeServerDeletions(command.deletionsByTable);
@@ -510,6 +515,7 @@ export class WorkspaceMutationOutbox {
           changed = true;
         }
         this.recordGenerations.delete(key);
+        this._releaseBaseSnapshot(table, id);
       });
       if (this.queue.upserts?.[table] && Object.keys(this.queue.upserts[table]).length === 0) {
         delete this.queue.upserts[table];
@@ -524,6 +530,7 @@ export class WorkspaceMutationOutbox {
           changed = true;
         }
         this.recordGenerations.delete(key);
+        this._releaseBaseSnapshot(table, id);
       });
       if (this.queue.patches?.[table] && Object.keys(this.queue.patches[table]).length === 0) {
         delete this.queue.patches[table];
@@ -550,6 +557,7 @@ export class WorkspaceMutationOutbox {
       );
       changed = changed || before !== this.queue.deletes.length;
       this.recordGenerations.delete(key);
+      this._releaseBaseSnapshot(table, id);
     });
     if (changed) {
       if (mutationQueueHasChanges(this.queue)) this._touchForNewPayload();
@@ -690,6 +698,7 @@ export class WorkspaceMutationOutbox {
         this.recordGenerations.delete(deleteKey);
       }
       if (!operation) return;
+      this._releaseBaseSnapshot(type, id);
       const rejectedKey = `${type}:${id}`;
       const existing = rejectedByRecord.get(rejectedKey);
       rejectedByRecord.set(rejectedKey, {
@@ -729,10 +738,40 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
-  _enqueueUpserts(table, records) {
+  _captureBaseSnapshots(table, baseRecords) {
+    (Array.isArray(baseRecords) ? baseRecords : [baseRecords])
+      .filter((record) => hasRecordId(record) && Number(record.rowVersion) > 0)
+      .forEach((record) => {
+        const id = String(record.id);
+        if (this.queue.baseSnapshots?.[table]?.[id]) return;
+        this.queue.baseSnapshots ||= {};
+        this.queue.baseSnapshots[table] ||= {};
+        this.queue.baseSnapshots[table][id] = cloneValue(
+          this.normalizeRecord(record, table),
+        );
+      });
+  }
+
+  _releaseBaseSnapshot(table, id) {
+    if (
+      this.queue.upserts?.[table]?.[id]
+      || this.queue.patches?.[table]?.[id]
+      || this.queue.deletes?.some?.(
+        (item) => item.table === table && String(item.id) === String(id),
+      )
+    ) return;
+    if (!this.queue.baseSnapshots?.[table]) return;
+    delete this.queue.baseSnapshots[table][id];
+    if (Object.keys(this.queue.baseSnapshots[table]).length === 0) {
+      delete this.queue.baseSnapshots[table];
+    }
+  }
+
+  _enqueueUpserts(table, records, baseRecords = []) {
     if (!table || !this.isSyncedType(table)) return false;
     const validRecords = (Array.isArray(records) ? records : [records]).filter(hasRecordId);
     if (validRecords.length === 0) return false;
+    this._captureBaseSnapshots(table, baseRecords);
     if (!this.queue.upserts[table]) this.queue.upserts[table] = {};
     validRecords.forEach((record) => {
       const id = String(record.id);
@@ -755,10 +794,11 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
-  _enqueuePatches(table, records) {
+  _enqueuePatches(table, records, baseRecords = []) {
     if (!table || !this.isSyncedType(table)) return false;
     const validRecords = (Array.isArray(records) ? records : [records]).filter(hasRecordId);
     if (validRecords.length === 0) return false;
+    this._captureBaseSnapshots(table, baseRecords);
     this.queue.patches ||= {};
     validRecords.forEach((record) => {
       const id = String(record.id);
@@ -787,10 +827,11 @@ export class WorkspaceMutationOutbox {
     return true;
   }
 
-  _replaceTable(table, records) {
+  _replaceTable(table, records, baseRecords = []) {
     if (!table || !this.isSyncedType(table)) return false;
     const validRecords = (Array.isArray(records) ? records : []).filter(hasRecordId);
     if (validRecords.length === 0) return false;
+    this._captureBaseSnapshots(table, baseRecords);
     this.queue.dirtyTables[table] = false;
     this.queue.upserts[table] = {};
     delete this.queue.patches[table];

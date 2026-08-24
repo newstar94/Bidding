@@ -9,73 +9,56 @@ function memoryStorage() {
     getItem(key) { return values.has(key) ? values.get(key) : null; },
     setItem(key, value) { values.set(key, String(value)); },
     removeItem(key) { values.delete(key); },
+    dump() { return [...values.values()].join("\n"); },
   };
 }
 
-test("row conflict draft survives reload without remaining in the active outbox", () => {
-  const storage = memoryStorage();
-  const first = new WorkspaceConflictRecoveryStore({
-    storage,
-    now: () => 1234,
-    createId: () => "recovery-1",
-  });
-  const checkpoint = {
-    queue: {
-      clientMutationId: "mutation-1",
-      baseSyncVersion: "11",
-      dirtyTables: {},
-      upserts: {},
-      patches: { assignments: { "assignment-1": { id: "assignment-1", expertId: "expert-2" } } },
-      deletes: [],
-      revision: 3,
-    },
-    localDeletions: [],
+function draft(id = "server-draft-1", recordId = "package-1") {
+  return {
+    id,
+    entityType: "goithau",
+    tableName: "goi_thau",
+    recordId,
+    status: "ACTIVE",
+    expiresAt: 9999,
   };
+}
 
-  const saved = first.quarantine(checkpoint, {
-    currentSyncVersion: 12,
-    errors: [{ table: "assignments", id: "assignment-1", code: "ROW_VERSION_CONFLICT" }],
-  });
+test("server conflict reference survives reload without storing record payload", () => {
+  const storage = memoryStorage();
+  const first = new WorkspaceConflictRecoveryStore({ storage, now: () => 1234 });
 
-  assert.equal(saved.id, "recovery-1");
-  assert.deepEqual(saved.checkpoint, checkpoint);
-  assert.equal(saved.savedAt, 1234);
+  const saved = first.remember(draft());
+
+  assert.equal(saved[0].id, "server-draft-1");
+  assert.equal(saved[0].savedAt, 1234);
+  assert.equal(storage.dump().includes("baseSnapshot"), false);
+  assert.equal(storage.dump().includes("localIntent"), false);
 
   const afterReload = new WorkspaceConflictRecoveryStore({ storage });
   assert.equal(afterReload.count(), 1);
-  assert.deepEqual(afterReload.latest().checkpoint, checkpoint);
+  assert.equal(afterReload.latest().recordId, "package-1");
 });
 
-test("repeated conflict for the same records replaces one recovery draft", () => {
+test("refresh replaces local references with the authoritative server list", () => {
   const storage = memoryStorage();
-  let sequence = 0;
-  const store = new WorkspaceConflictRecoveryStore({
-    storage,
-    createId: () => `recovery-${++sequence}`,
-  });
-  const conflict = {
-    currentSyncVersion: 12,
-    errors: [{ table: "goithau", id: "package-1", code: "ROW_VERSION_CONFLICT" }],
-  };
+  const store = new WorkspaceConflictRecoveryStore({ storage });
+  store.remember(draft("old-draft", "package-old"));
 
-  store.quarantine({ queue: { revision: 1 } }, conflict);
-  store.quarantine({ queue: { revision: 2 } }, conflict);
+  store.replace([draft("new-draft", "package-new")]);
 
   assert.equal(store.count(), 1);
-  assert.equal(store.latest().checkpoint.queue.revision, 2);
+  assert.equal(store.latest().id, "new-draft");
+  assert.equal(store.latest().recordId, "package-new");
 });
 
-test("reload cleanup clears only the current workspace conflict store", () => {
+test("reference cleanup remains isolated to the current workspace storage", () => {
   const workspaceAStorage = memoryStorage();
   const workspaceBStorage = memoryStorage();
-  const workspaceA = new WorkspaceConflictRecoveryStore({ workspaceAStorage, storage: workspaceAStorage });
-  const workspaceB = new WorkspaceConflictRecoveryStore({ workspaceBStorage, storage: workspaceBStorage });
-  workspaceA.quarantine({ queue: { revision: 1 } }, {
-    errors: [{ table: "goithau", id: "package-a", code: "ROW_VERSION_CONFLICT" }],
-  });
-  workspaceB.quarantine({ queue: { revision: 2 } }, {
-    errors: [{ table: "goithau", id: "package-b", code: "ROW_VERSION_CONFLICT" }],
-  });
+  const workspaceA = new WorkspaceConflictRecoveryStore({ storage: workspaceAStorage });
+  const workspaceB = new WorkspaceConflictRecoveryStore({ storage: workspaceBStorage });
+  workspaceA.remember(draft("draft-a", "package-a"));
+  workspaceB.remember(draft("draft-b", "package-b"));
 
   assert.equal(workspaceA.clear(), true);
   assert.equal(workspaceA.count(), 0);

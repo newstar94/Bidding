@@ -174,6 +174,28 @@ async def send_ai_message_api(request: Request):
         return json_error
     try:
         content = validate_message(data.get("content"))
+        target_hint = data.get("targetHint")
+        if target_hint is not None:
+            if not isinstance(target_hint, dict):
+                return _error(request, ai_error("AI_INVALID_MESSAGE", "Target hint is invalid."))
+            unknown_target_fields = set(target_hint) - {"targetType", "targetId", "versionId"}
+            target_type = target_hint.get("targetType")
+            target_id = target_hint.get("targetId")
+            version_id = target_hint.get("versionId")
+            if (
+                unknown_target_fields
+                or target_type not in {"kehoach", "goithau"}
+                or not isinstance(target_id, str) or not target_id.strip() or len(target_id) > 200
+                or version_id is not None and (
+                    not isinstance(version_id, str) or not version_id.strip() or len(version_id) > 200
+                )
+            ):
+                return _error(request, ai_error("AI_INVALID_MESSAGE", "Target hint is invalid."))
+            target_hint = {
+                "targetType": target_type,
+                "targetId": target_id.strip(),
+                "versionId": version_id.strip() if isinstance(version_id, str) else None,
+            }
         current_route = str(data.get("route") or "/").strip()
         client_request_id = str(data.get("requestId") or "").strip()
         if client_request_id and not re.fullmatch(
@@ -207,6 +229,7 @@ async def send_ai_message_api(request: Request):
             current_route=current_route,
             client_request_id=client_request_id or None,
             quota_consumed=True,
+            target_hint=target_hint,
         )
         try:
             iterator = provider_stream.__aiter__()

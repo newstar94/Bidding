@@ -301,6 +301,7 @@ test("corrupt local outbox cannot hide valid IndexedDB evidence", async () => {
   assert.deepEqual(backends.localValue.queue, {
     ...pendingEnvelope(4).queue,
     patches: {},
+    baseSnapshots: {},
   });
 });
 
@@ -360,7 +361,7 @@ test("a later healthy hydrate reconciles both backends and clears degraded state
 
   assert.equal(recovered.durability.state, "ready");
   assert.equal(recovered.durability.trusted, true);
-  const canonicalQueue = { ...envelope.queue, patches: {} };
+  const canonicalQueue = { ...envelope.queue, patches: {}, baseSnapshots: {} };
   assert.deepEqual(backends.localValue.queue, canonicalQueue);
   assert.deepEqual(backends.databaseValue.queue, canonicalQueue);
   assert.equal(store.getStatus().state, "ready");

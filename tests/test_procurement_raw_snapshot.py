@@ -10,7 +10,7 @@ import pytest
 
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.db.schema import SCHEMA_DINH_NGHIA
-from backend.db.upgrades import UPGRADES
+from backend.db.upgrades import DB_SCHEMA_VERSION, UPGRADES
 from backend.procurement_raw import ProcurementRawSnapshotRepository
 
 
@@ -512,7 +512,7 @@ def test_raw_snapshot_schema_and_migration_are_append_only():
         and upgrade.name == "add_procurement_raw_snapshots"
         for upgrade in UPGRADES
     )
-    assert UPGRADES[-1].version == 63
+    assert UPGRADES[-1].version == DB_SCHEMA_VERSION
 
 
 def test_real_postgres_raw_snapshot_round_trip_dedup_and_immutability():

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import hashlib
 import json
 import os
 import shutil
@@ -752,6 +753,7 @@ def _finish_durable_document_job(
     database,
     claimed,
     error: Exception | None = None,
+    result: Any = None,
 ) -> str:
     now = int(time.time())
     attempts = int(claimed["attempt_count"])
@@ -784,6 +786,44 @@ def _finish_durable_document_job(
         completed_at = now if status == "failed" else None
     connection = database.get_connection()
     try:
+        owner_scoped = any(
+            str(claimed.get(field) or "").strip()
+            for field in ("organization_id", "user_id", "package_id")
+        )
+        if error is None and owner_scoped:
+            policy = validate_document_job_policy_snapshot(
+                claimed.get("policy_json"), claimed.get("policy_hash")
+            )
+            provenance = policy.get("artifactProvenance")
+            if provenance is not None:
+                if not isinstance(result, bytes) or not result:
+                    raise DocumentWorkerInputError(
+                        "Kết quả Word không hợp lệ để ghi provenance."
+                    )
+                from backend.documents.template_catalog.repository import (
+                    WordTemplateCatalogRepository,
+                )
+                from backend.documents.template_catalog.service import (
+                    WordTemplateCatalog,
+                )
+                from backend.documents.template_catalog.storage import (
+                    ImmutableTemplateStorage,
+                )
+
+                WordTemplateCatalog(
+                    WordTemplateCatalogRepository(connection.cursor()),
+                    ImmutableTemplateStorage(),
+                ).record_generated_provenance(
+                    organization_id=claimed["organization_id"],
+                    artifact_id=f"document-job:{claimed['id']}",
+                    template_version_id=provenance["templateVersionId"],
+                    template_sha256=provenance["templateSha256"],
+                    record_type=provenance["recordType"],
+                    record_id=provenance["recordId"],
+                    record_row_version=provenance["recordRowVersion"],
+                    artifact_sha256=hashlib.sha256(result).hexdigest(),
+                    actor_user_id=claimed["user_id"],
+                )
         connection.execute(
             """UPDATE document_jobs
                SET status = ?, available_at = ?, locked_at = NULL,
@@ -1026,7 +1066,7 @@ def _process_claimed_document_job(database, claimed) -> None:
             binary_result.unlink()
         write_result(result_path, result=result)
         _prepare_external_job_permissions(job_dir)
-        _finish_durable_document_job(database, claimed)
+        _finish_durable_document_job(database, claimed, result=result)
     except Exception as error:
         for result_file in (job_dir / "result.json", job_dir / "result.bin"):
             try:

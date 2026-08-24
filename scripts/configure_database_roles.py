@@ -251,6 +251,14 @@ def main() -> int:
                 sql.Identifier(runtime_role)
             )
         )
+        # Expand migrations can add tenant-safe foreign keys to tables that
+        # were created by an earlier owner. PostgreSQL requires REFERENCES on
+        # those target tables even when the migrator owns the schema.
+        cursor.execute(
+            sql.SQL("GRANT REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public TO {}").format(
+                sql.Identifier(migrator_role)
+            )
+        )
         cursor.execute(
             sql.SQL("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO {}").format(
                 sql.Identifier(runtime_role)

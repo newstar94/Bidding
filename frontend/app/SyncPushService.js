@@ -237,11 +237,11 @@ export async function applyFailedPush(controller, {
       controller.updateSyncState({
         phase: "conflict",
         online: true,
-        message: "Dữ liệu đã thay đổi trên máy chủ · Nhấn F5 để tải lại",
+        message: "Dữ liệu đã thay đổi trên máy chủ · Bản nháp đã được giữ để xử lý",
       });
       controller.view?.showToast?.(
         "Dữ liệu đã thay đổi trên máy chủ",
-        "Nhấn F5 để tải lại dữ liệu mới nhất.",
+        "Bản nháp đã được lưu trong Trung tâm xung đột và sẽ không tự áp lại.",
         "warning",
       );
       return {

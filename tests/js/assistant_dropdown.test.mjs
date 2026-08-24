@@ -207,6 +207,38 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
         },
       });
       assistant.onEvent({ type: 'message.completed', messageId: 'message-1' });
+      const answerPresentation = {
+        text: assistant.activeMessage.bubble.textContent,
+        resultCards: document.querySelectorAll('.bf-assistant-result-card').length,
+        filterRows: document.querySelectorAll('.bf-assistant-filter-row').length,
+        feedbackButtons: assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button').length,
+        feedbackTitles: [...assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button')]
+          .map((button) => button.title),
+        feedbackIcons: assistant.activeMessage.row.querySelectorAll(
+          '.bf-assistant-feedback-button svg[data-lucide]'
+        ).length,
+      };
+      const dropdownPresentation = {
+        value: select?.value,
+        triggerText: trigger?.value || trigger?.textContent?.trim(),
+        selected: [...(options?.querySelectorAll(".custom-option-item") || [])]
+          .filter((item) => item.classList.contains("selected"))
+          .map((item) => item.dataset.value),
+        ariaSelected: [...(options?.querySelectorAll(".custom-option-item") || [])]
+          .filter((item) => item.getAttribute("aria-selected") === "true")
+          .map((item) => item.dataset.value),
+        assistantMode: assistant.mode,
+      };
+      await assistant.setTargetHint({
+        targetType: 'goithau', targetId: 'package-root', versionId: 'package-v2',
+      });
+      const targetPresentation = {
+        mode: assistant.mode,
+        targetHint: assistant.targetHint,
+        hidden: assistant.targetChip.hidden,
+        label: assistant.targetChip.querySelector('.bf-assistant-target-label').textContent,
+        panelHidden: assistant.panel.hidden,
+      };
       return {
         triggerPresentation,
         closePresentation: {
@@ -231,26 +263,9 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
           sendInsideShell: inputShell?.contains(document.querySelector('.bf-assistant-send')) || false,
           composerChildCount: composer?.children.length || 0,
         },
-        value: select?.value,
-        triggerText: trigger?.value || trigger?.textContent?.trim(),
-        selected: [...(options?.querySelectorAll(".custom-option-item") || [])]
-          .filter((item) => item.classList.contains("selected"))
-          .map((item) => item.dataset.value),
-        ariaSelected: [...(options?.querySelectorAll(".custom-option-item") || [])]
-          .filter((item) => item.getAttribute("aria-selected") === "true")
-          .map((item) => item.dataset.value),
-        assistantMode: assistant.mode,
-        answerPresentation: {
-          text: assistant.activeMessage.bubble.textContent,
-          resultCards: document.querySelectorAll('.bf-assistant-result-card').length,
-          filterRows: document.querySelectorAll('.bf-assistant-filter-row').length,
-          feedbackButtons: assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button').length,
-          feedbackTitles: [...assistant.activeMessage.row.querySelectorAll('.bf-assistant-feedback-button')]
-            .map((button) => button.title),
-          feedbackIcons: assistant.activeMessage.row.querySelectorAll(
-            '.bf-assistant-feedback-button svg[data-lucide]'
-          ).length,
-        },
+        ...dropdownPresentation,
+        answerPresentation,
+        targetPresentation,
       };
     });
 
@@ -299,6 +314,15 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       feedbackButtons: 2,
       feedbackTitles: ['Hữu ích', 'Chưa đúng'],
       feedbackIcons: 2,
+    });
+    assert.deepEqual(result.targetPresentation, {
+      mode: 'procurement_advice',
+      targetHint: {
+        targetType: 'goithau', targetId: 'package-root', versionId: 'package-v2',
+      },
+      hidden: false,
+      label: 'Gói thầu · package-v2',
+      panelHidden: false,
     });
   } finally {
     await browser?.close();

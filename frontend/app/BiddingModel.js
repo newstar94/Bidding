@@ -15,6 +15,7 @@ import { BrowserDB, BrowserDBError } from "./BrowserDB.js";
 import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { WorkspaceConflictRecoveryStore } from "./WorkspaceConflictRecoveryStore.js";
+import { ConflictCenterClient } from "./ConflictCenterClient.js";
 import { mutationQueueHasChanges } from "./mutationQueue.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import { EntityIndexes } from "./EntityIndexes.js";
@@ -55,7 +56,7 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
       baseSyncVersion: checkpoint.queue.baseSyncVersion,
       clientMutationId: checkpoint.queue.clientMutationId,
       revision: checkpoint.queue.revision,
-      dirtyTables: {}, upserts: {}, patches: {}, deletes: [],
+      dirtyTables: {}, upserts: {}, patches: {}, baseSnapshots: {}, deletes: [],
     },
     localDeletions: [],
   });
@@ -67,6 +68,11 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
         const target = conflictKeys.has(`${table}:${String(id)}`) ? conflicting : unrelated;
         target.queue[operation][table] ||= {};
         target.queue[operation][table][id] = structuredClone(record);
+        const base = checkpoint.queue.baseSnapshots?.[table]?.[id];
+        if (base) {
+          target.queue.baseSnapshots[table] ||= {};
+          target.queue.baseSnapshots[table][id] = structuredClone(base);
+        }
       });
     });
   }
@@ -94,10 +100,20 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
 function requeueCheckpoint(outbox, checkpoint, state) {
   if (!checkpoint?.queue) return false;
   Object.entries(checkpoint.queue.upserts || {}).forEach(([table, records]) => {
-    outbox.enqueue({ kind: "upsert", table, records: Object.values(records || {}) });
+    outbox.enqueue({
+      kind: "upsert",
+      table,
+      records: Object.values(records || {}),
+      baseRecords: Object.values(checkpoint.queue.baseSnapshots?.[table] || {}),
+    });
   });
   Object.entries(checkpoint.queue.patches || {}).forEach(([table, records]) => {
-    outbox.enqueue({ kind: "patch", table, records: Object.values(records || {}) });
+    outbox.enqueue({
+      kind: "patch",
+      table,
+      records: Object.values(records || {}),
+      baseRecords: Object.values(checkpoint.queue.baseSnapshots?.[table] || {}),
+    });
   });
   Object.keys(checkpoint.queue.dirtyTables || {}).forEach((table) => {
     outbox.enqueue({ kind: "replace-table", table, records: state?.[table] || [] });
@@ -215,6 +231,7 @@ export class BiddingModel {
     this._mutationOutboxStoreDatabase = null;
     this._conflictRecoveryStore = null;
     this._conflictRecoveryStoreStorage = null;
+    this._conflictCenterClient = null;
     this._workspaceEpoch = 0;
     this._workspaceRequestControllers = new Set();
     this._workspaceMutations = new Set();
@@ -359,6 +376,7 @@ export class BiddingModel {
       kind: options.mode === "patch" ? "patch" : "upsert",
       table: type,
       records: options.records || [],
+      baseRecords: options.baseRecords || [],
     });
   }
 
@@ -717,7 +735,12 @@ export class BiddingModel {
       });
       if (changedRecords.length > 0) {
         if (mutation) {
-          this.commitWorkspaceMutation(mutation, type, { records: changedRecords });
+          this.commitWorkspaceMutation(mutation, type, {
+            records: changedRecords,
+            baseRecords: changedRecords
+              .map((record) => oldById.get(String(record.id)))
+              .filter(Boolean),
+          });
         } else {
           await this.markRecordDirty(type, changedRecords);
         }
@@ -797,6 +820,40 @@ export class BiddingModel {
     }
     return this._conflictRecoveryStore;
   }
+  _getConflictCenterClient() {
+    if (!this._conflictCenterClient) this._conflictCenterClient = new ConflictCenterClient();
+    return this._conflictCenterClient;
+  }
+  async refreshConflictRecoveryDrafts() {
+    const workspaceFingerprint = String(this.workspaceScope?.key || "");
+    if (!workspaceFingerprint) return [];
+    const result = await this._getConflictCenterClient().list(workspaceFingerprint);
+    return this._getConflictRecoveryStore().replace(result?.items || []);
+  }
+  async previewConflictRecoveryDraft(draftId) {
+    return this._getConflictCenterClient().preview(
+      draftId,
+      String(this.workspaceScope?.key || ""),
+    );
+  }
+  async resolveConflictRecoveryDraft(draftId, preview, decisions) {
+    const result = await this._getConflictCenterClient().resolve(draftId, {
+      workspaceFingerprint: String(this.workspaceScope?.key || ""),
+      resolutionAuthority: preview?.resolutionAuthority,
+      decisions,
+      clientMutationId: createUUID(),
+    });
+    this._getConflictRecoveryStore().remove(draftId);
+    return result;
+  }
+  async discardConflictRecoveryDraft(draftId) {
+    const result = await this._getConflictCenterClient().discard(
+      draftId,
+      String(this.workspaceScope?.key || ""),
+    );
+    this._getConflictRecoveryStore().remove(draftId);
+    return result;
+  }
   getConflictRecoveryDrafts() {
     return this._getConflictRecoveryStore().list();
   }
@@ -808,6 +865,47 @@ export class BiddingModel {
     if (cleared) this.workspaceStorage?.removeItem?.("bf_conflict_server_sync_version");
     return cleared;
   }
+  async _captureServerConflictDrafts(checkpoint, data = {}, snapshot = null) {
+    const workspaceFingerprint = String(this.workspaceScope?.key || "");
+    if (!workspaceFingerprint || !checkpoint?.queue) return [];
+    const supported = new Map([
+      ["ke_hoach_lcnt", "kehoach"],
+      ["goi_thau", "goithau"],
+    ]);
+    const errors = (Array.isArray(data?.errors) ? data.errors : [])
+      .filter((error) => error?.code === "ROW_VERSION_CONFLICT");
+    const requests = errors.map((error) => {
+      const entityType = supported.get(String(error.table || ""));
+      const recordId = String(error.id || "");
+      if (!entityType || !recordId) return null;
+      const base = checkpoint.queue.baseSnapshots?.[entityType]?.[recordId];
+      const local = (this.state?.[entityType] || []).find(
+        (record) => String(record?.id || "") === recordId,
+      );
+      const expectedRowVersion = Number(
+        error.expectedVersion ?? base?.rowVersion ?? local?.rowVersion,
+      );
+      if (!base || !local || !Number.isInteger(expectedRowVersion) || expectedRowVersion < 1) {
+        return null;
+      }
+      return {
+        entityType,
+        tableName: String(error.table),
+        recordId,
+        workspaceFingerprint,
+        batchId: String(snapshot?.id || `${checkpoint.queue.clientMutationId}:${checkpoint.queue.revision}`),
+        mutationId: String(checkpoint.queue.clientMutationId || ""),
+        expectedRowVersion,
+        baseSnapshot: structuredClone(base),
+        localIntent: structuredClone(local),
+      };
+    });
+    if (requests.length === 0 || requests.some((request) => !request)) return [];
+    const drafts = await Promise.all(
+      requests.map((request) => this._getConflictCenterClient().capture(request)),
+    );
+    return this._getConflictRecoveryStore().remember(drafts);
+  }
   async quarantineMutationBatch({ data, snapshot } = {}) {
     const outbox = this._getMutationOutbox();
     const activeCheckpoint = outbox.checkpoint();
@@ -818,21 +916,23 @@ export class BiddingModel {
     if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
     const { conflicting, unrelated } = splitConflictCheckpoint(checkpoint, data);
-    const draft = this._getConflictRecoveryStore().quarantine(conflicting, {
-      ...data,
-      receiptId: snapshot?.id || null,
-    });
-    if (!draft) return null;
+    let drafts;
+    try {
+      drafts = await this._captureServerConflictDrafts(conflicting, data, snapshot);
+    } catch {
+      return null;
+    }
+    if (drafts.length === 0) return null;
     try {
       if (scopedReceipt) outbox.ack(snapshot);
       else outbox.discard();
       if (unrelated) requeueCheckpoint(outbox, unrelated, this.state);
       await outbox.flush();
-      return draft;
+      return drafts[0];
     } catch (_error) {
       outbox.restore(activeCheckpoint);
       try { await outbox.flush(); } catch { /* store exposes the durability failure */ }
-      this._getConflictRecoveryStore().remove(draft.id);
+      drafts.forEach((draft) => this._getConflictRecoveryStore().remove(draft.id));
       return null;
     }
   }
@@ -913,24 +1013,26 @@ export class BiddingModel {
   rebaseMutationBatch(syncVersion) {
     return this._getMutationOutbox().enqueue({ kind: "rebase", syncVersion });
   }
-  markRecordDirty(type, records) {
+  markRecordDirty(type, records, { baseRecords = [] } = {}) {
     this._assertWorkspaceWritable();
     this.assertStorageTablesWritable(type);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     return this._getMutationOutbox().enqueue({
       kind: "upsert",
       table: type,
-      records
+      records,
+      baseRecords,
     });
   }
-  markRecordPatch(type, records) {
+  markRecordPatch(type, records, { baseRecords = [] } = {}) {
     this._assertWorkspaceWritable();
     this.assertStorageTablesWritable(type);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     return this._getMutationOutbox().enqueue({
       kind: "patch",
       table: type,
-      records
+      records,
+      baseRecords,
     });
   }
   markTableDirty(type) {
@@ -971,10 +1073,14 @@ export class BiddingModel {
       return;
     }
     if (options.mode === "patch") {
-      this.markRecordPatch(type, options.records || []);
+      this.markRecordPatch(type, options.records || [], {
+        baseRecords: options.baseRecords || [],
+      });
       return;
     }
-    this.markRecordDirty(type, options.records || []);
+    this.markRecordDirty(type, options.records || [], {
+      baseRecords: options.baseRecords || [],
+    });
   }
   buildMutationSyncPayload() {
     return this._getMutationOutbox().snapshotForSync(this.state);
@@ -1252,7 +1358,12 @@ export class BiddingModel {
         });
         durableWriteCompleted = true;
       }
-      this.commitWorkspaceMutation(mutation, type, { records: normalizedRecord });
+      this.commitWorkspaceMutation(mutation, type, {
+        records: normalizedRecord,
+        baseRecords: stateSnapshot.filter(
+          (item) => String(item?.id || "") === String(normalizedRecord?.id || ""),
+        ),
+      });
       await mutation.outbox.flush();
     } catch (error) {
       await this._rollbackLegacyRecordMutation({

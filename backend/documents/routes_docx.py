@@ -1,4 +1,5 @@
 from backend.db.db_helper import DatabaseError
+import hashlib
 import os
 import re
 import shutil
@@ -662,6 +663,63 @@ def _resolve_publication_template_paths(
     definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
     if definition is None:
         raise ValueError("Loại văn bản xuất bản không hợp lệ")
+    from backend.documents.template_catalog.compatibility import (
+        CatalogPublicationResolver,
+        catalog_enabled,
+        catalog_mode,
+    )
+    from backend.documents.template_catalog.repository import (
+        WordTemplateCatalogRepository,
+    )
+    from backend.documents.template_catalog.storage import ImmutableTemplateStorage
+
+    catalog_targets = None
+    if catalog_enabled() and catalog_mode() == "cutover":
+        organization_id = (
+            f"personal:{owner_id}" if owner_type == "personal" else owner_id
+        )
+        connection = database.get_connection()
+        try:
+            catalog_targets = CatalogPublicationResolver(
+                WordTemplateCatalogRepository(connection.cursor()),
+                ImmutableTemplateStorage(),
+            ).resolve(organization_id, publication_type)
+        finally:
+            connection.close()
+    if catalog_targets is not None:
+        if not catalog_targets:
+            raise FileNotFoundError(
+                "Chưa chọn biểu mẫu Word đã xuất bản cho loại văn bản này"
+            )
+        if requested_template_filenames is not None:
+            if not isinstance(requested_template_filenames, (list, tuple)):
+                raise ValueError("Danh sách file biểu mẫu cần xuất không hợp lệ")
+            requested = {
+                _normalize_custom_template_filename(value).casefold()
+                for value in requested_template_filenames
+            }
+            assigned = {
+                target["legacyAlias"].casefold() for target in catalog_targets
+            }
+            if not requested or not requested.issubset(assigned):
+                raise ValueError(
+                    "File biểu mẫu được chọn không được gán cho chức năng này"
+                )
+            catalog_targets = [
+                target for target in catalog_targets
+                if target["legacyAlias"].casefold() in requested
+            ]
+        return [
+            {
+                "content": target["content"],
+                "filename": target["legacyAlias"],
+                "source": "catalog-assignment",
+                "templateVersionId": target["templateVersionId"],
+                "templateSha256": target["sha256"],
+            }
+            for target in catalog_targets
+        ]
+
     template_names, source = custom_exporter.resolve_publication_templates(
         publication_type,
         owner_id,
@@ -805,6 +863,123 @@ def _word_publication_assignment_payload(owner_type, owner_id):
     }
 
 
+def _catalog_assignment_payload(organization_id, owner_type):
+    from backend.documents.template_catalog.repository import (
+        WordTemplateCatalogRepository,
+    )
+
+    connection = database.get_connection()
+    try:
+        repository = WordTemplateCatalogRepository(connection.cursor())
+        row = connection.execute(
+            """SELECT revision FROM word_template_assignment_config
+                WHERE organization_id = ?""",
+            (organization_id,),
+        ).fetchone()
+        revision = int(row[0]) if row else 0
+        stored = repository.list_assignment_sets(organization_id)
+        assignment_sets = {
+            document_type: [item["legacyAlias"] for item in items]
+            for document_type, items in stored.items()
+            if items and all(item["publishedVersionId"] for item in items)
+        }
+        resolved_sets = {
+            document_type: [
+                {"filename": alias, "source": "catalog-assignment"}
+                for alias in aliases
+            ]
+            for document_type, aliases in assignment_sets.items()
+        }
+        return {
+            "revision": revision,
+            "documentTypes": public_word_publication_definitions(),
+            "assignments": {
+                key: values[0] for key, values in assignment_sets.items()
+            },
+            "assignmentSets": assignment_sets,
+            "resolvedTemplates": {
+                key: values[0] for key, values in resolved_sets.items()
+            },
+            "resolvedTemplateSets": resolved_sets,
+            "activeTemplate": "",
+        }
+    finally:
+        connection.close()
+
+
+def _save_catalog_assignments(
+    request, organization_id, owner_type, actor_user_id,
+    assignments, expected_revision,
+):
+    from backend.documents.template_catalog.repository import (
+        WordTemplateCatalogRepository,
+    )
+    from backend.documents.template_catalog.service import CatalogConflictError
+
+    unknown_ids = sorted(set(assignments) - WORD_PUBLICATION_DOCUMENT_IDS)
+    if unknown_ids:
+        raise ValueError("Loại văn bản xuất bản không hợp lệ")
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        repository = WordTemplateCatalogRepository(connection.cursor())
+        template_ids_by_document = {}
+        aliases_by_document = {}
+        for document_type, filenames in assignments.items():
+            if filenames in (None, "", []):
+                continue
+            candidates = [filenames] if isinstance(filenames, str) else filenames
+            if not isinstance(candidates, list):
+                raise ValueError("Danh sách biểu mẫu Word không hợp lệ")
+            ids = []
+            aliases = []
+            seen = set()
+            for filename in candidates:
+                safe_alias = _normalize_custom_template_filename(filename)
+                template = repository.get_by_alias(organization_id, safe_alias)
+                if template is None or not template["publishedVersionId"]:
+                    raise ValueError("Biểu mẫu chưa có phiên bản phát hành")
+                if template["id"] in seen:
+                    continue
+                seen.add(template["id"])
+                ids.append(template["id"])
+                aliases.append(template["legacyAlias"])
+            if ids:
+                template_ids_by_document[document_type] = ids
+                aliases_by_document[document_type] = aliases
+        current, error = repository.replace_assignments_cas(
+            organization_id=organization_id,
+            owner_type=owner_type,
+            template_ids_by_document=template_ids_by_document,
+            aliases_by_document=aliases_by_document,
+            expected_revision=expected_revision,
+            actor_user_id=actor_user_id,
+        )
+        if error == "STALE":
+            raise CatalogConflictError(current=current)
+        log_audit(
+            "document.word_template_assignments_updated",
+            actor_user_id=actor_user_id,
+            organization_id=organization_id,
+            target_type="word_template_assignment_config",
+            target_id=current["id"],
+            request=request,
+            metadata={
+                "assigned_document_types": sorted(aliases_by_document),
+                "assignment_revision": current["revision"],
+            },
+            cursor=repository.cursor,
+            required=True,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return _catalog_assignment_payload(organization_id, owner_type)
+
+
 def _save_word_publication_assignments(
     owner_type,
     owner_id,
@@ -867,6 +1042,7 @@ def _prepare_plan_render(
     role_str,
     publication_type=None,
     requested_template_filenames=None,
+    skip_template_resolution=False,
 ):
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, "plan"
@@ -888,7 +1064,9 @@ def _prepare_plan_render(
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
-    if publication_type:
+    if skip_template_resolution:
+        template_path = None
+    elif publication_type:
         definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
         if (
             definition is None
@@ -930,6 +1108,7 @@ def _prepare_report_render(
     document_type,
     publication_type=None,
     requested_template_filenames=None,
+    skip_template_resolution=False,
 ):
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, document_type
@@ -956,7 +1135,9 @@ def _prepare_report_render(
     )
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
-    if publication_type:
+    if skip_template_resolution:
+        template_path = None
+    elif publication_type:
         definition = WORD_PUBLICATION_DOCUMENT_BY_ID.get(publication_type)
         package_record = context.get("goi_thau") or {}
         if (
@@ -1022,22 +1203,37 @@ async def _render_word_selection(
     else:
         targets = [{"path": template_selection, "filename": fallback_filename}]
     rendered_documents = []
+    rendered_artifacts = []
     for target in targets:
+        template_payload = (
+            {"template_content": target["content"]}
+            if "content" in target
+            else {"template_path": target["path"]}
+        )
         content = await run_document_job_async(
             "render_docx",
             {
-                "template_path": target["path"],
+                **template_payload,
                 "context": context,
                 "context_manifest": context_manifest,
             },
         )
-        rendered_documents.append((target.get("filename") or fallback_filename, content))
+        rendered_filename = target.get("filename") or fallback_filename
+        rendered_documents.append((rendered_filename, content))
+        rendered_artifacts.append({
+            "artifactId": f"word-{uuid.uuid4().hex}",
+            "filename": rendered_filename,
+            "artifactSha256": hashlib.sha256(content).hexdigest(),
+            "templateVersionId": target.get("templateVersionId"),
+            "templateSha256": target.get("templateSha256"),
+        })
     if len(rendered_documents) == 1:
         return (
             rendered_documents[0][1],
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             rendered_documents[0][0],
             1,
+            rendered_artifacts,
         )
     archive_filename = f"{os.path.splitext(fallback_filename)[0]}.zip"
     return (
@@ -1045,7 +1241,77 @@ async def _render_word_selection(
         "application/zip",
         archive_filename,
         len(rendered_documents),
+        rendered_artifacts,
     )
+
+
+def _commit_word_export_audit(
+    *, request, actor_user_id, organization_id, target_type, target_id,
+    record_row_version, document_type, publication_type, template_count,
+    sensitive_groups, rendered_artifacts,
+):
+    """Bind exact catalog provenance and the required export audit atomically."""
+
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        cursor = connection.cursor()
+        provenance = []
+        catalog_artifacts = [
+            artifact for artifact in rendered_artifacts
+            if artifact.get("templateVersionId") and artifact.get("templateSha256")
+        ]
+        if catalog_artifacts:
+            from backend.documents.template_catalog.repository import (
+                WordTemplateCatalogRepository,
+            )
+            from backend.documents.template_catalog.service import WordTemplateCatalog
+            from backend.documents.template_catalog.storage import ImmutableTemplateStorage
+
+            catalog = WordTemplateCatalog(
+                WordTemplateCatalogRepository(cursor),
+                ImmutableTemplateStorage(),
+            )
+            for artifact in catalog_artifacts:
+                provenance.append(catalog.record_generated_provenance(
+                    organization_id=organization_id,
+                    artifact_id=artifact["artifactId"],
+                    template_version_id=artifact["templateVersionId"],
+                    template_sha256=artifact["templateSha256"],
+                    record_type=target_type,
+                    record_id=target_id,
+                    record_row_version=record_row_version,
+                    artifact_sha256=artifact["artifactSha256"],
+                    actor_user_id=actor_user_id,
+                ))
+        log_audit(
+            "document.word_exported",
+            actor_user_id=actor_user_id,
+            organization_id=organization_id,
+            target_type=target_type,
+            target_id=target_id,
+            request=request,
+            metadata={
+                "organization_id": organization_id,
+                "document_type": document_type,
+                "publication_type": publication_type or None,
+                "template_count": template_count,
+                "sensitive_capabilities_used": sensitive_groups,
+                "catalog_artifact_ids": [item["artifactId"] for item in provenance],
+                "catalog_template_version_ids": [
+                    item["templateVersionId"] for item in provenance
+                ],
+            },
+            cursor=cursor,
+            required=True,
+        )
+        connection.commit()
+        return provenance
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 @governed_export("docx.plan")
@@ -1096,7 +1362,13 @@ async def export_plan_api(request):
         fallback_filename = (
             f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         )
-        document_bytes, media_type, filename, template_count = await _render_word_selection(
+        (
+            document_bytes,
+            media_type,
+            filename,
+            template_count,
+            rendered_artifacts,
+        ) = await _render_word_selection(
             tpl_path,
             unified_context,
             context_manifest,
@@ -1108,21 +1380,20 @@ async def export_plan_api(request):
         if snapshot_error is not None:
             return snapshot_error
 
-        log_audit(
-            "document.word_exported",
+        _commit_word_export_audit(
+            request=request,
             actor_user_id=user_id,
             organization_id=org_name,
             target_type="ke_hoach_lcnt",
             target_id=plan_id,
-            request=request,
-            metadata={
-                "organization_id": org_name,
-                "document_type": "plan",
-                "publication_type": publication_type or None,
-                "template_count": template_count,
-                "sensitive_capabilities_used": sensitive_groups,
-            },
-            required=True,
+            record_row_version=(unified_context.get("ke_hoach") or {}).get(
+                "row_version"
+            ),
+            document_type="plan",
+            publication_type=publication_type,
+            template_count=template_count,
+            sensitive_groups=sensitive_groups,
+            rendered_artifacts=rendered_artifacts,
         )
 
         return StreamingResponse(
@@ -1202,7 +1473,13 @@ async def export_report_api(request):
         else:
             fallback_filename = f"Bao_cao_danh_gia_goi_thau_{unified_context['goi_thau']['ma_goi_thau']}.docx"
 
-        document_bytes, media_type, filename, template_count = await _render_word_selection(
+        (
+            document_bytes,
+            media_type,
+            filename,
+            template_count,
+            rendered_artifacts,
+        ) = await _render_word_selection(
             tpl_path,
             unified_context,
             context_manifest,
@@ -1214,21 +1491,20 @@ async def export_report_api(request):
         if snapshot_error is not None:
             return snapshot_error
 
-        log_audit(
-            "document.word_exported",
+        _commit_word_export_audit(
+            request=request,
             actor_user_id=user_id,
             organization_id=org_name,
             target_type="goi_thau",
             target_id=package_id,
-            request=request,
-            metadata={
-                "organization_id": org_name,
-                "document_type": type_param,
-                "publication_type": publication_type or None,
-                "template_count": template_count,
-                "sensitive_capabilities_used": sensitive_groups,
-            },
-            required=True,
+            record_row_version=(unified_context.get("goi_thau") or {}).get(
+                "row_version"
+            ),
+            document_type=type_param,
+            publication_type=publication_type,
+            template_count=template_count,
+            sensitive_groups=sensitive_groups,
+            rendered_artifacts=rendered_artifacts,
         )
 
         return StreamingResponse(
@@ -1280,6 +1556,18 @@ async def get_word_publication_template_assignments_api(request):
             return access_error
         organization_id = get_active_org(request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
+        from backend.documents.template_catalog.compatibility import (
+            catalog_enabled,
+            catalog_mode,
+        )
+        if catalog_enabled() and catalog_mode() == "cutover":
+            payload = await run_blocking_io(
+                _catalog_assignment_payload,
+                organization_id,
+                owner_type,
+                timeout_seconds=5,
+            )
+            return JSONResponse(payload)
         payload = await run_blocking_io(
             _word_publication_assignment_payload,
             owner_type,
@@ -1336,6 +1624,22 @@ async def save_word_publication_template_assignments_api(request):
         })
         if invalid:
             return invalid
+        from backend.documents.template_catalog.compatibility import (
+            catalog_enabled,
+            catalog_mode,
+        )
+        if catalog_enabled() and catalog_mode() == "cutover":
+            payload = await run_blocking_io(
+                _save_catalog_assignments,
+                request,
+                organization_id,
+                owner_type,
+                user_id,
+                data[assignment_field],
+                data["expectedRevision"],
+                timeout_seconds=10,
+            )
+            return JSONResponse(payload)
         def audit_assignment_commit(normalized, revision):
             log_audit(
                 "document.word_template_assignments_updated",
@@ -1380,6 +1684,16 @@ async def save_word_publication_template_assignments_api(request):
         )
         return JSONResponse(payload)
     except (FileNotFoundError, ValueError) as e:
+        from backend.documents.template_catalog.service import CatalogConflictError
+        if isinstance(e, CatalogConflictError):
+            return JSONResponse(
+                {
+                    "code": e.code,
+                    "error": "Cài đặt biểu mẫu đã thay đổi. Vui lòng tải lại.",
+                    "current": e.current,
+                },
+                status_code=409,
+            )
         return _docx_error(
             request,
             e,
@@ -1949,7 +2263,20 @@ async def save_word_mapping_api(request):
             source_column=source_column,
             mo_ta=mo_ta,
         )
-
+        log_audit(
+            "document.word_mapping_saved",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="word_mapping",
+            target_id=mapping["id"],
+            request=request,
+            metadata={
+                "mapping_key": mapping.get("mapping_key"),
+                "owner_type": owner_type,
+            },
+            cursor=cursor,
+            required=True,
+        )
         conn.commit()
         return JSONResponse({"success": True, "id": mapping["id"]})
     except ValueError as e:
@@ -1991,6 +2318,17 @@ async def delete_word_mapping_api(request):
             owner_type,
             mapping_id,
         )
+        log_audit(
+            "document.word_mapping_deleted",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="word_mapping",
+            target_id=mapping_id,
+            request=request,
+            metadata={"owner_type": owner_type},
+            cursor=cursor,
+            required=True,
+        )
         conn.commit()
         return JSONResponse({"success": True, **result})
     except ValueError as e:
@@ -2026,6 +2364,17 @@ async def reset_word_mapping_api(request):
         if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         result = reset_word_mapping(cursor, org_name, mapping_id)
+        log_audit(
+            "document.word_mapping_reset",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="word_mapping",
+            target_id=mapping_id,
+            request=request,
+            metadata={"restored_default": True},
+            cursor=cursor,
+            required=True,
+        )
         conn.commit()
         return JSONResponse({"success": True, **result})
     except ValueError as e:

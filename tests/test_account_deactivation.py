@@ -27,7 +27,7 @@ def test_account_status_uses_a_forward_only_v48_migration():
         upgrade.version == 48 and upgrade.name == "add_account_status"
         for upgrade in UPGRADES
     )
-    assert UPGRADES[-1].version == DB_SCHEMA_VERSION == 63
+    assert UPGRADES[-1].version == DB_SCHEMA_VERSION
     assert any(
         upgrade.version == 50
         and upgrade.name == "version_procurement_binding_snapshots"

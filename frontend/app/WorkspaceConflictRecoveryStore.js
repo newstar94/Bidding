@@ -1,30 +1,11 @@
-const STORAGE_KEY = "bf_conflict_recovery_drafts_v1";
-const STORE_VERSION = 1;
+const STORAGE_KEY = "bf_conflict_recovery_refs_v2";
+const STORE_VERSION = 2;
 const MAX_DRAFTS = 20;
 
 function cloneValue(value) {
   if (value === undefined) return undefined;
   if (typeof globalThis.structuredClone === "function") return globalThis.structuredClone(value);
   return JSON.parse(JSON.stringify(value));
-}
-
-function normalizedErrors(data = {}) {
-  return (Array.isArray(data?.errors) ? data.errors : [])
-    .filter((error) => error && typeof error === "object")
-    .map((error) => ({
-      table: String(error.table || ""),
-      id: String(error.id || ""),
-      code: String(error.code || ""),
-      message: String(error.message || ""),
-    }));
-}
-
-function conflictFingerprint(checkpoint, data) {
-  const records = normalizedErrors(data)
-    .map((error) => `${error.table}:${error.id}:${error.code}`)
-    .sort();
-  if (records.length > 0) return records.join("|");
-  return String(checkpoint?.queue?.clientMutationId || checkpoint?.queue?.revision || "unknown");
 }
 
 export class WorkspaceConflictRecoveryStore {
@@ -51,7 +32,7 @@ export class WorkspaceConflictRecoveryStore {
       return {
         version: STORE_VERSION,
         drafts: parsed.drafts.filter((draft) => (
-          draft && typeof draft === "object" && String(draft.id || "") && draft.checkpoint
+          draft && typeof draft === "object" && String(draft.id || "")
         )),
       };
     } catch (error) {
@@ -71,25 +52,33 @@ export class WorkspaceConflictRecoveryStore {
     }
   }
 
-  quarantine(checkpoint, data = {}) {
-    if (!checkpoint?.queue) return null;
+  remember(serverDrafts) {
+    const incoming = (Array.isArray(serverDrafts) ? serverDrafts : [serverDrafts])
+      .filter((draft) => draft && typeof draft === "object" && String(draft.id || ""));
+    if (incoming.length === 0) return [];
     const envelope = this._read();
-    if (this.lastError) return null;
-    const fingerprint = conflictFingerprint(checkpoint, data);
-    const existing = envelope.drafts.find((draft) => draft.fingerprint === fingerprint);
-    const draft = {
-      id: existing?.id || String(this.createId()),
-      fingerprint,
-      checkpoint: cloneValue(checkpoint),
-      currentSyncVersion: data?.currentSyncVersion ?? null,
-      errors: normalizedErrors(data),
+    if (this.lastError) return [];
+    const normalized = incoming.map((draft) => ({
+      id: String(draft.id),
+      entityType: String(draft.entityType || ""),
+      tableName: String(draft.tableName || ""),
+      recordId: String(draft.recordId || ""),
+      status: String(draft.status || "ACTIVE"),
+      expiresAt: Number(draft.expiresAt || 0),
       savedAt: this.now(),
-    };
+    }));
+    const incomingIds = new Set(normalized.map((draft) => draft.id));
     envelope.drafts = [
-      draft,
-      ...envelope.drafts.filter((item) => item.id !== draft.id),
+      ...normalized,
+      ...envelope.drafts.filter((item) => !incomingIds.has(String(item.id))),
     ].slice(0, MAX_DRAFTS);
-    return this._write(envelope) ? cloneValue(draft) : null;
+    return this._write(envelope) ? cloneValue(normalized) : [];
+  }
+
+  replace(serverDrafts) {
+    const envelope = { version: STORE_VERSION, drafts: [] };
+    if (!this._write(envelope)) return [];
+    return this.remember(serverDrafts);
   }
 
   list() {

@@ -137,16 +137,12 @@ test("startup pulls authoritative state and completes after quarantining a row c
   assert.equal(getStartupReconciliationState(controller).phase, "RECONCILED");
 });
 
-test("F5 discards conflict markers before pulling and preserves unrelated outbox work", async () => {
+test("F5 retains conflict references without replay and preserves unrelated outbox work", async () => {
   const calls = [];
   const controller = {
     model: {
       workspaceScope: { key: "user:org-a" },
       getConflictRecoveryCount: () => 1,
-      discardAllConflictRecoveryDrafts() {
-        calls.push("discard-conflict");
-        return true;
-      },
     },
     markStartup() {},
     async forceSyncData(_background, forceFull) {
@@ -163,7 +159,7 @@ test("F5 discards conflict markers before pulling and preserves unrelated outbox
   };
 
   assert.equal(await reconcileRouteDataAtStartup(controller), true);
-  assert.deepEqual(calls, ["discard-conflict", ["pull", true], "push-unrelated"]);
+  assert.deepEqual(calls, [["pull", true], "push-unrelated"]);
 });
 
 

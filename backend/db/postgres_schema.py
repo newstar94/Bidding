@@ -16,6 +16,7 @@ from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
     DatabaseUpgradeContext,
+    REQUIRED_POST_V64_FK_INDEXES,
     apply_database_upgrades,
     read_database_version,
     record_database_version,
@@ -38,6 +39,10 @@ _SYSTEM_TIMESTAMP_COLUMNS = frozenset(
         "occurred_at",
         "fetched_at",
         "applied_at",
+        "available_at",
+        "locked_at",
+        "retired_at",
+        "run_at",
     }
 )
 
@@ -618,11 +623,44 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_procurement_session_expiry ON procurement_import_session (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_entity ON procurement_raw_snapshot (organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content ON procurement_raw_snapshot (organization_id, content_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_conflict_drafts_actor_workspace ON conflict_resolution_drafts (organization_id, actor_user_id, workspace_fingerprint, status, updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_conflict_drafts_expiry ON conflict_resolution_drafts (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_catalog ON word_template (organization_id, retired_at, updated_at DESC, id)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_version_history ON word_template_version (organization_id, template_id, version_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_version_checksum ON word_template_version (organization_id, sha256)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_preflight_history ON word_template_preflight_run (organization_id, template_version_id, run_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_publication_history ON word_template_publication_event (organization_id, template_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_projection_claim ON word_template_projection_outbox (status, available_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_projection_template ON word_template_projection_outbox (organization_id, template_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_assignment_template ON word_publication_assignment_v2 (organization_id, template_id, document_type, context_key, sort_order)",
+        "CREATE INDEX IF NOT EXISTS idx_word_assignment_config_revision ON word_template_assignment_config (organization_id, revision)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_word_assignment_projection_digest ON word_template_projection_outbox (organization_id, event_type, desired_checksum) WHERE event_type = 'ASSIGNMENT'",
+        "CREATE INDEX IF NOT EXISTS idx_legal_instrument_version_effective ON legal_instrument_version (effective_from, effective_to, instrument_id)",
+        "CREATE INDEX IF NOT EXISTS idx_legal_profile_version_effective ON legal_source_profile_version (effective_from, effective_to, priority DESC, profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_history ON plan_legal_binding (organization_id, plan_id, binding_revision DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_history ON package_legal_binding (organization_id, package_id, binding_revision DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_queue ON procurement_case (organization_id, case_type, state, due_at, updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_target_lineage ON procurement_case_package_target (organization_id, package_lineage_root_id, current_package_version_id)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_response_history ON procurement_case_response_revision (organization_id, case_id, revision_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_transition_history ON procurement_case_transition (organization_id, case_id, sequence_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_observation_queue ON procurement_case_source_observation (organization_id, case_type, linked_case_id, observed_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_event_head_source ON calendar_event_head (organization_id, event_key, row_version)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_event_revision_history ON calendar_event_revision (organization_id, event_head_id, sequence DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_queue ON bulk_operation (organization_id, actor_user_id, status, expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_expiry ON bulk_operation (expires_at, status)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_artifact_expiry ON bulk_operation_artifact (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_oauth_state_expiry ON calendar_oauth_state (expires_at, used_at)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_connection_owner ON calendar_connection (organization_id, user_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_binding_remote ON calendar_event_binding (organization_id, connection_id, remote_event_id)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_delivery_claim ON calendar_delivery_outbox (status, available_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_generated_document_template ON generated_document_provenance (organization_id, template_version_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_generated_document_record ON generated_document_provenance (organization_id, record_type, record_id, created_at DESC) WHERE record_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_sensitive_record_read_capabilities_user ON sensitive_record_read_capabilities (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record ON deleted_records (organization_id, table_name, record_id)",
+        *REQUIRED_POST_V64_FK_INDEXES,
     )
     for statement in statements:
         cursor.execute(statement)
@@ -993,6 +1031,22 @@ def _create_triggers(cursor) -> None:
         "procurement_source_revision",
         "procurement_source_binding",
         "procurement_raw_snapshot",
+        "word_template_publication_event",
+        "generated_document_provenance",
+        "legal_instrument_version",
+        "legal_source_profile_version",
+        "legal_source_profile_member",
+        "legal_applicability_policy_version",
+        "plan_legal_binding",
+        "package_legal_binding",
+        "procurement_case_response_revision",
+        "procurement_case_transition",
+        "procurement_case_attachment",
+        "procurement_case_legal_basis",
+        "procurement_case_source_observation",
+        "procurement_case_command",
+        "calendar_event_revision",
+        "bulk_operation_item",
     ):
         cursor.execute(
             f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
@@ -1000,6 +1054,18 @@ def _create_triggers(cursor) -> None:
         cursor.execute(
             f"CREATE TRIGGER trg_{table_name}_immutable "
             f"BEFORE UPDATE OR DELETE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    for table_name in (
+        "word_template_version",
+        "word_template_preflight_run",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE ON {table_name} "
             "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
         )
     cursor.execute(
@@ -1237,6 +1303,46 @@ def _historical_v46_catalog(latest_catalog):
         "procurement_source_binding",
         "procurement_import_operation",
         "procurement_raw_snapshot",
+        "conflict_resolution_drafts",
+        "word_template",
+        "word_template_version",
+        "word_template_preflight_run",
+        "word_template_publication_event",
+        "word_template_projection_outbox",
+        "word_publication_assignment_v2",
+        "word_template_assignment_config",
+        "generated_document_provenance",
+        "legal_instrument",
+        "legal_instrument_draft",
+        "legal_instrument_version",
+        "legal_source_profile",
+        "legal_source_profile_draft",
+        "legal_source_profile_version",
+        "legal_source_profile_member",
+        "legal_applicability_policy_version",
+        "plan_legal_binding",
+        "package_legal_binding",
+        "plan_legal_binding_head",
+        "package_legal_binding_head",
+        "procurement_case",
+        "procurement_case_package_target",
+        "procurement_case_party",
+        "procurement_case_responsibility",
+        "procurement_case_response_revision",
+        "procurement_case_transition",
+        "procurement_case_attachment",
+        "procurement_case_legal_basis",
+        "procurement_case_source_observation",
+        "procurement_case_command",
+        "calendar_event_head",
+        "calendar_event_revision",
+        "bulk_operation",
+        "bulk_operation_item",
+        "bulk_operation_artifact",
+        "calendar_oauth_state",
+        "calendar_connection",
+        "calendar_event_binding",
+        "calendar_delivery_outbox",
     }
     for table_name in post_v46_tables:
         catalog["tables"].pop(table_name, None)

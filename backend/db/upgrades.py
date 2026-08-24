@@ -15,6 +15,70 @@ BASELINE_SCHEMA_VERSION = 1
 BASELINE_NAME = "canonical_schema"
 
 
+REQUIRED_POST_V64_FK_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_bulk_operation_actor ON bulk_operation (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_calendar_connection_user ON calendar_connection (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_calendar_delivery_head ON calendar_delivery_outbox (organization_id, event_head_id)",
+    "CREATE INDEX IF NOT EXISTS idx_calendar_binding_head ON calendar_event_binding (organization_id, event_head_id)",
+    "CREATE INDEX IF NOT EXISTS idx_calendar_oauth_user ON calendar_oauth_state (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_conflict_draft_actor ON conflict_resolution_drafts (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_generated_document_creator ON generated_document_provenance (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_policy_publisher ON legal_applicability_policy_version (published_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_instrument_creator ON legal_instrument (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_instrument_draft_instrument ON legal_instrument_draft (instrument_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_instrument_draft_updater ON legal_instrument_draft (updated_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_instrument_version_publisher ON legal_instrument_version (published_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_profile_creator ON legal_source_profile (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_profile_draft_profile ON legal_source_profile_draft (profile_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_profile_draft_updater ON legal_source_profile_draft (updated_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_profile_member_instrument ON legal_source_profile_member (instrument_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_legal_profile_version_publisher ON legal_source_profile_version (published_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_policy ON package_legal_binding (policy_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_profile ON package_legal_binding (profile_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_creator ON package_legal_binding (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_package_legal_head_current ON package_legal_binding_head (organization_id, current_binding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_policy ON plan_legal_binding (policy_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_profile ON plan_legal_binding (profile_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_creator ON plan_legal_binding (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_legal_head_current ON plan_legal_binding_head (organization_id, current_binding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_procurement_case_creator ON procurement_case (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_attachment_case ON procurement_case_attachment (organization_id, case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_attachment_revision ON procurement_case_attachment (organization_id, response_revision_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_attachment_creator ON procurement_case_attachment (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_command_case ON procurement_case_command (organization_id, case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_command_actor ON procurement_case_command (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_legal_basis_case ON procurement_case_legal_basis (organization_id, case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_legal_basis_revision ON procurement_case_legal_basis (organization_id, response_revision_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_legal_basis_profile ON procurement_case_legal_basis (profile_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_legal_basis_instrument ON procurement_case_legal_basis (instrument_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_legal_basis_creator ON procurement_case_legal_basis (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_target_current_package ON procurement_case_package_target (organization_id, current_package_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_party_case ON procurement_case_party (organization_id, case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_response_package ON procurement_case_response_revision (organization_id, package_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_response_creator ON procurement_case_response_revision (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_responsibility_case ON procurement_case_responsibility (organization_id, case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_responsibility_user ON procurement_case_responsibility (responsible_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_responsibility_assigner ON procurement_case_responsibility (assigned_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_observation_linked ON procurement_case_source_observation (organization_id, linked_case_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_transition_package ON procurement_case_transition (organization_id, package_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_transition_revision ON procurement_case_transition (organization_id, response_revision_id)",
+    "CREATE INDEX IF NOT EXISTS idx_case_transition_actor ON procurement_case_transition (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_assignment_pinned ON word_publication_assignment_v2 (organization_id, pinned_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_template_draft ON word_template (organization_id, draft_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_template_published ON word_template (organization_id, published_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_template_creator ON word_template (created_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_assignment_config_updater ON word_template_assignment_config (updated_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_preflight_runner ON word_template_preflight_run (run_by_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_projection_version ON word_template_projection_outbox (organization_id, template_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_publication_from_version ON word_template_publication_event (organization_id, from_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_publication_to_version ON word_template_publication_event (organization_id, to_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_publication_preflight ON word_template_publication_event (organization_id, accepted_preflight_run_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_publication_actor ON word_template_publication_event (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_version_source ON word_template_version (organization_id, source_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_word_version_creator ON word_template_version (created_by_id)",
+)
+
+
 @dataclass(frozen=True)
 class DatabaseUpgrade:
     version: int
@@ -2357,6 +2421,442 @@ def _upgrade_to_v63_scope_procurement_operation_idempotency(cursor, _context):
             END $$"""
     )
 
+
+def _upgrade_to_v64_add_conflict_resolution_drafts(cursor, context):
+    """Add encrypted, actor/workspace-scoped durable conflict drafts."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "conflict_resolution_drafts",
+        SCHEMA_DINH_NGHIA["conflict_resolution_drafts"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+    cursor.execute(create_sql)
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_conflict_drafts_actor_workspace
+           ON conflict_resolution_drafts (
+             organization_id, actor_user_id, workspace_fingerprint,
+             status, updated_at DESC
+           )"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_conflict_drafts_expiry
+           ON conflict_resolution_drafts (expires_at)"""
+    )
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("conflict_resolution_drafts",),
+            if_not_exists=True,
+        )
+
+
+def _upgrade_to_v65_add_word_template_catalog(cursor, context):
+    """Add immutable Word template versions and publication provenance."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    tables = (
+        "word_template",
+        "word_template_version",
+        "word_template_preflight_run",
+        "word_template_publication_event",
+        "word_template_projection_outbox",
+        "word_publication_assignment_v2",
+        "generated_document_provenance",
+    )
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v65 requires the canonical table builder.")
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError("Database upgrade v65 requires the canonical foreign-key builder.")
+
+    # The logical template points at versions while versions point back at their
+    # logical identity.  Build every table first, then install the tenant-scoped
+    # foreign keys in one dependency-safe pass.
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name,
+            SCHEMA_DINH_NGHIA[table_name],
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_word_template_catalog ON word_template (organization_id, retired_at, updated_at DESC, id)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_version_history ON word_template_version (organization_id, template_id, version_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_version_checksum ON word_template_version (organization_id, sha256)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_preflight_history ON word_template_preflight_run (organization_id, template_version_id, run_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_publication_history ON word_template_publication_event (organization_id, template_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_projection_claim ON word_template_projection_outbox (status, available_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_projection_template ON word_template_projection_outbox (organization_id, template_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_word_assignment_template ON word_publication_assignment_v2 (organization_id, template_id, document_type, context_key)",
+        "CREATE INDEX IF NOT EXISTS idx_generated_document_template ON generated_document_provenance (organization_id, template_version_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_generated_document_record ON generated_document_provenance (organization_id, record_type, record_id, created_at DESC) WHERE record_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_word_template_owner_type_owner ON word_template (owner_type, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_word_publication_assignment_v2_owner_type_owner ON word_publication_assignment_v2 (owner_type, organization_id)",
+    ):
+        cursor.execute(statement)
+
+    if not callable(context.create_trigger_functions):
+        raise RuntimeError("Database upgrade v65 requires the trigger-function installer.")
+    context.create_trigger_functions(cursor)
+    for table_name in ("word_template", "word_publication_assignment_v2"):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_workspace_owner ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_workspace_owner "
+            f"BEFORE INSERT OR UPDATE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()"
+        )
+    for table_name in (
+        "word_template_version",
+        "word_template_preflight_run",
+        "word_template_publication_event",
+        "generated_document_provenance",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE OR DELETE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v66_preserve_word_assignment_sets(cursor, _context):
+    """Preserve ordered multi-template publication assignments from ADR 0005."""
+
+    cursor.execute(
+        """ALTER TABLE word_publication_assignment_v2
+           ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0
+           CHECK(sort_order >= 0)"""
+    )
+    cursor.execute(
+        """ALTER TABLE word_publication_assignment_v2
+           DROP CONSTRAINT IF EXISTS
+             word_publication_assignment_v_organization_id_document_type_key"""
+    )
+    for constraint_name, definition in (
+        (
+            "word_assignment_target_unique",
+            "UNIQUE (organization_id, document_type, context_key, template_id)",
+        ),
+        (
+            "word_assignment_order_unique",
+            "UNIQUE (organization_id, document_type, context_key, sort_order)",
+        ),
+    ):
+        cursor.execute(
+            f"""DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                     WHERE conrelid = 'word_publication_assignment_v2'::regclass
+                       AND conname = '{constraint_name}'
+                  ) THEN
+                    ALTER TABLE word_publication_assignment_v2
+                      ADD CONSTRAINT {constraint_name} {definition};
+                  END IF;
+                END $$"""  # noqa: S608 - fixed migration identifiers.
+        )
+    cursor.execute("DROP INDEX IF EXISTS idx_word_assignment_template")
+    cursor.execute(
+        """CREATE INDEX idx_word_assignment_template
+           ON word_publication_assignment_v2
+              (organization_id, template_id, document_type, context_key, sort_order)"""
+    )
+
+
+def _upgrade_to_v67_type_word_catalog_timestamps(cursor, _context):
+    """Use native timestamps for lifecycle retention and outbox leasing."""
+
+    for table_name, column_name in (
+        ("word_template", "retired_at"),
+        ("word_template_preflight_run", "run_at"),
+        ("word_template_projection_outbox", "available_at"),
+        ("word_template_projection_outbox", "locked_at"),
+    ):
+        cursor.execute(
+            f"""ALTER TABLE {table_name}
+                ALTER COLUMN {column_name} TYPE TIMESTAMPTZ
+                USING NULLIF({column_name}::text, '')::TIMESTAMPTZ"""  # noqa: S608
+        )
+
+
+def _upgrade_to_v68_complete_word_catalog_cutover(cursor, context):
+    """Add assignment CAS head and permit approved retention deletes."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "word_template_assignment_config",
+        SCHEMA_DINH_NGHIA["word_template_assignment_config"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace(
+            "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+        )
+    cursor.execute(create_sql)
+    context.create_foreign_keys(
+        cursor, ("word_template_assignment_config",), if_not_exists=True,
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_word_assignment_config_revision
+           ON word_template_assignment_config (organization_id, revision)"""
+    )
+    cursor.execute(
+        """ALTER TABLE word_template_projection_outbox
+           ALTER COLUMN template_id DROP NOT NULL"""
+    )
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS
+             idx_word_assignment_projection_digest
+           ON word_template_projection_outbox
+              (organization_id, event_type, desired_checksum)
+           WHERE event_type = 'ASSIGNMENT'"""
+    )
+    for table_name in (
+        "word_template_version", "word_template_preflight_run",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    cursor.execute(
+        """DROP TRIGGER IF EXISTS trg_word_template_assignment_config_workspace_owner
+           ON word_template_assignment_config"""
+    )
+    cursor.execute(
+        """CREATE TRIGGER trg_word_template_assignment_config_workspace_owner
+           BEFORE INSERT OR UPDATE ON word_template_assignment_config
+           FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()"""
+    )
+
+
+def _upgrade_to_v69_index_word_assignment_config_owner(cursor, _context):
+    """Reconcile fresh and upgraded catalogs for workspace-owner lookup."""
+
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS
+             idx_word_template_assignment_config_owner_type_owner
+           ON word_template_assignment_config (owner_type, organization_id)"""
+    )
+
+
+def _upgrade_to_v70_add_legal_versioning(cursor, context):
+    """Add immutable SYSTEM legal catalog and typed target bindings."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    tables = (
+        "legal_instrument", "legal_instrument_draft",
+        "legal_instrument_version", "legal_source_profile",
+        "legal_source_profile_draft", "legal_source_profile_version",
+        "legal_source_profile_member", "legal_applicability_policy_version",
+        "plan_legal_binding", "package_legal_binding",
+        "plan_legal_binding_head", "package_legal_binding_head",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name, SCHEMA_DINH_NGHIA[table_name]
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_legal_instrument_version_effective ON legal_instrument_version (effective_from, effective_to, instrument_id)",
+        "CREATE INDEX IF NOT EXISTS idx_legal_profile_version_effective ON legal_source_profile_version (effective_from, effective_to, priority DESC, profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_history ON plan_legal_binding (organization_id, plan_id, binding_revision DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_history ON package_legal_binding (organization_id, package_id, binding_revision DESC)",
+    ):
+        cursor.execute(statement)
+    context.create_trigger_functions(cursor)
+    for table_name in (
+        "legal_instrument_version", "legal_source_profile_version",
+        "legal_source_profile_member", "legal_applicability_policy_version",
+        "plan_legal_binding", "package_legal_binding",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable BEFORE UPDATE OR DELETE "
+            f"ON {table_name} FOR EACH ROW "
+            "EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v71_add_procurement_cases(cursor, context):
+    """Add shared CLARIFICATION/PETITION case core without touching legacy rows."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    tables = (
+        "procurement_case", "procurement_case_package_target",
+        "procurement_case_party", "procurement_case_responsibility",
+        "procurement_case_response_revision", "procurement_case_transition",
+        "procurement_case_attachment", "procurement_case_legal_basis",
+        "procurement_case_source_observation", "procurement_case_command",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name, SCHEMA_DINH_NGHIA[table_name]
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_queue ON procurement_case (organization_id, case_type, state, due_at, updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_target_lineage ON procurement_case_package_target (organization_id, package_lineage_root_id, current_package_version_id)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_response_history ON procurement_case_response_revision (organization_id, case_id, revision_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_transition_history ON procurement_case_transition (organization_id, case_id, sequence_no DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_case_observation_queue ON procurement_case_source_observation (organization_id, case_type, linked_case_id, observed_at DESC)",
+    ):
+        cursor.execute(statement)
+    context.create_trigger_functions(cursor)
+    for table_name in (
+        "procurement_case_response_revision", "procurement_case_transition",
+        "procurement_case_attachment", "procurement_case_legal_basis",
+        "procurement_case_source_observation", "procurement_case_command",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable BEFORE UPDATE OR DELETE "
+            f"ON {table_name} FOR EACH ROW "
+            "EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v72_add_calendar_and_bulk_export(cursor, context):
+    """Add technical calendar heads and the export-only bulk control plane."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    tables = (
+        "calendar_event_head", "calendar_event_revision", "bulk_operation",
+        "bulk_operation_item", "bulk_operation_artifact",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(
+            table_name, SCHEMA_DINH_NGHIA[table_name]
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_calendar_event_head_source ON calendar_event_head (organization_id, event_key, row_version)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_event_revision_history ON calendar_event_revision (organization_id, event_head_id, sequence DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_queue ON bulk_operation (organization_id, actor_user_id, status, expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_expiry ON bulk_operation (expires_at, status)",
+        "CREATE INDEX IF NOT EXISTS idx_bulk_artifact_expiry ON bulk_operation_artifact (expires_at)",
+    ):
+        cursor.execute(statement)
+    context.create_trigger_functions(cursor)
+    for table_name in ("calendar_event_revision", "bulk_operation_item"):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable BEFORE UPDATE OR DELETE "
+            f"ON {table_name} FOR EACH ROW "
+            "EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v73_extend_activity_for_procurement_cases(cursor, context):
+    """Extend the existing activity ledger with approved case actions."""
+
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien DROP CONSTRAINT IF EXISTS nhat_ky_thuc_hien_target_type_check"
+    )
+    cursor.execute(
+        """ALTER TABLE nhat_ky_thuc_hien
+            ADD CONSTRAINT nhat_ky_thuc_hien_target_type_check
+            CHECK(target_type IN ('goithau', 'hopdong', 'procurement_case'))"""
+    )
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien DROP CONSTRAINT IF EXISTS nhat_ky_thuc_hien_action_check"
+    )
+    cursor.execute(
+        """ALTER TABLE nhat_ky_thuc_hien
+            ADD CONSTRAINT nhat_ky_thuc_hien_action_check CHECK(action IN (
+              'goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated',
+              'package_document.uploaded', 'package_document.replaced',
+              'package_document.deleted', 'assignment.added', 'assignment.removed',
+              'procurement_case.created', 'procurement_case.response_revision_saved',
+              'procurement_case.assign', 'procurement_case.start_review',
+              'procurement_case.draft_response', 'procurement_case.submit_review',
+              'procurement_case.return', 'procurement_case.approve',
+              'procurement_case.issue', 'procurement_case.close',
+              'procurement_case.reject', 'procurement_case.withdraw',
+              'procurement_case.reopen', 'procurement_case.due_date_set',
+              'procurement_case.party_added', 'procurement_case.legal_basis_added',
+              'procurement_case.source_observed', 'procurement_case.attachment_added'
+            ))"""
+    )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v74_add_calendar_connectors(cursor, context):
+    """Add opt-in one-way Google/Microsoft calendar delivery control plane."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    cursor.execute("ALTER TABLE calendar_event_head ADD COLUMN IF NOT EXISTS source_type TEXT")
+    cursor.execute("ALTER TABLE calendar_event_head ADD COLUMN IF NOT EXISTS source_id TEXT")
+    tables = (
+        "calendar_oauth_state", "calendar_connection",
+        "calendar_event_binding", "calendar_delivery_outbox",
+    )
+    for table_name in tables:
+        create_sql = context.build_create_table_sql(table_name, SCHEMA_DINH_NGHIA[table_name])
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+        cursor.execute(create_sql)
+    context.create_foreign_keys(cursor, tables, if_not_exists=True)
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_calendar_oauth_state_expiry ON calendar_oauth_state (expires_at, used_at)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_connection_owner ON calendar_connection (organization_id, user_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_binding_remote ON calendar_event_binding (organization_id, connection_id, remote_event_id)",
+        "CREATE INDEX IF NOT EXISTS idx_calendar_delivery_claim ON calendar_delivery_outbox (status, available_at, created_at)",
+    ):
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v75_index_post_v64_foreign_keys(cursor, _context):
+    """Add child-side indexes for every FK introduced by the nine increments."""
+
+    for statement in REQUIRED_POST_V64_FK_INDEXES:
+        cursor.execute(statement)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -2664,6 +3164,66 @@ UPGRADES = (
         "scope_procurement_operation_idempotency",
         _upgrade_to_v63_scope_procurement_operation_idempotency,
     ),
+    DatabaseUpgrade(
+        64,
+        "add_conflict_resolution_drafts",
+        _upgrade_to_v64_add_conflict_resolution_drafts,
+    ),
+    DatabaseUpgrade(
+        65,
+        "add_word_template_catalog",
+        _upgrade_to_v65_add_word_template_catalog,
+    ),
+    DatabaseUpgrade(
+        66,
+        "preserve_word_assignment_sets",
+        _upgrade_to_v66_preserve_word_assignment_sets,
+    ),
+    DatabaseUpgrade(
+        67,
+        "type_word_catalog_timestamps",
+        _upgrade_to_v67_type_word_catalog_timestamps,
+    ),
+    DatabaseUpgrade(
+        68,
+        "complete_word_catalog_cutover",
+        _upgrade_to_v68_complete_word_catalog_cutover,
+    ),
+    DatabaseUpgrade(
+        69,
+        "index_word_assignment_config_owner",
+        _upgrade_to_v69_index_word_assignment_config_owner,
+    ),
+    DatabaseUpgrade(
+        70,
+        "add_legal_versioning",
+        _upgrade_to_v70_add_legal_versioning,
+    ),
+    DatabaseUpgrade(
+        71,
+        "add_shared_procurement_cases",
+        _upgrade_to_v71_add_procurement_cases,
+    ),
+    DatabaseUpgrade(
+        72,
+        "add_calendar_and_bulk_export",
+        _upgrade_to_v72_add_calendar_and_bulk_export,
+    ),
+    DatabaseUpgrade(
+        73,
+        "extend_activity_for_procurement_cases",
+        _upgrade_to_v73_extend_activity_for_procurement_cases,
+    ),
+    DatabaseUpgrade(
+        74,
+        "add_calendar_connectors",
+        _upgrade_to_v74_add_calendar_connectors,
+    ),
+    DatabaseUpgrade(
+        75,
+        "index_post_v64_foreign_keys",
+        _upgrade_to_v75_index_post_v64_foreign_keys,
+    ),
 )
 
 
@@ -2671,9 +3231,8 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V63 is the contract phase of a code-first rollout. This binary must run on
-# v62 during the expand release and v63 after the separately approved migration.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 62
+# V75 adds only supporting indexes. V73 remains compatible while connectors are off.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 73
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

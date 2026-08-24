@@ -322,20 +322,18 @@ export function reconcileRouteDataAtStartup(controller, {
   const run = (async () => {
     controller?.markStartup?.("route-data-sync:start");
     try {
+      if (typeof controller?.model?.refreshConflictRecoveryDrafts === "function") {
+        try {
+          await controller.model.refreshConflictRecoveryDrafts();
+        } catch {
+          // Offline startup keeps the local reference index. Resolution always
+          // requires an online server preview and fresh authorization.
+        }
+      }
       const conflictRecoveryCount = Number(
         controller?.model?.getConflictRecoveryCount?.() || 0,
       );
       if (conflictRecoveryCount > 0) {
-        const discarded = controller?.model?.discardAllConflictRecoveryDrafts?.() === true;
-        if (!discarded) {
-          const cleanupFailure = {
-            ok: false,
-            storageDegraded: true,
-            code: "CONFLICT_RECOVERY_CLEANUP_FAILED",
-          };
-          completeStartupReconciliation(controller, cleanupFailure, workspaceToken);
-          return false;
-        }
         let pullResult = { ok: true, skipped: true, localMutationsPending: false };
         if (typeof controller?.forceSyncData === "function") {
           pullResult = await controller.forceSyncData(true, true, true);

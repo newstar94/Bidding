@@ -4,6 +4,7 @@ import {
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
+import { openConflictCenter } from "./ConflictCenter.js";
 
 
 const ACTIONABLE_PENDING_PHASES = new Set([
@@ -37,7 +38,7 @@ async function resolveConflictRecoveryDraft(
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   controller.view?.showToast?.(
     "Dữ liệu đã thay đổi trên máy chủ",
-    "Nhấn F5 để tải lại dữ liệu mới nhất.",
+    "Mở Trung tâm xung đột để xem và xác nhận từng thay đổi.",
     "warning",
   );
   return { ok: false, conflict: true, reloadRequired: true, recoveryDraftId: draft.id };
@@ -52,7 +53,7 @@ export async function resolvePendingSyncConflict(
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   controller.view?.showToast?.(
     "Dữ liệu đã thay đổi trên máy chủ",
-    "Nhấn F5 để tải lại dữ liệu mới nhất.",
+    "Mở Trung tâm xung đột để xem và xác nhận từng thay đổi.",
     "warning",
   );
   return { ...initialResult, conflictCleared: false, reloadRequired: true };
@@ -178,7 +179,13 @@ export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
-  button?.addEventListener("click", () => runManualSyncRetry(this));
+  button?.addEventListener("click", () => {
+    if (Number(this.model?.getConflictRecoveryCount?.() || 0) > 0) {
+      void openConflictCenter(this);
+      return;
+    }
+    void runManualSyncRetry(this);
+  });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
     this._pendingMutationCount = Math.max(0, Number(pendingCount) || 0);
     if (pendingCount && shouldShowLocalPending(this._syncUxState?.phase)) {

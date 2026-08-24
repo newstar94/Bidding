@@ -12,9 +12,16 @@ from backend.lifecycle import database_auto_migration_enabled
 from backend.startup import (
     REQUIRED_APPLICATION_TABLES,
     StartupValidationError,
+    validate_legal_versioning_configuration,
+    validate_ai_compliance_configuration,
+    validate_procurement_case_configuration,
+    validate_calendar_connector_configuration,
+    validate_outbound_increment_configuration,
+    validate_word_template_catalog_configuration,
     verify_database_readiness,
     verify_database_responsive,
 )
+from cryptography.fernet import Fernet
 from scripts import manage_database
 
 
@@ -56,13 +63,13 @@ class _RuntimeSchemaDatabase:
         return _RuntimeSchemaConnection(self.version)
 
 
-def test_v63_expand_contract_runtime_accepts_only_schema_62_through_63():
+def test_v75_expand_contract_runtime_accepts_only_schema_73_through_75():
     assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
-        62,
-        63,
+        73,
+        75,
     )
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 63
-    for version in (62, 63):
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 75
+    for version in (73, 74, 75):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
             DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -73,7 +80,7 @@ def test_v63_expand_contract_runtime_accepts_only_schema_62_through_63():
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (61, 64):
+    for version in (72, 76):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,
@@ -89,6 +96,113 @@ def test_v63_expand_contract_runtime_accepts_only_schema_62_through_63():
 def test_auto_migration_defaults_to_enabled_outside_production():
     assert database_auto_migration_enabled({"APP_ENV": "development"}) is True
     assert database_auto_migration_enabled({"APP_ENV": "test"}) is True
+
+
+def test_word_template_catalog_defaults_to_shadow_kill_switch():
+    assert validate_word_template_catalog_configuration({}) == {
+        "enabled": False,
+        "mode": "shadow",
+    }
+
+
+def test_legal_versioning_kill_switch_is_strict_and_defaults_off():
+    assert validate_legal_versioning_configuration({}) == {"enabled": False}
+    assert validate_legal_versioning_configuration({
+        "LEGAL_VERSIONING_ENABLED": "true",
+    }) == {"enabled": True}
+    with pytest.raises(StartupValidationError):
+        validate_legal_versioning_configuration({
+            "LEGAL_VERSIONING_ENABLED": "enabled",
+        })
+
+
+def test_ai_compliance_flag_requires_exact_legal_authority():
+    assert validate_ai_compliance_configuration({}) == {"enabled": False}
+    assert validate_ai_compliance_configuration({
+        "AI_COMPLIANCE_ENABLED": "true",
+        "LEGAL_VERSIONING_ENABLED": "true",
+    }) == {"enabled": True}
+    with pytest.raises(StartupValidationError, match="requires LEGAL_VERSIONING"):
+        validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "true"})
+    with pytest.raises(StartupValidationError, match="must be true or false"):
+        validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "enabled"})
+
+
+def test_procurement_case_flag_is_strict_and_defaults_off():
+    assert validate_procurement_case_configuration({}) == {"enabled": False}
+    assert validate_procurement_case_configuration({
+        "PROCUREMENT_CASE_ENABLED": "true",
+    }) == {"enabled": True}
+    with pytest.raises(StartupValidationError, match="must be true or false"):
+        validate_procurement_case_configuration({
+            "PROCUREMENT_CASE_ENABLED": "enabled",
+        })
+
+
+def test_outbound_increment_flags_and_production_storage_are_strict(tmp_path):
+    assert validate_outbound_increment_configuration({}) == {
+        "WORK_CALENDAR_ICS_ENABLED": False,
+        "BULK_EXPORT_ENABLED": False,
+    }
+    with pytest.raises(StartupValidationError, match="WORK_CALENDAR"):
+        validate_outbound_increment_configuration({
+            "WORK_CALENDAR_ICS_ENABLED": "enabled",
+        })
+    with pytest.raises(StartupValidationError, match="explicit absolute"):
+        validate_outbound_increment_configuration({
+            "BULK_EXPORT_ENABLED": "true",
+        }, production=True)
+    assert validate_outbound_increment_configuration({
+        "BULK_EXPORT_ENABLED": "true",
+        "BIDDING_BULK_EXPORT_DIR": str(tmp_path),
+    }, production=True)["BULK_EXPORT_ENABLED"] is True
+
+
+def test_calendar_connectors_require_explicit_provider_credentials_and_independent_key():
+    assert validate_calendar_connector_configuration({}) == {
+        "enabled": False,
+        "providers": {"GOOGLE": False, "MICROSOFT": False},
+    }
+    with pytest.raises(StartupValidationError, match="must be true or false"):
+        validate_calendar_connector_configuration({
+            "WORK_CALENDAR_CONNECTORS_ENABLED": "enabled",
+        })
+    with pytest.raises(StartupValidationError, match="requires WORK_CALENDAR_ICS_ENABLED"):
+        validate_calendar_connector_configuration({
+            "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
+        })
+    with pytest.raises(StartupValidationError, match="WORK_CALENDAR_GOOGLE_CLIENT_ID"):
+        validate_calendar_connector_configuration({
+            "WORK_CALENDAR_ICS_ENABLED": "true",
+            "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
+            "WORK_CALENDAR_GOOGLE_ENABLED": "true",
+        })
+    key = Fernet.generate_key().decode("ascii")
+    assert validate_calendar_connector_configuration({
+        "WORK_CALENDAR_ICS_ENABLED": "true",
+        "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
+        "WORK_CALENDAR_GOOGLE_ENABLED": "true",
+        "WORK_CALENDAR_GOOGLE_CLIENT_ID": "calendar-client",
+        "WORK_CALENDAR_GOOGLE_CLIENT_SECRET": "calendar-secret",
+        "WORK_CALENDAR_GOOGLE_REDIRECT_URI": "https://app.example.test/api/work-calendar/connections/google/callback",
+        "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY": key,
+    }) == {
+        "enabled": True,
+        "providers": {"GOOGLE": True, "MICROSOFT": False},
+    }
+
+
+def test_word_template_catalog_cutover_rejects_invalid_mode_and_prod_path():
+    with pytest.raises(StartupValidationError, match="shadow or cutover"):
+        validate_word_template_catalog_configuration({
+            "WORD_TEMPLATE_CATALOG_MODE": "dual-write",
+        })
+    with pytest.raises(StartupValidationError, match="explicit absolute"):
+        validate_word_template_catalog_configuration({
+            "WORD_TEMPLATE_CATALOG_ENABLED": "true",
+            "WORD_TEMPLATE_CATALOG_MODE": "cutover",
+            "BIDDING_WORD_TEMPLATE_CATALOG_DIR": "relative/catalog",
+        }, production=True)
 
 
 def test_auto_migration_defaults_to_disabled_in_production():

@@ -23,6 +23,7 @@ const loadWordTemplateAssignments = async () => {
   await module.loadWordTemplateAssignmentStyles();
   return module;
 };
+const loadWordTemplateCatalog = () => import("./WordTemplateCatalog.js");
 
 const pendingWordTemplateDeletes = new Set();
 const pendingWordTemplateAvailabilityChanges = new Set();
@@ -1079,6 +1080,10 @@ export async function loadWordTemplates() {
         error: templatesError || "Không tải được danh sách biểu mẫu Word.",
       });
     }
+  }
+  if (isWorkspaceLeaseCurrent(model, request.lease)) {
+    const catalogModule = await loadWordTemplateCatalog();
+    await catalogModule.loadAndRenderWordTemplateCatalog(this);
   }
   if (shouldLoadMappings && isWorkspaceLeaseCurrent(model, request.lease)) {
     await this.loadWordMappings();

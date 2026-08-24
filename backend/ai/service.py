@@ -194,6 +194,7 @@ async def stream_message(
     current_route: str = "/",
     client_request_id: str | None = None,
     quota_consumed: bool = False,
+    target_hint: dict | None = None,
 ) -> AsyncIterator[dict]:
     config = get_ai_config()
     if not config.enabled:
@@ -203,6 +204,8 @@ async def stream_message(
     mode = str(conversation.get("mode") or "")
     if mode not in {"data", "procurement_advice", "app_help"}:
         raise ai_error("AI_UNSUPPORTED_MODE", "Chế độ trợ lý không được hỗ trợ.")
+    if target_hint and mode != "procurement_advice":
+        raise ai_error("AI_SCOPE_VALIDATION_FAILED", "Compliance target requires procurement advice mode.")
     if not quota_consumed:
         await run_database_write(consume_request, context, config)
     user_message_id = await run_database_write(
@@ -216,6 +219,12 @@ async def stream_message(
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
+    if target_hint:
+        instructions += (
+            "\nTARGET_HINT_UNTRUSTED: "
+            + json.dumps(target_hint, ensure_ascii=False, separators=(",", ":"))
+            + "\nCall get_compliance_context with exactly these values before explaining this target."
+        )
     if mode == "app_help":
         instructions += f"\nRoute ứng dụng hiện tại: {current_route or '/'}"
     knowledge = None
@@ -240,7 +249,7 @@ async def stream_message(
         if knowledge.prompt_context:
             instructions += f"\n\n{knowledge.prompt_context}"
     web_search: LegalSearchResult | None = None
-    if mode == "procurement_advice" and config.web_search_enabled:
+    if mode == "procurement_advice" and config.web_search_enabled and not target_hint:
         try:
             web_search = await asyncio.to_thread(_search_legal_sources, content, config)
         except AiError as exc:
@@ -262,7 +271,7 @@ async def stream_message(
                     "Chưa tìm thấy nguồn pháp luật chính thống phù hợp để trả lời.",
                 )
     provider = ResponsesProvider(config)
-    tools = tool_definitions(mode)
+    tools = tool_definitions(mode) if mode != "procurement_advice" or target_hint else []
     all_sources = _merge_sources(
         knowledge.sources if knowledge else (),
         web_search.sources if web_search else (),
@@ -339,6 +348,7 @@ async def stream_message(
                         name,
                         arguments,
                         mode=mode,
+                        target_hint=target_hint,
                         timeout_seconds=config.tool_timeout_seconds,
                     )
                     increment("ai_tool_duration_seconds", execution_meta["duration_ms"] / 1000)

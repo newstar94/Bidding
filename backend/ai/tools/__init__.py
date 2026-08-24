@@ -3,6 +3,10 @@
 from backend.ai.app_structure import app_structure_tool_definitions, execute_app_structure_tool
 from backend.ai.tools.assignments import execute_assignment_tool, assignment_tool_definitions
 from backend.ai.tools.contracts import contract_tool_definitions
+from backend.ai.tools.compliance import (
+    compliance_tool_definitions,
+    execute_compliance_tool,
+)
 from backend.ai.tools.packages import package_tool_definitions
 from backend.ai.tools.plans import plan_tool_definitions
 from backend.ai.tools.reports import report_tool_definitions, execute_report_tool
@@ -18,6 +22,8 @@ from backend.ai.workspace_schema import (
 def tool_definitions_for_mode(mode: str) -> list[dict]:
     if mode == "app_help":
         return app_structure_tool_definitions()
+    if mode == "procurement_advice":
+        return compliance_tool_definitions()
     if mode != "data":
         return []
     return [
@@ -33,6 +39,8 @@ def tool_definitions_for_mode(mode: str) -> list[dict]:
 
 
 def execute_read_tool(cursor, context, tool_name: str, arguments: dict) -> object:
+    if tool_name == "get_compliance_context":
+        return execute_compliance_tool(cursor, context, arguments)
     if tool_name == "search_app_structure":
         return execute_app_structure_tool(context, arguments)
     if tool_name == "search_workspace":

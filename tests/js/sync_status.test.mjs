@@ -362,7 +362,7 @@ test("successful push row versions update canonical state, durable store, and ne
   }]);
 });
 
-test("model persists recovery before clearing and flushing the active outbox", async () => {
+test("model persists server recovery before clearing and flushing the active outbox", async () => {
   const checkpoint = {
     queue: {
       clientMutationId: "mutation-1",
@@ -383,12 +383,10 @@ test("model persists recovery before clearing and flushing the active outbox", a
     discard() { calls.push("discard"); return true; },
     async flush() { calls.push("flush"); },
   });
-  model._getConflictRecoveryStore = () => ({
-    quarantine(value) {
-      savedCheckpoint = structuredClone(value);
-      return { id: "recovery-1", checkpoint: value };
-    },
-  });
+  model._captureServerConflictDrafts = async (value) => {
+    savedCheckpoint = structuredClone(value);
+    return [{ id: "recovery-1" }];
+  };
 
   const draft = await model.quarantineMutationBatch({ data: {}, snapshot: { id: "receipt-1" } });
 
@@ -422,12 +420,10 @@ test("row conflict quarantine keeps unrelated records from the same receipt acti
     enqueue(command) { calls.push(["enqueue", structuredClone(command)]); return true; },
     async flush() { calls.push("flush"); },
   });
-  model._getConflictRecoveryStore = () => ({
-    quarantine(checkpoint) {
-      quarantined = structuredClone(checkpoint);
-      return { id: "conflict-x" };
-    },
-  });
+  model._captureServerConflictDrafts = async (checkpoint) => {
+    quarantined = structuredClone(checkpoint);
+    return [{ id: "conflict-x" }];
+  };
 
   const result = await model.quarantineMutationBatch({
     data: {
@@ -444,6 +440,7 @@ test("row conflict quarantine keeps unrelated records from the same receipt acti
       kind: "upsert",
       table: "goithau",
       records: [{ id: "package-y", rowVersion: 2, tenGoiThau: "Y" }],
+      baseRecords: [],
     }],
     "flush",
   ]);
@@ -466,7 +463,7 @@ test("model never clears the active outbox when recovery persistence fails", asy
     discard() { calls.push("discard"); },
     async flush() { calls.push("flush"); },
   });
-  model._getConflictRecoveryStore = () => ({ quarantine: () => null });
+  model._captureServerConflictDrafts = async () => [];
 
   assert.equal(await model.quarantineMutationBatch({ data: {} }), null);
   assert.deepEqual(calls, []);
@@ -497,8 +494,8 @@ test("model restores the active outbox when quarantine flushing fails", async ()
     },
   });
   const removed = [];
+  model._captureServerConflictDrafts = async () => [{ id: "recovery-rollback" }];
   model._getConflictRecoveryStore = () => ({
-    quarantine: () => ({ id: "recovery-rollback" }),
     remove(id) { removed.push(id); return true; },
   });
 

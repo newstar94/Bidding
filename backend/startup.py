@@ -8,6 +8,7 @@ import base64
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -29,6 +30,185 @@ from backend.procurement_lookup.config import (
 
 class StartupValidationError(RuntimeError):
     """Raised when the process cannot safely start serving traffic."""
+
+
+def validate_word_template_catalog_configuration(environ, *, production=False):
+    mode = str(
+        environ.get("WORD_TEMPLATE_CATALOG_MODE", "shadow")
+    ).strip().casefold()
+    if mode not in {"shadow", "cutover"}:
+        raise StartupValidationError(
+            "WORD_TEMPLATE_CATALOG_MODE must be shadow or cutover."
+        )
+    enabled = str(
+        environ.get("WORD_TEMPLATE_CATALOG_ENABLED", "false")
+    ).strip().casefold() == "true"
+    configured_root = str(
+        environ.get("BIDDING_WORD_TEMPLATE_CATALOG_DIR", "")
+    ).strip()
+    if production and enabled and (
+        not configured_root or not Path(configured_root).is_absolute()
+    ):
+        raise StartupValidationError(
+            "BIDDING_WORD_TEMPLATE_CATALOG_DIR must be an explicit absolute "
+            "path when the Word-template catalog is enabled in production."
+        )
+    return {"enabled": enabled, "mode": mode}
+
+
+def validate_legal_versioning_configuration(environ):
+    value = str(
+        environ.get("LEGAL_VERSIONING_ENABLED", "false")
+    ).strip().casefold()
+    if value not in {"true", "false"}:
+        raise StartupValidationError(
+            "LEGAL_VERSIONING_ENABLED must be true or false."
+        )
+    return {"enabled": value == "true"}
+
+
+def validate_ai_compliance_configuration(environ):
+    value = str(environ.get("AI_COMPLIANCE_ENABLED", "false")).strip().casefold()
+    if value not in {"true", "false"}:
+        raise StartupValidationError("AI_COMPLIANCE_ENABLED must be true or false.")
+    enabled = value == "true"
+    if enabled and str(environ.get("LEGAL_VERSIONING_ENABLED", "false")).strip().casefold() != "true":
+        raise StartupValidationError(
+            "AI_COMPLIANCE_ENABLED requires LEGAL_VERSIONING_ENABLED=true."
+        )
+    return {"enabled": enabled}
+
+
+def validate_procurement_case_configuration(environ):
+    value = str(environ.get("PROCUREMENT_CASE_ENABLED", "false")).strip().casefold()
+    if value not in {"true", "false"}:
+        raise StartupValidationError(
+            "PROCUREMENT_CASE_ENABLED must be true or false."
+        )
+    return {"enabled": value == "true"}
+
+
+def validate_outbound_increment_configuration(environ, *, production=False):
+    result = {}
+    for name in ("WORK_CALENDAR_ICS_ENABLED", "BULK_EXPORT_ENABLED"):
+        value = str(environ.get(name, "false")).strip().casefold()
+        if value not in {"true", "false"}:
+            raise StartupValidationError(f"{name} must be true or false.")
+        result[name] = value == "true"
+    bulk_root = str(environ.get("BIDDING_BULK_EXPORT_DIR", "")).strip()
+    if production and result["BULK_EXPORT_ENABLED"] and (
+        not bulk_root or not Path(bulk_root).is_absolute()
+    ):
+        raise StartupValidationError(
+            "BIDDING_BULK_EXPORT_DIR must be an explicit absolute path when "
+            "bulk export is enabled in production."
+        )
+    return result
+
+
+def validate_calendar_connector_configuration(environ, *, production=False):
+    """Validate opt-in calendar connector credentials without exposing secrets."""
+
+    flag_names = (
+        "WORK_CALENDAR_CONNECTORS_ENABLED",
+        "WORK_CALENDAR_GOOGLE_ENABLED",
+        "WORK_CALENDAR_MICROSOFT_ENABLED",
+    )
+    flags = {}
+    for name in flag_names:
+        value = str(environ.get(name, "false")).strip().casefold()
+        if value not in {"true", "false"}:
+            raise StartupValidationError(f"{name} must be true or false.")
+        flags[name] = value == "true"
+
+    enabled = flags["WORK_CALENDAR_CONNECTORS_ENABLED"]
+    providers = {
+        "GOOGLE": flags["WORK_CALENDAR_GOOGLE_ENABLED"],
+        "MICROSOFT": flags["WORK_CALENDAR_MICROSOFT_ENABLED"],
+    }
+    if not enabled:
+        if any(providers.values()):
+            raise StartupValidationError(
+                "Provider calendar flags require WORK_CALENDAR_CONNECTORS_ENABLED=true."
+            )
+        return {"enabled": False, "providers": providers}
+    if str(environ.get("WORK_CALENDAR_ICS_ENABLED", "false")).strip().casefold() != "true":
+        raise StartupValidationError(
+            "WORK_CALENDAR_CONNECTORS_ENABLED requires WORK_CALENDAR_ICS_ENABLED=true."
+        )
+    if not any(providers.values()):
+        raise StartupValidationError(
+            "WORK_CALENDAR_CONNECTORS_ENABLED requires at least one provider flag."
+        )
+
+    for provider in ("GOOGLE", "MICROSOFT"):
+        if not providers[provider]:
+            continue
+        prefix = f"WORK_CALENDAR_{provider}"
+        required = (
+            f"{prefix}_CLIENT_ID",
+            f"{prefix}_CLIENT_SECRET",
+            f"{prefix}_REDIRECT_URI",
+        )
+        for name in required:
+            if not str(environ.get(name, "")).strip():
+                raise StartupValidationError(
+                    f"{name} is required when the {provider} calendar connector is enabled."
+                )
+        redirect = urlparse(str(environ[f"{prefix}_REDIRECT_URI"]).strip())
+        local_http = (
+            not production
+            and redirect.scheme.casefold() == "http"
+            and str(redirect.hostname or "").casefold() in {"localhost", "127.0.0.1"}
+        )
+        if (
+            (redirect.scheme.casefold() != "https" and not local_http)
+            or not redirect.hostname
+            or redirect.username is not None
+            or redirect.password is not None
+            or redirect.fragment
+        ):
+            raise StartupValidationError(
+                f"{prefix}_REDIRECT_URI must be an absolute HTTPS URL without credentials or fragment."
+            )
+        if production:
+            public = urlparse(str(environ.get("APP_PUBLIC_URL", "")).strip())
+            if (
+                redirect.scheme.casefold(), redirect.hostname.casefold(), redirect.port
+            ) != (
+                public.scheme.casefold(), str(public.hostname or "").casefold(), public.port
+            ):
+                raise StartupValidationError(
+                    f"{prefix}_REDIRECT_URI must use the exact APP_PUBLIC_URL origin in production."
+                )
+    tenant = str(
+        environ.get("WORK_CALENDAR_MICROSOFT_TENANT", "common")
+    ).strip()
+    if providers["MICROSOFT"] and not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", tenant):
+        raise StartupValidationError(
+            "WORK_CALENDAR_MICROSOFT_TENANT contains invalid characters."
+        )
+    try:
+        from cryptography.fernet import Fernet
+
+        Fernet(
+            str(environ.get("WORK_CALENDAR_TOKEN_ENCRYPTION_KEY", "")).encode(
+                "ascii"
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise StartupValidationError(
+            "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY must be a valid Fernet key."
+        ) from exc
+    connector_key = str(environ.get("WORK_CALENDAR_TOKEN_ENCRYPTION_KEY", ""))
+    if any(
+        connector_key and connector_key == str(environ.get(name, ""))
+        for name in ("EMAIL_OUTBOX_ENCRYPTION_KEY", "CONFLICT_DRAFT_ENCRYPTION_KEY")
+    ):
+        raise StartupValidationError(
+            "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY must be independent from other encryption keys."
+        )
+    return {"enabled": True, "providers": providers}
 
 
 REQUIRED_APPLICATION_TABLES = frozenset({
@@ -194,6 +374,8 @@ def validate_secret_separation(environ=None) -> None:
         "GOOGLE_CLIENT_SECRET",
         "AUDIT_CHECKPOINT_HMAC_KEY",
         "EMAIL_OUTBOX_ENCRYPTION_KEY",
+        "CONFLICT_DRAFT_ENCRYPTION_KEY",
+        "CONFLICT_RESOLUTION_SIGNING_KEY",
     ):
         value = str(environ.get(name, "")).strip()
         if value:
@@ -489,6 +671,14 @@ def validate_startup_configuration(database, environ=None):
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
     is_production = app_env in {"prod", "production"}
+    validate_word_template_catalog_configuration(
+        environ, production=is_production
+    )
+    validate_legal_versioning_configuration(environ)
+    validate_ai_compliance_configuration(environ)
+    validate_procurement_case_configuration(environ)
+    validate_outbound_increment_configuration(environ, production=is_production)
+    validate_calendar_connector_configuration(environ, production=is_production)
     validate_procurement_lookup_configuration(environ)
     procurement_provider = str(
         environ.get(
@@ -516,6 +706,24 @@ def validate_startup_configuration(database, environ=None):
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:
         validate_secret_separation(environ)
+        if str(environ.get("CONFLICT_CENTER_ENABLED", "")).strip().casefold() == "true":
+            conflict_signing_key = str(
+                environ.get("CONFLICT_RESOLUTION_SIGNING_KEY", "")
+            ).encode("utf-8")
+            if len(conflict_signing_key) < 32:
+                raise StartupValidationError(
+                    "CONFLICT_RESOLUTION_SIGNING_KEY must contain at least 32 bytes when the conflict center is enabled."
+                )
+            try:
+                from cryptography.fernet import Fernet
+
+                Fernet(
+                    str(environ.get("CONFLICT_DRAFT_ENCRYPTION_KEY", "")).encode("ascii")
+                )
+            except (TypeError, ValueError) as exc:
+                raise StartupValidationError(
+                    "CONFLICT_DRAFT_ENCRYPTION_KEY must be a valid Fernet key when the conflict center is enabled."
+                ) from exc
         smtp_errors = smtp_configuration_errors(environ, production=True)
         if smtp_errors:
             raise StartupValidationError(

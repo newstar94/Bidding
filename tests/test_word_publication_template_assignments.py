@@ -198,7 +198,7 @@ def test_multiple_assigned_templates_render_into_one_zip_download(monkeypatch):
         "backend.documents.routes_docx.run_document_job_async",
         fake_render,
     )
-    content, media_type, filename, count = asyncio.run(_render_word_selection(
+    content, media_type, filename, count, artifacts = asyncio.run(_render_word_selection(
         [
             {"path": "first.docx", "filename": "1. Tờ trình.docx"},
             {"path": "second.docx", "filename": "2. Quyết định.docx"},
@@ -211,6 +211,8 @@ def test_multiple_assigned_templates_render_into_one_zip_download(monkeypatch):
     assert media_type == "application/zip"
     assert filename == "Ke_hoach_LCNT_KH-01.zip"
     assert count == 2
+    assert len(artifacts) == 2
+    assert all(len(item["artifactSha256"]) == 64 for item in artifacts)
     with ZipFile(BytesIO(content)) as archive:
         assert archive.namelist() == ["1. Tờ trình.docx", "2. Quyết định.docx"]
 

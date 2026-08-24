@@ -26,6 +26,10 @@ from backend.documents.award_result_excel_service import (
     run_validation_artifact_janitor,
     validate_artifact_store_configuration,
 )
+from backend.documents.template_catalog.compatibility import (
+    run_legacy_alias_projection_worker,
+    run_word_template_retention_janitor,
+)
 from backend.observability.metrics import (
     monitor_multiprocess_metrics,
     monitor_operational_artifacts,
@@ -37,6 +41,11 @@ from backend.shared.audit_monitor import (
 )
 from backend.shared.logging_utils import log_error
 from backend.shared.media_helper import reconcile_asset_journal
+from backend.bulk_operations.storage import purge_expired_artifacts
+from backend.work_calendar.delivery import (
+    calendar_delivery_worker_enabled,
+    run_calendar_delivery_worker,
+)
 from backend.startup import (
     validate_startup_configuration,
     verify_database_readiness,
@@ -281,6 +290,7 @@ def _purge_retained_rows(database):
         fail_stale_email_deliveries(database)
         purge_expired_durable_document_jobs(database)
         reconcile_asset_journal(database)
+        purge_expired_artifacts(database)
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
     finally:
@@ -347,6 +357,9 @@ async def application_lifespan(
     email_delivery_task = None
     document_queue_task = None
     validation_artifact_janitor_task = None
+    word_template_projection_task = None
+    word_template_retention_task = None
+    calendar_delivery_task = None
     try:
         validate_startup(database)
         validate_artifact_store_configuration()
@@ -370,6 +383,7 @@ async def application_lifespan(
             schema_version,
         )
         reconcile_asset_journal(database)
+        purge_expired_artifacts(database)
         if is_production:
             verify_database_runtime_role(
                 database,
@@ -416,7 +430,17 @@ async def application_lifespan(
     validation_artifact_janitor_task = asyncio.create_task(
         run_validation_artifact_janitor()
     )
+    word_template_projection_task = asyncio.create_task(
+        run_legacy_alias_projection_worker(database)
+    )
+    word_template_retention_task = asyncio.create_task(
+        run_word_template_retention_janitor(database)
+    )
     email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
+    if calendar_delivery_worker_enabled():
+        calendar_delivery_task = asyncio.create_task(
+            run_calendar_delivery_worker(database)
+        )
     if not external_document_worker_enabled():
         document_queue_task = asyncio.create_task(
             run_durable_document_queue_worker(database)
@@ -434,10 +458,14 @@ async def application_lifespan(
             email_delivery_task,
             document_queue_task,
             validation_artifact_janitor_task,
+            word_template_projection_task,
+            word_template_retention_task,
+            calendar_delivery_task,
         ):
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
         application.state.ready = False
         application.state.startup_complete = False
         raise
@@ -472,6 +500,9 @@ async def application_lifespan(
             email_delivery_task,
             document_queue_task,
             validation_artifact_janitor_task,
+            word_template_projection_task,
+            word_template_retention_task,
+            calendar_delivery_task,
         ):
             if task is not None:
                 task.cancel()
