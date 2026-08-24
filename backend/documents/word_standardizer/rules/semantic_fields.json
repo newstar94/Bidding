@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "fields": [
+    { "id": "document.national_header", "labels": ["CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"], "zone": "header_right" },
+    { "id": "document.motto", "labels": ["Độc lập - Tự do - Hạnh phúc"], "zone": "header_right" },
+    { "id": "document.parent_organization", "labels": ["Tên CQ, TC chủ quản", "cơ quan chủ quản", "đơn vị chủ quản"], "zone": "header_left" },
+    { "id": "document.issuing_organization", "labels": ["Tên cơ quan, tổ chức", "cơ quan ban hành", "đơn vị ban hành"], "zone": "header_left" },
+    { "id": "document.number", "labels": ["Số", "số văn bản"], "zone": "header_left" },
+    { "id": "document.symbol", "labels": ["ký hiệu", "số/ký hiệu"], "zone": "header_left" },
+    { "id": "document.location", "labels": ["địa danh"], "zone": "header_right" },
+    { "id": "document.issue_date", "labels": ["ngày ban hành", "ngày tháng năm"], "zone": "header_right" },
+    { "id": "document.type", "labels": ["tên loại văn bản"], "zone": "center_title" },
+    { "id": "document.subject", "labels": ["trích yếu", "về việc", "nội dung trích yếu"], "zone": "center_title" },
+    { "id": "document.office_letter_subject", "labels": ["V/v", "trích yếu công văn"], "zone": "header_left" },
+    { "id": "document.primary_addressees", "labels": ["Kính gửi"], "zone": "primary_addressee" },
+    { "id": "document.legal_bases", "labels": ["Căn cứ"], "zone": "main_body" },
+    { "id": "document.body", "labels": ["nội dung"], "zone": "main_body" },
+    { "id": "document.signing_authority", "labels": ["TM.", "Q.", "KT.", "TL.", "TUQ.", "quyền hạn"], "zone": "signature_right" },
+    { "id": "document.signer_title", "labels": ["chức vụ người ký"], "zone": "signature_right" },
+    { "id": "document.signer_name", "labels": ["họ và tên", "người ký"], "zone": "signature_right" },
+    { "id": "document.recipients", "labels": ["Nơi nhận"], "zone": "footer_left" },
+    { "id": "document.drafter_code", "labels": ["ký hiệu người soạn thảo"], "zone": "footer_left" },
+    { "id": "document.copy_count", "labels": ["số lượng bản phát hành"], "zone": "footer_left" },
+    { "id": "document.contact.address", "labels": ["địa chỉ"], "zone": "contact_footer" },
+    { "id": "document.contact.email", "labels": ["email", "e-mail", "thư điện tử"], "zone": "contact_footer" },
+    { "id": "document.contact.website", "labels": ["website", "trang thông tin điện tử"], "zone": "contact_footer" },
+    { "id": "document.contact.phone", "labels": ["điện thoại", "ĐT"], "zone": "contact_footer" },
+    { "id": "document.contact.fax", "labels": ["fax"], "zone": "contact_footer" },
+    { "id": "appendix.index", "labels": ["Phụ lục"], "zone": "center_title" },
+    { "id": "appendix.title", "labels": ["tiêu đề phụ lục"], "zone": "center_title" }
+  ]
+}

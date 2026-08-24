@@ -263,12 +263,16 @@ test("searchable portal dropdown stays within the viewport for long options", as
           <link rel="stylesheet" href="/views/css/components.css">
           <link rel="stylesheet" data-runtime-styles href="/css/runtime-styles.css">
         </head><body>
-          <div style="position: absolute; top: 80px; right: 12px; width: 360px">
-            <label for="plan-select">Linked procurement plan</label>
-            <select id="plan-select" class="form-control">
-              <option value="">-- Select plan --</option>
-              <option value="plan-1">Procurement plan for specialized medical supplies, equipment, maintenance services, and operating materials for the full fiscal year 2026</option>
-            </select>
+          <div id="scroll-viewport" style="position: absolute; inset: 20px 12px auto auto; width: 360px; height: 360px; overflow: auto">
+            <div style="position: relative; min-height: 1200px">
+              <div style="position: absolute; top: 80px; inset-inline: 0">
+                <label for="plan-select">Linked procurement plan</label>
+                <select id="plan-select" class="form-control">
+                  <option value="">-- Select plan --</option>
+                  <option value="plan-1">Procurement plan for specialized medical supplies, equipment, maintenance services, and operating materials for the full fiscal year 2026</option>
+                </select>
+              </div>
+            </div>
           </div>
         </body></html>`);
         return;
@@ -327,6 +331,21 @@ test("searchable portal dropdown stays within the viewport for long options", as
     assert.equal(geometry.overflow, "visible");
     assert.equal(geometry.textOverflow, "clip");
     assert.equal(geometry.whiteSpace, "normal");
+
+    await page.locator("#scroll-viewport").evaluate((viewport) => {
+      viewport.scrollTop = 48;
+    });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const scrolledAlignment = await page.evaluate(() => {
+      const trigger = document.getElementById("plan-select-combobox").getBoundingClientRect();
+      const list = document.getElementById("plan-select-listbox").getBoundingClientRect();
+      return {
+        leftDelta: Math.round((list.left - trigger.left) * 100) / 100,
+        topDelta: Math.round((list.top - trigger.bottom) * 100) / 100,
+      };
+    });
+    assert.equal(scrolledAlignment.leftDelta, 0);
+    assert.ok(Math.abs(scrolledAlignment.topDelta) <= 1, JSON.stringify(scrolledAlignment));
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

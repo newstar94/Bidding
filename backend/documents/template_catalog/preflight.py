@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from zipfile import BadZipFile
 
 from backend.documents.docx_context_policy import (
@@ -22,6 +23,7 @@ PARSER_VERSION = "docx-template-security.v1"
 REQUIRED_REGISTRY_VERSION = "approved-empty-v1"
 CONTEXT_POLICY_VERSION = f"docx-context-policy.v{MANIFEST_VERSION}"
 REPORT_SCHEMA_VERSION = 1
+MAX_PREFLIGHT_REPORT_BYTES = 1024 * 1024
 
 # Product approved a versioned empty required set until exact fixtures define
 # required variables. Template text is never promoted into requirements.
@@ -39,7 +41,8 @@ class TemplatePreflight:
 
     def run(
         self, *, organization_id: str, version_id: str, actor_user_id: str,
-        document_types=None,
+        document_types=None, standardization_report=None,
+        standardization_error=None,
     ):
         version = self.repository.get_version(organization_id, version_id)
         if version is None:
@@ -154,7 +157,32 @@ class TemplatePreflight:
             "issues": issues,
             "summary": {"blockers": blockers, "warnings": warnings},
         }
-        report_json = _canonical(report)
+        standardization = None
+        unavailable = None
+        if standardization_report is not None:
+            standardization = self._standardization_report(
+                standardization_report,
+                version,
+            )
+        if standardization_error is not None:
+            if standardization_report is not None or not isinstance(
+                standardization_error, dict
+            ):
+                raise ValueError("Word standardization availability is invalid.")
+            if (
+                standardization_error.get("status") != "UNAVAILABLE"
+                or not str(standardization_error.get("profile") or "").strip()
+                or not str(standardization_error.get("code") or "").strip()
+            ):
+                raise ValueError("Word standardization availability is incomplete.")
+            unavailable = json.loads(
+                _canonical(standardization_error)
+            )
+        report_json = self._bounded_report_json(
+            report,
+            standardization=standardization,
+            unavailable=unavailable,
+        )
         return self.repository.insert_preflight(
             organization_id=organization_id,
             values={
@@ -187,3 +215,67 @@ class TemplatePreflight:
         if unknown:
             raise ValueError("Unsupported Word preflight document type.")
         return selected
+
+    @staticmethod
+    def _standardization_report(value, version):
+        if not isinstance(value, dict):
+            raise ValueError("Word standardization report is invalid.")
+        required = {
+            "schemaVersion", "engineVersion", "profile", "ruleSet",
+            "templateSha256", "analysisHash", "reportHash", "documentType",
+            "issues", "summary", "plannedChanges", "invariants",
+        }
+        if not required.issubset(value):
+            raise ValueError("Word standardization report is incomplete.")
+        if value.get("templateSha256") != version["sha256"]:
+            raise ValueError("Word standardization report is not version-pinned.")
+        for field in ("analysisHash", "reportHash"):
+            if not re.fullmatch(r"[0-9a-f]{64}", str(value.get(field) or "")):
+                raise ValueError("Word standardization report hash is invalid.")
+        if value.get("mode") != "preview_fix":
+            raise ValueError("Word preflight requires a preview-fix analysis.")
+        if value.get("invariants", {}).get("status") != "PASS":
+            raise ValueError("Word standardization invariants did not pass.")
+        # Canonical JSON round-trip strips custom mapping subclasses and keeps
+        # the immutable preflight report detached from worker-owned objects.
+        return json.loads(_canonical(value))
+
+    @staticmethod
+    def _bounded_report_json(report, *, standardization=None, unavailable=None):
+        """Attach optional format analysis without invalidating compatibility.
+
+        The database's 1 MiB contract predates format standardization. A
+        compatibility report that fits that contract must remain persistable
+        even when the optional analysis would push the combined JSON over it.
+        """
+        base_json = _canonical(report)
+        if len(base_json.encode("utf-8")) > MAX_PREFLIGHT_REPORT_BYTES:
+            raise ValueError("Word preflight report exceeds the supported size.")
+
+        if standardization is None and unavailable is None:
+            return base_json
+
+        combined = dict(report)
+        if standardization is not None:
+            combined["standardization"] = standardization
+        else:
+            combined["standardizationUnavailable"] = unavailable
+        combined_json = _canonical(combined)
+        if len(combined_json.encode("utf-8")) <= MAX_PREFLIGHT_REPORT_BYTES:
+            return combined_json
+
+        source = standardization if standardization is not None else unavailable
+        fallback = dict(report)
+        fallback["standardizationUnavailable"] = {
+            "status": "UNAVAILABLE",
+            "profile": str((source or {}).get("profile") or "unknown")[:64],
+            "code": "WORD_STANDARDIZATION_REPORT_SIZE_LIMIT",
+        }
+        fallback_json = _canonical(fallback)
+        if len(fallback_json.encode("utf-8")) <= MAX_PREFLIGHT_REPORT_BYTES:
+            return fallback_json
+
+        # A legacy compatibility report can legally occupy virtually the full
+        # column. In that edge case there is no byte budget even for the bounded
+        # availability marker, so preserve the compatibility result verbatim.
+        return base_json

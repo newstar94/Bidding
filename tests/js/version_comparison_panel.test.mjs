@@ -96,11 +96,74 @@ test("result filters changes and exposes full ambiguous values plus pagination",
 
   const markup = renderVersionComparisonResult(result, "ADDED");
 
-  assert.match(markup, /<code>added<\/code>/);
-  assert.doesNotMatch(markup, /<code>modified<\/code>/);
+  assert.match(markup, />added<\/span>/);
+  assert.doesNotMatch(markup, />modified<\/span>/);
   assert.match(markup, /001122/);
   assert.match(markup, /998877/);
   assert.match(markup, /data-load-relation-cursor="opaque-cursor"/);
+});
+
+
+test("result presents business labels and structured relation values", () => {
+  const markup = renderVersionComparisonResult({
+    summary: { modified: 1 },
+    fields: [{
+      path: "thoiGianDangMa", change: "MODIFIED",
+      oldValue: "2026-08-01T08:00", newValue: "2026-08-02T08:00",
+    }],
+    relations: [{
+      path: "assignments", summary: { modified: 1 },
+      changes: [{
+        identity: { empId: "employee-a", type: "goithau" },
+        change: "MODIFIED",
+        oldValue: { empId: "employee-a", type: "goithau" },
+        newValue: { empId: "employee-b", type: "goithau" },
+      }],
+    }],
+    impacts: [{
+      category: "LEGAL_RULES", assessment: "NOT_EVALUATED",
+      reasonCode: "AUTHORITATIVE_PROVIDER_NOT_AVAILABLE",
+    }],
+  });
+
+  assert.match(markup, /Thời gian đăng mã/);
+  assert.match(markup, /Phân công nhân sự/);
+  assert.match(markup, /Quy định pháp lý/);
+  assert.match(markup, /Chưa có nguồn dữ liệu thẩm quyền/);
+  assert.match(markup, /Nhân sự/);
+  assert.match(markup, /employee-a/);
+  assert.match(markup, /employee-b/);
+  assert.doesNotMatch(markup, />thoiGianDangMa</);
+  assert.doesNotMatch(markup, />assignments</);
+  assert.doesNotMatch(markup, />LEGAL_RULES</);
+  assert.doesNotMatch(markup, />AUTHORITATIVE_PROVIDER_NOT_AVAILABLE</);
+  assert.doesNotMatch(markup, /\{\s*&quot;empId&quot;/);
+});
+
+
+test("overview explains totals across fields and related data", () => {
+  const markup = renderVersionComparisonResult({
+    summary: { added: 0, removed: 0, modified: 2, unchanged: 29 },
+    fields: [{
+      path: "thoiGianDangMa", change: "MODIFIED",
+      oldValue: "2026-07-23T14:25:00", newValue: "2026-08-11T10:42:11",
+    }],
+    relations: [{
+      path: "assignments",
+      summary: { added: 0, removed: 0, modified: 1, unchanged: 3 },
+      changes: [{
+        identity: { empId: "employee-a" }, change: "MODIFIED",
+        oldValue: { empId: "employee-a" }, newValue: { empId: "employee-b" },
+      }],
+    }],
+    impacts: [],
+  });
+
+  assert.match(markup, /Tổng hợp trường dữ liệu và dữ liệu liên quan/);
+  assert.match(markup, /<strong>1<\/strong> thay đổi trường dữ liệu/);
+  assert.match(markup, /<strong>1<\/strong> thay đổi dữ liệu liên quan/);
+  assert.match(markup, /trường dữ liệu \(1\)/);
+  assert.match(markup, /Dữ liệu liên quan \(1\)/);
 });
 
 
@@ -143,8 +206,8 @@ test("comparison dialog supports keyboard tabs, focus restore, and axe", async (
       window.comparisonCalls = [];
       openVersionComparisonPanel({
         versions: [
-          { id: "package-v1", label: "01" },
-          { id: "package-v2", label: "02" },
+          { id: "package-v1", label: "00" },
+          { id: "package-v2", label: "01" },
         ],
         selectedId: "package-v2",
         trigger,
@@ -191,18 +254,81 @@ test("comparison dialog supports keyboard tabs, focus restore, and axe", async (
         },
         root: document,
       });
+      const { BiddingView } = await import("/frontend/app/BiddingView.js");
+      new BiddingView({}).upgradeAllSelects(document.getElementById("version-comparison-modal"));
     });
     await page.getByText("Đã cập nhật kết quả so sánh.").waitFor();
+    await page.locator(
+      'link[href="/frontend/version-comparison/VersionComparisonPanel.css"][data-asset-state="loaded"]',
+    ).waitFor({ state: "attached" });
+    assert.equal(await page.locator(".version-comparison-controls .bf-combobox").count(), 0);
+    await page.getByText("Đối chiếu dữ liệu nghiệp vụ và phạm vi tác động giữa hai snapshot.").waitFor();
+    await page.locator(".version-comparison-controls").getByText(
+      "Phiên bản trước",
+      { exact: true },
+    ).waitFor();
+    await page.locator(".version-comparison-controls").getByText(
+      "Phiên bản sau",
+      { exact: true },
+    ).waitFor();
+    assert.deepEqual(
+      await page.locator(".version-comparison-controls select").evaluateAll(
+        (selects) => selects.map((select) => select.getAttribute("data-no-custom")),
+      ),
+      ["true", "true", "true"],
+    );
+    assert.equal(
+      await page.locator(".version-comparison-controls").evaluate(
+        (controls) => getComputedStyle(controls).display,
+      ),
+      "grid",
+    );
+    const controlBounds = await page.locator(".version-comparison-controls").boundingBox();
+    const leftBounds = await page.locator('select[name="leftVersionId"]').boundingBox();
+    const rightBounds = await page.locator('select[name="rightVersionId"]').boundingBox();
+    assert.ok(controlBounds.width > 700);
+    assert.ok(leftBounds.width > 160);
+    assert.ok(rightBounds.width > 160);
+    assert.deepEqual(
+      await page.locator(".version-comparison-controls select").evaluateAll((selects) => (
+        selects.map((select) => ({
+          appearance: getComputedStyle(select).appearance,
+          height: Math.round(select.getBoundingClientRect().height),
+          radius: getComputedStyle(select).borderRadius,
+        }))
+      )),
+      [
+        { appearance: "none", height: 48, radius: "9px" },
+        { appearance: "none", height: 48, radius: "9px" },
+        { appearance: "none", height: 48, radius: "9px" },
+      ],
+    );
+    assert.equal(await page.locator(".version-comparison-select-chevron").count(), 3);
     assert.deepEqual(
       await page.locator('select[name="leftVersionId"], select[name="rightVersionId"]').evaluateAll(
         (selects) => selects.map((select) => select.value),
       ),
       ["package-v1", "package-v2"],
     );
-    await page.getByRole("tab", { name: "Chi tiết field" }).focus();
+    assert.deepEqual(
+      await page.locator('select[name="leftVersionId"], select[name="rightVersionId"]').evaluateAll(
+        (selects) => selects.map((select) => select.selectedOptions[0]?.textContent.trim()),
+      ),
+      ["00", "01"],
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(
+      (await page.locator(".version-comparison-pair-grid").evaluate(
+        (grid) => getComputedStyle(grid).gridTemplateColumns,
+      )).split(" ").length,
+      1,
+    );
+    assert.ok((await page.locator(".version-comparison-submit").boundingBox()).width > 300);
+    await page.setViewportSize({ width: 1024, height: 760 });
+    await page.getByRole("tab", { name: "Trường dữ liệu" }).focus();
     await page.keyboard.press("ArrowRight");
     assert.equal(
-      await page.getByRole("tab", { name: "Relation" }).getAttribute("aria-selected"),
+      await page.getByRole("tab", { name: "Dữ liệu liên quan" }).getAttribute("aria-selected"),
       "true",
     );
     await page.getByRole("button", { name: "Tải trang tiếp theo" }).click();
@@ -211,11 +337,11 @@ test("comparison dialog supports keyboard tabs, focus restore, and axe", async (
       await page.evaluate(() => window.comparisonCalls[1].relationPage),
       { path: "assignments", cursor: "next-page", limit: 100 },
     );
-    await page.getByRole("tab", { name: "Chi tiết field" }).click();
+    await page.getByRole("tab", { name: "Trường dữ liệu" }).click();
     await page.locator('select[name="changeFilter"]').selectOption("ADDED");
-    await page.getByText("Không có thay đổi field trong bộ lọc hiện tại.").waitFor();
+    await page.getByText("Không có thay đổi trường dữ liệu trong bộ lọc hiện tại.").waitFor();
     await page.locator('select[name="changeFilter"]').selectOption("MODIFIED");
-    await page.getByText("tenGoiThau").waitFor();
+    await page.getByText("Tên gói thầu").waitFor();
     const axe = await new AxeBuilder({ page }).include("#version-comparison-modal").analyze();
     assert.deepEqual(axe.violations, []);
     await page.getByRole("button", { name: "Đóng so sánh phiên bản" }).focus();
@@ -230,8 +356,8 @@ test("comparison dialog supports keyboard tabs, focus restore, and axe", async (
       window.staleResolvers = [];
       openVersionComparisonPanel({
         versions: [
-          { id: "package-v1", label: "01" },
-          { id: "package-v2", label: "02" },
+          { id: "package-v1", label: "00" },
+          { id: "package-v2", label: "01" },
         ],
         selectedId: "package-v2",
         trigger: document.getElementById("trigger"),
@@ -241,6 +367,18 @@ test("comparison dialog supports keyboard tabs, focus restore, and axe", async (
     });
     await page.waitForFunction(() => window.staleResolvers.length === 1);
     await page.locator('select[name="rightVersionId"]').selectOption("package-v1");
+    assert.deepEqual(
+      await page.locator('select[name="leftVersionId"], select[name="rightVersionId"]').evaluateAll(
+        (selects) => selects.map((select) => select.value),
+      ),
+      ["package-v2", "package-v1"],
+    );
+    assert.deepEqual(
+      await page.locator('select[name="leftVersionId"], select[name="rightVersionId"]').evaluateAll(
+        (selects) => selects.map((select) => select.selectedOptions[0]?.textContent.trim()),
+      ),
+      ["01", "00"],
+    );
     await page.locator("#version-comparison-modal").getByRole(
       "button",
       { name: "So sánh", exact: true },

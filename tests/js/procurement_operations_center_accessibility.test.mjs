@@ -63,6 +63,31 @@ test("operations center is keyboard reachable and has no serious axe violations"
     assert.equal(await page.evaluate(() => document.activeElement?.textContent), "Tải lại");
     const results = await new AxeBuilder({ page }).analyze();
     assert.deepEqual(results.violations.filter((item) => ["serious", "critical"].includes(item.impact)), []);
+
+    const disabledStateCount = await page.evaluate(async () => {
+      document.querySelectorAll('meta[name^="bf-"]').forEach((meta) => {
+        meta.content = "false";
+      });
+      const center = document.createElement("div");
+      center.dataset.procurementCenter = "";
+      center.innerHTML = `<div role="tablist">
+        <button role="tab" data-center-tab="cases">Hồ sơ</button>
+        <button role="tab" data-center-tab="calendar">Lịch</button>
+        <button role="tab" data-center-tab="bulk">Xuất hàng loạt</button>
+      </div>
+      <section data-center-panel="cases"></section>
+      <section data-center-panel="calendar"></section>
+      <section data-center-panel="bulk"></section>`;
+      document.body.append(center);
+      const module = await import("/frontend/procurement-cases/ProcurementOperationsCenter.js");
+      for (let index = 0; index < 5; index += 1) {
+        await module.mountProcurementOperationsCenter(center);
+      }
+      return [...center.querySelectorAll(".pc-card")].filter(
+        (card) => card.textContent.includes("Các tính năng trung tâm hiện đang tắt."),
+      ).length;
+    });
+    assert.equal(disabledStateCount, 1);
   } finally {
     await context.close();
     await browser.close();

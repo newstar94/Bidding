@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
+import time
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +15,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from backend.db.db_helper import DatabaseError
 from backend.documents.document_worker import (
     DocumentWorkerError,
+    DocumentWorkerInputError,
     run_document_job_async,
 )
 from backend.documents.upload_spooling import spooled_upload
@@ -30,13 +34,25 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import error_response, log_and_error, log_audit
+from backend.shared.idempotency import acquire_idempotency_lock
 from backend.shared.subscription_policy import can_use_word_export
 
 from .compatibility import catalog_enabled
 from .preflight import TemplatePreflight
 from .repository import WordTemplateCatalogRepository
-from .service import CatalogError, CatalogNotFoundError, WordTemplateCatalog
+from .service import (
+    CatalogConflictError,
+    CatalogError,
+    CatalogNotFoundError,
+    WordTemplateCatalog,
+)
 from .storage import ImmutableTemplateStorage, MAX_TEMPLATE_BYTES
+
+
+_STANDARDIZATION_PROFILES = frozenset({
+    "n30_strict", "sector_template", "reference_only",
+})
+_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 def _disabled(request):
@@ -88,6 +104,87 @@ def _positive_int(value, field, *, allow_zero=False):
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise CatalogError(fields={field: "EXPECTED_INTEGER"})
     return value
+
+
+def _standardization_profile(value):
+    profile = str(value or "sector_template").strip().casefold()
+    if profile not in _STANDARDIZATION_PROFILES:
+        raise CatalogError(fields={"standardizationProfile": "INVALID_VALUE"})
+    return profile
+
+
+def _applicable_standardization_profile(profile):
+    if profile == "reference_only":
+        raise CatalogError(fields={
+            "standardizationProfile": "REFERENCE_ONLY_CANNOT_APPLY",
+        })
+    return profile
+
+
+def _required_idempotency_key(request):
+    value = str(request.headers.get("Idempotency-Key") or "").strip()
+    if not _IDEMPOTENCY_KEY_RE.fullmatch(value):
+        raise CatalogError(fields={"Idempotency-Key": "INVALID_OR_REQUIRED"})
+    return value
+
+
+def _standardization_request_hash(payload):
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _standardization_idempotency_replay(
+    cursor, *, actor_user_id, operation, idempotency_key, request_hash,
+):
+    acquire_idempotency_lock(
+        cursor,
+        "word_template_standardization",
+        actor_user_id,
+        operation,
+        idempotency_key,
+    )
+    row = cursor.execute(
+        """SELECT response_json FROM api_idempotency
+             WHERE actor_user_id = ? AND operation = ? AND idempotency_key = ?""",
+        (actor_user_id, operation, idempotency_key),
+    ).fetchone()
+    if row is None:
+        return None
+    stored = json.loads(row[0] or "{}")
+    if stored.pop("_requestHash", None) != request_hash:
+        raise CatalogConflictError(fields={
+            "Idempotency-Key": "REUSED_WITH_DIFFERENT_REQUEST",
+        })
+    status_code = int(stored.pop("_statusCode", 200))
+    return {"payload": stored, "statusCode": status_code}
+
+
+def _store_standardization_idempotency(
+    cursor, *, actor_user_id, operation, idempotency_key, request_hash,
+    payload, status_code,
+):
+    stored = {
+        **payload,
+        "_requestHash": request_hash,
+        "_statusCode": int(status_code),
+    }
+    cursor.execute(
+        """INSERT INTO api_idempotency
+               (actor_user_id, operation, idempotency_key, response_json, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (
+            actor_user_id,
+            operation,
+            idempotency_key,
+            json.dumps(stored, ensure_ascii=False, sort_keys=True),
+            int(time.time()),
+        ),
+    )
 
 
 def _context(request, cursor, *, write=False, upload=False):
@@ -312,11 +409,44 @@ async def run_catalog_preflight_api(request):
     if not catalog_enabled():
         return _disabled(request)
     try:
-        payload = _parse_json_object(await request.json(), {"documentTypes"})
+        payload = _parse_json_object(
+            await request.json(),
+            {"documentTypes", "standardizationProfile"},
+        )
         document_types = payload.get("documentTypes")
         if document_types is not None and not isinstance(document_types, list):
             raise CatalogError(fields={"documentTypes": "EXPECTED_ARRAY"})
         version_id = str(request.path_params.get("version_id") or "").strip()
+        profile = _standardization_profile(payload.get("standardizationProfile"))
+        prepared = await run_database_read(
+            _prepare_standardization_source,
+            request,
+            version_id,
+            None,
+            profile,
+            True,
+            False,
+            timeout_seconds=20,
+        )
+        standardization_error = None
+        try:
+            standardization_report = await run_document_job_async(
+                "standardize_docx",
+                {
+                    "content": prepared["version"]["content"],
+                    "mode": "preview_fix",
+                    "profile": profile,
+                },
+                timeout_seconds=60,
+            )
+        except (DocumentWorkerError, DocumentWorkerInputError) as error:
+            standardization_report = None
+            standardization_error = {
+                "status": "UNAVAILABLE",
+                "profile": profile,
+                "code": "WORD_STANDARDIZATION_UNAVAILABLE",
+                "message": str(error)[:240],
+            }
 
         def operation(_catalog, repository, role, organization_id, _owner_type):
             return TemplatePreflight(repository, ImmutableTemplateStorage()).run(
@@ -324,6 +454,8 @@ async def run_catalog_preflight_api(request):
                 version_id=version_id,
                 actor_user_id=role.user_id,
                 document_types=document_types,
+                standardization_report=standardization_report,
+                standardization_error=standardization_error,
             )
 
         result = await run_database_write(_write_blocking, request, operation)
@@ -624,6 +756,244 @@ async def preview_catalog_version_api(request):
         return _handle(request, error, "word_template_catalog_preview")
 
 
+def _prepare_standardization_source(
+    request,
+    version_id,
+    accepted_preflight_run_id,
+    profile,
+    require_manage,
+    require_export_entitlement,
+):
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        role, organization_id, _owner_type = _context(
+            request,
+            cursor,
+            write=require_manage,
+        )
+        if require_export_entitlement and not can_use_word_export(
+            cursor, role, role.user_id, organization_id
+        ):
+            error = CatalogError(fields={"entitlement": "WORD_EXPORT_REQUIRED"})
+            error.status_code = 403
+            error.code = "WORD_EXPORT_ENTITLEMENT_REQUIRED"
+            raise error
+        catalog = WordTemplateCatalog(
+            WordTemplateCatalogRepository(cursor),
+            ImmutableTemplateStorage(),
+        )
+        if accepted_preflight_run_id:
+            candidate = catalog.get_standardization_candidate(
+                organization_id=organization_id,
+                version_id=version_id,
+                accepted_preflight_run_id=accepted_preflight_run_id,
+                profile=profile,
+                include_content=True,
+            )
+        else:
+            candidate = {
+                "version": catalog.get_version(
+                    organization_id,
+                    version_id,
+                    include_content=True,
+                ),
+                "preflight": None,
+                "standardization": None,
+            }
+        return {
+            "role": role,
+            "organizationId": organization_id,
+            **candidate,
+        }
+    finally:
+        connection.close()
+
+
+async def preview_standardized_version_api(request):
+    if not catalog_enabled():
+        return _disabled(request)
+    try:
+        payload = _parse_json_object(
+            await request.json(),
+            {"acceptedPreflightRunId", "standardizationProfile"},
+        )
+        run_id = str(payload.get("acceptedPreflightRunId") or "").strip()
+        if not run_id:
+            raise CatalogError(fields={"acceptedPreflightRunId": "REQUIRED"})
+        profile = _applicable_standardization_profile(
+            _standardization_profile(payload.get("standardizationProfile"))
+        )
+        version_id = str(request.path_params.get("version_id") or "").strip()
+        prepared = await run_database_read(
+            _prepare_standardization_source,
+            request,
+            version_id,
+            run_id,
+            profile,
+            False,
+            True,
+            timeout_seconds=20,
+        )
+        content = await run_document_job_async(
+            "standardize_docx",
+            {
+                "content": prepared["version"]["content"],
+                "mode": "apply_fix",
+                "profile": profile,
+                "expectedAnalysisHash": prepared["standardization"]["analysisHash"],
+            },
+            timeout_seconds=60,
+        )
+        prepared = await run_database_read(
+            _prepare_standardization_source,
+            request,
+            version_id,
+            run_id,
+            profile,
+            False,
+            True,
+            timeout_seconds=20,
+        )
+        log_audit(
+            "document.word_template_standardization_previewed",
+            actor_user_id=prepared["role"].user_id,
+            organization_id=prepared["organizationId"],
+            target_type="word_template_version",
+            target_id=version_id,
+            request=request,
+            metadata={
+                "acceptedPreflightRunId": run_id,
+                "profile": profile,
+                "sourceSha256": prepared["version"]["sha256"],
+                "previewSha256": hashlib.sha256(content).hexdigest(),
+            },
+            required=True,
+        )
+        filename = f"preview-chuan-hoa-v{prepared['version']['versionNo']}.docx"
+        return StreamingResponse(
+            BytesIO(content),
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+    except Exception as error:  # noqa: BLE001 - bounded HTTP error adapter.
+        return _handle(request, error, "word_template_standardized_preview")
+
+
+async def create_standardized_draft_api(request):
+    if not catalog_enabled():
+        return _disabled(request)
+    try:
+        payload = _parse_json_object(
+            await request.json(),
+            {
+                "sourceVersionId", "acceptedPreflightRunId",
+                "expectedRowVersion", "standardizationProfile", "reason",
+            },
+        )
+        idempotency_key = _required_idempotency_key(request)
+        source_version_id = str(payload.get("sourceVersionId") or "").strip()
+        run_id = str(payload.get("acceptedPreflightRunId") or "").strip()
+        if not source_version_id:
+            raise CatalogError(fields={"sourceVersionId": "REQUIRED"})
+        if not run_id:
+            raise CatalogError(fields={"acceptedPreflightRunId": "REQUIRED"})
+        expected = _positive_int(
+            payload.get("expectedRowVersion"),
+            "expectedRowVersion",
+        )
+        profile = _applicable_standardization_profile(
+            _standardization_profile(payload.get("standardizationProfile"))
+        )
+        template_id = str(request.path_params.get("template_id") or "").strip()
+        request_hash = _standardization_request_hash({
+            "templateId": template_id,
+            "sourceVersionId": source_version_id,
+            "acceptedPreflightRunId": run_id,
+            "expectedRowVersion": expected,
+            "standardizationProfile": profile,
+            "reason": str(payload.get("reason") or "").strip(),
+        })
+        prepared = await run_database_read(
+            _prepare_standardization_source,
+            request,
+            source_version_id,
+            run_id,
+            profile,
+            True,
+            False,
+            timeout_seconds=20,
+        )
+        if prepared["version"]["templateId"] != template_id:
+            raise CatalogNotFoundError()
+        standardized_content = await run_document_job_async(
+            "standardize_docx",
+            {
+                "content": prepared["version"]["content"],
+                "mode": "apply_fix",
+                "profile": profile,
+                "expectedAnalysisHash": prepared["standardization"]["analysisHash"],
+            },
+            timeout_seconds=60,
+        )
+        def operation(catalog, repository, role, organization_id, _owner_type):
+            operation_id = (
+                f"word_template_standardized_draft:{organization_id}:{template_id}"
+            )
+            replay = _standardization_idempotency_replay(
+                repository.cursor,
+                actor_user_id=role.user_id,
+                operation=operation_id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+            if replay is not None:
+                return replay
+            result = catalog.create_standardized_draft(
+                organization_id=organization_id,
+                template_id=template_id,
+                source_version_id=source_version_id,
+                accepted_preflight_run_id=run_id,
+                expected_row_version=expected,
+                profile=profile,
+                standardized_content=standardized_content,
+                actor_user_id=role.user_id,
+                reason=payload.get("reason"),
+                request=request,
+            )
+            response_payload = _public_result(result)
+            status_code = 201 if result.get("created") else 200
+            _store_standardization_idempotency(
+                repository.cursor,
+                actor_user_id=role.user_id,
+                operation=operation_id,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                payload=response_payload,
+                status_code=status_code,
+            )
+            return {"payload": response_payload, "statusCode": status_code}
+
+        response = await run_database_write(
+            _write_blocking,
+            request,
+            operation,
+        )
+        return JSONResponse(
+            response["payload"],
+            status_code=response["statusCode"],
+        )
+    except Exception as error:  # noqa: BLE001 - bounded HTTP error adapter.
+        return _handle(request, error, "word_template_standardized_draft")
+
+
 def _handle(request, error, context):
     if isinstance(error, CatalogError):
         payload_fields = dict(error.fields)
@@ -702,6 +1072,16 @@ def word_template_catalog_routes(Route):
         Route(
             "/api/word-template-catalog/versions/{version_id}/preview",
             preview_catalog_version_api,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/word-template-catalog/versions/{version_id}/standardized-preview",
+            preview_standardized_version_api,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/word-template-catalog/{template_id}/standardized-drafts",
+            create_standardized_draft_api,
             methods=["POST"],
         ),
         Route(

@@ -27,6 +27,8 @@ const loadWordTemplateCatalog = () => import("./WordTemplateCatalog.js");
 
 const pendingWordTemplateDeletes = new Set();
 const pendingWordTemplateAvailabilityChanges = new Set();
+let copyVariableController = null;
+let copyVariableEventsBound = false;
 
 export function applyWordVariableFormAccess(forms, canManageWordVariables) {
   const isReadonly = !canManageWordVariables;
@@ -1012,32 +1014,90 @@ export function setupWordTemplatesEvents() {
   } else {
   }
 }
+async function writeClipboardText(text) {
+  let clipboardError = null;
+  if (typeof navigator.clipboard?.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      clipboardError = error;
+    }
+  }
+
+  const activeElement = document.activeElement;
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.readOnly = true;
+  fallback.className = "visually-hidden";
+  fallback.setAttribute("aria-hidden", "true");
+  document.body.appendChild(fallback);
+  try {
+    fallback.focus({ preventScroll: true });
+    fallback.select();
+    const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+    if (!copied) throw clipboardError || new Error("Clipboard API is unavailable");
+  } finally {
+    fallback.remove();
+    if (activeElement instanceof HTMLElement && activeElement.isConnected) {
+      activeElement.focus({ preventScroll: true });
+    }
+  }
+}
+
+function showCopyVariableButtonFeedback(button, succeeded) {
+  const originalMarkup = button.__bfCopyOriginalMarkup || button.innerHTML;
+  button.__bfCopyOriginalMarkup = originalMarkup;
+  clearTimeout(button.__bfCopyFeedbackTimer);
+  const feedbackMarkup = succeeded
+    ? '<i data-lucide="check" class="bf-s-641778be2c"></i> Đã sao chép!'
+    : '<i data-lucide="x" class="bf-s-641778be2c"></i> Không thể sao chép';
+  button.innerHTML = trustedHTML(feedbackMarkup);
+  setRuntimeStyle(button, "color", succeeded ? "var(--success)" : "var(--danger)");
+  globalThis.lucide?.createIcons({ root: button });
+  button.__bfCopyFeedbackTimer = setTimeout(() => {
+    button.innerHTML = trustedHTML(originalMarkup);
+    setRuntimeStyle(button, "color", "");
+    globalThis.lucide?.createIcons({ root: button });
+    button.__bfCopyOriginalMarkup = null;
+    button.__bfCopyFeedbackTimer = null;
+  }, 1500);
+}
+
+function reportCopyVariableResult(controller, button, text, succeeded) {
+  if (controller?.view?.customAlert) {
+    controller.view.customAlert(
+      succeeded ? "Sao chép thành công" : "Không thể sao chép",
+      succeeded
+        ? `Đã sao chép mã biến: <strong>${escapeHtml(text)}</strong>`
+        : "Trình duyệt không cấp quyền truy cập bảng tạm. Vui lòng thử lại.",
+      succeeded ? "check-circle" : "x-circle",
+    );
+    return;
+  }
+  showCopyVariableButtonFeedback(button, succeeded);
+}
+
 export function setupCopyVariableEvents() {
-  document.querySelectorAll(".btn-copy-var, .copy-var-btn").forEach((btn) => {
-    btn.onclick = (e) => {
-      const button = e.target.closest("button");
-      const text = button.getAttribute("data-copy") || button.getAttribute("data-var");
-      if (text) {
-        navigator.clipboard.writeText(text).then(() => {
-          if (this.view.customAlert) {
-            this.view.customAlert("Sao chép thành công", `Đã sao chép mã biến: <strong>${text}</strong>`, "check-circle");
-          } else {
-            const btn2 = document.querySelector(`.btn-copy-var[data-copy="${text}"]`);
-            if (btn2) {
-              const orig = btn2.innerHTML;
-              btn2.innerHTML = trustedHTML('<i data-lucide="check" class="bf-s-641778be2c"></i> Đã sao chép!');
-              setRuntimeStyle(btn2, "color", "var(--success)");
-              lucide.createIcons({ root: btn2 });
-              setTimeout(() => {
-                btn2.innerHTML = trustedHTML(orig);
-                setRuntimeStyle(btn2, "color", "");
-                lucide.createIcons({ root: btn2 });
-              }, 1500);
-            }
-          }
-        });
-      }
-    };
+  copyVariableController = this;
+  if (copyVariableEventsBound) return;
+  copyVariableEventsBound = true;
+  document.addEventListener("click", async (event) => {
+    const button = event.target instanceof Element
+      ? event.target.closest(".btn-copy-var, .copy-var-btn")
+      : null;
+    if (!(button instanceof HTMLElement) || button.tagName !== "BUTTON") return;
+    const text = button.getAttribute("data-copy") || button.getAttribute("data-var");
+    if (!text || button.disabled) return;
+    button.disabled = true;
+    try {
+      await writeClipboardText(text);
+      reportCopyVariableResult(copyVariableController, button, text, true);
+    } catch {
+      reportCopyVariableResult(copyVariableController, button, text, false);
+    } finally {
+      button.disabled = false;
+    }
   });
 }
 export async function loadWordTemplates() {

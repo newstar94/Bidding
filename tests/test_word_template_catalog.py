@@ -20,23 +20,33 @@ from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.documents.template_catalog.repository import (
     WordTemplateCatalogRepository,
 )
-from backend.documents.template_catalog.preflight import TemplatePreflight
+from backend.documents.template_catalog.preflight import (
+    MAX_PREFLIGHT_REPORT_BYTES,
+    TemplatePreflight,
+)
 from backend.documents.template_catalog.compatibility import (
     CatalogPublicationResolver,
     LegacyAliasProjectionWorker,
 )
 from backend.documents.template_catalog.routes import (
     _prepare_catalog_preview,
+    _prepare_standardization_source,
     _public_result,
+    _required_idempotency_key,
+    _standardization_idempotency_replay,
     list_catalog_templates_api,
+    preview_standardized_version_api,
+    run_catalog_preflight_api,
 )
 from backend.documents.template_catalog.service import (
+    CatalogError,
     CatalogConflictError,
     CatalogNotFoundError,
     WordTemplateCatalog,
 )
 from backend.documents.template_catalog.storage import ImmutableTemplateStorage
 from backend.documents.document_ipc import read_job_manifest, write_job_manifest
+from backend.documents.document_worker import DocumentWorkerInputError
 
 
 def _test_database_url():
@@ -104,6 +114,118 @@ def test_catalog_http_kill_switch_and_public_projection_hide_storage_key(
         }],
     })
     assert "storageKey" not in projected["versions"][0]
+
+
+def test_standardizer_input_failure_does_not_block_compatibility_preflight(
+    monkeypatch,
+):
+    import backend.documents.template_catalog.routes as catalog_routes
+
+    monkeypatch.setenv("WORD_TEMPLATE_CATALOG_ENABLED", "true")
+    role = SimpleNamespace(user_id="manager-a")
+
+    async def fake_read(*_args, **_kwargs):
+        return {
+            "role": role,
+            "organizationId": "org-a",
+            "version": {"id": "version-a", "content": b"legacy-docx"},
+        }
+
+    async def fake_worker(*_args, **_kwargs):
+        raise DocumentWorkerInputError("legacy construct is unsupported")
+
+    class Preflight:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        @staticmethod
+        def run(**values):
+            unavailable = values["standardization_error"]
+            assert values["standardization_report"] is None
+            assert unavailable["status"] == "UNAVAILABLE"
+            return {
+                "id": "preflight-a",
+                "result": "PASS",
+                "report": {
+                    "summary": {"blockers": 0, "warnings": 0},
+                    "issues": [],
+                    "standardizationUnavailable": unavailable,
+                },
+            }
+
+    async def fake_write(_adapter, _request, operation, **_kwargs):
+        return operation(None, object(), role, "org-a", "organization")
+
+    monkeypatch.setattr(catalog_routes, "run_database_read", fake_read)
+    monkeypatch.setattr(catalog_routes, "run_document_job_async", fake_worker)
+    monkeypatch.setattr(catalog_routes, "run_database_write", fake_write)
+    monkeypatch.setattr(catalog_routes, "TemplatePreflight", Preflight)
+    client = TestClient(Starlette(routes=[Route(
+        "/api/word-template-catalog/versions/{version_id}/preflight",
+        run_catalog_preflight_api,
+        methods=["POST"],
+    )]))
+
+    response = client.post(
+        "/api/word-template-catalog/versions/version-a/preflight",
+        json={"documentTypes": [], "standardizationProfile": "sector_template"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["result"] == "PASS"
+    assert response.json()["report"]["standardizationUnavailable"]["code"] == (
+        "WORD_STANDARDIZATION_UNAVAILABLE"
+    )
+
+
+def test_standardization_size_fallback_preserves_near_limit_compatibility():
+    base = {"result": "PASS", "padding": ""}
+    empty_size = len(json.dumps(
+        base, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8"))
+    # Leave enough room for the bounded availability marker, but not a full
+    # worker report. This models a compatibility payload that fit before the
+    # optional standardizer was introduced.
+    base["padding"] = "x" * (MAX_PREFLIGHT_REPORT_BYTES - empty_size - 180)
+    standardization = {
+        "profile": "sector_template",
+        "issues": [{"message": "y" * 4096}],
+    }
+
+    encoded = TemplatePreflight._bounded_report_json(
+        base,
+        standardization=standardization,
+    )
+    stored = json.loads(encoded)
+
+    assert len(encoded.encode("utf-8")) <= MAX_PREFLIGHT_REPORT_BYTES
+    assert stored["result"] == "PASS"
+    assert "standardization" not in stored
+    assert stored["standardizationUnavailable"] == {
+        "status": "UNAVAILABLE",
+        "profile": "sector_template",
+        "code": "WORD_STANDARDIZATION_REPORT_SIZE_LIMIT",
+    }
+
+
+def test_standardization_metadata_is_omitted_when_legacy_report_uses_full_cap():
+    base = {"padding": ""}
+    empty_size = len(json.dumps(
+        base, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8"))
+    base["padding"] = "x" * (MAX_PREFLIGHT_REPORT_BYTES - empty_size)
+
+    encoded = TemplatePreflight._bounded_report_json(
+        base,
+        unavailable={
+            "status": "UNAVAILABLE",
+            "profile": "sector_template",
+            "code": "WORD_STANDARDIZATION_UNAVAILABLE",
+        },
+    )
+
+    assert len(encoded.encode("utf-8")) == MAX_PREFLIGHT_REPORT_BYTES
+    assert json.loads(encoded) == base
 
 
 def test_record_preview_reuses_record_authorization_and_preserves_full_context(
@@ -179,6 +301,171 @@ def test_record_preview_reuses_record_authorization_and_preserves_full_context(
     assert prepared["recordRowVersion"] == 9
     assert prepared["context"]["ke_hoach"]["so_cccd"] == "012345678901"
     assert prepared["context"]["ke_hoach"]["so_tai_khoan"] == "0123456789"
+
+
+def test_standardized_candidate_preview_uses_read_plus_export_authority(
+    monkeypatch,
+):
+    import backend.documents.template_catalog.routes as catalog_routes
+
+    class Connection:
+        @staticmethod
+        def cursor():
+            return object()
+
+        @staticmethod
+        def close():
+            return None
+
+    class Catalog:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        @staticmethod
+        def get_standardization_candidate(**_kwargs):
+            return {
+                "version": {"id": "version-a", "content": b"docx"},
+                "preflight": {"id": "preflight-a"},
+                "standardization": {"profile": "sector_template"},
+            }
+
+    role = SimpleNamespace(user_id="user-a")
+    writes = []
+    entitlement = {"allowed": False}
+    monkeypatch.setattr(catalog_routes.database, "get_connection", Connection)
+    monkeypatch.setattr(catalog_routes, "WordTemplateCatalog", Catalog)
+    monkeypatch.setattr(
+        catalog_routes,
+        "_context",
+        lambda _request, _cursor, *, write=False, **_kwargs: (
+            writes.append(write) or (role, "org-a", "organization")
+        ),
+    )
+    monkeypatch.setattr(
+        catalog_routes,
+        "can_use_word_export",
+        lambda *_args: entitlement["allowed"],
+    )
+
+    with pytest.raises(CatalogError) as denied:
+        _prepare_standardization_source(
+            object(), "version-a", "preflight-a", "sector_template", False, True,
+        )
+    assert denied.value.code == "WORD_EXPORT_ENTITLEMENT_REQUIRED"
+    assert writes == [False]
+
+    entitlement["allowed"] = True
+    prepared = _prepare_standardization_source(
+        object(), "version-a", "preflight-a", "sector_template", False, True,
+    )
+    assert prepared["version"]["content"] == b"docx"
+    assert writes[-1] is False
+
+    _prepare_standardization_source(
+        object(), "version-a", "preflight-a", "sector_template", True, False,
+    )
+    assert writes[-1] is True
+
+
+def test_standardized_preview_reauthorizes_after_document_worker(
+    monkeypatch,
+):
+    import backend.documents.template_catalog.routes as catalog_routes
+
+    monkeypatch.setenv("WORD_TEMPLATE_CATALOG_ENABLED", "true")
+    role = SimpleNamespace(user_id="user-a")
+    reads = {"count": 0}
+    audits = []
+
+    async def fake_read(*_args, **_kwargs):
+        reads["count"] += 1
+        if reads["count"] == 2:
+            error = CatalogError(fields={"authorization": "DENIED"})
+            error.status_code = 403
+            error.code = "WORD_TEMPLATE_CATALOG_ACCESS_DENIED"
+            raise error
+        return {
+            "role": role,
+            "organizationId": "org-a",
+            "version": {
+                "id": "version-a",
+                "versionNo": 1,
+                "sha256": "a" * 64,
+                "content": b"source",
+            },
+            "preflight": {"id": "preflight-a"},
+            "standardization": {"analysisHash": "b" * 64},
+        }
+
+    async def fake_worker(*_args, **_kwargs):
+        return b"standardized"
+
+    monkeypatch.setattr(catalog_routes, "run_database_read", fake_read)
+    monkeypatch.setattr(catalog_routes, "run_document_job_async", fake_worker)
+    monkeypatch.setattr(
+        catalog_routes,
+        "log_audit",
+        lambda *_args, **_kwargs: audits.append(True),
+    )
+    client = TestClient(Starlette(routes=[Route(
+        "/api/word-template-catalog/versions/{version_id}/standardized-preview",
+        preview_standardized_version_api,
+        methods=["POST"],
+    )]))
+
+    response = client.post(
+        "/api/word-template-catalog/versions/version-a/standardized-preview",
+        json={
+            "acceptedPreflightRunId": "preflight-a",
+            "standardizationProfile": "sector_template",
+        },
+    )
+
+    assert response.status_code == 403
+    assert reads["count"] == 2
+    assert audits == []
+
+
+def test_standardized_draft_idempotency_key_is_required_and_payload_bound():
+    with pytest.raises(CatalogError):
+        _required_idempotency_key(SimpleNamespace(headers={}))
+    assert _required_idempotency_key(SimpleNamespace(
+        headers={"Idempotency-Key": "wordstd-12345678"},
+    )) == "wordstd-12345678"
+
+    class Cursor:
+        def __init__(self):
+            self.query = ""
+
+        def execute(self, query, _params):
+            self.query = query
+            return self
+
+        def fetchone(self):
+            if "response_json" not in self.query:
+                return None
+            return (json.dumps({
+                "created": True,
+                "_requestHash": "a" * 64,
+                "_statusCode": 201,
+            }),)
+
+    replay = _standardization_idempotency_replay(
+        Cursor(),
+        actor_user_id="manager-a",
+        operation="word-template-standardize:org-a:template-a",
+        idempotency_key="wordstd-12345678",
+        request_hash="a" * 64,
+    )
+    assert replay == {"payload": {"created": True}, "statusCode": 201}
+    with pytest.raises(CatalogConflictError):
+        _standardization_idempotency_replay(
+            Cursor(),
+            actor_user_id="manager-a",
+            operation="word-template-standardize:org-a:template-a",
+            idempotency_key="wordstd-12345678",
+            request_hash="b" * 64,
+        )
 
 
 def test_catalog_bytes_cross_document_worker_boundary_as_internal_file(tmp_path):

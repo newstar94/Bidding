@@ -320,18 +320,33 @@
                         <p class="word-template-catalog-intro">
                             Theo dõi các phiên bản bất biến, kiểm tra trước khi phát hành và khôi phục một phiên bản cũ thành bản nháp mới.
                         </p>
-                        <label class="word-template-catalog-preview-context" for="word-template-preview-document-type">
-                            Ngữ cảnh xem trước
-                            <select class="form-control" id="word-template-preview-document-type">
-                                <option value="plan">Kế hoạch lựa chọn nhà thầu</option>
-                                <option value="evaluation">Báo cáo đánh giá</option>
-                                <option value="hsmt">Hồ sơ mời thầu</option>
-                                <option value="opening">Mở thầu</option>
-                                <option value="result">Kết quả lựa chọn nhà thầu</option>
-                                <option value="contract">Hợp đồng</option>
-                                <option value="liquidation">Thanh lý hợp đồng</option>
-                            </select>
-                        </label>
+                        <div class="word-template-catalog-contexts">
+                            <label class="word-template-catalog-preview-context" for="word-template-preview-document-type">
+                                Ngữ cảnh xem trước
+                                <select class="form-control" id="word-template-preview-document-type">
+                                    <option value="plan">Kế hoạch lựa chọn nhà thầu</option>
+                                    <option value="evaluation">Báo cáo đánh giá</option>
+                                    <option value="hsmt">Hồ sơ mời thầu</option>
+                                    <option value="opening">Mở thầu</option>
+                                    <option value="result">Kết quả lựa chọn nhà thầu</option>
+                                    <option value="contract">Hợp đồng</option>
+                                    <option value="liquidation">Thanh lý hợp đồng</option>
+                                </select>
+                            </label>
+                            <label class="word-template-catalog-standardization-profile"
+                                for="word-template-standardization-profile">
+                                Kiểm tra bản nháp (tùy chọn)
+                                <select class="form-control" id="word-template-standardization-profile"
+                                    aria-describedby="word-template-standardization-help">
+                                    <option value="sector_template" selected>Mẫu chuyên ngành đấu thầu</option>
+                                    <option value="n30_strict">Nghị định 30 nghiêm ngặt</option>
+                                    <option value="reference_only">Chỉ kiểm tra, không tự sửa</option>
+                                </select>
+                            </label>
+                        </div>
+                        <p class="word-template-standardization-help" id="word-template-standardization-help">
+                            Khi xuất Word, ứng dụng tự nhận diện cấu trúc và áp dụng định dạng an toàn, không cần người dùng chọn profile hay chạy bước này. Công cụ trên chỉ dùng để kiểm tra bản nháp; câu chữ, số liệu, placeholder, chữ ký và con dấu luôn được giữ nguyên.
+                        </p>
                     </div>
                     <div class="word-template-catalog-header-actions">
                         <button type="button" class="btn btn-primary" id="word-template-catalog-create" hidden>

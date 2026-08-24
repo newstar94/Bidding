@@ -1139,11 +1139,18 @@ def translate_xml_tags(xml_content, valid_vars, root_vars=None):
 
 _TRANSLATED_DOCXTPL_CACHE = {}
 
-def translate_docx_template(template_path, context, allowed_root_keys=None):
+def translate_docx_template(
+    template_path,
+    context,
+    allowed_root_keys=None,
+    *,
+    template_content=None,
+):
 
     global _TRANSLATED_DOCXTPL_CACHE
 
-    mtime = os.path.getmtime(template_path)
+    using_content_override = template_content is not None
+    mtime = None if using_content_override else os.path.getmtime(template_path)
 
     context.update(COLUMN_LITERAL_CONTEXT)
     if allowed_root_keys is not None:
@@ -1161,14 +1168,23 @@ def translate_docx_template(template_path, context, allowed_root_keys=None):
 
     valid_vars_hash = hash((frozenset(valid_vars), frozenset(root_vars)))
 
-    cached = _TRANSLATED_DOCXTPL_CACHE.get(template_path)
+    cached = (
+        None
+        if using_content_override
+        else _TRANSLATED_DOCXTPL_CACHE.get(template_path)
+    )
     if cached and cached[0] == mtime and cached[1] == valid_vars_hash:
 
         return DocxTemplate(BytesIO(cached[3]))
 
 
-    with open(template_path, 'rb') as template_file:
-        template_bytes = template_file.read()
+    if using_content_override:
+        if not isinstance(template_content, bytes):
+            raise ValueError("Nội dung biểu mẫu Word không hợp lệ.")
+        template_bytes = template_content
+    else:
+        with open(template_path, 'rb') as template_file:
+            template_bytes = template_file.read()
     validate_ooxml_archive(template_bytes, "docx")
 
     expanded_template_bytes = expand_column_loops(template_bytes, context)
@@ -1199,7 +1215,7 @@ def translate_docx_template(template_path, context, allowed_root_keys=None):
 
     translated_data = temp_bytes.getvalue()
 
-    if not has_column_loops:
+    if not has_column_loops and not using_content_override:
         _TRANSLATED_DOCXTPL_CACHE[template_path] = (
             mtime,
             valid_vars_hash,
@@ -1513,6 +1529,8 @@ def generate_report_from_custom_template(
     template_path,
     context,
     context_manifest=None,
+    *,
+    template_content=None,
 ):
 
     if context_manifest is not None:
@@ -1547,6 +1565,7 @@ def generate_report_from_custom_template(
             template_path,
             context,
             allowed_root_keys=allowed_root_keys,
+            template_content=template_content,
         )
         convert_images_in_context(
             doc,

@@ -1,0 +1,230 @@
+{
+  "schema_version": "1.0",
+  "rule_set": {
+    "id": "n30_2020",
+    "name": "Nghị định 30/2020/NĐ-CP - Thể thức và kỹ thuật trình bày văn bản hành chính",
+    "version": "1.0.0",
+    "effective_from": "2020-03-05",
+    "verified_on": "2026-08-24",
+    "official_source": "https://vanban.chinhphu.vn/?docid=199378&pageid=27160",
+    "sources": [
+      "Nghị định 30/2020/NĐ-CP: Điều 7, Điều 8, Điều 9, Điều 10, Điều 12, Điều 13",
+      "Phụ lục I - Phần I",
+      "Phụ lục II",
+      "Phụ lục III"
+    ]
+  },
+  "profiles": {
+    "n30_strict": { "auto_fix": true },
+    "sector_template": { "auto_fix": "base_rules_only" },
+    "reference_only": { "auto_fix": false }
+  },
+  "engine_contract": {
+    "version": 1,
+    "default_profile": "sector_template",
+    "geometry_fix": "audit_only",
+    "signed_package_apply": false,
+    "sector_semantic_mutation": "structural_zone_only"
+  },
+  "citations": {
+    "page": ["Nghị định 30/2020/NĐ-CP, Phụ lục I, Phần I, mục I.1-I.3 và I.7"],
+    "text": ["Nghị định 30/2020/NĐ-CP, Phụ lục I, Phần I, mục I.4 và II.6"],
+    "components": ["Nghị định 30/2020/NĐ-CP, Phụ lục I, Phần I, mục II"],
+    "opc_signature": ["Microsoft Open Packaging Conventions digital signature contract"]
+  },
+  "page": {
+    "paper": { "width_mm": 210, "height_mm": 297 },
+    "orientation_default": "portrait",
+    "orientation_landscape_allowed_for_tables": true,
+    "margins_mm": {
+      "top": { "min": 20, "max": 25 },
+      "bottom": { "min": 20, "max": 25 },
+      "left": { "min": 30, "max": 35 },
+      "right": { "min": 15, "max": 20 }
+    },
+    "preferred_margins_mm": {
+      "top": 20,
+      "bottom": 20,
+      "left": 30,
+      "right": 20
+    }
+  },
+  "global_text": {
+    "font": "Times New Roman",
+    "color": "000000",
+    "unicode": true
+  },
+  "size_profiles": {
+    "body_13": {
+      "body": 13,
+      "national_header": 12,
+      "motto": 13,
+      "location_date": 13,
+      "document_type": 13,
+      "subject": 13,
+      "signature": 13
+    },
+    "body_14": {
+      "body": 14,
+      "national_header": 13,
+      "motto": 14,
+      "location_date": 14,
+      "document_type": 14,
+      "subject": 14,
+      "signature": 14
+    }
+  },
+  "components": {
+    "national_header": {
+      "text": "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+      "case": "upper",
+      "size_pt": [12, 13],
+      "bold": true,
+      "italic": false,
+      "alignment": "center",
+      "zone": "header_right"
+    },
+    "motto": {
+      "text": "Độc lập - Tự do - Hạnh phúc",
+      "case": "normal",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center",
+      "zone": "header_right",
+      "underline_rule": "line_below"
+    },
+    "parent_organization": {
+      "case": "upper",
+      "size_pt": [12, 13],
+      "bold": false,
+      "italic": false,
+      "alignment": "center",
+      "zone": "header_left"
+    },
+    "issuing_organization": {
+      "case": "upper",
+      "size_pt": [12, 13],
+      "bold": true,
+      "italic": false,
+      "alignment": "center",
+      "zone": "header_left",
+      "underline_rule": "1/3_to_1/2_text_width"
+    },
+    "number_symbol": {
+      "size_pt": [13, 13],
+      "bold": false,
+      "italic": false,
+      "alignment": "center",
+      "zone": "header_left",
+      "prefix": "Số:"
+    },
+    "location_date": {
+      "size_pt": [13, 14],
+      "bold": false,
+      "italic": true,
+      "alignment": "center",
+      "zone": "header_right"
+    },
+    "document_type": {
+      "case": "upper",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center",
+      "zone": "center_title"
+    },
+    "subject_named_document": {
+      "case": "normal",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center",
+      "zone": "center_title",
+      "underline_rule": "line_below"
+    },
+    "office_letter_subject": {
+      "size_pt": [12, 13],
+      "bold": false,
+      "italic": false,
+      "zone": "header_left",
+      "prefix": "V/v"
+    },
+    "body": {
+      "size_pt": [13, 14],
+      "bold": false,
+      "italic": false,
+      "alignment": "justify",
+      "first_line_indent_cm": [1.0, 1.27],
+      "space_after_pt_min": 6,
+      "line_spacing": [1.0, 1.5]
+    },
+    "legal_basis": {
+      "size_pt": [13, 14],
+      "italic": true
+    },
+    "signing_authority": {
+      "case": "upper",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center"
+    },
+    "signer_title": {
+      "case": "upper",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center"
+    },
+    "signer_name": {
+      "case": "proper_name",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center"
+    },
+    "primary_addressee": {
+      "size_pt": [13, 14],
+      "bold": false,
+      "italic": false
+    },
+    "recipient_label": {
+      "text": "Nơi nhận:",
+      "size_pt": [12, 12],
+      "bold": true,
+      "italic": true
+    },
+    "recipient_item": {
+      "size_pt": [11, 11],
+      "bold": false,
+      "italic": false
+    },
+    "appendix_index": {
+      "size_pt": [14, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center"
+    },
+    "appendix_title": {
+      "case": "upper",
+      "size_pt": [13, 14],
+      "bold": true,
+      "italic": false,
+      "alignment": "center"
+    },
+    "page_number": {
+      "size_pt": [13, 14],
+      "italic": false,
+      "alignment": "center",
+      "location": "top_margin",
+      "first_page_hidden": true
+    }
+  },
+  "safety": {
+    "never_generate": ["signature", "seal"],
+    "never_modify_domain_values": true,
+    "preserve_template_tokens": true,
+    "preserve_original_file": true
+  }
+}

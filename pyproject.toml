@@ -45,6 +45,7 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "backend.db" = ["postgres_schema_contract.json"]
+"backend.documents.word_standardizer" = ["rules/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

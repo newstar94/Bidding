@@ -11,7 +11,16 @@
   max-width: 72ch;
 }
 
-.word-template-catalog-preview-context {
+.word-template-catalog-contexts {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.word-template-catalog-preview-context,
+.word-template-catalog-standardization-profile {
   align-items: center;
   color: var(--text-muted);
   display: flex;
@@ -19,13 +28,21 @@
   font-size: 0.8rem;
   font-weight: 600;
   gap: 0.5rem;
-  margin-top: 0.75rem;
 }
 
-.word-template-catalog-preview-context .form-control {
+.word-template-catalog-preview-context .form-control,
+.word-template-catalog-standardization-profile .form-control {
   min-height: 40px;
   min-width: min(20rem, 100%);
   width: auto;
+}
+
+.word-template-standardization-help {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  margin: 0.45rem 0 0;
+  max-width: 76ch;
 }
 
 .word-template-catalog-refresh {
@@ -259,6 +276,40 @@
   padding-left: 1.2rem;
 }
 
+.word-template-standardization-result {
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border-color));
+  border-radius: var(--radius-md, 8px);
+  margin-top: 0.65rem;
+  padding: 0.7rem;
+}
+
+.word-template-standardization-heading {
+  color: var(--text-main);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.word-template-standardization-summary {
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  line-height: 1.5;
+  margin: 0.4rem 0 0;
+}
+
+.word-template-standardization-summary strong {
+  color: var(--text-main);
+}
+
+.word-template-standardization-issues {
+  color: var(--text-muted);
+  margin: 0.55rem 0 0;
+  padding-left: 1.2rem;
+}
+
 .word-template-version-actions {
   display: flex;
   flex-wrap: wrap;
@@ -314,12 +365,15 @@
     width: 100%;
   }
 
-  .word-template-catalog-preview-context {
+  .word-template-catalog-contexts,
+  .word-template-catalog-preview-context,
+  .word-template-catalog-standardization-profile {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .word-template-catalog-preview-context .form-control {
+  .word-template-catalog-preview-context .form-control,
+  .word-template-catalog-standardization-profile .form-control {
     min-height: 44px;
     width: 100%;
   }

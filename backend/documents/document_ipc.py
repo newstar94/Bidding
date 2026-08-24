@@ -21,6 +21,7 @@ from backend.shared.media_helper import (
 IPC_VERSION = 1
 JOB_FORMAT = "biddingflow-document-job"
 RESULT_FORMAT = "biddingflow-document-result"
+WORKER_EVENT_PREFIX = "BIDDINGFLOW_DOCUMENT_EVENT_V1:"
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_SIDECAR_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
@@ -30,6 +31,7 @@ MAX_STRING_BYTES = 4 * 1024 * 1024
 ALLOWED_OPERATIONS = frozenset({
     "validate_docx",
     "sanitize_docx_template",
+    "standardize_docx",
     "validate_ooxml",
     "parse_excel",
     "inspect_award_result_excel",

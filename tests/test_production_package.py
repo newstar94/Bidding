@@ -129,6 +129,22 @@ def test_normalized_postgres_contract_is_in_the_runtime_package():
     assert "backend/db/postgres_schema_contract.json" in packaged_paths
 
 
+def test_word_standardizer_versioned_rules_are_in_the_runtime_package():
+    packaged_paths = {
+        relative_path.as_posix()
+        for _, relative_path in package_production.collect_runtime_source_files()
+    }
+
+    assert (
+        "backend/documents/word_standardizer/rules/n30_2020_rules.json"
+        in packaged_paths
+    )
+    assert (
+        "backend/documents/word_standardizer/rules/semantic_fields.json"
+        in packaged_paths
+    )
+
+
 def test_browser_lookup_worker_and_production_node_manifest_are_packaged():
     packaged_paths = {
         relative_path.as_posix()

@@ -407,10 +407,15 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       event.target === list
       || list.contains(event.target)
       || wrapper.contains(event.target)
-      // Focusing the replacement input can scroll its ancestor before the user sees the list.
-      || input.ownerDocument.activeElement === input
     ) return;
-    if (wrapper.classList.contains("open")) setOpen(false, { restoreSelection: true });
+    if (!wrapper.classList.contains("open")) return;
+    if (config.portal) {
+      positionPortalList();
+      return;
+    }
+    // Focusing the replacement input can scroll its ancestor before the user sees the list.
+    if (input.ownerDocument.activeElement === input) return;
+    setOpen(false, { restoreSelection: true });
   };
   document.addEventListener("scroll", onDocumentScroll, { capture: true, passive: true });
   const parentForm = select.closest("form");

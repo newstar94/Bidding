@@ -18,6 +18,7 @@ const ACTION_PATHS = Object.freeze({
   ISSUE: "issue", CLOSE: "close", REJECT: "reject", WITHDRAW: "withdraw",
   REOPEN: "reopen",
 });
+const mountedCenters = new WeakMap();
 
 export function normalizeCaseFilters(value = {}) {
   const type = ["CLARIFICATION", "PETITION"].includes(value.caseType) ? value.caseType : "";
@@ -96,6 +97,7 @@ class ProcurementOperationsCenter {
     this.googleCalendarEnabled = enabled("bf-work-calendar-google-enabled");
     this.microsoftCalendarEnabled = enabled("bf-work-calendar-microsoft-enabled");
     const bulkEnabled = enabled("bf-bulk-export-enabled");
+    this.caseEnabled = caseEnabled;
     this.root.querySelector('[data-center-tab="cases"]').hidden = !caseEnabled;
     this.root.querySelector('[data-center-tab="calendar"]').hidden = !calendarEnabled;
     this.root.querySelector('[data-center-tab="bulk"]').hidden = !bulkEnabled;
@@ -107,7 +109,14 @@ class ProcurementOperationsCenter {
     if (bulkEnabled) this.renderBulk();
     const first = caseEnabled ? "cases" : calendarEnabled ? "calendar" : bulkEnabled ? "bulk" : null;
     if (first) this.selectPanel(first);
-    else this.root.append(element("p", { class: "pc-card" }, "Các tính năng trung tâm hiện đang tắt."));
+    else {
+      const disabledState = element(
+        "p",
+        { class: "pc-card pc-disabled-state", "data-pc-disabled-state": "true" },
+        "Các tính năng trung tâm hiện đang tắt.",
+      );
+      this.root.append(disabledState);
+    }
     if (caseEnabled) await this.loadCases();
   }
 
@@ -316,7 +325,21 @@ class ProcurementOperationsCenter {
 }
 
 export async function mountProcurementOperationsCenter(root, options = {}) {
-  if (!root) return null; await loadStyleOnce(CSS_URL);
+  if (!root) return null;
+  const mounted = mountedCenters.get(root);
+  if (mounted) {
+    mounted.packages = (options.packages || []).filter((item) => item?.id && !item?.archivedAt);
+    if (mounted.caseEnabled) await mounted.loadCases();
+    return mounted;
+  }
+  await loadStyleOnce(CSS_URL);
   const instance = new ProcurementOperationsCenter(root, options.packages || []);
-  await instance.mount(); return instance;
+  mountedCenters.set(root, instance);
+  try {
+    await instance.mount();
+    return instance;
+  } catch (error) {
+    mountedCenters.delete(root);
+    throw error;
+  }
 }

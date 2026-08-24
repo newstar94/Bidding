@@ -11,6 +11,24 @@ const LIFECYCLE_LABELS = Object.freeze({
   PUBLISHED: "Đã phát hành",
   RETIRED: "Đã thay thế",
 });
+const DOCUMENT_TYPE_LABELS = Object.freeze({
+  unknown: "Chưa nhận diện",
+  cong_van: "Công văn",
+  nghi_quyet_ca_biet: "Nghị quyết cá biệt",
+  quyet_dinh_truc_tiep: "Quyết định trực tiếp",
+  quyet_dinh_gian_tiep: "Quyết định gián tiếp",
+  cong_dien: "Công điện",
+  giay_moi: "Giấy mời",
+  giay_gioi_thieu: "Giấy giới thiệu",
+  bien_ban: "Biên bản",
+  giay_nghi_phep: "Giấy nghỉ phép",
+  phu_luc: "Phụ lục",
+  ban_sao: "Bản sao",
+  hop_dong: "Hợp đồng",
+  thong_bao: "Thông báo",
+  bao_cao: "Báo cáo",
+  ke_hoach: "Kế hoạch",
+});
 
 function text(value) {
   return String(value ?? "");
@@ -64,6 +82,8 @@ function stateFor(controller) {
     selectedTemplateId: "",
     versionPayload: null,
     preflights: new Map(),
+    preflightSequence: 0,
+    standardizationRequests: new Map(),
     requestSequence: 0,
   };
   return controller._wordTemplateCatalogState;
@@ -78,6 +98,9 @@ function roots() {
     refresh: document.getElementById("word-template-catalog-refresh"),
     create: document.getElementById("word-template-catalog-create"),
     draft: document.getElementById("word-template-catalog-new-draft"),
+    standardizationProfile: document.getElementById(
+      "word-template-standardization-profile",
+    ),
   };
 }
 
@@ -108,10 +131,10 @@ export class WordTemplateCatalogClient {
     );
   }
 
-  runPreflight(versionId, documentTypes = []) {
+  runPreflight(versionId, documentTypes = [], standardizationProfile = "sector_template") {
     return this.request(
       `${CATALOG_URL}/versions/${encodeURIComponent(versionId)}/preflight`,
-      { method: "POST", body: { documentTypes } },
+      { method: "POST", body: { documentTypes, standardizationProfile } },
     );
   }
 
@@ -149,6 +172,39 @@ export class WordTemplateCatalogClient {
     const filename = disposition.match(/filename="([^"]+)"/iu)?.[1]
       || `word-template-preview-${versionId}.docx`;
     return { blob: await response.blob(), filename };
+  }
+
+  async previewStandardized(versionId, payload) {
+    const response = await apiFetch(
+      `${CATALOG_URL}/versions/${encodeURIComponent(versionId)}/standardized-preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new ApiError(
+        data?.error || `Không thể tạo bản chuẩn hóa (${response.status}).`,
+        { status: response.status, code: data?.code || "", data, response },
+      );
+    }
+    const disposition = response.headers.get("content-disposition") || "";
+    const filename = disposition.match(/filename="([^"]+)"/iu)?.[1]
+      || `word-template-standardized-${versionId}.docx`;
+    return { blob: await response.blob(), filename };
+  }
+
+  createStandardizedDraft(templateId, payload, idempotencyKey) {
+    return this.request(
+      `${CATALOG_URL}/${encodeURIComponent(templateId)}/standardized-drafts`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: payload,
+      },
+    );
   }
 
   async createTemplate(file) {
@@ -261,14 +317,93 @@ function renderPreflight(report) {
   });
   panel.appendChild(result);
   if (issues.childElementCount) panel.appendChild(issues);
+  const standardization = report.report?.standardization;
+  const unavailable = report.report?.standardizationUnavailable;
+  if (unavailable) {
+    const unavailablePanel = createElement(
+      "div",
+      "word-template-standardization-result",
+    );
+    unavailablePanel.append(
+      createElement(
+        "p",
+        "word-template-standardization-heading",
+        "Kiểm tra thể thức tạm thời chưa khả dụng",
+      ),
+      createElement(
+        "p",
+        "word-template-standardization-summary",
+        "Kiểm tra tương thích vẫn hoàn tất. Hãy thử lại kiểm tra thể thức trước khi chuẩn hóa.",
+      ),
+    );
+    panel.appendChild(unavailablePanel);
+  }
+  if (standardization) {
+    const formatPanel = createElement("div", "word-template-standardization-result");
+    const documentType = standardization.documentType || {};
+    const typeCode = text(documentType.value || "unknown");
+    const typeLabel = DOCUMENT_TYPE_LABELS[typeCode] || typeCode;
+    const confidence = Math.round(Number(documentType.confidence || 0) * 100);
+    const formatSummary = standardization.summary || {};
+    formatPanel.appendChild(createElement(
+      "p",
+      "word-template-standardization-heading",
+      `Kiểm tra thể thức · ${typeLabel} (${confidence}%)`,
+    ));
+    const metrics = createElement("p", "word-template-standardization-summary");
+    [
+      ["Đạt", Number(formatSummary.compliant || 0)],
+      ["Có thể sửa an toàn", Number(formatSummary.safeFixes || 0)],
+      ["Chỉ xem trước", Number(formatSummary.previewOnly || 0)],
+      ["Cần kiểm tra", Number(formatSummary.manualReview || 0)],
+    ].forEach(([label, value]) => {
+      const metric = createElement("span");
+      metric.append(
+        createElement("strong", "", String(value)),
+        document.createTextNode(` ${label.toLocaleLowerCase("vi-VN")}`),
+      );
+      metrics.appendChild(metric);
+    });
+    formatPanel.appendChild(metrics);
+    const issueSamples = standardization.issues || [];
+    const totalIssues = Number(
+      standardization.issueInventory?.totalCount ?? issueSamples.length,
+    );
+    const formatIssues = createElement("ul", "word-template-standardization-issues");
+    issueSamples.slice(0, 6).forEach((issue) => {
+      const policy = text(issue.fixPolicy || "MANUAL_REVIEW");
+      const policyLabel = policy === "SAFE_AUTO_FIX"
+        ? "Sửa an toàn"
+        : policy === "PREVIEW_ONLY" ? "Xem trước" : "Kiểm tra thủ công";
+      const item = createElement("li");
+      item.append(
+        createElement("strong", "", `${policyLabel}: `),
+        document.createTextNode(text(issue.message || issue.ruleId || "Kiểm tra thể thức")),
+      );
+      formatIssues.appendChild(item);
+    });
+    if (totalIssues > Math.min(6, issueSamples.length)) {
+      formatIssues.appendChild(createElement(
+        "li",
+        "",
+        `Còn ${totalIssues - Math.min(6, issueSamples.length)} mục; danh sách đang hiển thị mẫu đã giới hạn.`,
+      ));
+    }
+    if (formatIssues.childElementCount) formatPanel.appendChild(formatIssues);
+    panel.appendChild(formatPanel);
+  }
   return panel;
 }
 
 async function requestReason(controller, action, version) {
-  const title = action === "publish" ? "Phát hành biểu mẫu" : "Khôi phục thành bản nháp";
+  const title = action === "publish"
+    ? "Phát hành biểu mẫu"
+    : action === "standardize" ? "Tạo bản nháp đã chuẩn hóa" : "Khôi phục thành bản nháp";
   const message = action === "publish"
     ? `Xác nhận phát hành phiên bản ${version.versionNo}. Hãy ghi lý do để lưu cùng lịch sử kiểm toán.`
-    : `Phiên bản ${version.versionNo} sẽ được sao chép thành một bản nháp bất biến mới. Hãy ghi lý do.`;
+    : action === "standardize"
+      ? `Phiên bản ${version.versionNo} sẽ được chuẩn hóa định dạng an toàn thành một bản nháp bất biến mới. Bản nguồn không thay đổi.`
+      : `Phiên bản ${version.versionNo} sẽ được sao chép thành một bản nháp bất biến mới. Hãy ghi lý do.`;
   const reason = await controller.view?.customPrompt?.(
     title,
     message,
@@ -292,15 +427,33 @@ async function recoverStale(controller, error) {
 
 async function runPreflight(controller, version, button) {
   const state = stateFor(controller);
+  const profile = roots().standardizationProfile?.value || "sector_template";
+  const sequence = ++state.preflightSequence;
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   setStatus(`Đang kiểm tra phiên bản ${version.versionNo}…`);
   try {
-    const report = await new WordTemplateCatalogClient().runPreflight(version.id);
+    const report = await new WordTemplateCatalogClient().runPreflight(
+      version.id,
+      [],
+      profile,
+    );
+    if (
+      sequence !== state.preflightSequence
+      || roots().standardizationProfile?.value !== profile
+      || !state.versionPayload?.versions?.some((item) => item.id === version.id)
+    ) {
+      return;
+    }
     state.preflights.set(version.id, report);
     renderVersionTimeline(controller);
+    const safeFixes = Number(
+      report.report?.standardization?.summary?.safeFixes || 0,
+    );
     setStatus(report.result === "PASS"
-      ? `Phiên bản ${version.versionNo} đã đạt kiểm tra trước phát hành.`
+      ? safeFixes > 0
+        ? `Phiên bản ${version.versionNo} đạt kiểm tra tương thích và có ${safeFixes} nhóm định dạng có thể sửa an toàn.`
+        : `Phiên bản ${version.versionNo} đã đạt kiểm tra trước phát hành.`
       : `Phiên bản ${version.versionNo} còn lỗi chặn cần xử lý.`);
   } catch (error) {
     setStatus(`Không thể kiểm tra phiên bản: ${errorMessage(error)}`);
@@ -425,6 +578,93 @@ async function previewVersion(controller, version, mode, button) {
   }
 }
 
+async function previewStandardizedVersion(controller, version, preflight, button) {
+  const standardization = preflight?.report?.standardization;
+  if (!standardization) {
+    setStatus("Cần chạy kiểm tra thể thức trước khi xem bản chuẩn hóa.");
+    return;
+  }
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  setStatus(`Đang tạo bản chuẩn hóa xem trước cho phiên bản ${version.versionNo}…`);
+  try {
+    const preview = await new WordTemplateCatalogClient().previewStandardized(
+      version.id,
+      {
+        acceptedPreflightRunId: preflight.id,
+        standardizationProfile: standardization.profile,
+      },
+    );
+    downloadPreview(preview);
+    setStatus(`Đã tạo bản chuẩn hóa xem trước cho phiên bản ${version.versionNo}.`);
+  } catch (error) {
+    setStatus(`Không thể tạo bản chuẩn hóa xem trước: ${errorMessage(error)}`);
+  } finally {
+    button.removeAttribute("aria-busy");
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+async function createStandardizedDraft(controller, version, preflight, button) {
+  const state = stateFor(controller);
+  const standardization = preflight?.report?.standardization;
+  if (!standardization || Number(standardization.summary?.safeFixes || 0) < 1) {
+    setStatus("Phiên bản này chưa có thay đổi định dạng an toàn để áp dụng.");
+    return;
+  }
+  const reason = await requestReason(controller, "standardize", version);
+  if (!reason) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  setStatus(`Đang tạo bản nháp chuẩn hóa từ phiên bản ${version.versionNo}…`);
+  const requestPayload = {
+    sourceVersionId: version.id,
+    acceptedPreflightRunId: preflight.id,
+    expectedRowVersion: state.versionPayload.template.rowVersion,
+    standardizationProfile: standardization.profile,
+    reason,
+  };
+  const operationKey = JSON.stringify(requestPayload);
+  let idempotencyKey = state.standardizationRequests.get(operationKey);
+  if (!idempotencyKey) {
+    idempotencyKey = `wordstd-${crypto.randomUUID()}`;
+    state.standardizationRequests.set(operationKey, idempotencyKey);
+  }
+  try {
+    const result = await new WordTemplateCatalogClient().createStandardizedDraft(
+      state.selectedTemplateId,
+      requestPayload,
+      idempotencyKey,
+    );
+    state.standardizationRequests.delete(operationKey);
+    await loadAndRenderWordTemplateCatalog(controller, { preserveSelection: true });
+    if (result.created === false) {
+      setStatus("Biểu mẫu đã đúng các quy tắc sửa an toàn; không tạo phiên bản trùng lặp.");
+      return;
+    }
+    setStatus(`Đã tạo bản nháp chuẩn hóa từ phiên bản ${version.versionNo}.`);
+    controller.view?.showToast?.(
+      "Đã tạo bản nháp chuẩn hóa",
+      "Bản nguồn được giữ nguyên; hãy xem trước và chạy kiểm tra lại trước khi phát hành.",
+      "success",
+    );
+  } catch (error) {
+    const reusedKey = error instanceof ApiError
+      && error.data?.fields?.["Idempotency-Key"] === "REUSED_WITH_DIFFERENT_REQUEST";
+    if (reusedKey) {
+      state.standardizationRequests.delete(operationKey);
+      setStatus("Khóa chống lặp đã được dùng cho một yêu cầu khác. Hãy thử lại thao tác.");
+    } else if (await recoverStale(controller, error)) {
+      state.standardizationRequests.delete(operationKey);
+    } else {
+      setStatus(`Không thể tạo bản nháp chuẩn hóa: ${errorMessage(error)}`);
+    }
+  } finally {
+    button.removeAttribute("aria-busy");
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
 export function renderVersionTimeline(controller) {
   const { timeline } = roots();
   if (!timeline) return;
@@ -489,10 +729,41 @@ export function renderVersionTimeline(controller) {
     preflightButton.type = "button";
     preflightButton.addEventListener("click", () => runPreflight(controller, version, preflightButton));
     actions.appendChild(preflightButton);
+    const preflight = state.preflights.get(version.id);
+    const standardization = preflight?.report?.standardization;
+    const safeFixes = Number(standardization?.summary?.safeFixes || 0);
+    if (standardization && safeFixes > 0) {
+      const standardizedPreviewButton = createElement(
+        "button", "btn btn-outline", "Xem bản chuẩn hóa",
+      );
+      standardizedPreviewButton.type = "button";
+      standardizedPreviewButton.addEventListener("click", () => (
+        previewStandardizedVersion(
+          controller,
+          version,
+          preflight,
+          standardizedPreviewButton,
+        )
+      ));
+      actions.appendChild(standardizedPreviewButton);
+      if (editable && standardization.profile !== "reference_only") {
+        const standardizeButton = createElement(
+          "button", "btn btn-outline", "Tạo bản nháp chuẩn hóa",
+        );
+        standardizeButton.type = "button";
+        standardizeButton.addEventListener("click", () => createStandardizedDraft(
+          controller,
+          version,
+          preflight,
+          standardizeButton,
+        ));
+        actions.appendChild(standardizeButton);
+      }
+    }
     if (editable && version.lifecycle === "DRAFT") {
       const publishButton = createElement("button", "btn btn-primary", "Phát hành");
       publishButton.type = "button";
-      publishButton.disabled = state.preflights.get(version.id)?.result !== "PASS";
+      publishButton.disabled = preflight?.result !== "PASS";
       publishButton.title = publishButton.disabled ? "Chạy kiểm tra đạt trước khi phát hành" : "";
       publishButton.addEventListener("click", () => publishVersion(controller, version, publishButton));
       actions.appendChild(publishButton);
@@ -512,6 +783,7 @@ export function renderVersionTimeline(controller) {
 
 async function selectTemplate(controller, templateId) {
   const state = stateFor(controller);
+  state.preflightSequence += 1;
   state.selectedTemplateId = templateId;
   state.versionPayload = null;
   renderTemplateList(controller);
@@ -538,7 +810,9 @@ async function selectTemplate(controller, templateId) {
 }
 
 function bindRefresh(controller) {
-  const { refresh, create, draft } = roots();
+  const {
+    refresh, create, draft, standardizationProfile,
+  } = roots();
   if (!refresh || refresh.dataset.bound === "true") return;
   refresh.dataset.bound = "true";
   refresh.addEventListener("click", async () => {
@@ -552,6 +826,16 @@ function bindRefresh(controller) {
       refresh.removeAttribute("aria-busy");
     }
   });
+  if (standardizationProfile && standardizationProfile.dataset.bound !== "true") {
+    standardizationProfile.dataset.bound = "true";
+    standardizationProfile.addEventListener("change", () => {
+      const state = stateFor(controller);
+      state.preflightSequence += 1;
+      state.preflights.clear();
+      renderVersionTimeline(controller);
+      setStatus("Đã đổi chuẩn thể thức. Hãy chạy lại kiểm tra cho phiên bản cần xử lý.");
+    });
+  }
   const pickDocx = () => new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";

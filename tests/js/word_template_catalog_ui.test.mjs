@@ -35,6 +35,15 @@ function cardMarkup() {
           <option value="evaluation">Báo cáo đánh giá</option>
         </select>
       </label>
+      <label for="word-template-standardization-profile">Chuẩn thể thức
+        <select id="word-template-standardization-profile" class="form-control"
+          aria-describedby="word-template-standardization-help">
+          <option value="sector_template">Mẫu chuyên ngành đấu thầu</option>
+          <option value="n30_strict">Nghị định 30 nghiêm ngặt</option>
+          <option value="reference_only">Chỉ kiểm tra</option>
+        </select>
+      </label>
+      <p id="word-template-standardization-help">Chỉ sửa định dạng an toàn trên bản nháp mới.</p>
     </div><button type="button" class="btn btn-outline word-template-catalog-refresh"
       id="word-template-catalog-refresh">Tải lại</button></div>
     <div class="card-body"><div class="word-template-catalog-layout">
@@ -112,8 +121,15 @@ async function withCatalogPage(handler, run) {
       }
       if (pathname.startsWith("/api/word-template-catalog")) {
         const body = await requestBody(request);
-        calls.push({ pathname, method: request.method, body });
-        const result = await handler({ pathname, method: request.method, body, calls });
+        const headers = { ...request.headers };
+        calls.push({ pathname, method: request.method, body, headers });
+        const result = await handler({
+          pathname,
+          method: request.method,
+          body,
+          headers,
+          calls,
+        });
         response.writeHead(result.status || 200, result.headers || {
           "content-type": "application/json; charset=utf-8",
         });
@@ -192,7 +208,10 @@ test("catalog renders immutable timeline and publishes only after a passing pref
       return { body: payload };
     }
     if (pathname.endsWith("/version-2/preflight") && method === "POST") {
-      assert.deepEqual(body, { documentTypes: [] });
+      assert.deepEqual(body, {
+        documentTypes: [],
+        standardizationProfile: "sector_template",
+      });
       return { status: 201, body: {
         id: "preflight-a",
         result: "PASS",
@@ -200,8 +219,36 @@ test("catalog renders immutable timeline and publishes only after a passing pref
           severity: "WARNING",
           code: "CROSS_CONTEXT_VARIABLE",
           message: "Biến được dùng ở nhiều ngữ cảnh.",
-        }] },
+        }], standardization: {
+          profile: "sector_template",
+          mode: "preview_fix",
+          documentType: { value: "thong_bao", confidence: 0.97 },
+          summary: {
+            compliant: 12,
+            safeFixes: 2,
+            previewOnly: 1,
+            manualReview: 0,
+          },
+          issues: [{
+            ruleId: "N30-SHELL-FONT",
+            fixPolicy: "SAFE_AUTO_FIX",
+            message: "Phông chữ chưa theo Times New Roman.",
+          }],
+        } },
       } };
+    }
+    if (pathname.endsWith("/version-2/standardized-preview") && method === "POST") {
+      assert.deepEqual(body, {
+        acceptedPreflightRunId: "preflight-a",
+        standardizationProfile: "sector_template",
+      });
+      return {
+        headers: {
+          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-disposition": 'attachment; filename="preview-chuan-hoa-v2.docx"',
+        },
+        raw: Buffer.from("standardized-preview"),
+      };
     }
     if (pathname.endsWith("/version-2/preview") && method === "POST") {
       assert.deepEqual(body, { mode: "SAMPLE", documentType: "plan" });
@@ -242,6 +289,11 @@ test("catalog renders immutable timeline and publishes only after a passing pref
     assert.equal(await publish.isDisabled(), true);
     await draft.getByRole("button", { name: "Chạy kiểm tra" }).click();
     await page.getByText(/Đạt · 1 cảnh báo/u).waitFor();
+    await page.getByText(/Kiểm tra thể thức · Thông báo \(97%\)/u).waitFor();
+    const standardizedDownloadPromise = page.waitForEvent("download");
+    await draft.getByRole("button", { name: "Xem bản chuẩn hóa" }).click();
+    const standardizedDownload = await standardizedDownloadPromise;
+    assert.equal(standardizedDownload.suggestedFilename(), "preview-chuan-hoa-v2.docx");
     assert.equal(await publish.isEnabled(), true);
     await publish.click();
     await page.waitForFunction(() => window.__catalogToast?.title === "Đã phát hành biểu mẫu");
@@ -266,6 +318,145 @@ test("catalog renders immutable timeline and publishes only after a passing pref
     assert.equal(mobile.overflow, false);
     assert.equal(mobile.columns.split(" ").length, 1);
     assert.ok(mobile.actionHeights.every((height) => height >= 44));
+  });
+});
+
+test("safe formatting creates a new immutable draft and keeps the source version", async () => {
+  let standardized = false;
+  await withCatalogPage(async ({ pathname, method, body, headers }) => {
+    if (pathname === "/api/word-template-catalog" && method === "GET") {
+      const current = template(standardized ? 5 : 4);
+      if (standardized) current.draftVersionId = "version-3";
+      return { body: [current] };
+    }
+    if (pathname.endsWith("/template-a/versions") && method === "GET") {
+      if (!standardized) return { body: versions(4) };
+      const payload = versions(5);
+      payload.template.draftVersionId = "version-3";
+      payload.versions[0].lifecycle = "RETIRED";
+      payload.versions.unshift({
+        id: "version-3",
+        templateId: "template-a",
+        versionNo: 3,
+        lifecycle: "DRAFT",
+        sha256: "c".repeat(64),
+        byteSize: 4200,
+        originalFilename: "ke-hoach-v2-chuan-hoa.docx",
+        createdById: "manager-a",
+        createdAt: "2026-08-24T09:30:00+07:00",
+      });
+      return { body: payload };
+    }
+    if (pathname.endsWith("/version-2/preflight") && method === "POST") {
+      return { status: 201, body: {
+        id: "preflight-standardize",
+        result: "PASS",
+        report: {
+          summary: { blockers: 0, warnings: 0 },
+          issues: [],
+          standardization: {
+            profile: body.standardizationProfile,
+            mode: "preview_fix",
+            documentType: { value: "ke_hoach", confidence: 0.96 },
+            summary: {
+              compliant: 10,
+              safeFixes: 3,
+              previewOnly: 1,
+              manualReview: 0,
+            },
+            issues: [{
+              ruleId: "N30-SHELL-FONT",
+              fixPolicy: "SAFE_AUTO_FIX",
+              message: "Phông chữ phần thể thức chưa theo cấu hình đã chọn.",
+            }],
+          },
+        },
+      } };
+    }
+    if (pathname.endsWith("/template-a/standardized-drafts") && method === "POST") {
+      assert.match(headers["idempotency-key"], /^wordstd-[0-9a-f-]+$/u);
+      assert.deepEqual(body, {
+        sourceVersionId: "version-2",
+        acceptedPreflightRunId: "preflight-standardize",
+        expectedRowVersion: 4,
+        standardizationProfile: "sector_template",
+        reason: "Đã kiểm tra và phê duyệt",
+      });
+      standardized = true;
+      return { status: 201, body: {
+        created: true,
+        sourceVersionId: "version-2",
+        draftVersionId: "version-3",
+      } };
+    }
+    throw new Error(`Unexpected API ${method} ${pathname}`);
+  }, async (page, calls) => {
+    await loadCatalog(page);
+    const source = page.locator('[data-version-id="version-2"]');
+    await source.getByRole("button", { name: "Chạy kiểm tra" }).click();
+    await source.getByRole("button", { name: "Tạo bản nháp chuẩn hóa" }).click();
+    await page.waitForFunction(
+      () => window.__catalogToast?.title === "Đã tạo bản nháp chuẩn hóa",
+    );
+    assert.equal(await page.locator('[data-version-id="version-3"]').count(), 1);
+    assert.equal(await page.locator('[data-version-id="version-2"]').count(), 1);
+    assert.match(
+      await page.locator('[data-version-id="version-2"]').textContent(),
+      /Đã thay thế/u,
+    );
+    assert.equal(
+      calls.filter((call) => call.pathname.endsWith("/standardized-drafts")).length,
+      1,
+    );
+  });
+});
+
+test("a late preflight response cannot restore actions for a previous profile", async () => {
+  await withCatalogPage(async ({ pathname, method, body }) => {
+    if (pathname === "/api/word-template-catalog" && method === "GET") {
+      return { body: [template()] };
+    }
+    if (pathname.endsWith("/template-a/versions") && method === "GET") {
+      return { body: versions() };
+    }
+    if (pathname.endsWith("/version-2/preflight") && method === "POST") {
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      return { status: 201, body: {
+        id: "preflight-old-profile",
+        result: "PASS",
+        report: {
+          summary: { blockers: 0, warnings: 0 },
+          issues: [],
+          standardization: {
+            profile: body.standardizationProfile,
+            mode: "preview_fix",
+            documentType: { value: "thong_bao", confidence: 0.97 },
+            summary: {
+              compliant: 10,
+              safeFixes: 1,
+              previewOnly: 0,
+              manualReview: 0,
+            },
+            issues: [],
+          },
+        },
+      } };
+    }
+    throw new Error(`Unexpected API ${method} ${pathname}`);
+  }, async (page) => {
+    await loadCatalog(page);
+    const source = page.locator('[data-version-id="version-2"]');
+    await source.getByRole("button", { name: "Chạy kiểm tra" }).click({ noWaitAfter: true });
+    await page.locator("#word-template-standardization-profile").selectOption("n30_strict");
+    await page.waitForTimeout(250);
+    assert.equal(
+      await source.getByRole("button", { name: "Tạo bản nháp chuẩn hóa" }).count(),
+      0,
+    );
+    assert.match(
+      await page.locator("#word-template-catalog-status").textContent(),
+      /Đã đổi chuẩn thể thức/u,
+    );
   });
 });
 

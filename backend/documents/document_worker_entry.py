@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
@@ -9,12 +10,54 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from backend.documents.document_ipc import read_job_manifest, write_result
+from backend.documents.document_ipc import (
+    WORKER_EVENT_PREFIX,
+    read_job_manifest,
+    write_result,
+)
 from backend.documents.seccomp_policy import apply_document_seccomp
 
 
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_INPUT_CONTENT_BYTES = 64 * 1024 * 1024
+
+
+def _emit_word_standardization_event(metadata: dict) -> None:
+    """Emit bounded, content-free status for parent-process observability."""
+
+    allowlisted = {
+        key: metadata.get(key)
+        for key in (
+            "mode",
+            "status",
+            "effectiveProfile",
+            "detectedDocumentType",
+            "documentTypeConfidence",
+            "documentTypeConflictCount",
+            "plannedRuleCount",
+            "plannedTargetCount",
+            "storyPartCount",
+            "storyXmlBytes",
+            "stylesXmlBytes",
+            "paragraphCount",
+            "runCount",
+            "styleCount",
+            "preservation",
+            "engineVersion",
+            "policyVersion",
+        )
+        if metadata.get(key) is not None
+    }
+    event = {"event": "document.word_standardization", "fields": allowlisted}
+    print(
+        WORKER_EVENT_PREFIX + json.dumps(
+            event,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        flush=True,
+    )
 
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -134,6 +177,24 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         validate_docx_template_statements(sanitized)
         return sanitized
 
+    if operation == "standardize_docx":
+        from backend.documents.word_standardizer import process_docx
+
+        mode = str(payload.get("mode") or "audit").strip().casefold()
+        result = process_docx(
+            _payload_content(payload),
+            profile=str(payload.get("profile") or "sector_template"),
+            mode=mode,
+            expected_analysis_hash=payload.get("expectedAnalysisHash"),
+        )
+        if mode == "apply_fix":
+            if not isinstance(result.content, bytes):
+                raise ValueError("Tác vụ chuẩn hóa Word không tạo được tệp kết quả.")
+            if len(result.content) > MAX_OUTPUT_BYTES:
+                raise ValueError("Tệp Word chuẩn hóa vượt quá giới hạn kích thước.")
+            return result.content
+        return result.report
+
     if operation == "validate_ooxml":
         from backend.documents.archive_validation import validate_ooxml_archive
 
@@ -209,14 +270,31 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
 
     if operation == "render_docx":
         from backend.documents.custom_exporter import generate_report_from_custom_template
+        from backend.documents.word_standardizer import (
+            standardize_template_for_export,
+        )
 
         context_manifest = payload.get("context_manifest")
         if not isinstance(context_manifest, dict):
             raise ValueError("Tác vụ Word thiếu manifest ngữ cảnh.")
+        template_path = Path(payload["template_path"])
+        template_bytes = template_path.read_bytes()
+        if len(template_bytes) > MAX_INPUT_CONTENT_BYTES:
+            raise ValueError("Biểu mẫu Word vượt quá giới hạn kích thước.")
+        automatic = standardize_template_for_export(
+            template_bytes,
+            document_type_hint=context_manifest.get("document_type"),
+        )
+        _emit_word_standardization_event(automatic.metadata)
+        render_options = (
+            {"template_content": automatic.content}
+            if automatic.content != template_bytes else {}
+        )
         stream = generate_report_from_custom_template(
-            payload["template_path"],
+            template_path,
             payload["context"],
             context_manifest,
+            **render_options,
         )
         result = stream.getvalue()
         if len(result) > MAX_OUTPUT_BYTES:

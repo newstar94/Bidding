@@ -188,6 +188,171 @@ class WordTemplateCatalog:
         )
         return template
 
+    def get_standardization_candidate(
+        self, *, organization_id, version_id, accepted_preflight_run_id,
+        profile, include_content=False,
+    ):
+        version = self.get_version(
+            organization_id,
+            version_id,
+            include_content=include_content,
+        )
+        run = self.repository.get_preflight(
+            organization_id,
+            str(accepted_preflight_run_id or "").strip(),
+        )
+        standardization = self._accepted_standardization(
+            version=version,
+            run=run,
+            profile=profile,
+        )
+        return {
+            "version": version,
+            "preflight": run,
+            "standardization": standardization,
+        }
+
+    def create_standardized_draft(
+        self, *, organization_id, template_id, source_version_id,
+        accepted_preflight_run_id, expected_row_version, profile,
+        standardized_content, actor_user_id, reason, request=None,
+    ):
+        candidate = self.get_standardization_candidate(
+            organization_id=organization_id,
+            version_id=source_version_id,
+            accepted_preflight_run_id=accepted_preflight_run_id,
+            profile=profile,
+        )
+        source = candidate["version"]
+        if source["templateId"] != template_id:
+            raise CatalogNotFoundError()
+        reason = _bounded_text(reason, "reason", 2000)
+        if not isinstance(standardized_content, bytes) or not standardized_content:
+            raise CatalogError(fields={"standardizedContent": "INVALID_VALUE"})
+        output_sha256 = hashlib.sha256(standardized_content).hexdigest()
+        expected = self._row_version(expected_row_version)
+        current_template, error = self.repository.validate_template_cas(
+            organization_id,
+            template_id,
+            expected,
+        )
+        self._raise_repository_error(error, current_template)
+        standardization = candidate["standardization"]
+        if output_sha256 == source["sha256"]:
+            self._audit_required(
+                "document.word_template_standardization_noop",
+                organization_id,
+                actor_user_id,
+                template_id,
+                request,
+                {
+                    "sourceVersionId": source_version_id,
+                    "acceptedPreflightRunId": accepted_preflight_run_id,
+                    "profile": candidate["standardization"]["profile"],
+                    "sha256": source["sha256"],
+                },
+            )
+            return {
+                "template": current_template,
+                "created": False,
+                "sourceVersionId": source_version_id,
+            }
+
+        existing = self.repository.find_standardized_version(
+            organization_id=organization_id,
+            template_id=template_id,
+            source_version_id=source_version_id,
+            output_sha256=output_sha256,
+            accepted_preflight_run_id=accepted_preflight_run_id,
+            profile=standardization["profile"],
+            analysis_hash=standardization["analysisHash"],
+        )
+        if (
+            existing is not None
+            and existing["id"] == current_template.get("draftVersionId")
+        ):
+            self._audit_required(
+                "document.word_template_standardization_replayed",
+                organization_id,
+                actor_user_id,
+                template_id,
+                request,
+                {
+                    "sourceVersionId": source_version_id,
+                    "draftVersionId": existing["id"],
+                    "acceptedPreflightRunId": accepted_preflight_run_id,
+                    "profile": standardization["profile"],
+                    "outputSha256": output_sha256,
+                },
+            )
+            return {
+                "template": current_template,
+                "created": False,
+                "replayed": True,
+                "sourceVersionId": source_version_id,
+                "draftVersionId": existing["id"],
+            }
+
+        content = self._store(organization_id, standardized_content)
+        metadata = {
+            "reason": reason,
+            "standardization": {
+                "acceptedPreflightRunId": accepted_preflight_run_id,
+                "acceptedPreflightReportHash": candidate["preflight"]["reportHash"],
+                "analysisHash": standardization["analysisHash"],
+                "engineVersion": standardization["engineVersion"],
+                "profile": standardization["profile"],
+                "ruleSet": standardization["ruleSet"],
+                "sourceTemplateSha256": source["sha256"],
+                "outputTemplateSha256": output_sha256,
+                "summary": standardization["summary"],
+                "changes": standardization.get("plannedChanges") or [],
+            },
+        }
+        manifest_json, manifest_hash = self._manifest(
+            action="STANDARDIZE",
+            metadata=metadata,
+            source_version_id=source_version_id,
+        )
+        filename = self._standardized_filename(source["originalFilename"])
+        template, error = self.repository.create_draft_version(
+            organization_id=organization_id,
+            template_id=template_id,
+            expected_row_version=expected,
+            version=self._version_values(
+                content,
+                filename,
+                actor_user_id,
+                manifest_json,
+                manifest_hash,
+                source_version_id=source_version_id,
+            ),
+        )
+        self._raise_repository_error(error, template)
+        self._audit_required(
+            "document.word_template_standardized",
+            organization_id,
+            actor_user_id,
+            template_id,
+            request,
+            {
+                "sourceVersionId": source_version_id,
+                "draftVersionId": template["draftVersionId"],
+                "acceptedPreflightRunId": accepted_preflight_run_id,
+                "profile": standardization["profile"],
+                "ruleSetVersion": standardization["ruleSet"]["version"],
+                "sourceSha256": source["sha256"],
+                "outputSha256": output_sha256,
+                "changeCount": len(standardization.get("plannedChanges") or []),
+            },
+        )
+        return {
+            "template": template,
+            "created": True,
+            "sourceVersionId": source_version_id,
+            "draftVersionId": template["draftVersionId"],
+        }
+
     def publish(
         self, *, organization_id, template_id, version_id,
         accepted_preflight_run_id, expected_row_version, actor_user_id,
@@ -333,6 +498,40 @@ class WordTemplateCatalog:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         return timestamp >= self._now() - PREFLIGHT_MAX_AGE
+
+    def _accepted_standardization(self, *, version, run, profile):
+        selected_profile = str(profile or "").strip().casefold()
+        standardization = (
+            run.get("report", {}).get("standardization")
+            if isinstance(run, dict) else None
+        )
+        if (
+            run is None
+            or run.get("templateVersionId") != version["id"]
+            or run.get("templateSha256") != version["sha256"]
+            or not run.get("runAt")
+            or not self._preflight_is_fresh(run.get("runAt"))
+            or not isinstance(standardization, dict)
+            or standardization.get("templateSha256") != version["sha256"]
+            or standardization.get("profile") != selected_profile
+            or standardization.get("mode") != "preview_fix"
+            or standardization.get("invariants", {}).get("status") != "PASS"
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(standardization.get("analysisHash") or ""),
+            )
+        ):
+            raise CatalogConflictError(
+                fields={"acceptedPreflightRunId": "STANDARDIZATION_NOT_ACCEPTABLE"}
+            )
+        return standardization
+
+    @staticmethod
+    def _standardized_filename(value):
+        filename = str(value or "template.docx").strip()
+        stem = filename[:-5] if filename.casefold().endswith(".docx") else filename
+        suffix = "-chuan-hoa.docx"
+        return f"{stem[:255 - len(suffix)]}{suffix}"
 
     @staticmethod
     def _lifecycle(template, version_id):

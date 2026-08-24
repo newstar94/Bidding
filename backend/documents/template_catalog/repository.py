@@ -92,6 +92,47 @@ class WordTemplateCatalogRepository:
         ).fetchone()
         return self._version(row)
 
+    def validate_template_cas(
+        self, organization_id: str, template_id: str, expected_row_version: int,
+    ):
+        template = self.get_template(organization_id, template_id, lock=True)
+        if template is None:
+            return None, "NOT_FOUND"
+        if template["rowVersion"] != expected_row_version:
+            return template, "STALE"
+        return template, None
+
+    def find_standardized_version(
+        self, *, organization_id, template_id, source_version_id,
+        output_sha256, accepted_preflight_run_id, profile, analysis_hash,
+    ):
+        rows = self.cursor.execute(
+            f"""SELECT {', '.join(_VERSION_COLUMNS)}
+                  FROM word_template_version
+                 WHERE organization_id = ? AND template_id = ?
+                   AND source_version_id = ? AND sha256 = ?
+                 ORDER BY version_no DESC""",  # noqa: S608
+            (
+                organization_id, template_id, source_version_id, output_sha256,
+            ),  # noqa: S608 - columns are module constants.
+        ).fetchall()
+        for row in rows:
+            version = self._version(row)
+            manifest = version.get("creationManifest") or {}
+            standardization = (
+                manifest.get("metadata", {}).get("standardization", {})
+                if isinstance(manifest, dict) else {}
+            )
+            if (
+                manifest.get("action") == "STANDARDIZE"
+                and standardization.get("acceptedPreflightRunId")
+                == accepted_preflight_run_id
+                and standardization.get("profile") == profile
+                and standardization.get("analysisHash") == analysis_hash
+            ):
+                return version
+        return None
+
     def create_template_with_draft(
         self, *, organization_id, owner_type, stable_code, display_name,
         legacy_alias, created_by_id, version,
