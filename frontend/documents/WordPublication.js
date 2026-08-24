@@ -1,7 +1,6 @@
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
-import { authFetchDownload } from "../shared/view_helpers.js";
 import {
   getAvailableWordPublicationTypes,
 } from "./WordPublicationPolicy.js";
@@ -21,6 +20,8 @@ import {
   captureWorkspaceLease,
   isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
+import { beginWordExportLoading } from "./WordExportLoading.js";
+import { runWordPublicationExportJob } from "./WordPublicationJob.js";
 
 const WORD_PUBLICATION_STYLESHEET_URL = new URL(
   "./WordPublication.css?no-inline", import.meta.url,
@@ -166,15 +167,17 @@ function createDocumentCard(documentType, {
     templateResolutions,
     { loading: templateConfigLoading, error: templateConfigError },
   );
+  const isPending = pendingDocumentId === documentType.id;
   const status = document.createElement("span");
-  status.className = `word-publication-document-status${exportState.enabled ? " is-ready" : ""}`;
-  status.textContent = exportState.label;
+  status.className = `word-publication-document-status${
+    isPending ? " is-processing" : exportState.enabled ? " is-ready" : ""
+  }`;
+  status.textContent = isPending ? "Đang tạo tài liệu" : exportState.label;
 
   const button = document.createElement("button");
   button.type = "button";
   button.className = "btn btn-primary";
   button.dataset.wordPublicationExport = documentType.id;
-  const isPending = pendingDocumentId === documentType.id;
   button.disabled = Boolean(pendingDocumentId) || !exportState.enabled;
   button.title = exportState.title;
   button.setAttribute("aria-label", `Xuất Word: ${documentType.label}`);
@@ -193,6 +196,7 @@ function createDocumentCard(documentType, {
 
 function renderWordPublicationPage(controller, root) {
   const state = controller._wordPublicationState;
+  root.setAttribute("aria-busy", state.pendingDocumentId ? "true" : "false");
   const planSelect = root.querySelector("#word-publication-plan-select");
   const packageSelect = root.querySelector("#word-publication-package-select");
   if (!planSelect || !packageSelect) return;
@@ -466,7 +470,10 @@ async function exportWordPublicationDocument(
   let request;
   try {
     request = buildWordPublicationExportRequest({ documentType, plan, packageRecord });
-    request.url = appendSelectedTemplateFilenames(request.url, selectedFilenames);
+    request.createJobUrl = appendSelectedTemplateFilenames(
+      request.createJobUrl,
+      selectedFilenames,
+    );
     if (selectedTemplates.length > 1) {
       request.filename = request.filename.replace(/\.docx$/iu, ".zip");
     }
@@ -482,7 +489,13 @@ async function exportWordPublicationDocument(
   state.selectedDocumentId = documentId;
   state.pendingDocumentId = documentId;
   renderWordPublicationPage(controller, root);
+  let loading = null;
   try {
+    loading = await beginWordExportLoading({
+      detail: `Văn bản: ${documentType.label}${
+        selectedTemplates.length > 1 ? ` (${selectedTemplates.length} file)` : ""
+      }`,
+    });
     const snapshotVersion = await controller.prepareExportSnapshot();
     const currentPackages = getWordPublicationPackages(controller.model, state.planId);
     const currentPackage = selectedRecord(currentPackages, state.packageId);
@@ -493,10 +506,15 @@ async function exportWordPublicationDocument(
     ) {
       throw new Error("Lựa chọn Kế hoạch hoặc Gói thầu đã thay đổi. Vui lòng xuất lại.");
     }
-    await authFetchDownload(
-      appendExportSnapshotVersion(request.url, snapshotVersion),
-      request.filename,
+    await loading.update(
+      "render",
+      "Dữ liệu đã được chuẩn bị. Hệ thống đang tạo tài liệu Word ở chế độ nền.",
     );
+    await runWordPublicationExportJob({
+      createJobUrl: appendExportSnapshotVersion(request.createJobUrl, snapshotVersion),
+      filename: request.filename,
+      onProgress: (stage, message) => loading.update(stage, message),
+    });
     controller.view?.showToast?.(
       "Đã xuất Word",
       selectedTemplates.length > 1
@@ -513,6 +531,7 @@ async function exportWordPublicationDocument(
     );
     return false;
   } finally {
+    await loading?.close?.();
     if (state.pendingDocumentId === documentId) state.pendingDocumentId = "";
     renderWordPublicationPage(controller, root);
     root.querySelector(`[data-word-publication-export="${documentId}"]`)?.focus();

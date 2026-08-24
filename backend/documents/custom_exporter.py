@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
+from docx.image.image import BaseImageHeader
 from docx.shared import Inches
 from datetime import datetime, timezone
 
@@ -48,6 +49,39 @@ _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
 _WORD_CONFIG_LOCK = threading.RLock()
 _WORD_CONFIG_LOCK_TIMEOUT_SECONDS = 5.0
 _DOCX_MONEY_FIELD_NAMES = frozenset(column for _table, column in MONEY_COLUMNS)
+
+
+class _WebPImageHeader(BaseImageHeader):
+    """Read WebP dimensions without transcoding the evidentiary source bytes."""
+
+    @classmethod
+    def from_stream(cls, stream):
+        from PIL import Image
+
+        stream.seek(0)
+        with Image.open(stream) as image:
+            width, height = image.size
+            dpi = image.info.get("dpi") or (72, 72)
+        return cls(int(width), int(height), int(dpi[0] or 72), int(dpi[1] or 72))
+
+    @property
+    def content_type(self):
+        return "image/webp"
+
+    @property
+    def default_ext(self):
+        return "webp"
+
+
+def _register_byte_preserving_image_headers():
+    import docx.image
+
+    signature = (_WebPImageHeader, 8, b"WEBP")
+    if signature not in docx.image.SIGNATURES:
+        docx.image.SIGNATURES = (*docx.image.SIGNATURES, signature)
+
+
+_register_byte_preserving_image_headers()
 
 
 class WordTemplateConfigError(OSError):
@@ -1273,78 +1307,30 @@ def format_context_money_values(data, money_field_names=None):
 _OPTIMIZED_IMAGE_CACHE = {}
 
 def optimize_image_for_docx(filepath, max_width=800):
+    """Load legal publication media byte-for-byte, once per worker process.
+
+    Signature, seal and certificate images are evidentiary source material.
+    Their display size is controlled by OOXML (``InlineImage.width``); pixels,
+    format, EXIF/ICC data and alpha channels are never rewritten here.
+    ``max_width`` remains in the signature for compatibility and cache
+    invalidation, but does not authorize a raster transformation.
+    """
+
     try:
-        mtime = os.path.getmtime(filepath)
-        cache_key = (filepath, max_width)
-
-
-        if cache_key in _OPTIMIZED_IMAGE_CACHE:
-            cached_mtime, cached_data = _OPTIMIZED_IMAGE_CACHE[cache_key]
-            if cached_mtime == mtime:
-                return BytesIO(cached_data)
-
-
-        dir_name = os.path.dirname(filepath)
-        base_name = os.path.basename(filepath)
-        name, ext = os.path.splitext(base_name)
-        cache_filename = f"{name}_opt_{max_width}.jpg"
-        cache_path = os.path.join(dir_name, cache_filename)
-
-
-        if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= mtime:
-            with open(cache_path, "rb") as f:
-                data = f.read()
-            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
-            return BytesIO(data)
-
-
-
-        file_size = os.path.getsize(filepath)
-        if ext.lower() in ['.jpg', '.jpeg'] and file_size < 50000:
-            with open(filepath, "rb") as f:
-                data = f.read()
-            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
-            return BytesIO(data)
-
-        from PIL import Image
-        with Image.open(filepath) as img:
-            w, h = img.size
-            if w > max_width:
-                ratio = max_width / w
-                new_w = int(w * ratio)
-                new_h = int(h * ratio)
-
-                resample = Image.Resampling.BOX if max_width <= 300 else Image.Resampling.BILINEAR
-                img = img.resize((new_w, new_h), resample)
-
-
-            if img.mode in ('RGBA', 'LA', 'P'):
-                background = Image.new("RGB", img.size, (255, 255, 255))
-                if img.mode == 'RGBA':
-                    background.paste(img, mask=img.split()[3])
-                else:
-                    background.paste(img)
-                img = background
-            elif img.mode != 'RGB':
-                img = img.convert('RGB')
-
-            out = BytesIO()
-            img.save(out, format="JPEG", quality=80)
-            data = out.getvalue()
-
-
-            try:
-                with open(cache_path, "wb") as f:
-                    f.write(data)
-            except OSError as cache_err:
-                log_error(cache_err, "Document.ImageCacheWrite")
-
-            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
-            out.seek(0)
-            return out
+        source = os.path.realpath(filepath)
+        file_stat = os.stat(source)
+        cache_key = (source, int(max_width or 0))
+        cached = _OPTIMIZED_IMAGE_CACHE.get(cache_key)
+        fingerprint = (file_stat.st_mtime_ns, file_stat.st_size)
+        if cached and cached[0] == fingerprint:
+            return BytesIO(cached[1])
+        with open(source, "rb") as source_file:
+            data = source_file.read()
+        _OPTIMIZED_IMAGE_CACHE[cache_key] = (fingerprint, data)
+        return BytesIO(data)
     except Exception as e:
-        log_error(e, "Document.ImageOptimization")
-        return filepath
+        log_error(e, "Document.ImmutableImageLoad")
+        raise
 
 def prewarm_image_cache():
 
@@ -1364,11 +1350,6 @@ def prewarm_image_cache():
             fpath = os.path.join(images_dir, fname)
             max_w = 1200 if '_cert' in fname else 300
 
-
-            name_no_ext, _ = os.path.splitext(fname)
-            cache_path = os.path.join(images_dir, f"{name_no_ext}_opt_{max_w}.jpg")
-            if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= os.path.getmtime(fpath):
-                continue
 
             tasks.append((fpath, max_w))
 
@@ -1460,6 +1441,10 @@ def _collect_image_tasks(
                         max_w = 1200
                         width_hint = 'full'
                     tasks.append((data, k, filepath, max_w, width_hint))
+                elif normalize_managed_image_path(v):
+                    raise TemplateRenderError(
+                        "Không thể đọc ảnh pháp lý để nhúng nguyên trạng vào Word."
+                    )
             else:
                 _collect_image_tasks(
                     v,
@@ -1520,6 +1505,9 @@ def convert_images_in_context(
             data_ref[k] = InlineImage(doc, image_stream, width=width_val)
         except Exception as img_ex:
             log_error(img_ex, "Document.ImageConversion")
+            raise TemplateRenderError(
+                "Không thể nhúng nguyên trạng ảnh pháp lý vào Word."
+            ) from img_ex
 
 class TemplateRenderError(ValueError):
     """Public, non-sensitive error raised when a DOCX template cannot render."""
@@ -1590,6 +1578,8 @@ def generate_report_from_custom_template(
             log_error(log_write_error, "Document.RenderErrorLog")
 
 
+        if isinstance(e, TemplateRenderError):
+            raise
         raise TemplateRenderError(
             "Mẫu Word chứa biểu thức không được hỗ trợ hoặc không thể kết xuất."
         ) from e

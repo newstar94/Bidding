@@ -156,7 +156,7 @@ test("plan and package selectors use filtered latest records and enforce parent 
   assert.deepEqual(getWordPublicationPackages(model, ""), []);
 });
 
-test("export requests reuse existing plan and package Word endpoints", () => {
+test("export requests use the background plan and package Word job endpoints", () => {
   const planDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "procurement_plan");
   const evaluationDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "bid_evaluation_report");
   const consultantDocument = WORD_PUBLICATION_DOCUMENTS.find((item) => item.id === "consultant_evaluation_step_1");
@@ -166,14 +166,14 @@ test("export requests reuse existing plan and package Word endpoints", () => {
   assert.deepEqual(
     buildWordPublicationExportRequest({ documentType: planDocument, plan, packageRecord }),
     {
-      url: "/api/export-plan/plan%2Fa?publicationType=procurement_plan",
+      createJobUrl: "/api/document-jobs/plan/plan%2Fa?publicationType=procurement_plan",
       filename: "procurement_plan_KH_2026.docx",
     },
   );
   assert.deepEqual(
     buildWordPublicationExportRequest({ documentType: evaluationDocument, plan, packageRecord }),
     {
-      url: "/api/export-report/package%2Fa?type=evaluation&publicationType=bid_evaluation_report",
+      createJobUrl: "/api/document-jobs/package-report/package%2Fa?type=evaluation&publicationType=bid_evaluation_report",
       filename: "bid_evaluation_report_Goi_01.docx",
     },
   );
@@ -184,7 +184,7 @@ test("export requests reuse existing plan and package Word endpoints", () => {
       packageRecord,
     }),
     {
-      url: "/api/export-report/package%2Fa?type=evaluation&publicationType=consultant_evaluation_step_1",
+      createJobUrl: "/api/document-jobs/package-report/package%2Fa?type=evaluation&publicationType=consultant_evaluation_step_1",
       filename: "consultant_evaluation_step_1_Goi_01.docx",
     },
   );

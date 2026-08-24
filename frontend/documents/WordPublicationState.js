@@ -70,13 +70,13 @@ export function buildWordPublicationExportRequest({ documentType, plan, packageR
   if (documentType.exportTarget.scope === "plan") {
     if (!plan?.id) throw new Error("Không xác định được Kế hoạch để xuất Word.");
     return {
-      url: `/api/export-plan/${encodeURIComponent(plan.id)}?publicationType=${encodeURIComponent(documentType.id)}`,
+      createJobUrl: `/api/document-jobs/plan/${encodeURIComponent(plan.id)}?publicationType=${encodeURIComponent(documentType.id)}`,
       filename: `${stableId}_${filenameToken(plan.maKeHoach, "ke_hoach")}.docx`,
     };
   }
   if (!packageRecord?.id) throw new Error("Không xác định được Gói thầu để xuất Word.");
   return {
-    url: `/api/export-report/${encodeURIComponent(packageRecord.id)}?type=${encodeURIComponent(documentType.exportTarget.reportType)}&publicationType=${encodeURIComponent(documentType.id)}`,
+    createJobUrl: `/api/document-jobs/package-report/${encodeURIComponent(packageRecord.id)}?type=${encodeURIComponent(documentType.exportTarget.reportType)}&publicationType=${encodeURIComponent(documentType.id)}`,
     filename: `${stableId}_${filenameToken(packageRecord.maGoiThau, "goi_thau")}.docx`,
   };
 }

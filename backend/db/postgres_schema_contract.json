@@ -1499,6 +1499,13 @@
       "table": "document_jobs",
       "valid": true
     },
+    "idx_document_jobs_record_owner": {
+      "definition": "CREATE INDEX idx_document_jobs_record_owner ON $SCHEMA.document_jobs USING btree (organization_id, record_type, record_id, user_id, created_at)",
+      "live": true,
+      "ready": true,
+      "table": "document_jobs",
+      "valid": true
+    },
     "idx_document_jobs_stale": {
       "definition": "CREATE INDEX idx_document_jobs_stale ON $SCHEMA.document_jobs USING btree (locked_at) WHERE (status = 'processing'::text)",
       "live": true,
@@ -4042,7 +4049,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 75,
+  "schemaVersion": 76,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -9212,6 +9219,41 @@
           "notNull": true,
           "type": "text"
         },
+        "progress_completed_items": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "progress_phase": {
+          "default": "'queued'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "progress_total_items": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "record_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "record_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "status": {
           "default": "'pending'::text",
           "generated": "",
@@ -9293,7 +9335,42 @@
         },
         "document_jobs_policy_json_check": {
           "deferrable": false,
-          "definition": "CHECK (length(policy_json) <= 8192)",
+          "definition": "CHECK (length(policy_json) <= 65536)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_progress_completed_items_check": {
+          "deferrable": false,
+          "definition": "CHECK (progress_completed_items >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_progress_phase_check": {
+          "deferrable": false,
+          "definition": "CHECK (progress_phase <> ''::text AND length(progress_phase) <= 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_progress_total_items_check": {
+          "deferrable": false,
+          "definition": "CHECK (progress_total_items >= 1)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_record_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (record_id IS NULL OR record_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "document_jobs_record_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (record_type IS NULL OR (record_type = ANY (ARRAY['goi_thau'::text, 'ke_hoach_lcnt'::text])))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

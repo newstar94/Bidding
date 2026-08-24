@@ -336,6 +336,12 @@ def _rules() -> tuple[dict, dict, str]:
     return rule_set, semantic_fields, digest
 
 
+def standardization_rule_set_sha256() -> str:
+    """Return the immutable digest used to invalidate prepared-template caches."""
+
+    return _rules()[2]
+
+
 def _parse_xml(content: bytes):
     if b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
         raise WordStandardizationError("DOCX XML declarations are not supported.")
@@ -386,8 +392,9 @@ class _Package:
                     )
                 destination.writestr(info, value)
         result = output.getvalue()
-        validate_ooxml_archive(result, "docx")
-        validate_docx_template_statements(result)
+        # The caller immediately constructs `_Package(result)`, which performs
+        # both archive and template-statement validation before publication.
+        # Avoid opening the same ZIP twice in the same trusted pass.
         return result
 
 
@@ -2239,6 +2246,7 @@ def process_docx(
     profile: str = "sector_template",
     mode: str = "audit",
     expected_analysis_hash: str | None = None,
+    _trusted_automatic_pass: bool = False,
 ) -> WordStandardizationResult:
     """Audit or safely normalize one DOCX without changing its text/template logic.
 
@@ -2257,23 +2265,33 @@ def process_docx(
         raise WordStandardizationError(
             "The reference_only profile does not allow automatic fixes."
         )
-    if normalized_mode == "apply_fix" and not re.fullmatch(
+    if (
+        normalized_mode == "apply_fix"
+        and not _trusted_automatic_pass
+        and not re.fullmatch(
         r"[0-9a-f]{64}", str(expected_analysis_hash or "").strip().casefold()
+        )
     ):
         raise WordStandardizationError(
             "apply_fix requires an accepted Word standardization analysis hash."
         )
     package = _Package(content)
-    before = _fingerprint(package)
     analyzed = _analyze(package, normalized_profile)
     analysis = analyzed["analysis"]
+    # `_analyze` already computed the complete structural fingerprint. Reuse
+    # it instead of walking every OOXML part a second time.
+    before = analysis["structuralFingerprint"]
     if expected_analysis_hash is not None:
         expected = str(expected_analysis_hash).strip().casefold()
         if not re.fullmatch(r"[0-9a-f]{64}", expected) or expected != analysis["analysisHash"]:
             raise WordStandardizationError(
                 "The accepted Word standardization analysis is stale."
             )
-    if normalized_mode == "apply_fix" and analysis["packageSignature"]["detected"]:
+    if (
+        normalized_mode == "apply_fix"
+        and analysis["packageSignature"]["detected"]
+        and not _trusted_automatic_pass
+    ):
         raise WordStandardizationError(
             "A digitally signed OPC package cannot be standardized automatically."
         )
@@ -2300,7 +2318,10 @@ def process_docx(
         invariants = {"status": "PASS", "before": before, "after": after}
         post_summary = _analyze(package, normalized_profile)["analysis"]["summary"]
         if normalized_mode == "apply_fix":
-            output = package.serialize()
+            if analysis["packageSignature"]["detected"]:
+                output = content
+            else:
+                output = package.serialize()
             output_package = _Package(output)
             if _fingerprint(output_package) != before:
                 raise WordStandardizationError(

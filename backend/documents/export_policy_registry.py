@@ -52,6 +52,10 @@ EXPORT_POLICIES = {
     "docx.plan": ExportPolicy(
         "official_snapshot", "docx", True, "plan", "document.plan_exported",
     ),
+    "docx.document_job": ExportPolicy(
+        "official_snapshot", "docx", True, "job_record",
+        "document.export_job_downloaded",
+    ),
 }
 
 

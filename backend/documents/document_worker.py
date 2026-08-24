@@ -26,7 +26,7 @@ from backend.documents.document_ipc import (
     read_job_manifest,
     read_result,
     write_job_manifest,
-    write_result,
+    write_render_cache_overlay,
 )
 from backend.documents.document_sandbox import (
     sandbox_worker_command,
@@ -200,7 +200,7 @@ def _bounded_float_env(
 
 def _worker_semaphore() -> threading.BoundedSemaphore:
     global _semaphore, _semaphore_size
-    size = _positive_int_env("DOCUMENT_WORKER_MAX_CONCURRENCY", 2, 1, 8)
+    size = _positive_int_env("DOCUMENT_WORKER_MAX_CONCURRENCY", 4, 1, 8)
     with _semaphore_guard:
         if _semaphore is None or _semaphore_size != size:
             _semaphore = threading.BoundedSemaphore(size)
@@ -410,6 +410,149 @@ def _read_result(result_path: Path, job_dir: Path) -> Any:
     raise DocumentWorkerError(message)
 
 
+def _prepare_render_payload_cache(
+    operation: str,
+    payload: dict[str, Any],
+    *,
+    organization_scope: str | None = None,
+) -> tuple[dict[str, Any], list[tuple[int, Any]], list[tuple[int, bytes]]]:
+    """Stage cache hits and lease misses without starting another worker."""
+
+    if operation not in {"render_docx", "render_docx_batch"}:
+        return payload, [], []
+    from backend.documents.word_export_cache import (
+        acquire_standardized_template_cache,
+    )
+
+    context_manifest = payload.get("context_manifest")
+    if not isinstance(context_manifest, dict):
+        return payload, [], []
+    cache_scope = str(
+        organization_scope
+        or context_manifest.get("media_organization_id")
+        or "unscoped"
+    )
+    document_type_hint = context_manifest.get("document_type")
+    mode = os.environ.get("WORD_EXPORT_STANDARDIZATION_MODE")
+
+    def source_target(raw_target: dict[str, Any]) -> tuple[dict[str, Any], bytes | None]:
+        target = dict(raw_target)
+        if target.get("template_prestandardized") is True:
+            return target, None
+        if isinstance(target.get("template_content"), bytes):
+            source = bytes(target["template_content"])
+        elif target.get("template_path"):
+            source = Path(str(target["template_path"])).read_bytes()
+        else:
+            raise DocumentWorkerInputError("Tác vụ Word thiếu nguồn biểu mẫu.")
+        return target, source
+
+    prepared_payload = dict(payload)
+    if operation == "render_docx":
+        raw_targets = [{
+            key: prepared_payload.pop(key)
+            for key in ("template_path", "template_content", "template_prestandardized")
+            if key in prepared_payload
+        }]
+    else:
+        templates = prepared_payload.get("templates")
+        if not isinstance(templates, list) or not all(
+            isinstance(target, dict) for target in templates
+        ):
+            raise DocumentWorkerInputError("Biểu mẫu Word theo lô không hợp lệ.")
+        raw_targets = templates
+
+    staged = [source_target(target) for target in raw_targets]
+    groups: dict[str, list[int]] = {}
+    sources: dict[str, bytes] = {}
+    for index, (_target, source) in enumerate(staged):
+        if source is None:
+            continue
+        digest = hashlib.sha256(source).hexdigest()
+        groups.setdefault(digest, []).append(index)
+        sources[digest] = source
+
+    leases: list[tuple[int, Any]] = []
+    overrides: list[tuple[int, bytes]] = []
+    try:
+        # Stable ordering prevents inverse batches from holding each other's locks.
+        for digest in sorted(groups):
+            cached, lease = acquire_standardized_template_cache(
+                sources[digest],
+                organization_scope=cache_scope,
+                document_type_hint=document_type_hint,
+                mode=mode,
+            )
+            if cached is not None:
+                for index in groups[digest]:
+                    target, _source = staged[index]
+                    target.pop("template_path", None)
+                    target["template_content"] = cached
+                    target["template_prestandardized"] = True
+                    target["standardization_cache_hit"] = True
+                    overrides.append((index, cached))
+            elif lease is not None:
+                # One sidecar can populate the cache for duplicate source bytes.
+                leases.append((groups[digest][0], lease))
+    except Exception:
+        _release_render_cache_leases(leases)
+        raise
+
+    targets = [target for target, _source in staged]
+    if operation == "render_docx":
+        prepared_payload.update(targets[0])
+    else:
+        prepared_payload["templates"] = targets
+    return prepared_payload, leases, overrides
+
+
+def _release_render_cache_leases(leases: list[tuple[int, Any]]) -> None:
+    from backend.documents.word_export_cache import release_standardized_template_cache
+
+    for _index, lease in leases:
+        release_standardized_template_cache(lease)
+
+
+def _publish_render_cache_sidecars(
+    job_dir: Path, leases: list[tuple[int, Any]],
+) -> None:
+    """Publish only regular, bounded DOCX sidecars attested by the sandbox."""
+
+    from backend.documents.archive_validation import validate_ooxml_archive
+    from backend.documents.template_security import validate_docx_template_statements
+    from backend.documents.word_export_cache import (
+        publish_standardized_template_cache,
+        release_standardized_template_cache,
+    )
+
+    resolved_job_dir = job_dir.resolve()
+    for index, lease in leases:
+        candidate = job_dir / f"prepared-template-{index:04d}.docx"
+        try:
+            candidate_stat = candidate.lstat()
+            resolved = candidate.resolve(strict=True)
+            if (
+                resolved.parent != resolved_job_dir
+                or candidate.is_symlink()
+                or not stat.S_ISREG(candidate_stat.st_mode)
+                or not 0 < candidate_stat.st_size <= 64 * 1024 * 1024
+            ):
+                continue
+            content = resolved.read_bytes()
+            if len(content) != candidate_stat.st_size:
+                continue
+            validate_ooxml_archive(content, "docx")
+            validate_docx_template_statements(content)
+            publish_standardized_template_cache(
+                lease, content, preservation_attested=True,
+            )
+        except (OSError, ValueError):
+            # Cache publication is optional and cannot invalidate a valid render.
+            pass
+        finally:
+            release_standardized_template_cache(lease)
+
+
 def run_document_job(
     operation: str,
     payload: dict[str, Any],
@@ -445,7 +588,11 @@ def run_document_job(
             job_dir = Path(raw_job_dir).resolve()
             input_path = job_dir / "input.json"
             result_path = job_dir / "result.json"
+            cache_leases: list[tuple[int, Any]] = []
             try:
+                payload, cache_leases, _cache_overrides = _prepare_render_payload_cache(
+                    operation, payload,
+                )
                 write_job_manifest(
                     input_path,
                     operation,
@@ -453,6 +600,7 @@ def run_document_job(
                     image_root=Path(image_root or IMAGE_DIR).resolve(),
                 )
             except (DocumentIpcError, OSError) as exc:
+                _release_render_cache_leases(cache_leases)
                 raise DocumentWorkerInputError(str(exc)) from exc
             _prepare_privilege_drop(job_dir)
 
@@ -503,13 +651,18 @@ def run_document_job(
                 raise DocumentWorkerError(
                     "Tiến trình xử lý tài liệu đã dừng bất thường."
                 )
-            result = _read_result(result_path, job_dir)
-            outcome = "completed"
-            return result
+            try:
+                result = _read_result(result_path, job_dir)
+                _publish_render_cache_sidecars(job_dir, cache_leases)
+                outcome = "completed"
+                return result
+            finally:
+                _release_render_cache_leases(cache_leases)
     except DocumentWorkerTimeoutError:
         outcome = "timed_out"
         raise
     finally:
+        _release_render_cache_leases(locals().get("cache_leases", []))
         document_worker_finished(outcome, time.perf_counter() - job_started)
         semaphore.release()
         try:
@@ -517,6 +670,98 @@ def run_document_job(
                 job_root.rmdir()
         except OSError:
             pass
+
+
+def _run_staged_document_job(
+    job_dir: Path,
+    input_path: Path,
+    result_path: Path,
+    *,
+    timeout_seconds: float | None = None,
+) -> Any:
+    """Run directly from an already-hashed durable staging directory."""
+
+    timeout = timeout_seconds or _bounded_float_env(
+        "DOCUMENT_WORKER_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS, 1.0, 180.0
+    )
+    timeout = min(180.0, max(1.0, timeout))
+    acquire_timeout = _bounded_float_env(
+        "DOCUMENT_WORKER_QUEUE_TIMEOUT_SECONDS", 2.0, 0.0, 30.0
+    )
+    semaphore = _worker_semaphore()
+    wait_started = time.perf_counter()
+    document_worker_wait_started()
+    if not semaphore.acquire(timeout=max(0.0, min(30.0, acquire_timeout))):
+        document_worker_rejected(time.perf_counter() - wait_started)
+        raise DocumentWorkerBusyError(_BUSY_MESSAGE)
+    document_worker_acquired(time.perf_counter() - wait_started)
+    job_started = time.perf_counter()
+    outcome = "failed"
+    try:
+        resolved_job_dir = job_dir.resolve(strict=True)
+        if (
+            input_path.resolve().parent != resolved_job_dir
+            or result_path.resolve().parent != resolved_job_dir
+        ):
+            raise DocumentWorkerInputError("Đường dẫn tác vụ tài liệu không hợp lệ.")
+        _prepare_privilege_drop(resolved_job_dir)
+        base_command = [
+            sys.executable,
+            "-m",
+            "backend.documents.document_worker_entry",
+            str(input_path),
+            str(result_path),
+        ]
+        worker_environment = _worker_environment(resolved_job_dir)
+        try:
+            command = sandbox_worker_command(
+                base_command, resolved_job_dir, worker_environment
+            )
+        except RuntimeError as exc:
+            raise DocumentWorkerError(
+                "Không thể khởi tạo sandbox xử lý tài liệu."
+            ) from exc
+        popen_kwargs: dict[str, Any] = {
+            "cwd": str(resolved_job_dir),
+            "env": worker_environment,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+        }
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        elif hasattr(subprocess, "CREATE_NO_WINDOW"):
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        process = subprocess.Popen(command, **popen_kwargs)
+        windows_job_handle = None
+        try:
+            try:
+                windows_job_handle = _assign_windows_job_object(process)
+            except OSError as exc:
+                _terminate_process(process)
+                raise DocumentWorkerError(
+                    "Không thể áp dụng giới hạn tài nguyên cho tác vụ tài liệu."
+                ) from exc
+            stdout, _stderr = process.communicate(timeout=timeout)
+            _record_worker_events(stdout)
+        except subprocess.TimeoutExpired as exc:
+            _terminate_process(process)
+            outcome = "timed_out"
+            raise DocumentWorkerTimeoutError(
+                "Tác vụ tài liệu vượt quá thời gian xử lý cho phép."
+            ) from exc
+        finally:
+            _close_windows_job_object(windows_job_handle)
+        if process.returncode != 0 and not result_path.exists():
+            raise DocumentWorkerError(
+                "Tiến trình xử lý tài liệu đã dừng bất thường."
+            )
+        result = _read_result(result_path, resolved_job_dir)
+        outcome = "completed"
+        return result
+    finally:
+        document_worker_finished(outcome, time.perf_counter() - job_started)
+        semaphore.release()
 
 
 _DOCUMENT_QUEUE_WORKER_ID = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
@@ -544,7 +789,7 @@ def _document_job_dir(job_id: str) -> Path:
 
 def _external_queue_capacity() -> int:
     concurrency = _positive_int_env(
-        "DOCUMENT_WORKER_MAX_CONCURRENCY", 2, 1, 8
+        "DOCUMENT_WORKER_MAX_CONCURRENCY", 4, 1, 8
     )
     queue_size = _positive_int_env("DOCUMENT_WORKER_QUEUE_SIZE", 2, 0, 32)
     instances = _positive_int_env("DOCUMENT_WORKER_INSTANCE_COUNT", 1, 1, 64)
@@ -691,16 +936,21 @@ def _enqueue_durable_document_job(
             connection.execute(
                 """INSERT INTO document_jobs (
                        id, operation, organization_id, user_id, package_id,
+                       record_type, record_id,
                        filename, content_type, policy_json, policy_hash,
-                       status, attempt_count,
+                       status, progress_phase, progress_completed_items,
+                       progress_total_items, attempt_count,
                        available_at, expires_at, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)""",
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending',
+                             ?, ?, ?, 0, ?, ?, ?, ?)""",
                 (
                     job_id,
                     operation,
                     scope.get("organization_id"),
                     scope.get("user_id"),
                     scope.get("package_id"),
+                    scope.get("record_type"),
+                    scope.get("record_id"),
                     scope.get("filename"),
                     scope.get("content_type"),
                     json.dumps(
@@ -710,6 +960,9 @@ def _enqueue_durable_document_job(
                         separators=(",", ":"),
                     ),
                     scope.get("policy_hash") or "",
+                    scope.get("progress_phase") or "queued",
+                    max(0, int(scope.get("progress_completed_items") or 0)),
+                    max(1, int(scope.get("progress_total_items") or 1)),
                     now,
                     now + retention_seconds,
                     now,
@@ -762,7 +1015,9 @@ def _claim_durable_document_job(database, job_id: str | None = None):
         connection.execute("BEGIN")
         row = connection.execute(
             """SELECT id, operation, organization_id, user_id, package_id,
-                      policy_json, policy_hash, attempt_count
+                      record_type, record_id, policy_json, policy_hash,
+                      progress_phase, progress_completed_items,
+                      progress_total_items, attempt_count
                FROM document_jobs
                WHERE (CAST(? AS TEXT) IS NULL OR id = ?)
                  AND attempt_count < ?
@@ -844,16 +1099,28 @@ def _finish_durable_document_job(
         completed_at = now if status == "failed" else None
     connection = database.get_connection()
     try:
-        owner_scoped = any(
-            str(claimed.get(field) or "").strip()
-            for field in ("organization_id", "user_id", "package_id")
+        record_type = str(
+            claimed.get("record_type")
+            or ("goi_thau" if claimed.get("package_id") else "")
+        ).strip()
+        record_id = str(
+            claimed.get("record_id") or claimed.get("package_id") or ""
+        ).strip()
+        owner_values = (
+            str(claimed.get("organization_id") or "").strip(),
+            str(claimed.get("user_id") or "").strip(),
+            record_type,
+            record_id,
         )
+        owner_scoped = any(owner_values)
+        if owner_scoped and not all(owner_values):
+            raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
         if error is None and owner_scoped:
             policy = validate_document_job_policy_snapshot(
                 claimed.get("policy_json"), claimed.get("policy_hash")
             )
-            provenance = policy.get("artifactProvenance")
-            if provenance is not None:
+            provenance_value = policy.get("artifactProvenance")
+            if provenance_value is not None:
                 if not isinstance(result, bytes) or not result:
                     raise DocumentWorkerInputError(
                         "Kết quả Word không hợp lệ để ghi provenance."
@@ -868,25 +1135,74 @@ def _finish_durable_document_job(
                     ImmutableTemplateStorage,
                 )
 
-                WordTemplateCatalog(
+                provenances = (
+                    provenance_value
+                    if isinstance(provenance_value, list)
+                    else [provenance_value]
+                )
+                if not provenances or any(
+                    not isinstance(item, dict) for item in provenances
+                ):
+                    raise DocumentWorkerInputError(
+                        "Thông tin nguồn biểu mẫu Word không hợp lệ."
+                    )
+                if len(provenances) == 1:
+                    artifact_contents = [result]
+                else:
+                    from io import BytesIO
+                    from zipfile import BadZipFile, ZipFile
+
+                    try:
+                        with ZipFile(BytesIO(result)) as archive:
+                            entries = archive.infolist()
+                            artifact_contents = [archive.read(entry) for entry in entries]
+                    except BadZipFile as exc:
+                        raise DocumentWorkerInputError(
+                            "Gói kết quả Word không hợp lệ để ghi provenance."
+                        ) from exc
+                    if len(artifact_contents) != len(provenances):
+                        raise DocumentWorkerInputError(
+                            "Gói kết quả Word không khớp số biểu mẫu nguồn."
+                        )
+                catalog = WordTemplateCatalog(
                     WordTemplateCatalogRepository(connection.cursor()),
                     ImmutableTemplateStorage(),
-                ).record_generated_provenance(
-                    organization_id=claimed["organization_id"],
-                    artifact_id=f"document-job:{claimed['id']}",
-                    template_version_id=provenance["templateVersionId"],
-                    template_sha256=provenance["templateSha256"],
-                    record_type=provenance["recordType"],
-                    record_id=provenance["recordId"],
-                    record_row_version=provenance["recordRowVersion"],
-                    artifact_sha256=hashlib.sha256(result).hexdigest(),
-                    actor_user_id=claimed["user_id"],
                 )
+                for index, (provenance, artifact_content) in enumerate(
+                    zip(provenances, artifact_contents, strict=True)
+                ):
+                    artifact_id = f"document-job:{claimed['id']}"
+                    if len(provenances) > 1:
+                        artifact_id = f"{artifact_id}:{index + 1}"
+                    catalog.record_generated_provenance(
+                        organization_id=claimed["organization_id"],
+                        artifact_id=artifact_id,
+                        template_version_id=provenance["templateVersionId"],
+                        template_sha256=provenance["templateSha256"],
+                        record_type=provenance["recordType"],
+                        record_id=provenance["recordId"],
+                        record_row_version=provenance["recordRowVersion"],
+                        artifact_sha256=hashlib.sha256(artifact_content).hexdigest(),
+                        actor_user_id=claimed["user_id"],
+                    )
+        progress_phase = (
+            "completed" if status == "completed"
+            else "queued" if status == "retry"
+            else "failed"
+        )
+        progress_total = max(1, int(claimed.get("progress_total_items") or 1))
+        progress_completed = (
+            progress_total
+            if status == "completed"
+            else max(0, int(claimed.get("progress_completed_items") or 0))
+        )
         connection.execute(
             """UPDATE document_jobs
                SET status = ?, available_at = ?, locked_at = NULL,
                    locked_by = NULL, last_error_code = ?,
-                   last_error_message = ?, completed_at = ?, updated_at = ?
+                   last_error_message = ?, completed_at = ?,
+                   progress_phase = ?, progress_completed_items = ?,
+                   progress_total_items = ?, updated_at = ?
                WHERE id = ? AND status = 'processing' AND locked_by = ?""",
             (
                 status,
@@ -894,6 +1210,9 @@ def _finish_durable_document_job(
                 error_code,
                 error_message,
                 completed_at,
+                progress_phase,
+                progress_completed,
+                progress_total,
                 now,
                 claimed["id"],
                 claimed["lock_token"],
@@ -957,6 +1276,7 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
         connection.execute("BEGIN")
         job_row = connection.execute(
             """SELECT id, organization_id, user_id, package_id,
+                      record_type, record_id,
                       policy_json, policy_hash
                  FROM document_jobs WHERE id = ? FOR UPDATE""",
             (job_id,),
@@ -969,6 +1289,7 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
             """UPDATE document_jobs
                SET status = 'retry', attempt_count = 0, available_at = ?,
                    locked_at = NULL, locked_by = NULL, completed_at = NULL,
+                   progress_phase = 'queued', progress_completed_items = 0,
                    expires_at = ?, updated_at = ?
                WHERE id = ? AND operation = ? AND status = 'failed'
                  AND cancelled_at IS NULL""",
@@ -990,15 +1311,26 @@ def enqueue_document_export(
     *,
     organization_id: str,
     user_id: str,
-    package_id: str,
+    package_id: str | None,
+    record_type: str | None = None,
+    record_id: str | None = None,
     filename: str,
     content_type: str,
+    progress_phase: str = "queued",
+    progress_completed_items: int = 0,
+    progress_total_items: int = 1,
     policy: dict[str, Any] | None = None,
     policy_hash: str = "",
     database=None,
     audit_event: dict[str, Any] | None = None,
 ) -> str:
     validated_policy = validate_document_job_policy_snapshot(policy, policy_hash)
+    normalized_record_type = str(
+        record_type or ("goi_thau" if package_id else "")
+    ).strip()
+    normalized_record_id = str(record_id or package_id or "").strip()
+    if normalized_record_type not in {"goi_thau", "ke_hoach_lcnt"} or not normalized_record_id:
+        raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
     return _enqueue_durable_document_job(
         operation,
         payload,
@@ -1007,8 +1339,13 @@ def enqueue_document_export(
             "organization_id": organization_id,
             "user_id": user_id,
             "package_id": package_id,
+            "record_type": normalized_record_type,
+            "record_id": normalized_record_id,
             "filename": filename,
             "content_type": content_type,
+            "progress_phase": progress_phase,
+            "progress_completed_items": progress_completed_items,
+            "progress_total_items": progress_total_items,
             "policy": validated_policy,
             "policy_hash": policy_hash,
         },
@@ -1021,9 +1358,11 @@ def get_document_export_job(database, job_id: str, organization_id: str, user_id
     try:
         row = connection.execute(
             """SELECT id, operation, organization_id, user_id, package_id,
+                      record_type, record_id,
                       filename, content_type, status, attempt_count,
                       last_error_code, completed_at, expires_at, cancelled_at,
-                      policy_json, policy_hash
+                      policy_json, policy_hash, progress_phase,
+                      progress_completed_items, progress_total_items
                FROM document_jobs
                WHERE id = ? AND organization_id = ? AND user_id = ?""",
             (job_id, organization_id, user_id),
@@ -1039,9 +1378,11 @@ def read_document_export_result(database, job_id: str, organization_id: str, use
         connection.execute("BEGIN")
         row = connection.execute(
             """SELECT id, operation, organization_id, user_id, package_id,
+                      record_type, record_id,
                       filename, content_type, status, attempt_count,
                       last_error_code, completed_at, expires_at, cancelled_at,
-                      policy_json, policy_hash
+                      policy_json, policy_hash, progress_phase,
+                      progress_completed_items, progress_total_items
                  FROM document_jobs
                 WHERE id = ? AND organization_id = ? AND user_id = ?
                 FOR SHARE""",
@@ -1072,7 +1413,8 @@ def cancel_document_export(database, job_id: str, organization_id: str, user_id:
             """UPDATE document_jobs
                SET status = 'failed', cancelled_at = ?, completed_at = ?,
                    last_error_code = 'JOB_CANCELLED',
-                   last_error_message = NULL, updated_at = ?
+                   last_error_message = NULL, progress_phase = 'cancelled',
+                   updated_at = ?
                WHERE id = ? AND organization_id = ? AND user_id = ?
                  AND status IN ('pending', 'retry')""",
             (now, now, now, job_id, organization_id, user_id),
@@ -1086,12 +1428,59 @@ def cancel_document_export(database, job_id: str, organization_id: str, user_id:
         connection.close()
 
 
+def _update_document_job_progress(
+    database,
+    claimed,
+    phase: str,
+    *,
+    completed_items: int = 0,
+    total_items: int = 1,
+) -> None:
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            """UPDATE document_jobs
+               SET progress_phase = ?, progress_completed_items = ?,
+                   progress_total_items = ?, updated_at = ?
+               WHERE id = ? AND status = 'processing' AND locked_by = ?""",
+            (
+                str(phase)[:64],
+                max(0, int(completed_items)),
+                max(1, int(total_items)),
+                int(time.time()),
+                claimed["id"],
+                claimed["lock_token"],
+            ),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _remove_prepared_document_sidecars(job_dir: Path) -> None:
+    for candidate in (
+        job_dir / "prepared-input.json",
+        *job_dir.glob("input-prepared-*.bin"),
+        *job_dir.glob("input-cache-*.bin"),
+        *job_dir.glob("prepared-template-*.docx"),
+        *job_dir.glob("prepared-template-*.tmp"),
+    ):
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _process_claimed_document_job(database, claimed) -> None:
     job_dir = _document_job_dir(claimed["id"])
+    cache_leases: list[tuple[int, Any]] = []
     try:
         owner_values = tuple(
             str(claimed.get(field) or "").strip()
-            for field in ("organization_id", "user_id", "package_id")
+            for field in ("organization_id", "user_id", "record_type", "record_id")
         )
         owner_scoped = any(owner_values)
         if owner_scoped and not all(owner_values):
@@ -1105,10 +1494,46 @@ def _process_claimed_document_job(database, claimed) -> None:
         operation, payload = read_job_manifest(job_dir / "input.json", job_dir)
         if operation != claimed["operation"]:
             raise DocumentWorkerInputError("Loại tác vụ tài liệu không khớp.")
-        result = run_document_job(
-            operation,
-            payload,
-            image_root=job_dir / "assets" / "images",
+        templates = payload.get("templates")
+        total_items = (
+            len(templates)
+            if operation == "render_docx_batch" and isinstance(templates, list)
+            else 1
+        )
+        _update_document_job_progress(
+            database, claimed, "preparing", total_items=total_items
+        )
+        input_path = job_dir / "input.json"
+        if operation in {"render_docx", "render_docx_batch"}:
+            _remove_prepared_document_sidecars(job_dir)
+            _prepared_payload, cache_leases, cache_overrides = _prepare_render_payload_cache(
+                operation,
+                payload,
+                organization_scope=str(claimed.get("organization_id") or ""),
+            )
+            if cache_overrides:
+                input_path = job_dir / "prepared-input.json"
+                write_render_cache_overlay(
+                    input_path,
+                    job_dir / "input.json",
+                    operation,
+                    cache_overrides,
+                )
+                _prepare_external_job_permissions(job_dir)
+        result_path = job_dir / "result.json"
+        for result_file in (result_path, job_dir / "result.bin"):
+            result_file.unlink(missing_ok=True)
+        _update_document_job_progress(
+            database, claimed, "rendering", total_items=total_items
+        )
+        result = _run_staged_document_job(job_dir, input_path, result_path)
+        _publish_render_cache_sidecars(job_dir, cache_leases)
+        _update_document_job_progress(
+            database,
+            claimed,
+            "finalizing",
+            completed_items=total_items,
+            total_items=total_items,
         )
         if owner_scoped:
             policy_connection = database.get_connection()
@@ -1116,15 +1541,9 @@ def _process_claimed_document_job(database, claimed) -> None:
                 verify_document_job_policy(policy_connection.cursor(), claimed)
             finally:
                 policy_connection.close()
-        result_path = job_dir / "result.json"
-        if result_path.exists():
-            result_path.unlink()
-        binary_result = job_dir / "result.bin"
-        if binary_result.exists():
-            binary_result.unlink()
-        write_result(result_path, result=result)
         _prepare_external_job_permissions(job_dir)
         _finish_durable_document_job(database, claimed, result=result)
+        _remove_prepared_document_sidecars(job_dir)
     except Exception as error:
         for result_file in (job_dir / "result.json", job_dir / "result.bin"):
             try:
@@ -1132,8 +1551,11 @@ def _process_claimed_document_job(database, claimed) -> None:
             except OSError:
                 pass
         _finish_durable_document_job(database, claimed, error)
+        _remove_prepared_document_sidecars(job_dir)
         # Keep the immutable input and failed metadata for operator inspection
         # and an explicit retry. The retention sweep is the only deletion path.
+    finally:
+        _release_render_cache_leases(cache_leases)
 
 
 def process_next_durable_document_job(database=None, *, job_id=None) -> bool:
@@ -1198,7 +1620,10 @@ def _consume_durable_document_result(
             if error_code == "DocumentWorkerInputError":
                 raise DocumentWorkerInputError(message)
             raise DocumentWorkerError(message)
-        time.sleep(0.05)
+        if not external_worker:
+            time.sleep(0.05)
+        else:
+            time.sleep(0.25)
     raise DocumentWorkerTimeoutError(
         "Tác vụ tài liệu vượt quá thời gian chờ cho phép."
     )
@@ -1214,10 +1639,14 @@ async def run_durable_document_queue_worker(database) -> None:
     )
     while True:
         try:
-            processed = await asyncio.to_thread(
-                process_next_durable_document_job,
-                database,
+            concurrency = _positive_int_env(
+                "DOCUMENT_WORKER_MAX_CONCURRENCY", 4, 1, 8
             )
+            outcomes = await asyncio.gather(*(
+                asyncio.to_thread(process_next_durable_document_job, database)
+                for _index in range(concurrency)
+            ))
+            processed = any(outcomes)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -1247,7 +1676,7 @@ async def run_document_job_async(
     """
 
     global _async_runtime
-    concurrency = _positive_int_env("DOCUMENT_WORKER_MAX_CONCURRENCY", 2, 1, 8)
+    concurrency = _positive_int_env("DOCUMENT_WORKER_MAX_CONCURRENCY", 4, 1, 8)
     queue_size = _positive_int_env("DOCUMENT_WORKER_QUEUE_SIZE", 2, 0, 32)
     config = (concurrency, queue_size)
     with _async_runtime_guard:

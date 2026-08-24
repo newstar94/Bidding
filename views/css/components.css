@@ -2821,36 +2821,36 @@ textarea[disabled] {
 
 }
 
-/* Excel processing feedback stays above application modals and below alerts/toasts. */
-.excel-import-loading {
+/* Shared long-task feedback stays above application modals and below alerts/toasts. */
+.app-long-task-loading {
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-modal, 800) + 20);
   display: grid;
   place-items: center;
   padding: clamp(16px, 4vw, 32px);
-  background: color-mix(in srgb, var(--ink) 52%, transparent);
+  background: var(--color-scrim, rgba(17, 26, 44, 0.54));
   backdrop-filter: blur(5px);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-normal);
 }
 
-.excel-import-loading,
-.excel-import-loading * {
+.app-long-task-loading,
+.app-long-task-loading * {
   box-sizing: border-box;
 }
 
-.excel-import-loading[hidden] {
+.app-long-task-loading[hidden] {
   display: none;
 }
 
-.excel-import-loading.is-active {
+.app-long-task-loading.is-active {
   opacity: 1;
   pointer-events: auto;
 }
 
-.excel-import-loading-card {
+.app-long-task-loading-card {
   width: min(500px, 100%);
   padding: clamp(20px, 4vw, 28px);
   border: 1px solid var(--line);
@@ -2863,18 +2863,18 @@ textarea[disabled] {
   transition: transform var(--transition-normal);
 }
 
-.excel-import-loading.is-active .excel-import-loading-card {
+.app-long-task-loading.is-active .app-long-task-loading-card {
   transform: translateY(0);
 }
 
-.excel-import-loading-header {
+.app-long-task-loading-header {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   align-items: center;
   gap: var(--space-5);
 }
 
-.excel-import-loading-visual {
+.app-long-task-loading-visual {
   position: relative;
   display: grid;
   width: 88px;
@@ -2887,7 +2887,7 @@ textarea[disabled] {
   box-shadow: 0 7px 20px color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
-.excel-import-loading-visual::after {
+.app-long-task-loading-visual::after {
   position: absolute;
   inset: -7px;
   border: 2px solid transparent;
@@ -2898,7 +2898,7 @@ textarea[disabled] {
   animation: procurement-lookup-spin 0.9s linear infinite;
 }
 
-.excel-import-loading-icon {
+.app-long-task-loading-icon {
   display: block;
   width: 72px;
   height: 72px;
@@ -2906,7 +2906,7 @@ textarea[disabled] {
   object-fit: cover;
 }
 
-.excel-import-loading-title {
+.app-long-task-loading-title {
   margin: 0;
   color: var(--text-main);
   font-size: 1.15rem;
@@ -2914,14 +2914,14 @@ textarea[disabled] {
   letter-spacing: -0.02em;
 }
 
-.excel-import-loading-message {
+.app-long-task-loading-message {
   margin: 7px 0 0;
   color: var(--text-muted);
   font-size: 0.86rem;
   line-height: 1.55;
 }
 
-.excel-import-loading-filename {
+.app-long-task-loading-detail {
   max-width: 100%;
   margin: 7px 0 0;
   overflow: hidden;
@@ -2932,7 +2932,7 @@ textarea[disabled] {
   white-space: nowrap;
 }
 
-.excel-import-loading-progress {
+.app-long-task-loading-progress {
   position: relative;
   height: 5px;
   margin-top: var(--space-6);
@@ -2941,7 +2941,7 @@ textarea[disabled] {
   background: var(--neutral-hover);
 }
 
-.excel-import-loading-progress-value {
+.app-long-task-loading-progress-value {
   position: absolute;
   inset-block: 0;
   left: 0;
@@ -2949,10 +2949,10 @@ textarea[disabled] {
   border-radius: inherit;
   background: var(--primary);
   transform: translateX(-120%);
-  animation: excel-import-progress 1.25s ease-in-out infinite;
+  animation: app-long-task-progress 1.25s ease-in-out infinite;
 }
 
-.excel-import-loading-steps {
+.app-long-task-loading-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
@@ -2961,7 +2961,7 @@ textarea[disabled] {
   list-style: none;
 }
 
-.excel-import-loading-step {
+.app-long-task-loading-step {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -2971,7 +2971,7 @@ textarea[disabled] {
   font-weight: 650;
 }
 
-.excel-import-loading-step-index {
+.app-long-task-loading-step-index {
   display: grid;
   flex: 0 0 24px;
   width: 24px;
@@ -2984,76 +2984,76 @@ textarea[disabled] {
   font-size: 0.68rem;
 }
 
-.excel-import-loading-step[data-state="active"] {
+.app-long-task-loading-step[data-state="active"] {
   color: var(--text-main);
 }
 
-.excel-import-loading-step[data-state="active"] .excel-import-loading-step-index {
+.app-long-task-loading-step[data-state="active"] .app-long-task-loading-step-index {
   border-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary-hover);
 }
 
-.excel-import-loading-step[data-state="complete"] {
+.app-long-task-loading-step[data-state="complete"] {
   color: var(--success);
 }
 
-.excel-import-loading-step[data-state="complete"] .excel-import-loading-step-index {
+.app-long-task-loading-step[data-state="complete"] .app-long-task-loading-step-index {
   border-color: var(--success);
   background: var(--success-soft);
   color: var(--success);
 }
 
-body.excel-import-is-busy {
+body.app-long-task-is-busy {
   cursor: progress;
 }
 
-@keyframes excel-import-progress {
+@keyframes app-long-task-progress {
   0% { transform: translateX(-120%); }
   55% { transform: translateX(120%); }
   100% { transform: translateX(280%); }
 }
 
 @media (max-width: 480px) {
-  .excel-import-loading-header {
+  .app-long-task-loading-header {
     grid-template-columns: 72px minmax(0, 1fr);
     gap: var(--space-4);
   }
 
-  .excel-import-loading-visual {
+  .app-long-task-loading-visual {
     width: 72px;
     height: 72px;
   }
 
-  .excel-import-loading-icon {
+  .app-long-task-loading-icon {
     width: 58px;
     height: 58px;
   }
 
-  .excel-import-loading-steps {
+  .app-long-task-loading-steps {
     grid-template-columns: 1fr;
     gap: var(--space-2);
   }
 
-  .excel-import-loading-filename {
+  .app-long-task-loading-detail {
     white-space: normal;
     overflow-wrap: anywhere;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .excel-import-loading,
-  .excel-import-loading-card {
+  .app-long-task-loading,
+  .app-long-task-loading-card {
     transition: none;
   }
 
-  .excel-import-loading-progress-value {
+  .app-long-task-loading-progress-value {
     left: 29%;
     animation: none;
     transform: none;
   }
 
-  .excel-import-loading-visual::after {
+  .app-long-task-loading-visual::after {
     border-color: color-mix(in srgb, var(--primary) 45%, transparent);
     animation: none;
   }

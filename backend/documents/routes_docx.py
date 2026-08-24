@@ -7,7 +7,7 @@ import unicodedata
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_STORED, ZipFile
 from starlette.responses import FileResponse, StreamingResponse, JSONResponse
 
 from backend.shared.helpers import (
@@ -1050,6 +1050,7 @@ def _prepare_plan_render(
     context = docx_service.build_plan_context(
         plan_id, user_id, organization_id, capabilities
     )
+    record_revision = int((context.get("ke_hoach") or {}).get("row_version") or 1)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
     apply_custom_mappings(context, mappings)
@@ -1062,6 +1063,7 @@ def _prepare_plan_render(
         capabilities,
         organization_id=organization_id,
     )
+    manifest["record_revision"] = record_revision
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
     if skip_template_resolution:
@@ -1120,6 +1122,7 @@ def _prepare_report_render(
         document_type,
         capabilities,
     )
+    record_revision = int((context.get("goi_thau") or {}).get("row_version") or 1)
     _scope_contracts_for_word_publication(context, publication_type)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
@@ -1133,6 +1136,7 @@ def _prepare_report_render(
         capabilities,
         organization_id=organization_id,
     )
+    manifest["record_revision"] = record_revision
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
     if skip_template_resolution:
@@ -1178,7 +1182,7 @@ def _prepare_report_render(
 def _archive_rendered_word_documents(rendered_documents):
     output = BytesIO()
     used_names = set()
-    with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+    with ZipFile(output, "w", ZIP_STORED) as archive:
         for filename, content in rendered_documents:
             stem, extension = os.path.splitext(filename)
             candidate = filename
@@ -1202,45 +1206,61 @@ async def _render_word_selection(
         targets = template_selection
     else:
         targets = [{"path": template_selection, "filename": fallback_filename}]
-    rendered_documents = []
-    rendered_artifacts = []
+    batch_targets = []
     for target in targets:
         template_payload = (
             {"template_content": target["content"]}
             if "content" in target
             else {"template_path": target["path"]}
         )
-        content = await run_document_job_async(
-            "render_docx",
-            {
-                **template_payload,
-                "context": context,
-                "context_manifest": context_manifest,
-            },
-        )
-        rendered_filename = target.get("filename") or fallback_filename
-        rendered_documents.append((rendered_filename, content))
-        rendered_artifacts.append({
+        batch_targets.append({
+            **template_payload,
+            "filename": target.get("filename") or fallback_filename,
+        })
+    content = await run_document_job_async(
+        "render_docx_batch",
+        {
+            "templates": batch_targets,
+            "context": context,
+            "context_manifest": context_manifest,
+        },
+    )
+    if len(targets) == 1:
+        rendered_filename = batch_targets[0]["filename"]
+        rendered_artifacts = [{
             "artifactId": f"word-{uuid.uuid4().hex}",
             "filename": rendered_filename,
             "artifactSha256": hashlib.sha256(content).hexdigest(),
-            "templateVersionId": target.get("templateVersionId"),
-            "templateSha256": target.get("templateSha256"),
-        })
-    if len(rendered_documents) == 1:
+            "templateVersionId": targets[0].get("templateVersionId"),
+            "templateSha256": targets[0].get("templateSha256"),
+        }]
         return (
-            rendered_documents[0][1],
+            content,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            rendered_documents[0][0],
+            rendered_filename,
             1,
             rendered_artifacts,
         )
+    rendered_artifacts = []
+    with ZipFile(BytesIO(content)) as archive:
+        entries = archive.infolist()
+        if len(entries) != len(targets):
+            raise DocumentWorkerError("Gói tài liệu Word trả về không đầy đủ.")
+        for target, entry in zip(targets, entries, strict=True):
+            rendered_content = archive.read(entry)
+            rendered_artifacts.append({
+                "artifactId": f"word-{uuid.uuid4().hex}",
+                "filename": entry.filename,
+                "artifactSha256": hashlib.sha256(rendered_content).hexdigest(),
+                "templateVersionId": target.get("templateVersionId"),
+                "templateSha256": target.get("templateSha256"),
+            })
     archive_filename = f"{os.path.splitext(fallback_filename)[0]}.zip"
     return (
-        _archive_rendered_word_documents(rendered_documents),
+        content,
         "application/zip",
         archive_filename,
-        len(rendered_documents),
+        len(targets),
         rendered_artifacts,
     )
 
@@ -1386,9 +1406,7 @@ async def export_plan_api(request):
             organization_id=org_name,
             target_type="ke_hoach_lcnt",
             target_id=plan_id,
-            record_row_version=(unified_context.get("ke_hoach") or {}).get(
-                "row_version"
-            ),
+            record_row_version=int(context_manifest.get("record_revision") or 1),
             document_type="plan",
             publication_type=publication_type,
             template_count=template_count,
@@ -1497,9 +1515,7 @@ async def export_report_api(request):
             organization_id=org_name,
             target_type="goi_thau",
             target_id=package_id,
-            record_row_version=(unified_context.get("goi_thau") or {}).get(
-                "row_version"
-            ),
+            record_row_version=int(context_manifest.get("record_revision") or 1),
             document_type=type_param,
             publication_type=publication_type,
             template_count=template_count,

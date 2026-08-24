@@ -6,13 +6,16 @@ import json
 import os
 import socket
 import sys
+import copy
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from zipfile import ZIP_STORED, ZipFile
 
 from backend.documents.document_ipc import (
     WORKER_EVENT_PREFIX,
     read_job_manifest,
+    read_render_cache_overlay,
     write_result,
 )
 from backend.documents.seccomp_policy import apply_document_seccomp
@@ -139,7 +142,10 @@ def _validate_job_paths(input_path: Path, result_path: Path) -> None:
     job_dir = Path(os.environ["DOCUMENT_WORKER_JOB_DIR"]).resolve()
     if input_path.resolve().parent != job_dir or result_path.resolve().parent != job_dir:
         raise ValueError("Đường dẫn tác vụ tài liệu không hợp lệ.")
-    if input_path.name != "input.json" or result_path.name != "result.json":
+    if (
+        input_path.name not in {"input.json", "prepared-input.json"}
+        or result_path.name != "result.json"
+    ):
         raise ValueError("Tên tệp tác vụ tài liệu không hợp lệ.")
 
 
@@ -148,6 +154,70 @@ def _payload_content(payload):
     if not isinstance(content, bytes) or len(content) > MAX_INPUT_CONTENT_BYTES:
         raise ValueError("Tệp công việc không tồn tại hoặc vượt giới hạn.")
     return content
+
+
+def _prepare_template_for_render(
+    template_bytes: bytes, payload: dict[str, Any], index: int,
+):
+    from backend.documents.word_standardizer import standardize_template_for_export
+
+    if payload.get("template_prestandardized") is True:
+        return template_bytes
+    automatic = standardize_template_for_export(
+        template_bytes,
+        document_type_hint=(payload.get("context_manifest") or {}).get(
+            "document_type"
+        ),
+        mode=payload.get("standardization_mode"),
+    )
+    _emit_word_standardization_event(automatic.metadata)
+    if automatic.metadata.get("preservation") == "PASS":
+        _write_prepared_template(index, automatic.content)
+    return automatic.content
+
+
+def _write_prepared_template(index: int, content: bytes) -> None:
+    job_dir = Path(os.environ["DOCUMENT_WORKER_JOB_DIR"]).resolve()
+    destination = job_dir / f"prepared-template-{index:04d}.docx"
+    temporary = job_dir / f"prepared-template-{index:04d}.tmp"
+    if len(content) > MAX_OUTPUT_BYTES:
+        raise ValueError("Biểu mẫu Word chuẩn hóa vượt quá giới hạn.")
+    with temporary.open("xb") as handle:
+        handle.write(content)
+    temporary.chmod(0o600)
+    os.replace(temporary, destination)
+
+
+def _render_docx_target(
+    payload: dict[str, Any], target: dict[str, Any], index: int,
+) -> bytes:
+    from backend.documents.custom_exporter import generate_report_from_custom_template
+
+    template_path = Path(target["template_path"])
+    template_bytes = template_path.read_bytes()
+    if len(template_bytes) > MAX_INPUT_CONTENT_BYTES:
+        raise ValueError("Biểu mẫu Word vượt quá giới hạn kích thước.")
+    prepared_payload = {
+        **payload,
+        "template_prestandardized": target.get(
+            "template_prestandardized",
+            payload.get("template_prestandardized"),
+        ),
+    }
+    prepared = _prepare_template_for_render(template_bytes, prepared_payload, index)
+    render_options = (
+        {"template_content": prepared} if prepared != template_bytes else {}
+    )
+    stream = generate_report_from_custom_template(
+        template_path,
+        copy.deepcopy(payload["context"]),
+        payload["context_manifest"],
+        **render_options,
+    )
+    result = stream.getvalue()
+    if len(result) > MAX_OUTPUT_BYTES:
+        raise ValueError("Tệp Word kết quả vượt quá giới hạn kích thước.")
+    return result
 
 
 def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
@@ -269,36 +339,49 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         return result
 
     if operation == "render_docx":
-        from backend.documents.custom_exporter import generate_report_from_custom_template
-        from backend.documents.word_standardizer import (
-            standardize_template_for_export,
-        )
-
         context_manifest = payload.get("context_manifest")
         if not isinstance(context_manifest, dict):
             raise ValueError("Tác vụ Word thiếu manifest ngữ cảnh.")
-        template_path = Path(payload["template_path"])
-        template_bytes = template_path.read_bytes()
-        if len(template_bytes) > MAX_INPUT_CONTENT_BYTES:
-            raise ValueError("Biểu mẫu Word vượt quá giới hạn kích thước.")
-        automatic = standardize_template_for_export(
-            template_bytes,
-            document_type_hint=context_manifest.get("document_type"),
+        return _render_docx_target(
+            payload, {"template_path": payload["template_path"]}, 0
         )
-        _emit_word_standardization_event(automatic.metadata)
-        render_options = (
-            {"template_content": automatic.content}
-            if automatic.content != template_bytes else {}
-        )
-        stream = generate_report_from_custom_template(
-            template_path,
-            payload["context"],
-            context_manifest,
-            **render_options,
-        )
-        result = stream.getvalue()
+
+    if operation == "render_docx_batch":
+        context_manifest = payload.get("context_manifest")
+        templates = payload.get("templates")
+        if not isinstance(context_manifest, dict) or not isinstance(templates, list):
+            raise ValueError("Tác vụ Word theo lô thiếu dữ liệu.")
+        if not 1 <= len(templates) <= 50:
+            raise ValueError("Số lượng biểu mẫu Word không hợp lệ.")
+        rendered = []
+        used_names = set()
+        for index, target in enumerate(templates, start=1):
+            if not isinstance(target, dict):
+                raise ValueError("Biểu mẫu Word trong lô không hợp lệ.")
+            filename = Path(
+                str(target.get("filename") or f"Tai_lieu_{index}.docx")
+            ).name
+            if not filename.casefold().endswith(".docx"):
+                raise ValueError("Tên tệp Word trong lô không hợp lệ.")
+            stem = Path(filename).stem
+            candidate = filename
+            suffix = 2
+            while candidate.casefold() in used_names:
+                candidate = f"{stem} ({suffix}).docx"
+                suffix += 1
+            used_names.add(candidate.casefold())
+            rendered.append(
+                (candidate, _render_docx_target(payload, target, index - 1))
+            )
+        if len(rendered) == 1:
+            return rendered[0][1]
+        output = BytesIO()
+        with ZipFile(output, "w", compression=ZIP_STORED) as archive:
+            for filename, content in rendered:
+                archive.writestr(filename, content)
+        result = output.getvalue()
         if len(result) > MAX_OUTPUT_BYTES:
-            raise ValueError("Tệp Word kết quả vượt quá giới hạn kích thước.")
+            raise ValueError("Gói tài liệu Word vượt quá giới hạn kích thước.")
         return result
 
     if operation == "export_excel":
@@ -361,7 +444,14 @@ def main() -> int:
         apply_document_seccomp(
             required=os.environ.get("APP_ENV", "").lower() in {"prod", "production"}
         )
-        operation, payload = read_job_manifest(input_path, input_path.parent.resolve())
+        if input_path.name == "prepared-input.json":
+            operation, payload = read_render_cache_overlay(
+                input_path, input_path.parent.resolve()
+            )
+        else:
+            operation, payload = read_job_manifest(
+                input_path, input_path.parent.resolve()
+            )
         result = _run_operation(operation, payload)
         write_result(result_path, result=result)
     except Exception as exc:

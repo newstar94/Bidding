@@ -31,7 +31,7 @@ from backend.documents.document_worker import (
 
 def _worker_concurrency() -> int:
     try:
-        value = int(os.environ.get("DOCUMENT_WORKER_MAX_CONCURRENCY", "2"))
+        value = int(os.environ.get("DOCUMENT_WORKER_MAX_CONCURRENCY", "4"))
     except (TypeError, ValueError):
         value = 2
     return min(8, max(1, value))

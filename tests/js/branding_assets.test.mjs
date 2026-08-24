@@ -29,7 +29,7 @@ test("BiddingFlow uses the supplied icon for favicon and primary brand marks", (
 test("screen-level data loaders render the supplied icon inside a circle", () => {
   const components = fs.readFileSync("views/css/components.css", "utf8");
   const initialRoute = fs.readFileSync("views/css/initial-route.css", "utf8");
-  const excelLoading = fs.readFileSync("frontend/shared/ExcelImportLoading.js", "utf8");
+  const longTaskLoading = fs.readFileSync("frontend/shared/LongTaskLoading.js", "utf8");
   const planModal = fs.readFileSync("views/modals/modal_kehoach.html", "utf8");
   const packageModal = fs.readFileSync("views/modals/modal_goithau.html", "utf8");
 
@@ -37,6 +37,7 @@ test("screen-level data loaders render the supplied icon inside a circle", () =>
   assert.match(components, /\.procurement-lookup-loading__visual[^}]+border-radius:\s*50%/s);
   assert.match(planModal, /procurement-lookup-loading__visual[^>]*>[\s\S]*app-brand-icon\.webp/);
   assert.match(packageModal, /procurement-lookup-loading__visual[^>]*>[\s\S]*app-brand-icon\.webp/);
-  assert.match(excelLoading, /excel-import-loading-icon/);
-  assert.match(excelLoading, /\/assets\/app-brand-icon\.webp/);
+  assert.match(longTaskLoading, /app-long-task-loading-icon/);
+  assert.match(longTaskLoading, /app-brand-image app-long-task-loading-icon/);
+  assert.match(longTaskLoading, /\/assets\/app-brand-icon\.webp/);
 });

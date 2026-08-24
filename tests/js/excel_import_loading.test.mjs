@@ -15,7 +15,7 @@ function contentType(pathname) {
   return "text/html; charset=utf-8";
 }
 
-test("Excel import loading surface announces progress and honors reduced motion", async () => {
+test("shared application loading surface announces Excel and Word progress", async () => {
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
@@ -53,33 +53,38 @@ test("Excel import loading surface announces progress and honors reduced motion"
       });
     });
 
-    const loading = page.locator("#excel-import-loading");
+    const loading = page.locator("#app-long-task-loading");
     await loading.waitFor({ state: "visible" });
+    assert.equal(await loading.getAttribute("data-task"), "excel-import");
     assert.equal(await loading.getAttribute("role"), "status");
     assert.equal(await loading.getAttribute("aria-live"), "polite");
     assert.equal(await loading.getAttribute("aria-busy"), "true");
     assert.equal(await page.locator("body").getAttribute("aria-busy"), "true");
+    assert.equal(
+      await loading.locator(".app-long-task-loading-icon").getAttribute("class"),
+      "app-brand-image app-long-task-loading-icon",
+    );
     assert.match(await loading.innerText(), /du-lieu-goi-thau\.xlsx/u);
     assert.equal(await loading.locator("[data-stage]").count(), 3);
     const layout = await loading.evaluate((element) => ({
-      cardWidth: element.querySelector(".excel-import-loading-card")?.getBoundingClientRect().width,
+      cardWidth: element.querySelector(".app-long-task-loading-card")?.getBoundingClientRect().width,
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: innerWidth,
     }));
     assert.ok(layout.cardWidth <= layout.viewportWidth - 32);
     assert.ok(layout.documentWidth <= layout.viewportWidth);
     assert.equal(
-      await loading.locator(".excel-import-loading-progress-value").evaluate(
+      await loading.locator(".app-long-task-loading-progress-value").evaluate(
         (element) => getComputedStyle(element).animationName,
       ),
-      "excel-import-progress",
+      "app-long-task-progress",
     );
     await page.emulateMedia({ reducedMotion: "reduce" });
     if (process.env.EXCEL_LOADING_SCREENSHOT) {
       await page.screenshot({ path: process.env.EXCEL_LOADING_SCREENSHOT, fullPage: true });
     }
     assert.equal(
-      await loading.locator(".excel-import-loading-progress-value").evaluate(
+      await loading.locator(".app-long-task-loading-progress-value").evaluate(
         (element) => getComputedStyle(element).animationName,
       ),
       "none",
@@ -94,7 +99,24 @@ test("Excel import loading surface announces progress and honors reduced motion"
     assert.equal(await loading.locator('[data-stage="preview"]').getAttribute("data-state"), "active");
     assert.match(await loading.innerText(), /chuẩn bị để xem trước/u);
 
+    await page.evaluate(async () => {
+      const { beginWordExportLoading } = await import(
+        "/frontend/documents/WordExportLoading.js"
+      );
+      globalThis.wordLoading = await beginWordExportLoading({
+        detail: "Văn bản: Báo cáo đánh giá",
+      });
+    });
+    assert.equal(await page.locator("#app-long-task-loading").count(), 1);
+    assert.equal(await loading.getAttribute("data-task"), "word-publication");
+    assert.match(await loading.innerText(), /Đang xuất bản Word/u);
+
     await page.evaluate(() => globalThis.excelLoading.close());
+    assert.equal(await loading.isVisible(), true);
+    assert.equal(await loading.getAttribute("aria-busy"), "true");
+    assert.equal(await page.locator("body").getAttribute("aria-busy"), "true");
+
+    await page.evaluate(() => globalThis.wordLoading.close());
     await loading.waitFor({ state: "hidden" });
     assert.equal(await page.locator("body").getAttribute("aria-busy"), null);
   } finally {

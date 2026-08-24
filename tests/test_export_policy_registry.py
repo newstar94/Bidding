@@ -15,6 +15,8 @@ def test_required_export_matrix_has_explicit_classification_and_format():
         "excel.award_result",
         "excel.timeline",
         "docx.package_report",
+        "docx.plan",
+        "docx.document_job",
     }
 
     assert required <= set(EXPORT_POLICIES)
@@ -48,8 +50,9 @@ def test_every_production_export_artifact_route_is_bound_to_registered_policy():
         "/api/packages/{package_id}/award-result-excel/export": "excel.award_result",
         "/api/packages/{package_id}/award-result-excel/reconciliation": "excel.award_result_reconciliation",
         "/api/document-jobs/package-report/{package_id}": "docx.package_report",
-        "/api/document-jobs/{job_id}/download": "docx.package_report",
-        "/api/document-jobs/{job_id}/retry": "docx.package_report",
+        "/api/document-jobs/plan/{plan_id}": "docx.plan",
+        "/api/document-jobs/{job_id}/download": "docx.document_job",
+        "/api/document-jobs/{job_id}/retry": "docx.document_job",
     }
     discovered = {}
     for route in routes:
@@ -62,7 +65,12 @@ def test_every_production_export_artifact_route_is_bound_to_registered_policy():
             or path.endswith("/award-result-excel/reconciliation")
             or (
                 path.startswith("/api/document-jobs/")
-                and ("/package-report/" in path or path.endswith("/download") or path.endswith("/retry"))
+                and (
+                    "/package-report/" in path
+                    or "/plan/" in path
+                    or path.endswith("/download")
+                    or path.endswith("/retry")
+                )
             )
         )
         if not is_artifact_route or not methods:

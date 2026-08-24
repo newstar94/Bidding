@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import json
 import re
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from docx import Document
 from docx.oxml import OxmlElement
@@ -270,6 +270,75 @@ def _renderable_template() -> bytes:
     output = BytesIO()
     document.save(output)
     return output.getvalue()
+
+
+def test_batch_render_uses_one_worker_result_and_does_not_recompress_docx(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setenv("WORD_EXPORT_STANDARDIZATION_MODE", "off")
+    monkeypatch.setenv("BIDDING_WORD_EXPORT_CACHE_DIR", str(tmp_path / "cache"))
+    first = Document()
+    first.add_paragraph("Tài liệu thứ nhất")
+    first_stream = BytesIO()
+    first.save(first_stream)
+    second = Document()
+    second.add_paragraph("Tài liệu thứ hai")
+    second_stream = BytesIO()
+    second.save(second_stream)
+
+    result = run_document_job(
+        "render_docx_batch",
+        {
+            "templates": [
+                {"template_content": first_stream.getvalue(), "filename": "A.docx"},
+                {"template_content": second_stream.getvalue(), "filename": "B.docx"},
+            ],
+            "context": {},
+            "context_manifest": _empty_manifest("evaluation"),
+        },
+    )
+
+    with ZipFile(BytesIO(result)) as archive:
+        assert [item.filename for item in archive.infolist()] == ["A.docx", "B.docx"]
+        assert {item.compress_type for item in archive.infolist()} == {ZIP_STORED}
+        assert Document(BytesIO(archive.read("A.docx"))).paragraphs[0].text == "Tài liệu thứ nhất"
+        assert Document(BytesIO(archive.read("B.docx"))).paragraphs[0].text == "Tài liệu thứ hai"
+
+
+def test_batch_cache_misses_are_standardized_and_rendered_in_one_worker(
+    tmp_path, monkeypatch,
+):
+    """A cold batch must pay the sandbox startup cost exactly once."""
+
+    monkeypatch.setenv("WORD_EXPORT_STANDARDIZATION_MODE", "off")
+    monkeypatch.setenv("WORD_EXPORT_CACHE_ENABLED", "false")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path / "jobs"))
+    original_popen = document_worker.subprocess.Popen
+    process_count = 0
+
+    def counting_popen(*args, **kwargs):
+        nonlocal process_count
+        process_count += 1
+        return original_popen(*args, **kwargs)
+
+    monkeypatch.setattr(document_worker.subprocess, "Popen", counting_popen)
+    template = _renderable_template()
+
+    result = run_document_job(
+        "render_docx_batch",
+        {
+            "templates": [
+                {"template_content": template, "filename": "A.docx"},
+                {"template_content": template, "filename": "B.docx"},
+            ],
+            "context": {},
+            "context_manifest": _empty_manifest("evaluation"),
+        },
+    )
+
+    assert process_count == 1
+    with ZipFile(BytesIO(result)) as archive:
+        assert [item.filename for item in archive.infolist()] == ["A.docx", "B.docx"]
 
 
 def _first_run_format(content: bytes) -> tuple[str | None, str | None]:

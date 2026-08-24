@@ -17,7 +17,12 @@ from zipfile import ZipFile
 
 from lxml import etree
 
-from .engine import ENGINE_VERSION, WordStandardizationError, process_docx
+from .engine import (
+    ENGINE_VERSION,
+    WordStandardizationError,
+    process_docx,
+    standardization_rule_set_sha256,
+)
 
 
 AUTOMATIC_POLICY_ID = "biddingflow-word-export-auto"
@@ -102,6 +107,23 @@ def automatic_standardization_mode(value: str | None = None) -> str:
     )
     normalized = str(configured or "").strip().casefold()
     return normalized if normalized in AUTOMATIC_MODES else "off"
+
+
+def automatic_standardization_cache_identity(
+    *, document_type_hint: str | None = None, mode: str | None = None,
+) -> dict[str, str]:
+    """Version identity for an immutable prepared-template cache entry."""
+
+    return {
+        "policyId": AUTOMATIC_POLICY_ID,
+        "policyVersion": AUTOMATIC_POLICY_VERSION,
+        "policySha256": _POLICY_SHA256,
+        "engineVersion": ENGINE_VERSION,
+        "ruleSetSha256": standardization_rule_set_sha256(),
+        "validatorVersion": "docx-archive-and-template-statements.v1",
+        "mode": automatic_standardization_mode(mode),
+        "documentTypeHint": str(document_type_hint or "").strip().casefold()[:64],
+    }
 
 
 def _base_metadata(content: bytes, mode: str, hint: str) -> dict:
@@ -327,11 +349,14 @@ def standardize_template_for_export(
                 **complexity,
             })
             return AutomaticWordStandardizationResult(source, metadata)
-        sector_preview = process_docx(
+        pass_mode = "apply_fix" if selected_mode == "apply_safe" else "preview_fix"
+        sector_pass = process_docx(
             source,
             profile="sector_template",
-            mode="preview_fix",
-        ).report
+            mode=pass_mode,
+            _trusted_automatic_pass=selected_mode == "apply_safe",
+        )
+        sector_preview = sector_pass.report
         profile, disposition, reasons = _decision(sector_preview, hint)
         if profile == "reference_only":
             metadata = _summarize_plan(
@@ -344,20 +369,29 @@ def standardize_template_for_export(
             metadata["preservation"] = "PASS"
             return AutomaticWordStandardizationResult(source, metadata)
 
-        preview = (
-            process_docx(
-                source,
-                profile="n30_strict",
-                mode="preview_fix",
-            ).report
-            if profile == "n30_strict" else sector_preview
-        )
+        selected_pass = sector_pass
+        fallback_from = None
+        if profile == "n30_strict":
+            try:
+                selected_pass = process_docx(
+                    source,
+                    profile="n30_strict",
+                    mode=pass_mode,
+                    _trusted_automatic_pass=selected_mode == "apply_safe",
+                )
+            except WordStandardizationError:
+                profile = "sector_template"
+                selected_pass = sector_pass
+                fallback_from = "n30_strict"
+                reasons = ["STRICT_FALLBACK", *reasons]
+        preview = selected_pass.report
         metadata = _summarize_plan(
             metadata,
             preview,
             profile=profile,
             status="SHADOW" if selected_mode == "shadow" else disposition,
             reason_codes=reasons,
+            fallback_from=fallback_from,
         )
         metadata["preservation"] = str(
             (preview.get("invariants") or {}).get("status") or "NOT_RUN"
@@ -368,44 +402,13 @@ def standardize_template_for_export(
             metadata["status"] = "NO_CHANGE"
             return AutomaticWordStandardizationResult(source, metadata)
 
-        try:
-            applied = process_docx(
-                source,
-                profile=profile,
-                mode="apply_fix",
-                expected_analysis_hash=preview.get("analysisHash"),
-            )
-        except WordStandardizationError:
-            if profile != "n30_strict":
-                raise
-            profile = "sector_template"
-            preview = sector_preview
-            metadata = _summarize_plan(
-                metadata,
-                preview,
-                profile=profile,
-                status="READY",
-                reason_codes=["STRICT_FALLBACK", *reasons],
-                fallback_from="n30_strict",
-            )
-            if not preview.get("changed"):
-                metadata["status"] = "NO_CHANGE"
-                metadata["preservation"] = "PASS"
-                return AutomaticWordStandardizationResult(source, metadata)
-            applied = process_docx(
-                source,
-                profile=profile,
-                mode="apply_fix",
-                expected_analysis_hash=preview.get("analysisHash"),
-            )
-
-        candidate = applied.content
+        candidate = selected_pass.content
         if not isinstance(candidate, bytes):
             raise WordStandardizationError(
                 "Automatic Word formatting produced no DOCX bytes."
             )
         invariant_status = str(
-            (applied.report.get("invariants") or {}).get("status") or ""
+            (selected_pass.report.get("invariants") or {}).get("status") or ""
         )
         if invariant_status != "PASS":
             raise WordStandardizationError(
@@ -429,6 +432,7 @@ __all__ = [
     "AUTOMATIC_POLICY_ID",
     "AUTOMATIC_POLICY_VERSION",
     "AutomaticWordStandardizationResult",
+    "automatic_standardization_cache_identity",
     "automatic_standardization_mode",
     "standardize_template_for_export",
 ]

@@ -63,13 +63,13 @@ class _RuntimeSchemaDatabase:
         return _RuntimeSchemaConnection(self.version)
 
 
-def test_v75_expand_contract_runtime_accepts_only_schema_73_through_75():
+def test_v76_document_job_runtime_requires_schema_76():
     assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
-        73,
-        75,
+        76,
+        76,
     )
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 75
-    for version in (73, 74, 75):
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 76
+    for version in (76,):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
             DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -80,7 +80,7 @@ def test_v75_expand_contract_runtime_accepts_only_schema_73_through_75():
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (72, 76):
+    for version in (75, 77):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,

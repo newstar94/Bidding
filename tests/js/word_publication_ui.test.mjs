@@ -50,6 +50,8 @@ function contentType(pathname) {
 async function withPublicationPage(run) {
   const pageMarkup = await readFile(join(projectRoot, "views/tabs/tab_xuatban_word.html"), "utf8");
   const exportRequests = [];
+  const jobRequests = [];
+  let nextJobId = 1;
   const server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, "http://127.0.0.1").pathname;
@@ -102,18 +104,47 @@ async function withPublicationPage(run) {
         }));
         return;
       }
-      if (pathname.startsWith("/api/export-")) {
+      if (
+        request.method === "POST"
+        && (
+          pathname.startsWith("/api/document-jobs/package-report/")
+          || pathname.startsWith("/api/document-jobs/plan/")
+        )
+      ) {
         exportRequests.push(request.url);
-        await new Promise((resolve) => setTimeout(resolve, 120));
         if (pathname.includes("package-a2")) {
           response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
           response.end(JSON.stringify({ error: "Mẫu kết quả tạm thời không khả dụng" }));
           return;
         }
+        const jobId = `job-${nextJobId}`;
+        nextJobId += 1;
+        response.writeHead(202, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({
+          jobId,
+          status: "pending",
+          statusUrl: `/api/document-jobs/${jobId}`,
+          downloadUrl: `/api/document-jobs/${jobId}/download`,
+        }));
+        return;
+      }
+      if (/^\/api\/document-jobs\/job-\d+\/download$/u.test(pathname)) {
+        jobRequests.push({ method: request.method, url: request.url });
         response.writeHead(200, {
-          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-type": "application/octet-stream",
         });
         response.end(Buffer.from("PK\u0003\u0004word-publication-test"));
+        return;
+      }
+      if (/^\/api\/document-jobs\/job-\d+$/u.test(pathname)) {
+        jobRequests.push({ method: request.method, url: request.url });
+        const jobId = pathname.split("/").at(-1);
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({
+          jobId,
+          status: "completed",
+          downloadUrl: `/api/document-jobs/${jobId}/download`,
+        }));
         return;
       }
       if (pathname === "/frontend/documents/WordPublication.js") {
@@ -139,6 +170,7 @@ async function withPublicationPage(run) {
     const page = await context.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async ({ planFixtures, packageFixtures }) => {
+      document.cookie = "csrf_token=word-publication-test; path=/";
       const { setupWordPublicationPage } = await import("/frontend/documents/WordPublication.js");
       const controller = {
         model: {
@@ -165,7 +197,7 @@ async function withPublicationPage(run) {
       document.getElementById("tab-xuatban-word").classList.add("active");
       await setupWordPublicationPage.call(controller);
     }, { planFixtures: plans, packageFixtures: packages });
-    await run(page, exportRequests);
+    await run(page, exportRequests, jobRequests);
   } finally {
     await context?.close();
     await browser?.close();
@@ -253,8 +285,8 @@ test("dependent searchable selectors reset stale package and recalculate documen
   });
 });
 
-test("Word export opens a multi-file selection table before sending the request", async () => {
-  await withPublicationPage(async (page, exportRequests) => {
+test("Word export opens a multi-file selection table then follows a background job", async () => {
+  await withPublicationPage(async (page, exportRequests, jobRequests) => {
     await choose(page, "Kế hoạch lựa chọn nhà thầu", "kh-01");
     await choose(page, "Gói thầu", "may chu");
 
@@ -307,7 +339,8 @@ test("Word export opens a multi-file selection table before sending the request"
     await evaluationButton.click();
     const evaluationRequest = page.waitForRequest((request) => {
       const url = new URL(request.url());
-      return url.pathname === "/api/export-report/package-a1"
+      return request.method() === "POST"
+        && url.pathname === "/api/document-jobs/package-report/package-a1"
         && url.searchParams.get("type") === "evaluation"
         && url.searchParams.get("publicationType") === "bid_evaluation_report"
         && url.searchParams.get("snapshotVersion") === "41"
@@ -316,13 +349,35 @@ test("Word export opens a multi-file selection table before sending the request"
     });
     const evaluationDownload = page.waitForEvent("download");
     await dialog.locator('[data-word-publication-confirm]').click();
+    const loading = page.locator("#app-long-task-loading");
+    await loading.waitFor({ state: "visible" });
+    assert.equal(await loading.getAttribute("data-task"), "word-publication");
+    assert.equal(await loading.getAttribute("aria-busy"), "true");
+    assert.equal(await page.locator("#tab-xuatban-word").getAttribute("aria-busy"), "true");
+    assert.equal(await loading.locator("[data-stage]").count(), 3);
+    const loadingLayout = await loading.evaluate((element) => ({
+      cardWidth: element.querySelector(".app-long-task-loading-card")
+        ?.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
+      viewportOverflow: document.documentElement.scrollWidth
+        > document.documentElement.clientWidth,
+    }));
+    assert.ok(loadingLayout.cardWidth <= loadingLayout.viewportWidth - 16);
+    assert.equal(loadingLayout.viewportOverflow, false);
+    const loadingAxe = await new AxeBuilder({ page })
+      .include("#app-long-task-loading")
+      .analyze();
+    assert.deepEqual(loadingAxe.violations, []);
     await evaluationRequest;
     assert.equal(await evaluationButton.isDisabled(), true);
     await evaluationButton.evaluate((button) => button.click());
     assert.match((await evaluationDownload).suggestedFilename(), /\.zip$/u);
     await page.waitForFunction(() => window.__publicationToasts.length === 1);
+    await loading.waitFor({ state: "hidden" });
     assert.equal(exportRequests.filter((url) => url.includes("package-a1")).length, 1);
+    assert.deepEqual(jobRequests.map((item) => item.method), ["GET", "GET"]);
     assert.equal(await evaluationButton.isEnabled(), true);
+    assert.equal(await page.locator("#tab-xuatban-word").getAttribute("aria-busy"), "false");
     assert.deepEqual(
       await page.evaluate(() => window.__publicationToasts[0]),
       {

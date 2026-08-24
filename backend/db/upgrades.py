@@ -2857,6 +2857,55 @@ def _upgrade_to_v75_index_post_v64_foreign_keys(cursor, _context):
     for statement in REQUIRED_POST_V64_FK_INDEXES:
         cursor.execute(statement)
 
+
+def _upgrade_to_v76_generic_document_jobs(cursor, _context):
+    """Bind durable document jobs to plans or packages and expose progress."""
+
+    for definition in (
+        "record_type TEXT CHECK(record_type IS NULL OR record_type IN ('goi_thau', 'ke_hoach_lcnt'))",
+        "record_id TEXT CHECK(record_id IS NULL OR record_id != '')",
+        "progress_phase TEXT NOT NULL DEFAULT 'queued' CHECK(progress_phase != '' AND length(progress_phase) <= 64)",
+        "progress_completed_items INTEGER NOT NULL DEFAULT 0 CHECK(progress_completed_items >= 0)",
+        "progress_total_items INTEGER NOT NULL DEFAULT 1 CHECK(progress_total_items >= 1)",
+    ):
+        cursor.execute(
+            f"ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS {definition}"
+        )
+    cursor.execute(
+        """ALTER TABLE document_jobs
+           DROP CONSTRAINT IF EXISTS document_jobs_policy_json_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE document_jobs
+           ADD CONSTRAINT document_jobs_policy_json_check
+           CHECK(length(policy_json) <= 65536)"""
+    )
+    cursor.execute(
+        """UPDATE document_jobs
+              SET record_type = 'goi_thau', record_id = package_id
+            WHERE package_id IS NOT NULL AND trim(package_id) != ''
+              AND record_type IS NULL AND record_id IS NULL"""
+    )
+    cursor.execute(
+        """UPDATE document_jobs
+              SET progress_phase = CASE
+                    WHEN status = 'completed' THEN 'completed'
+                    WHEN status = 'failed' AND cancelled_at IS NOT NULL THEN 'cancelled'
+                    WHEN status = 'failed' THEN 'failed'
+                    WHEN status = 'processing' THEN 'rendering'
+                    ELSE 'queued'
+                  END,
+                  progress_completed_items = CASE
+                    WHEN status = 'completed' THEN 1 ELSE 0
+                  END,
+                  progress_total_items = 1"""
+    )
+    cursor.execute(
+        """CREATE INDEX IF NOT EXISTS idx_document_jobs_record_owner
+           ON document_jobs
+              (organization_id, record_type, record_id, user_id, created_at)"""
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3224,6 +3273,11 @@ UPGRADES = (
         "index_post_v64_foreign_keys",
         _upgrade_to_v75_index_post_v64_foreign_keys,
     ),
+    DatabaseUpgrade(
+        76,
+        "generic_document_jobs",
+        _upgrade_to_v76_generic_document_jobs,
+    ),
 )
 
 
@@ -3231,8 +3285,8 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V75 adds only supporting indexes. V73 remains compatible while connectors are off.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 73
+# V76 columns are read by every durable document-job worker and status route.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 76
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

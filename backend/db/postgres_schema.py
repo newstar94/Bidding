@@ -569,6 +569,7 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_document_jobs_claim ON document_jobs (status, available_at, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_jobs_stale ON document_jobs (locked_at) WHERE status = 'processing'",
         "CREATE INDEX IF NOT EXISTS idx_document_jobs_expiry ON document_jobs (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_document_jobs_record_owner ON document_jobs (organization_id, record_type, record_id, user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id, user_id)",
         "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_status_expiry ON account_subscriptions (status, expires_at)",

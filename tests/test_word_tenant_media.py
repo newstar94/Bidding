@@ -1,4 +1,5 @@
 from io import BytesIO
+import hashlib
 from types import SimpleNamespace
 from zipfile import ZipFile
 
@@ -7,7 +8,11 @@ from PIL import Image
 import pytest
 
 from backend.documents import custom_exporter
-from backend.documents.document_ipc import DocumentIpcError, write_job_manifest
+from backend.documents.document_ipc import (
+    DocumentIpcError,
+    read_job_manifest,
+    write_job_manifest,
+)
 from backend.documents.docx_context_policy import (
     MANIFEST_VERSION,
     project_docx_context,
@@ -73,6 +78,39 @@ def test_document_ipc_copies_current_tenant_media_with_namespace(tmp_path):
     assert copied.read_bytes() == source_path.read_bytes()
 
 
+def test_prepared_worker_manifest_reuses_staged_images_without_second_copy(tmp_path):
+    image_root = tmp_path / "source-images"
+    managed_path, source_path = _tenant_image(image_root, "org-a")
+    template_path = tmp_path / "template.docx"
+    Document().save(template_path)
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    payload = {
+        "template_path": str(template_path),
+        "context": {"anh_chu_ky": managed_path},
+        "context_manifest": {"media_organization_id": "org-a"},
+    }
+    write_job_manifest(
+        job_dir / "input.json", "render_docx", payload, image_root=image_root,
+    )
+    copied = job_dir / "assets" / "images" / source_path.relative_to(image_root)
+    before = copied.stat().st_mtime_ns
+    _operation, materialized = read_job_manifest(job_dir / "input.json", job_dir)
+    materialized["template_prestandardized"] = True
+    write_job_manifest(
+        job_dir / "prepared-input.json",
+        "render_docx",
+        materialized,
+        image_root=job_dir / "assets" / "images",
+        copy_images=False,
+        sidecar_prefix="input-prepared",
+    )
+
+    assert copied.read_bytes() == source_path.read_bytes()
+    assert copied.stat().st_mtime_ns == before
+    assert list((job_dir / "assets" / "images").rglob(source_path.name)) == [copied]
+
+
 def test_document_ipc_rejects_foreign_tenant_media(tmp_path):
     image_root = tmp_path / "source-images"
     foreign_path, _ = _tenant_image(image_root, "org-b")
@@ -120,6 +158,53 @@ def test_docx_renderer_embeds_tenant_scoped_media(tmp_path, monkeypatch):
         assert media_files
 
 
+@pytest.mark.parametrize(
+    ("image_format", "extension"),
+    (("PNG", "png"), ("JPEG", "jpg"), ("WEBP", "webp")),
+)
+def test_legal_word_media_is_embedded_byte_for_byte(
+    tmp_path, monkeypatch, image_format, extension,
+):
+    image_root = tmp_path / "worker-images"
+    tenant_segment = managed_image_tenant_segment("org-a")
+    source_path = (
+        image_root / "chuyen_gia" / tenant_segment / f"signature.{extension}"
+    )
+    source_path.parent.mkdir(parents=True)
+    Image.new("RGB", (19, 11), color=(45, 90, 135)).save(
+        source_path, format=image_format,
+    )
+    source = source_path.read_bytes()
+    managed_path = f"images/chuyen_gia/{tenant_segment}/{source_path.name}"
+    template_path = tmp_path / "template.docx"
+    template = Document()
+    template.add_paragraph("{{ anh_chu_ky }}")
+    template.save(template_path)
+    monkeypatch.setattr(custom_exporter, "IMAGE_DIR", str(image_root))
+    manifest = {
+        "version": MANIFEST_VERSION,
+        "document_type": "evaluation",
+        "root_keys": ["anh_chu_ky"],
+        "custom_root_keys": ["anh_chu_ky"],
+        "image_fields": {"anh_chu_ky": "chuyen_gia"},
+        "media_organization_id": "org-a",
+    }
+
+    output = custom_exporter.generate_report_from_custom_template(
+        str(template_path), {"anh_chu_ky": managed_path}, manifest,
+    ).getvalue()
+
+    with ZipFile(BytesIO(output)) as archive:
+        embedded = [
+            archive.read(name)
+            for name in archive.namelist()
+            if name.startswith("word/media/")
+        ]
+    assert len(embedded) == 1
+    assert embedded[0] == source
+    assert hashlib.sha256(embedded[0]).digest() == hashlib.sha256(source).digest()
+
+
 def test_document_worker_rejects_malformed_managed_media_path():
     context = {"signature_image": "images/chuyen_gia/../escape.png"}
     manifest = {
@@ -133,3 +218,34 @@ def test_document_worker_rejects_malformed_managed_media_path():
 
     with pytest.raises(ValueError, match="Ảnh Word"):
         validate_docx_context_manifest(context, manifest)
+
+
+def test_docx_renderer_fails_clearly_when_legal_media_is_missing(
+    tmp_path, monkeypatch,
+):
+    image_root = tmp_path / "worker-images"
+    template_path = tmp_path / "template.docx"
+    template = Document()
+    template.add_paragraph("{{ anh_chu_ky }}")
+    template.save(template_path)
+    monkeypatch.setattr(custom_exporter, "IMAGE_DIR", str(image_root))
+    tenant_segment = managed_image_tenant_segment("org-a")
+    context = {
+        "anh_chu_ky": f"images/chuyen_gia/{tenant_segment}/missing.png"
+    }
+    manifest = {
+        "version": MANIFEST_VERSION,
+        "document_type": "evaluation",
+        "root_keys": ["anh_chu_ky"],
+        "custom_root_keys": ["anh_chu_ky"],
+        "image_fields": {"anh_chu_ky": "chuyen_gia"},
+        "media_organization_id": "org-a",
+    }
+
+    with pytest.raises(
+        custom_exporter.TemplateRenderError,
+        match="ảnh pháp lý",
+    ):
+        custom_exporter.generate_report_from_custom_template(
+            str(template_path), context, manifest,
+        )

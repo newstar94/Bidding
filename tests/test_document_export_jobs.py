@@ -394,7 +394,9 @@ def test_permission_revoked_during_render_prevents_artifact_publication(
                 revoke_connection.close()
             return b"rendered-but-not-authorized"
 
-        monkeypatch.setattr(document_worker, "run_document_job", render_then_revoke)
+        monkeypatch.setattr(
+            document_worker, "_run_staged_document_job", render_then_revoke
+        )
 
         assert process_next_durable_document_job(database, job_id=job_id)
         job = get_document_export_job(database, job_id, organization_id, user_id)
@@ -481,7 +483,9 @@ def test_platform_demotion_during_render_prevents_artifact_publication(
                 demotion_connection.close()
             return b"rendered-with-revoked-platform-role"
 
-        monkeypatch.setattr(document_worker, "run_document_job", render_then_demote)
+        monkeypatch.setattr(
+            document_worker, "_run_staged_document_job", render_then_demote
+        )
 
         assert process_next_durable_document_job(database, job_id=job_id)
         job = get_document_export_job(database, job_id, organization_id, user_id)

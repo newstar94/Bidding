@@ -310,6 +310,10 @@
   color: var(--success);
 }
 
+.word-publication-document-status.is-processing {
+  color: var(--primary);
+}
+
 .word-publication-export-dialog {
   width: min(680px, calc(100vw - 32px));
   max-width: none;
@@ -582,6 +586,10 @@
 @media (prefers-reduced-motion: reduce) {
   .word-publication-document-card {
     transition: none;
+  }
+
+  .word-publication-document-actions .animate-spin {
+    animation: none !important;
   }
 
   .word-publication-export-dialog::backdrop {

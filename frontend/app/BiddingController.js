@@ -26,7 +26,6 @@ import {
   STARTUP_RECONCILIATION_PHASE,
   transitionStartupReconciliation,
 } from "./startupReconciliation.js";
-import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { resolveCommandArgs } from "../shared/commandArgs.js";
 import {
   getActiveOrganizationId,
@@ -43,6 +42,7 @@ import {
   workflowRequirementForRoute,
 } from "./WorkflowModuleLoader.js";
 import { createFeatureServices } from "./FeatureServices.js";
+import { exportContractWordInBackground } from "../contracts/ContractWordExport.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
@@ -1076,7 +1076,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const editHopDong = (id) => this.contracts.edit(id);
     const deleteHopDong = (id) => this.contracts.delete(id);
     const saveKetQuaChiDinhThau = (gtId) => this.evaluation.saveDirectAppointmentResult(gtId);
-    const exportContractFromHopDong = async (pkgId, soHopDong) => {
+    const exportContractFromHopDong = async (pkgId, soHopDong, trigger = null) => {
       if (!this.model.state.activeuser?.wordExportEnabled) {
         await this.view.customAlert(
           "Chức năng cần gói trả phí",
@@ -1086,7 +1086,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         return;
       }
       const dbId = pkgId;
-      const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
+      const btn = trigger?.matches?.("button")
+        ? trigger
+        : document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
       const origHTML = btn ? btn.innerHTML : "";
       if (btn) {
         btn.disabled = true;
@@ -1094,22 +1096,11 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         lucide.createIcons({ root: btn });
       }
       try {
-        const snapshotVersion = await this.prepareExportSnapshot();
-        const exportUrl = appendExportSnapshotVersion(
-          `/api/export-report/${dbId}?type=contract`,
-          snapshotVersion
-        );
-        const r = await apiFetch(exportUrl, { timeoutMs: 120_000 });
-        if (!r.ok) throw new Error("Không thể xuất hợp đồng");
-        const b = await r.blob();
-        const url = window.URL.createObjectURL(b);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `Hop_dong_${soHopDong || "LCNT"}.docx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        await exportContractWordInBackground({
+          packageId: dbId,
+          contractNumber: soHopDong,
+          prepareExportSnapshot: () => this.prepareExportSnapshot(),
+        });
       } catch (err) {
         this.view.customAlert("Lỗi xuất hợp đồng", err.message, "x-circle");
       } finally {
@@ -1400,7 +1391,12 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         case "delete-contract":
           return call("deleteHopDong", id);
         case "export-contract":
-          return call("exportContractFromHopDong", id, target.dataset.contractNo || "");
+          return call(
+            "exportContractFromHopDong",
+            id,
+            target.dataset.contractNo || "",
+            target,
+          );
         case "change-plan-version":
           return call("changePlanRowVersion", root, value);
         case "change-package-version":

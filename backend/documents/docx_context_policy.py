@@ -910,6 +910,13 @@ def validate_docx_context_manifest(context, manifest):
         raise ValueError("Manifest ngữ cảnh Word không hợp lệ.")
     if manifest.get("version") != MANIFEST_VERSION:
         raise ValueError("Phiên bản manifest Word không được hỗ trợ.")
+    record_revision = manifest.get("record_revision")
+    if record_revision is not None and (
+        not isinstance(record_revision, int)
+        or isinstance(record_revision, bool)
+        or record_revision < 1
+    ):
+        raise ValueError("Phiên bản bản ghi trong manifest Word không hợp lệ.")
     document_type = manifest.get("document_type")
     root_specs = ROOT_SPECS_BY_DOCUMENT_TYPE.get(document_type)
     if root_specs is None:
