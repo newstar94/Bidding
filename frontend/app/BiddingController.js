@@ -77,6 +77,8 @@ export class BiddingController {
       "xuatban-word": "xuat-ban-word",
       "superadmin-dashboard": "tong-quan-admin",
       "superadmin": "quan-ly-tai-khoan",
+      "commercial-admin": "thuong-mai-thanh-toan",
+      "commercial-storefront": "goi-va-thanh-toan",
       "managernhanvien": "nhan-su",
       "managerhosogiay": "trang-thai-hop-dong",
       "profile": "trang-ca-nhan",
@@ -103,6 +105,8 @@ export class BiddingController {
       "xuatban-word": "/tabs/tab_xuatban_word.html",
       "superadmin-dashboard": "/tabs/tab_superadmin_dashboard.html",
       superadmin: "/tabs/tab_superadmin.html",
+      "commercial-admin": "/tabs/tab_commercial_admin.html",
+      "commercial-storefront": "/tabs/tab_commercial_storefront.html",
       managernhanvien: "/tabs/tab_managernhanvien.html",
       managerhosogiay: "/tabs/tab_managerhosogiay.html",
       profile: "/tabs/tab_profile.html"
@@ -149,7 +153,7 @@ export class BiddingController {
         this.view.elements.tabPanes = document.querySelectorAll(".tab-pane");
         if (isTab) {
           this.setupActionListeners?.();
-          if (["superadmin", "superadmin-dashboard", "managernhanvien", "managerhosogiay", "profile"].includes(id)) {
+          if (["superadmin", "superadmin-dashboard", "commercial-admin", "commercial-storefront", "managernhanvien", "managerhosogiay", "profile"].includes(id)) {
             this.setupRBACEvents?.();
           }
         }
@@ -619,6 +623,7 @@ export class BiddingController {
       [this.routeMap.dashboard]: ["KEHOACH", "GOITHAU", "HOPDONG", "CHUDAUTU", "NHATHAU", "ASSIGNMENTS"],
       [this.routeMap["superadmin-dashboard"]]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
       [this.routeMap.superadmin]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
+      [this.routeMap["commercial-admin"]]: [],
       [this.routeMap.managernhanvien]: ["EMPLOYEES", "PERMISSIONMATRIX", "ORGANIZATIONS"],
       [this.routeMap.managerhosogiay]: ["CUSTOMCONTRACTSTATUSES"],
       [this.routeMap.kehoach]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],

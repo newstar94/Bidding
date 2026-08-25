@@ -48,6 +48,54 @@ _Avoid_: Ghép tự động bằng tên hoặc số thứ tự
 Lần nhập hoặc đồng bộ lại từ Mua Sắm Công có phiên nguồn được máy chủ xác thực, được phép làm mới trường thuộc nguồn trên snapshot hiện hành dù lifecycle đang khóa thao tác sửa thủ công.
 _Avoid_: Payload tự khai nguồn, sửa tay trường đã khóa
 
+**Tra cứu thông tin đối tác**:
+Việc tự động làm giàu thông tin Chủ đầu tư hoặc Nhà thầu từ định danh của đối tác, không bao gồm kết luận hay trạng thái vi phạm. Chức năng này dùng chung, không giới hạn cho cả bản Nội bộ và bản Kết nối Mua Sắm Công.
+_Avoid_: Lượt Mua Sắm Công, kiểm tra vi phạm, nhập hồ sơ đấu thầu
+
+**Kiểm tra và ghi nhận vi phạm nhà thầu**:
+Việc đối chiếu Nhà thầu với nguồn vi phạm có thẩm quyền rồi ghi nhận trạng thái đánh giá vào đúng ngữ cảnh gói thầu; đây không phải nhãn do người dùng tự gán. Chức năng này chỉ thuộc bản Kết nối Mua Sắm Công và không giới hạn lượt.
+_Avoid_: Tra cứu thông tin Nhà thầu, đánh dấu thủ công, quota tra cứu đối tác
+
+**Lượt lấy hồ sơ Mua Sắm Công**:
+Một lần lấy thành công một mã và revision hồ sơ Kế hoạch, TBMT hoặc Mở thầu từ nguồn Mua Sắm Công; xem trước, nhập hoặc cập nhật từ cùng snapshot đã lấy không tạo thêm lượt. Lỗi nguồn, retry kỹ thuật và cache hit không tiêu thụ lượt.
+_Avoid_: Request HTTP, tra cứu thông tin đối tác, kiểm tra vi phạm nhà thầu
+
+**Quota kèm bản Kết nối**:
+Số lượt lấy hồ sơ Mua Sắm Công được cấp cùng một kỳ của bản Kết nối, tách biệt với lượt người dùng mua thêm.
+_Avoid_: Tra cứu đối tác, quota dùng chung toàn hệ thống, lượt mua thêm
+
+**Quota mua thêm**:
+Gói lượt lấy hồ sơ Mua Sắm Công thuộc đúng một workspace, được cả bản Nội bộ và Kết nối sử dụng và được bảo toàn khi nâng từ Nội bộ lên Kết nối.
+_Avoid_: Lượt tặng kèm, quyền đọc dữ liệu, quota theo vai trò
+
+**Bản Nội bộ**:
+Biến thể gói dùng nhập thủ công hoặc Excel và được tra cứu thông tin đối tác không giới hạn; gói không kèm sẵn lượt lấy hồ sơ Mua Sắm Công nhưng workspace được lấy hồ sơ khi còn quota đã mua. Bản Nội bộ không được chạy kiểm tra vi phạm nhà thầu.
+_Avoid_: Gói theo vai trò thấp, bản bị che dữ liệu
+
+**Bản Kết nối Mua Sắm Công**:
+Biến thể gói kèm quota lấy trực tiếp hồ sơ đấu thầu từ Mua Sắm Công và quyền kiểm tra vi phạm nhà thầu không giới hạn; tra cứu thông tin đối tác vẫn là quyền chung như bản Nội bộ.
+_Avoid_: Role quản lý, quyền đọc dữ liệu nhạy cảm, gói tra cứu đối tác
+
+**Cấu hình thương mại**:
+Tập giá, gói, quota và chính sách bán hàng được áp dụng nhất quán cho việc chào bán, thanh toán, kích hoạt và gia hạn; cấu hình này không quyết định quyền đọc dữ liệu nghiệp vụ.
+_Avoid_: Cấu hình phân quyền, feature flag triển khai, hằng số giao diện
+
+**Bản nháp thương mại**:
+Phiên làm việc chưa có hiệu lực để Super Admin chuẩn bị và kiểm tra một thay đổi cấu hình thương mại.
+_Avoid_: Bảng giá đang chạy, chỉnh trực tiếp gói hiện hành
+
+**Bản phát hành thương mại**:
+Ảnh chụp bất biến của toàn bộ cấu hình thương mại có thời điểm hiệu lực xác định; giao dịch và quyền lợi phát sinh luôn ghim đúng bản đã dùng.
+_Avoid_: Hàng cấu hình mutable, giá mới nhất, sửa hồi tố
+
+**Thẩm quyền cấu hình thương mại**:
+Quyền riêng của vai trò nền tảng Super Admin để tạo, kiểm tra, lên lịch, xuất bản hoặc ngừng cấu hình thương mại; quyền này không cấp thêm quyền đọc bản ghi.
+_Avoid_: Manager mua gói, module permission, quyền xem dữ liệu nhạy cảm
+
+**SKU thương mại**:
+Định danh ổn định của một thứ có thể mua như kỳ gói chính hoặc gói lượt Mua Sắm Công; mỗi giao dịch ghim phiên bản giá và quyền lợi cụ thể của SKU.
+_Avoid_: Tên hiển thị gói, package ID mutable, capability đọc dữ liệu
+
 **Disposition nhập liệu**:
 Phân loại có thẩm quyền của một revision nguồn, xác định revision đó tạo snapshot nghiệp vụ, đồng bộ lại, chỉ lưu bằng chứng nguồn hay đã được xử lý trước đó.
 _Avoid_: Trạng thái giao diện, lựa chọn materialize của client

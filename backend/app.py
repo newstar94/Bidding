@@ -599,6 +599,8 @@ from backend.db.db_utils import (
 )
 from backend.startup import validate_startup_configuration, verify_database_responsive
 from backend.lifecycle_policy_routes import lifecycle_policy_routes
+from backend.commercial_policy.routes import commercial_policy_routes
+from backend.billing.routes import billing_routes
 
 from backend.auth.otp_routes import (
     register_api,
@@ -989,6 +991,8 @@ routes = [
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
     *sync_http_routes(Route),
     *lifecycle_policy_routes(Route),
+    *commercial_policy_routes(Route),
+    *billing_routes(Route),
     Route("/api/packages/{package_id}/lot-lifecycle", get_lot_lifecycle_api, methods=["GET"]),
     Route("/api/packages/{package_id}/lot-batches", create_lot_batch_api, methods=["POST"]),
     Route("/api/packages/{package_id}/lot-batches/{batch_id}/finalize", finalize_lot_batch_api, methods=["POST"]),

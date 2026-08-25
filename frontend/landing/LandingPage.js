@@ -52,6 +52,121 @@ function formatAnnualPrice(value) {
   return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(amount)}đ`;
 }
 
+function createLandingIcon(name) {
+  const icon = document.createElement("i");
+  icon.dataset.lucide = name;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+function appendCommercialBenefit(list, label) {
+  const item = document.createElement("li");
+  item.append(createLandingIcon("check"), document.createTextNode(label));
+  list.append(item);
+}
+
+function createCommercialOption(offer) {
+  const connected = offer?.variant === "connected";
+  const option = document.createElement("div");
+  option.className = `landing-commercial-option${connected ? " is-connected" : ""}`;
+
+  const label = document.createElement("span");
+  label.className = "landing-commercial-option-label";
+  label.append(createLandingIcon(connected ? "radio-tower" : "layers-3"));
+  label.append(document.createTextNode(connected ? "Kết nối" : "Nội bộ"));
+
+  const price = document.createElement("div");
+  price.className = "landing-commercial-price";
+  const amount = document.createElement("strong");
+  amount.textContent = formatAnnualPrice(offer?.price?.total);
+  const period = document.createElement("small");
+  period.textContent = "/ năm";
+  price.append(amount, period);
+
+  const benefits = document.createElement("ul");
+  const memberQuota = Math.max(1, Number(offer?.memberQuota || 1));
+  appendCommercialBenefit(benefits, `${memberQuota.toLocaleString("vi-VN")} thành viên`);
+  const procurementQuota = Math.max(0, Number(offer?.includedProcurementQuota || 0));
+  appendCommercialBenefit(
+    benefits,
+    procurementQuota > 0
+      ? `${procurementQuota.toLocaleString("vi-VN")} lượt tra cứu kèm theo`
+      : "Có thể mua thêm lượt tra cứu"
+  );
+  appendCommercialBenefit(
+    benefits,
+    offer?.violationCheckEnabled === true
+      ? "Có kiểm tra vi phạm nhà thầu"
+      : "Không gian quản lý dữ liệu nội bộ"
+  );
+
+  const action = document.createElement("a");
+  action.className = `landing-button ${connected ? "landing-button-primary" : "landing-button-secondary"}`;
+  action.href = document.querySelector("[data-landing-app-link]")?.href || LOGIN_PATH;
+  action.textContent = "Bắt đầu với gói này";
+  action.append(createLandingIcon("arrow-right"));
+
+  option.append(label, price, benefits, action);
+  return option;
+}
+
+function renderCommercialOffers(offers = []) {
+  const pricingGrid = document.getElementById("landing-pricing-grid");
+  if (!pricingGrid || !Array.isArray(offers) || offers.length === 0) return false;
+
+  const tierOrder = ["personal", "silver", "gold", "diamond"];
+  const groups = new Map();
+  offers.forEach((offer) => {
+    const tier = String(offer?.tier || "");
+    if (!tier) return;
+    if (!groups.has(tier)) groups.set(tier, []);
+    groups.get(tier).push(offer);
+  });
+  if (!groups.size) return false;
+
+  pricingGrid.replaceChildren();
+  pricingGrid.className = "landing-commercial-grid";
+  [...groups.entries()]
+    .sort(([left], [right]) => {
+      const leftIndex = tierOrder.indexOf(left);
+      const rightIndex = tierOrder.indexOf(right);
+      return (leftIndex < 0 ? tierOrder.length : leftIndex) - (rightIndex < 0 ? tierOrder.length : rightIndex);
+    })
+    .forEach(([tier, tierOffers]) => {
+      const card = document.createElement("article");
+      const recommended = tierOffers.some((offer) => offer?.display?.recommended === true);
+      card.className = `landing-commercial-tier${recommended ? " is-recommended" : ""}`;
+      card.dataset.landingReveal = "";
+
+      const header = document.createElement("div");
+      header.className = "landing-commercial-tier-head";
+      const title = document.createElement("span");
+      const eyebrow = document.createElement("small");
+      eyebrow.textContent = tier === "personal" ? "DÀNH CHO CÁ NHÂN" : "DÀNH CHO TỔ CHỨC";
+      const heading = document.createElement("h3");
+      heading.textContent = String(tierOffers[0]?.display?.name || tier);
+      title.append(eyebrow, heading);
+      header.append(title);
+      if (recommended) {
+        const badge = document.createElement("b");
+        badge.textContent = "CÓ GÓI KẾT NỐI";
+        header.append(badge);
+      }
+
+      const options = document.createElement("div");
+      options.className = "landing-commercial-options";
+      tierOffers
+        .sort((left, right) => (left?.variant === "internal" ? -1 : 1) - (right?.variant === "internal" ? -1 : 1))
+        .forEach((offer) => options.append(createCommercialOption(offer)));
+      card.append(header, options);
+      pricingGrid.append(card);
+    });
+
+  window.lucide?.createIcons({ root: pricingGrid });
+  installSectionReveal();
+  return true;
+}
+
 function applyPublicPackages(packages = []) {
   if (!Array.isArray(packages) || packages.length === 0) return;
   const activeIds = new Set(packages.map((item) => String(item?.id || "")));
@@ -77,13 +192,38 @@ function applyPublicPackages(packages = []) {
 
 async function loadPublicPackages() {
   try {
-    const response = await fetch("/api/public/packages", {
+    // Commercial offers are the live server-resolved source.  The legacy
+    // endpoint remains a compatibility projection while rollout is off.
+    let response = await fetch("/api/public/commercial/offers", {
       headers: { Accept: "application/json" }
     });
-    if (!response.ok) return;
+    if (response.ok) {
+      const catalog = await response.json();
+      const offers = Array.isArray(catalog?.offers) ? catalog.offers : [];
+      if (renderCommercialOffers(offers)) return;
+    }
+    response = await fetch("/api/public/packages", {
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok) {
+      document.querySelectorAll("[data-package-id]").forEach((card) => {
+        card.hidden = true;
+      });
+      const notice = document.querySelector("[data-landing-pricing-notice]");
+      if (notice) {
+        notice.hidden = false;
+        notice.textContent = "Bảng giá đang được kiểm tra trước khi mở bán.";
+      }
+      return;
+    }
     const payload = await response.json();
     applyPublicPackages(payload?.packages);
   } catch (_) {
+    const notice = document.querySelector("[data-landing-pricing-notice]");
+    if (notice) {
+      notice.hidden = false;
+      notice.textContent = "Không thể cập nhật bảng giá lúc này. Vui lòng thử lại sau.";
+    }
   }
 }
 

@@ -12,3 +12,7 @@ class ProcurementSource(Protocol):
     def lookup(self, code: str, kind: str) -> dict:
         """Return a stable biddingflow-procurement-preview-v1 DTO."""
         ...
+
+    def list_revision_metadata(self, code: str, kind: str) -> list[dict]:
+        """List stable revision identities without fetching revision payloads."""
+        ...

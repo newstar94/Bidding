@@ -13,6 +13,7 @@ from backend.db.postgres_schema_contract import (
 )
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
+from scripts.generate_postgres_schema_contract import prepare_generation_schema
 
 
 def _catalog_fixture():
@@ -287,6 +288,24 @@ def test_committed_schema_catalog_tracks_latest_application_schema():
 
     assert expected["schemaVersion"] == DB_SCHEMA_VERSION
     assert set(expected["tables"]) == set(SCHEMA_DINH_NGHIA)
+
+
+def test_schema_contract_generator_uses_fresh_create_for_empty_database():
+    calls = []
+
+    result = prepare_generation_schema(
+        "cursor",
+        0,
+        DB_SCHEMA_VERSION,
+        "context",
+        create_fresh=lambda cursor, context: calls.append(
+            ("fresh", cursor, context)
+        ) or DB_SCHEMA_VERSION,
+        apply_upgrades=lambda *_args: calls.append(("upgrade",)),
+    )
+
+    assert result == DB_SCHEMA_VERSION
+    assert calls == [("fresh", "cursor", "context")]
 
 
 def test_schema_catalog_contract_raises_one_bounded_diagnostic():

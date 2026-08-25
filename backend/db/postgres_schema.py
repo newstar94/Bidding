@@ -24,8 +24,10 @@ from backend.db.upgrades import (
     REQUIRED_POST_V64_FK_INDEXES,
     apply_database_upgrades,
     drop_retired_procurement_center_schema,
+    ensure_commercial_v79_indexes,
     read_database_version,
     record_database_version,
+    seed_commercial_v79,
 )
 from backend.shared.logging_utils import log_error
 
@@ -1112,6 +1114,24 @@ def create_indexes_and_triggers(cursor) -> None:
     _create_triggers(target)
 
 
+def create_commercial_immutable_triggers(cursor) -> None:
+    """Create v79 immutable triggers after a fresh canonical install."""
+    for table_name in (
+        "commercial_releases", "commercial_release_timeline",
+        "commercial_policy_versions", "billing_plan_versions", "billing_skus",
+        "billing_prices", "payment_provider_profiles", "billing_quotes",
+        "payment_transactions", "usage_ledger",
+    ):
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE OR DELETE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+
+
 def assert_foreign_key_integrity(cursor) -> None:
     invalid = cursor.execute(
         """SELECT conrelid::regclass::text, conname
@@ -1276,6 +1296,22 @@ def _historical_v46_catalog(latest_catalog):
     """
 
     catalog = deepcopy(latest_catalog)
+    # These subscription columns were introduced by the v79 commercial
+    # backfill.  The replayed v1-v45 chain must reconcile against the
+    # immutable pre-commercial v46 catalog; v79 adds them later.
+    for table_name in ("account_subscriptions", "organization_subscriptions"):
+        table = catalog["tables"].get(table_name)
+        if table:
+            for column_name in ("plan_version_id", "source", "source_order_id"):
+                table["columns"].pop(column_name, None)
+            table["constraints"] = {
+                name: constraint
+                for name, constraint in table["constraints"].items()
+                if not any(
+                    token in constraint.get("definition", "")
+                    for token in ("plan_version_id", "source_order_id", "source =")
+                )
+            }
     account = catalog["tables"]["tai_khoan"]
     account["columns"].pop("trang_thai", None)
     account["constraints"].pop("tai_khoan_trang_thai_check", None)
@@ -1296,6 +1332,29 @@ def _historical_v46_catalog(latest_catalog):
             "'delivered'::text, 'dead_letter'::text]))"
         )
     post_v46_tables = {
+        # Commercial/billing/usage tables were introduced in v79 and must not
+        # be pulled into the immutable v46 historical replay projection.
+        "commercial_drafts",
+        "commercial_releases",
+        "commercial_release_timeline",
+        "commercial_policy_versions",
+        "billing_plan_versions",
+        "billing_skus",
+        "billing_prices",
+        "payment_provider_profiles",
+        "billing_quotes",
+        "billing_orders",
+        "billing_order_items",
+        "billing_provider_commands",
+        "payment_transactions",
+        "payment_webhook_events",
+        "billing_subscription_activations",
+        "billing_refund_intents",
+        "usage_credit_grants",
+        "usage_reservations",
+        "usage_ledger",
+        "billing_invoice_requests",
+        "commercial_outbox",
         "procurement_source_revision",
         "procurement_source_binding",
         "procurement_import_operation",
@@ -1506,7 +1565,10 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
         "INSERT INTO sync_metadata (organization_id, current_version) VALUES (%s, 1)",
         (organization_id,),
     )
+    ensure_commercial_v79_indexes(cursor)
+    seed_commercial_v79(cursor)
     context.create_indexes_and_triggers(cursor)
+    create_commercial_immutable_triggers(cursor)
     drop_retired_procurement_center_schema(cursor)
     record_database_version(cursor, DB_SCHEMA_VERSION)
     context.assert_foreign_key_integrity(cursor)
@@ -1541,6 +1603,10 @@ def initialize_postgres_database(database, *, dry_run: bool = False) -> int:
             raise RuntimeError(
                 f"Database initialization stopped at unexpected version {version}."
             )
+        # Idempotently repair immutable v79 commercial triggers on databases
+        # upgraded before the trigger set was added to the canonical contract.
+        if version >= 79:
+            create_commercial_immutable_triggers(cursor)
         assert_schema_contract(cursor)
         assert_foreign_key_integrity(cursor)
         if dry_run:

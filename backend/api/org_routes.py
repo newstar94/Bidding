@@ -359,6 +359,19 @@ async def update_organization_subscription_api(request):
                 (1 if changed else 0, organization_id),
             )
         elif action == "renew":
+            from backend.commercial_policy.config import commercial_runtime_config
+
+            commercial_config = commercial_runtime_config()
+            if commercial_config.enabled and commercial_config.mode == "enforce":
+                conn.rollback()
+                return JSONResponse(
+                    {
+                        "error": "Chưa chốt kỳ năm và renewal anchor của base subscription.",
+                        "code": "BLOCKED_DECISION",
+                        "decision": "baseTermAndRenewalAnchor",
+                    },
+                    status_code=409,
+                )
             duration_days = data.get("duration_days", 365)
             if not isinstance(duration_days, int) or isinstance(duration_days, bool) or not 1 <= duration_days <= 3650:
                 conn.rollback()

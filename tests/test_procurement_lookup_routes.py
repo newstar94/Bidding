@@ -5,6 +5,7 @@ from starlette.testclient import TestClient
 import backend.procurement_lookup.routes as routes_module
 from backend.procurement_lookup.config import ProcurementLookupSettings
 from backend.procurement_lookup.routes import procurement_lookup_routes
+from backend.procurement_lookup.service import ProcurementLookupService
 from backend.shared.async_io import BlockingIOTimeoutError
 
 
@@ -255,6 +256,45 @@ def test_browser_driver_and_extractor_flags_are_server_owned(monkeypatch):
     }
     assert config.worker_queue_timeout_ms == 400
     assert config.raw_cache_ttl_seconds == 450
+
+
+def test_revision_metadata_is_listed_without_fetching_payload_and_is_stable():
+    class Source:
+        name = "MUASAMCONG"
+        parser_version = "test"
+
+        def list_revision_metadata(self, code, kind):
+            assert (code, kind) == ("PL2600244105", "PLAN")
+            return [
+                {"revisionId": "revision-2", "revisionNumber": "2"},
+                {"revisionId": "revision-1", "revisionNumber": "01"},
+                {"revisionId": "duplicate", "revisionNumber": "02"},
+            ]
+
+        def lookup(self, *_args, **_kwargs):
+            raise AssertionError("metadata listing must not fetch revision payload")
+
+    rows = ProcurementLookupService(Source()).list_revision_metadata(
+        "PL2600244105", lookup_request_id="req-metadata"
+    )
+
+    assert rows == [
+        {"revisionId": "revision-1", "revisionNumber": "01"},
+        {"revisionId": "revision-2", "revisionNumber": "02"},
+    ]
+
+
+def test_selected_metadata_rejects_unknown_revision_before_payload_fetch():
+    try:
+        routes_module._select_revision_metadata(
+            [{"revisionId": "revision-1", "revisionNumber": "01"}],
+            "SELECTED",
+            ["02"],
+        )
+    except Exception as error:  # noqa: BLE001 - assertion accepts the route's stable domain error
+        assert str(error) == "PROCUREMENT_REVISION_INVALID"
+    else:
+        raise AssertionError("unknown revision must be rejected")
 
 
 def test_blocking_lookup_wires_tenant_raw_cache_and_skips_duplicate_save(

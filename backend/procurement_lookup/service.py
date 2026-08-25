@@ -478,3 +478,53 @@ class ProcurementLookupService:
             with self._lock:
                 self._in_flight.pop(key, None)
                 pending.completed.set()
+
+    def list_revision_metadata(self, code, *, lookup_request_id=None):
+        """Resolve exact source revision identities before a charged fetch."""
+        try:
+            normalized = normalize_procurement_code(str(code or "").strip())
+        except ValueError as error:
+            raise ProcurementLookupError("PROCUREMENT_CODE_INVALID") from error
+        kind = (
+            "PLAN" if normalized.kind is ProcurementCodeKind.PLAN else "PACKAGE"
+        )
+        list_metadata = getattr(self.source, "list_revision_metadata", None)
+        if not callable(list_metadata):
+            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+        request_context = getattr(self.source, "lookup_request_context", None)
+        context = (
+            request_context(lookup_request_id)
+            if callable(request_context)
+            else nullcontext()
+        )
+        with context:
+            rows = list_metadata(normalized.base_code, kind)
+        if not isinstance(rows, list):
+            raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+        normalized_rows = []
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+            revision_number = str(row.get("revisionNumber") or "").strip().zfill(2)
+            revision_id = str(row.get("revisionId") or "").strip()
+            if not revision_number or not revision_id:
+                raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+            if revision_number in seen:
+                continue
+            seen.add(revision_number)
+            normalized_rows.append(
+                {
+                    "revisionNumber": revision_number,
+                    "revisionId": revision_id,
+                }
+            )
+        return sorted(
+            normalized_rows,
+            key=lambda row: (
+                int(row["revisionNumber"])
+                if row["revisionNumber"].isdigit()
+                else -1,
+                row["revisionNumber"],
+            ),
+        )

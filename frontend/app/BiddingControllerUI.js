@@ -9,6 +9,8 @@ import {
 } from "../plans/PlanVersionDraftSession.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
+import { mountCommercialControlCenter } from "../commercial-policy/CommercialControlCenter.js";
+import { mountCommercialStorefront } from "../commercial-policy/CommercialStorefront.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
 import {
   createCompactSidebarMediaQuery,
@@ -21,7 +23,7 @@ import {
   synchronizeSidebarViewport
 } from "./shellAccessibility.js";
 function requiredRoleForTab(tabName) {
-  if (tabName === "superadmin-dashboard" || tabName === "superadmin") return "super_admin";
+  if (["superadmin-dashboard", "superadmin", "commercial-admin"].includes(tabName)) return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
   return null;
 }
@@ -515,6 +517,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     "xuatban-word": "Xuất bản Word",
     "superadmin-dashboard": "Bảng điều khiển Super Admin BiddingFlow",
     superadmin: "Quản lý Đơn vị & Tài khoản Thành viên",
+    "commercial-admin": "Thương mại & Thanh toán",
     managernhanvien: "Quản lý Chuyên viên & Phân quyền Matrix",
     managerhosogiay: "Cấu hình trạng thái hợp đồng",
     mothau: "Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)",
@@ -642,6 +645,10 @@ export function renderTabData(tabName, action = null) {
       this.view.renderSuperAdminPanel();
       this.loadSystemUsers();
       break;
+    case "commercial-admin":
+      return mountCommercialControlCenter(this);
+    case "commercial-storefront":
+      return mountCommercialStorefront(this);
     case "managernhanvien":
       this.reloadEmployeesFromDatabase().then(() => {
         this.view.renderManagerNhanVienPanel();

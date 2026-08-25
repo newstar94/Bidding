@@ -22,6 +22,7 @@ from backend.documents.document_worker import (
     run_durable_document_queue_worker,
     validate_document_worker_configuration,
 )
+from backend.billing.worker import billing_worker_enabled, run_billing_worker
 from backend.documents.award_result_excel_service import (
     run_validation_artifact_janitor,
     validate_artifact_store_configuration,
@@ -350,6 +351,7 @@ async def application_lifespan(
     broker_task = None
     email_delivery_task = None
     document_queue_task = None
+    billing_worker_task = None
     validation_artifact_janitor_task = None
     word_template_projection_task = None
     word_template_retention_task = None
@@ -429,6 +431,8 @@ async def application_lifespan(
         run_word_template_retention_janitor(database)
     )
     email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
+    if billing_worker_enabled():
+        billing_worker_task = asyncio.create_task(run_billing_worker(database))
     if not external_document_worker_enabled():
         document_queue_task = asyncio.create_task(
             run_durable_document_queue_worker(database)
@@ -444,6 +448,7 @@ async def application_lifespan(
             artifact_monitor_task,
             multiprocess_metrics_task,
             email_delivery_task,
+            billing_worker_task,
             document_queue_task,
             validation_artifact_janitor_task,
             word_template_projection_task,
@@ -485,6 +490,7 @@ async def application_lifespan(
             multiprocess_metrics_task,
             broker_task,
             email_delivery_task,
+            billing_worker_task,
             document_queue_task,
             validation_artifact_janitor_task,
             word_template_projection_task,

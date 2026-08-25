@@ -2977,6 +2977,291 @@ def _upgrade_to_v78_add_google_password_setup_delivery(cursor, context):
         "'user_notification'))"
     )
 
+
+COMMERCIAL_V79_TABLES = (
+    "commercial_releases",
+    "commercial_drafts",
+    "commercial_release_timeline",
+    "commercial_policy_versions",
+    "billing_plan_versions",
+    "billing_skus",
+    "billing_prices",
+    "payment_provider_profiles",
+    "billing_quotes",
+    "billing_orders",
+    "billing_order_items",
+    "billing_provider_commands",
+    "payment_transactions",
+    "payment_webhook_events",
+    "billing_subscription_activations",
+    "billing_refund_intents",
+    "usage_credit_grants",
+    "usage_reservations",
+    "usage_ledger",
+    "billing_invoice_requests",
+    "commercial_outbox",
+)
+
+COMMERCIAL_V79_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_commercial_draft_status ON commercial_drafts (status, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_release_effective ON commercial_releases (scope_key, effective_from DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_timeline_effective ON commercial_release_timeline (scope_key, effective_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_plan_release ON billing_plan_versions (release_id, sales_state, tier, variant)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_sku_release ON billing_skus (release_id, sales_state, display_order)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_quote_expiry ON billing_quotes (expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_owner_account ON billing_orders (account_user_id, created_at DESC) WHERE account_user_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_owner_org ON billing_orders (organization_id, created_at DESC) WHERE organization_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_order_idempotency_scope ON billing_orders (actor_user_id, owner_kind, COALESCE(account_user_id, ''), COALESCE(organization_id, ''), operation, idempotency_key)",
+    "CREATE INDEX IF NOT EXISTS idx_provider_command_claim ON billing_provider_commands (status, available_at)",
+    "CREATE INDEX IF NOT EXISTS idx_webhook_event_claim ON payment_webhook_events (status, available_at)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_grant_account_expiry ON usage_credit_grants (account_user_id, feature, expires_at) WHERE account_user_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_usage_grant_org_expiry ON usage_credit_grants (organization_id, feature, expires_at) WHERE organization_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_usage_reservation_lease ON usage_reservations (state, lease_expires_at)",
+    # PostgreSQL UNIQUE treats NULL values as distinct. The owner columns are
+    # intentionally mutually exclusive, so COALESCE is required to make exact
+    # source-revision reservations truly idempotent for both owner kinds.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_usage_reservation_identity ON usage_reservations (owner_kind, COALESCE(account_user_id, ''), COALESCE(organization_id, ''), feature, provider, entity_kind, source_code, source_revision)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_outbox_claim ON commercial_outbox (status, available_at)",
+)
+
+
+def ensure_commercial_v79_indexes(cursor):
+    for statement in COMMERCIAL_V79_INDEXES:
+        cursor.execute(statement)
+
+
+def _commercial_stable_id(kind, *parts):
+    value = ":".join(["biddingflow-commercial-v79", kind, *map(str, parts)])
+    return f"{kind}-{uuid.uuid5(uuid.NAMESPACE_URL, value).hex}"
+
+
+def seed_commercial_v79(cursor):
+    """Create non-sellable compatibility facts and the initial review draft."""
+
+    from backend.commercial_policy.document import (
+        build_initial_draft_document,
+        canonical_json,
+        checksum_document,
+    )
+
+    package_rows = cursor.execute(
+        """SELECT id, ten_goi, han_muc_nhan_su,
+                  document_export_word, document_export_excel,
+                  document_export_award_result_excel, trang_thai
+             FROM goi_dich_vu
+            ORDER BY id"""
+    ).fetchall()
+    package_snapshots = [dict(row) for row in package_rows]
+    release_id = "commercial-release-legacy-v79"
+    legacy_snapshot = {
+        "schemaVersion": 1,
+        "kind": "legacy_compatibility",
+        "nonSellable": True,
+        "packages": package_snapshots,
+    }
+    legacy_json = canonical_json(legacy_snapshot)
+    cursor.execute(
+        """INSERT INTO commercial_releases
+               (id, version_label, schema_version, checksum, snapshot_json,
+                mode, scope_key, effective_from, non_sellable, reason)
+           VALUES (?, 'legacy-v79', 1, ?, ?, 'legacy', 'global', 1, 1,
+                   'Backfill tương thích v79; không được chào bán')
+           ON CONFLICT(id) DO NOTHING""",
+        (release_id, checksum_document(legacy_snapshot), legacy_json),
+    )
+
+    package_by_id = {str(row["id"]): dict(row) for row in package_rows}
+    organization_variants = cursor.execute(
+        """SELECT DISTINCT subscription.package_id, subscription.member_quota
+             FROM organization_subscriptions AS subscription
+            ORDER BY subscription.package_id, subscription.member_quota"""
+    ).fetchall()
+    account_variants = cursor.execute(
+        """SELECT DISTINCT subscription.package_id
+             FROM account_subscriptions AS subscription
+            ORDER BY subscription.package_id"""
+    ).fetchall()
+
+    def add_legacy_plan(owner_kind, package_id, member_quota):
+        package = package_by_id.get(str(package_id))
+        if not package:
+            return None
+        tier = str(package_id).strip().casefold()
+        if tier not in {"silver", "gold", "diamond"}:
+            tier = "personal" if owner_kind == "account" else "silver"
+        logical_code = f"legacy.{owner_kind}.{package_id}.{member_quota}"
+        plan_id = _commercial_stable_id("plan", logical_code)
+        display_json = canonical_json({
+            "name": package.get("ten_goi") or package_id,
+            "legacy": True,
+        })
+        cursor.execute(
+            """INSERT INTO billing_plan_versions
+                   (id, release_id, logical_package_code, owner_kind, tier,
+                    variant, legacy_package_id, member_quota,
+                    included_procurement_quota, document_export_word,
+                    document_export_excel, document_export_award_result_excel,
+                    violation_check_enabled, sales_state, display_json)
+               VALUES (?, ?, ?, ?, ?, 'connected', ?, ?, 0, ?, ?, ?, 1,
+                       'non_sellable', ?)
+               ON CONFLICT(release_id, logical_package_code) DO NOTHING""",
+            (
+                plan_id,
+                release_id,
+                logical_code,
+                owner_kind,
+                tier,
+                package_id,
+                int(member_quota),
+                int(package.get("document_export_word") or 0),
+                int(package.get("document_export_excel") or 0),
+                int(package.get("document_export_award_result_excel") or 0),
+                display_json,
+            ),
+        )
+        return plan_id
+
+    for row in organization_variants:
+        plan_id = add_legacy_plan(
+            "organization", row["package_id"], int(row["member_quota"])
+        )
+        if plan_id:
+            cursor.execute(
+                """UPDATE organization_subscriptions
+                      SET plan_version_id = ?, source = 'legacy'
+                    WHERE package_id = ? AND member_quota = ?
+                      AND plan_version_id IS NULL""",
+                (plan_id, row["package_id"], int(row["member_quota"])),
+            )
+    for row in account_variants:
+        package = package_by_id.get(str(row["package_id"])) or {}
+        plan_id = add_legacy_plan(
+            "account",
+            row["package_id"],
+            int(package.get("han_muc_nhan_su") or 1),
+        )
+        if plan_id:
+            cursor.execute(
+                """UPDATE account_subscriptions
+                      SET plan_version_id = ?, source = 'legacy'
+                    WHERE package_id = ? AND plan_version_id IS NULL""",
+                (plan_id, row["package_id"]),
+            )
+
+    cursor.execute(
+        """INSERT INTO payment_provider_profiles
+               (id, version, provider, environment, public_alias,
+                capabilities_json, min_amount, max_amount,
+                checkout_ttl_seconds, timeout_ms, max_attempts,
+                routing_priority, mode, readiness_status)
+           VALUES
+               ('provider-fake-v1', 1, 'fake', 'test',
+                'Fake local deterministic',
+                '{"create":true,"get":true,"cancel":true,"verify":true}',
+                1, 100000000, 900, 1000, 3, 100, 'shadow', 'ready'),
+               ('provider-payos-production-v1', 1, 'payos', 'production',
+                'payOS',
+                '{"create":true,"get":true,"cancel":true,"verify":true,"refund":false}',
+                1, 100000000, 900, 5000, 3, 10, 'shadow',
+                'blocked_external')
+           ON CONFLICT(id) DO NOTHING"""
+    )
+
+    actor = cursor.execute(
+        """SELECT id FROM tai_khoan
+            WHERE vai_tro = 'super_admin'
+            ORDER BY CASE WHEN trang_thai = 'active' THEN 0 ELSE 1 END,
+                     created_at, id
+            LIMIT 1"""
+    ).fetchone()
+    if not actor:
+        return
+    capabilities_by_tier = {}
+    for tier in ("silver", "gold", "diamond"):
+        package = package_by_id.get(tier)
+        if package:
+            capabilities_by_tier[tier] = {
+                "document.export.word": bool(package["document_export_word"]),
+                "document.export.excel": bool(package["document_export_excel"]),
+                "document.export.award_result_excel": bool(
+                    package["document_export_award_result_excel"]
+                ),
+            }
+    initial_document = build_initial_draft_document(capabilities_by_tier)
+    initial_json = canonical_json(initial_document)
+    initial_checksum = checksum_document(initial_document)
+    cursor.execute(
+        """INSERT INTO commercial_drafts
+               (id, schema_version, base_release_id, status, revision,
+                document_json, checksum, created_by, updated_by)
+           VALUES ('commercial-draft-initial-v1', 1, ?, 'draft', 1,
+                   ?, ?, ?, ?)
+           ON CONFLICT(id) DO NOTHING""",
+        (release_id, initial_json, initial_checksum, actor[0], actor[0]),
+    )
+
+
+def _upgrade_to_v79_add_commercial_billing_and_usage(cursor, context):
+    """Add versioned commercial, billing and procurement-credit foundations."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v79 requires the canonical table builder.")
+    if not callable(context.create_foreign_keys):
+        raise RuntimeError("Database upgrade v79 requires the canonical foreign-key builder.")
+    for table_name in COMMERCIAL_V79_TABLES:
+        create_sql = context.build_create_table_sql(
+            table_name, SCHEMA_DINH_NGHIA[table_name]
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    for table_name in ("organization_subscriptions", "account_subscriptions"):
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS plan_version_id TEXT"
+        )
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS source TEXT "
+            "NOT NULL DEFAULT 'legacy' CHECK(source IN ('legacy', 'admin', 'order'))"
+        )
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS source_order_id TEXT"
+        )
+    context.create_foreign_keys(
+        cursor,
+        COMMERCIAL_V79_TABLES
+        + ("organization_subscriptions", "account_subscriptions"),
+        if_not_exists=True,
+    )
+    ensure_commercial_v79_indexes(cursor)
+    seed_commercial_v79(cursor)
+    if callable(context.create_trigger_functions):
+        context.create_trigger_functions(cursor)
+        for table_name in (
+            "commercial_releases",
+            "commercial_release_timeline",
+            "commercial_policy_versions",
+            "billing_plan_versions",
+            "billing_skus",
+            "billing_prices",
+            "payment_provider_profiles",
+            "billing_quotes",
+            "payment_transactions",
+            "usage_ledger",
+        ):
+            cursor.execute(
+                f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+            )
+            cursor.execute(
+                f"CREATE TRIGGER trg_{table_name}_immutable "
+                f"BEFORE UPDATE OR DELETE ON {table_name} "
+                "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+            )
+    context.assert_foreign_key_integrity(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3359,6 +3644,11 @@ UPGRADES = (
         "add_google_password_setup_delivery",
         _upgrade_to_v78_add_google_password_setup_delivery,
     ),
+    DatabaseUpgrade(
+        79,
+        "add_commercial_billing_and_usage",
+        _upgrade_to_v79_add_commercial_billing_and_usage,
+    ),
 )
 
 
@@ -3366,8 +3656,8 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V78 adds the durable one-time Google password-setup email purpose.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 78
+# V79 adds versioned commercial, billing and usage-credit persistence.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 79
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

@@ -1930,6 +1930,31 @@ def _list_public_packages_sync(request):
     try:
         conn = database.get_connection()
         cursor = conn.cursor()
+        from backend.commercial_policy.config import commercial_runtime_config
+        from backend.commercial_policy.service import CommercialPolicy
+
+        commercial_config = commercial_runtime_config()
+        if commercial_config.enabled and commercial_config.mode in {"shadow", "enforce"}:
+            catalog = CommercialPolicy(
+                cursor, include_shadow=commercial_config.mode == "shadow"
+            ).resolve_offer()
+            packages = []
+            for offer in catalog["offers"]:
+                display = offer.get("display") or {}
+                packages.append({
+                    "id": offer["code"],
+                    "name": display.get("name") or offer["code"],
+                    "price": money_json_value(offer["price"]["total"]),
+                    "quota": int(offer["memberQuota"]),
+                    "description": display.get("description") or "",
+                    "tier": offer["tier"],
+                    "variant": offer["variant"],
+                    "releaseId": catalog["releaseId"],
+                })
+            return JSONResponse(
+                {"packages": packages, "releaseId": catalog["releaseId"]},
+                headers={"Cache-Control": "public, max-age=60, must-revalidate"},
+            )
         cursor.execute("""
             SELECT id, ten_goi AS name, gia_ca AS price,
                    han_muc_nhan_su AS quota, mo_ta AS description
@@ -1952,6 +1977,12 @@ def _list_public_packages_sync(request):
             headers={"Cache-Control": "public, max-age=300"},
         )
     except Exception as exc:
+        from backend.commercial_policy.errors import CommercialPolicyError
+        if isinstance(exc, CommercialPolicyError):
+            return JSONResponse(
+                {"error": exc.message, "code": exc.code, "details": exc.details},
+                status_code=exc.status_code,
+            )
         log_error(exc, "list_public_packages_api")
         return JSONResponse(
             {"error": "Không thể tải bảng giá dịch vụ."},
@@ -2048,6 +2079,17 @@ async def update_system_package_api(request):
         return _database_lane_unavailable_response(request, write=False)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
+    from backend.commercial_policy.config import commercial_runtime_config
+
+    commercial_config = commercial_runtime_config()
+    if commercial_config.enabled and commercial_config.mode == "enforce":
+        return JSONResponse(
+            {
+                "error": "Catalog đã chuyển sang Commercial Control Center; endpoint cũ chỉ còn đọc tương thích.",
+                "code": "COMMERCIAL_LEGACY_MUTATION_DISABLED",
+            },
+            status_code=409,
+        )
     data, json_error = await read_json_object(request)
     if json_error:
         return json_error

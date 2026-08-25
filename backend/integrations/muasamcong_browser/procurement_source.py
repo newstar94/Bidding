@@ -436,6 +436,15 @@ class MuaSamCongProcurementSource:
             }
         return deepcopy(normalized)
 
+    def list_revision_metadata(self, code: str, kind: str) -> list[dict]:
+        """List exact identities using only the upstream version-list seam."""
+        normalized_kind = str(kind or "").strip().upper()
+        if normalized_kind == "PLAN":
+            return self.list_plan_revisions(_canonical_code(code, _PLAN_PATTERN))
+        if normalized_kind == "PACKAGE":
+            return self.list_notice_revisions(_canonical_code(code, _NOTICE_PATTERN))
+        raise ProcurementSourceError("PROCUREMENT_CODE_INVALID")
+
     def _notice_revision_hint(self, notice_no, revision_id):
         with self._lock:
             hint = (self._notice_revisions.get(notice_no) or {}).get(

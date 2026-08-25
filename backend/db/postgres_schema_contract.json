@@ -169,6 +169,181 @@
       "table": "bao_cao_danh_gia_nha_thau",
       "valid": true
     },
+    "billing_invoice_requests_idempotency_key_key": {
+      "definition": "CREATE UNIQUE INDEX billing_invoice_requests_idempotency_key_key ON $SCHEMA.billing_invoice_requests USING btree (idempotency_key)",
+      "live": true,
+      "ready": true,
+      "table": "billing_invoice_requests",
+      "valid": true
+    },
+    "billing_invoice_requests_order_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_invoice_requests_order_id_key ON $SCHEMA.billing_invoice_requests USING btree (order_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_invoice_requests",
+      "valid": true
+    },
+    "billing_invoice_requests_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_invoice_requests_pkey ON $SCHEMA.billing_invoice_requests USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_invoice_requests",
+      "valid": true
+    },
+    "billing_order_items_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_order_items_pkey ON $SCHEMA.billing_order_items USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_order_items",
+      "valid": true
+    },
+    "billing_orders_actor_user_id_owner_kind_account_user_id_org_key": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_actor_user_id_owner_kind_account_user_id_org_key ON $SCHEMA.billing_orders USING btree (actor_user_id, owner_kind, account_user_id, organization_id, operation, idempotency_key)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_orders_organization_id_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_organization_id_id_key ON $SCHEMA.billing_orders USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_orders_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_pkey ON $SCHEMA.billing_orders USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_orders_provider_profile_id_provider_order_code_key": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_provider_profile_id_provider_order_code_key ON $SCHEMA.billing_orders USING btree (provider_profile_id, provider_order_code)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_orders_public_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_public_id_key ON $SCHEMA.billing_orders USING btree (public_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_orders_quote_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_orders_quote_id_key ON $SCHEMA.billing_orders USING btree (quote_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "billing_plan_versions_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_plan_versions_pkey ON $SCHEMA.billing_plan_versions USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_plan_versions",
+      "valid": true
+    },
+    "billing_plan_versions_release_id_logical_package_code_key": {
+      "definition": "CREATE UNIQUE INDEX billing_plan_versions_release_id_logical_package_code_key ON $SCHEMA.billing_plan_versions USING btree (release_id, logical_package_code)",
+      "live": true,
+      "ready": true,
+      "table": "billing_plan_versions",
+      "valid": true
+    },
+    "billing_prices_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_prices_pkey ON $SCHEMA.billing_prices USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_prices",
+      "valid": true
+    },
+    "billing_prices_release_id_sku_id_period_key": {
+      "definition": "CREATE UNIQUE INDEX billing_prices_release_id_sku_id_period_key ON $SCHEMA.billing_prices USING btree (release_id, sku_id, period)",
+      "live": true,
+      "ready": true,
+      "table": "billing_prices",
+      "valid": true
+    },
+    "billing_provider_commands_order_id_command_type_key": {
+      "definition": "CREATE UNIQUE INDEX billing_provider_commands_order_id_command_type_key ON $SCHEMA.billing_provider_commands USING btree (order_id, command_type)",
+      "live": true,
+      "ready": true,
+      "table": "billing_provider_commands",
+      "valid": true
+    },
+    "billing_provider_commands_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_provider_commands_pkey ON $SCHEMA.billing_provider_commands USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_provider_commands",
+      "valid": true
+    },
+    "billing_quotes_organization_id_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_quotes_organization_id_id_key ON $SCHEMA.billing_quotes USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "billing_quotes_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_quotes_pkey ON $SCHEMA.billing_quotes USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "billing_quotes_public_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_quotes_public_id_key ON $SCHEMA.billing_quotes USING btree (public_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "billing_refund_intents_order_id_idempotency_key_key": {
+      "definition": "CREATE UNIQUE INDEX billing_refund_intents_order_id_idempotency_key_key ON $SCHEMA.billing_refund_intents USING btree (order_id, idempotency_key)",
+      "live": true,
+      "ready": true,
+      "table": "billing_refund_intents",
+      "valid": true
+    },
+    "billing_refund_intents_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_refund_intents_pkey ON $SCHEMA.billing_refund_intents USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_refund_intents",
+      "valid": true
+    },
+    "billing_skus_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_skus_pkey ON $SCHEMA.billing_skus USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_skus",
+      "valid": true
+    },
+    "billing_skus_release_id_sku_code_key": {
+      "definition": "CREATE UNIQUE INDEX billing_skus_release_id_sku_code_key ON $SCHEMA.billing_skus USING btree (release_id, sku_code)",
+      "live": true,
+      "ready": true,
+      "table": "billing_skus",
+      "valid": true
+    },
+    "billing_subscription_activations_order_id_key": {
+      "definition": "CREATE UNIQUE INDEX billing_subscription_activations_order_id_key ON $SCHEMA.billing_subscription_activations USING btree (order_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_subscription_activations",
+      "valid": true
+    },
+    "billing_subscription_activations_pkey": {
+      "definition": "CREATE UNIQUE INDEX billing_subscription_activations_pkey ON $SCHEMA.billing_subscription_activations USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_subscription_activations",
+      "valid": true
+    },
     "cau_hinh_bien_word_organization_id_source_table_source_colu_key": {
       "definition": "CREATE UNIQUE INDEX cau_hinh_bien_word_organization_id_source_table_source_colu_key ON $SCHEMA.cau_hinh_bien_word USING btree (organization_id, source_table, source_column)",
       "live": true,
@@ -216,6 +391,55 @@
       "live": true,
       "ready": true,
       "table": "chuyen_gia",
+      "valid": true
+    },
+    "commercial_drafts_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_drafts_pkey ON $SCHEMA.commercial_drafts USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_drafts",
+      "valid": true
+    },
+    "commercial_outbox_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_outbox_pkey ON $SCHEMA.commercial_outbox USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_outbox",
+      "valid": true
+    },
+    "commercial_policy_versions_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_policy_versions_pkey ON $SCHEMA.commercial_policy_versions USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_policy_versions",
+      "valid": true
+    },
+    "commercial_policy_versions_release_id_policy_kind_selector_key": {
+      "definition": "CREATE UNIQUE INDEX commercial_policy_versions_release_id_policy_kind_selector_key ON $SCHEMA.commercial_policy_versions USING btree (release_id, policy_kind, selector)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_policy_versions",
+      "valid": true
+    },
+    "commercial_release_timeline_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_release_timeline_pkey ON $SCHEMA.commercial_release_timeline USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_release_timeline",
+      "valid": true
+    },
+    "commercial_releases_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_releases_pkey ON $SCHEMA.commercial_releases USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_releases",
+      "valid": true
+    },
+    "commercial_releases_version_label_key": {
+      "definition": "CREATE UNIQUE INDEX commercial_releases_version_label_key ON $SCHEMA.commercial_releases USING btree (version_label)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_releases",
       "valid": true
     },
     "conflict_resolution_drafts_organization_id_actor_user_id_wo_key": {
@@ -785,6 +1009,41 @@
       "table": "hang_hoa_du_thau_nha_thau",
       "valid": true
     },
+    "idx_billing_order_owner_account": {
+      "definition": "CREATE INDEX idx_billing_order_owner_account ON $SCHEMA.billing_orders USING btree (account_user_id, created_at DESC) WHERE (account_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "idx_billing_order_owner_org": {
+      "definition": "CREATE INDEX idx_billing_order_owner_org ON $SCHEMA.billing_orders USING btree (organization_id, created_at DESC) WHERE (organization_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "idx_billing_plan_release": {
+      "definition": "CREATE INDEX idx_billing_plan_release ON $SCHEMA.billing_plan_versions USING btree (release_id, sales_state, tier, variant)",
+      "live": true,
+      "ready": true,
+      "table": "billing_plan_versions",
+      "valid": true
+    },
+    "idx_billing_quote_expiry": {
+      "definition": "CREATE INDEX idx_billing_quote_expiry ON $SCHEMA.billing_quotes USING btree (expires_at)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "idx_billing_sku_release": {
+      "definition": "CREATE INDEX idx_billing_sku_release ON $SCHEMA.billing_skus USING btree (release_id, sales_state, display_order)",
+      "live": true,
+      "ready": true,
+      "table": "billing_skus",
+      "valid": true
+    },
     "idx_cau_hinh_bien_word_owner_type_owner": {
       "definition": "CREATE INDEX idx_cau_hinh_bien_word_owner_type_owner ON $SCHEMA.cau_hinh_bien_word USING btree (owner_type, organization_id)",
       "live": true,
@@ -944,6 +1203,34 @@
       "live": true,
       "ready": true,
       "table": "chuyen_gia",
+      "valid": true
+    },
+    "idx_commercial_draft_status": {
+      "definition": "CREATE INDEX idx_commercial_draft_status ON $SCHEMA.commercial_drafts USING btree (status, updated_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_drafts",
+      "valid": true
+    },
+    "idx_commercial_outbox_claim": {
+      "definition": "CREATE INDEX idx_commercial_outbox_claim ON $SCHEMA.commercial_outbox USING btree (status, available_at)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_outbox",
+      "valid": true
+    },
+    "idx_commercial_release_effective": {
+      "definition": "CREATE INDEX idx_commercial_release_effective ON $SCHEMA.commercial_releases USING btree (scope_key, effective_from DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_releases",
+      "valid": true
+    },
+    "idx_commercial_timeline_effective": {
+      "definition": "CREATE INDEX idx_commercial_timeline_effective ON $SCHEMA.commercial_release_timeline USING btree (scope_key, effective_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_release_timeline",
       "valid": true
     },
     "idx_conflict_draft_actor": {
@@ -2416,6 +2703,13 @@
       "table": "procurement_import_session",
       "valid": true
     },
+    "idx_provider_command_claim": {
+      "definition": "CREATE INDEX idx_provider_command_claim ON $SCHEMA.billing_provider_commands USING btree (status, available_at)",
+      "live": true,
+      "ready": true,
+      "table": "billing_provider_commands",
+      "valid": true
+    },
     "idx_rate_limit_expires": {
       "definition": "CREATE INDEX idx_rate_limit_expires ON $SCHEMA.rate_limit_buckets USING btree (expires_at)",
       "live": true,
@@ -2542,6 +2836,27 @@
       "table": "tieu_chi_danh_gia",
       "valid": true
     },
+    "idx_usage_grant_account_expiry": {
+      "definition": "CREATE INDEX idx_usage_grant_account_expiry ON $SCHEMA.usage_credit_grants USING btree (account_user_id, feature, expires_at) WHERE (account_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
+    "idx_usage_grant_org_expiry": {
+      "definition": "CREATE INDEX idx_usage_grant_org_expiry ON $SCHEMA.usage_credit_grants USING btree (organization_id, feature, expires_at) WHERE (organization_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
+    "idx_usage_reservation_lease": {
+      "definition": "CREATE INDEX idx_usage_reservation_lease ON $SCHEMA.usage_reservations USING btree (state, lease_expires_at)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
     "idx_user_notifications_user_created": {
       "definition": "CREATE INDEX idx_user_notifications_user_created ON $SCHEMA.user_notifications USING btree (user_id, created_at DESC)",
       "live": true,
@@ -2568,6 +2883,13 @@
       "live": true,
       "ready": true,
       "table": "vong_danh_gia",
+      "valid": true
+    },
+    "idx_webhook_event_claim": {
+      "definition": "CREATE INDEX idx_webhook_event_claim ON $SCHEMA.payment_webhook_events USING btree (status, available_at)",
+      "live": true,
+      "ready": true,
+      "table": "payment_webhook_events",
       "valid": true
     },
     "idx_websocket_leases_expiry": {
@@ -3074,6 +3396,48 @@
       "table": "password_reset_tokens",
       "valid": true
     },
+    "payment_provider_profiles_pkey": {
+      "definition": "CREATE UNIQUE INDEX payment_provider_profiles_pkey ON $SCHEMA.payment_provider_profiles USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "payment_provider_profiles",
+      "valid": true
+    },
+    "payment_provider_profiles_provider_environment_version_key": {
+      "definition": "CREATE UNIQUE INDEX payment_provider_profiles_provider_environment_version_key ON $SCHEMA.payment_provider_profiles USING btree (provider, environment, version)",
+      "live": true,
+      "ready": true,
+      "table": "payment_provider_profiles",
+      "valid": true
+    },
+    "payment_transactions_pkey": {
+      "definition": "CREATE UNIQUE INDEX payment_transactions_pkey ON $SCHEMA.payment_transactions USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "payment_transactions",
+      "valid": true
+    },
+    "payment_transactions_provider_profile_id_provider_transacti_key": {
+      "definition": "CREATE UNIQUE INDEX payment_transactions_provider_profile_id_provider_transacti_key ON $SCHEMA.payment_transactions USING btree (provider_profile_id, provider_transaction_id, transaction_type)",
+      "live": true,
+      "ready": true,
+      "table": "payment_transactions",
+      "valid": true
+    },
+    "payment_webhook_events_pkey": {
+      "definition": "CREATE UNIQUE INDEX payment_webhook_events_pkey ON $SCHEMA.payment_webhook_events USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "payment_webhook_events",
+      "valid": true
+    },
+    "payment_webhook_events_provider_profile_id_dedupe_key_paylo_key": {
+      "definition": "CREATE UNIQUE INDEX payment_webhook_events_provider_profile_id_dedupe_key_paylo_key ON $SCHEMA.payment_webhook_events USING btree (provider_profile_id, dedupe_key, payload_hash)",
+      "live": true,
+      "ready": true,
+      "table": "payment_webhook_events",
+      "valid": true
+    },
     "pending_email_changes_pending_email_norm_key": {
       "definition": "CREATE UNIQUE INDEX pending_email_changes_pending_email_norm_key ON $SCHEMA.pending_email_changes USING btree (pending_email_norm)",
       "live": true,
@@ -3340,6 +3704,62 @@
       "table": "to_chuc",
       "valid": true
     },
+    "uq_billing_order_idempotency_scope": {
+      "definition": "CREATE UNIQUE INDEX uq_billing_order_idempotency_scope ON $SCHEMA.billing_orders USING btree (actor_user_id, owner_kind, COALESCE(account_user_id, ''::text), COALESCE(organization_id, ''::text), operation, idempotency_key)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "uq_usage_reservation_identity": {
+      "definition": "CREATE UNIQUE INDEX uq_usage_reservation_identity ON $SCHEMA.usage_reservations USING btree (owner_kind, COALESCE(account_user_id, ''::text), COALESCE(organization_id, ''::text), feature, provider, entity_kind, source_code, source_revision)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
+    "usage_credit_grants_organization_id_id_key": {
+      "definition": "CREATE UNIQUE INDEX usage_credit_grants_organization_id_id_key ON $SCHEMA.usage_credit_grants USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
+    "usage_credit_grants_pkey": {
+      "definition": "CREATE UNIQUE INDEX usage_credit_grants_pkey ON $SCHEMA.usage_credit_grants USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
+    "usage_ledger_pkey": {
+      "definition": "CREATE UNIQUE INDEX usage_ledger_pkey ON $SCHEMA.usage_ledger USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_ledger",
+      "valid": true
+    },
+    "usage_reservations_organization_id_id_key": {
+      "definition": "CREATE UNIQUE INDEX usage_reservations_organization_id_id_key ON $SCHEMA.usage_reservations USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
+    "usage_reservations_owner_kind_account_user_id_organization__key": {
+      "definition": "CREATE UNIQUE INDEX usage_reservations_owner_kind_account_user_id_organization__key ON $SCHEMA.usage_reservations USING btree (owner_kind, account_user_id, organization_id, feature, provider, entity_kind, source_code, source_revision)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
+    "usage_reservations_pkey": {
+      "definition": "CREATE UNIQUE INDEX usage_reservations_pkey ON $SCHEMA.usage_reservations USING btree (id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
     "user_notifications_organization_id_id_key": {
       "definition": "CREATE UNIQUE INDEX user_notifications_organization_id_id_key ON $SCHEMA.user_notifications USING btree (organization_id, id)",
       "live": true,
@@ -3510,7 +3930,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 78,
+  "schemaVersion": 79,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -3535,12 +3955,33 @@
           "notNull": true,
           "type": "text"
         },
+        "plan_version_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "revision": {
           "default": "1",
           "generated": "",
           "identity": "",
           "notNull": true,
           "type": "bigint"
+        },
+        "source": {
+          "default": "'legacy'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "source_order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
         },
         "starts_at": {
           "default": null,
@@ -3593,6 +4034,13 @@
           "kind": "c",
           "validated": true
         },
+        "account_subscriptions_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (source = ANY (ARRAY['legacy'::text, 'admin'::text, 'order'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
         "account_subscriptions_starts_at_check": {
           "deferrable": false,
           "definition": "CHECK (starts_at > 0)",
@@ -3617,6 +4065,20 @@
         "fk_account_subscriptions_2_8f3a82d4": {
           "deferrable": false,
           "definition": "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_account_subscriptions_3_2c27abd5": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_account_subscriptions_4_4e9aa48d": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (source_order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
           "initiallyDeferred": false,
           "kind": "f",
           "validated": true
@@ -5437,6 +5899,1913 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "billing_invoice_requests": {
+      "columns": {
+        "attempt_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "buyer_profile_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "idempotency_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "payment_transaction_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "status": {
+          "default": "'requested'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "tax_snapshot_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "billing_invoice_requests_attempt_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (attempt_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_invoice_requests_buyer_profile_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(buyer_profile_json) >= 2 AND length(buyer_profile_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_invoice_requests_idempotency_key_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (idempotency_key)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_invoice_requests_order_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (order_id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_invoice_requests_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_invoice_requests_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['requested'::text, 'issued'::text, 'failed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_invoice_requests_tax_snapshot_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(tax_snapshot_json) >= 2 AND length(tax_snapshot_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_invoice_requests_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_invoice_requests_2_040db26d": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (payment_transaction_id) REFERENCES payment_transactions(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_order_items": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_version_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "price_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "quantity": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "sku_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "snapshot_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "billing_order_items_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_order_items_quantity_check": {
+          "deferrable": false,
+          "definition": "CHECK (quantity > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_order_items_snapshot_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(snapshot_json) >= 2 AND length(snapshot_json) <= 65536)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_order_items_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_order_items_2_1084ef91": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (sku_id) REFERENCES billing_skus(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_order_items_3_2c27abd5": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_order_items_4_c0a57c26": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (price_id) REFERENCES billing_prices(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_orders": {
+      "columns": {
+        "account_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "activation_state": {
+          "default": "'not_ready'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "actor_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "checkout_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "checkout_state": {
+          "default": "'creating'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "checkout_url": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "currency": {
+          "default": "'VND'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "decision_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "expected_subscription_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "idempotency_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "operation": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "payment_state": {
+          "default": "'unverified'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_order_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "provider_profile_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "public_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "quote_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "request_hash": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "revision": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "subtotal_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "tax_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "total_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "billing_orders_activation_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (activation_state = ANY (ARRAY['not_ready'::text, 'pending'::text, 'applied'::text, 'retry'::text, 'review_required'::text, 'reversed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_actor_user_id_owner_kind_account_user_id_org_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (actor_user_id, owner_kind, account_user_id, organization_id, operation, idempotency_key)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_orders_check": {
+          "deferrable": false,
+          "definition": "CHECK (total_amount = (subtotal_amount + tax_amount))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_check1": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = 'account'::text AND account_user_id IS NOT NULL AND organization_id IS NULL OR owner_kind = 'organization'::text AND account_user_id IS NULL AND organization_id IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_checkout_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (checkout_state = ANY (ARRAY['creating'::text, 'open'::text, 'create_failed'::text, 'cancelled'::text, 'expired'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_currency_check": {
+          "deferrable": false,
+          "definition": "CHECK (currency = 'VND'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_decision_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(decision_json) >= 2 AND length(decision_json) <= 65536)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_idempotency_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(idempotency_key) >= 8 AND length(idempotency_key) <= 128)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_operation_check": {
+          "deferrable": false,
+          "definition": "CHECK (operation = ANY (ARRAY['purchase'::text, 'renew'::text, 'upgrade'::text, 'downgrade'::text, 'credit_pack'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_organization_id_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_orders_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_payment_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (payment_state = ANY (ARRAY['unverified'::text, 'verified_paid'::text, 'refund_pending'::text, 'partially_refunded'::text, 'refunded'::text, 'refund_failed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_orders_provider_order_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (provider_order_code > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_provider_profile_id_provider_order_code_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (provider_profile_id, provider_order_code)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_orders_provider_reference_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM provider_reference) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_public_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(public_id) >= 20 AND length(public_id) <= 128)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_public_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (public_id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_orders_quote_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (quote_id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_orders_request_hash_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(request_hash) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_revision_check": {
+          "deferrable": false,
+          "definition": "CHECK (revision > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_subtotal_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (subtotal_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_tax_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_orders_1_1bffb399": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id, quote_id) REFERENCES billing_quotes(organization_id, id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_orders_2_658e1561": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_orders_3_92e0ecb6": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_orders_4_9972e6d4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_orders_5_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_orders_6_4f4e0969": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_plan_versions": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "display_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "document_export_award_result_excel": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "document_export_excel": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "document_export_word": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "included_procurement_quota": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "legacy_package_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "logical_package_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "member_quota": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sales_state": {
+          "default": "'non_sellable'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "tier": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "variant": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "violation_check_enabled": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        }
+      },
+      "constraints": {
+        "billing_plan_versions_display_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(display_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_document_export_award_result_excel_check": {
+          "deferrable": false,
+          "definition": "CHECK (document_export_award_result_excel = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_document_export_excel_check": {
+          "deferrable": false,
+          "definition": "CHECK (document_export_excel = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_document_export_word_check": {
+          "deferrable": false,
+          "definition": "CHECK (document_export_word = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_included_procurement_quota_check": {
+          "deferrable": false,
+          "definition": "CHECK (included_procurement_quota >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_logical_package_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM logical_package_code) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_member_quota_check": {
+          "deferrable": false,
+          "definition": "CHECK (member_quota > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_plan_versions_release_id_logical_package_code_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (release_id, logical_package_code)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_plan_versions_sales_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (sales_state = ANY (ARRAY['sellable'::text, 'stopped'::text, 'non_sellable'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_tier_check": {
+          "deferrable": false,
+          "definition": "CHECK (tier = ANY (ARRAY['personal'::text, 'silver'::text, 'gold'::text, 'diamond'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY['internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_plan_versions_violation_check_enabled_check": {
+          "deferrable": false,
+          "definition": "CHECK (violation_check_enabled = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_plan_versions_1_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_plan_versions_2_d630560a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (legacy_package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_prices": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "currency": {
+          "default": "'VND'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "effective_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "period": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "subtotal_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "tax_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "tax_profile_ref": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "total_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        }
+      },
+      "constraints": {
+        "billing_prices_check": {
+          "deferrable": false,
+          "definition": "CHECK (total_amount = (subtotal_amount + tax_amount))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_prices_currency_check": {
+          "deferrable": false,
+          "definition": "CHECK (currency = 'VND'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_prices_effective_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (effective_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_prices_period_check": {
+          "deferrable": false,
+          "definition": "CHECK (period = ANY (ARRAY['monthly'::text, 'yearly'::text, 'one_time'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_prices_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_prices_release_id_sku_id_period_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (release_id, sku_id, period)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_prices_subtotal_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (subtotal_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_prices_tax_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_prices_1_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_prices_2_1084ef91": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (sku_id) REFERENCES billing_skus(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_provider_commands": {
+      "columns": {
+        "attempt_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "available_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "command_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "last_error_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "lease_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "locked_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "request_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": "'pending'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "billing_provider_commands_attempt_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (attempt_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_provider_commands_available_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (available_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_provider_commands_command_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (command_type = ANY (ARRAY['create_checkout'::text, 'cancel_checkout'::text, 'query_order'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_provider_commands_order_id_command_type_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (order_id, command_type)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_provider_commands_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_provider_commands_request_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(request_json) >= 2 AND length(request_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_provider_commands_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'retry'::text, 'completed'::text, 'dead'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_provider_commands_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_quotes": {
+      "columns": {
+        "account_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "actor_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "currency": {
+          "default": "'VND'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "decision_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "expected_subscription_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "operation": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "public_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_checksum": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "request_hash": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "subtotal_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "tax_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "total_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        }
+      },
+      "constraints": {
+        "billing_quotes_check": {
+          "deferrable": false,
+          "definition": "CHECK (total_amount = (subtotal_amount + tax_amount))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_check1": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = 'account'::text AND account_user_id IS NOT NULL AND organization_id IS NULL OR owner_kind = 'organization'::text AND account_user_id IS NULL AND organization_id IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_currency_check": {
+          "deferrable": false,
+          "definition": "CHECK (currency = 'VND'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_decision_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(decision_json) >= 2 AND length(decision_json) <= 65536)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_expires_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (expires_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_operation_check": {
+          "deferrable": false,
+          "definition": "CHECK (operation = ANY (ARRAY['purchase'::text, 'renew'::text, 'upgrade'::text, 'downgrade'::text, 'credit_pack'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_organization_id_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_quotes_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_quotes_public_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(public_id) >= 20 AND length(public_id) <= 128)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_public_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (public_id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_quotes_release_checksum_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(release_checksum) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_request_hash_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(request_hash) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_subtotal_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (subtotal_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_quotes_tax_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_quotes_1_658e1561": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_quotes_2_92e0ecb6": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_quotes_3_9972e6d4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_quotes_4_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_refund_intents": {
+      "columns": {
+        "activation_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "actor_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "idempotency_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "method": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "reason": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "state": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "billing_refund_intents_activation_revision_check": {
+          "deferrable": false,
+          "definition": "CHECK (activation_revision > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_refund_intents_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (amount > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_refund_intents_idempotency_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(idempotency_key) >= 8 AND length(idempotency_key) <= 128)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_refund_intents_method_check": {
+          "deferrable": false,
+          "definition": "CHECK (method = ANY (ARRAY['manual_off_platform'::text, 'provider'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_refund_intents_order_id_idempotency_key_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (order_id, idempotency_key)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_refund_intents_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_refund_intents_reason_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(TRIM(BOTH FROM reason)) >= 3 AND length(TRIM(BOTH FROM reason)) <= 2000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_refund_intents_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (state = ANY (ARRAY['pending'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_refund_intents_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_refund_intents_2_658e1561": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_skus": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "display_order": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "item_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_version_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "quantity": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "repeatable": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "sales_state": {
+          "default": "'non_sellable'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "billing_skus_display_order_check": {
+          "deferrable": false,
+          "definition": "CHECK (display_order >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_skus_item_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (item_type = ANY (ARRAY['base_plan'::text, 'procurement_credit_pack'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_skus_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_skus_quantity_check": {
+          "deferrable": false,
+          "definition": "CHECK (quantity > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_skus_release_id_sku_code_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (release_id, sku_code)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_skus_repeatable_check": {
+          "deferrable": false,
+          "definition": "CHECK (repeatable = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_skus_sales_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (sales_state = ANY (ARRAY['sellable'::text, 'stopped'::text, 'non_sellable'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_skus_sku_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM sku_code) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_skus_1_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_billing_skus_2_2c27abd5": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "billing_subscription_activations": {
+      "columns": {
+        "after_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "applied_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "before_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "expected_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "reason_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "state": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "billing_subscription_activations_after_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(after_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_subscription_activations_before_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(before_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_subscription_activations_order_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (order_id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "billing_subscription_activations_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "billing_subscription_activations_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (state = ANY (ARRAY['pending'::text, 'applied'::text, 'retry'::text, 'review_required'::text, 'reversed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_billing_subscription_activations_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "cau_hinh_bien_word": {
       "columns": {
         "created_at": {
@@ -6226,6 +8595,781 @@
           "definition": "CHECK (sync_version >= 0)",
           "initiallyDeferred": false,
           "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_drafts": {
+      "columns": {
+        "base_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "checksum": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "created_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "document_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "readiness_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "revision": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "schema_version": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "status": {
+          "default": "'draft'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "updated_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "validation_digest": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "validation_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "validation_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "commercial_drafts_checksum_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(checksum) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_document_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(document_json) >= 2 AND length(document_json) <= 262144)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_drafts_revision_check": {
+          "deferrable": false,
+          "definition": "CHECK (revision > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_schema_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (schema_version > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['draft'::text, 'validated'::text, 'archived'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_validation_digest_check": {
+          "deferrable": false,
+          "definition": "CHECK (validation_digest IS NULL OR length(validation_digest) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_validation_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (validation_json IS NULL OR length(validation_json) <= 262144)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_drafts_validation_revision_check": {
+          "deferrable": false,
+          "definition": "CHECK (validation_revision IS NULL OR validation_revision > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_drafts_1_9c68a02b": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (base_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_commercial_drafts_2_e063bafc": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (created_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_commercial_drafts_3_598e8ba8": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (updated_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_outbox": {
+      "columns": {
+        "aggregate_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "aggregate_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "attempt_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "available_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "event_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "lease_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "locked_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "payload_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": "'pending'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_outbox_aggregate_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM aggregate_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_aggregate_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM aggregate_type) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_attempt_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (attempt_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_available_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (available_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_event_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM event_type) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_payload_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(payload_json) >= 2 AND length(payload_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_outbox_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_outbox_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'retry'::text, 'dispatched'::text, 'dead'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_policy_versions": {
+      "columns": {
+        "checksum": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "payload_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "policy_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "schema_version": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "selector": {
+          "default": "'default'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_policy_versions_checksum_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(checksum) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_policy_versions_payload_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(payload_json) >= 2 AND length(payload_json) <= 65536)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_policy_versions_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_policy_versions_policy_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM policy_kind) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_policy_versions_release_id_policy_kind_selector_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (release_id, policy_kind, selector)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "commercial_policy_versions_schema_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (schema_version > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_policy_versions_selector_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM selector) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_policy_versions_1_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_release_timeline": {
+      "columns": {
+        "actor_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "effective_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "event_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "reason": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "scope_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "scope_key": {
+          "default": "'global'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_release_timeline_effective_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (effective_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_release_timeline_event_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_type = ANY (ARRAY['published'::text, 'scheduled'::text, 'stop_sales'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_release_timeline_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_release_timeline_reason_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(TRIM(BOTH FROM reason)) >= 3 AND length(TRIM(BOTH FROM reason)) <= 2000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_release_timeline_scope_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(scope_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_release_timeline_scope_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM scope_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_release_timeline_1_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_commercial_release_timeline_2_658e1561": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_releases": {
+      "columns": {
+        "base_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "checksum": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "effective_from": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "mode": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "non_sellable": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "published_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "reason": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "schema_version": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "scope_key": {
+          "default": "'global'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "snapshot_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "version_label": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_releases_checksum_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(checksum) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_effective_from_check": {
+          "deferrable": false,
+          "definition": "CHECK (effective_from > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_mode_check": {
+          "deferrable": false,
+          "definition": "CHECK (mode = ANY (ARRAY['legacy'::text, 'shadow'::text, 'pilot'::text, 'production'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_non_sellable_check": {
+          "deferrable": false,
+          "definition": "CHECK (non_sellable = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_releases_reason_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(TRIM(BOTH FROM reason)) >= 3 AND length(TRIM(BOTH FROM reason)) <= 2000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_schema_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (schema_version > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_scope_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM scope_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_snapshot_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(snapshot_json) >= 2 AND length(snapshot_json) <= 262144)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_version_label_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM version_label) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_releases_version_label_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (version_label)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "fk_commercial_releases_1_9c68a02b": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (base_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_commercial_releases_2_36695be1": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (published_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
           "validated": true
         }
       },
@@ -15604,12 +18748,33 @@
           "notNull": true,
           "type": "text"
         },
+        "plan_version_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "revision": {
           "default": "1",
           "generated": "",
           "identity": "",
           "notNull": true,
           "type": "bigint"
+        },
+        "source": {
+          "default": "'legacy'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "source_order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
         },
         "starts_at": {
           "default": null,
@@ -15648,6 +18813,20 @@
           "kind": "f",
           "validated": true
         },
+        "fk_organization_subscriptions_3_2c27abd5": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_organization_subscriptions_4_210c60fb": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id, source_order_id) REFERENCES billing_orders(organization_id, id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
         "organization_subscriptions_check": {
           "deferrable": false,
           "definition": "CHECK (expires_at IS NULL OR expires_at > starts_at)",
@@ -15672,6 +18851,13 @@
         "organization_subscriptions_revision_check": {
           "deferrable": false,
           "definition": "CHECK (revision > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_subscriptions_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (source = ANY (ARRAY['legacy'::text, 'admin'::text, 'order'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -16380,6 +19566,597 @@
           "definition": "UNIQUE (token_hash)",
           "initiallyDeferred": false,
           "kind": "u",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "payment_provider_profiles": {
+      "columns": {
+        "capabilities_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "checkout_ttl_seconds": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "credential_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "environment": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "last_health_checked_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "max_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "max_attempts": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "merchant_reference": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "min_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "mode": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "public_alias": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "readiness_status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "routing_priority": {
+          "default": "100",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "version": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "payment_provider_profiles_capabilities_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(capabilities_json) <= 8192)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_check": {
+          "deferrable": false,
+          "definition": "CHECK (max_amount >= min_amount)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_checkout_ttl_seconds_check": {
+          "deferrable": false,
+          "definition": "CHECK (checkout_ttl_seconds >= 60 AND checkout_ttl_seconds <= 86400)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_environment_check": {
+          "deferrable": false,
+          "definition": "CHECK (environment = ANY (ARRAY['test'::text, 'staging'::text, 'production'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_max_attempts_check": {
+          "deferrable": false,
+          "definition": "CHECK (max_attempts >= 1 AND max_attempts <= 10)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_min_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (min_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_mode_check": {
+          "deferrable": false,
+          "definition": "CHECK (mode = ANY (ARRAY['shadow'::text, 'live'::text, 'paused'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "payment_provider_profiles_provider_check": {
+          "deferrable": false,
+          "definition": "CHECK (provider = ANY (ARRAY['fake'::text, 'payos'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_provider_environment_version_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (provider, environment, version)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "payment_provider_profiles_public_alias_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM public_alias) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_readiness_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (readiness_status = ANY (ARRAY['unknown'::text, 'ready'::text, 'blocked_external'::text, 'unhealthy'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_routing_priority_check": {
+          "deferrable": false,
+          "definition": "CHECK (routing_priority >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_timeout_ms_check": {
+          "deferrable": false,
+          "definition": "CHECK (timeout_ms >= 100 AND timeout_ms <= 30000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_provider_profiles_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (version > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "payment_transactions": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "currency": {
+          "default": "'VND'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "evidence_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "fee_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "net_settled_amount": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "order_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "payment_timing": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "provider_occurred_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "provider_profile_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider_transaction_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "transaction_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "verified_paid_amount": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        }
+      },
+      "constraints": {
+        "fk_payment_transactions_1_62489a5a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_payment_transactions_2_4f4e0969": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "payment_transactions_currency_check": {
+          "deferrable": false,
+          "definition": "CHECK (currency = 'VND'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_evidence_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(evidence_json) >= 2 AND length(evidence_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_fee_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (fee_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_net_settled_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (net_settled_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_payment_timing_check": {
+          "deferrable": false,
+          "definition": "CHECK (payment_timing = ANY (ARRAY['on_time'::text, 'late_after_cancel'::text, 'late_after_expiry'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "payment_transactions_provider_profile_id_provider_transacti_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (provider_profile_id, provider_transaction_id, transaction_type)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "payment_transactions_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['verified'::text, 'settled'::text, 'failed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_transaction_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (transaction_type = ANY (ARRAY['payment'::text, 'refund'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_transactions_verified_paid_amount_check": {
+          "deferrable": false,
+          "definition": "CHECK (verified_paid_amount >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "payment_webhook_events": {
+      "columns": {
+        "attempt_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "available_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "dedupe_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "last_error_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "lease_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "locked_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "payload_hash": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "processed_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "provider_profile_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "signed_fields_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": "'pending'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_payment_webhook_events_1_4f4e0969": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "payment_webhook_events_attempt_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (attempt_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_webhook_events_available_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (available_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_webhook_events_dedupe_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM dedupe_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_webhook_events_payload_hash_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(payload_hash) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_webhook_events_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "payment_webhook_events_provider_profile_id_dedupe_key_paylo_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (provider_profile_id, dedupe_key, payload_hash)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "payment_webhook_events_signed_fields_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(signed_fields_json) >= 2 AND length(signed_fields_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "payment_webhook_events_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'retry'::text, 'processed'::text, 'dead'::text, 'ignored'::text, 'review'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         }
       },
@@ -20083,6 +23860,569 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "usage_credit_grants": {
+      "columns": {
+        "account_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "feature": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "issued_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "order_item_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "policy_checksum": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "remaining": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "reserved": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "source": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "total": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "fk_usage_credit_grants_1_92e0ecb6": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_credit_grants_2_9972e6d4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_credit_grants_3_da73b6a3": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (order_item_id) REFERENCES billing_order_items(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_credit_grants_4_65975a52": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "usage_credit_grants_check": {
+          "deferrable": false,
+          "definition": "CHECK (remaining >= 0 AND remaining <= total)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_check1": {
+          "deferrable": false,
+          "definition": "CHECK (reserved >= 0 AND reserved <= remaining)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_check2": {
+          "deferrable": false,
+          "definition": "CHECK (expires_at > issued_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_check3": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = 'account'::text AND account_user_id IS NOT NULL AND organization_id IS NULL OR owner_kind = 'organization'::text AND account_user_id IS NULL AND organization_id IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_feature_check": {
+          "deferrable": false,
+          "definition": "CHECK (feature = 'procurement.source_fetch'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_issued_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (issued_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_organization_id_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "usage_credit_grants_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "usage_credit_grants_policy_checksum_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(policy_checksum) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (source = ANY (ARRAY['plan'::text, 'purchase'::text, 'admin'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_credit_grants_total_check": {
+          "deferrable": false,
+          "definition": "CHECK (total > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "usage_ledger": {
+      "columns": {
+        "balance_after": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "entry_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "grant_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "metadata_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "quantity": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "reservation_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_usage_ledger_1_d02f34fc": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (grant_id) REFERENCES usage_credit_grants(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_ledger_2_0cdbcb34": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (reservation_id) REFERENCES usage_reservations(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "usage_ledger_balance_after_check": {
+          "deferrable": false,
+          "definition": "CHECK (balance_after >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_ledger_entry_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (entry_type = ANY (ARRAY['grant'::text, 'reserve'::text, 'consume'::text, 'release'::text, 'expire'::text, 'adjust'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_ledger_metadata_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(metadata_json) <= 32768)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_ledger_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "usage_ledger_quantity_check": {
+          "deferrable": false,
+          "definition": "CHECK (quantity <> 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "usage_reservations": {
+      "columns": {
+        "account_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "entity_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "feature": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "grant_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "job_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "lease_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "provider": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "source_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "source_revision": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "state": {
+          "default": "'reserved'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "fk_usage_reservations_1_92e0ecb6": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_reservations_2_9972e6d4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_usage_reservations_3_4b1c1141": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id, grant_id) REFERENCES usage_credit_grants(organization_id, id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "usage_reservations_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = 'account'::text AND account_user_id IS NOT NULL AND organization_id IS NULL OR owner_kind = 'organization'::text AND account_user_id IS NULL AND organization_id IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_entity_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM entity_kind) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_feature_check": {
+          "deferrable": false,
+          "definition": "CHECK (feature = 'procurement.source_fetch'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_job_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM job_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_lease_expires_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (lease_expires_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_organization_id_id_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "usage_reservations_owner_kind_account_user_id_organization__key": {
+          "deferrable": false,
+          "definition": "UNIQUE (owner_kind, account_user_id, organization_id, feature, provider, entity_kind, source_code, source_revision)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "usage_reservations_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "usage_reservations_provider_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM provider) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_source_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM source_code) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_source_revision_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM source_revision) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "usage_reservations_state_check": {
+          "deferrable": false,
+          "definition": "CHECK (state = ANY (ARRAY['reserved'::text, 'consumed'::text, 'released'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "user_notifications": {
       "columns": {
         "created_at": {
@@ -22103,6 +26443,26 @@
       "enabled": "O",
       "table": "bao_cao_danh_gia_nha_thau"
     },
+    "billing_plan_versions.trg_billing_plan_versions_immutable": {
+      "definition": "CREATE TRIGGER trg_billing_plan_versions_immutable BEFORE DELETE OR UPDATE ON billing_plan_versions FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "billing_plan_versions"
+    },
+    "billing_prices.trg_billing_prices_immutable": {
+      "definition": "CREATE TRIGGER trg_billing_prices_immutable BEFORE DELETE OR UPDATE ON billing_prices FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "billing_prices"
+    },
+    "billing_quotes.trg_billing_quotes_immutable": {
+      "definition": "CREATE TRIGGER trg_billing_quotes_immutable BEFORE DELETE OR UPDATE ON billing_quotes FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "billing_quotes"
+    },
+    "billing_skus.trg_billing_skus_immutable": {
+      "definition": "CREATE TRIGGER trg_billing_skus_immutable BEFORE DELETE OR UPDATE ON billing_skus FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "billing_skus"
+    },
     "cau_hinh_bien_word.trg_cau_hinh_bien_word_workspace_owner": {
       "definition": "CREATE TRIGGER trg_cau_hinh_bien_word_workspace_owner BEFORE INSERT OR UPDATE ON cau_hinh_bien_word FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
       "enabled": "O",
@@ -22152,6 +26512,21 @@
       "definition": "CREATE TRIGGER trg_chuyen_gia_workspace_owner BEFORE INSERT OR UPDATE ON chuyen_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
       "enabled": "O",
       "table": "chuyen_gia"
+    },
+    "commercial_policy_versions.trg_commercial_policy_versions_immutable": {
+      "definition": "CREATE TRIGGER trg_commercial_policy_versions_immutable BEFORE DELETE OR UPDATE ON commercial_policy_versions FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "commercial_policy_versions"
+    },
+    "commercial_release_timeline.trg_commercial_release_timeline_immutable": {
+      "definition": "CREATE TRIGGER trg_commercial_release_timeline_immutable BEFORE DELETE OR UPDATE ON commercial_release_timeline FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "commercial_release_timeline"
+    },
+    "commercial_releases.trg_commercial_releases_immutable": {
+      "definition": "CREATE TRIGGER trg_commercial_releases_immutable BEFORE DELETE OR UPDATE ON commercial_releases FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "commercial_releases"
     },
     "danh_muc_trang_thai_hop_dong.trg_danh_muc_trang_thai_hop_dong_deleted_log": {
       "definition": "CREATE TRIGGER trg_danh_muc_trang_thai_hop_dong_deleted_log AFTER DELETE ON danh_muc_trang_thai_hop_dong FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
@@ -22433,6 +26808,16 @@
       "enabled": "O",
       "table": "package_legal_binding"
     },
+    "payment_provider_profiles.trg_payment_provider_profiles_immutable": {
+      "definition": "CREATE TRIGGER trg_payment_provider_profiles_immutable BEFORE DELETE OR UPDATE ON payment_provider_profiles FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "payment_provider_profiles"
+    },
+    "payment_transactions.trg_payment_transactions_immutable": {
+      "definition": "CREATE TRIGGER trg_payment_transactions_immutable BEFORE DELETE OR UPDATE ON payment_transactions FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "payment_transactions"
+    },
     "phan_cong_nhan_su.trg_phan_cong_nhan_su_deleted_log": {
       "definition": "CREATE TRIGGER trg_phan_cong_nhan_su_deleted_log AFTER DELETE ON phan_cong_nhan_su FOR EACH ROW EXECUTE FUNCTION bf_log_synced_delete()",
       "enabled": "O",
@@ -22512,6 +26897,11 @@
       "definition": "CREATE TRIGGER trg_tieu_chi_danh_gia_workspace_owner BEFORE INSERT OR UPDATE ON tieu_chi_danh_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
       "enabled": "O",
       "table": "tieu_chi_danh_gia"
+    },
+    "usage_ledger.trg_usage_ledger_immutable": {
+      "definition": "CREATE TRIGGER trg_usage_ledger_immutable BEFORE DELETE OR UPDATE ON usage_ledger FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
+      "enabled": "O",
+      "table": "usage_ledger"
     },
     "vong_danh_gia.trg_vong_danh_gia_workspace_owner": {
       "definition": "CREATE TRIGGER trg_vong_danh_gia_workspace_owner BEFORE INSERT OR UPDATE ON vong_danh_gia FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",

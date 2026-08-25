@@ -3,6 +3,19 @@ import re
 
 MONEY_COLUMNS = frozenset({
     ("goi_dich_vu", "gia_ca"),
+    ("billing_prices", "subtotal_amount"),
+    ("billing_prices", "tax_amount"),
+    ("billing_prices", "total_amount"),
+    ("billing_quotes", "subtotal_amount"),
+    ("billing_quotes", "tax_amount"),
+    ("billing_quotes", "total_amount"),
+    ("billing_orders", "subtotal_amount"),
+    ("billing_orders", "tax_amount"),
+    ("billing_orders", "total_amount"),
+    ("payment_transactions", "verified_paid_amount"),
+    ("payment_transactions", "fee_amount"),
+    ("payment_transactions", "net_settled_amount"),
+    ("billing_refund_intents", "amount"),
     ("ke_hoach_lcnt", "tong_muc_dau_tu"),
     ("ke_hoach_cong_viec", "gia_tri"),
     ("goi_thau", "gia_goi_thau"),
@@ -1489,6 +1502,9 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "organization_id": "TEXT PRIMARY KEY",
             "package_id": "TEXT NOT NULL",
+            "plan_version_id": "TEXT",
+            "source": "TEXT NOT NULL DEFAULT 'legacy' CHECK(source IN ('legacy', 'admin', 'order'))",
+            "source_order_id": "TEXT",
             "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
             "starts_at": "INTEGER NOT NULL CHECK(starts_at > 0)",
             "expires_at": "INTEGER CHECK(expires_at IS NULL OR expires_at > starts_at)",
@@ -1499,13 +1515,18 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
-            "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+            "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (source_order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT"
         ]
     },
     "account_subscriptions": {
         "columns": {
             "user_id": "TEXT PRIMARY KEY",
             "package_id": "TEXT NOT NULL",
+            "plan_version_id": "TEXT",
+            "source": "TEXT NOT NULL DEFAULT 'legacy' CHECK(source IN ('legacy', 'admin', 'order'))",
+            "source_order_id": "TEXT",
             "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
             "starts_at": "INTEGER NOT NULL CHECK(starts_at > 0)",
             "expires_at": "INTEGER CHECK(expires_at IS NULL OR expires_at > starts_at)",
@@ -1515,8 +1536,472 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
-            "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+            "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (source_order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT"
         ]
+    },
+    "commercial_drafts": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "schema_version": "INTEGER NOT NULL DEFAULT 1 CHECK(schema_version > 0)",
+            "base_release_id": "TEXT",
+            "status": "TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'validated', 'archived'))",
+            "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+            "document_json": "TEXT NOT NULL CHECK(length(document_json) BETWEEN 2 AND 262144)",
+            "checksum": "TEXT NOT NULL CHECK(length(checksum) = 64)",
+            "validation_digest": "TEXT CHECK(validation_digest IS NULL OR length(validation_digest) = 64)",
+            "validation_revision": "INTEGER CHECK(validation_revision IS NULL OR validation_revision > 0)",
+            "validation_json": "TEXT CHECK(validation_json IS NULL OR length(validation_json) <= 262144)",
+            "readiness_expires_at": "INTEGER",
+            "created_by": "TEXT NOT NULL",
+            "updated_by": "TEXT NOT NULL",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (base_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (created_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (updated_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_releases": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "version_label": "TEXT NOT NULL UNIQUE CHECK(trim(version_label) != '')",
+            "schema_version": "INTEGER NOT NULL DEFAULT 1 CHECK(schema_version > 0)",
+            "checksum": "TEXT NOT NULL CHECK(length(checksum) = 64)",
+            "snapshot_json": "TEXT NOT NULL CHECK(length(snapshot_json) BETWEEN 2 AND 262144)",
+            "mode": "TEXT NOT NULL CHECK(mode IN ('legacy', 'shadow', 'pilot', 'production'))",
+            "scope_key": "TEXT NOT NULL DEFAULT 'global' CHECK(trim(scope_key) != '')",
+            "effective_from": "INTEGER NOT NULL CHECK(effective_from > 0)",
+            "non_sellable": "INTEGER NOT NULL DEFAULT 0 CHECK(non_sellable IN (0,1))",
+            "base_release_id": "TEXT",
+            "published_by": "TEXT",
+            "reason": "TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 3 AND 2000)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (base_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (published_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_release_timeline": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "release_id": "TEXT NOT NULL",
+            "event_type": "TEXT NOT NULL CHECK(event_type IN ('published', 'scheduled', 'stop_sales'))",
+            "scope_key": "TEXT NOT NULL DEFAULT 'global' CHECK(trim(scope_key) != '')",
+            "effective_at": "INTEGER NOT NULL CHECK(effective_at > 0)",
+            "scope_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(scope_json) <= 32768)",
+            "reason": "TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 3 AND 2000)",
+            "actor_user_id": "TEXT NOT NULL",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_policy_versions": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "release_id": "TEXT NOT NULL",
+            "policy_kind": "TEXT NOT NULL CHECK(trim(policy_kind) != '')",
+            "selector": "TEXT NOT NULL DEFAULT 'default' CHECK(trim(selector) != '')",
+            "schema_version": "INTEGER NOT NULL DEFAULT 1 CHECK(schema_version > 0)",
+            "payload_json": "TEXT NOT NULL CHECK(length(payload_json) BETWEEN 2 AND 65536)",
+            "checksum": "TEXT NOT NULL CHECK(length(checksum) = 64)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(release_id, policy_kind, selector)"],
+        "foreign_keys": [
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_plan_versions": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "release_id": "TEXT NOT NULL",
+            "logical_package_code": "TEXT NOT NULL CHECK(trim(logical_package_code) != '')",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "tier": "TEXT NOT NULL CHECK(tier IN ('personal', 'silver', 'gold', 'diamond'))",
+            "variant": "TEXT NOT NULL CHECK(variant IN ('internal', 'connected'))",
+            "legacy_package_id": "TEXT",
+            "member_quota": "INTEGER NOT NULL CHECK(member_quota > 0)",
+            "included_procurement_quota": "INTEGER NOT NULL DEFAULT 0 CHECK(included_procurement_quota >= 0)",
+            "document_export_word": "INTEGER NOT NULL CHECK(document_export_word IN (0,1))",
+            "document_export_excel": "INTEGER NOT NULL CHECK(document_export_excel IN (0,1))",
+            "document_export_award_result_excel": "INTEGER NOT NULL CHECK(document_export_award_result_excel IN (0,1))",
+            "violation_check_enabled": "INTEGER NOT NULL DEFAULT 0 CHECK(violation_check_enabled IN (0,1))",
+            "sales_state": "TEXT NOT NULL DEFAULT 'non_sellable' CHECK(sales_state IN ('sellable', 'stopped', 'non_sellable'))",
+            "display_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(display_json) <= 32768)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(release_id, logical_package_code)"],
+        "foreign_keys": [
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (legacy_package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_skus": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "release_id": "TEXT NOT NULL",
+            "sku_code": "TEXT NOT NULL CHECK(trim(sku_code) != '')",
+            "item_type": "TEXT NOT NULL CHECK(item_type IN ('base_plan', 'procurement_credit_pack'))",
+            "plan_version_id": "TEXT",
+            "quantity": "INTEGER NOT NULL DEFAULT 1 CHECK(quantity > 0)",
+            "repeatable": "INTEGER NOT NULL DEFAULT 0 CHECK(repeatable IN (0,1))",
+            "sales_state": "TEXT NOT NULL DEFAULT 'non_sellable' CHECK(sales_state IN ('sellable', 'stopped', 'non_sellable'))",
+            "display_order": "INTEGER NOT NULL DEFAULT 0 CHECK(display_order >= 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(release_id, sku_code)"],
+        "foreign_keys": [
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_prices": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "release_id": "TEXT NOT NULL",
+            "sku_id": "TEXT NOT NULL",
+            "period": "TEXT NOT NULL CHECK(period IN ('monthly', 'yearly', 'one_time'))",
+            "currency": "TEXT NOT NULL DEFAULT 'VND' CHECK(currency = 'VND')",
+            "subtotal_amount": "INTEGER NOT NULL CHECK(subtotal_amount >= 0)",
+            "tax_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(tax_amount >= 0)",
+            "total_amount": "INTEGER NOT NULL CHECK(total_amount = subtotal_amount + tax_amount)",
+            "tax_profile_ref": "TEXT",
+            "effective_at": "INTEGER NOT NULL CHECK(effective_at > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(release_id, sku_id, period)"],
+        "foreign_keys": [
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (sku_id) REFERENCES billing_skus(id) ON DELETE RESTRICT"
+        ]
+    },
+    "payment_provider_profiles": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "version": "INTEGER NOT NULL CHECK(version > 0)",
+            "provider": "TEXT NOT NULL CHECK(provider IN ('fake', 'payos'))",
+            "environment": "TEXT NOT NULL CHECK(environment IN ('test', 'staging', 'production'))",
+            "public_alias": "TEXT NOT NULL CHECK(trim(public_alias) != '')",
+            "merchant_reference": "TEXT",
+            "credential_reference": "TEXT",
+            "capabilities_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(capabilities_json) <= 8192)",
+            "min_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(min_amount >= 0)",
+            "max_amount": "INTEGER NOT NULL CHECK(max_amount >= min_amount)",
+            "checkout_ttl_seconds": "INTEGER NOT NULL CHECK(checkout_ttl_seconds BETWEEN 60 AND 86400)",
+            "timeout_ms": "INTEGER NOT NULL CHECK(timeout_ms BETWEEN 100 AND 30000)",
+            "max_attempts": "INTEGER NOT NULL CHECK(max_attempts BETWEEN 1 AND 10)",
+            "routing_priority": "INTEGER NOT NULL DEFAULT 100 CHECK(routing_priority >= 0)",
+            "mode": "TEXT NOT NULL CHECK(mode IN ('shadow', 'live', 'paused'))",
+            "readiness_status": "TEXT NOT NULL CHECK(readiness_status IN ('unknown', 'ready', 'blocked_external', 'unhealthy'))",
+            "last_health_checked_at": "INTEGER",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(provider, environment, version)"]
+    },
+    "billing_quotes": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "public_id": "TEXT NOT NULL UNIQUE CHECK(length(public_id) BETWEEN 20 AND 128)",
+            "actor_user_id": "TEXT NOT NULL",
+            "account_user_id": "TEXT",
+            "organization_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "operation": "TEXT NOT NULL CHECK(operation IN ('purchase', 'renew', 'upgrade', 'downgrade', 'credit_pack'))",
+            "request_hash": "TEXT NOT NULL CHECK(length(request_hash) = 64)",
+            "release_id": "TEXT NOT NULL",
+            "release_checksum": "TEXT NOT NULL CHECK(length(release_checksum) = 64)",
+            "decision_json": "TEXT NOT NULL CHECK(length(decision_json) BETWEEN 2 AND 65536)",
+            "subtotal_amount": "INTEGER NOT NULL CHECK(subtotal_amount >= 0)",
+            "tax_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(tax_amount >= 0)",
+            "total_amount": "INTEGER NOT NULL CHECK(total_amount = subtotal_amount + tax_amount)",
+            "currency": "TEXT NOT NULL DEFAULT 'VND' CHECK(currency = 'VND')",
+            "expected_subscription_revision": "INTEGER",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "CHECK((owner_kind = 'account' AND account_user_id IS NOT NULL AND organization_id IS NULL) OR (owner_kind = 'organization' AND account_user_id IS NULL AND organization_id IS NOT NULL))",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_orders": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "public_id": "TEXT NOT NULL UNIQUE CHECK(length(public_id) BETWEEN 20 AND 128)",
+            "quote_id": "TEXT NOT NULL UNIQUE",
+            "actor_user_id": "TEXT NOT NULL",
+            "account_user_id": "TEXT",
+            "organization_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "operation": "TEXT NOT NULL CHECK(operation IN ('purchase', 'renew', 'upgrade', 'downgrade', 'credit_pack'))",
+            "idempotency_key": "TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 8 AND 128)",
+            "request_hash": "TEXT NOT NULL CHECK(length(request_hash) = 64)",
+            "release_id": "TEXT NOT NULL",
+            "provider_profile_id": "TEXT NOT NULL",
+            "provider_order_code": "INTEGER NOT NULL CHECK(provider_order_code > 0)",
+            "provider_reference": "TEXT NOT NULL CHECK(trim(provider_reference) != '')",
+            "decision_json": "TEXT NOT NULL CHECK(length(decision_json) BETWEEN 2 AND 65536)",
+            "subtotal_amount": "INTEGER NOT NULL CHECK(subtotal_amount >= 0)",
+            "tax_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(tax_amount >= 0)",
+            "total_amount": "INTEGER NOT NULL CHECK(total_amount = subtotal_amount + tax_amount)",
+            "currency": "TEXT NOT NULL DEFAULT 'VND' CHECK(currency = 'VND')",
+            "checkout_state": "TEXT NOT NULL DEFAULT 'creating' CHECK(checkout_state IN ('creating', 'open', 'create_failed', 'cancelled', 'expired'))",
+            "payment_state": "TEXT NOT NULL DEFAULT 'unverified' CHECK(payment_state IN ('unverified', 'verified_paid', 'refund_pending', 'partially_refunded', 'refunded', 'refund_failed'))",
+            "activation_state": "TEXT NOT NULL DEFAULT 'not_ready' CHECK(activation_state IN ('not_ready', 'pending', 'applied', 'retry', 'review_required', 'reversed'))",
+            "checkout_url": "TEXT",
+            "checkout_expires_at": "INTEGER",
+            "expected_subscription_revision": "INTEGER",
+            "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(actor_user_id, owner_kind, account_user_id, organization_id, operation, idempotency_key)",
+            "UNIQUE(provider_profile_id, provider_order_code)"
+        ],
+        "foreign_keys": [
+            "CHECK((owner_kind = 'account' AND account_user_id IS NOT NULL AND organization_id IS NULL) OR (owner_kind = 'organization' AND account_user_id IS NULL AND organization_id IS NOT NULL))",
+            "FOREIGN KEY (quote_id) REFERENCES billing_quotes(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_order_items": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL",
+            "sku_id": "TEXT NOT NULL",
+            "plan_version_id": "TEXT",
+            "price_id": "TEXT NOT NULL",
+            "quantity": "INTEGER NOT NULL DEFAULT 1 CHECK(quantity > 0)",
+            "snapshot_json": "TEXT NOT NULL CHECK(length(snapshot_json) BETWEEN 2 AND 65536)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (sku_id) REFERENCES billing_skus(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (plan_version_id) REFERENCES billing_plan_versions(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (price_id) REFERENCES billing_prices(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_provider_commands": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL",
+            "command_type": "TEXT NOT NULL CHECK(command_type IN ('create_checkout', 'cancel_checkout', 'query_order'))",
+            "provider_reference": "TEXT NOT NULL",
+            "request_json": "TEXT NOT NULL CHECK(length(request_json) BETWEEN 2 AND 32768)",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'completed', 'dead'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
+            "lease_expires_at": "INTEGER",
+            "locked_by": "TEXT",
+            "last_error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(order_id, command_type)"],
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT"
+        ]
+    },
+    "payment_transactions": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL",
+            "provider_profile_id": "TEXT NOT NULL",
+            "provider_transaction_id": "TEXT NOT NULL",
+            "transaction_type": "TEXT NOT NULL CHECK(transaction_type IN ('payment', 'refund'))",
+            "status": "TEXT NOT NULL CHECK(status IN ('verified', 'settled', 'failed'))",
+            "verified_paid_amount": "INTEGER NOT NULL CHECK(verified_paid_amount >= 0)",
+            "fee_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(fee_amount >= 0)",
+            "net_settled_amount": "INTEGER NOT NULL DEFAULT 0 CHECK(net_settled_amount >= 0)",
+            "currency": "TEXT NOT NULL DEFAULT 'VND' CHECK(currency = 'VND')",
+            "payment_timing": "TEXT CHECK(payment_timing IN ('on_time', 'late_after_cancel', 'late_after_expiry'))",
+            "provider_occurred_at": "INTEGER",
+            "evidence_json": "TEXT NOT NULL CHECK(length(evidence_json) BETWEEN 2 AND 32768)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(provider_profile_id, provider_transaction_id, transaction_type)"],
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT"
+        ]
+    },
+    "payment_webhook_events": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "provider_profile_id": "TEXT NOT NULL",
+            "dedupe_key": "TEXT NOT NULL CHECK(trim(dedupe_key) != '')",
+            "payload_hash": "TEXT NOT NULL CHECK(length(payload_hash) = 64)",
+            "signed_fields_json": "TEXT NOT NULL CHECK(length(signed_fields_json) BETWEEN 2 AND 32768)",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'processed', 'dead', 'ignored', 'review'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
+            "lease_expires_at": "INTEGER",
+            "locked_by": "TEXT",
+            "last_error_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "processed_at": "INTEGER"
+        },
+        "unique_constraints": ["UNIQUE(provider_profile_id, dedupe_key, payload_hash)"],
+        "foreign_keys": [
+            "FOREIGN KEY (provider_profile_id) REFERENCES payment_provider_profiles(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_subscription_activations": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL UNIQUE",
+            "state": "TEXT NOT NULL CHECK(state IN ('pending', 'applied', 'retry', 'review_required', 'reversed'))",
+            "before_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(before_json) <= 32768)",
+            "after_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(after_json) <= 32768)",
+            "expected_revision": "INTEGER",
+            "applied_revision": "INTEGER",
+            "reason_code": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_refund_intents": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL",
+            "idempotency_key": "TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 8 AND 128)",
+            "amount": "INTEGER NOT NULL CHECK(amount > 0)",
+            "reason": "TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 3 AND 2000)",
+            "actor_user_id": "TEXT NOT NULL",
+            "method": "TEXT NOT NULL CHECK(method IN ('manual_off_platform', 'provider'))",
+            "state": "TEXT NOT NULL CHECK(state IN ('pending', 'succeeded', 'failed', 'cancelled'))",
+            "activation_revision": "INTEGER NOT NULL CHECK(activation_revision > 0)",
+            "provider_reference": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(order_id, idempotency_key)"],
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ]
+    },
+    "usage_credit_grants": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "account_user_id": "TEXT",
+            "organization_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "feature": "TEXT NOT NULL CHECK(feature = 'procurement.source_fetch')",
+            "total": "INTEGER NOT NULL CHECK(total > 0)",
+            "remaining": "INTEGER NOT NULL CHECK(remaining >= 0 AND remaining <= total)",
+            "reserved": "INTEGER NOT NULL DEFAULT 0 CHECK(reserved >= 0 AND reserved <= remaining)",
+            "source": "TEXT NOT NULL CHECK(source IN ('plan', 'purchase', 'admin'))",
+            "order_item_id": "TEXT",
+            "release_id": "TEXT NOT NULL",
+            "policy_checksum": "TEXT NOT NULL CHECK(length(policy_checksum) = 64)",
+            "issued_at": "INTEGER NOT NULL CHECK(issued_at > 0)",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > issued_at)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "CHECK((owner_kind = 'account' AND account_user_id IS NOT NULL AND organization_id IS NULL) OR (owner_kind = 'organization' AND account_user_id IS NULL AND organization_id IS NOT NULL))",
+            "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (order_item_id) REFERENCES billing_order_items(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "usage_reservations": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "account_user_id": "TEXT",
+            "organization_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "feature": "TEXT NOT NULL CHECK(feature = 'procurement.source_fetch')",
+            "provider": "TEXT NOT NULL CHECK(trim(provider) != '')",
+            "entity_kind": "TEXT NOT NULL CHECK(trim(entity_kind) != '')",
+            "source_code": "TEXT NOT NULL CHECK(trim(source_code) != '')",
+            "source_revision": "TEXT NOT NULL CHECK(trim(source_revision) != '')",
+            "job_key": "TEXT NOT NULL CHECK(trim(job_key) != '')",
+            "grant_id": "TEXT NOT NULL",
+            "state": "TEXT NOT NULL DEFAULT 'reserved' CHECK(state IN ('reserved', 'consumed', 'released'))",
+            "lease_expires_at": "INTEGER NOT NULL CHECK(lease_expires_at > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": ["UNIQUE(owner_kind, account_user_id, organization_id, feature, provider, entity_kind, source_code, source_revision)"],
+        "foreign_keys": [
+            "CHECK((owner_kind = 'account' AND account_user_id IS NOT NULL AND organization_id IS NULL) OR (owner_kind = 'organization' AND account_user_id IS NULL AND organization_id IS NOT NULL))",
+            "FOREIGN KEY (account_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (grant_id) REFERENCES usage_credit_grants(id) ON DELETE RESTRICT"
+        ]
+    },
+    "usage_ledger": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "grant_id": "TEXT NOT NULL",
+            "reservation_id": "TEXT",
+            "entry_type": "TEXT NOT NULL CHECK(entry_type IN ('grant', 'reserve', 'consume', 'release', 'expire', 'adjust'))",
+            "quantity": "INTEGER NOT NULL CHECK(quantity != 0)",
+            "balance_after": "INTEGER NOT NULL CHECK(balance_after >= 0)",
+            "metadata_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(metadata_json) <= 32768)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (grant_id) REFERENCES usage_credit_grants(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (reservation_id) REFERENCES usage_reservations(id) ON DELETE RESTRICT"
+        ]
+    },
+    "billing_invoice_requests": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "order_id": "TEXT NOT NULL UNIQUE",
+            "payment_transaction_id": "TEXT NOT NULL",
+            "tax_snapshot_json": "TEXT NOT NULL CHECK(length(tax_snapshot_json) BETWEEN 2 AND 32768)",
+            "buyer_profile_json": "TEXT NOT NULL CHECK(length(buyer_profile_json) BETWEEN 2 AND 32768)",
+            "status": "TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested', 'issued', 'failed'))",
+            "idempotency_key": "TEXT NOT NULL UNIQUE",
+            "provider_reference": "TEXT",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (order_id) REFERENCES billing_orders(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (payment_transaction_id) REFERENCES payment_transactions(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_outbox": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "event_type": "TEXT NOT NULL CHECK(trim(event_type) != '')",
+            "aggregate_type": "TEXT NOT NULL CHECK(trim(aggregate_type) != '')",
+            "aggregate_id": "TEXT NOT NULL CHECK(trim(aggregate_id) != '')",
+            "payload_json": "TEXT NOT NULL CHECK(length(payload_json) BETWEEN 2 AND 32768)",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'dispatched', 'dead'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
+            "lease_expires_at": "INTEGER",
+            "locked_by": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
     },
     "vong_danh_gia": {
         "columns": {

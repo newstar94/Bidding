@@ -60,6 +60,45 @@ def _validate_generation_source(catalog: dict[str, object]) -> None:
         )
 
 
+def prepare_generation_schema(
+    cursor,
+    installed_version,
+    target_version,
+    context,
+    *,
+    create_fresh,
+    apply_upgrades,
+):
+    """Materialize the target schema inside the generator transaction."""
+    installed_version = int(installed_version or 0)
+    if installed_version >= int(target_version):
+        return installed_version
+    if installed_version == 0:
+        result = create_fresh(cursor, context)
+    else:
+        result = apply_upgrades(cursor, installed_version, context)
+    return result
+
+
+def _ensure_commercial_immutable_triggers(cursor):
+    """Materialize v79 immutable triggers for already-upgraded generator DBs."""
+    tables = (
+        "commercial_releases", "commercial_release_timeline",
+        "commercial_policy_versions", "billing_plan_versions", "billing_skus",
+        "billing_prices", "payment_provider_profiles", "billing_quotes",
+        "payment_transactions", "usage_ledger",
+    )
+    for table_name in tables:
+        cursor.execute(
+            f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
+        )
+        cursor.execute(
+            f"CREATE TRIGGER trg_{table_name}_immutable "
+            f"BEFORE UPDATE OR DELETE ON {table_name} "
+            "FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
@@ -90,7 +129,13 @@ def main() -> int:
         read_postgres_schema_catalog,
     )
 
-    with psycopg.connect(database_url, connect_timeout=10) as connection:
+    from backend.db.db_helper import compat_row_factory
+
+    with psycopg.connect(
+        database_url,
+        connect_timeout=10,
+        row_factory=compat_row_factory,
+    ) as connection:
         with connection.cursor() as raw_cursor:
             catalog = read_postgres_schema_catalog(raw_cursor)
             if args.write:
@@ -101,6 +146,7 @@ def main() -> int:
                     _create_trigger_functions,
                     assert_foreign_key_integrity,
                     build_create_table_sql,
+                    create_fresh_database,
                     create_indexes_and_triggers,
                 )
                 from backend.db.upgrades import (
@@ -110,22 +156,28 @@ def main() -> int:
                 )
 
                 installed = int(catalog.get("schemaVersion") or 0)
-                if installed < DB_SCHEMA_VERSION:
+                if installed <= DB_SCHEMA_VERSION:
                     cursor = PostgresCursor(raw_cursor)
-                    apply_database_upgrades(
-                        cursor,
-                        installed,
-                        DatabaseUpgradeContext(
-                            build_create_table_sql=build_create_table_sql,
-                            create_indexes_and_triggers=create_indexes_and_triggers,
-                            assert_foreign_key_integrity=assert_foreign_key_integrity,
-                            create_foreign_keys=_create_foreign_keys,
-                            create_trigger_functions=_create_trigger_functions,
-                            create_synced_delete_trigger_function=(
-                                _create_synced_delete_trigger_function
-                            ),
+                    context = DatabaseUpgradeContext(
+                        build_create_table_sql=build_create_table_sql,
+                        create_indexes_and_triggers=create_indexes_and_triggers,
+                        assert_foreign_key_integrity=assert_foreign_key_integrity,
+                        create_foreign_keys=_create_foreign_keys,
+                        create_trigger_functions=_create_trigger_functions,
+                        create_synced_delete_trigger_function=(
+                            _create_synced_delete_trigger_function
                         ),
                     )
+                    prepare_generation_schema(
+                        cursor,
+                        installed,
+                        DB_SCHEMA_VERSION,
+                        context,
+                        create_fresh=create_fresh_database,
+                        apply_upgrades=apply_database_upgrades,
+                    )
+                    context.create_indexes_and_triggers(cursor)
+                    _ensure_commercial_immutable_triggers(cursor)
                     catalog = read_postgres_schema_catalog(raw_cursor)
                     connection.rollback()
     _validate_generation_source(catalog)

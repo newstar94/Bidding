@@ -550,6 +550,16 @@ def validate_startup_configuration(database, environ=None):
     )
     validate_legal_versioning_configuration(environ)
     validate_ai_compliance_configuration(environ)
+    try:
+        from backend.commercial_policy.config import (
+            validate_commercial_startup_configuration,
+        )
+
+        validate_commercial_startup_configuration(environ)
+    except RuntimeError as exc:
+        raise StartupValidationError(
+            f"Invalid commercial/payment configuration: {exc}"
+        ) from exc
     validate_procurement_lookup_configuration(environ)
     procurement_provider = str(
         environ.get(

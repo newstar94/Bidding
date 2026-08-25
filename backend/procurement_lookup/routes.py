@@ -31,6 +31,14 @@ from backend.shared.logging_utils import (
     log_structured_event,
 )
 from backend.shared.request_validation import read_json_object
+from backend.commercial_policy.config import commercial_runtime_config
+from backend.commercial_policy.repository import CommercialRepository
+from backend.commercial_policy.errors import CommercialPolicyError
+from backend.usage_credits import (
+    SourceRevisionCandidate,
+    UsageCreditService,
+    UsageOwner,
+)
 
 
 _REQUEST_FIELDS = {
@@ -126,25 +134,43 @@ def _lookup_blocking(request, payload):
     _enforce_rate_limit(request, session.user_id, organization_id)
     settings = ProcurementLookupSettings.from_environ()
     raw_repository = ProcurementRawSnapshotRepository(database=database)
-    result = build_lookup_service().lookup(
+    revision_mode = payload.get("revisionMode") or "LATEST"
+    revision_numbers = payload.get("revisionNumbers")
+    raw_loader = lambda: (
+        raw_repository.load_fresh_plan_bundle
+        if str(payload.get("code") or "").strip().upper().startswith("PL")
+        else raw_repository.load_fresh_notice_bundle
+    )(
+        organization_id,
         payload.get("code"),
-        detail_level=payload.get("detailLevel") or "CANONICAL",
-        revision_mode=payload.get("revisionMode") or "LATEST",
-        revision_numbers=payload.get("revisionNumbers"),
-        raw_bundle_loader=lambda: (
-            raw_repository.load_fresh_plan_bundle
-            if str(payload.get("code") or "").strip().upper().startswith("PL")
-            else raw_repository.load_fresh_notice_bundle
-        )(
-            organization_id,
-            payload.get("code"),
-            revision_mode=payload.get("revisionMode") or "LATEST",
-            revision_numbers=payload.get("revisionNumbers"),
-            max_age_seconds=settings.raw_cache_ttl_seconds,
-        ),
-        cache_scope=str(organization_id),
-        lookup_request_id=get_request_id(request),
+        revision_mode=revision_mode,
+        revision_numbers=revision_numbers,
+        max_age_seconds=settings.raw_cache_ttl_seconds,
     )
+    cached_raw_bundle = raw_loader() if (payload.get("detailLevel") or "CANONICAL").upper() == "COMPLETE" else None
+    service = build_lookup_service()
+    reservations = _reserve_procurement_usage(
+        request,
+        session,
+        organization_id,
+        payload,
+        raw_repository=raw_repository,
+        service=service,
+        cache_hit=isinstance(cached_raw_bundle, dict),
+    )
+    try:
+        result = service.lookup(
+            payload.get("code"),
+            detail_level=payload.get("detailLevel") or "CANONICAL",
+            revision_mode=revision_mode,
+            revision_numbers=revision_numbers,
+            raw_bundle_loader=lambda: cached_raw_bundle,
+            cache_scope=str(organization_id),
+            lookup_request_id=get_request_id(request),
+        )
+    except Exception:
+        _finish_procurement_usage(reservations, consume=False, reason="lookup_failed")
+        raise
     raw_bundle = result.get("rawBundle") if isinstance(result, dict) else None
     cache_layer = ((result.get("metrics") or {}).get("cache") or {}).get(
         "layer"
@@ -153,7 +179,186 @@ def _lookup_blocking(request, payload):
         result["rawSnapshot"] = raw_repository.save_bundle(
             organization_id, raw_bundle
         )
+        committed = (
+            bool(raw_bundle.get("complete"))
+            and int(result["rawSnapshot"].get("inserted") or 0) > 0
+        )
+        _finish_procurement_usage(
+            reservations,
+            consume=committed,
+            reason="authoritative_snapshot_duplicate" if not committed else "committed",
+        )
+    else:
+        _finish_procurement_usage(reservations, consume=False, reason="cache_hit")
+    _observe_shadow_procurement_usage(
+        request,
+        result,
+        inserted=int((result.get("rawSnapshot") or {}).get("inserted") or 0),
+    )
     return result
+
+
+def _usage_owner(request, session, organization_id):
+    context = getattr(getattr(request, "state", None), "organization_context", None)
+    if getattr(context, "scope_type", None) == "personal":
+        return UsageOwner("account", session.user_id)
+    return UsageOwner("organization", organization_id)
+
+
+def _select_revision_metadata(rows, revision_mode, revision_numbers):
+    if not rows:
+        raise ProcurementLookupError("PROCUREMENT_NOT_FOUND")
+    mode = str(revision_mode or "LATEST").strip().upper()
+    if mode == "LATEST":
+        return rows[-1:]
+    if mode == "ALL":
+        return rows
+    requested = {
+        str(value).strip().zfill(2)
+        for value in (revision_numbers or [])
+        if str(value).strip()
+    }
+    selected = [row for row in rows if row["revisionNumber"] in requested]
+    if {row["revisionNumber"] for row in selected} != requested:
+        raise ProcurementLookupError("PROCUREMENT_REVISION_INVALID")
+    return selected
+
+
+def _raw_revision_exists(raw_repository, organization_id, code, kind, revision):
+    loader = (
+        raw_repository.load_fresh_plan_bundle
+        if kind == "PLAN"
+        else raw_repository.load_fresh_notice_bundle
+    )
+    bundle = loader(
+        organization_id,
+        code,
+        revision_mode="SELECTED",
+        revision_numbers=[revision],
+        max_age_seconds=ProcurementLookupSettings.from_environ().raw_cache_ttl_seconds,
+    )
+    return isinstance(bundle, dict) and bool(bundle.get("complete"))
+
+
+def _reserve_procurement_usage(
+    request,
+    session,
+    organization_id,
+    payload,
+    *,
+    raw_repository,
+    service,
+    cache_hit,
+):
+    config = commercial_runtime_config()
+    if cache_hit or not config.procurement_credit_enforcement_enabled:
+        return []
+    if (payload.get("detailLevel") or "CANONICAL").upper() != "COMPLETE":
+        raise CommercialPolicyError(
+            "COMMERCIAL_POLICY_DECISION_REQUIRED",
+            "Enforcement chỉ tải payload khi có thể commit raw snapshot hoàn chỉnh.",
+            status_code=409,
+            details={"decision": "completeSnapshotBeforeDebit"},
+        )
+    code = str(payload.get("code") or "").strip().upper()
+    entity_kind = "PLAN" if code.startswith("PL") else "NOTICE"
+    metadata = service.list_revision_metadata(
+        code, lookup_request_id=get_request_id(request)
+    )
+    selected = _select_revision_metadata(
+        metadata,
+        payload.get("revisionMode") or "LATEST",
+        payload.get("revisionNumbers"),
+    )
+    candidates = [
+        SourceRevisionCandidate(
+            "muasamcong", entity_kind, code, row["revisionNumber"]
+        )
+        for row in selected
+        if not _raw_revision_exists(
+            raw_repository,
+            organization_id,
+            code,
+            entity_kind,
+            row["revisionNumber"],
+        )
+    ]
+    if not candidates:
+        raise CommercialPolicyError(
+            "COMMERCIAL_SNAPSHOT_CACHE_INCONSISTENT",
+            "Raw snapshot cache cần được đối soát trước khi gọi lại nguồn.",
+            status_code=409,
+        )
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        cursor = connection.cursor()
+        release = CommercialRepository(cursor).effective_release()
+        if not release:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_DECISION_REQUIRED", "Không có commercial release hiệu lực.", status_code=503)
+        partial_policy = (release["snapshot"].get("policies") or {}).get("partialBatch") or {"kind": "blocked_decision"}
+        reservations = UsageCreditService(cursor).reserve_source_fetch_batch(
+            _usage_owner(request, session, organization_id),
+            candidates,
+            get_request_id(request),
+            partial_batch_policy=partial_policy,
+        )
+        connection.commit()
+        return [row for row in reservations if row.get("state") == "reserved"]
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _observe_shadow_procurement_usage(request, result, *, inserted):
+    config = commercial_runtime_config()
+    if not config.enabled or config.mode != "shadow":
+        return
+    raw_bundle = result.get("rawBundle") if isinstance(result, dict) else None
+    if not isinstance(raw_bundle, dict):
+        return
+    revisions = sorted(str(value) for value in (raw_bundle.get("revisions") or {}))
+    log_structured_event(
+        "commercial.usage.shadow",
+        request_id=get_request_id(request),
+        fields={
+            "provider": "muasamcong",
+            "entityKind": str((raw_bundle.get("entity") or {}).get("kind") or ""),
+            "sourceCode": str(result.get("canonicalCode") or ""),
+            "revisionCount": len(revisions),
+            "projectedDebit": len(revisions)
+            if bool(raw_bundle.get("complete")) and inserted > 0
+            else 0,
+            "complete": bool(raw_bundle.get("complete")),
+            "newSnapshotRows": max(0, int(inserted)),
+        },
+        nonblocking=True,
+    )
+
+
+def _finish_procurement_usage(reservations, *, consume, reason):
+    if not reservations:
+        return
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        service = UsageCreditService(connection.cursor())
+        for reservation in reservations:
+            if consume:
+                service.consume_reservation_item(
+                    reservation["id"],
+                    {"id": f"raw:{reservation['provider']}:{reservation['sourceCode']}:{reservation['sourceRevision']}"},
+                )
+            else:
+                service.release_reservation_item(reservation["id"], reason)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def _public_health(result):
@@ -226,6 +431,13 @@ def _public_health(result):
 
 
 def _public_error(request, error):
+    if isinstance(error, CommercialPolicyError):
+        return error_response(
+            request,
+            error.code,
+            error.message,
+            status_code=error.status_code,
+        )
     code = str(error)
     statuses = {
         "PROCUREMENT_CODE_INVALID": 400,
@@ -313,6 +525,8 @@ async def lookup_procurement(request):
             request, ProcurementLookupError("PROCUREMENT_TIMEOUT")
         )
     except ProcurementLookupError as error:
+        return _public_error(request, error)
+    except CommercialPolicyError as error:
         return _public_error(request, error)
     except Exception as error:  # noqa: BLE001 - sanitized HTTP adapter.
         return log_and_error(
