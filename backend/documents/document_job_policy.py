@@ -45,6 +45,15 @@ def document_job_policy_hash(policy) -> str:
     return hashlib.sha256(_canonical(policy).encode("utf-8")).hexdigest()
 
 
+def document_source_digest(context, manifest) -> str:
+    """Hash the exact sealed Word source, excluding request-time clock noise."""
+
+    stable_context = dict(context or {})
+    stable_context.pop("current_time", None)
+    payload = {"context": stable_context, "manifest": dict(manifest or {})}
+    return hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+
+
 def _validate_policy_size(policy, *, error_type):
     try:
         size = len(_canonical(policy).encode("utf-8"))
@@ -65,6 +74,9 @@ def build_document_job_policy(
     required_sensitive_groups=(),
     document_format="docx",
     artifact_provenance=None,
+    source_digest=None,
+    source_document_type=None,
+    source_publication_type=None,
 ):
     """Build a durable authorization snapshot.
 
@@ -125,6 +137,20 @@ def build_document_job_policy(
             if normalized_sync_revision < 0:
                 raise ValueError("DOCUMENT_EXPORT_RECORD_INVALID")
             policy["syncRevision"] = normalized_sync_revision
+        if source_digest is not None:
+            normalized_source_digest = str(source_digest or "").strip().casefold()
+            normalized_document_type = str(source_document_type or "").strip()
+            if (
+                len(normalized_source_digest) != 64
+                or any(char not in "0123456789abcdef" for char in normalized_source_digest)
+                or not normalized_document_type
+            ):
+                raise ValueError("DOCUMENT_EXPORT_RECORD_INVALID")
+            policy["sourceDigest"] = normalized_source_digest
+            policy["sourceDocumentType"] = normalized_document_type
+            policy["sourcePublicationType"] = str(
+                source_publication_type or ""
+            ).strip()
     else:
         policy["packageRevision"] = normalized_revision
     if artifact_provenance is not None:
@@ -217,6 +243,16 @@ def validate_document_job_policy_snapshot(policy, fingerprint):
         elif isinstance(provenance, list) and provenance:
             provenances = provenance
         else:
+            raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+
+    if parsed.get("sourceDigest") is not None:
+        digest = str(parsed.get("sourceDigest") or "").strip().casefold()
+        if (
+            version != POLICY_VERSION
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+            or not str(parsed.get("sourceDocumentType") or "").strip()
+        ):
             raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
 
     if any(
@@ -321,7 +357,7 @@ def verify_document_job_policy(cursor, job):
         or int(record[0] or 1) != int(record_scope["record_revision"])
     ):
         raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_SOURCE_CHANGED")
-    if policy.get("syncRevision") is not None:
+    if policy.get("syncRevision") is not None and not policy.get("sourceDigest"):
         sync_row = cursor.execute(
             "SELECT current_version FROM sync_metadata WHERE organization_id = ?",
             (organization_id,),
