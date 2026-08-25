@@ -13,6 +13,7 @@ from starlette.testclient import TestClient
 
 from backend.documents import custom_exporter
 from backend.documents.routes_docx import (
+    _archive_rendered_word_documents,
     _delete_scoped_template,
     _prepare_report_render,
     _render_word_selection,
@@ -191,8 +192,16 @@ def test_assignment_api_rejects_template_that_is_not_enabled(
 
 
 def test_multiple_assigned_templates_render_into_one_zip_download(monkeypatch):
-    async def fake_render(_job_type, payload):
-        return Path(payload["template_path"]).name.encode("utf-8")
+    async def fake_render(job_type, payload):
+        assert job_type == "render_docx_batch"
+        rendered = [
+            (
+                template["filename"],
+                Path(template["template_path"]).name.encode("utf-8"),
+            )
+            for template in payload["templates"]
+        ]
+        return _archive_rendered_word_documents(rendered)
 
     monkeypatch.setattr(
         "backend.documents.routes_docx.run_document_job_async",

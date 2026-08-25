@@ -651,3 +651,57 @@ def test_internal_isolated_async_job_runs_through_durable_queue(
         assert bytes(result).startswith(b"PK")
     finally:
         database.close()
+
+
+def test_expired_document_job_cleanup_uses_the_postgres_cursor_batch_api(
+    tmp_path, monkeypatch,
+):
+    class CleanupCursor:
+        def __init__(self):
+            self.deleted = []
+
+        def executemany(self, statement, parameters):
+            assert "DELETE FROM document_jobs" in statement
+            self.deleted.extend(parameters)
+
+    class CleanupRows:
+        def fetchall(self):
+            return [{"id": "expired-a"}, {"id": "expired-b"}]
+
+    class CleanupConnection:
+        def __init__(self):
+            self.batch_cursor = CleanupCursor()
+            self.committed = False
+            self.closed = False
+
+        def execute(self, statement, _parameters=()):
+            return CleanupRows()
+
+        def cursor(self):
+            return self.batch_cursor
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            raise AssertionError("cleanup must not roll back")
+
+        def close(self):
+            self.closed = True
+
+    connection = CleanupConnection()
+    database = type("CleanupDatabase", (), {
+        "get_connection": lambda _self: connection,
+    })()
+    monkeypatch.setattr(
+        document_worker,
+        "_document_job_dir",
+        lambda job_id: tmp_path / job_id,
+    )
+
+    removed = document_worker.purge_expired_durable_document_jobs(database)
+
+    assert removed == 2
+    assert connection.batch_cursor.deleted == [("expired-a",), ("expired-b",)]
+    assert connection.committed is True
+    assert connection.closed is True

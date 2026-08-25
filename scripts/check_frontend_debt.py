@@ -10,8 +10,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = {
-    "important": 427,
-    "raw_colors": 929,
+    "important": 428,
+    "raw_colors": 930,
     "runtime_styles": 541,
     "inferred_actions": 6,
     "direct_state_writes": 59,

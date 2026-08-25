@@ -179,12 +179,13 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     wrapper.classList.toggle("drop-up", placeAbove);
     setRuntimeStyles(list, {
       position: "absolute",
+      animation: "none",
       boxSizing: "border-box",
       width: `${dropdownWidth}px`,
       minWidth: `${dropdownWidth}px`,
       maxWidth: `${availableWidth}px`,
       left: `${left + scrollX}px`,
-      top: `${placeAbove ? rect.top + scrollY - dropdownHeight - 4 : rect.bottom + scrollY + 4}px`,
+      top: `${placeAbove ? rect.top + scrollY - dropdownHeight : rect.bottom + scrollY}px`,
     });
   };
 

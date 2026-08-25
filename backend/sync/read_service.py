@@ -422,7 +422,11 @@ def _read_sync_data_blocking(request):
             reference_columns = {
                 "chudautu": ["id", "id_goc", "phien_ban", "is_latest", "ngay_ap_dung", "ma_chu_dau_tu", "ten_chu_dau_tu", "ma_so_thue"],
                 "kehoach": ["id", "id_goc", "phien_ban", "is_latest", "ma_ke_hoach", "ten_ke_hoach", "chu_dau_tu_id"],
-                "goithau": ["id", "id_goc", "phien_ban", "is_latest", "ma_goi_thau", "ten_goi_thau", "ke_hoach_id", "trang_thai"],
+                "goithau": [
+                    "id", "id_goc", "phien_ban", "is_latest", "ma_goi_thau",
+                    "ten_goi_thau", "ke_hoach_id", "trang_thai",
+                    "hinh_thuc_lua_chon", "phuong_thuc_lua_chon",
+                ],
                 "nhathau": ["id", "id_goc", "phien_ban", "is_latest", "ngay_ap_dung", "ma_nha_thau", "ten_nha_thau", "ma_so_thue", "loai_nha_thau"],
                 "chuyengia": ["id", "id_goc", "phien_ban", "is_latest", "ho_ten", "so_cccd", "so_chung_chi"],
             }

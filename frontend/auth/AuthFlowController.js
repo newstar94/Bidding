@@ -82,6 +82,20 @@ export function updatePasswordConfirmationState(
   return !mismatch;
 }
 
+export function createSingleFlightSubmitHandler(handler) {
+  let inFlight = false;
+  return async (event, ...args) => {
+    event?.preventDefault?.();
+    if (inFlight) return undefined;
+    inFlight = true;
+    try {
+      return await handler(event, ...args);
+    } finally {
+      inFlight = false;
+    }
+  };
+}
+
 export function setupAuth() {
   const overlay = document.getElementById("auth-overlay");
   if (!overlay) return;
@@ -449,8 +463,7 @@ export function setupAuth() {
       }
     };
   }
-  formLogin.onsubmit = async (e) => {
-    e.preventDefault();
+  formLogin.onsubmit = createSingleFlightSubmitHandler(async () => {
     const username = document.getElementById("login-username").value.trim();
     const password = document.getElementById("login-password").value;
     const errorDiv = document.getElementById("login-error");
@@ -556,7 +569,7 @@ export function setupAuth() {
       errorDiv.textContent = "Lỗi kết nối máy chủ Starlette: " + err.message;
       setRuntimeStyle(errorDiv, "display", "block");
     }
-  };
+  });
   formRegister.onsubmit = async (e) => {
     e.preventDefault();
     const username = document.getElementById("register-username").value.trim().toLowerCase();

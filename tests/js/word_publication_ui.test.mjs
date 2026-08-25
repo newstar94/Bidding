@@ -351,6 +351,8 @@ test("Word export opens a multi-file selection table then follows a background j
     await dialog.locator('[data-word-publication-confirm]').click();
     const loading = page.locator("#app-long-task-loading");
     await loading.waitFor({ state: "visible" });
+    assert.equal(await evaluationButton.isDisabled(), true);
+    await evaluationButton.evaluate((button) => button.click());
     assert.equal(await loading.getAttribute("data-task"), "word-publication");
     assert.equal(await loading.getAttribute("aria-busy"), "true");
     assert.equal(await page.locator("#tab-xuatban-word").getAttribute("aria-busy"), "true");
@@ -369,8 +371,6 @@ test("Word export opens a multi-file selection table then follows a background j
       .analyze();
     assert.deepEqual(loadingAxe.violations, []);
     await evaluationRequest;
-    assert.equal(await evaluationButton.isDisabled(), true);
-    await evaluationButton.evaluate((button) => button.click());
     assert.match((await evaluationDownload).suggestedFilename(), /\.zip$/u);
     await page.waitForFunction(() => window.__publicationToasts.length === 1);
     await loading.waitFor({ state: "hidden" });

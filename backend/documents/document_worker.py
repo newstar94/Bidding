@@ -1801,7 +1801,7 @@ def purge_expired_durable_document_jobs(database) -> int:
         ).fetchall()
         job_ids = [str(row["id"]) for row in rows]
         if job_ids:
-            connection.executemany(
+            connection.cursor().executemany(
                 "DELETE FROM document_jobs WHERE id = ?",
                 [(job_id,) for job_id in job_ids],
             )

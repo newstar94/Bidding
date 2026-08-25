@@ -8,7 +8,7 @@
     "backend/auth/email_delivery_service.py": 2,
     "backend/auth/google_auth_routes.py": 2,
     "backend/auth/otp_routes.py": 5,
-    "backend/documents/custom_exporter.py": 4,
+    "backend/documents/custom_exporter.py": 2,
     "backend/documents/document_worker.py": 2,
     "backend/documents/document_worker_entry.py": 2,
     "backend/documents/package_document_routes.py": 6,
