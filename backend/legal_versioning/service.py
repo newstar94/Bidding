@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit
 
 from backend.shared.logging_utils import log_audit
 
@@ -60,6 +61,19 @@ def _stable_code(value):
     return result
 
 
+def _source_uri(value):
+    result = _text(value, "sourceUri", 2000)
+    parsed = urlsplit(result)
+    if (
+        parsed.scheme.casefold() not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise LegalVersioningError(fields={"sourceUri": "INVALID_SOURCE_URI"})
+    return result
+
+
 class LegalVersioningService:
     def __init__(self, repository, *, audit=log_audit):
         self.repository = repository
@@ -76,7 +90,7 @@ class LegalVersioningService:
             "title": _text(title, "title", 500),
             "document_type": _text(document_type, "documentType", 100),
             "document_number": _text(document_number, "documentNumber", 200),
-            "source_uri": _text(source_uri, "sourceUri", 2000),
+            "source_uri": _source_uri(source_uri),
             "source_content": _text(source_content, "sourceContent", 16_777_216),
             "issued_date": _text(issued_date, "issuedDate", 10),
             "effective_from": _text(effective_from, "effectiveFrom", 10),

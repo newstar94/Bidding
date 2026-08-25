@@ -47,9 +47,6 @@ PACKAGE_RELATION_REGISTRY = (
     PackageRelationPolicy("hop_dong_goi_thau", None, None, "retain", ("hop_dong_id", "goi_thau_id")),
     PackageRelationPolicy("package_legal_binding", None, None, "retain", ("binding_revision", "id")),
     PackageRelationPolicy("package_legal_binding_head", None, None, "retain", ("binding_revision", "package_id")),
-    PackageRelationPolicy("procurement_case_package_target", None, None, "retain", ("case_id", "id")),
-    PackageRelationPolicy("procurement_case_response_revision", None, None, "retain", ("case_id", "revision_no", "id")),
-    PackageRelationPolicy("procurement_case_transition", None, None, "retain", ("case_id", "sequence_no", "id")),
 )
 
 

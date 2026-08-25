@@ -207,23 +207,34 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
   } = options;
   const method = String(requestOptions.method || "GET").toUpperCase();
   const path = apiPath(url);
-  const headers = new Headers(requestOptions.headers || {});
-  headers.delete("X-Session-Token");
-  headers.delete("X-Username");
+  const baseHeaders = new Headers(requestOptions.headers || {});
+  baseHeaders.delete("X-Session-Token");
+  baseHeaders.delete("X-Username");
   if (path) {
-    const activeOrganization = clientConfiguration.activeOrganization?.();
-    if (activeOrganization) headers.set("X-Active-Org", encodeURIComponent(activeOrganization));
     if (csrf && MUTATING_METHODS.has(method) && !CSRF_EXEMPT_PATHS.has(path)) {
       const token = await ensureCsrfToken(fetchImpl);
-      if (token) headers.set("X-CSRF-Token", token);
+      if (token) baseHeaders.set("X-CSRF-Token", token);
     }
   }
 
-  const canRetry = IDEMPOTENT_METHODS.has(method) || headers.has("Idempotency-Key");
+  const buildAttemptHeaders = () => {
+    const headers = new Headers(baseHeaders);
+    if (path) {
+      headers.delete("X-Active-Org");
+      const activeOrganization = clientConfiguration.activeOrganization?.();
+      if (activeOrganization) {
+        headers.set("X-Active-Org", encodeURIComponent(activeOrganization));
+      }
+    }
+    return headers;
+  };
+
+  const canRetry = IDEMPOTENT_METHODS.has(method) || baseHeaders.has("Idempotency-Key");
   const maxRetries = canRetry ? Math.max(0, Math.min(Number(retries) || 0, 2)) : 0;
   let attempt = 0;
   let httpRecoveryUsed = false;
   while (true) {
+    const headers = buildAttemptHeaders();
     const abort = combineAbortSignals(requestOptions.signal, timeoutMs);
     let response;
     try {

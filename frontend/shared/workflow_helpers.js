@@ -12,11 +12,16 @@ export function authFetchDownload(url, filename) {
         if (contentType && contentType.includes("application/json")) {
           const d = await res.json();
           errMsg = d.error || errMsg;
+          const error = new Error(errMsg);
+          error.code = String(d.code || "").trim() || undefined;
+          error.status = res.status;
+          throw error;
         } else {
           const text = await res.text();
           errMsg = text || `${res.status} ${res.statusText}`;
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && (error.code || error.status)) throw error;
         errMsg = `${res.status} ${res.statusText}`;
       }
       throw new Error(errMsg);

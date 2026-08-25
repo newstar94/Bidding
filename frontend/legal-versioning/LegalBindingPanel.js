@@ -35,6 +35,15 @@ function definition(label, value) {
   return [element("dt", "", label), element("dd", "", value || "—")];
 }
 
+function safeSourceUri(value) {
+  try {
+    const parsed = new URL(String(value || ""), globalThis.location?.origin);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
 export function renderLegalBinding(summary, binding) {
   summary.replaceChildren();
   const status = element(
@@ -64,11 +73,16 @@ function renderSources(root, payload) {
       element("p", "", `Hiệu lực: ${source.effectiveFrom}${source.effectiveTo ? ` – ${source.effectiveTo}` : " trở đi"}`),
       element("code", "", `SHA-256: ${source.contentSha256}`),
     );
-    const link = element("a", "", "Mở nguồn chính thức");
-    link.href = source.sourceUri;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    article.appendChild(link);
+    const sourceUri = safeSourceUri(source.sourceUri);
+    if (sourceUri) {
+      const link = element("a", "", "Mở nguồn chính thức");
+      link.href = sourceUri;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      article.appendChild(link);
+    } else {
+      article.appendChild(element("p", "", "Nguồn liên kết không hợp lệ"));
+    }
     root.appendChild(article);
   });
 }

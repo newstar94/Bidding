@@ -75,6 +75,22 @@ test("contract Word export restores loading and preserves the existing job failu
   assert.equal(loadingClosed, 1);
 });
 
+test("contract Word export preserves the backend job error code", async () => {
+  const sourceError = new Error("Nguồn dữ liệu đã thay đổi");
+  sourceError.code = "DOCUMENT_EXPORT_SOURCE_CHANGED";
+  await assert.rejects(
+    exportContractWordInBackground({
+      packageId: "package-a",
+      prepareExportSnapshot: async () => 8,
+    }, {
+      beginLoading: async () => ({ update: async () => {}, close: async () => {} }),
+      runJob: async () => { throw sourceError; },
+    }),
+    (error) => error.code === "DOCUMENT_EXPORT_SOURCE_CHANGED"
+      && error.cause === sourceError,
+  );
+});
+
 test("contract command keeps entitlement gating and no longer calls the synchronous Word route", async () => {
   const source = await readFile("frontend/app/BiddingController.js", "utf8");
   assert.match(source, /activeuser\?\.wordExportEnabled/u);

@@ -17,7 +17,9 @@ def test_package_relation_and_mutability_registries_cover_schema_ownership():
     relation_tables = {policy.table_name for policy in PACKAGE_RELATION_REGISTRY}
 
     assert schema_tables <= relation_tables
+    assert relation_tables <= set(SCHEMA_DINH_NGHIA)
     assert schema_tables - {"hop_dong_goi_thau"} <= PACKAGE_CHILD_TABLES
+    assert PACKAGE_CHILD_TABLES <= set(SCHEMA_DINH_NGHIA)
 
 
 def test_relation_registry_declares_disposition_for_every_entry():

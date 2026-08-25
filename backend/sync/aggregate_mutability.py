@@ -27,9 +27,6 @@ PACKAGE_CHILD_TABLES = frozenset({
     "contractor_violation_checks",
     "package_legal_binding",
     "package_legal_binding_head",
-    "procurement_case_package_target",
-    "procurement_case_response_revision",
-    "procurement_case_transition",
 })
 _QUERY_CHUNK_SIZE = 500
 

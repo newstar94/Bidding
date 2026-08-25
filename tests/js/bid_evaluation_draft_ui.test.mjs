@@ -90,6 +90,7 @@ test("progress markup exposes numeric and textual status without changing table 
   });
   assert.match(markup, /role="progressbar"/u);
   assert.match(markup, /aria-valuenow="31"/u);
+  assert.match(markup, /aria-label="Tiến độ đánh giá"/u);
   assert.match(markup, /31%/u);
   assert.match(markup, /Hợp lệ 20\/20/u);
   assert.doesNotMatch(markup, /<(?:table|thead|tbody|tr|td|th)\b/u);

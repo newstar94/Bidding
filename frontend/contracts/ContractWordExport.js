@@ -33,7 +33,10 @@ export async function exportContractWordInBackground({
         onProgress: (stage, message) => loading.update(stage, message),
       });
     } catch (error) {
-      throw new Error("Không thể xuất hợp đồng", { cause: error });
+      const wrapped = new Error("Không thể xuất hợp đồng", { cause: error });
+      wrapped.code = error?.code;
+      wrapped.status = error?.status;
+      throw wrapped;
     }
   } finally {
     await loading.close();

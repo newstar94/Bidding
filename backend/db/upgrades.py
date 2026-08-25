@@ -2706,7 +2706,7 @@ def _upgrade_to_v70_add_legal_versioning(cursor, context):
 def _upgrade_to_v71_add_procurement_cases(cursor, context):
     """Add shared CLARIFICATION/PETITION case core without touching legacy rows."""
 
-    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.db.schema import HISTORICAL_SCHEMA_DINH_NGHIA
 
     tables = (
         "procurement_case", "procurement_case_package_target",
@@ -2717,14 +2717,13 @@ def _upgrade_to_v71_add_procurement_cases(cursor, context):
     )
     for table_name in tables:
         create_sql = context.build_create_table_sql(
-            table_name, SCHEMA_DINH_NGHIA[table_name]
+            table_name, HISTORICAL_SCHEMA_DINH_NGHIA[table_name]
         )
         if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
             create_sql = create_sql.replace(
                 "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
             )
         cursor.execute(create_sql)
-    context.create_foreign_keys(cursor, tables, if_not_exists=True)
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_procurement_case_queue ON procurement_case (organization_id, case_type, state, due_at, updated_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_case_target_lineage ON procurement_case_package_target (organization_id, package_lineage_root_id, current_package_version_id)",
@@ -2753,7 +2752,7 @@ def _upgrade_to_v71_add_procurement_cases(cursor, context):
 def _upgrade_to_v72_add_calendar_and_bulk_export(cursor, context):
     """Add technical calendar heads and the export-only bulk control plane."""
 
-    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.db.schema import HISTORICAL_SCHEMA_DINH_NGHIA
 
     tables = (
         "calendar_event_head", "calendar_event_revision", "bulk_operation",
@@ -2761,14 +2760,13 @@ def _upgrade_to_v72_add_calendar_and_bulk_export(cursor, context):
     )
     for table_name in tables:
         create_sql = context.build_create_table_sql(
-            table_name, SCHEMA_DINH_NGHIA[table_name]
+            table_name, HISTORICAL_SCHEMA_DINH_NGHIA[table_name]
         )
         if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
             create_sql = create_sql.replace(
                 "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
             )
         cursor.execute(create_sql)
-    context.create_foreign_keys(cursor, tables, if_not_exists=True)
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_calendar_event_head_source ON calendar_event_head (organization_id, event_key, row_version)",
         "CREATE INDEX IF NOT EXISTS idx_calendar_event_revision_history ON calendar_event_revision (organization_id, event_head_id, sequence DESC)",
@@ -2827,7 +2825,7 @@ def _upgrade_to_v73_extend_activity_for_procurement_cases(cursor, context):
 def _upgrade_to_v74_add_calendar_connectors(cursor, context):
     """Add opt-in one-way Google/Microsoft calendar delivery control plane."""
 
-    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.db.schema import HISTORICAL_SCHEMA_DINH_NGHIA
 
     cursor.execute("ALTER TABLE calendar_event_head ADD COLUMN IF NOT EXISTS source_type TEXT")
     cursor.execute("ALTER TABLE calendar_event_head ADD COLUMN IF NOT EXISTS source_id TEXT")
@@ -2836,11 +2834,12 @@ def _upgrade_to_v74_add_calendar_connectors(cursor, context):
         "calendar_event_binding", "calendar_delivery_outbox",
     )
     for table_name in tables:
-        create_sql = context.build_create_table_sql(table_name, SCHEMA_DINH_NGHIA[table_name])
+        create_sql = context.build_create_table_sql(
+            table_name, HISTORICAL_SCHEMA_DINH_NGHIA[table_name]
+        )
         if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
             create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
         cursor.execute(create_sql)
-    context.create_foreign_keys(cursor, tables, if_not_exists=True)
     for statement in (
         "CREATE INDEX IF NOT EXISTS idx_calendar_oauth_state_expiry ON calendar_oauth_state (expires_at, used_at)",
         "CREATE INDEX IF NOT EXISTS idx_calendar_connection_owner ON calendar_connection (organization_id, user_id, status)",
@@ -2905,6 +2904,64 @@ def _upgrade_to_v76_generic_document_jobs(cursor, _context):
            ON document_jobs
               (organization_id, record_type, record_id, user_id, created_at)"""
     )
+
+
+RETIRED_PROCUREMENT_CENTER_TABLES = (
+    "calendar_delivery_outbox", "calendar_event_binding",
+    "calendar_connection", "calendar_oauth_state",
+    "bulk_operation_artifact", "bulk_operation_item", "bulk_operation",
+    "calendar_event_revision", "calendar_event_head",
+    "procurement_case_attachment", "procurement_case_legal_basis",
+    "procurement_case_transition", "procurement_case_responsibility",
+    "procurement_case_party", "procurement_case_package_target",
+    "procurement_case_source_observation", "procurement_case_command",
+    "procurement_case_response_revision", "procurement_case",
+)
+
+
+def drop_retired_procurement_center_schema(cursor):
+    """Remove the retired case, calendar, and bulk-export persistence model."""
+
+    cursor.execute(
+        "DROP TRIGGER IF EXISTS trg_nhat_ky_thuc_hien_immutable "
+        "ON nhat_ky_thuc_hien"
+    )
+    cursor.execute(
+        "DELETE FROM nhat_ky_thuc_hien WHERE target_type = 'procurement_case'"
+    )
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien DROP CONSTRAINT IF EXISTS "
+        "nhat_ky_thuc_hien_target_type_check"
+    )
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien ADD CONSTRAINT "
+        "nhat_ky_thuc_hien_target_type_check "
+        "CHECK(target_type IN ('goithau', 'hopdong'))"
+    )
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien DROP CONSTRAINT IF EXISTS "
+        "nhat_ky_thuc_hien_action_check"
+    )
+    cursor.execute(
+        "ALTER TABLE nhat_ky_thuc_hien ADD CONSTRAINT "
+        "nhat_ky_thuc_hien_action_check CHECK(action IN ("
+        "'goithau.created', 'goithau.updated', "
+        "'hopdong.created', 'hopdong.updated', "
+        "'package_document.uploaded', 'package_document.replaced', "
+        "'package_document.deleted', 'assignment.added', 'assignment.removed'))"
+    )
+    for table_name in RETIRED_PROCUREMENT_CENTER_TABLES:
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+    cursor.execute(
+        """CREATE TRIGGER trg_nhat_ky_thuc_hien_immutable
+           BEFORE UPDATE OR DELETE ON nhat_ky_thuc_hien
+           FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()"""
+    )
+
+
+def _upgrade_to_v77_remove_procurement_center(cursor, context):
+    drop_retired_procurement_center_schema(cursor)
+    context.assert_foreign_key_integrity(cursor)
 
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
@@ -3278,6 +3335,11 @@ UPGRADES = (
         "generic_document_jobs",
         _upgrade_to_v76_generic_document_jobs,
     ),
+    DatabaseUpgrade(
+        77,
+        "remove_procurement_center",
+        _upgrade_to_v77_remove_procurement_center,
+    ),
 )
 
 
@@ -3285,8 +3347,8 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V76 columns are read by every durable document-job worker and status route.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 76
+# V77 removes the retired procurement center persistence model.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 77
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

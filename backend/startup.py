@@ -26,6 +26,7 @@ from backend.procurement_lookup.config import (
     ProcurementLookupConfigurationError,
     ProcurementLookupSettings,
 )
+from backend.db.schema import SCHEMA_DINH_NGHIA
 
 
 class StartupValidationError(RuntimeError):
@@ -79,149 +80,20 @@ def validate_ai_compliance_configuration(environ):
     return {"enabled": enabled}
 
 
-def validate_procurement_case_configuration(environ):
-    value = str(environ.get("PROCUREMENT_CASE_ENABLED", "false")).strip().casefold()
-    if value not in {"true", "false"}:
-        raise StartupValidationError(
-            "PROCUREMENT_CASE_ENABLED must be true or false."
-        )
-    return {"enabled": value == "true"}
+REQUIRED_APPLICATION_TABLES = frozenset(SCHEMA_DINH_NGHIA)
 
 
-def validate_outbound_increment_configuration(environ, *, production=False):
-    result = {}
-    for name in ("WORK_CALENDAR_ICS_ENABLED", "BULK_EXPORT_ENABLED"):
-        value = str(environ.get(name, "false")).strip().casefold()
-        if value not in {"true", "false"}:
-            raise StartupValidationError(f"{name} must be true or false.")
-        result[name] = value == "true"
-    bulk_root = str(environ.get("BIDDING_BULK_EXPORT_DIR", "")).strip()
-    if production and result["BULK_EXPORT_ENABLED"] and (
-        not bulk_root or not Path(bulk_root).is_absolute()
-    ):
-        raise StartupValidationError(
-            "BIDDING_BULK_EXPORT_DIR must be an explicit absolute path when "
-            "bulk export is enabled in production."
-        )
-    return result
+def _assert_runtime_schema_contract(connection):
+    """Fail startup when version metadata and the installed catalog diverge."""
 
+    from backend.db.postgres_schema import assert_schema_contract
 
-def validate_calendar_connector_configuration(environ, *, production=False):
-    """Validate opt-in calendar connector credentials without exposing secrets."""
-
-    flag_names = (
-        "WORK_CALENDAR_CONNECTORS_ENABLED",
-        "WORK_CALENDAR_GOOGLE_ENABLED",
-        "WORK_CALENDAR_MICROSOFT_ENABLED",
-    )
-    flags = {}
-    for name in flag_names:
-        value = str(environ.get(name, "false")).strip().casefold()
-        if value not in {"true", "false"}:
-            raise StartupValidationError(f"{name} must be true or false.")
-        flags[name] = value == "true"
-
-    enabled = flags["WORK_CALENDAR_CONNECTORS_ENABLED"]
-    providers = {
-        "GOOGLE": flags["WORK_CALENDAR_GOOGLE_ENABLED"],
-        "MICROSOFT": flags["WORK_CALENDAR_MICROSOFT_ENABLED"],
-    }
-    if not enabled:
-        if any(providers.values()):
-            raise StartupValidationError(
-                "Provider calendar flags require WORK_CALENDAR_CONNECTORS_ENABLED=true."
-            )
-        return {"enabled": False, "providers": providers}
-    if str(environ.get("WORK_CALENDAR_ICS_ENABLED", "false")).strip().casefold() != "true":
-        raise StartupValidationError(
-            "WORK_CALENDAR_CONNECTORS_ENABLED requires WORK_CALENDAR_ICS_ENABLED=true."
-        )
-    if not any(providers.values()):
-        raise StartupValidationError(
-            "WORK_CALENDAR_CONNECTORS_ENABLED requires at least one provider flag."
-        )
-
-    for provider in ("GOOGLE", "MICROSOFT"):
-        if not providers[provider]:
-            continue
-        prefix = f"WORK_CALENDAR_{provider}"
-        required = (
-            f"{prefix}_CLIENT_ID",
-            f"{prefix}_CLIENT_SECRET",
-            f"{prefix}_REDIRECT_URI",
-        )
-        for name in required:
-            if not str(environ.get(name, "")).strip():
-                raise StartupValidationError(
-                    f"{name} is required when the {provider} calendar connector is enabled."
-                )
-        redirect = urlparse(str(environ[f"{prefix}_REDIRECT_URI"]).strip())
-        local_http = (
-            not production
-            and redirect.scheme.casefold() == "http"
-            and str(redirect.hostname or "").casefold() in {"localhost", "127.0.0.1"}
-        )
-        if (
-            (redirect.scheme.casefold() != "https" and not local_http)
-            or not redirect.hostname
-            or redirect.username is not None
-            or redirect.password is not None
-            or redirect.fragment
-        ):
-            raise StartupValidationError(
-                f"{prefix}_REDIRECT_URI must be an absolute HTTPS URL without credentials or fragment."
-            )
-        if production:
-            public = urlparse(str(environ.get("APP_PUBLIC_URL", "")).strip())
-            if (
-                redirect.scheme.casefold(), redirect.hostname.casefold(), redirect.port
-            ) != (
-                public.scheme.casefold(), str(public.hostname or "").casefold(), public.port
-            ):
-                raise StartupValidationError(
-                    f"{prefix}_REDIRECT_URI must use the exact APP_PUBLIC_URL origin in production."
-                )
-    tenant = str(
-        environ.get("WORK_CALENDAR_MICROSOFT_TENANT", "common")
-    ).strip()
-    if providers["MICROSOFT"] and not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", tenant):
-        raise StartupValidationError(
-            "WORK_CALENDAR_MICROSOFT_TENANT contains invalid characters."
-        )
     try:
-        from cryptography.fernet import Fernet
-
-        Fernet(
-            str(environ.get("WORK_CALENDAR_TOKEN_ENCRYPTION_KEY", "")).encode(
-                "ascii"
-            )
-        )
-    except (TypeError, ValueError) as exc:
+        assert_schema_contract(connection.cursor())
+    except Exception as error:
         raise StartupValidationError(
-            "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY must be a valid Fernet key."
-        ) from exc
-    connector_key = str(environ.get("WORK_CALENDAR_TOKEN_ENCRYPTION_KEY", ""))
-    if any(
-        connector_key and connector_key == str(environ.get(name, ""))
-        for name in ("EMAIL_OUTBOX_ENCRYPTION_KEY", "CONFLICT_DRAFT_ENCRYPTION_KEY")
-    ):
-        raise StartupValidationError(
-            "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY must be independent from other encryption keys."
-        )
-    return {"enabled": True, "providers": providers}
-
-
-REQUIRED_APPLICATION_TABLES = frozenset({
-    "tai_khoan",
-    "to_chuc",
-    "thanh_vien_to_chuc",
-    "database_metadata",
-    "password_reset_tokens",
-    "email_delivery_status",
-    "rate_limit_buckets",
-    "partner_lookup_cache",
-    "partner_upstream_health",
-})
+            "PostgreSQL schema contract does not match the application runtime."
+        ) from error
 
 
 def _bounded_configuration_int(
@@ -676,9 +548,6 @@ def validate_startup_configuration(database, environ=None):
     )
     validate_legal_versioning_configuration(environ)
     validate_ai_compliance_configuration(environ)
-    validate_procurement_case_configuration(environ)
-    validate_outbound_increment_configuration(environ, production=is_production)
-    validate_calendar_connector_configuration(environ, production=is_production)
     validate_procurement_lookup_configuration(environ)
     procurement_provider = str(
         environ.get(
@@ -869,6 +738,8 @@ def verify_database_readiness(
             raise StartupValidationError(
                 f"PostgreSQL has {len(invalid_foreign_keys)} unvalidated foreign key(s)."
             )
+
+        _assert_runtime_schema_contract(conn)
 
         bootstrap_admin = conn.execute(
             """

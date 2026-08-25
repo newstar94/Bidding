@@ -24,6 +24,7 @@ from backend.shared.membership_invariants import (
 from backend.shared.platform_role_invariants import lock_platform_role_invariants
 from backend.sync.websocket import enqueue_websocket_event
 from backend.auth.session_store import revoke_user_sessions
+from backend.auth.auth_helper import verify_session_in_transaction
 from backend.shared.workspace_scope import (
     lock_personal_workspace_mutations,
     personal_scope_id,
@@ -317,6 +318,20 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if (
+            not authority_valid
+            or str(current_actor.user_id) != str(actor_user_id)
+        ):
+            conn.rollback()
+            return JSONResponse(
+                {"error": current_actor if not authority_valid else "Phiên quản trị đã thay đổi."},
+                status_code=403,
+            )
         lock_platform_role_invariants(cursor)
         target = cursor.execute(
             """SELECT vai_tro, email, ho_ten FROM tai_khoan

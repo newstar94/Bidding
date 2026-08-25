@@ -5,6 +5,7 @@ import os
 AGGREGATE_VERSION_V1 = "aggregate-version-v1"
 PROCUREMENT_IMPORT_V2 = "procurement-import-v2"
 PROCUREMENT_LOOKUP_V1 = "procurement-lookup-v1"
+CONFLICT_CENTER_V1 = "conflict-center-v1"
 SERVER_CAPABILITIES = (AGGREGATE_VERSION_V1,)
 
 
@@ -54,6 +55,8 @@ def current_server_capabilities(environ=None):
         capabilities.append(PROCUREMENT_IMPORT_V2)
     if str(environ.get("PROCUREMENT_LOOKUP_ENABLED", "false")).strip().casefold() == "true":
         capabilities.append(PROCUREMENT_LOOKUP_V1)
+    if str(environ.get("CONFLICT_CENTER_ENABLED", "false")).strip().casefold() == "true":
+        capabilities.append(CONFLICT_CENTER_V1)
     return capabilities
 
 

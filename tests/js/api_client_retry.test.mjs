@@ -51,6 +51,37 @@ test("storage access failure omits the active organization header safely", async
 });
 
 
+test("workspace recovery retry rebuilds the active organization header", async () => {
+  let activeOrganization = "org-old";
+  const seenOrganizations = [];
+  configureApiClient({
+    activeOrganization: () => activeOrganization,
+    onHttpError: async () => {
+      activeOrganization = "org-new";
+      return { retry: true };
+    },
+  });
+  try {
+    const response = await apiFetch("/api/probe", {
+      csrf: false,
+      retries: 0,
+    }, async (_url, options) => {
+      seenOrganizations.push(options.headers.get("X-Active-Org"));
+      return seenOrganizations.length === 1
+        ? new Response(JSON.stringify({ code: "ORG_ACCESS_DENIED" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        })
+        : new Response("ok", { status: 200 });
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(seenOrganizations, ["org-old", "org-new"]);
+  } finally {
+    configureApiClient({ activeOrganization: null, onHttpError: null });
+  }
+});
+
+
 test("retry wait removes its abort listener after the timer resolves", async () => {
   const signal = new CountingSignal();
   let calls = 0;

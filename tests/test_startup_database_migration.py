@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend import app as app_module
+from backend import startup as startup_module
 from backend.db.db_utils import (
     DB_RUNTIME_MAX_SCHEMA_VERSION,
     DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -14,14 +15,10 @@ from backend.startup import (
     StartupValidationError,
     validate_legal_versioning_configuration,
     validate_ai_compliance_configuration,
-    validate_procurement_case_configuration,
-    validate_calendar_connector_configuration,
-    validate_outbound_increment_configuration,
     validate_word_template_catalog_configuration,
     verify_database_readiness,
     verify_database_responsive,
 )
-from cryptography.fernet import Fernet
 from scripts import manage_database
 
 
@@ -63,13 +60,18 @@ class _RuntimeSchemaDatabase:
         return _RuntimeSchemaConnection(self.version)
 
 
-def test_v76_document_job_runtime_requires_schema_76():
-    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
-        76,
-        76,
+def test_v77_runtime_requires_retired_procurement_center_schema_removed(monkeypatch):
+    monkeypatch.setattr(
+        startup_module,
+        "_assert_runtime_schema_contract",
+        lambda _connection: None,
     )
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 76
-    for version in (76,):
+    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
+        77,
+        77,
+    )
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 77
+    for version in (77,):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
             DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -80,7 +82,7 @@ def test_v76_document_job_runtime_requires_schema_76():
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (75, 77):
+    for version in (75, 76):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,
@@ -91,6 +93,20 @@ def test_v76_document_job_runtime_requires_schema_76():
                     DB_RUNTIME_MIN_SCHEMA_VERSION,
                     DB_RUNTIME_MAX_SCHEMA_VERSION,
                 )
+
+
+def test_startup_readiness_validates_the_complete_schema_contract(monkeypatch):
+    checked = []
+    monkeypatch.setattr(
+        startup_module,
+        "_assert_runtime_schema_contract",
+        lambda connection: checked.append(connection),
+    )
+
+    database = _RuntimeSchemaDatabase(77)
+    verify_database_readiness(database, 77, 77)
+
+    assert len(checked) == 1
 
 
 def test_auto_migration_defaults_to_enabled_outside_production():
@@ -126,70 +142,6 @@ def test_ai_compliance_flag_requires_exact_legal_authority():
         validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "true"})
     with pytest.raises(StartupValidationError, match="must be true or false"):
         validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "enabled"})
-
-
-def test_procurement_case_flag_is_strict_and_defaults_off():
-    assert validate_procurement_case_configuration({}) == {"enabled": False}
-    assert validate_procurement_case_configuration({
-        "PROCUREMENT_CASE_ENABLED": "true",
-    }) == {"enabled": True}
-    with pytest.raises(StartupValidationError, match="must be true or false"):
-        validate_procurement_case_configuration({
-            "PROCUREMENT_CASE_ENABLED": "enabled",
-        })
-
-
-def test_outbound_increment_flags_and_production_storage_are_strict(tmp_path):
-    assert validate_outbound_increment_configuration({}) == {
-        "WORK_CALENDAR_ICS_ENABLED": False,
-        "BULK_EXPORT_ENABLED": False,
-    }
-    with pytest.raises(StartupValidationError, match="WORK_CALENDAR"):
-        validate_outbound_increment_configuration({
-            "WORK_CALENDAR_ICS_ENABLED": "enabled",
-        })
-    with pytest.raises(StartupValidationError, match="explicit absolute"):
-        validate_outbound_increment_configuration({
-            "BULK_EXPORT_ENABLED": "true",
-        }, production=True)
-    assert validate_outbound_increment_configuration({
-        "BULK_EXPORT_ENABLED": "true",
-        "BIDDING_BULK_EXPORT_DIR": str(tmp_path),
-    }, production=True)["BULK_EXPORT_ENABLED"] is True
-
-
-def test_calendar_connectors_require_explicit_provider_credentials_and_independent_key():
-    assert validate_calendar_connector_configuration({}) == {
-        "enabled": False,
-        "providers": {"GOOGLE": False, "MICROSOFT": False},
-    }
-    with pytest.raises(StartupValidationError, match="must be true or false"):
-        validate_calendar_connector_configuration({
-            "WORK_CALENDAR_CONNECTORS_ENABLED": "enabled",
-        })
-    with pytest.raises(StartupValidationError, match="requires WORK_CALENDAR_ICS_ENABLED"):
-        validate_calendar_connector_configuration({
-            "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
-        })
-    with pytest.raises(StartupValidationError, match="WORK_CALENDAR_GOOGLE_CLIENT_ID"):
-        validate_calendar_connector_configuration({
-            "WORK_CALENDAR_ICS_ENABLED": "true",
-            "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
-            "WORK_CALENDAR_GOOGLE_ENABLED": "true",
-        })
-    key = Fernet.generate_key().decode("ascii")
-    assert validate_calendar_connector_configuration({
-        "WORK_CALENDAR_ICS_ENABLED": "true",
-        "WORK_CALENDAR_CONNECTORS_ENABLED": "true",
-        "WORK_CALENDAR_GOOGLE_ENABLED": "true",
-        "WORK_CALENDAR_GOOGLE_CLIENT_ID": "calendar-client",
-        "WORK_CALENDAR_GOOGLE_CLIENT_SECRET": "calendar-secret",
-        "WORK_CALENDAR_GOOGLE_REDIRECT_URI": "https://app.example.test/api/work-calendar/connections/google/callback",
-        "WORK_CALENDAR_TOKEN_ENCRYPTION_KEY": key,
-    }) == {
-        "enabled": True,
-        "providers": {"GOOGLE": True, "MICROSOFT": False},
-    }
 
 
 def test_word_template_catalog_cutover_rejects_invalid_mode_and_prod_path():

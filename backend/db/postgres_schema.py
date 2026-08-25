@@ -11,13 +11,19 @@ from hashlib import sha256
 from psycopg import sql
 from psycopg.errors import UndefinedColumn, UndefinedObject, UndefinedTable
 
-from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.db.schema import (
+    HISTORICAL_SCHEMA_DINH_NGHIA,
+    MONEY_COLUMNS,
+    RETIRED_PROCUREMENT_CENTER_TABLES,
+    SCHEMA_DINH_NGHIA,
+)
 from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
     DatabaseUpgradeContext,
     REQUIRED_POST_V64_FK_INDEXES,
     apply_database_upgrades,
+    drop_retired_procurement_center_schema,
     read_database_version,
     record_database_version,
 )
@@ -280,7 +286,7 @@ def _create_foreign_keys(
         else tuple(table_names)
     )
     for table_name in selected_tables:
-        table_spec = SCHEMA_DINH_NGHIA[table_name]
+        table_spec = HISTORICAL_SCHEMA_DINH_NGHIA[table_name]
         foreign_keys = [
             constraint
             for constraint in table_spec.get("foreign_keys", ())
@@ -640,20 +646,6 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_legal_profile_version_effective ON legal_source_profile_version (effective_from, effective_to, priority DESC, profile_id)",
         "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_history ON plan_legal_binding (organization_id, plan_id, binding_revision DESC)",
         "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_history ON package_legal_binding (organization_id, package_id, binding_revision DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_procurement_case_queue ON procurement_case (organization_id, case_type, state, due_at, updated_at DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_procurement_case_target_lineage ON procurement_case_package_target (organization_id, package_lineage_root_id, current_package_version_id)",
-        "CREATE INDEX IF NOT EXISTS idx_procurement_case_response_history ON procurement_case_response_revision (organization_id, case_id, revision_no DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_procurement_case_transition_history ON procurement_case_transition (organization_id, case_id, sequence_no DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_procurement_case_observation_queue ON procurement_case_source_observation (organization_id, case_type, linked_case_id, observed_at DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_event_head_source ON calendar_event_head (organization_id, event_key, row_version)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_event_revision_history ON calendar_event_revision (organization_id, event_head_id, sequence DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_queue ON bulk_operation (organization_id, actor_user_id, status, expires_at)",
-        "CREATE INDEX IF NOT EXISTS idx_bulk_operation_expiry ON bulk_operation (expires_at, status)",
-        "CREATE INDEX IF NOT EXISTS idx_bulk_artifact_expiry ON bulk_operation_artifact (expires_at)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_oauth_state_expiry ON calendar_oauth_state (expires_at, used_at)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_connection_owner ON calendar_connection (organization_id, user_id, status)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_binding_remote ON calendar_event_binding (organization_id, connection_id, remote_event_id)",
-        "CREATE INDEX IF NOT EXISTS idx_calendar_delivery_claim ON calendar_delivery_outbox (status, available_at, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_generated_document_template ON generated_document_provenance (organization_id, template_version_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_generated_document_record ON generated_document_provenance (organization_id, record_type, record_id, created_at DESC) WHERE record_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
@@ -664,6 +656,8 @@ def _create_indexes(cursor) -> None:
         *REQUIRED_POST_V64_FK_INDEXES,
     )
     for statement in statements:
+        if any(table_name in statement for table_name in RETIRED_PROCUREMENT_CENTER_TABLES):
+            continue
         cursor.execute(statement)
     _create_search_indexes(cursor)
 
@@ -1049,6 +1043,8 @@ def _create_triggers(cursor) -> None:
         "calendar_event_revision",
         "bulk_operation_item",
     ):
+        if table_name not in SCHEMA_DINH_NGHIA:
+            continue
         cursor.execute(
             f"DROP TRIGGER IF EXISTS trg_{table_name}_immutable ON {table_name}"
         )
@@ -1511,6 +1507,7 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
         (organization_id,),
     )
     context.create_indexes_and_triggers(cursor)
+    drop_retired_procurement_center_schema(cursor)
     record_database_version(cursor, DB_SCHEMA_VERSION)
     context.assert_foreign_key_integrity(cursor)
     return DB_SCHEMA_VERSION

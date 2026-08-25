@@ -513,9 +513,9 @@ def test_job_access_dispatches_package_and_plan_to_their_existing_scope(
     assert observed["scope"] == expected_scope
 
 
-def test_v76_schema_and_upgrade_backfill_generic_job_fields():
+def test_current_schema_keeps_v76_generic_job_fields():
     columns = SCHEMA_DINH_NGHIA["document_jobs"]["columns"]
-    assert DB_SCHEMA_VERSION == 76
+    assert DB_SCHEMA_VERSION == 77
     assert {
         "record_type",
         "record_id",

@@ -60,6 +60,11 @@ test("shared application loading surface announces Excel and Word progress", asy
     assert.equal(await loading.getAttribute("aria-live"), "polite");
     assert.equal(await loading.getAttribute("aria-busy"), "true");
     assert.equal(await page.locator("body").getAttribute("aria-busy"), "true");
+    assert.equal(await page.locator("main").getAttribute("inert"), "");
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.classList.contains("app-long-task-loading-card")),
+      true,
+    );
     assert.equal(
       await loading.locator(".app-long-task-loading-icon").getAttribute("class"),
       "app-brand-image app-long-task-loading-icon",
@@ -111,14 +116,16 @@ test("shared application loading surface announces Excel and Word progress", asy
     assert.equal(await loading.getAttribute("data-task"), "word-publication");
     assert.match(await loading.innerText(), /Đang xuất bản Word/u);
 
-    await page.evaluate(() => globalThis.excelLoading.close());
+    await page.evaluate(() => globalThis.wordLoading.close());
     assert.equal(await loading.isVisible(), true);
     assert.equal(await loading.getAttribute("aria-busy"), "true");
     assert.equal(await page.locator("body").getAttribute("aria-busy"), "true");
+    assert.equal(await loading.getAttribute("data-task"), "excel-import");
 
-    await page.evaluate(() => globalThis.wordLoading.close());
+    await page.evaluate(() => globalThis.excelLoading.close());
     await loading.waitFor({ state: "hidden" });
     assert.equal(await page.locator("body").getAttribute("aria-busy"), null);
+    assert.equal(await page.locator("main").getAttribute("inert"), null);
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

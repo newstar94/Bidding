@@ -450,6 +450,43 @@ def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_v77_removes_procurement_case_activity_without_breaking_immutable_audit():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=76,
+        ) == 76
+        cursor.execute(
+            """INSERT INTO nhat_ky_thuc_hien (
+                   id, organization_id, target_type, target_id,
+                   target_root_id, action, actor_user_id
+               ) VALUES (
+                   'fixture-case-activity', 'fixture-org', 'procurement_case',
+                   'fixture-case', 'fixture-case', 'procurement_case.created',
+                   'fixture-user'
+               )"""
+        )
+
+        assert apply_database_upgrades(cursor, 76, context) == DB_SCHEMA_VERSION
+        assert cursor.execute(
+            """SELECT COUNT(*) FROM nhat_ky_thuc_hien
+                WHERE target_type = 'procurement_case'"""
+        ).fetchone()[0] == 0
+        assert cursor.execute(
+            """SELECT COUNT(*) FROM pg_trigger
+                WHERE tgrelid = 'nhat_ky_thuc_hien'::regclass
+                  AND tgname = 'trg_nhat_ky_thuc_hien_immutable'
+                  AND NOT tgisinternal"""
+        ).fetchone()[0] == 1
+        assert_schema_contract(cursor)
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_v59_to_v61_replaces_delete_function_and_renames_default_workspace():
     connection, cursor, schema_name = _open_fixture_connection()
     try:

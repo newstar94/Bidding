@@ -10,6 +10,7 @@ test("document-system sidebar keeps Word templates and adds Word publication", a
   assert.match(sidebar, />Hệ thống văn bản</u);
   assert.match(sidebar, /data-tab="bieumau"[^>]*id="btn-tab-bieumau"/u);
   assert.match(sidebar, /data-tab="xuatban-word"[^>]*id="btn-tab-xuatban-word"/u);
+  assert.doesNotMatch(sidebar, /procurement-center|Trung tâm hồ sơ/u);
   assert.ok(sidebar.indexOf("btn-tab-bieumau") < sidebar.indexOf("btn-tab-xuatban-word"));
 });
 

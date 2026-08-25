@@ -16,6 +16,10 @@ import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { WorkspaceConflictRecoveryStore } from "./WorkspaceConflictRecoveryStore.js";
 import { ConflictCenterClient } from "./ConflictCenterClient.js";
+import {
+  CONFLICT_CENTER_CAPABILITY,
+  hasServerCapability,
+} from "../auth/serverCapabilities.js";
 import { mutationQueueHasChanges } from "./mutationQueue.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import { EntityIndexes } from "./EntityIndexes.js";
@@ -827,6 +831,9 @@ export class BiddingModel {
   async refreshConflictRecoveryDrafts() {
     const workspaceFingerprint = String(this.workspaceScope?.key || "");
     if (!workspaceFingerprint) return [];
+    if (!hasServerCapability(CONFLICT_CENTER_CAPABILITY)) {
+      return this._getConflictRecoveryStore().replace([]);
+    }
     const result = await this._getConflictCenterClient().list(workspaceFingerprint);
     return this._getConflictRecoveryStore().replace(result?.items || []);
   }

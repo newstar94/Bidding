@@ -17,6 +17,7 @@ from backend.compliance.repository import ComplianceContextRepository
 from backend.legal_versioning.repository import LegalVersioningRepository
 from backend.legal_versioning.service import (
     LegalConflictError,
+    LegalVersioningError,
     LegalVersioningService,
 )
 from backend.legal_versioning.routes import list_profiles_api
@@ -45,6 +46,35 @@ def test_legal_http_kill_switch_and_session_boundary(monkeypatch):
 
     monkeypatch.setenv("LEGAL_VERSIONING_ENABLED", "true")
     assert client.get("/api/legal-versioning/profiles").status_code == 403
+
+
+@pytest.mark.parametrize(
+    "source_uri",
+    ("javascript:alert(1)", "data:text/html,unsafe", "https://user:pass@example.test/law"),
+)
+def test_legal_source_uri_rejects_unsafe_links(source_uri):
+    class Repository:
+        def create_instrument_draft(self, _payload):
+            raise AssertionError("unsafe source must be rejected before persistence")
+
+    service = LegalVersioningService(Repository(), audit=lambda *_args, **_kwargs: None)
+
+    with pytest.raises(LegalVersioningError) as error:
+        service.create_instrument_draft(
+            stable_code="law-01",
+            title="Legal title",
+            document_type="LAW",
+            document_number="01/2026",
+            source_uri=source_uri,
+            source_content="content",
+            issued_date="2026-01-01",
+            effective_from="2026-01-01",
+            effective_to=None,
+            relations=[],
+            actor_user_id="admin-1",
+        )
+
+    assert error.value.fields == {"sourceUri": "INVALID_SOURCE_URI"}
 
 
 def test_publish_exact_sources_and_bind_plan_with_independent_cas():

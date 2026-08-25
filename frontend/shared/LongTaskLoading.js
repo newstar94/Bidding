@@ -9,8 +9,10 @@ const DEFAULT_STAGES = Object.freeze([
 const MINIMUM_VISIBLE_MS = 360;
 const EXIT_TRANSITION_MS = 180;
 
-let activeToken = null;
+const taskStack = [];
 let previousBodyBusy = null;
+let previousFocus = null;
+let backgroundInertState = [];
 
 function makeElement(documentRef, tagName, className = "", text = "") {
   const element = documentRef.createElement(tagName);
@@ -32,6 +34,7 @@ function ensureOverlay(documentRef) {
   overlay.setAttribute("aria-busy", "false");
 
   const card = makeElement(documentRef, "section", "app-long-task-loading-card");
+  card.tabIndex = -1;
   const header = makeElement(documentRef, "div", "app-long-task-loading-header");
   const visual = makeElement(documentRef, "div", "app-long-task-loading-visual");
   visual.setAttribute("aria-hidden", "true");
@@ -71,6 +74,7 @@ function ensureOverlay(documentRef) {
 
   const refs = {
     overlay,
+    card,
     title,
     message,
     detail,
@@ -148,14 +152,52 @@ function applyStage(refs, stages, stageKey, message) {
   );
 }
 
+function renderTask(documentRef, refs, task) {
+  refs.overlay.dataset.task = task.task;
+  refs.title.textContent = task.title;
+  refs.detail.textContent = task.detail;
+  refs.detail.title = task.detail;
+  refs.detail.hidden = !task.detail;
+  configureSteps(documentRef, refs, task.stages);
+  applyStage(refs, task.stages, task.stageKey, task.message);
+}
+
+function isolateBackground(documentRef, refs) {
+  previousFocus = documentRef.activeElement;
+  backgroundInertState = [...documentRef.body.children]
+    .filter((element) => element !== refs.overlay)
+    .map((element) => ({
+      element,
+      inert: Boolean(element.inert),
+      hadAttribute: element.hasAttribute("inert"),
+    }));
+  backgroundInertState.forEach(({ element }) => {
+    element.inert = true;
+  });
+  refs.card.focus({ preventScroll: true });
+}
+
+function restoreBackground() {
+  backgroundInertState.forEach(({ element, inert, hadAttribute }) => {
+    if (!element?.isConnected) return;
+    element.inert = inert;
+    if (!hadAttribute && !inert) element.removeAttribute("inert");
+  });
+  backgroundInertState = [];
+  if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
+    previousFocus.focus({ preventScroll: true });
+  }
+  previousFocus = null;
+}
+
 const NOOP_HANDLE = Object.freeze({
   update: async () => {},
   close: async () => {},
 });
 
 /**
- * Show the application-wide feedback surface for one long-running task.
- * A newer task replaces an older one; stale handles cannot hide or alter it.
+ * Show the application-wide feedback surface for a long-running task.
+ * Nested tasks form a stack; closing one cannot hide another active task.
  */
 export async function beginLongTaskLoading({
   task = "long-task",
@@ -170,48 +212,73 @@ export async function beginLongTaskLoading({
 
   const refs = ensureOverlay(documentRef);
   const stages = normalizeStages(requestedStages);
-  const replacingActiveTask = Boolean(activeToken);
   const token = Symbol(String(task || "long-task"));
-  if (!replacingActiveTask) previousBodyBusy = documentRef.body.getAttribute("aria-busy");
-  activeToken = token;
-  const shownAt = now(documentRef);
-
-  refs.overlay.dataset.task = String(task || "long-task");
-  refs.title.textContent = String(title || "Đang xử lý");
-  refs.detail.textContent = String(detail || "");
-  refs.detail.title = String(detail || "");
-  refs.detail.hidden = !detail;
-  configureSteps(documentRef, refs, stages);
-  applyStage(refs, stages, initialStage || stages[0].key, message);
+  const taskState = {
+    token,
+    task: String(task || "long-task"),
+    title: String(title || "Đang xử lý"),
+    detail: String(detail || ""),
+    stages,
+    stageKey: initialStage || stages[0].key,
+    message,
+    shownAt: now(documentRef),
+    closed: false,
+  };
+  if (taskStack.length === 0) {
+    previousBodyBusy = documentRef.body.getAttribute("aria-busy");
+  }
+  taskStack.push(taskState);
+  renderTask(documentRef, refs, taskState);
   refs.overlay.hidden = false;
   refs.overlay.setAttribute("aria-busy", "true");
   documentRef.body.setAttribute("aria-busy", "true");
   documentRef.body.classList.add("app-long-task-is-busy");
   refs.overlay.classList.add("is-active");
+  if (taskStack.length === 1) isolateBackground(documentRef, refs);
   await waitForVisiblePaint(documentRef);
 
   return Object.freeze({
     update: async (stageKey, nextMessage = "") => {
-      if (activeToken !== token) return;
-      applyStage(refs, stages, stageKey, nextMessage);
+      if (taskState.closed) return;
+      taskState.stageKey = stageKey;
+      taskState.message = nextMessage;
+      if (taskStack.at(-1)?.token !== token) return;
+      renderTask(documentRef, refs, taskState);
       await waitForVisiblePaint(documentRef);
     },
     close: async () => {
-      if (activeToken !== token) return;
-      const remaining = MINIMUM_VISIBLE_MS - (now(documentRef) - shownAt);
+      if (taskState.closed) return;
+      taskState.closed = true;
+      let taskIndex = taskStack.findIndex((entry) => entry.token === token);
+      if (taskIndex < 0) return;
+      const wasTop = taskIndex === taskStack.length - 1;
+      if (!wasTop) {
+        taskStack.splice(taskIndex, 1);
+        return;
+      }
+      const remaining = MINIMUM_VISIBLE_MS - (now(documentRef) - taskState.shownAt);
       if (remaining > 0) await delay(documentRef, remaining);
-      if (activeToken !== token) return;
-
-      activeToken = null;
+      taskIndex = taskStack.findIndex((entry) => entry.token === token);
+      if (taskIndex < 0) return;
+      const stillTop = taskIndex === taskStack.length - 1;
+      taskStack.splice(taskIndex, 1);
+      if (!stillTop) return;
+      const nextTask = taskStack.at(-1);
+      if (nextTask) {
+        renderTask(documentRef, refs, nextTask);
+        await waitForVisiblePaint(documentRef);
+        return;
+      }
       refs.overlay.classList.remove("is-active");
       refs.overlay.setAttribute("aria-busy", "false");
       documentRef.body.classList.remove("app-long-task-is-busy");
       if (previousBodyBusy === null) documentRef.body.removeAttribute("aria-busy");
       else documentRef.body.setAttribute("aria-busy", previousBodyBusy);
       previousBodyBusy = null;
+      restoreBackground();
 
       await delay(documentRef, EXIT_TRANSITION_MS);
-      if (!activeToken) refs.overlay.hidden = true;
+      if (taskStack.length === 0) refs.overlay.hidden = true;
     },
   });
 }

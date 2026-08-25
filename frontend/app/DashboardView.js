@@ -601,17 +601,34 @@ export async function renderSuperAdminDashboard() {
   const cachedPackages = Array.isArray(this.model.state.systempackages)
     ? this.model.state.systempackages
     : [];
-  const [usersResponse, packagesResponse] = await Promise.all([
-    apiFetch("/api/auth/users"),
-    apiFetch("/api/system-packages"),
-  ]);
-  const users = usersResponse.ok ? await usersResponse.json() : [];
-  let systemPackages = cachedPackages;
-  if (packagesResponse?.ok) {
-    systemPackages = await packagesResponse.json();
-    this.model.replaceTableState("systempackages", systemPackages);
-    await this.model.persistData?.("systempackages", { trackMutation: false });
+  let usersResponse;
+  let packagesResponse;
+  try {
+    [usersResponse, packagesResponse] = await Promise.all([
+      apiFetch("/api/auth/users"),
+      apiFetch("/api/system-packages"),
+    ]);
+  } catch (error) {
+    await this.customAlert?.(
+      "Không thể tải bảng điều hành",
+      error?.message || "Không thể kết nối máy chủ.",
+      "x-circle",
+    );
+    return false;
   }
+  if (!usersResponse?.ok || !packagesResponse?.ok) {
+    await this.customAlert?.(
+      "Không thể tải bảng điều hành",
+      "Dữ liệu quản trị chưa tải đầy đủ. Vui lòng thử lại.",
+      "x-circle",
+    );
+    return false;
+  }
+  const users = await usersResponse.json();
+  let systemPackages = cachedPackages;
+  systemPackages = await packagesResponse.json();
+  this.model.replaceTableState("systempackages", systemPackages);
+  await this.model.persistData?.("systempackages", { trackMutation: false });
   const legalCatalogContainer = document.getElementById("legal-catalog-admin-root");
   if (
     legalCatalogContainer
@@ -676,6 +693,7 @@ export async function renderSuperAdminDashboard() {
       );
     }
   this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
+  return true;
 }
 
 export function summarizeSuperAdminOrganizations(users = [], systemPackages = []) {

@@ -6,7 +6,12 @@ import urllib.parse
 from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
-from backend.auth.session_store import load_session_user, session_invalid_reason, touch_session
+from backend.auth.session_store import (
+    hash_session_token,
+    load_session_user,
+    session_invalid_reason,
+    touch_session,
+)
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
@@ -243,4 +248,83 @@ def verify_session(request, required_role=None):
         platform_role=platform_role,
         active_role=active_role,
         active_role_organization_id=selected_role_organization_id or None,
+    )
+
+
+def verify_session_in_transaction(cursor, request, required_role=None):
+    """Reload and lock request authority before a security-sensitive write.
+
+    The regular request check may happen before body parsing or other slow work.
+    This check intentionally reads the session and account again on the write
+    transaction so a concurrent revocation cannot race the final mutation.
+    """
+
+    token = (request.cookies.get("session_token") or "").strip()
+    if not token:
+        return False, "Thiếu thông tin xác thực phiên làm việc!"
+    row = cursor.execute(
+        """SELECT accounts.id, accounts.vai_tro,
+                  accounts.trang_thai AS account_status,
+                  sessions.id AS session_id,
+                  sessions.idle_expires_at,
+                  sessions.absolute_expires_at,
+                  sessions.revoked_at,
+                  sessions.privileged_reauth_at,
+                  sessions.active_role,
+                  sessions.active_role_organization_id
+             FROM auth_sessions AS sessions
+             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
+            WHERE sessions.token_hash = ?
+            LIMIT 1
+            FOR UPDATE OF sessions, accounts""",
+        (hash_session_token(token),),
+    ).fetchone()
+    user = dict(row) if row is not None else None
+    if session_invalid_reason(user):
+        return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
+
+    platform_role = normalize_platform_role(user["vai_tro"])
+    requested_active_role = str(user.get("active_role") or "").strip().lower()
+    selected_organization_id = str(
+        user.get("active_role_organization_id") or ""
+    ).strip()
+    encoded_request_organization = str(
+        getattr(request, "headers", {}).get("X-Active-Org") or ""
+    ).strip()
+    request_organization_id = (
+        urllib.parse.unquote(encoded_request_organization)
+        if encoded_request_organization
+        else ""
+    )
+    allowed_active_roles = (
+        {"super_admin", "manager", "employee"}
+        if platform_role == "super_admin"
+        else {"manager", "employee"}
+    )
+    active_role = (
+        requested_active_role
+        if (
+            requested_active_role in allowed_active_roles
+            and selected_organization_id
+            and selected_organization_id == request_organization_id
+        )
+        else None
+    )
+    effective_role = active_role or platform_role
+    if required_role and (
+        required_role not in get_effective_roles(user["vai_tro"])
+        or required_role not in get_effective_roles(effective_role)
+    ):
+        return False, "Bạn không có quyền thực hiện thao tác này!"
+    if required_role == "super_admin":
+        controls_valid, controls_error = verify_super_admin_controls(request, user)
+        if not controls_valid:
+            return False, controls_error
+    return True, SessionRole(
+        effective_role,
+        user["id"],
+        user.get("session_id"),
+        platform_role=platform_role,
+        active_role=active_role,
+        active_role_organization_id=selected_organization_id or None,
     )

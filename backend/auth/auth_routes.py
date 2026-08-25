@@ -28,6 +28,7 @@ from backend.auth.auth_helper import (
     SESSION_ACTIVITY_TOUCH_SECONDS,
     verify_super_admin_controls,
     verify_recent_reauthentication,
+    verify_session_in_transaction,
 )
 from backend.auth.roles import resolve_workspace_active_role
 from backend.auth.session_store import (
@@ -138,6 +139,12 @@ def _verify_and_maybe_rehash(stored_password, provided_password):
     if verified and password_needs_rehash(stored_password):
         replacement = hash_password(provided_password)
     return verified, replacement
+
+
+_DUMMY_LOGIN_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=2$uSsgFTKTx86Xy8N9pg1LFQ$"
+    "AhE2wo0dcX6I5BL9vXfKS4ET0vt2FyFArLzdH/ItTls"
+)
 
 
 def _prepare_email_change_credentials(stored_password, password, otp_code):
@@ -419,6 +426,15 @@ async def login_api(request):
             return _database_lane_unavailable_response(request, write=False)
 
         if not user:
+            try:
+                await run_cpu_bound(
+                    _verify_and_maybe_rehash,
+                    _DUMMY_LOGIN_PASSWORD_HASH,
+                    password,
+                    timeout_seconds=15,
+                )
+            except (BlockingIOBusyError, BlockingIOTimeoutError):
+                return _password_cpu_unavailable_response(request)
             await record_failed_login()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
 
@@ -1783,6 +1799,20 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if (
+            not authority_valid
+            or str(current_actor.user_id) != str(actor_user_id)
+        ):
+            conn.rollback()
+            return JSONResponse(
+                {"error": current_actor if not authority_valid else "Phiên quản trị đã thay đổi."},
+                status_code=403,
+            )
         db_field = field_map[field]
         cursor.execute(
             f"""UPDATE tai_khoan SET {db_field} = ?
@@ -1959,6 +1989,20 @@ def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quo
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if (
+            not authority_valid
+            or str(current_actor.user_id) != str(actor_user_id)
+        ):
+            conn.rollback()
+            return JSONResponse(
+                {"error": current_actor if not authority_valid else "Phiên quản trị đã thay đổi."},
+                status_code=403,
+            )
         cursor.execute("""
             UPDATE goi_dich_vu
             SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?, trang_thai = ?

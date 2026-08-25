@@ -507,7 +507,6 @@ export function switchTab(tabName, action = null, updateState = true, transition
     kehoach: "Kế hoạch lựa chọn nhà thầu",
     goithau: "Danh sách Gói thầu",
     "goithau-timeline": "Timeline gói thầu",
-    "procurement-center": "Trung tâm hồ sơ và tác vụ",
     chudautu: "Danh mục Chủ đầu tư",
     nhathau: "Danh mục Nhà thầu",
     chuyengia: "Tổ Chuyên gia Đấu thầu",
@@ -616,12 +615,6 @@ export function renderTabData(tabName, action = null) {
     case "goithau-timeline":
       this.view.renderPackageTimeline();
       break;
-    case "procurement-center":
-      return import("../procurement-cases/ProcurementOperationsCenter.js")
-        .then(({ mountProcurementOperationsCenter }) => mountProcurementOperationsCenter(
-          document.querySelector("#tab-procurement-center [data-procurement-center]"),
-          { packages: this.model.state.goithau || [] },
-        ));
     case "chudautu":
       this.view.renderChuDauTuTable();
       break;

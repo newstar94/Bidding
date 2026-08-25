@@ -28,7 +28,7 @@ export function buildEvaluationProgressMarkup(progress, {
         <span>${escapeHtml(title)}</span>
         <strong class="evaluation-progress-percent">${percent}%</strong>
       </div>
-      <div class="evaluation-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}" aria-valuetext="${escapeHtml(stateLabel)}">
+      <div class="evaluation-progress-track" role="progressbar" aria-label="${escapeHtml(title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}" aria-valuetext="${escapeHtml(stateLabel)}">
         <span class="evaluation-progress-fill" aria-hidden="true"></span>
       </div>
       <div class="evaluation-progress-breakdown">${breakdown || "Chưa có dữ liệu đánh giá"}</div>

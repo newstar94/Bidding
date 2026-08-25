@@ -42,6 +42,7 @@ from backend.documents.package_document_service import (
     validate_pdf_path,
 )
 from backend.documents.upload_spooling import spooled_upload
+from backend.auth.auth_helper import verify_session_in_transaction
 from backend.shared.access_policy import authorize_record_write, can_read_record
 from backend.shared.async_io import run_blocking_io
 from backend.shared.domain_enums import enum_label
@@ -71,6 +72,11 @@ _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 class PackageDocumentHistoricalError(PackageDocumentError):
     code = "HISTORICAL_PARENT_IMMUTABLE"
+
+
+class PackageDocumentAuthorizationError(PackageDocumentError):
+    code = "AUTHENTICATION_REQUIRED"
+    status_code = 401
 
 
 def _document_error(message, code, status_code):
@@ -452,6 +458,20 @@ async def upload_package_document_api(request):
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
+        authority_valid, current_session = verify_session_in_transaction(
+            cursor,
+            request,
+        )
+        if (
+            not authority_valid
+            or str(current_session.user_id) != str(session.user_id)
+        ):
+            raise PackageDocumentAuthorizationError(
+                current_session
+                if not authority_valid
+                else "Phiên đăng nhập đã thay đổi. Vui lòng đăng nhập lại."
+            )
+        session = current_session
         package = load_package_for_document_mutation(
             cursor, organization_id, package_id
         )
@@ -602,7 +622,7 @@ async def upload_package_document_api(request):
         return _document_error(
             str(exc),
             getattr(exc, "code", "PACKAGE_DOCUMENT_FILE_INVALID"),
-            400,
+            int(getattr(exc, "status_code", 400)),
         )
     except DocumentWorkerError as exc:
         if connection:

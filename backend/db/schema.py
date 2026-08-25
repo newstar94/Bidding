@@ -1811,10 +1811,10 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
-            "target_type": "TEXT NOT NULL CHECK(target_type IN ('goithau', 'hopdong', 'procurement_case'))",
+            "target_type": "TEXT NOT NULL CHECK(target_type IN ('goithau', 'hopdong'))",
             "target_id": "TEXT NOT NULL CHECK(target_id != '')",
             "target_root_id": "TEXT NOT NULL CHECK(target_root_id != '')",
-            "action": "TEXT NOT NULL CHECK(action IN ('goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated', 'package_document.uploaded', 'package_document.replaced', 'package_document.deleted', 'assignment.added', 'assignment.removed', 'procurement_case.created', 'procurement_case.response_revision_saved', 'procurement_case.assign', 'procurement_case.start_review', 'procurement_case.draft_response', 'procurement_case.submit_review', 'procurement_case.return', 'procurement_case.approve', 'procurement_case.issue', 'procurement_case.close', 'procurement_case.reject', 'procurement_case.withdraw', 'procurement_case.reopen', 'procurement_case.due_date_set', 'procurement_case.party_added', 'procurement_case.legal_basis_added', 'procurement_case.source_observed', 'procurement_case.attachment_added'))",
+            "action": "TEXT NOT NULL CHECK(action IN ('goithau.created', 'goithau.updated', 'hopdong.created', 'hopdong.updated', 'package_document.uploaded', 'package_document.replaced', 'package_document.deleted', 'assignment.added', 'assignment.removed'))",
             "actor_user_id": "TEXT",
             "actor_name_snapshot": "TEXT NOT NULL DEFAULT 'Không xác định'",
             "occurred_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
@@ -2774,6 +2774,23 @@ SCHEMA_DINH_NGHIA = {
         "unique_constraints": ["UNIQUE(organization_id, id)", "UNIQUE(organization_id, connection_id, event_head_id, action, event_sequence, payload_hash)"]
     }
 }
+
+# The procurement center, calendar connectors, and bulk export were retired in
+# schema v77. Keep their historical DDL above readable for old upgrade steps,
+# but exclude them from the canonical schema used by fresh installations.
+RETIRED_PROCUREMENT_CENTER_TABLES = frozenset({
+    "procurement_case", "procurement_case_package_target",
+    "procurement_case_party", "procurement_case_responsibility",
+    "procurement_case_response_revision", "procurement_case_transition",
+    "procurement_case_attachment", "procurement_case_legal_basis",
+    "procurement_case_source_observation", "procurement_case_command",
+    "calendar_event_head", "calendar_event_revision", "calendar_oauth_state",
+    "calendar_connection", "calendar_event_binding", "calendar_delivery_outbox",
+    "bulk_operation", "bulk_operation_item", "bulk_operation_artifact",
+})
+HISTORICAL_SCHEMA_DINH_NGHIA = dict(SCHEMA_DINH_NGHIA)
+for _retired_table in RETIRED_PROCUREMENT_CENTER_TABLES:
+    SCHEMA_DINH_NGHIA.pop(_retired_table, None)
 
 
 _SIMPLE_ID_FK = re.compile(

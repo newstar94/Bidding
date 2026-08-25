@@ -3,6 +3,7 @@ from backend.runtime_capabilities import (
     AGGREGATE_VERSION_V1,
     PROCUREMENT_IMPORT_V2,
     PROCUREMENT_LOOKUP_V1,
+    CONFLICT_CENTER_V1,
     SERVER_CAPABILITIES,
     with_server_capabilities,
 )
@@ -42,6 +43,16 @@ def test_procurement_lookup_capability_is_advertised_only_when_enabled(monkeypat
 
     assert PROCUREMENT_LOOKUP_V1 in enabled["serverCapabilities"]
     assert PROCUREMENT_LOOKUP_V1 not in disabled["serverCapabilities"]
+
+
+def test_conflict_center_capability_is_advertised_only_when_enabled(monkeypatch):
+    monkeypatch.setenv("CONFLICT_CENTER_ENABLED", "true")
+    enabled = with_server_capabilities({"valid": True})
+    monkeypatch.setenv("CONFLICT_CENTER_ENABLED", "false")
+    disabled = with_server_capabilities({"valid": True})
+
+    assert CONFLICT_CENTER_V1 in enabled["serverCapabilities"]
+    assert CONFLICT_CENTER_V1 not in disabled["serverCapabilities"]
 
 
 def test_muasamcong_lookup_also_advertises_opening_import_capability(monkeypatch):
