@@ -3510,7 +3510,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 77,
+  "schemaVersion": 78,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -8216,7 +8216,7 @@
         },
         "email_delivery_status_purpose_check": {
           "deferrable": false,
-          "definition": "CHECK (purpose = ANY (ARRAY['google_temporary_password'::text, 'user_notification'::text]))",
+          "definition": "CHECK (purpose = ANY (ARRAY['google_temporary_password'::text, 'google_password_setup'::text, 'user_notification'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

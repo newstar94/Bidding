@@ -2963,6 +2963,20 @@ def _upgrade_to_v77_remove_procurement_center(cursor, context):
     drop_retired_procurement_center_schema(cursor)
     context.assert_foreign_key_integrity(cursor)
 
+
+def _upgrade_to_v78_add_google_password_setup_delivery(cursor, context):
+    del context
+    cursor.execute(
+        "ALTER TABLE email_delivery_status DROP CONSTRAINT IF EXISTS "
+        "email_delivery_status_purpose_check"
+    )
+    cursor.execute(
+        "ALTER TABLE email_delivery_status ADD CONSTRAINT "
+        "email_delivery_status_purpose_check CHECK (purpose IN ("
+        "'google_temporary_password', 'google_password_setup', "
+        "'user_notification'))"
+    )
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3340,6 +3354,11 @@ UPGRADES = (
         "remove_procurement_center",
         _upgrade_to_v77_remove_procurement_center,
     ),
+    DatabaseUpgrade(
+        78,
+        "add_google_password_setup_delivery",
+        _upgrade_to_v78_add_google_password_setup_delivery,
+    ),
 )
 
 
@@ -3347,8 +3366,8 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V77 removes the retired procurement center persistence model.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 77
+# V78 adds the durable one-time Google password-setup email purpose.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 78
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

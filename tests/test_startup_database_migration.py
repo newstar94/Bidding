@@ -20,6 +20,7 @@ from backend.startup import (
     verify_database_responsive,
 )
 from scripts import manage_database
+from backend.auth.otp_security import validate_otp_hmac_configuration
 
 
 class _RuntimeSchemaConnection:
@@ -67,11 +68,11 @@ def test_v77_runtime_requires_retired_procurement_center_schema_removed(monkeypa
         lambda _connection: None,
     )
     assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
-        77,
-        77,
+        78,
+        78,
     )
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 77
-    for version in (77,):
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 78
+    for version in (78,):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
             DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -82,7 +83,7 @@ def test_v77_runtime_requires_retired_procurement_center_schema_removed(monkeypa
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (75, 76):
+    for version in (75, 76, 77):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,
@@ -103,8 +104,8 @@ def test_startup_readiness_validates_the_complete_schema_contract(monkeypatch):
         lambda connection: checked.append(connection),
     )
 
-    database = _RuntimeSchemaDatabase(77)
-    verify_database_readiness(database, 77, 77)
+    database = _RuntimeSchemaDatabase(78)
+    verify_database_readiness(database, 78, 78)
 
     assert len(checked) == 1
 
@@ -112,6 +113,15 @@ def test_startup_readiness_validates_the_complete_schema_contract(monkeypatch):
 def test_auto_migration_defaults_to_enabled_outside_production():
     assert database_auto_migration_enabled({"APP_ENV": "development"}) is True
     assert database_auto_migration_enabled({"APP_ENV": "test"}) is True
+
+
+def test_registration_otp_requires_an_independent_production_hmac_key():
+    with pytest.raises(ValueError, match="OTP_HMAC_KEY"):
+        validate_otp_hmac_configuration({}, required=True)
+    assert validate_otp_hmac_configuration(
+        {"OTP_HMAC_KEY": "independent-registration-otp-key-at-least-32-bytes"},
+        required=True,
+    ) is True
 
 
 def test_word_template_catalog_defaults_to_shadow_kill_switch():

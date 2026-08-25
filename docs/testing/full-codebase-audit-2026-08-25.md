@@ -16,25 +16,27 @@
 - M9: progressbar đánh giá có accessible name.
 - M10: nguồn pháp lý chỉ nhận URL HTTP(S) có host, không có credentials; frontend chặn URL cũ không an toàn.
 - M12: username không tồn tại vẫn chạy một lượt Argon2 giả qua cùng CPU lane để giảm chênh lệch timing.
+- H2: job Word chốt digest từ đúng context/manifest của tài liệu; mutation ngoài dependency không còn làm hỏng job, còn dependency thật thay đổi vẫn bị từ chối trước khi phát hành.
+- H5: tài khoản Google mới không còn nhận mật khẩu qua email; hệ thống gửi token đặt mật khẩu dùng một lần, hết hạn sau 2 giờ và chỉ lưu hash token.
+- M11: OTP đăng ký được lưu bằng HMAC-SHA256 với `OTP_HMAC_KEY` độc lập và gắn với đúng tài khoản.
+- M13: reset mật khẩu và các mutation Google ghi audit bắt buộc trong cùng transaction; lỗi audit làm rollback toàn bộ thay đổi.
 
 Chưa đóng và không sửa tắt:
 
-- H2: cần authority/digest chính xác cho toàn aggregate Word và cập nhật ADR 0015. Chỉ bỏ `syncRevision` sẽ tránh false conflict nhưng có thể xuất snapshot cũ khi phụ thuộc thật thay đổi.
-- H5: cần thay mật khẩu Google gửi qua email bằng token đặt mật khẩu một lần, có expiry/replay protection; đây là migration và compatibility flow riêng.
-- M11: OTP đăng ký cần HMAC key độc lập, secret rotation và migration/compatibility cho mã đang còn hạn.
-- M13: password reset và Google cần audit/outbox bắt buộc cùng transaction; chưa đổi transaction contract trong lượt này.
 - Các mục “cần quyết định sản phẩm”, dữ liệu pháp lý và placeholder vẫn giữ nguyên, không tự thay đổi semantics hoặc tự bịa dữ liệu.
 
-Kết quả xác minh sau sửa: backend `1828 passed`, frontend `1347 passed`; static, security lint, secure build, schema contract `106/501/92` và `151` FK index đều đạt.
+Migration v78 mở rộng outbox cho email `google_password_setup`. Job Word cũ chưa có source digest tiếp tục dùng contract `syncRevision` cũ; OTP rõ còn hạn trước khi triển khai sẽ bị vô hiệu và người dùng cần bấm gửi lại mã. Chi tiết compatibility/migration/rollback nằm trong ADR 0015 và ADR 0016.
+
+Kết quả xác minh sau sửa: backend `1837 passed`, frontend `1347 passed`, migration/schema `41 passed`; static, security lint, secure build, migration v1→v78, schema contract `106/501/92` và `151` FK index đều đạt.
 
 ## Kết luận điều hành
 
 Trạng thái hiện tại **chưa sẵn sàng phát hành production**.
 
 - Không phát hiện lỗi mức Critical.
-- Có 5 phát hiện High, 13 phát hiện Medium, 4 nhóm Low/cần dọn và 3 cảnh báo readiness/chất lượng.
+- Báo cáo ban đầu có 5 phát hiện High, 13 phát hiện Medium, 4 nhóm Low/cần dọn và 3 cảnh báo readiness/chất lượng; H2, H5, M11 và M13 nay đã được khắc phục.
 - Không phát hiện bằng chứng tenant isolation, module permission, assignment scope, record authorization hoặc contract hiển thị dữ liệu trong `AGENTS.md` bị phá vỡ.
-- Audit này chỉ đọc. Không sửa code, schema, migration, quyền, response hay expected test.
+- Lượt khắc phục sau audit có sửa code và migration, nhưng không thay đổi role, permission, record scope, masking hoặc dữ liệu người dùng được phép xem.
 
 Hai lỗi High đã được tái hiện trực tiếp:
 
@@ -45,7 +47,7 @@ Ba lỗi High bảo mật được xác nhận bằng call path/transaction boun
 
 ## Phạm vi và phương pháp
 
-- Cơ sở dữ liệu: schema, v1→v77, migration, trigger, FK, index, tenant key, audit chain và readiness.
+- Cơ sở dữ liệu: schema, v1→v78, migration, trigger, FK, index, tenant key, audit chain và readiness.
 - Backend: auth/session, CSRF/origin/CORS, role/module/assignment/record scope, upload/download, Word job, worker/sandbox, AI, SSRF, SQL/path/archive safety.
 - Frontend: route/module graph, state/sync/offline, workspace, phân quyền hiển thị, Word/loading, error handling, XSS/Trusted Types và trợ năng.
 - Nghiệp vụ: version lineage, snapshot bất biến, lịch sử, phân lô, liên danh, Word publication và contract trong `AGENTS.md`/`CONTEXT.md`.
@@ -63,6 +65,8 @@ Ba lỗi High bảo mật được xác nhận bằng call path/transaction boun
 - Khoảng trống test: migration chain hiện không seed activity này.
 
 ### H2. Word job phụ thuộc phiên bản toàn workspace
+
+**Trạng thái: đã khắc phục.** Policy mới lưu digest của exact context/manifest và kiểm tra lại sau render cũng như trước khi cho tải bản hoàn thành. `syncRevision` chỉ còn là authority tương thích cho job cũ chưa có digest. Regression test bao phủ cả mutation không liên quan và dependency thật thay đổi.
 
 - [SyncCoordinator.js](D:/Bidding/frontend/app/SyncCoordinator.js:260) lấy `syncVersion` toàn workspace.
 - [WordPublication.js](D:/Bidding/frontend/documents/WordPublication.js:499) gửi phiên bản đó khi tạo job.
@@ -84,6 +88,8 @@ Ba lỗi High bảo mật được xác nhận bằng call path/transaction boun
 - Ảnh hưởng: session bị revoke trong lúc upload/validate file vẫn có cửa sổ commit metadata và file.
 
 ### H5. “Mật khẩu tạm” Google không có vòng đời tạm
+
+**Trạng thái: đã khắc phục.** Tài khoản Google mới dùng credential vô hiệu cho đăng nhập mật khẩu, đồng thời tạo token đặt mật khẩu dùng một lần, hết hạn sau 2 giờ và chỉ lưu SHA-256 trong DB. Link được gửi qua outbox bền vững với purpose mới ở migration v78.
 
 - [google_auth_routes.py](D:/Bidding/backend/auth/google_auth_routes.py:126) email mật khẩu tạm.
 - [google_auth_routes.py](D:/Bidding/backend/auth/google_auth_routes.py:312) lưu nó như mật khẩu đăng nhập thông thường.
@@ -158,6 +164,8 @@ Ba lỗi High bảo mật được xác nhận bằng call path/transaction boun
 
 ### M11. OTP đăng ký được lưu dạng rõ
 
+**Trạng thái: đã khắc phục.** DB chỉ lưu HMAC-SHA256 của OTP với khóa `OTP_HMAC_KEY` độc lập và ràng buộc theo user ID. Production bắt buộc khóa tối thiểu 32 byte; OTP cũ còn hạn cần được gửi lại sau deploy.
+
 - [otp_routes.py](D:/Bidding/backend/auth/otp_routes.py:200) sinh OTP 6 số và [otp_routes.py](D:/Bidding/backend/auth/otp_routes.py:203) lưu trực tiếp trong `tai_khoan` trong 10 phút.
 - Quyền đọc DB trong cửa sổ đó có thể dùng mã để kích hoạt tài khoản qua API.
 
@@ -168,6 +176,8 @@ Ba lỗi High bảo mật được xác nhận bằng call path/transaction boun
 - Rate limit và Turnstile giảm tác động nhưng không loại khác biệt thời gian.
 
 ### M13. Một số thay đổi bảo mật commit trước audit best-effort
+
+**Trạng thái: đã khắc phục.** Reset mật khẩu và các audit Google liên quan đến link/đăng ký/đăng nhập đều ghi `required=True` bằng chính connection của transaction thay đổi. Nếu audit lỗi, password/token/session hoặc tài khoản Google cùng rollback; email chỉ được giao sau commit từ outbox đã lưu bền vững.
 
 - [password_reset_service.py](D:/Bidding/backend/auth/password_reset_service.py:105) đổi mật khẩu/revoke session và commit ở dòng 144.
 - Audit được gọi sau đó tại [otp_routes.py](D:/Bidding/backend/auth/otp_routes.py:548), không cùng transaction và không `required=True`.
@@ -231,8 +241,8 @@ API OTP/đăng ký trả phản hồi khác nhau cho username/email đã có, t�
 
 ## Các kiểm tra đạt
 
-- Backend: `1815 passed`; coverage gate và 16 critical-module ratchets đạt.
-- Frontend: `1345 passed`; critical JS coverage gate đạt.
+- Backend: `1837 passed`; coverage gate và 16 critical-module ratchets đạt.
+- Frontend: `1347 passed`; critical JS coverage gate đạt.
 - Static: compile, schema runtime, migration fixture, Python quality, encoding, module graph, dead-code audit và E2E discovery đạt.
 - Frontend graph: 311/311 module reachable, 0 static import cycle.
 - Dependency: `npm audit` 0 lỗ hổng trong 294 package; `pip-audit` không thấy advisory trong requirements hiện tại.
@@ -254,13 +264,13 @@ API OTP/đăng ký trả phản hồi khác nhau cho username/email đã có, t�
 - Trình điều khiển Browser trực tiếp không khởi tạo được trong phiên trước; Playwright vẫn cung cấp trace/ảnh/video.
 - Đây không phải pentest production từ mạng ngoài và không phải chứng minh hình thức rằng mọi dòng code đều không có lỗi.
 
-## Thứ tự khắc phục đề xuất
+## Thứ tự khắc phục đề xuất ban đầu
 
-1. Sửa H1 và thêm migration regression có activity thật trước mọi triển khai v77.
-2. Sửa H3–H5 tại transaction/session boundary; thêm test interleaving/revoke.
-3. Đổi H2 sang authority gắn exact record/aggregate thay vì global workspace revision.
-4. Sửa M1–M3 để loại lỗi 500/404 lặp và tăng readiness.
-5. Hoàn thiện audit bắt buộc, OTP/timing và quyết định contract chống enumeration.
-6. Sửa loading/error/a11y/workspace retry; sau đó chạy lại toàn bộ E2E.
+1. Đã hoàn tất: sửa H1 và thêm migration regression có activity thật trước mọi triển khai v77.
+2. Đã hoàn tất phần H3–H5: transaction/session boundary, token đặt mật khẩu Google và regression liên quan.
+3. Đã hoàn tất: đổi H2 sang authority gắn exact record/aggregate thay vì global workspace revision.
+4. Đã hoàn tất M1–M3 để loại lỗi 500/404 lặp và tăng readiness.
+5. Đã hoàn tất audit bắt buộc, HMAC OTP và timing; contract chống enumeration vẫn chờ quyết định sản phẩm.
+6. Đã sửa loading/error/a11y/workspace retry; E2E chuyên sâu vẫn theo dõi ở báo cáo riêng.
 7. Dọn schema/config legacy bằng migration mới + ADR, không sửa lịch sử migration.
 8. Phê duyệt nội dung pháp lý và benchmark secure build trước production.

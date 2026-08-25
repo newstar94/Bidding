@@ -1,5 +1,5 @@
-import pandas as pd
 from io import BytesIO
+import math
 import re
 
 from backend.shared.numeric_utils import parse_vnd_amount
@@ -235,71 +235,130 @@ def _schema_to_formats(entity_type):
         if entry['field'] in fields_by_json_key
     }
 
+def _is_missing(value):
+    return value is None or (
+        isinstance(value, float) and math.isnan(value)
+    )
+
+
 def clean_money(val):
-    if pd.isna(val):
+    if _is_missing(val):
         return 0
     val_str = str(val).replace("VND", "").replace(".", "").replace(",", "").strip()
     parsed = parse_vnd_amount(val_str)
     return parsed if parsed is not None else 0
 
-def parse_excel(file_bytes, import_type):
+def _trim_trailing_empty_rows(matrix):
+    rows = [list(row) for row in matrix]
+    while rows and all(_is_missing(value) or str(value).strip() == "" for value in rows[-1]):
+        rows.pop()
+    return rows
+
+
+def _records_from_matrix(matrix, all_possible_headers):
+    matrix = _trim_trailing_empty_rows(matrix)
+    if not matrix:
+        return [], False
+    width = max((len(row) for row in matrix), default=0)
+    normalized = [row + [None] * (width - len(row)) for row in matrix]
+    first_col = [
+        str(row[0]).strip().lower()
+        for row in normalized
+        if row and not _is_missing(row[0])
+    ]
+    vertical_matches = sum(value in all_possible_headers for value in first_col)
+    first_row = [
+        str(value).strip().lower()
+        for value in normalized[0]
+        if not _is_missing(value)
+    ]
+    horizontal_matches = sum(value in all_possible_headers for value in first_row)
+    is_vertical = vertical_matches > horizontal_matches and vertical_matches >= 2
+
+    if is_vertical:
+        headers = ["" if _is_missing(row[0]) else str(row[0]).strip() for row in normalized]
+        records = []
+        for column_index in range(1, width):
+            values = [row[column_index] for row in normalized]
+            if all(_is_missing(value) or str(value).strip() == "" for value in values):
+                continue
+            records.append({
+                header: "" if _is_missing(value) else value
+                for header, value in zip(headers, values)
+            })
+        return records, True
+
+    headers = ["" if _is_missing(value) else str(value).strip() for value in normalized[0]]
+    records = []
+    for row in normalized[1:]:
+        records.append({
+            header: "" if _is_missing(value) else value
+            for header, value in zip(headers, row)
+        })
+    return records, False
+
+
+def _read_xlsx_records(file_bytes, all_possible_headers):
+    from backend.documents.xlsx_fast_reader import read_first_worksheet_rows
+
+    return _records_from_matrix(
+        read_first_worksheet_rows(file_bytes),
+        all_possible_headers,
+    )
+
+
+def _read_legacy_xls_records(file_bytes, all_possible_headers):
+    # Pandas remains a compatibility dependency for the legacy binary .xls
+    # format only. Keeping this import lazy avoids its startup cost for .xlsx.
+    import pandas as pd
+
+    frame = pd.read_excel(BytesIO(file_bytes), header=None)
+    return _records_from_matrix(frame.itertuples(index=False, name=None), all_possible_headers)
+
+
+def parse_excel(file_bytes, import_type, *, kind=None):
     """Phân tích file Excel và trả về danh sách các bản ghi cùng thông tin kiểm thử hợp lệ."""
     map_cols = _schema_to_map_cols(import_type)
     if map_cols is None:
         raise ValueError(f"Invalid type: {import_type}")
 
-    df_raw = pd.read_excel(BytesIO(file_bytes), header=None)
-
-    all_possible_headers = []
-    for poss in map_cols.values():
-        all_possible_headers.extend([x.lower() for x in poss])
-
-    first_col = [str(x).strip().lower() for x in df_raw.iloc[:, 0].dropna()]
-    vertical_matches = sum(1 for v in first_col if v in all_possible_headers)
-
-    first_row = [str(x).strip().lower() for x in df_raw.iloc[0, :].dropna()]
-    horizontal_matches = sum(1 for h in first_row if h in all_possible_headers)
-
-    is_vertical = vertical_matches > horizontal_matches and vertical_matches >= 2
-
-    if is_vertical:
-        headers = [str(x).strip() for x in df_raw.iloc[:, 0]]
-        records = []
-        for col_idx in range(1, df_raw.shape[1]):
-            col_vals = df_raw.iloc[:, col_idx]
-            if all(str(x).strip() == "" or pd.isna(x) for x in col_vals):
-                continue
-
-            row_data = {}
-            for r_idx, h in enumerate(headers):
-                val = col_vals.iloc[r_idx] if r_idx < len(col_vals) else ""
-                if pd.isna(val):
-                    val = ""
-                row_data[h] = val
-            records.append(row_data)
-        df = pd.DataFrame(records)
-    else:
-        df = pd.read_excel(BytesIO(file_bytes))
-
-    df.columns = [str(c).strip() for c in df.columns]
+    all_possible_headers = {
+        alias.strip().lower()
+        for aliases in map_cols.values()
+        for alias in aliases
+    }
+    normalized_kind = str(kind or "").strip().lower()
+    is_xlsx = normalized_kind == "xlsx" or (
+        not normalized_kind and bytes(file_bytes[:4]) == b"PK\x03\x04"
+    )
+    records, is_vertical = (
+        _read_xlsx_records(file_bytes, all_possible_headers)
+        if is_xlsx
+        else _read_legacy_xls_records(file_bytes, all_possible_headers)
+    )
+    columns = list(records[0]) if records else []
 
     rows = []
 
     def find_col(possible_names):
         for name in possible_names:
-            for col in df.columns:
+            for col in columns:
                 if col.lower() == name.lower() or col.lower().replace(" ", "") == name.lower().replace(" ", ""):
                     return col
         return None
 
-    for idx, row in df.iterrows():
+    resolved_columns = {
+        key: find_col(possible_names)
+        for key, possible_names in map_cols.items()
+    }
+    for idx, row in enumerate(records):
         item = {}
         validation_comments = []
 
-        for key, poss in map_cols.items():
-            found = find_col(poss)
-            val = row[found] if (found is not None) else None
-            if pd.isna(val):
+        for key in map_cols:
+            found = resolved_columns[key]
+            val = row.get(found) if found is not None else None
+            if _is_missing(val):
                 val = ""
 
             if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao', 'donGiaDuToan', 'thanhTienDuToan']:

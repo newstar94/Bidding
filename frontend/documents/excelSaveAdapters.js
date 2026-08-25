@@ -13,6 +13,7 @@ import {
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
+import { buildExpertImportIndex, findIndexedExpert } from "./excelImportIndexes.js";
 
 function assertImportRecords(type, records, allowedTransforms = []) {
   records.forEach((record) => assertOutboundRecordFields(record, type, {
@@ -31,8 +32,14 @@ function ensureYMDHMS(controller, dateStr) {
   return controller.model.convertDMYHMSToYMDHMS ? controller.model.convertDMYHMSToYMDHMS(dateStr) : dateStr;
 }
 function upsertById(list, items) {
+  const indexes = new Map();
+  list.forEach((item, index) => {
+    const key = String(item?.id ?? "");
+    if (key && !indexes.has(key)) indexes.set(key, index);
+  });
   items.forEach((item) => {
-    const idx = list.findIndex((existing) => existing.id === item.id);
+    const key = String(item?.id ?? "");
+    const idx = indexes.get(key) ?? -1;
     if (idx !== -1) {
       const existing = list[idx];
       list[idx] = {
@@ -47,6 +54,7 @@ function upsertById(list, items) {
       };
     } else {
       list.push(item);
+      if (key) indexes.set(key, list.length - 1);
     }
   });
 }
@@ -230,12 +238,12 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     return mappedData.length;
   }
   if (type === "chuyengia") {
+    const expertIndex = buildExpertImportIndex(
+      controller.model.state.chuyengia,
+      { latestOnly: false },
+    );
     const mappedData = validRows.map((row) => {
-      const cccd = (row.soCCCD || "").trim();
-      const soChungChi = (row.soChungChi || "").trim().toLowerCase();
-      const existing = controller.model.state.chuyengia.find(
-        (cg) => cccd && cg.soCCCD && cg.soCCCD.trim() === cccd || soChungChi && cg.soChungChi && cg.soChungChi.trim().toLowerCase() === soChungChi
-      );
+      const existing = findIndexedExpert(expertIndex, row);
       const targetId = existing ? existing.id : generateRecordId("chuyengia");
       return {
         id: targetId,

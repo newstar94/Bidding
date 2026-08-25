@@ -1,6 +1,5 @@
 from backend.db.db_helper import DatabaseError, IntegrityError
 import time
-import secrets
 import hashlib
 import os
 from urllib.parse import quote
@@ -12,7 +11,6 @@ from backend.shared.helpers import (
     hash_password,
     gui_email,
     log_error,
-    log_audit,
 )
 from backend.auth.auth_service import (
     get_client_ip,
@@ -42,6 +40,10 @@ from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
 from backend.shared.database_io import run_database_read
 from backend.auth.security_notifications import build_security_notification_tasks
+from backend.auth.otp_security import (
+    hash_registration_otp,
+    verify_registration_otp,
+)
 from backend.documents.word_defaults import ensure_personal_word_workspace
 from backend.security.turnstile import enforce_turnstile
 from backend.shared.email_templates import render_branded_email
@@ -202,7 +204,10 @@ async def register_api(request):
 
         cursor.execute(
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_uuid, username, username, password_hash, name, role, email, email, 0, code, expiry)
+            (
+                user_uuid, username, username, password_hash, name, role,
+                email, email, 0, hash_registration_otp(code, user_uuid), expiry,
+            )
         )
         ensure_personal_word_workspace(cursor, user_uuid)
         conn.commit()
@@ -300,7 +305,7 @@ async def verify_email_api(request):
         user = dict(row)
         current_time = int(time.time())
 
-        if not secrets.compare_digest(str(user['ma_xac_minh']), str(code)):
+        if not verify_registration_otp(user['ma_xac_minh'], code, user['id']):
             conn.close()
             return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
 
@@ -371,7 +376,10 @@ async def resend_code_api(request):
         code = generate_otp()
         expiry = int(time.time()) + 600
 
-        cursor.execute("UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?", (code, expiry, user['id']))
+        cursor.execute(
+            "UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?",
+            (hash_registration_otp(code, user['id']), expiry, user['id']),
+        )
         conn.commit()
         conn.close()
 
@@ -531,6 +539,7 @@ async def reset_password_api(request):
                 token,
                 new_password,
                 password_hash=password_hash,
+                request=request,
             )
         except InvalidResetToken:
             return JSONResponse(
@@ -545,13 +554,6 @@ async def reset_password_api(request):
 
         from backend.sync.websocket import disconnect_user_websockets
         disconnect_user_websockets(user_id)
-        log_audit(
-            "auth.password_reset",
-            actor_user_id=user_id,
-            target_type="tai_khoan",
-            target_id=user_id,
-            request=request,
-        )
         recipient = await run_database_read(_load_security_recipient, user_id)
         return JSONResponse(
             {

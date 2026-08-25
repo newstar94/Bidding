@@ -4,6 +4,7 @@ Các benchmark sau phục vụ đo đạc và so sánh hiệu năng tại môi t
 
 - `npm run benchmark:persistence`: đo đường ghi/persist dữ liệu rõ ràng.
 - `npm run benchmark:n-plus-one`: phát hiện hồi quy số lượng truy vấn theo dữ liệu đầu vào.
+- `npm run benchmark:excel-server`: đo đường xử lý cách ly thực tế của upload Excel chuyên gia; ngân sách mặc định là 1,5 giây.
 
 Trước khi chạy, sử dụng fixture hoặc môi trường không có dữ liệu production. Ghi lại môi trường, commit và kết quả baseline để so sánh.
 

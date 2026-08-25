@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from backend.auth.email_utils import smtp_configuration_errors
+from backend.auth.otp_security import validate_otp_hmac_configuration
 from backend.auth.email_delivery_service import (
     EmailOutboxConfigurationError,
     validate_email_outbox_configuration,
@@ -248,6 +249,7 @@ def validate_secret_separation(environ=None) -> None:
         "EMAIL_OUTBOX_ENCRYPTION_KEY",
         "CONFLICT_DRAFT_ENCRYPTION_KEY",
         "CONFLICT_RESOLUTION_SIGNING_KEY",
+        "OTP_HMAC_KEY",
     ):
         value = str(environ.get(name, "")).strip()
         if value:
@@ -601,6 +603,10 @@ def validate_startup_configuration(database, environ=None):
         try:
             validate_email_outbox_configuration(environ, required=True)
         except EmailOutboxConfigurationError as exc:
+            raise StartupValidationError(str(exc)) from exc
+        try:
+            validate_otp_hmac_configuration(environ, required=True)
+        except ValueError as exc:
             raise StartupValidationError(str(exc)) from exc
         audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
         if len(audit_hmac_key.encode("utf-8")) < 32:

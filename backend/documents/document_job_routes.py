@@ -27,7 +27,11 @@ from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
     build_document_job_policy,
     document_job_record_scope,
+    document_source_digest,
     verify_document_job_policy,
+)
+from backend.documents.document_source_authority import (
+    verify_document_job_source_authority,
 )
 from backend.documents.export_policy_registry import governed_export
 from backend.shared.access_policy import can_read_record
@@ -183,6 +187,7 @@ async def _enqueue_prepared_word_export(
     sensitive_groups,
     fallback_filename,
     sync_revision=None,
+    publication_type=None,
 ):
     _module, table = _CREATE_RECORD_SCOPES[record_type]
     connection = database.get_connection()
@@ -221,6 +226,9 @@ async def _enqueue_prepared_word_export(
             required_sensitive_groups=sensitive_groups,
             document_format="docx",
             artifact_provenance=prepared["artifact_provenance"],
+            source_digest=document_source_digest(context, manifest),
+            source_document_type=document_type,
+            source_publication_type=publication_type,
         )
     except ValueError as error:
         code = str(error)
@@ -306,6 +314,8 @@ def _job_access(request):
             return None, None, _error("DOCUMENT_JOB_NOT_FOUND", 404)
         try:
             verify_document_job_policy(cursor, job)
+            if job.get("status") == "completed":
+                verify_document_job_source_authority(job)
         except DocumentJobAuthorizationError as policy_error:
             return None, None, _error(policy_error.code, 403)
         return (role, organization_id), job, None
@@ -368,6 +378,7 @@ async def create_package_export_job_api(request):
         sensitive_groups=sensitive_groups,
         fallback_filename=_filename_for_report(report_type, context),
         sync_revision=snapshot_version,
+        publication_type=publication_type or None,
     )
 
 
@@ -424,6 +435,7 @@ async def create_plan_export_job_api(request):
         sensitive_groups=sensitive_groups,
         fallback_filename=_filename_for_plan(context),
         sync_revision=snapshot_version,
+        publication_type=publication_type or None,
     )
 
 

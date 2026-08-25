@@ -281,7 +281,11 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         content = _payload_content(payload)
         if payload.get("kind") == "xlsx":
             validate_ooxml_archive(content, "xlsx")
-        rows = parse_excel(content, payload["import_type"])
+        rows = parse_excel(
+            content,
+            payload["import_type"],
+            kind=payload.get("kind"),
+        )
         try:
             max_rows = int(os.environ.get("EXCEL_MAX_IMPORT_ROWS", "10000"))
         except (TypeError, ValueError):

@@ -129,7 +129,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "user_id": "TEXT NOT NULL",
-            "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password', 'user_notification'))",
+            "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password', 'google_password_setup', 'user_notification'))",
             "recipient_hash": "TEXT NOT NULL CHECK(recipient_hash != '')",
             "recipient_ciphertext": "TEXT",
             "subject_ciphertext": "TEXT",

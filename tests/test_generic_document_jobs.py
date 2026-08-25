@@ -515,7 +515,7 @@ def test_job_access_dispatches_package_and_plan_to_their_existing_scope(
 
 def test_current_schema_keeps_v76_generic_job_fields():
     columns = SCHEMA_DINH_NGHIA["document_jobs"]["columns"]
-    assert DB_SCHEMA_VERSION == 77
+    assert DB_SCHEMA_VERSION == 78
     assert {
         "record_type",
         "record_id",

@@ -14,6 +14,7 @@ import {
 } from "./excelImportAdapters.js";
 import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport } from "./excelSaveAdapters.js";
 import { renderExcelPreview } from "../packages/GoiThauModals.js";
+import { buildExpertImportIndex } from "./excelImportIndexes.js";
 import {
   getActiveEvaluationLotScope,
 } from "../packages/lotEvaluationScope.js";
@@ -346,6 +347,9 @@ export async function handleExcelUpload(file, context = null) {
       );
       const rawRows = data.rows || data.data || [];
       const seenKeys = /* @__PURE__ */ new Set();
+      const expertIndex = apiType === "chuyengia"
+        ? buildExpertImportIndex(this.model.state.chuyengia || [])
+        : null;
       this._excelImportData = rawRows.map((row) => {
         const item = row.data || row;
         let isValid = true;
@@ -471,16 +475,12 @@ export async function handleExcelUpload(file, context = null) {
             if (cccd) {
               fileDuplicate = seenKeys.has("cg_cccd_" + cccd);
               seenKeys.add("cg_cccd_" + cccd);
-              dbExists = (this.model.state.chuyengia || []).some(
-                (c) => (c.isLatest == 1 || c.isLatest === true) && String(c.soCCCD || "").trim().toLowerCase() === cccd
-              );
+              dbExists = expertIndex.byCitizenId.has(cccd);
             }
             if (!fileDuplicate && !dbExists && cc) {
               fileDuplicate = seenKeys.has("cg_cc_" + cc);
               seenKeys.add("cg_cc_" + cc);
-              dbExists = (this.model.state.chuyengia || []).some(
-                (c) => (c.isLatest == 1 || c.isLatest === true) && String(c.soChungChi || "").trim().toLowerCase() === cc
-              );
+              dbExists = expertIndex.byCertificate.has(cc);
             }
           } else if (apiType === "hopdong") {
             uniqueKey = String(item.soHopDong || "").trim().toLowerCase();

@@ -47,6 +47,9 @@ from backend.documents.document_job_policy import (
     validate_document_job_policy_snapshot,
     verify_document_job_policy,
 )
+from backend.documents.document_source_authority import (
+    verify_document_job_source_authority,
+)
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
@@ -1541,6 +1544,7 @@ def _process_claimed_document_job(database, claimed) -> None:
                 verify_document_job_policy(policy_connection.cursor(), claimed)
             finally:
                 policy_connection.close()
+            verify_document_job_source_authority(claimed)
         _prepare_external_job_permissions(job_dir)
         _finish_durable_document_job(database, claimed, result=result)
         _remove_prepared_document_sidecars(job_dir)

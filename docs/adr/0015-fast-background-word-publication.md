@@ -66,6 +66,20 @@ Các tối ưu được chấp nhận:
   snapshot cũ.
 - Progress, cache và loading không được trở thành nguồn quyền hoặc nguồn dữ liệu.
 
+### Bổ sung authority phụ thuộc chính xác — 2026-08-25
+
+Job Word mới ghi `sourceDigest` SHA-256 của exact context và manifest đã niêm phong,
+không gồm `current_time` là nhiễu theo thời điểm request. Sau render và trước khi
+công bố, parent worker dựng lại cùng context theo `recordType`, `recordId`, loại văn
+bản và chức năng xuất bản rồi so digest. Job đã hoàn thành cũng kiểm tra lại digest
+trước status/download. Vì vậy mutation ngoài aggregate không còn làm job thất bại;
+thay đổi bất kỳ dữ liệu nào thực sự đi vào Word vẫn trả
+`DOCUMENT_EXPORT_SOURCE_CHANGED`.
+
+`syncRevision` tiếp tục được giữ trong policy để đọc job cũ và chẩn đoán, nhưng job
+có `sourceDigest` không dùng revision toàn tenant làm authority. Job v1/v2 cũ chưa
+có digest vẫn giữ nguyên hành vi cũ để không làm thay đổi job đang xếp hàng khi deploy.
+
 ## Compatibility impact
 
 Các endpoint đồng bộ `/api/export-plan` và `/api/export-report` vẫn tồn tại cho
@@ -124,6 +138,8 @@ job/UI mà không đổi quyền hoặc dữ liệu.
 - policy v1 package tương thích, policy v2 plan/package, batch provenance, record
   revision drift, sync/dependency revision drift, revoke/demotion giữa render và
   publication;
+- mutation tenant không liên quan không đổi source digest; thay đổi context thật
+  đổi digest và chặn publication/status/download;
 - migration v1→v76, fresh schema/contract và policy-size boundary;
 - Word Publication và nút hợp đồng dùng background API, poll/download, khóa thao
   tác trùng, lỗi rõ ràng và cùng loading surface với Excel;

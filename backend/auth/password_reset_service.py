@@ -8,9 +8,11 @@ import uuid
 from backend.auth.auth_helper import hash_password
 from backend.auth.identity import normalize_email, normalize_username
 from backend.auth.session_store import revoke_user_sessions
+from backend.shared.logging_utils import log_audit
 
 
 RESET_TOKEN_TTL_SECONDS = 30 * 60
+PASSWORD_SETUP_TOKEN_TTL_SECONDS = 2 * 60 * 60
 
 
 class InvalidResetToken(ValueError):
@@ -86,6 +88,39 @@ def create_password_reset(database, username, email, requested_ip, now=None):
         conn.close()
 
 
+def create_password_setup_token(
+    cursor,
+    user_id,
+    *,
+    requested_ip="",
+    now=None,
+    ttl_seconds=PASSWORD_SETUP_TOKEN_TTL_SECONDS,
+):
+    """Create one password-setup token inside the caller's transaction."""
+
+    current_time = int(time.time() if now is None else now)
+    cursor.execute(
+        "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (current_time, user_id),
+    )
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = current_time + int(ttl_seconds)
+    cursor.execute(
+        """INSERT INTO password_reset_tokens (
+               id, user_id, token_hash, expires_at, used_at, requested_ip, created_at
+           ) VALUES (?, ?, ?, ?, NULL, ?, ?)""",
+        (
+            str(uuid.uuid4()),
+            user_id,
+            _token_hash(raw_token),
+            expires_at,
+            str(requested_ip or "")[:128],
+            current_time,
+        ),
+    )
+    return {"token": raw_token, "expiresAt": expires_at}
+
+
 def redeem_password_reset(
     database,
     token,
@@ -93,6 +128,8 @@ def redeem_password_reset(
     now=None,
     *,
     password_hash=None,
+    audit=log_audit,
+    request=None,
 ):
     """Atomically consume a token, change the password and revoke sessions."""
     raw_token = str(token or "")
@@ -140,6 +177,16 @@ def redeem_password_reset(
         conn.execute(
             "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
             (current_time, user_id),
+        )
+        audit(
+            "auth.password_reset",
+            actor_user_id=user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            metadata={"sessions_revoked": True},
+            cursor=conn,
+            required=True,
         )
         conn.commit()
         return user_id

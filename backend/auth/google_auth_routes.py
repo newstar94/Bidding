@@ -6,7 +6,6 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
-import secrets
 from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
@@ -48,10 +47,10 @@ from backend.shared.async_io import (
     BlockingIOTimeoutError,
     run_blocking_io,
 )
-from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
 from backend.documents.word_defaults import ensure_personal_word_workspace
 from backend.shared.email_templates import render_branded_email
+from backend.auth.password_reset_service import create_password_setup_token
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -116,28 +115,21 @@ def _verify_google_token(id_token: str):
     return payload
 
 
-def _add_background_audit(bg_tasks, action, **kwargs):
-    if bg_tasks is None:
-        bg_tasks = BackgroundTasks()
-    bg_tasks.add_task(log_audit, action, **kwargs)
-    return bg_tasks
-
-
-def _temporary_password_email(display_name, email, temporary_password):
-    subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản"
+def _password_setup_email(display_name, email, setup_link):
+    subject = "[BiddingFlow] Đặt mật khẩu cho tài khoản"
     body = render_branded_email(
         title="Tài khoản BiddingFlow đã được tạo",
-        preheader="Thông tin đăng nhập dự phòng cho tài khoản Google của bạn.",
+        preheader="Liên kết đặt mật khẩu một lần cho tài khoản Google của bạn.",
         eyebrow="TÀI KHOẢN MỚI",
         recipient_name=display_name or "bạn",
         lead="Bạn vừa tạo tài khoản BiddingFlow bằng Google.",
         details=(("Email đăng ký", email),),
         paragraphs=(
-            "Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu tạm dưới đây để đăng nhập.",
+            "Nếu muốn đăng nhập bằng tên đăng nhập và mật khẩu, hãy dùng liên kết dưới đây để tự đặt mật khẩu.",
         ),
-        code=temporary_password,
-        code_label="Mật khẩu tạm",
-        notice="Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên. Nếu bạn không thực hiện thao tác này, hãy liên hệ quản trị viên.",
+        action_label="Đặt mật khẩu",
+        action_url=setup_link,
+        notice="Liên kết chỉ dùng được một lần và hết hạn sau 2 giờ. Bạn vẫn có thể đăng nhập bằng Google nếu liên kết hết hạn.",
         notice_tone="warning",
     )
     return subject, body
@@ -147,11 +139,8 @@ async def google_login_api(request):
 
     conn = None
     bg_tasks = None
-    pending_audits = []
-    temporary_password = None
-    temporary_password_delivery_id = None
-    temporary_password_sent = False
-    temporary_password_queued = False
+    password_setup_delivery_id = None
+    password_setup_queued = False
     created_new_account = False
     try:
         ip = get_client_ip(request)
@@ -291,52 +280,29 @@ async def google_login_api(request):
                 user["username_da_dat"] = 1 if already_has_username else 0
                 if not user.get("anh_dai_dien") and picture:
                     user["anh_dai_dien"] = picture
-                pending_audits.append((
+                log_audit(
                     "auth.google_account_linked",
-                    {
-                        "actor_user_id": user["id"],
-                        "target_type": "tai_khoan",
-                        "target_id": user["id"],
-                        "request": request,
-                        "metadata": {"email": email, "had_username": already_has_username},
-                    },
-                ))
+                    actor_user_id=user["id"],
+                    target_type="tai_khoan",
+                    target_id=user["id"],
+                    request=request,
+                    metadata={"email": email, "had_username": already_has_username},
+                    cursor=cursor,
+                    required=True,
+                )
 
         else:
             account_linked = False
 
 
         if not user:
-            from backend.shared.helpers import hash_password as _hash_password
-
-            # A newly created Google account also receives a one-time bootstrap
-            # password so the owner can use the regular login flow after choosing
-            # a username. Only the hash is stored; the clear value is emailed once.
-            temporary_password = secrets.token_urlsafe(12)
-            try:
-                random_password_hash = await run_cpu_bound(
-                    _hash_password,
-                    temporary_password,
-                    timeout_seconds=15,
-                )
-            except (BlockingIOBusyError, BlockingIOTimeoutError):
-                conn.rollback()
-                response = JSONResponse(
-                    {
-                        "error": "Hệ thống đang xử lý nhiều yêu cầu xác thực. Vui lòng thử lại sau.",
-                        "code": "PASSWORD_CPU_QUEUE_BUSY",
-                    },
-                    status_code=503,
-                )
-                response.headers["Retry-After"] = "1"
-                return response
             new_id = generate_record_id("tai_khoan")
             cursor.execute(
                 """INSERT INTO tai_khoan
                    (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
                     email, email_norm, anh_dai_dien, da_xac_minh, username_da_dat)
                    VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
-                (new_id, random_password_hash, name, email, email, picture),
+                (new_id, "!google-external-only!", name, email, email, picture),
             )
             ensure_personal_word_workspace(cursor, new_id)
             cursor.execute(
@@ -349,29 +315,41 @@ async def google_login_api(request):
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
             created_new_account = True
-            email_subject, email_body = _temporary_password_email(
+            setup_token = create_password_setup_token(
+                cursor,
+                new_id,
+                requested_ip=ip,
+            )
+            public_url = os.environ.get(
+                "APP_PUBLIC_URL", "http://127.0.0.1:8000"
+            ).rstrip("/")
+            setup_link = (
+                f"{public_url}/reset-password#token="
+                f"{urllib.parse.quote(setup_token['token'], safe='')}"
+            )
+            email_subject, email_body = _password_setup_email(
                 user.get("ho_ten"),
                 email,
-                temporary_password,
+                setup_link,
             )
-            temporary_password_delivery_id = create_email_delivery(
+            password_setup_delivery_id = create_email_delivery(
                 cursor,
                 user_id=new_id,
-                purpose="google_temporary_password",
+                purpose="google_password_setup",
                 recipient=email,
                 subject=email_subject,
                 html_body=email_body,
             )
-            pending_audits.append((
+            log_audit(
                 "auth.google_auto_register",
-                {
-                    "actor_user_id": new_id,
-                    "target_type": "tai_khoan",
-                    "target_id": new_id,
-                    "request": request,
-                    "metadata": {"email": email, "username": None},
-                },
-            ))
+                actor_user_id=new_id,
+                target_type="tai_khoan",
+                target_id=new_id,
+                request=request,
+                metadata={"email": email, "username": None},
+                cursor=cursor,
+                required=True,
+            )
 
 
         if not user.get("da_xac_minh"):
@@ -407,20 +385,7 @@ async def google_login_api(request):
             user.get("ho_ten"),
         )
         clear_rate_limit_buckets(cursor, rate_key)
-        conn.commit()
-        disconnect_user_websockets(user["id"])
-
-        if created_new_account and temporary_password and temporary_password_delivery_id:
-            # The durable outbox worker already retries pending deliveries. Run
-            # the first attempt after the response as well, so Google login is
-            # never held open by the SMTP timeout.
-            temporary_password_queued = True
-
-        for audit_action, audit_kwargs in pending_audits:
-            bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
-
-        bg_tasks = _add_background_audit(
-            bg_tasks,
+        log_audit(
             "auth.google_login_success",
             actor_user_id=user["id"],
             organization_id=access_payload["active_org_id"],
@@ -428,12 +393,25 @@ async def google_login_api(request):
             target_id=user["id"],
             request=request,
             metadata={"email": email},
+            cursor=cursor,
+            required=True,
         )
-        if temporary_password_queued:
+        conn.commit()
+        disconnect_user_websockets(user["id"])
+
+        if created_new_account and password_setup_delivery_id:
+            # The durable outbox worker already retries pending deliveries. Run
+            # the first attempt after the response as well, so Google login is
+            # never held open by the SMTP timeout.
+            password_setup_queued = True
+
+        if password_setup_queued:
+            if bg_tasks is None:
+                bg_tasks = BackgroundTasks()
             bg_tasks.add_task(
                 deliver_email_once,
                 database,
-                temporary_password_delivery_id,
+                password_setup_delivery_id,
             )
         needs_username = not user.get("ten_dang_nhap")
 
@@ -455,8 +433,9 @@ async def google_login_api(request):
             "suggested_username": suggested_username,
             "account_linked": account_linked,
             "is_new_account": created_new_account,
-            "temporary_password_sent": temporary_password_sent,
-            "temporary_password_queued": temporary_password_queued,
+            "temporary_password_sent": False,
+            "temporary_password_queued": False,
+            "password_setup_queued": password_setup_queued,
         }, background=bg_tasks)
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(
