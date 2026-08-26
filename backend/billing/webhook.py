@@ -60,20 +60,38 @@ async def payment_webhook_api(request):
             connection.rollback()
             return JSONResponse({"error": "Webhook thiếu identity.", "code": "WEBHOOK_INVALID"}, status_code=400)
         event_id = f"payment-event-{payload_hash[:32]}"
+        conflicting_event = connection.execute(
+            """SELECT id FROM payment_webhook_events
+                WHERE provider_profile_id = ? AND dedupe_key = ?
+                  AND payload_hash <> ?
+                LIMIT 1 FOR UPDATE""",
+            (profile_id, dedupe_key, payload_hash),
+        ).fetchone()
+        initial_status = "review" if conflicting_event else "pending"
+        initial_error = "WEBHOOK_DEDUPE_PAYLOAD_MISMATCH" if conflicting_event else None
         inserted = connection.execute(
             """INSERT INTO payment_webhook_events
                    (id, provider_profile_id, dedupe_key, payload_hash,
-                    signed_fields_json, status, available_at)
-               VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                    signed_fields_json, status, available_at, last_error_code)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(provider_profile_id, dedupe_key, payload_hash) DO NOTHING""",
             (
                 event_id, profile_id, dedupe_key, payload_hash,
                 json.dumps(signed_data, ensure_ascii=False, separators=(",", ":")),
+                initial_status,
                 int(time.time()),
+                initial_error,
             ),
         )
         connection.commit()
-        return JSONResponse({"received": True, "duplicate": inserted.rowcount == 0}, status_code=202)
+        return JSONResponse(
+            {
+                "received": True,
+                "duplicate": inserted.rowcount == 0,
+                "reviewRequired": bool(conflicting_event),
+            },
+            status_code=202,
+        )
     except Exception as error:  # noqa: BLE001 - webhook returns bounded public error
         if connection:
             connection.rollback()

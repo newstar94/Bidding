@@ -30,7 +30,10 @@ from backend.shared.workspace_scope import (
     personal_scope_id,
     personal_workspace_payload,
 )
-from backend.shared.subscription_policy import get_account_subscriptions_by_user_ids
+from backend.shared.subscription_policy import (
+    get_account_subscriptions_by_user_ids,
+    legacy_subscription_expiry,
+)
 from backend.shared.request_validation import read_json_object
 
 
@@ -381,9 +384,13 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 (user_id,),
             ).fetchone()
             starts_at = int(current_account[0]) if current_account else now
-            expires_at = int(current_account[1]) if current_account and current_account[1] else now + 365 * 86400
+            expires_at = (
+                int(current_account[1])
+                if current_account and current_account[1]
+                else legacy_subscription_expiry(now)
+            )
             if expires_at <= now:
-                starts_at, expires_at = now, now + 365 * 86400
+                starts_at, expires_at = now, legacy_subscription_expiry(now)
             cursor.execute(
                 """INSERT INTO account_subscriptions (
                        user_id, package_id, status, starts_at, expires_at
@@ -461,10 +468,13 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 org_expires_at = (
                     int(current_org_subscription[1])
                     if current_org_subscription and current_org_subscription[1]
-                    else now + 365 * 86400
+                    else legacy_subscription_expiry(now)
                 )
                 if org_expires_at <= now:
-                    org_starts_at, org_expires_at = now, now + 365 * 86400
+                    org_starts_at, org_expires_at = (
+                        now,
+                        legacy_subscription_expiry(now),
+                    )
                 cursor.execute(
                     """INSERT INTO organization_subscriptions (
                            organization_id, package_id, status, starts_at,

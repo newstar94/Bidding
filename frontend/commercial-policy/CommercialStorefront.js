@@ -5,6 +5,7 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 const STYLE_URL = new URL("./CommercialStorefront.css", import.meta.url).pathname;
 const TERMINAL_ACTIVATIONS = new Set(["applied", "review_required", "reversed"]);
 const state = {
+  availability: "available",
   offers: [], creditPacks: [], quotaWarnings: [70, 90, 100],
   balance: null, orders: [], loading: false, polling: null,
 };
@@ -21,7 +22,10 @@ const status = (message, tone = "neutral") => { const node = document.getElement
 function renderOffers(controller) {
   const root = document.getElementById("storefront-offers");
   if (!root) return;
-  root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${state.offers.map((offer) => `<article class="commercial-storefront__card ${offer.variant === "connected" ? "is-featured" : ""}"><div class="commercial-storefront__card-top"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span><span>${escapeHtml(offer.display?.name || offer.tier)}</span></div><h3>${escapeHtml(offer.display?.name || offer.code)}</h3><p class="commercial-storefront__price">${money(offer.price?.total)} <small>/ năm</small></p><ul><li>${Number(offer.memberQuota || 0).toLocaleString("vi-VN")} thành viên</li><li>${Number(offer.includedProcurementQuota || 0).toLocaleString("vi-VN")} lượt tra cứu kèm theo</li><li>${offer.variant === "connected" ? "Có kiểm tra vi phạm Nhà thầu" : "Dùng tra cứu đối tác chung"}</li></ul><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(offer.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(offer.code)}">Chọn gói</button></article>`).join("")}</div><div class="commercial-storefront__packs"><h3>Mua thêm lượt tra cứu</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>` : `<div class="commercial-empty"><strong>Chưa có offer sellable.</strong><p>Super Admin cần publish release trước khi mở bán.</p></div>`);
+  const emptyState = state.availability === "off"
+    ? `<div class="commercial-empty"><strong>Cửa hàng chưa mở bán.</strong><p>Bảng giá mới sẽ xuất hiện tại đây sau khi chính sách thương mại được phê duyệt và phát hành.</p></div>`
+    : `<div class="commercial-empty"><strong>Chưa có offer sellable.</strong><p>Super Admin cần publish release trước khi mở bán.</p></div>`;
+  root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${state.offers.map((offer) => `<article class="commercial-storefront__card ${offer.variant === "connected" ? "is-featured" : ""}"><div class="commercial-storefront__card-top"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span><span>${escapeHtml(offer.display?.name || offer.tier)}</span></div><h3>${escapeHtml(offer.display?.name || offer.code)}</h3><p class="commercial-storefront__price">${money(offer.price?.total)} <small>/ năm</small></p><ul><li>${Number(offer.memberQuota || 0).toLocaleString("vi-VN")} thành viên</li><li>${Number(offer.includedProcurementQuota || 0).toLocaleString("vi-VN")} lượt tra cứu kèm theo</li><li>${offer.variant === "connected" ? "Có kiểm tra vi phạm Nhà thầu" : "Dùng tra cứu đối tác chung"}</li></ul><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(offer.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(offer.code)}">Chọn gói</button></article>`).join("")}</div><div class="commercial-storefront__packs"><h3>Mua thêm lượt tra cứu</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>` : emptyState);
   root.querySelectorAll(".storefront-buy").forEach((button) => button.addEventListener("click", () => startCheckout(button.dataset.sku, controller, button.dataset.operation, button)));
 }
 
@@ -86,6 +90,7 @@ async function refresh(controller) {
   state.loading = true; status("Đang đồng bộ bảng giá và số dư…");
   try {
     const catalog = await request("/api/public/commercial/offers");
+    state.availability = catalog.availability || "available";
     const actor = controller?.model?.state?.activeuser || {};
     const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
@@ -93,6 +98,14 @@ async function refresh(controller) {
     state.creditPacks = catalog.creditPacks || [];
     state.quotaWarnings = catalog.quotaWarnings || [70, 90, 100];
     renderOffers(controller);
+    if (state.availability === "off") {
+      state.balance = null;
+      state.orders = [];
+      renderBalance();
+      renderOrders();
+      status("Cửa hàng đang tạm đóng trong khi chính sách thương mại được hoàn thiện.", "neutral");
+      return;
+    }
     try { state.balance = await request("/api/billing/usage"); } catch (error) { state.balance = null; if (error.code === "BLOCKED_DECISION") status("Usage tổ chức đang chờ quyết định quyền đọc.", "warning"); }
     renderBalance();
     try { const orders = await request("/api/billing/orders"); state.orders = orders.orders || []; } catch { state.orders = []; }

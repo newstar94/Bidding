@@ -121,6 +121,8 @@ export function validateUsernameClient(username) {
     "xuat-ban-word",
     "tong-quan-admin",
     "quan-ly-tai-khoan",
+    "thuong-mai-thanh-toan",
+    "goi-va-thanh-toan",
     "nhan-su",
     "trang-thai-ho-so",
     "trang-ca-nhan",

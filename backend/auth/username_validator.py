@@ -81,7 +81,8 @@ _RESERVED_ROUTES = frozenset([
 
     "dang-nhap", "tong-quan", "ke-hoach", "goi-thau", "timeline-goi-thau", "mothau", "danh-gia-hsdt",
     "chu-dau-tu", "nha-thau", "chuyen-gia", "hop-dong", "bieu-mau", "xuat-ban-word",
-    "tong-quan-admin", "quan-ly-tai-khoan", "nhan-su", "trang-thai-ho-so",
+    "tong-quan-admin", "quan-ly-tai-khoan", "thuong-mai-thanh-toan", "goi-va-thanh-toan",
+    "nhan-su", "trang-thai-ho-so",
     "trang-ca-nhan", "goi-thau-chi-tiet", "ke-hoach-chi-tiet",
     "hop-dong-chi-tiet", "chu-dau-tu-chi-tiet", "nha-thau-chi-tiet",
     "chudautu-detail", "nhathau-detail",

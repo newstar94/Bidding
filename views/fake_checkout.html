@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Thanh toán giả lập · BiddingFlow</title>
+  <link rel="stylesheet" href="/views/css/variables.css">
+  <link rel="stylesheet" href="/views/css/tokens.css">
+  <link rel="stylesheet" href="/views/css/fake-checkout.css">
+</head>
+<body>
+  <a class="fake-checkout__skip" href="#fake-checkout-main">Bỏ qua đến nội dung</a>
+  <main class="fake-checkout" id="fake-checkout-main">
+    <section class="fake-checkout__panel" aria-labelledby="fake-checkout-title">
+      <header class="fake-checkout__header">
+        <a class="fake-checkout__brand" href="/" aria-label="BiddingFlow — về trang chủ">
+          <span aria-hidden="true">BF</span>
+          <strong>BiddingFlow</strong>
+        </a>
+        <span class="fake-checkout__environment">MÔI TRƯỜNG GIẢ LẬP</span>
+      </header>
+
+      <div class="fake-checkout__body">
+        <p class="fake-checkout__eyebrow">Fake Provider · Development/Test</p>
+        <h1 id="fake-checkout-title">Xác nhận một giao dịch kỹ thuật</h1>
+        <p class="fake-checkout__intro">
+          Không có tiền thật được chuyển. Thao tác thành công sẽ gửi sự kiện vào đúng hàng đợi webhook và luồng đối soát của ứng dụng.
+        </p>
+
+        <dl class="fake-checkout__summary" aria-label="Thông tin order">
+          <div><dt>Mã order</dt><dd id="fake-order-id">Đang tải…</dd></div>
+          <div><dt>Số tiền</dt><dd id="fake-order-amount">—</dd></div>
+          <div><dt>Trạng thái</dt><dd id="fake-order-status">—</dd></div>
+        </dl>
+
+        <p class="fake-checkout__status" id="fake-checkout-status" role="status" aria-live="polite">
+          Đang kiểm tra checkout…
+        </p>
+
+        <div class="fake-checkout__actions" aria-label="Thao tác giả lập">
+          <button type="button" class="fake-checkout__primary" data-fake-action="complete">
+            Giả lập thanh toán thành công
+          </button>
+          <button type="button" class="fake-checkout__secondary" data-fake-action="cancel">
+            Giả lập hủy
+          </button>
+          <button type="button" class="fake-checkout__text" data-fake-action="expire">
+            Giả lập hết hạn
+          </button>
+        </div>
+      </div>
+
+      <footer class="fake-checkout__footer">
+        <span>Dữ liệu giả lập kỹ thuật</span>
+        <a href="/goi-va-thanh-toan">Quay lại gói &amp; thanh toán</a>
+      </footer>
+    </section>
+  </main>
+  <script type="module" src="/frontend/billing/FakeCheckout.js"></script>
+</body>
+</html>

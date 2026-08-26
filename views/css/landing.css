@@ -3824,3 +3824,283 @@ html[data-bf-shell="workspace"] .landing-page {
     transform: none;
   }
 }
+
+/* Hallmark · conversion story · design-system: design.md
+ * Pre-emit critique: P5 H5 E4 S5 R4 V5
+ */
+html[data-bf-shell="landing"],
+html[data-bf-shell="landing"] body {
+  overflow-x: clip;
+}
+
+.landing-proof {
+  padding: clamp(5.5rem, 9vw, 8.5rem) 0;
+  background: var(--landing-cobalt-950);
+}
+
+.landing-proof-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  align-items: start;
+  gap: clamp(3rem, 7vw, 7.5rem);
+}
+
+.landing-proof-intro {
+  position: sticky;
+  top: 7.5rem;
+  min-width: 0;
+}
+
+.landing-proof-intro .landing-kicker {
+  color: color-mix(in srgb, var(--landing-blue) 62%, var(--landing-surface));
+}
+
+.landing-proof-intro h2 {
+  max-width: 10ch;
+  margin: 1.35rem 0 0;
+  color: var(--landing-surface);
+  font-size: clamp(2.65rem, 4.6vw, 4.75rem);
+  font-style: normal;
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.landing-proof-intro > p {
+  max-width: 34rem;
+  margin: 1.75rem 0 0;
+  color: color-mix(in srgb, var(--landing-surface) 70%, var(--landing-cobalt-950));
+  font-size: 1rem;
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+.landing-proof-promise {
+  display: flex;
+  max-width: 31rem;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 2.25rem;
+  padding: 1rem 0 1rem 1.15rem;
+  border-left: 2px solid var(--landing-blue);
+}
+
+.landing-proof-promise > svg {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--landing-blue) 58%, var(--landing-surface));
+}
+
+.landing-proof-promise > span {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.landing-proof-promise strong {
+  color: var(--landing-surface);
+  font-size: 0.86rem;
+}
+
+.landing-proof-promise small {
+  color: color-mix(in srgb, var(--landing-surface) 58%, var(--landing-cobalt-950));
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.landing-proof-ledger {
+  border-top: 1px solid color-mix(in srgb, var(--landing-surface) 18%, transparent);
+}
+
+.landing-proof-ledger article {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 3rem minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: 1.4rem;
+  min-height: 8.75rem;
+  padding: 1.7rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--landing-surface) 18%, transparent);
+  transition: padding-inline var(--dur-medium, 220ms) var(--ease-out, ease), background-color var(--dur-medium, 220ms) var(--ease-out, ease);
+}
+
+.landing-proof-ledger article:hover {
+  padding-inline: 1rem;
+  background: color-mix(in srgb, var(--landing-surface) 5%, transparent);
+}
+
+.landing-proof-ledger article > span {
+  align-self: start;
+  padding-top: 0.2rem;
+  color: color-mix(in srgb, var(--landing-blue) 68%, var(--landing-surface));
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.landing-proof-ledger p {
+  display: grid;
+  min-width: 0;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.landing-proof-ledger small {
+  color: color-mix(in srgb, var(--landing-surface) 52%, var(--landing-cobalt-950));
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.landing-proof-ledger strong {
+  max-width: 30ch;
+  color: var(--landing-surface);
+  font-size: clamp(1.2rem, 2vw, 1.65rem);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  text-wrap: pretty;
+}
+
+.landing-proof-ledger article > svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  justify-self: end;
+  color: color-mix(in srgb, var(--landing-surface) 48%, var(--landing-cobalt-950));
+  transition: color var(--dur-medium, 220ms) var(--ease-out, ease), transform var(--dur-medium, 220ms) var(--ease-out, ease);
+}
+
+.landing-proof-ledger article:hover > svg {
+  color: color-mix(in srgb, var(--landing-blue) 58%, var(--landing-surface));
+  transform: translateX(0.25rem);
+}
+
+.landing-feature:not(.landing-feature-dark) > span,
+.landing-feature-wide:not(.landing-feature-dark) .landing-feature-copy > span,
+.landing-pricing-note,
+.landing-footer-inner > p {
+  color: var(--landing-muted);
+}
+
+.landing-process .landing-kicker,
+.landing-pricing .landing-kicker {
+  color: var(--landing-blue-dark);
+}
+
+.landing-pricing-loading {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.landing-pricing-loading > span {
+  min-height: 32rem;
+  border: 1px solid var(--landing-line);
+  border-radius: 0.875rem;
+  background: linear-gradient(
+    105deg,
+    var(--landing-surface) 34%,
+    var(--landing-cobalt-100) 48%,
+    var(--landing-surface) 62%
+  );
+  background-size: 250% 100%;
+  animation: landing-pricing-loading 1.4s ease-in-out infinite;
+}
+
+@keyframes landing-pricing-loading {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (max-width: 1024px) {
+  .landing-proof-layout {
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+    gap: 3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .landing-proof {
+    padding: 5.5rem 0;
+  }
+
+  .landing-proof-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-proof-intro {
+    position: static;
+  }
+
+  .landing-proof-intro h2 {
+    max-width: 12ch;
+  }
+
+  .landing-proof-ledger article {
+    grid-template-columns: 2.25rem minmax(0, 1fr) 1.75rem;
+    gap: 0.9rem;
+  }
+
+  .landing-pricing-loading {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-pricing-loading > span {
+    min-height: 24rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .landing-proof-ledger article {
+    min-height: 8rem;
+    padding-block: 1.35rem;
+  }
+
+  .landing-proof-ledger article:hover {
+    padding-inline: 0;
+    background: transparent;
+  }
+
+  .landing-proof-ledger strong {
+    font-size: 1.08rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-proof-ledger article,
+  .landing-proof-ledger article > svg,
+  .landing-pricing-loading > span {
+    transition: none;
+    animation: none;
+  }
+
+  .landing-proof-ledger article:hover > svg {
+    transform: none;
+  }
+}
+
+@media (min-width: 901px) {
+  .landing-pricing-grid {
+    grid-template-columns: minmax(0, 0.84fr) minmax(0, 1.16fr) minmax(0, 0.96fr);
+  }
+
+  .landing-price-card {
+    min-height: 38rem;
+  }
+
+  .landing-price-card.is-featured {
+    padding: 2.15rem;
+  }
+
+  .landing-price-card.is-featured .landing-price-title h3 {
+    font-size: 1.8rem;
+  }
+
+  .landing-price-card.is-featured .landing-price strong {
+    font-size: clamp(1.8rem, 2.6vw, 2.45rem);
+  }
+}

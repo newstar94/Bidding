@@ -160,12 +160,39 @@
             </div>
         </section>
 
-        <section class="landing-proof" aria-label="Kết quả vận hành nổi bật">
-            <div class="landing-container landing-proof-grid">
-                <div><span>01</span><p><strong>Deadline hiện ra trước khi thành sự cố</strong><small>Cảnh báo và việc cần làm tập trung ở một nơi</small></p></div>
-                <div><span>02</span><p><strong>Bàn giao công việc mà không mất ngữ cảnh</strong><small>Trạng thái và người phụ trách luôn đi cùng dữ liệu</small></p></div>
-                <div><span>03</span><p><strong>Không nhập lại dữ liệu qua từng giai đoạn</strong><small>Kế hoạch, gói thầu và hợp đồng cùng một dòng chảy</small></p></div>
-                <div><span>04</span><p><strong>Quản lý nhìn thấy toàn cảnh vận hành</strong><small>Tiến độ, trách nhiệm và hồ sơ được trình bày rõ ràng</small></p></div>
+        <section class="landing-proof" aria-labelledby="landing-proof-title">
+            <div class="landing-container landing-proof-layout">
+                <div class="landing-proof-intro" data-landing-reveal>
+                    <span class="landing-kicker">GIÁ TRỊ KHÔNG NẰM Ở THÊM MỘT CÔNG CỤ</span>
+                    <h2 id="landing-proof-title">Thứ bạn mua là khả năng nhìn thấy rủi ro sớm hơn.</h2>
+                    <p>BiddingFlow biến dữ liệu rời rạc thành một nhịp vận hành có thể theo dõi, bàn giao và tiếp tục — để đội ngũ dành thời gian cho quyết định thay vì truy tìm thông tin.</p>
+                    <div class="landing-proof-promise">
+                        <i data-lucide="scan-search" aria-hidden="true"></i>
+                        <span><strong>Một nguồn dữ liệu</strong><small>Một mạch trách nhiệm · một lịch sử có thể tiếp tục</small></span>
+                    </div>
+                </div>
+                <div class="landing-proof-ledger" data-landing-reveal>
+                    <article>
+                        <span>01</span>
+                        <p><small>TRƯỚC HẠN CHÓT</small><strong>Deadline hiện ra khi đội ngũ vẫn còn thời gian xử lý.</strong></p>
+                        <i data-lucide="alarm-clock" aria-hidden="true"></i>
+                    </article>
+                    <article>
+                        <span>02</span>
+                        <p><small>KHI BÀN GIAO</small><strong>Trạng thái, hồ sơ và người phụ trách đi cùng nhau.</strong></p>
+                        <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+                    </article>
+                    <article>
+                        <span>03</span>
+                        <p><small>QUA TỪNG GIAI ĐOẠN</small><strong>Kế hoạch, gói thầu và hợp đồng không bắt đầu lại từ đầu.</strong></p>
+                        <i data-lucide="workflow" aria-hidden="true"></i>
+                    </article>
+                    <article>
+                        <span>04</span>
+                        <p><small>KHI CẦN ĐIỀU PHỐI</small><strong>Quản lý nhìn thấy tiến độ và điểm nghẽn trên cùng một toàn cảnh.</strong></p>
+                        <i data-lucide="radar" aria-hidden="true"></i>
+                    </article>
+                </div>
             </div>
         </section>
 
@@ -260,70 +287,18 @@
         <section class="landing-section landing-pricing" id="bang-gia" aria-labelledby="landing-pricing-title">
             <div class="landing-container">
                 <div class="landing-section-heading landing-section-heading-centered" data-landing-reveal>
-                    <span class="landing-kicker">ĐẦU TƯ CHO MỘT QUY TRÌNH RÕ RÀNG</span>
-                    <h2 id="landing-pricing-title">Chọn năng lực phù hợp. Mở rộng khi đội ngũ sẵn sàng.</h2>
-                    <p>Mọi gói đều bắt đầu từ nền tảng BiddingFlow thống nhất. Giá, hạn mức và lựa chọn kết nối được lấy trực tiếp từ catalog đang có hiệu lực.</p>
+                    <span class="landing-kicker">GIÁ CỦA VIỆC KIỂM SOÁT</span>
+                    <h2 id="landing-pricing-title">Trả cho năng lực đội ngũ thực sự dùng. Mở rộng khi vận hành cần thêm.</h2>
+                    <p>Bắt đầu ở quy mô phù hợp, giữ nguyên một nền tảng khi đội ngũ lớn lên. Giá, hạn mức và lựa chọn kết nối luôn lấy trực tiếp từ catalog đang có hiệu lực.</p>
                 </div>
                 <div class="landing-pricing-context" data-landing-reveal>
                     <div><i data-lucide="layers-3"></i><p><strong>Nền tảng Nội bộ</strong><small>Tổ chức công việc, dữ liệu và biểu mẫu trên một không gian chung.</small></p></div>
                     <div><i data-lucide="radio-tower"></i><p><strong>Gói Kết nối</strong><small>Bổ sung quota tra cứu nguồn mua sắm công và kiểm tra vi phạm nhà thầu.</small></p></div>
                 </div>
-                <div class="landing-pricing-grid" id="landing-pricing-grid" aria-live="polite">
-                    <article class="landing-price-card" data-package-id="silver" data-landing-reveal>
-                        <div class="landing-price-topline">
-                            <span class="landing-price-tier"><small>GÓI BẠC</small><b>Khởi đầu</b></span>
-                            <span class="landing-price-emblem" aria-hidden="true"><i data-lucide="layers-2"></i></span>
-                        </div>
-                        <div class="landing-price-title"><h3>Gói Bạc</h3></div>
-                        <p class="landing-price-description">Nền tảng cốt lõi cho đơn vị nhỏ, cần vận hành gọn và chuẩn hóa ngay từ đầu.</p>
-                        <div class="landing-price"><strong>15.000.000đ</strong><span>/ năm</span></div>
-                        <div class="landing-price-quota"><i data-lucide="users-round"></i><span><small>Hạn mức nhân sự</small><span data-package-quota>Tối đa 5 nhân sự</span></span></div>
-                        <p class="landing-price-features-label">Tính năng nền tảng</p>
-                        <ul>
-                            <li><i data-lucide="check"></i>Ma trận phân quyền nghiệp vụ</li>
-                            <li><i data-lucide="check"></i>Đồng bộ dữ liệu có kiểm soát</li>
-                            <li><i data-lucide="check"></i>Nhập dữ liệu từ Excel</li>
-                            <li><i data-lucide="check"></i>Quản lý biểu mẫu Word</li>
-                        </ul>
-                        <a class="landing-button landing-button-secondary landing-price-action" data-landing-app-link href="/dang-nhap">Bắt đầu với Gói Bạc<i data-lucide="arrow-right"></i></a>
-                    </article>
-                    <article class="landing-price-card is-featured" data-package-id="gold" data-landing-reveal>
-                        <div class="landing-price-popular"><i data-lucide="star"></i>ĐƯỢC CHỌN NHIỀU</div>
-                        <div class="landing-price-topline">
-                            <span class="landing-price-tier"><small>GÓI VÀNG</small><b>Tăng trưởng</b></span>
-                            <span class="landing-price-emblem" aria-hidden="true"><i data-lucide="sparkles"></i></span>
-                        </div>
-                        <div class="landing-price-title"><h3>Gói Vàng</h3></div>
-                        <p class="landing-price-description">Bộ công cụ mở rộng cho phòng thầu chuyên nghiệp cần phối hợp nhiều người.</p>
-                        <div class="landing-price"><strong>35.000.000đ</strong><span>/ năm</span></div>
-                        <div class="landing-price-quota"><i data-lucide="users-round"></i><span><small>Hạn mức nhân sự</small><span data-package-quota>Tối đa 15 nhân sự</span></span></div>
-                        <p class="landing-price-features-label">Mở rộng vận hành</p>
-                        <ul>
-                            <li><i data-lucide="check"></i>Toàn bộ tính năng Gói Bạc</li>
-                            <li><i data-lucide="check"></i>Phân công thầu và hợp đồng</li>
-                            <li><i data-lucide="check"></i>Cấu hình trạng thái hợp đồng</li>
-                            <li><i data-lucide="check"></i>Xuất biểu mẫu Word chuyên nghiệp</li>
-                        </ul>
-                        <a class="landing-button landing-button-primary landing-price-action" data-landing-app-link href="/dang-nhap">Bắt đầu với Gói Vàng<i data-lucide="arrow-right"></i></a>
-                    </article>
-                    <article class="landing-price-card is-premium" data-package-id="diamond" data-landing-reveal>
-                        <div class="landing-price-topline">
-                            <span class="landing-price-tier"><small>KIM CƯƠNG</small><b>Doanh nghiệp</b></span>
-                            <span class="landing-price-emblem" aria-hidden="true"><i data-lucide="gem"></i></span>
-                        </div>
-                        <div class="landing-price-title"><h3>Gói Kim Cương</h3></div>
-                        <p class="landing-price-description">Năng lực quản trị và hỗ trợ ưu tiên cho tổ chức có đội ngũ quy mô lớn.</p>
-                        <div class="landing-price"><strong>75.000.000đ</strong><span>/ năm</span></div>
-                        <div class="landing-price-quota"><i data-lucide="users-round"></i><span><small>Hạn mức nhân sự</small><span data-package-quota>Không giới hạn nhân sự</span></span></div>
-                        <p class="landing-price-features-label">Năng lực doanh nghiệp</p>
-                        <ul>
-                            <li><i data-lucide="check"></i>Toàn bộ tính năng Gói Vàng</li>
-                            <li><i data-lucide="check"></i>Hạn mức nhân sự mở rộng</li>
-                            <li><i data-lucide="check"></i>Hỗ trợ vận hành ưu tiên</li>
-                            <li><i data-lucide="check"></i>Sao lưu cơ sở dữ liệu tự động</li>
-                        </ul>
-                        <a class="landing-button landing-button-secondary landing-price-action" data-landing-app-link href="/dang-nhap">Bắt đầu với Kim Cương<i data-lucide="arrow-right"></i></a>
-                    </article>
+                <div class="landing-pricing-grid" id="landing-pricing-grid" aria-live="polite" aria-busy="true">
+                    <div class="landing-pricing-loading" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                    </div>
                 </div>
                 <p class="landing-pricing-note"><i data-lucide="info"></i>Đơn giá được tính theo năm. Catalog mới chỉ hiển thị khi được Super Admin xuất bản và cấu hình thương mại cho phép bán.</p>
                 <p class="landing-pricing-note" data-landing-pricing-notice hidden role="status"></p>

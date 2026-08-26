@@ -167,27 +167,116 @@ function renderCommercialOffers(offers = []) {
   return true;
 }
 
-function applyPublicPackages(packages = []) {
-  if (!Array.isArray(packages) || packages.length === 0) return;
-  const activeIds = new Set(packages.map((item) => String(item?.id || "")));
-  document.querySelectorAll("[data-package-id]").forEach((card) => {
-    card.hidden = !activeIds.has(card.dataset.packageId || "");
-  });
-  packages.forEach((pkg) => {
-    const card = document.querySelector(`[data-package-id="${CSS.escape(String(pkg.id || ""))}"]`);
-    if (!card) return;
-    const name = card.querySelector("h3");
-    const description = card.querySelector(".landing-price-description");
-    const price = card.querySelector(".landing-price strong");
-    const quota = card.querySelector("[data-package-quota]") || card.querySelector(".landing-price-quota span");
-    if (name) name.textContent = String(pkg.name || "");
-    if (description) description.textContent = String(pkg.description || "");
-    if (price) price.textContent = formatAnnualPrice(pkg.price);
-    if (quota) {
-      const quotaValue = Number(pkg.quota || 0);
-      quota.textContent = quotaValue >= 999 ? "Không giới hạn nhân sự" : `Tối đa ${quotaValue} nhân sự`;
-    }
-  });
+function appendPublicPackageFeature(list, label) {
+  const item = document.createElement("li");
+  item.append(createLandingIcon("check"), document.createTextNode(label));
+  list.append(item);
+}
+
+function createPublicPackageCard(pkg, index, packageCount) {
+  const featured = packageCount > 1 && index === Math.floor(packageCount / 2);
+  const premium = packageCount > 2 && index === packageCount - 1;
+  const card = document.createElement("article");
+  card.className = `landing-price-card${featured ? " is-featured" : ""}${premium ? " is-premium" : ""}`;
+  card.dataset.packageId = String(pkg?.id || "");
+  card.dataset.landingReveal = "";
+
+  if (featured) {
+    const recommendation = document.createElement("div");
+    recommendation.className = "landing-price-popular";
+    recommendation.append(createLandingIcon("scale"), document.createTextNode("LỰA CHỌN CÂN BẰNG"));
+    card.append(recommendation);
+  }
+
+  const topLine = document.createElement("div");
+  topLine.className = "landing-price-topline";
+  const tier = document.createElement("span");
+  tier.className = "landing-price-tier";
+  const tierLabel = document.createElement("small");
+  tierLabel.textContent = `GÓI ${String(index + 1).padStart(2, "0")}`;
+  const tierCaption = document.createElement("b");
+  tierCaption.textContent = featured ? "Cân bằng" : premium ? "Quy mô lớn" : "Khởi đầu";
+  tier.append(tierLabel, tierCaption);
+  const emblem = document.createElement("span");
+  emblem.className = "landing-price-emblem";
+  emblem.setAttribute("aria-hidden", "true");
+  emblem.append(createLandingIcon(featured ? "sparkles" : premium ? "gem" : "layers-2"));
+  topLine.append(tier, emblem);
+
+  const title = document.createElement("div");
+  title.className = "landing-price-title";
+  const heading = document.createElement("h3");
+  heading.textContent = String(pkg?.name || pkg?.id || "Gói dịch vụ");
+  title.append(heading);
+
+  const description = document.createElement("p");
+  description.className = "landing-price-description";
+  description.textContent = String(pkg?.description || "Năng lực vận hành được cấu hình theo catalog hiện hành.");
+
+  const price = document.createElement("div");
+  price.className = "landing-price";
+  const amount = document.createElement("strong");
+  amount.textContent = formatAnnualPrice(pkg?.price);
+  const period = document.createElement("span");
+  period.textContent = "/ năm";
+  price.append(amount, period);
+
+  const quota = document.createElement("div");
+  quota.className = "landing-price-quota";
+  quota.append(createLandingIcon("users-round"));
+  const quotaCopy = document.createElement("span");
+  const quotaLabel = document.createElement("small");
+  quotaLabel.textContent = "Hạn mức nhân sự";
+  const quotaValue = document.createElement("span");
+  const memberQuota = Math.max(0, Number(pkg?.quota || 0));
+  quotaValue.textContent = memberQuota >= 999 ? "Không giới hạn nhân sự" : `Tối đa ${memberQuota} nhân sự`;
+  quotaCopy.append(quotaLabel, quotaValue);
+  quota.append(quotaCopy);
+
+  const featuresLabel = document.createElement("p");
+  featuresLabel.className = "landing-price-features-label";
+  featuresLabel.textContent = "Năng lực được cấu hình";
+  const features = document.createElement("ul");
+  appendPublicPackageFeature(features, "Quản lý kế hoạch, gói thầu và hợp đồng");
+  appendPublicPackageFeature(features, "Đồng bộ dữ liệu có kiểm soát");
+  const capabilities = pkg?.capabilities || {};
+  if (capabilities["document.export.word"] === true) appendPublicPackageFeature(features, "Xuất biểu mẫu Word");
+  if (capabilities["document.export.excel"] === true) appendPublicPackageFeature(features, "Xuất dữ liệu Excel");
+  if (capabilities["document.export.award_result_excel"] === true) appendPublicPackageFeature(features, "Xuất kết quả lựa chọn nhà thầu");
+
+  const action = document.createElement("a");
+  action.className = `landing-button ${featured ? "landing-button-primary" : "landing-button-secondary"} landing-price-action`;
+  action.href = document.querySelector("[data-landing-app-link]")?.href || LOGIN_PATH;
+  action.append(document.createTextNode(`Bắt đầu với ${heading.textContent}`), createLandingIcon("arrow-right"));
+
+  card.append(topLine, title, description, price, quota, featuresLabel, features, action);
+  return card;
+}
+
+function renderPublicPackages(packages = []) {
+  const pricingGrid = document.getElementById("landing-pricing-grid");
+  if (!pricingGrid || !Array.isArray(packages) || packages.length === 0) return false;
+  pricingGrid.replaceChildren();
+  pricingGrid.className = "landing-pricing-grid";
+  packages.forEach((pkg, index) => pricingGrid.append(createPublicPackageCard(pkg, index, packages.length)));
+  pricingGrid.removeAttribute("aria-busy");
+  window.lucide?.createIcons({ root: pricingGrid });
+  installSectionReveal();
+  return true;
+}
+
+function renderPricingUnavailable(message) {
+  const pricingGrid = document.getElementById("landing-pricing-grid");
+  if (pricingGrid) {
+    pricingGrid.replaceChildren();
+    pricingGrid.className = "landing-pricing-grid";
+    pricingGrid.removeAttribute("aria-busy");
+  }
+  const notice = document.querySelector("[data-landing-pricing-notice]");
+  if (notice) {
+    notice.hidden = false;
+    notice.textContent = message;
+  }
 }
 
 async function loadPublicPackages() {
@@ -206,24 +295,15 @@ async function loadPublicPackages() {
       headers: { Accept: "application/json" }
     });
     if (!response.ok) {
-      document.querySelectorAll("[data-package-id]").forEach((card) => {
-        card.hidden = true;
-      });
-      const notice = document.querySelector("[data-landing-pricing-notice]");
-      if (notice) {
-        notice.hidden = false;
-        notice.textContent = "Bảng giá đang được kiểm tra trước khi mở bán.";
-      }
+      renderPricingUnavailable("Bảng giá đang được kiểm tra trước khi mở bán.");
       return;
     }
     const payload = await response.json();
-    applyPublicPackages(payload?.packages);
-  } catch (_) {
-    const notice = document.querySelector("[data-landing-pricing-notice]");
-    if (notice) {
-      notice.hidden = false;
-      notice.textContent = "Không thể cập nhật bảng giá lúc này. Vui lòng thử lại sau.";
+    if (!renderPublicPackages(payload?.packages)) {
+      renderPricingUnavailable("Chưa có gói dịch vụ đang được công bố.");
     }
+  } catch (_) {
+    renderPricingUnavailable("Không thể cập nhật bảng giá lúc này. Vui lòng thử lại sau.");
   }
 }
 

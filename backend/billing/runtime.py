@@ -36,7 +36,7 @@ class PaymentProviderRegistry:
             existing = self._providers.get(profile_id)
             if existing is not None:
                 return existing
-            provider = self._build(profile)
+            provider = self._build(profile, profile_id)
             self._providers[profile_id] = provider
             return provider
 
@@ -45,12 +45,13 @@ class PaymentProviderRegistry:
         with self._lock:
             self._providers[str(profile_id)] = provider
 
-    def _build(self, profile):
+    def _build(self, profile, profile_id):
         provider_name = str(profile.get("provider") or "").strip().casefold()
         if provider_name == "fake":
             return FakePaymentProvider(
                 scenario=str(self.environment.get("FAKE_PAYMENT_SCENARIO", "success")),
                 clock=self.clock,
+                profile_id=profile_id,
             )
         if provider_name != "payos":
             raise PaymentProviderError(

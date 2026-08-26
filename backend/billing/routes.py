@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import re
 import time
+from hashlib import sha256
+import json
+from pathlib import Path
 
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
 from backend.auth.auth_helper import verify_session, verify_session_in_transaction
 from backend.commercial_policy.config import commercial_runtime_config
@@ -18,11 +21,178 @@ from backend.shared.request_validation import read_json_object
 
 from .service import BillingService, ProviderCommandExecutor, public_order_payload
 from .webhook import payment_webhook_api
+from .providers.fake import FakePaymentProvider
+from .runtime import payment_provider_registry
 from backend.usage_credits import UsageCreditService, UsageOwner
 
 
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 _executor = None
+_FAKE_CHECKOUT_HTML = (
+    Path(__file__).resolve().parents[2] / "views" / "fake_checkout.html"
+)
+
+
+def _fake_checkout_environment_allowed():
+    return str(os.environ.get("APP_ENV", "development")).strip().casefold() in {
+        "development", "dev", "test", "testing",
+    }
+
+
+def _fake_checkout_context(connection, request):
+    if not _fake_checkout_environment_allowed():
+        raise CommercialPolicyError("NOT_FOUND", "Không tìm thấy trang.", status_code=404)
+    profile_id = str(request.path_params["profile_id"] or "").strip()
+    try:
+        order_code = int(request.path_params["order_code"])
+    except (TypeError, ValueError):
+        raise CommercialPolicyError("NOT_FOUND", "Không tìm thấy checkout.", status_code=404)
+    row = connection.execute(
+        """SELECT orders.*, profile.provider, profile.environment,
+                  profile.credential_reference, profile.timeout_ms,
+                  profile.max_attempts
+             FROM billing_orders AS orders
+             JOIN payment_provider_profiles AS profile
+               ON profile.id = orders.provider_profile_id
+            WHERE orders.provider_profile_id = ?
+              AND orders.provider_order_code = ?
+              AND profile.provider = 'fake'""",
+        (profile_id, order_code),
+    ).fetchone()
+    if not row:
+        raise CommercialPolicyError("NOT_FOUND", "Không tìm thấy checkout giả lập.", status_code=404)
+    return dict(row)
+
+
+async def fake_checkout_page(request):
+    connection = None
+    try:
+        connection = database.get_connection()
+        _fake_checkout_context(connection, request)
+        return HTMLResponse(
+            _FAKE_CHECKOUT_HTML.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store"},
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+    finally:
+        if connection:
+            connection.close()
+
+
+async def get_fake_checkout_api(request):
+    connection = None
+    try:
+        connection = database.get_connection()
+        order = _fake_checkout_context(connection, request)
+        return JSONResponse({
+            "simulator": True,
+            "order": public_order_payload(order),
+        })
+    except Exception as error:  # noqa: BLE001
+        return _error(error)
+    finally:
+        if connection:
+            connection.close()
+
+
+async def update_fake_checkout_api(request):
+    connection = None
+    command_id = None
+    try:
+        body, invalid = await read_json_object(request)
+        if invalid:
+            return invalid
+        if set(body) != {"action"}:
+            raise CommercialPolicyError(
+                "FAKE_ACTION_INVALID",
+                "Thao tác checkout giả lập không hợp lệ.",
+            )
+        connection = database.get_connection()
+        order = _fake_checkout_context(connection, request)
+        provider = payment_provider_registry().resolve(order)
+        if not isinstance(provider, FakePaymentProvider):
+            raise CommercialPolicyError("NOT_FOUND", "Không tìm thấy checkout giả lập.", status_code=404)
+        provider_result = provider.simulate_payment(
+            order["provider_order_code"], body["action"]
+        )
+        connection.execute("BEGIN")
+        if str(provider_result.get("status") or "").upper() == "PAID":
+            signed = {
+                "orderCode": int(order["provider_order_code"]),
+                "amount": int(order["total_amount"]),
+                "paymentLinkId": provider_result.get("paymentLinkId"),
+                "reference": f"FAKE-{order['provider_order_code']}",
+                "status": "PAID",
+            }
+            signed_json = json.dumps(
+                signed, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            payload_hash = sha256(signed_json.encode("utf-8")).hexdigest()
+            event_id = f"payment-event-{payload_hash[:32]}"
+            connection.execute(
+                """INSERT INTO payment_webhook_events
+                       (id, provider_profile_id, dedupe_key, payload_hash,
+                        signed_fields_json, status, available_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                   ON CONFLICT(provider_profile_id, dedupe_key, payload_hash)
+                   DO NOTHING""",
+                (
+                    event_id,
+                    order["provider_profile_id"],
+                    f"{order['provider_order_code']}|{provider_result.get('paymentLinkId')}|FAKE",
+                    payload_hash,
+                    signed_json,
+                    int(time.time()),
+                ),
+            )
+        existing_command = connection.execute(
+            """SELECT id, status FROM billing_provider_commands
+                 WHERE order_id = ? AND command_type = 'query_order'
+                 FOR UPDATE""",
+            (order["id"],),
+        ).fetchone()
+        if existing_command:
+            command_id = existing_command["id"]
+            connection.execute(
+                """UPDATE billing_provider_commands
+                      SET status = 'pending', available_at = ?,
+                          lease_expires_at = NULL, locked_by = NULL,
+                          last_error_code = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND status IN ('completed', 'dead', 'retry')""",
+                (int(time.time()), command_id),
+            )
+        else:
+            command_id = new_id("billing-command")
+            connection.execute(
+                """INSERT INTO billing_provider_commands
+                       (id, order_id, command_type, provider_reference,
+                        request_json, status, available_at)
+                   VALUES (?, ?, 'query_order', ?, '{}', 'pending', ?)""",
+                (
+                    command_id,
+                    order["id"],
+                    order["provider_reference"],
+                    int(time.time()),
+                ),
+            )
+        connection.commit()
+        connection.close()
+        connection = None
+        reconciled_order = _provider_executor().execute(command_id) if command_id else None
+        return JSONResponse({
+            "accepted": True,
+            "providerStatus": provider_result.get("status"),
+            "order": public_order_payload(reconciled_order or order),
+            "message": "Sự kiện giả lập đã được đưa vào hàng đợi đối soát.",
+        }, status_code=202)
+    except Exception as error:  # noqa: BLE001
+        if connection:
+            connection.rollback()
+        return _error(error)
+    finally:
+        if connection:
+            connection.close()
 
 
 def _error(error):
@@ -381,6 +551,21 @@ async def _admin_order_action(request, action):
 
 def billing_routes(Route):
     return [
+        Route(
+            "/thanh-toan-gia-lap/{profile_id}/{order_code}",
+            fake_checkout_page,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/billing/fake-checkout/{profile_id}/{order_code}",
+            get_fake_checkout_api,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/billing/fake-checkout/{profile_id}/{order_code}",
+            update_fake_checkout_api,
+            methods=["POST"],
+        ),
         Route("/api/billing/checkouts", create_checkout_api, methods=["POST"]),
         Route("/api/billing/orders", list_personal_orders_api, methods=["GET"]),
         Route("/api/billing/usage", get_usage_balance_api, methods=["GET"]),

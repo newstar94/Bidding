@@ -125,6 +125,22 @@ def test_fake_provider_duplicate_timeout_reconciliation_and_delayed_payment():
     assert delayed.get_payment(202)["status"] == "PAID"
 
 
+def test_fake_provider_exposes_local_hosted_simulator_and_explicit_actions():
+    provider = FakePaymentProvider(
+        scenario="success",
+        clock=lambda: 123,
+        profile_id="provider-fake-v1",
+    )
+    payment = provider.create_payment({"orderCode": 303, "amount": 129000})
+
+    assert payment["checkoutUrl"] == (
+        "/thanh-toan-gia-lap/provider-fake-v1/303"
+    )
+    assert provider.simulate_payment(303, "complete")["status"] == "PAID"
+    assert provider.simulate_payment(303, "cancel")["status"] == "CANCELLED"
+    assert provider.simulate_payment(303, "expire")["status"] == "EXPIRED"
+
+
 def test_stable_provider_order_code_fits_postgres_integer():
     first = _stable_order_code("billing-order-example")
 

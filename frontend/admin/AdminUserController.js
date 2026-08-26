@@ -1272,14 +1272,14 @@ export async function renewOrgSubscription(organizationId) {
   if (!organization) return;
   const confirmed = await this.view.customConfirm(
     "Xác nhận gia hạn",
-    `Gia hạn gói dịch vụ của tổ chức "${organization.name}" thêm 365 ngày?`,
+    `Gia hạn gói dịch vụ của tổ chức "${organization.name}" theo chính sách tương thích hiện hành?`,
     "calendar-plus"
   );
   if (!confirmed) return;
   try {
-    await updateOrganizationSubscription(organizationId, "renew", { duration_days: 365 });
+    await updateOrganizationSubscription(organizationId, "renew");
     this.view.renderSuperAdminPanel();
-    await this.view.customAlert("Thành công", "Đã gia hạn gói dịch vụ thêm 365 ngày.", "check-circle");
+    await this.view.customAlert("Thành công", "Đã gia hạn gói dịch vụ theo chính sách tương thích hiện hành.", "check-circle");
   } catch (error) {
     await this.view.customAlert("Thất bại", error.message, "alert-triangle");
   }

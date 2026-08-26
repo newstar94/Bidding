@@ -1947,6 +1947,7 @@ def _list_public_packages_sync(request):
                     "price": money_json_value(offer["price"]["total"]),
                     "quota": int(offer["memberQuota"]),
                     "description": display.get("description") or "",
+                    "capabilities": offer.get("exportCapabilities") or {},
                     "tier": offer["tier"],
                     "variant": offer["variant"],
                     "releaseId": catalog["releaseId"],
@@ -1957,7 +1958,9 @@ def _list_public_packages_sync(request):
             )
         cursor.execute("""
             SELECT id, ten_goi AS name, gia_ca AS price,
-                   han_muc_nhan_su AS quota, mo_ta AS description
+                   han_muc_nhan_su AS quota, mo_ta AS description,
+                   document_export_word, document_export_excel,
+                   document_export_award_result_excel
             FROM goi_dich_vu
             WHERE trang_thai = 'active'
             ORDER BY CASE id
@@ -1971,6 +1974,13 @@ def _list_public_packages_sync(request):
         for row in cursor.fetchall():
             package = dict(row)
             package["price"] = money_json_value(package["price"])
+            package["capabilities"] = {
+                "document.export.word": bool(package.pop("document_export_word")),
+                "document.export.excel": bool(package.pop("document_export_excel")),
+                "document.export.award_result_excel": bool(
+                    package.pop("document_export_award_result_excel")
+                ),
+            }
             packages.append(package)
         return JSONResponse(
             {"packages": packages},

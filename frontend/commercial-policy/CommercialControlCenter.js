@@ -70,13 +70,13 @@ function renderOverview() {
 }
 
 function renderOffers() {
-  const document = state.draft?.document;
-  if (!document) return;
+  const policyDocument = state.draft?.document;
+  if (!policyDocument) return;
   const savings = new Map((state.validation?.simulation?.connectedSavings || []).map((item) => [item.tier, item]));
   html(document.getElementById("commercial-offers-content"), `
     <div class="commercial-table-wrap"><table class="data-table commercial-offer-table" data-mobile-layout="cards">
       <thead><tr><th>Quy mô</th><th>Biến thể</th><th>Owner</th><th>Nhân sự</th><th>Giá năm</th><th>Quota nguồn</th><th>Sales</th></tr></thead>
-      <tbody>${document.offers.map((offer, index) => `<tr>
+      <tbody>${policyDocument.offers.map((offer, index) => `<tr>
         <td data-label="Quy mô"><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${escapeHtml(offer.code)}</small></td>
         <td data-label="Biến thể"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span>${offer.variant === "connected" && savings.get(offer.tier) ? `<small>Tiết kiệm ${(savings.get(offer.tier).savingBasisPoints / 100).toFixed(1)}%</small>` : ""}</td>
         <td data-label="Owner">${escapeHtml(offer.ownerKind)}</td>
@@ -86,7 +86,7 @@ function renderOffers() {
         <td data-label="Sales"><select class="form-control" data-offer-index="${index}" data-field="salesState"><option value="sellable" ${offer.salesState === "sellable" ? "selected" : ""}>Sellable</option><option value="stopped" ${offer.salesState === "stopped" ? "selected" : ""}>Stopped</option><option value="non_sellable" ${offer.salesState === "non_sellable" ? "selected" : ""}>Non-sellable</option></select></td>
       </tr>`).join("")}</tbody>
     </table></div>
-    <div class="commercial-credit-packs">${document.creditPacks.map((pack, index) => `<label><span>${Number(pack.quantity).toLocaleString("vi-VN")} lượt</span><input class="form-control" type="number" min="0" step="1000" data-pack-index="${index}" value="${Number(pack.price)}"><small>${escapeHtml(pack.code)}</small></label>`).join("")}</div>
+    <div class="commercial-credit-packs">${policyDocument.creditPacks.map((pack, index) => `<label><span>${Number(pack.quantity).toLocaleString("vi-VN")} lượt</span><input class="form-control" type="number" min="0" step="1000" data-pack-index="${index}" value="${Number(pack.price)}"><small>${escapeHtml(pack.code)}</small></label>`).join("")}</div>
   `);
 }
 

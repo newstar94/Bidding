@@ -12,7 +12,8 @@ import json
 import time
 
 from backend.commercial_policy.document import canonical_json
-from backend.commercial_policy.repository import new_id
+from backend.commercial_policy.repository import CommercialRepository, new_id
+from backend.shared.logging_utils import log_audit
 from backend.usage_credits import UsageCreditService, UsageOwner
 
 
@@ -91,7 +92,8 @@ class BillingActivationService:
 
         timing = self._payment_timing(order, result)
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order_code}-payment")
-        self.cursor.execute(
+        payment_transaction_id = new_id("payment-tx")
+        inserted_payment = self.cursor.execute(
             """INSERT INTO payment_transactions
                    (id, order_id, provider_profile_id, provider_transaction_id,
                     transaction_type, status, verified_paid_amount,
@@ -101,12 +103,13 @@ class BillingActivationService:
                ON CONFLICT(provider_profile_id, provider_transaction_id, transaction_type)
                DO NOTHING""",
             (
-                new_id("payment-tx"), order["id"], str(provider_profile_id),
+                payment_transaction_id, order["id"], str(provider_profile_id),
                 tx_id, expected, expected, timing,
                 int(result.get("transactionDateTime") or result.get("createdAt") or self.clock()),
                 canonical_json({"provider": result, "webhook": signed}),
             ),
         )
+        payment_was_inserted = inserted_payment.rowcount == 1
         self.cursor.execute(
             """UPDATE billing_orders
                   SET payment_state = 'verified_paid', activation_state =
@@ -120,6 +123,13 @@ class BillingActivationService:
             if timing != "on_time"
             else self._activate_order(order)
         )
+        if payment_was_inserted:
+            self._record_verified_payment_effects(
+                order,
+                payment_transaction_id,
+                timing=timing,
+                outcome=outcome,
+            )
         self._event_state(event_id, "processed" if outcome["status"] != "review_required" else "review", outcome.get("reason"))
         return {**outcome, "orderId": order["id"], "eventId": str(event_id)}
 
@@ -154,7 +164,8 @@ class BillingActivationService:
             return {"status": "not_paid", "providerStatus": status}
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order['provider_order_code']}-payment")
         timing = self._payment_timing(order, result)
-        self.cursor.execute(
+        payment_transaction_id = new_id("payment-tx")
+        inserted_payment = self.cursor.execute(
             """INSERT INTO payment_transactions
                    (id, order_id, provider_profile_id, provider_transaction_id,
                     transaction_type, status, verified_paid_amount,
@@ -162,10 +173,11 @@ class BillingActivationService:
                     provider_occurred_at, evidence_json)
                VALUES (?, ?, ?, ?, 'payment', 'verified', ?, ?, 'VND', ?, ?, ?)
                ON CONFLICT(provider_profile_id, provider_transaction_id, transaction_type) DO NOTHING""",
-            (new_id("payment-tx"), order["id"], str(provider_profile_id), tx_id,
+            (payment_transaction_id, order["id"], str(provider_profile_id), tx_id,
              amount, amount, timing, int(result.get("transactionDateTime") or result.get("createdAt") or self.clock()),
              canonical_json({"provider": result})),
         )
+        payment_was_inserted = inserted_payment.rowcount == 1
         self.cursor.execute(
             """UPDATE billing_orders
                   SET payment_state = 'verified_paid',
@@ -177,10 +189,138 @@ class BillingActivationService:
                 WHERE id = ?""",
             (order["id"],),
         )
-        return (
+        outcome = (
             self._mark_review(order, "LATE_PAYMENT_REVIEW_REQUIRED")
             if timing != "on_time"
             else self._activate_order(order)
+        )
+        if payment_was_inserted:
+            self._record_verified_payment_effects(
+                order,
+                payment_transaction_id,
+                timing=timing,
+                outcome=outcome,
+            )
+        return outcome
+
+    def _record_verified_payment_effects(
+        self,
+        order,
+        payment_transaction_id,
+        *,
+        timing,
+        outcome,
+    ):
+        """Append financial evidence and delivery work in Transaction B.
+
+        This method is called only when the provider transaction was newly
+        inserted.  The unique payment identity therefore becomes the
+        exactly-once seam for invoice, audit and notification outbox rows.
+        """
+
+        decision = json.loads(order["decision_json"])
+        tax_snapshot = {
+            "currency": order["currency"],
+            "subtotalAmount": int(order["subtotal_amount"]),
+            "taxAmount": int(order["tax_amount"]),
+            "totalAmount": int(order["total_amount"]),
+            "policy": decision.get("taxInvoiceSnapshot") or {},
+        }
+        buyer_profile = {
+            "ownerKind": order["owner_kind"],
+            "ownerId": (
+                order.get("account_user_id")
+                if order["owner_kind"] == "account"
+                else order.get("organization_id")
+            ),
+        }
+        invoice_request_id = new_id("invoice-request")
+        invoice_insert = self.cursor.execute(
+            """INSERT INTO billing_invoice_requests
+                   (id, order_id, payment_transaction_id, tax_snapshot_json,
+                    buyer_profile_json, idempotency_key)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(order_id) DO NOTHING""",
+            (
+                invoice_request_id,
+                order["id"],
+                payment_transaction_id,
+                canonical_json(tax_snapshot),
+                canonical_json(buyer_profile),
+                f"invoice:{order['id']}",
+            ),
+        )
+        invoice_was_inserted = invoice_insert.rowcount == 1
+        activation_event = (
+            "billing.activation_applied"
+            if outcome["status"] == "applied"
+            else "billing.activation_review_required"
+        )
+        repository = CommercialRepository(self.cursor, clock=self.clock)
+        repository.insert_outbox(
+            "billing.payment_verified",
+            "billing_order",
+            order["id"],
+            {
+                "publicId": order["public_id"],
+                "paymentTransactionId": payment_transaction_id,
+                "timing": timing,
+            },
+        )
+        repository.insert_outbox(
+            activation_event,
+            "billing_order",
+            order["id"],
+            {
+                "publicId": order["public_id"],
+                "status": outcome["status"],
+                "reason": outcome.get("reason"),
+            },
+        )
+        if invoice_was_inserted:
+            repository.insert_outbox(
+                "billing.invoice_requested",
+                "billing_order",
+                order["id"],
+                {
+                    "publicId": order["public_id"],
+                    "invoiceRequestId": invoice_request_id,
+                },
+            )
+        organization_id = (
+            order.get("organization_id")
+            if order["owner_kind"] == "organization"
+            else None
+        )
+        log_audit(
+            "billing.payment_verified",
+            actor_user_id=order["actor_user_id"],
+            organization_id=organization_id,
+            target_type="billing_order",
+            target_id=order["id"],
+            metadata={
+                "publicId": order["public_id"],
+                "paymentTransactionId": payment_transaction_id,
+                "timing": timing,
+                "totalAmount": int(order["total_amount"]),
+                "currency": order["currency"],
+            },
+            cursor=self.cursor,
+            required=True,
+        )
+        log_audit(
+            activation_event,
+            actor_user_id=order["actor_user_id"],
+            organization_id=organization_id,
+            target_type="billing_order",
+            target_id=order["id"],
+            metadata={
+                "publicId": order["public_id"],
+                "status": outcome["status"],
+                "reason": outcome.get("reason"),
+            },
+            cursor=self.cursor,
+            required=True,
         )
 
     def _activate_order(self, order):

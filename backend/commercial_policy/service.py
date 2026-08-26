@@ -151,6 +151,7 @@ class CommercialPolicy:
                 None,
             ),
             "policySnapshot": document.get("policies") or {},
+            "taxInvoiceSnapshot": document.get("taxInvoice") or {},
         }
         return {
             "allowed": True,

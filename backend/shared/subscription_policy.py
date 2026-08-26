@@ -9,6 +9,16 @@ from backend.shared.date_utils import vietnam_date_from_epoch
 
 _QUERY_CHUNK_SIZE = 500
 
+# Compatibility-only term used by legacy subscription administration while
+# baseTerm/renewalAnchor remain BLOCKED_DECISION in commercial policy.  Keep
+# this value out of callers so a future approved policy replaces one seam.
+LEGACY_SUBSCRIPTION_TERM_DAYS = 365
+SECONDS_PER_DAY = 24 * 60 * 60
+
+
+def legacy_subscription_expiry(starts_at):
+    return int(starts_at) + LEGACY_SUBSCRIPTION_TERM_DAYS * SECONDS_PER_DAY
+
 
 def _row_value(row, key, default=None):
     if row is None:

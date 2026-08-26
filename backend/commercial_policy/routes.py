@@ -477,10 +477,16 @@ async def public_commercial_offers_api(request):
     try:
         config = commercial_runtime_config()
         if not config.enabled or config.mode == "off":
-            raise CommercialPolicyError(
-                "COMMERCIAL_POLICY_DECISION_REQUIRED",
-                "Catalog thương mại mới chưa được bật.",
-                status_code=503,
+            return JSONResponse(
+                {
+                    "availability": "off",
+                    "offers": [],
+                    "creditPacks": [],
+                    "quotaWarnings": [],
+                },
+                headers={
+                    "Cache-Control": "public, max-age=60, must-revalidate",
+                },
             )
         conn = database.get_connection()
         try:

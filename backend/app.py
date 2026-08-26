@@ -1114,6 +1114,8 @@ routes = [
 
     Route("/tong-quan-admin", index, methods=["GET"]),
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
+    Route("/thuong-mai-thanh-toan", index, methods=["GET"]),
+    Route("/goi-va-thanh-toan", index, methods=["GET"]),
     Route("/nhan-su", index, methods=["GET"]),
     Route("/trang-thai-ho-so", index, methods=["GET"]),
     Route("/trang-ca-nhan", index, methods=["GET"]),

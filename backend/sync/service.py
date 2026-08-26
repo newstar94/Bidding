@@ -1296,6 +1296,7 @@ def execute_sync_mutation(
         if atomic_command and getattr(e, "sqlstate", None) in {
             "40001",
             "40P01",
+            "55P03",
         }:
             return error_response(
                 request,

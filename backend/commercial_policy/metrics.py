@@ -47,6 +47,10 @@ def commercial_health_snapshot(cursor, *, clock=None):
         """SELECT COUNT(*) FROM usage_credit_grants
             WHERE remaining < 0 OR reserved < 0 OR reserved > remaining""",
     )
+    webhook_review = _scalar(
+        cursor,
+        "SELECT COUNT(*) FROM payment_webhook_events WHERE status = 'review'",
+    )
     webhook_age = max(0, now - oldest_webhook) if oldest_webhook else 0
     paid_age = max(0, now - paid_oldest) if paid_oldest else 0
     alerts = []
@@ -58,8 +62,10 @@ def commercial_health_snapshot(cursor, *, clock=None):
         alerts.append({"code": "PENDING_ORDER_EXPIRED", "severity": "warning", "value": pending_expired, "threshold": 0})
     if negative_invariant:
         alerts.append({"code": "USAGE_NEGATIVE_INVARIANT", "severity": "critical", "value": negative_invariant, "threshold": 0})
+    if webhook_review:
+        alerts.append({"code": "WEBHOOK_REVIEW_REQUIRED", "severity": "critical", "value": webhook_review, "threshold": 0})
     return {
-        "webhook": {"backlog": webhook_backlog, "oldestAgeSeconds": webhook_age},
+        "webhook": {"backlog": webhook_backlog, "oldestAgeSeconds": webhook_age, "reviewRequired": webhook_review},
         "activation": {"paidNotApplied": paid_not_applied, "oldestAgeSeconds": paid_age},
         "orders": {"pendingPastExpiry": pending_expired},
         "usage": {"negativeInvariantViolations": negative_invariant},

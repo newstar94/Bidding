@@ -31,6 +31,10 @@ from backend.shared.membership_invariants import (
 )
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
+from backend.shared.subscription_policy import (
+    LEGACY_SUBSCRIPTION_TERM_DAYS,
+    SECONDS_PER_DAY,
+)
 from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
 from backend.notifications.service import (
@@ -372,7 +376,9 @@ async def update_organization_subscription_api(request):
                     },
                     status_code=409,
                 )
-            duration_days = data.get("duration_days", 365)
+            duration_days = data.get(
+                "duration_days", LEGACY_SUBSCRIPTION_TERM_DAYS
+            )
             if not isinstance(duration_days, int) or isinstance(duration_days, bool) or not 1 <= duration_days <= 3650:
                 conn.rollback()
                 return JSONResponse(
@@ -386,7 +392,7 @@ async def update_organization_subscription_api(request):
                    SET status = 'active', expires_at = ?, revision = revision + 1,
                        updated_at = CURRENT_TIMESTAMP
                    WHERE organization_id = ?""",
-                (base + duration_days * 24 * 60 * 60, organization_id),
+                (base + duration_days * SECONDS_PER_DAY, organization_id),
             )
             changed = True
         else:
