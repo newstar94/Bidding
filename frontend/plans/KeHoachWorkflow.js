@@ -82,6 +82,29 @@ function stalePlanFlowError() {
   return error;
 }
 
+function schedulePlanCanonicalRefresh(controller, isCurrent) {
+  if (typeof controller?.forceSyncData !== "function") return;
+  const refresh = async () => {
+    if (!isCurrent()) return;
+    try {
+      const result = await controller.forceSyncData(true, true, true);
+      if (!isCurrent() || result?.workspaceChanged) return;
+      if (result?.ok === false && result?.error) {
+        console.warn("Plan committed; background canonical refresh is pending:", result.error);
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        console.warn("Plan committed; background canonical refresh is pending:", error);
+      }
+    }
+  };
+  if (typeof controller.schedulePostStartupTask === "function") {
+    controller.schedulePostStartupTask(refresh, { timeout: 1200, delay: 0 });
+    return;
+  }
+  queueMicrotask(() => { void refresh(); });
+}
+
 function captureIntermediateDraftCheckpoint(controller) {
   const model = controller.model;
   const state = model.state;
@@ -963,7 +986,16 @@ export function loadBreakdownPackageDetails(planId) {
   const requestKey = String(planId);
   this._breakdownPackageDetailRequests ||= new Map();
   const existing = this._breakdownPackageDetailRequests.get(requestKey);
-  if (existing) return existing;
+  if (
+    existing
+    && isWorkspaceLeaseCurrent(this.model, existing.lease)
+    && this.model.workspaceStorage === existing.storage
+  ) {
+    return existing.promise;
+  }
+  if (existing) this._breakdownPackageDetailRequests.delete(requestKey);
+  const requestLease = captureWorkspaceLease(this.model);
+  const requestStorage = this.model.workspaceStorage;
 
   const hydratedTables = [
     "goithau",
@@ -993,12 +1025,18 @@ export function loadBreakdownPackageDetails(planId) {
         );
       }
     })
-    .finally(() => {
-      if (this._breakdownPackageDetailRequests.get(requestKey) === request) {
+    .catch((error) => {
+      const cached = this._breakdownPackageDetailRequests.get(requestKey);
+      if (cached?.promise === request) {
         this._breakdownPackageDetailRequests.delete(requestKey);
       }
+      throw error;
     });
-  this._breakdownPackageDetailRequests.set(requestKey, request);
+  this._breakdownPackageDetailRequests.set(requestKey, {
+    lease: requestLease,
+    storage: requestStorage,
+    promise: request,
+  });
   return request;
 }
 export function renderBreakdownPackagesList(planId) {
@@ -1451,6 +1489,7 @@ export async function savePlanBreakdown() {
   }
   const finalDraftSession = findPlanVersionDraftSession(this.model, finalPlanId);
   let syncResult;
+  let canonicalRefreshIsCurrent = null;
   if (finalDraftSession) {
     const finalizeLease = captureWorkspaceLease(this.model);
     const finalizeStorage = this.model.workspaceStorage;
@@ -1465,19 +1504,7 @@ export async function savePlanBreakdown() {
       if (finalizeResult?.workspaceChanged || !finalizeIsCurrent()) {
         return stalePlanFinalizeResult();
       }
-      if (typeof this.forceSyncData === "function") {
-        try {
-          const pullResult = await this.forceSyncData(true, true);
-          if (pullResult?.workspaceChanged || !finalizeIsCurrent()) {
-            return stalePlanFinalizeResult();
-          }
-        } catch (pullError) {
-          if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
-          console.warn("Plan draft committed but canonical refresh is pending:", pullError);
-        }
-      }
-      await renderVersionTables();
-      if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
+      canonicalRefreshIsCurrent = finalizeIsCurrent;
       syncResult = { ok: true };
     } catch (error) {
       await this.view.customAlert(
@@ -1509,10 +1536,19 @@ export async function savePlanBreakdown() {
   await this.closeModal("modal-plan-breakdown", {
     restoreRoute: false,
     preserveProcurementImport: true,
+    deferPlanTableRender: true,
   });
   if (this.procurementPlanImport?.controller) {
     await this.completeProcurementPlanImportRevision?.(finalPlanId);
   } else {
-    await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
+    const successMessage = "Kế hoạch và nội dung phân chia công việc đã được lưu.";
+    if (typeof this.view.showToast === "function") {
+      this.view.showToast("Đã lưu kế hoạch", successMessage, "success");
+    } else {
+      await this.view.customAlert("Thành công", successMessage, "check-circle");
+    }
+  }
+  if (canonicalRefreshIsCurrent) {
+    schedulePlanCanonicalRefresh(this, canonicalRefreshIsCurrent);
   }
 }

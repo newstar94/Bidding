@@ -768,6 +768,78 @@ test("final plan action sends the whole draft chain only to the finalize endpoin
   }
 });
 
+test("final plan commit closes immediately and refreshes canonical data in the background", async () => {
+  const previousDocument = globalThis.document;
+  const model = workspaceModel();
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const elements = new Map([
+    ["breakdown-plan-id", { value: "plan-00" }],
+    ["tbody-breakdown-dathuchien", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-khongapdung", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
+  ]);
+  globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  const refresh = deferred();
+  const effects = { closes: 0, alerts: 0, toasts: 0, renders: 0, scheduled: 0, pulls: [] };
+  const controller = {
+    model,
+    tempPlanAction: "create",
+    tempPlanData: model.state.kehoach[0],
+    backupKeHoachState: structuredClone(model.state.kehoach),
+    backupGoiThauState: structuredClone(model.state.goithau),
+    planBreakdownDraft: {
+      active: true, action: "create", planId: "plan-00", snapshot: draftState(),
+    },
+    loadBreakdownPackageDetails: async () => {},
+    updateBreakdownTotal() {},
+    recalculatePlanTotal() {},
+    finalizePlanDraft: async () => ({
+      status: "success",
+      syncVersion: 9,
+      rowVersions: [{ table: "kehoach", id: "plan-00", rowVersion: 1 }],
+    }),
+    forceSyncData: (...args) => {
+      effects.pulls.push(args);
+      return refresh.promise;
+    },
+    schedulePostStartupTask(task) {
+      effects.scheduled += 1;
+      void task();
+    },
+    closeModal: async () => { effects.closes += 1; },
+    view: {
+      renderKeHoachTable: async () => { effects.renders += 1; },
+      renderGoiThauTable: async () => { effects.renders += 1; },
+      customAlert: async () => { effects.alerts += 1; },
+      showToast: () => { effects.toasts += 1; },
+    },
+  };
+
+  let settled = false;
+  const pending = savePlanBreakdown.call(controller).then((result) => {
+    settled = true;
+    return result;
+  });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, true);
+    assert.deepEqual(effects, {
+      closes: 1,
+      alerts: 0,
+      toasts: 1,
+      renders: 0,
+      scheduled: 1,
+      pulls: [[true, true, true]],
+    });
+  } finally {
+    refresh.resolve({ ok: true });
+    await pending;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test("workspace_change_during_plan_draft_finalize_cannot_mutate_new_workspace", async () => {
   const response = deferred();
   const model = workspaceModel();

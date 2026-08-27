@@ -716,6 +716,8 @@ export function renderTabData(tabName, action = null) {
 export async function closeModal(modalId, options = {}) {
   const restoreRoute = options?.restoreRoute !== false;
   const preserveProcurementImport = options?.preserveProcurementImport === true;
+  const deferPlanTableRender = options?.deferPlanTableRender === true;
+  let planTableRenderPending = false;
   if (modalId === "modal-excel-preview") {
     this._excelImportData = [];
     this._excelImportType = null;
@@ -735,12 +737,15 @@ export async function closeModal(modalId, options = {}) {
     if (planSelect) planSelect.disabled = false;
   }
   if (modalId === "modal-plan-breakdown") {
+    const activePlanId = document.getElementById("breakdown-plan-id")?.value
+      || this.planBreakdownDraft?.planId;
+    if (activePlanId) {
+      this._breakdownPackageDetailRequests?.delete?.(String(activePlanId));
+    }
     const discardImportedPlanDraft = Boolean(
       this.procurementPlanImport?.controller && !preserveProcurementImport,
     );
     if (this.planBreakdownDraft?.active) {
-      const activePlanId = document.getElementById("breakdown-plan-id")?.value
-        || this.planBreakdownDraft.planId;
       const durableDraft = findPlanVersionDraftSession(this.model, activePlanId);
       if (durableDraft) {
         if (discardImportedPlanDraft) {
@@ -777,8 +782,12 @@ export async function closeModal(modalId, options = {}) {
     if (this.procurementPlanImport?.controller && !preserveProcurementImport) {
       await this.cancelActiveProcurementImportSession?.();
     }
-    this.view.renderKeHoachTable();
-    this.view.renderGoiThauTable();
+    if (deferPlanTableRender) {
+      planTableRenderPending = true;
+    } else {
+      this.view.renderKeHoachTable();
+      this.view.renderGoiThauTable();
+    }
   }
   if (modalId === "modal-kehoach" && this.planBreakdownDraft?.active) {
     const formPlanId = document.getElementById("form-kehoach-id")?.value;
@@ -816,6 +825,22 @@ export async function closeModal(modalId, options = {}) {
     await this.cancelActiveProcurementImportSession?.();
   }
   this.view.closeModal(modalId);
+  if (planTableRenderPending) {
+    const renderPlanTables = async () => {
+      const results = await Promise.allSettled([
+        Promise.resolve().then(() => this.view.renderKeHoachTable()),
+        Promise.resolve().then(() => this.view.renderGoiThauTable()),
+      ]);
+      results.filter((result) => result.status === "rejected").forEach((result) => {
+        console.warn("Failed to render plan tables after closing breakdown:", result.reason);
+      });
+    };
+    if (typeof this.schedulePostStartupTask === "function") {
+      this.schedulePostStartupTask(renderPlanTables, { timeout: 800, delay: 0 });
+    } else {
+      setTimeout(() => { void renderPlanTables(); }, 0);
+    }
+  }
   if (!restoreRoute) return;
   if (modalId === "modal-kehoach") {
     const { tab: destTab, action: destAction } = consumeModalReturnState("kehoach");

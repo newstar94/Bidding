@@ -643,11 +643,19 @@ test("plan breakdown coalesces repeated detail loads for the same plan", async (
   const previousLucide = globalThis.lucide;
   const callsByTable = new Map();
   const pendingResponses = [];
+  let resolveImmediately = false;
   globalThis.fetch = (input, { signal } = {}) => {
     const table = new URL(String(input), "http://localhost").searchParams.get("table");
     const calls = (callsByTable.get(table) || 0) + 1;
     callsByTable.set(table, calls);
     return new Promise((resolve, reject) => {
+      if (resolveImmediately) {
+        resolve(new Response(JSON.stringify({ items: [], totalItems: 0, hasMore: false }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+        return;
+      }
       pendingResponses.push(resolve);
       signal?.addEventListener("abort", () => {
         reject(new DOMException("signal is aborted without reason", "AbortError"));
@@ -688,6 +696,8 @@ test("plan breakdown coalesces repeated detail loads for the same plan", async (
       }));
     });
     await loading;
+    resolveImmediately = true;
+    await loadBreakdownPackageDetails.call(controller, "plan-current");
   } finally {
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;

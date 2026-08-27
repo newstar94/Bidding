@@ -329,6 +329,26 @@ test("timeline keeps the original E-HSMT approval and maps revision 01 as adjust
   assert.equal(adjustment.ngayThucTe, "2026-05-20");
 });
 
+test("timeline falls back to the full package when initial-version metadata has no E-HSMT approval", () => {
+  const current = {
+    ...base,
+    id: "package-00",
+    phienBan: "00",
+    soQuyetDinh: "1871/QĐ-BVQY",
+    ngayQuyetDinh: "2026-08-14",
+  };
+
+  const rows = buildEffectiveTimeline(current, {
+    plan: { pheDuyet: "Kế hoạch" },
+    initialPackage: { id: current.id, phienBan: current.phienBan },
+  }, []);
+  const approval = rows.find((row) => row.milestoneKey === "E_HSMT_APPROVAL");
+
+  assert.equal(approval.sourceMode, "AUTO");
+  assert.equal(approval.soVanBan, "1871/QĐ-BVQY");
+  assert.equal(approval.ngayThucTe, "2026-08-14");
+});
+
 test("bid evaluation report title follows the package envelope method", () => {
   const oneEnvelope = buildEffectiveTimeline(base, { plan: { pheDuyet: "Kế hoạch" } }, [])
     .find((row) => row.milestoneKey === "BID_EVALUATION_REPORT");

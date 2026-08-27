@@ -124,6 +124,9 @@ function sourceRecord(definition, packageData, planData, related, entity) {
   if (source.entity) return entity || {};
   if (source.record === "package") {
     if (definition.milestoneKey === "E_HSMT_APPROVAL" && related.initialPackage) {
+      const initialId = String(firstValue(related.initialPackage, ["id"]) || "");
+      const currentId = String(firstValue(packageData, ["id"]) || "");
+      if (initialId && currentId && initialId === currentId) return packageData;
       return related.initialPackage;
     }
     return packageData;

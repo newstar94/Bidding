@@ -1687,6 +1687,43 @@ test("explicitly cancelling a new MSC plan removes its durable draft aggregate",
   assert.deepEqual(reloaded.state.goithau, []);
 });
 
+test("successful plan breakdown close paints the modal closed before deferred table rendering", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => id === "breakdown-plan-id" ? { value: "plan-00" } : null,
+  };
+  const events = [];
+  const scheduled = [];
+  const controller = {
+    model: { state: {} },
+    planBreakdownDraft: null,
+    backupKeHoachState: null,
+    backupGoiThauState: null,
+    tempPlanData: null,
+    tempPlanAction: null,
+    schedulePostStartupTask(task) { scheduled.push(task); },
+    view: {
+      closeModal: () => events.push("closed"),
+      renderKeHoachTable: () => events.push("plans-rendered"),
+      renderGoiThauTable: () => events.push("packages-rendered"),
+    },
+  };
+
+  try {
+    await closeModal.call(controller, "modal-plan-breakdown", {
+      restoreRoute: false,
+      deferPlanTableRender: true,
+    });
+    assert.deepEqual(events, ["closed"]);
+    assert.equal(scheduled.length, 1);
+    await scheduled[0]();
+    assert.deepEqual(events, ["closed", "plans-rendered", "packages-rendered"]);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test("saving plan breakdown commits the new plan and package aggregate in one sync", async () => {
   const previousDocument = globalThis.document;
   const emptyBody = { querySelectorAll: () => [] };
