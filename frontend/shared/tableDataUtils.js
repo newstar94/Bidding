@@ -3,6 +3,60 @@ import {
   assertWorkspaceLeaseCurrent,
   captureWorkspaceLease,
 } from "../app/workspaceLease.js";
+import { perfNow, reportPerf } from "./perfDiagnostics.js";
+
+const PAGINATION_CACHE_TTL_MS = 30_000;
+
+function stableQueryKey(params = {}) {
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.map(String) : String(value)])
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(JSON.stringify(value))}`)
+    .join("&");
+}
+
+function paginationCacheFor(model) {
+  model._paginatedQueryCache ||= new Map();
+  return model._paginatedQueryCache;
+}
+
+function paginationCacheKey(model, table, params, lease) {
+  const activeRole = String(model?.state?.activerole || "");
+  return `${lease.token || lease.scope || "workspace"}:${encodeURIComponent(activeRole)}:${table}:${stableQueryKey(params)}`;
+}
+
+function cacheEntryIsFresh(entry, now = Date.now()) {
+  return Boolean(entry && now - entry.fetchedAt < PAGINATION_CACHE_TTL_MS);
+}
+
+export function getCachedPaginatedRecords(model, table, params = {}) {
+  const lease = captureWorkspaceLease(model);
+  const entry = paginationCacheFor(model).get(paginationCacheKey(model, table, params, lease));
+  if (!entry) return null;
+  return {
+    items: entry.items,
+    totalItems: entry.totalItems,
+    nextCursor: entry.nextCursor,
+    hasMore: entry.hasMore,
+    cacheHit: true,
+    prefetched: Boolean(entry.prefetched),
+    stale: !cacheEntryIsFresh(entry),
+  };
+}
+
+export function invalidatePaginatedQueryCache(model, table = null) {
+  const cache = model?._paginatedQueryCache;
+  if (!(cache instanceof Map)) return;
+  if (!table) {
+    cache.clear();
+    return;
+  }
+  const suffix = `:${table}:`;
+  [...cache.keys()].forEach((key) => {
+    if (key.includes(suffix)) cache.delete(key);
+  });
+}
 
 const PLAN_SCOPED_PACKAGE_CHILD_TABLES = new Set([
   "goithauhanghoa",
@@ -121,7 +175,8 @@ export async function hydratePlanPackageRecords(model, planId) {
   return request;
 }
 
-export async function loadPaginatedRecords(model, table, params = {}) {
+export async function loadPaginatedRecords(model, table, params = {}, { prefetch = false } = {}) {
+  const startedAt = perfNow();
   // Plan aggregate workflows often start by loading package-owned child rows.
   // Hydrate their parent package snapshots first; otherwise a newly-created plan
   // version can silently inherit zero packages when the browser cache is cold.
@@ -133,27 +188,94 @@ export async function loadPaginatedRecords(model, table, params = {}) {
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) query.set(key, String(value));
   });
-  model._paginationRequests ||= new Map();
-  model._paginationRequests.get(table)?.abort();
-  const controller = new AbortController();
-  const lease = captureWorkspaceLease(model, { controller });
-  model._paginationRequests.set(table, controller);
-  try {
-    const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
-    assertWorkspaceLeaseCurrent(model, lease);
-    model._lastPaginatedQueries ||= new Map();
-    model._lastPaginatedQueries.set(table, { ...params });
-    return {
-      items: cachePaginatedRecords(model, table, data?.items || [], lease),
-      totalItems: Number(data?.totalItems || 0),
-      nextCursor: data?.nextCursor || null,
-      hasMore: Boolean(data?.hasMore)
-    };
-  } finally {
-    if (model._paginationRequests.get(table) === controller) {
-      model._paginationRequests.delete(table);
-    }
+  const lease = captureWorkspaceLease(model);
+  const key = paginationCacheKey(model, table, params, lease);
+  const cached = getCachedPaginatedRecords(model, table, params);
+  if (cached && !cached.stale) {
+    reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: false, duration: Math.round(perfNow() - startedAt), cacheHit: true, prefetched: cached.prefetched });
+    return cached;
   }
+  model._paginationRequests ||= new Map();
+  const existing = model._paginationRequests.get(key);
+  if (existing?.promise) {
+    const result = await existing.promise;
+    reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: true, duration: Math.round(perfNow() - startedAt), cacheHit: false, prefetched: false, inFlightDeduped: true });
+    return { ...result, cacheHit: false, inFlightDeduped: true };
+  }
+  [...model._paginationRequests.entries()]
+    .filter(([requestKey]) => {
+      const activeRole = encodeURIComponent(String(model?.state?.activerole || ""));
+      return requestKey.startsWith(`${lease.token || lease.scope || "workspace"}:${activeRole}:${table}:`)
+        && requestKey !== key;
+    })
+    .forEach(([, request]) => request?.controller?.abort?.());
+  const controller = new AbortController();
+  const requestLease = captureWorkspaceLease(model, { controller });
+  const requestPromise = (async () => {
+    try {
+      const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+      assertWorkspaceLeaseCurrent(model, requestLease);
+      const result = {
+        items: cachePaginatedRecords(model, table, data?.items || [], requestLease, {
+          preserveQueryCache: true,
+        }),
+        totalItems: Number(data?.totalItems || 0),
+        nextCursor: data?.nextCursor || null,
+        hasMore: Boolean(data?.hasMore),
+        cacheHit: false,
+        prefetched: prefetch,
+        inFlightDeduped: false,
+      };
+      paginationCacheFor(model).set(key, {
+        ...result,
+        fetchedAt: Date.now(),
+        prefetched: prefetch,
+      });
+      if (!prefetch) {
+        model._lastPaginatedQueries ||= new Map();
+        model._lastPaginatedQueries.set(table, { ...params });
+      }
+      reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: true, duration: Math.round(perfNow() - startedAt), cacheHit: false, prefetched: prefetch });
+      return result;
+    } catch (error) {
+      const canUseStaleCache = cached?.stale
+        && error?.name !== "AbortError"
+        && error?.code !== "WORKSPACE_CHANGED"
+        && (error?.code === "NETWORK_ERROR"
+          || error?.code === "REQUEST_TIMEOUT"
+          || (typeof navigator !== "undefined" && navigator.onLine === false));
+      if (!canUseStaleCache) throw error;
+      console.warn(`Could not revalidate paginated ${table}; using stale workspace cache:`, error);
+      reportPerf({
+        phase: "paginated-data",
+        tabName: model?.state?.activetab || null,
+        query: table,
+        cold: false,
+        duration: Math.round(perfNow() - startedAt),
+        cacheHit: true,
+        prefetched: Boolean(cached.prefetched),
+        stale: true,
+        revalidationFailed: true,
+      });
+      return { ...cached, revalidationFailed: true };
+    } finally {
+      if (model._paginationRequests.get(key)?.controller === controller) {
+        model._paginationRequests.delete(key);
+      }
+    }
+  })();
+  model._paginationRequests.set(key, { controller, lease: requestLease, promise: requestPromise });
+  return requestPromise;
+}
+
+export function prefetchPaginatedRecords(model, table, params = {}) {
+  return loadPaginatedRecords(model, table, params, { prefetch: true }).catch((error) => {
+    if (error?.name !== "AbortError") {
+      reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: true, duration: 0, cacheHit: false, prefetched: true, error: error?.code || error?.message || "failed" });
+      console.warn(`Could not prefetch paginated ${table}:`, error);
+    }
+    return null;
+  });
 }
 export function sortRecords(records, field, order = "asc") {
   if (!field) return records;
@@ -169,7 +291,13 @@ export function sortRecords(records, field, order = "asc") {
   });
   return records;
 }
-export function cachePaginatedRecords(model, key, records, workspaceLease = null) {
+export function cachePaginatedRecords(
+  model,
+  key,
+  records,
+  workspaceLease = null,
+  { preserveQueryCache = false } = {},
+) {
   const lease = workspaceLease || captureWorkspaceLease(model);
   assertWorkspaceLeaseCurrent(model, lease);
   const normalized = (typeof model?.normalizeRecordKeys === "function"
@@ -187,7 +315,9 @@ export function cachePaginatedRecords(model, key, records, workspaceLease = null
       lease.state[key].push(record);
     }
   });
-  if (normalized.length > 0) model.entityIndexes?.invalidate?.(key);
+  if (normalized.length > 0) {
+    model.entityIndexes?.invalidate?.(key, { notify: !preserveQueryCache });
+  }
   if (normalized.length > 0 && lease.db && typeof lease.db.putRecords === "function") {
     lease.db.putRecords(key, normalized).catch((err) => {
       console.error(`Failed to cache paginated ${key} records:`, err);

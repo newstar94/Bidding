@@ -70,8 +70,12 @@ function memoryDb() {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
 }
 
 function workspaceModel({ token = "user:org-a@1", state = draftState(), db = memoryDb() } = {}) {
@@ -768,7 +772,7 @@ test("final plan action sends the whole draft chain only to the finalize endpoin
   }
 });
 
-test("final plan commit closes immediately and refreshes canonical data in the background", async () => {
+test("durable local plan draft closes immediately while final commit continues in the background", async () => {
   const previousDocument = globalThis.document;
   const model = workspaceModel();
   const session = createPlanVersionDraftSession(model.state, "plan-00");
@@ -780,6 +784,7 @@ test("final plan commit closes immediately and refreshes canonical data in the b
     ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
   ]);
   globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  const finalize = deferred();
   const refresh = deferred();
   const effects = { closes: 0, alerts: 0, toasts: 0, renders: 0, scheduled: 0, pulls: [] };
   const controller = {
@@ -794,11 +799,7 @@ test("final plan commit closes immediately and refreshes canonical data in the b
     loadBreakdownPackageDetails: async () => {},
     updateBreakdownTotal() {},
     recalculatePlanTotal() {},
-    finalizePlanDraft: async () => ({
-      status: "success",
-      syncVersion: 9,
-      rowVersions: [{ table: "kehoach", id: "plan-00", rowVersion: 1 }],
-    }),
+    finalizePlanDraft: async () => finalize.promise,
     forceSyncData: (...args) => {
       effects.pulls.push(args);
       return refresh.promise;
@@ -823,6 +824,23 @@ test("final plan commit closes immediately and refreshes canonical data in the b
   });
   try {
     await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    assert.deepEqual(effects, {
+      closes: 1,
+      alerts: 0,
+      toasts: 0,
+      renders: 0,
+      scheduled: 0,
+      pulls: [],
+    });
+    assert.equal(model.planVersionDraftSessions.length, 1);
+
+    finalize.resolve({
+      status: "success",
+      syncVersion: 9,
+      rowVersions: [{ table: "kehoach", id: "plan-00", rowVersion: 1 }],
+    });
+    await pending;
     assert.equal(settled, true);
     assert.deepEqual(effects, {
       closes: 1,
@@ -832,9 +850,75 @@ test("final plan commit closes immediately and refreshes canonical data in the b
       scheduled: 1,
       pulls: [[true, true, true]],
     });
+    assert.deepEqual(model.planVersionDraftSessions, []);
   } finally {
+    finalize.resolve({ status: "success", rowVersions: [] });
     refresh.resolve({ ok: true });
     await pending;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("failed background final commit keeps the durable draft and reports that it is not synchronized", async () => {
+  const previousDocument = globalThis.document;
+  const model = workspaceModel();
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const elements = new Map([
+    ["breakdown-plan-id", { value: "plan-00" }],
+    ["tbody-breakdown-dathuchien", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-khongapdung", { querySelectorAll: () => [] }],
+    ["tbody-breakdown-chuadudieuKien", { querySelectorAll: () => [] }],
+  ]);
+  globalThis.document = { getElementById: (id) => elements.get(id) || null };
+  const finalize = deferred();
+  const effects = { closes: 0, alerts: 0, toasts: [], pulls: 0, renders: 0 };
+  const controller = {
+    model,
+    tempPlanAction: "create",
+    tempPlanData: model.state.kehoach[0],
+    backupKeHoachState: structuredClone(model.state.kehoach),
+    backupGoiThauState: structuredClone(model.state.goithau),
+    planBreakdownDraft: {
+      active: true, action: "create", planId: "plan-00", snapshot: draftState(),
+    },
+    loadBreakdownPackageDetails: async () => {},
+    updateBreakdownTotal() {},
+    recalculatePlanTotal() {},
+    finalizePlanDraft: async () => finalize.promise,
+    forceSyncData: async () => { effects.pulls += 1; },
+    closeModal: async () => { effects.closes += 1; },
+    view: {
+      renderKeHoachTable: async () => { effects.renders += 1; },
+      renderGoiThauTable: async () => { effects.renders += 1; },
+      customAlert: async () => { effects.alerts += 1; },
+      showToast: (...args) => { effects.toasts.push(args); },
+    },
+  };
+
+  try {
+    const pending = savePlanBreakdown.call(controller);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(effects.closes, 1);
+    assert.equal(model.planVersionDraftSessions.length, 1);
+    assert.deepEqual(effects.toasts, []);
+
+    finalize.reject(new Error("Máy chủ tạm thời không phản hồi."));
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(model.planVersionDraftSessions.length, 1);
+    assert.deepEqual(effects.toasts, [[
+      "Chưa đồng bộ kế hoạch",
+      "Máy chủ tạm thời không phản hồi.",
+      "warning",
+    ]]);
+    assert.deepEqual(
+      { alerts: effects.alerts, pulls: effects.pulls, renders: effects.renders },
+      { alerts: 0, pulls: 0, renders: 0 },
+    );
+  } finally {
+    finalize.resolve({ status: "success", rowVersions: [] });
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
   }
@@ -1124,7 +1208,7 @@ test("workspace_b_does_not_reuse_workspace_a_finalize_promise_or_session", async
   assert.deepEqual(dbB.values.get("plan_version_drafts_v1").sessions, []);
 });
 
-test("late_finalize_success_from_a_cannot_close_show_success_pull_or_clear_workspace_b_edit_state", async () => {
+test("late_finalize_success_from_a_cannot_show_success_pull_or_clear_workspace_b_edit_state", async () => {
   const previousDocument = globalThis.document;
   const response = deferred();
   const model = workspaceModel();
@@ -1180,7 +1264,7 @@ test("late_finalize_success_from_a_cannot_close_show_success_pull_or_clear_works
 
     const result = await pending;
     assert.equal(result.code, "WORKSPACE_CHANGED");
-    assert.deepEqual(effects, { alerts: 0, closes: 0, pulls: 0, renders: 0 });
+    assert.deepEqual(effects, { alerts: 0, closes: 1, pulls: 0, renders: 0 });
     assert.equal(controller.tempPlanAction, "edit-b");
     assert.deepEqual(controller.tempPlanData, { id: "plan-b" });
     assert.equal(controller.planBreakdownDraft.planId, "plan-b");

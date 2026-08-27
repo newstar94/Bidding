@@ -632,16 +632,9 @@ async def lookup_membership_candidate_api(request):
         return response
 
 
-async def add_user_to_org_api(request):
+def _add_user_to_org_sync(request, role_or_err, data):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
             "employee_name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
@@ -846,6 +839,32 @@ async def add_user_to_org_api(request):
     finally:
         if conn:
             conn.close()
+
+
+async def add_user_to_org_api(request):
+    is_valid, role_or_err = verify_session(request)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    try:
+        return await run_database_write(
+            _add_user_to_org_sync,
+            request,
+            role_or_err,
+            data,
+        )
+    except BlockingIOBusyError:
+        response = error_response(
+            request,
+            "DATABASE_WRITE_QUEUE_FULL",
+            "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
 
 async def remove_user_from_org_api(request):
     conn = None

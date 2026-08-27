@@ -125,6 +125,7 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     "thongtinmothau",
     "assignments",
   ], {
+    backgroundSync: true,
     changes: { upserts: explicitUpserts },
     afterPersist,
   });

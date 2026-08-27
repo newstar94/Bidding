@@ -16,17 +16,19 @@ function addGrouped(map, value, record) {
 }
 
 export class EntityIndexes {
-  constructor(getRecords) {
+  constructor(getRecords, onInvalidate = null) {
     if (typeof getRecords !== "function") {
       throw new TypeError("EntityIndexes requires a record source.");
     }
     this.getRecords = getRecords;
+    this.onInvalidate = typeof onInvalidate === "function" ? onInvalidate : null;
     this.cache = new Map();
   }
 
-  invalidate(table = null) {
+  invalidate(table = null, { notify = true } = {}) {
     if (table) this.cache.delete(table);
     else this.cache.clear();
+    if (notify) this.onInvalidate?.(table);
   }
 
   indexesFor(table) {

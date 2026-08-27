@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { resolveContractorVersion } from "./contractorVersionBinding.js";
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
@@ -14,6 +14,7 @@ import {
   sortVersionsDescending,
   versionFamily,
 } from "../shared/versionResolver.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 
 export function resolveLatestNhaThauVersionId(model, versionId) {
   const records = Array.isArray(model?.state?.nhathau) ? model.state.nhathau : [];
@@ -24,6 +25,7 @@ export function resolveLatestNhaThauVersionId(model, versionId) {
 }
 
 export async function renderNhaThauTable() {
+  const tablePerf = beginTablePerf("nhathau", "nhathau");
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
   let slicedData = [];
@@ -34,13 +36,15 @@ export async function renderNhaThauTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 8);
+    const pageParams = { page: currentPage, pageSize, search: searchVal, sortBy, sortOrder };
+    if (!getCachedPaginatedRecords(this.model, "nhathau", pageParams)) {
+      renderTableLoading(tableBody, 8);
+    }
     try {
-      const data = await loadPaginatedRecords(this.model, "nhathau", {
-        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
-      });
+      const data = await loadPaginatedRecords(this.model, "nhathau", pageParams);
       slicedData = data.items;
       totalItems = data.totalItems;
+      tablePerf.dataComplete(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated contractors", e);
@@ -56,6 +60,7 @@ export async function renderNhaThauTable() {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -145,6 +150,7 @@ export async function renderNhaThauTable() {
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("nhathau-table", "nhathau");
+  return { performance: tablePerf.complete() };
 }
 export function showNhaThauDetails(id, { skipDetailLoad = false } = {}) {
   const resolvedId = resolveLatestNhaThauVersionId(this.model, id);

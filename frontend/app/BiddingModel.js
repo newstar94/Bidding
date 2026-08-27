@@ -34,6 +34,7 @@ import {
   workspaceDatabaseName
 } from "./workspaceState.js";
 import { clearWorkspaceRenderCaches } from "../shared/workspaceRenderCache.js";
+import { invalidatePaginatedQueryCache } from "../shared/tableDataUtils.js";
 import {
   packageVersionResolutionOptions,
   resolveLatestPackageVersion,
@@ -201,7 +202,10 @@ export class BiddingModel {
       assignments: [],
       thongtinmothau: []
     };
-    this.entityIndexes = new EntityIndexes((table) => this.state[table]);
+    this.entityIndexes = new EntityIndexes(
+      (table) => this.state[table],
+      (table) => invalidatePaginatedQueryCache(this, table),
+    );
     this.sortState = {
       kehoach: { field: "maKeHoach", order: "asc" },
       goithau: { field: "maGoiThau", order: "asc" },
@@ -405,6 +409,7 @@ export class BiddingModel {
 
   _resetWorkspaceMemory() {
     clearWorkspaceRenderCaches(this);
+    invalidatePaginatedQueryCache(this);
     abortWorkspaceRequests(this._workspaceRequestControllers);
     abortWorkspaceRequestMap(this._paginationRequests);
     abortWorkspaceRequestMap(this._planPackageHydrationRequests);
@@ -463,6 +468,14 @@ export class BiddingModel {
       this.endWorkspaceTransition();
     }
     return true;
+  }
+  async prepareWorkspaceRoleTransition() {
+    this.beginWorkspaceTransition();
+    await this.waitForWorkspaceMutations();
+    this.db?.close?.();
+    // Clear the previous persona from memory before the next route paints.
+    // Durable deletion remains the responsibility of purgeWorkspaceData().
+    this._resetWorkspaceMemory();
   }
   async loadStorageKeys(keysToLoad) {
     const requested = new Set(keysToLoad || Object.keys(this.STORAGE_KEYS));
@@ -1140,7 +1153,9 @@ export class BiddingModel {
       throw error;
     }).then(async () => {
       await outbox.flush();
-      Object.keys(upserts).forEach((table) => this.entityIndexes?.invalidate?.(table));
+      Object.keys(upserts).forEach((table) => {
+        this.entityIndexes?.invalidate?.(table);
+      });
       return repair;
     });
   }
@@ -1428,7 +1443,10 @@ export class BiddingModel {
   }
   switchActiveRole(role, userName, userId) {
     const allowedRole = BiddingModel.resolveAllowedActiveRole(this.state.activeuser, role);
+    abortWorkspaceRequestMap(this._paginationRequests);
+    this._paginationRequests = new Map();
     this.state.activerole = allowedRole;
+    this.entityIndexes.invalidate();
     const title = BiddingModel.getRoleTitle(allowedRole);
     this.state.activeuser = {
       ...this.state.activeuser || {},
@@ -1440,6 +1458,7 @@ export class BiddingModel {
     sessionStorage.setItem(this.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.state.activeuser));
   }
   clearSessionData() {
+    invalidatePaginatedQueryCache(this);
     Object.keys(this.STORAGE_KEYS).forEach((key) => {
       if (key !== "THEME") {
         localStorage.removeItem(this.STORAGE_KEYS[key]);

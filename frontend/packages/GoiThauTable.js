@@ -1,5 +1,5 @@
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
@@ -22,6 +22,7 @@ import {
   versionNumber,
   versionRootId,
 } from "../shared/versionResolver.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 
 export function resolvePackageTableVersionState(model, authoritativeRow) {
   const state = model?.state || {};
@@ -72,6 +73,7 @@ function bindLotWinnerActions(tableBody, view) {
 }
 
 export async function renderGoiThauTable() {
+  const tablePerf = beginTablePerf("goithau", "goithau");
   const cacheOwner = "package-list";
   beginWorkspaceRender(this.model, cacheOwner);
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
@@ -98,15 +100,19 @@ export async function renderGoiThauTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 8);
+    const pageParams = {
+      page: currentPage, pageSize, search: searchVal,
+      trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
+      sortBy, sortOrder, nam: filterNam, thang: filterThang,
+    };
+    if (!getCachedPaginatedRecords(this.model, "goithau", pageParams)) {
+      renderTableLoading(tableBody, 8);
+    }
     try {
-      const data = await loadPaginatedRecords(this.model, "goithau", {
-        page: currentPage, pageSize, search: searchVal,
-        trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
-        sortBy, sortOrder, nam: filterNam, thang: filterThang
-      });
+      const data = await loadPaginatedRecords(this.model, "goithau", pageParams);
       slicedData = data.items;
       totalItems = data.totalItems;
+      tablePerf.dataComplete(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated packages", e);
@@ -129,6 +135,7 @@ export async function renderGoiThauTable() {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -309,4 +316,5 @@ export async function renderGoiThauTable() {
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("goithau-table", "goithau");
+  return { performance: tablePerf.complete() };
 }

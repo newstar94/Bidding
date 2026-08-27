@@ -100,6 +100,15 @@ const VIEW_MODULES_BY_TAB = Object.freeze({
 
 const installedViewModules = new Set(["system-user"]);
 const pendingViewModules = new Map();
+const viewModuleLoadCount = new Map();
+
+export function getViewModuleLoadDiagnostics(moduleName) {
+  return {
+    installed: installedViewModules.has(moduleName),
+    pending: pendingViewModules.has(moduleName),
+    loadCount: Number(viewModuleLoadCount.get(moduleName) || 0),
+  };
+}
 
 export class BiddingView {
   constructor(model) {
@@ -1645,6 +1654,7 @@ export class BiddingView {
       if (!pendingViewModules.has(moduleName)) {
         const loader = VIEW_MODULE_LOADERS[moduleName];
         if (!loader) return null;
+        viewModuleLoadCount.set(moduleName, Number(viewModuleLoadCount.get(moduleName) || 0) + 1);
         const pending = loader().then((module) => {
           installPrototypeModules(BiddingView, [{ name: `${moduleName}-view`, module }]);
           installedViewModules.add(moduleName);

@@ -350,23 +350,24 @@ export function setupRBACEvents() {
         if (profileDropdown) profileDropdown.classList.remove("active");
         const targetTab = activeRole === "super_admin" ? "superadmin-dashboard" : "dashboard";
         const targetPath = targetTab === "superadmin-dashboard" ? "/tong-quan-admin" : "/tong-quan";
-        // Keep the SPA alive: discard the old scoped snapshot, hydrate the same
-        // workspace under the server-confirmed persona, and render a cleared
-        // home route before the authoritative pull finishes. This avoids both
-        // a reload and any flash of data from the previous persona.
-        await this.model.purgeWorkspaceData?.();
+        // Clear the previous persona before painting the new home route. The
+        // IndexedDB purge is deliberately allowed to finish after that paint.
+        await this.model.prepareWorkspaceRoleTransition?.();
         history.pushState({ tab: targetTab, action: null }, "", targetPath);
-        await this.switchTab(targetTab, null, false);
+        void Promise.resolve(this.switchTab(targetTab, null, false)).catch((error) => {
+          console.error("Failed to render the active-role home route:", error);
+          this.view?.showToast?.("Không thể mở trang tổng quan", "Vui lòng thử lại.", "error");
+        });
+        await this.model.purgeWorkspaceData?.();
         await this.model.init({
           userId: realUserId,
           organizationId: getActiveOrganizationId(),
           priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname),
         });
-        if (typeof this.forceSyncData === "function") {
-          await this.forceSyncData(false, true);
-        }
-        // Re-render after the new persona's authoritative snapshot is applied.
-        await this.switchTab(targetTab, null, false);
+        this.initializeStartupReconciliation?.();
+        // The route is already interactive. Reconcile permissions and records
+        // in the background; mutation boundaries still wait for this promise.
+        void this.reconcileInitialRouteData?.();
         this.renderWorkspaceSwitcher?.();
         this.setupWebSocketConnection?.();
       } catch (error) {
@@ -393,6 +394,14 @@ export function setupRBACEvents() {
     bindAdminEvent(formEmp, "submit", "save-manager-employee", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formEmp)) return;
+      const submitButton = formEmp.querySelector('button[type="submit"]');
+      const setEmployeeSubmitBusy = (busy) => {
+        formEmp.setAttribute("aria-busy", String(busy));
+        if (submitButton) {
+          submitButton.disabled = busy;
+          submitButton.setAttribute("aria-busy", String(busy));
+        }
+      };
       const activeOrg = getActiveOrganizationId();
       const activeOrganization = normalizeOrganizations(this.model.state.activeuser || {})
         .find((organization) => organization.id === activeOrg);
@@ -408,6 +417,7 @@ export function setupRBACEvents() {
       const employeePhone = document.getElementById("emp-phone").value.trim();
       const emailInput = document.getElementById("emp-email").value.trim().toLowerCase();
       let lookupFailureMessage = "";
+      setEmployeeSubmitBusy(true);
       try {
         const res = await apiFetch(`/api/organizations/membership-candidate?email=${encodeURIComponent(emailInput)}`);
         const lookupResult = await res.json();
@@ -421,6 +431,7 @@ export function setupRBACEvents() {
         lookupFailureMessage = "Không thể kết nối máy chủ để tra cứu tài khoản.";
       }
       if (!foundUser) {
+        setEmployeeSubmitBusy(false);
         await this.view.customAlert(
           "Thông báo",
           lookupFailureMessage || "Nhân sự chưa có tài khoản đang hoạt động và đã xác minh trên hệ thống!",
@@ -439,6 +450,7 @@ export function setupRBACEvents() {
               body: JSON.stringify({ user_id: oldUserId })
             });
             if (!removeResponse.ok) {
+              setEmployeeSubmitBusy(false);
               let removePayload = {};
               try { removePayload = await removeResponse.json(); } catch { /* empty error body */ }
               await this.view.customAlert(
@@ -450,6 +462,7 @@ export function setupRBACEvents() {
             }
           } catch (err) {
             console.error("Failed to remove the previous employee from the organization:", err);
+            setEmployeeSubmitBusy(false);
             await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối máy chủ để gỡ nhân sự cũ. Vui lòng thử lại.", "alert-triangle");
             return;
           }
@@ -486,33 +499,74 @@ export function setupRBACEvents() {
         });
         if (!resAdd.ok) {
           const errData = await resAdd.json();
+          setEmployeeSubmitBusy(false);
           await this.view.customAlert("Thất bại", errData.error || "Không thể phân công nhân sự này.", "alert-triangle");
           return;
         }
       } catch (err) {
+        setEmployeeSubmitBusy(false);
         await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
         return;
       }
-      const empIdInState = foundUser.id;
-      await this.reloadEmployeesFromDatabase();
-      if (!this.model.state.permissionmatrix.some((m) => m.empId === empIdInState)) {
-        const defaultPermission = {
-          id: generateRecordId("permissionmatrix"),
-          empId: empIdInState,
-          kehoach: "view",
-          goithau: "view",
-          hopdong: "view",
-          chudautu: "view",
-          nhathau: "view",
-          chuyengia: "view"
+      try {
+        const empIdInState = foundUser.id;
+        const optimisticEmployee = {
+          id: empIdInState,
+          username: foundUser.username || emailInput.split("@")[0],
+          name: employeeName || foundUser.name || emailInput,
+          email: foundUser.email || emailInput,
+          phone: employeePhone,
+          status: "active",
+          role: foundUser.role || "employee",
+          organizations: foundUser.organizations || [],
         };
-        this.model.state.permissionmatrix.push(defaultPermission);
-        await persistAdminUpserts(this.model, { permissionmatrix: [defaultPermission] });
+        const employeeIndex = this.model.state.employees.findIndex(
+          (employee) => String(employee.id) === String(empIdInState),
+        );
+        if (employeeIndex >= 0) this.model.state.employees[employeeIndex] = optimisticEmployee;
+        else this.model.state.employees.push(optimisticEmployee);
+        await this.model.persistChanges("employees", { upserts: [optimisticEmployee] }, {
+          trackMutation: false,
+          throwOnError: true,
+        });
+        if (!this.model.state.permissionmatrix.some((m) => m.empId === empIdInState)) {
+          const defaultPermission = {
+            id: generateRecordId("permissionmatrix"),
+            empId: empIdInState,
+            kehoach: "view",
+            goithau: "view",
+            hopdong: "view",
+            chudautu: "view",
+            nhathau: "view",
+            chuyengia: "view"
+          };
+          this.model.state.permissionmatrix.push(defaultPermission);
+          await persistAdminUpserts(this.model, { permissionmatrix: [defaultPermission] });
+        }
+        this.view.closeModal("modal-manager-employee");
+        this.view.renderManagerNhanVienPanel();
+        this.view.showToast?.(
+          "Đã cập nhật nhân sự",
+          "Thành viên đã xuất hiện trong tổ chức; dữ liệu máy chủ đang được đối chiếu nền.",
+          "success",
+        );
+        void Promise.allSettled([
+          Promise.resolve(this.reloadEmployeesFromDatabase?.()),
+          Promise.resolve(this.autoSync?.()),
+        ]);
+      } catch (error) {
+        console.error("Failed to persist the confirmed organization member locally:", error);
+        this.view.showToast?.(
+          "Đã thêm nhân sự trên máy chủ",
+          "Dữ liệu cục bộ chưa cập nhật xong; hệ thống đang tải lại danh sách.",
+          "warning",
+        );
+        void Promise.resolve(this.reloadEmployeesFromDatabase?.()).catch((reloadError) => {
+          console.error("Failed to reload employees after local persistence failure:", reloadError);
+        });
+      } finally {
+        setEmployeeSubmitBusy(false);
       }
-      this.view.closeModal("modal-manager-employee");
-      this.view.renderManagerNhanVienPanel();
-      await this.view.customAlert("Thành công", "Thông tin nhân viên đã được cập nhật thành công!", "check-circle");
-      this.autoSync();
     });
   }
   const btnSaveMatrix = document.getElementById("btn-save-permission-matrix");
@@ -534,8 +588,14 @@ export function setupRBACEvents() {
         }
       });
       await persistAdminUpserts(this.model, { permissionmatrix: changedPermissions });
-      await this.view.customAlert("Lưu Ma trận thầu", "Ma trận phân quyền chi tiết đã được áp dụng và đồng bộ hóa thành công!", "check-circle");
-      this.autoSync();
+      this.view.showToast?.(
+        "Đã lưu ma trận phân quyền",
+        "Thay đổi đã được lưu trên thiết bị; máy chủ đang được đối chiếu nền.",
+        "success",
+      );
+      void Promise.resolve(this.autoSync?.()).catch((error) => {
+        console.error("Background permission synchronization failed:", error);
+      });
     });
   }
   const formHsg = document.getElementById("form-manager-hosogiay");
@@ -563,21 +623,19 @@ export function setupRBACEvents() {
       };
       await this.model.updateRecord("customcontractstatuses", data);
       this.view.renderManagerHoSoGiayPanel();
-      const syncResult = await this.autoSync();
-      if (!syncResult?.ok) {
-        await this.view.customAlert(
-          "Không thể lưu",
-          "Máy chủ chưa xác nhận thay đổi. Dữ liệu mới nhất sẽ được tải lại; vui lòng thử lại.",
-          "alert-triangle"
-        );
-        return;
-      }
       formHsg.reset();
       document.getElementById("form-hosogiay-id").value = "";
       document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
       lucide.createIcons();
       this.view.renderManagerHoSoGiayPanel();
-      await this.view.customAlert("Thành công", "Trạng thái hợp đồng đã được cập nhật thành công!", "check-circle");
+      this.view.showToast?.(
+        "Đã lưu trạng thái hợp đồng",
+        "Thay đổi đã được lưu trên thiết bị; máy chủ đang được đối chiếu nền.",
+        "success",
+      );
+      void Promise.resolve(this.autoSync?.()).catch((error) => {
+        console.error("Background contract status synchronization failed:", error);
+      });
     });
   }
   const accountPackageSelect = document.getElementById("detail-su-account-package");
@@ -1137,6 +1195,7 @@ export async function reAddEmployee(id, actionButton = null) {
   if (!confirmed) return;
 
   const originalButtonHtml = actionButton?.innerHTML || "";
+  let serverConfirmed = false;
   if (actionButton) {
     actionButton.disabled = true;
     actionButton.setAttribute("aria-busy", "true");
@@ -1158,8 +1217,21 @@ export async function reAddEmployee(id, actionButton = null) {
       await this.view.customAlert("Không thể thêm lại", data.error || "Không thể thêm lại nhân viên này.", "alert-triangle");
       return;
     }
+    serverConfirmed = true;
 
-    await this.reloadEmployeesFromDatabase();
+    const restoredEmployee = { ...employee, status: "active" };
+    const employeeIndex = this.model.state.employees.findIndex(
+      (item) => String(item.id) === String(employee.id),
+    );
+    if (employeeIndex >= 0) this.model.state.employees[employeeIndex] = restoredEmployee;
+    else this.model.state.employees.push(restoredEmployee);
+    this.model.state.formerEmployees = (this.model.state.formerEmployees || []).filter(
+      (item) => String(item.id) !== String(employee.id),
+    );
+    await this.model.persistChanges("employees", { upserts: [restoredEmployee] }, {
+      trackMutation: false,
+      throwOnError: true,
+    });
     if (!this.model.state.permissionmatrix.some((item) => item.empId === employee.id)) {
       const defaultPermission = {
         id: generateRecordId("permissionmatrix"),
@@ -1173,12 +1245,31 @@ export async function reAddEmployee(id, actionButton = null) {
       };
       this.model.state.permissionmatrix.push(defaultPermission);
       await persistAdminUpserts(this.model, { permissionmatrix: [defaultPermission] });
-      await this.forceSyncData(true, true);
     }
     this.view.renderManagerNhanVienPanel();
-    await this.view.customAlert("Đã thêm lại nhân viên", data.message || "Nhân viên đã trở lại tổ chức.", "check-circle");
+    this.view.showToast?.(
+      "Đã thêm lại nhân viên",
+      data.message || "Nhân viên đã trở lại tổ chức.",
+      "success",
+    );
+    void Promise.allSettled([
+      Promise.resolve(this.reloadEmployeesFromDatabase?.()),
+      Promise.resolve(this.autoSync?.()),
+    ]);
   } catch (err) {
-    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    if (serverConfirmed) {
+      console.error("Failed to persist the restored organization member locally:", err);
+      this.view.showToast?.(
+        "Đã thêm lại nhân viên trên máy chủ",
+        "Dữ liệu cục bộ chưa cập nhật xong; hệ thống đang tải lại danh sách.",
+        "warning",
+      );
+      void Promise.resolve(this.reloadEmployeesFromDatabase?.()).catch((reloadError) => {
+        console.error("Failed to reload restored employees:", reloadError);
+      });
+    } else {
+      await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    }
   } finally {
     if (actionButton?.isConnected) {
       actionButton.disabled = false;

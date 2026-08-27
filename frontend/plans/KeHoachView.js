@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
@@ -14,7 +14,9 @@ import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { selectVersionRepresentatives, versionRootId } from "../shared/versionResolver.js";
 import { bindVersionComparisonAction } from "../version-comparison/VersionComparisonPanel.js";
 import { bindLegalBindingAction } from "../legal-versioning/LegalBindingPanel.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 export async function renderKeHoachTable() {
+  const tablePerf = beginTablePerf("kehoach", "kehoach");
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
   const yearSelect = document.getElementById("filter-kehoach-nam");
@@ -35,14 +37,18 @@ export async function renderKeHoachTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 10);
+    const pageParams = {
+      page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
+      nam: filterNam, thang: filterThang,
+    };
+    if (!getCachedPaginatedRecords(this.model, "kehoach", pageParams)) {
+      renderTableLoading(tableBody, 10);
+    }
     try {
-      const data = await loadPaginatedRecords(this.model, "kehoach", {
-        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
-        nam: filterNam, thang: filterThang
-      });
+      const data = await loadPaginatedRecords(this.model, "kehoach", pageParams);
       slicedData = data.items;
       totalItems = data.totalItems;
+      tablePerf.dataComplete(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated plans", e);
@@ -59,6 +65,7 @@ export async function renderKeHoachTable() {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -123,6 +130,7 @@ export async function renderKeHoachTable() {
   }
   lucide.createIcons();
   this.enhanceTableHeaders("kehoach-table", "kehoach");
+  return { performance: tablePerf.complete() };
 }
 export function showKeHoachDetails(id, isSwitchingVersion = false) {
   let targetId = id;

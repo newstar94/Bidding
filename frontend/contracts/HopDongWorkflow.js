@@ -722,10 +722,13 @@ export async function handleHopDongSubmit(e) {
   );
   stageLocalRecords(this.model, "hopdong", changedContracts);
   const syncResult = await persistAndSync(this, "hopdong", {
+    backgroundSync: true,
     changes: { upserts: { hopdong: changedContracts } },
+    afterPersist: async () => {
+      this.closeModal("modal-hopdong");
+      await this.view.renderHopDongTable();
+    },
   });
   if (!syncResult?.ok) return;
-  this.closeModal("modal-hopdong");
-  await this.view.renderHopDongTable();
 }
 import { generateRecordId } from "../shared/idUtils.js";

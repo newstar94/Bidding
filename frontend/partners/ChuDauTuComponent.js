@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
@@ -9,7 +9,9 @@ import { renderEntityActions, standardEditDeleteActions } from "../shared/Entity
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { sortVersionsDescending, versionFamily } from "../shared/versionResolver.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 export async function renderChuDauTuTable() {
+  const tablePerf = beginTablePerf("chudautu", "chudautu");
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
   const searchVal = document.getElementById("search-chudautu").value.toLowerCase();
   let slicedData = [];
@@ -20,13 +22,15 @@ export async function renderChuDauTuTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 8);
+    const pageParams = { page: currentPage, pageSize, search: searchVal, sortBy, sortOrder };
+    if (!getCachedPaginatedRecords(this.model, "chudautu", pageParams)) {
+      renderTableLoading(tableBody, 8);
+    }
     try {
-      const data = await loadPaginatedRecords(this.model, "chudautu", {
-        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
-      });
+      const data = await loadPaginatedRecords(this.model, "chudautu", pageParams);
       slicedData = data.items;
       totalItems = data.totalItems;
+      tablePerf.dataComplete(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated investors", e);
@@ -42,6 +46,7 @@ export async function renderChuDauTuTable() {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -99,6 +104,7 @@ export async function renderChuDauTuTable() {
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("chudautu-table", "chudautu");
+  return { performance: tablePerf.complete() };
 }
 export function showChuDauTuDetails(id) {
   const detailPane = document.getElementById("tab-chudautu-detail");

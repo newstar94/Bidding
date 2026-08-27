@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { snapshotPlanAggregate } from "../../frontend/plans/planAggregateSnapshot.js";
+import { EntityIndexes } from "../../frontend/app/EntityIndexes.js";
 import {
   hydratePlanPackageRecords,
+  getCachedPaginatedRecords,
+  invalidatePaginatedQueryCache,
   loadPaginatedRecords,
+  prefetchPaginatedRecords,
 } from "../../frontend/shared/tableDataUtils.js";
 
 function deferred() {
@@ -229,6 +233,131 @@ test("paginated loading rejects a stale workspace response before cache or query
     assert.deepEqual(writes, []);
     assert.equal(model._lastPaginatedQueries, undefined);
   } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("paginated first page cache deduplicates prefetch and click without mixing query variants", async () => {
+  const previousFetch = globalThis.fetch;
+  let requests = 0;
+  const model = {
+    useServerSidePagination: true,
+    getWorkspaceToken: () => "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: { activerole: "manager", kehoach: [] },
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  globalThis.fetch = async (url) => {
+    requests += 1;
+    const parsed = new URL(String(url), "http://localhost");
+    return response({
+      items: [{ id: `plan-${parsed.searchParams.get("search") || "empty"}` }],
+      totalItems: 1,
+      hasMore: false,
+      nextCursor: null,
+    });
+  };
+  const params = { page: 1, pageSize: 10, search: "", sortBy: "", sortOrder: "asc" };
+  try {
+    const prefetch = prefetchPaginatedRecords(model, "kehoach", params);
+    const click = loadPaginatedRecords(model, "kehoach", params);
+    const [prefetched, loaded] = await Promise.all([prefetch, click]);
+    assert.equal(requests, 1);
+    assert.equal(prefetched.items[0].id, "plan-empty");
+    assert.equal(loaded.inFlightDeduped, true);
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params).cacheHit, true);
+    await loadPaginatedRecords(model, "kehoach", { ...params, search: "mới" });
+    assert.equal(requests, 2, "a different search must use a different page cache entry");
+    await loadPaginatedRecords(model, "kehoach", { ...params, page: 2 });
+    await loadPaginatedRecords(model, "kehoach", { ...params, sortBy: "ngayPheDuyet", sortOrder: "desc" });
+    await loadPaginatedRecords(model, "kehoach", { ...params, nam: "2026" });
+    assert.equal(requests, 5, "page, sort, and filters must have distinct cache entries");
+    await loadPaginatedRecords(model, "kehoach", params);
+    assert.equal(requests, 5, "loading another query must not evict the cached first page");
+
+    const entry = [...model._paginatedQueryCache.values()][0];
+    entry.fetchedAt = Date.now() - 31_000;
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params).stale, true);
+    await loadPaginatedRecords(model, "kehoach", params);
+    assert.equal(requests, 6, "an expired page must be revalidated");
+    invalidatePaginatedQueryCache(model, "kehoach");
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params), null);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("paginated cache is isolated by workspace and invalidated through the entity index seam", async () => {
+  const previousFetch = globalThis.fetch;
+  let token = "user:org-a@1";
+  const model = {
+    useServerSidePagination: true,
+    getWorkspaceToken: () => token,
+    workspaceScope: { key: "user:org-a" },
+    state: { kehoach: [] },
+    normalizeRecordKeys: (record) => record,
+  };
+  model.entityIndexes = new EntityIndexes(
+    (table) => model.state[table],
+    (table) => invalidatePaginatedQueryCache(model, table),
+  );
+  globalThis.fetch = async () => response({
+    items: [{ id: token }], totalItems: 1, hasMore: false, nextCursor: null,
+  });
+  const params = { page: 1, pageSize: 10, search: "" };
+  try {
+    await loadPaginatedRecords(model, "kehoach", params);
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params).items[0].id, "user:org-a@1");
+
+    token = "user:org-b@2";
+    model.workspaceScope = { key: "user:org-b" };
+    model.state = { kehoach: [] };
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params), null);
+    await loadPaginatedRecords(model, "kehoach", params);
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params).items[0].id, "user:org-b@2");
+
+    model.state.activerole = "employee";
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params), null);
+    await loadPaginatedRecords(model, "kehoach", params);
+    assert.notEqual(getCachedPaginatedRecords(model, "kehoach", params), null);
+
+    model.entityIndexes.invalidate("kehoach");
+    assert.equal(getCachedPaginatedRecords(model, "kehoach", params), null);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("expired page remains usable while an offline revalidation fails", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousWarn = console.warn;
+  const model = {
+    getWorkspaceToken: () => "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: { kehoach: [] },
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  const params = { page: 1, pageSize: 10, search: "" };
+  console.warn = () => {};
+  try {
+    globalThis.fetch = async () => response({
+      items: [{ id: "plan-cached" }], totalItems: 1, hasMore: false, nextCursor: null,
+    });
+    await loadPaginatedRecords(model, "kehoach", params);
+    const entry = [...model._paginatedQueryCache.values()][0];
+    entry.fetchedAt = Date.now() - 31_000;
+    globalThis.fetch = async () => { throw new TypeError("offline"); };
+    const fallback = await loadPaginatedRecords(model, "kehoach", params);
+    assert.equal(fallback.items[0].id, "plan-cached");
+    assert.equal(fallback.stale, true);
+    assert.equal(fallback.revalidationFailed, true);
+  } finally {
+    console.warn = previousWarn;
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
   }

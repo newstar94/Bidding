@@ -10,6 +10,7 @@ import {
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
+import { perfNow, reportPerf } from "../shared/perfDiagnostics.js";
 import {
   createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
@@ -184,8 +185,27 @@ export function setupTabs() {
   this.view.elements.navButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetTab = btn.getAttribute("data-tab");
-      this.switchTab(targetTab);
+      void Promise.resolve().then(() => this.switchTab(targetTab)).catch((error) => {
+        console.error("Failed to switch tab:", targetTab, error);
+        this.view?.showToast?.("Không thể mở trang", "Vui lòng thử lại.", "error");
+      });
     });
+    const prefetch = () => {
+      const targetTab = btn.getAttribute("data-tab");
+      if (!targetTab || typeof this.warmTab !== "function") return;
+      this._tabIntentPrefetches ||= new Set();
+      if (this._tabIntentPrefetches.has(targetTab)) return;
+      this._tabIntentPrefetches.add(targetTab);
+      void Promise.resolve()
+        .then(() => this.warmTab(targetTab))
+        .catch((error) => {
+          console.warn("Could not prefetch tab intent:", targetTab, error);
+          this._tabIntentPrefetches.delete(targetTab);
+        });
+    };
+    btn.addEventListener("pointerenter", prefetch, { passive: true });
+    btn.addEventListener("focusin", prefetch);
+    btn.addEventListener("touchstart", prefetch, { passive: true, once: true });
   });
   const viewAllPackagesBtn = document.getElementById("btn-view-all-packages");
   if (viewAllPackagesBtn) {
@@ -391,45 +411,92 @@ export function beginTabTransition(controller, transitionVersion = null) {
 }
 
 export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
+  const firstPass = transitionVersion == null;
   const transition = beginTabTransition(this, transitionVersion);
   transitionVersion = transition.version;
   const isCurrentTransition = transition.isCurrent;
-  if (!isCurrentTransition()) return;
+  this._tabPerfTransitions ||= new Map();
+  if (firstPass) {
+    this._tabPerfTransitions.set(transitionVersion, {
+      startedAt: perfNow(),
+      tabName,
+      viewModule: 0,
+      workflow: 0,
+      lazyPartial: 0,
+      cold: false,
+    });
+  }
+  const tabPerf = this._tabPerfTransitions.get(transitionVersion);
+  const finishPerfTransition = () => this._tabPerfTransitions?.delete?.(transitionVersion);
+  if (!isCurrentTransition()) {
+    finishPerfTransition();
+    return;
+  }
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
   action = guardedRoute.action;
   if (!this.view.areViewModulesReady(tabName)) {
-    return this.view.ensureViewModules(tabName).then(() => {
-      if (!isCurrentTransition()) return;
-      return this.switchTab(tabName, action, updateState, transitionVersion);
-    }).catch((err) => {
-      if (!isCurrentTransition()) return;
-      console.error("Failed to load view module:", tabName, err);
-      this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
-    });
+    const gateStartedAt = perfNow();
+    if (tabPerf) tabPerf.cold = true;
+    return this.view.ensureViewModules(tabName).then(
+      () => {
+        if (tabPerf) tabPerf.viewModule += perfNow() - gateStartedAt;
+        if (!isCurrentTransition()) {
+          finishPerfTransition();
+          return;
+        }
+        return this.switchTab(tabName, action, updateState, transitionVersion);
+      },
+      (err) => {
+        finishPerfTransition();
+        if (!isCurrentTransition()) return;
+        console.error("Failed to load view module:", tabName, err);
+        this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
+      },
+    );
   }
   const workflowRequirement = workflowRequirementForRoute(tabName, action);
   const workflowReady = this._workflowModulesReady
     || this.isWorkflowRequirementReady?.(workflowRequirement);
   if (!workflowReady) {
-    return this.ensureWorkflowRequirement(workflowRequirement).then(() => {
-      if (!isCurrentTransition()) return;
-      return this.switchTab(tabName, action, updateState, transitionVersion);
-    }).catch((err) => {
-      if (!isCurrentTransition()) return;
-      console.error("Failed to load workflow module:", tabName, err);
-      this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
-    });
+    const gateStartedAt = perfNow();
+    if (tabPerf) tabPerf.cold = true;
+    return this.ensureWorkflowRequirement(workflowRequirement).then(
+      () => {
+        if (tabPerf) tabPerf.workflow += perfNow() - gateStartedAt;
+        if (!isCurrentTransition()) {
+          finishPerfTransition();
+          return;
+        }
+        return this.switchTab(tabName, action, updateState, transitionVersion);
+      },
+      (err) => {
+        finishPerfTransition();
+        if (!isCurrentTransition()) return;
+        console.error("Failed to load workflow module:", tabName, err);
+        this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
+      },
+    );
   }
   if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
-    return this.ensureLazyTab(tabName).then(() => {
-      if (!isCurrentTransition()) return;
-      return this.switchTab(tabName, action, updateState, transitionVersion);
-    }).catch((err) => {
-      if (!isCurrentTransition()) return;
-      console.error("Failed to lazy-load tab:", tabName, err);
-      this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
-    });
+    const gateStartedAt = perfNow();
+    if (tabPerf) tabPerf.cold = true;
+    return this.ensureLazyTab(tabName).then(
+      () => {
+        if (tabPerf) tabPerf.lazyPartial += perfNow() - gateStartedAt;
+        if (!isCurrentTransition()) {
+          finishPerfTransition();
+          return;
+        }
+        return this.switchTab(tabName, action, updateState, transitionVersion);
+      },
+      (err) => {
+        finishPerfTransition();
+        if (!isCurrentTransition()) return;
+        console.error("Failed to lazy-load tab:", tabName, err);
+        this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
+      },
+    );
   }
   if (!isCurrentTransition()) return;
   resetTimelineOnNavigation(this, tabName);
@@ -528,7 +595,38 @@ export function switchTab(tabName, action = null, updateState = true, transition
     profile: "Thông tin tài khoản cá nhân"
   };
   this.view.elements.pageTitle.textContent = titleMap[tabName] || "Hệ thống Quản lý";
+  const renderStartedAt = perfNow();
   const renderTask = this.renderTabData(tabName, action);
+  const measuredRenderTask = Promise.resolve(renderTask).then((result) => {
+    if (isCurrentTransition()) {
+      const renderDuration = perfNow() - renderStartedAt;
+      const tablePerf = result?.performance;
+      reportPerf({
+        phase: "tab-complete",
+        tabName,
+        cold: Boolean(tabPerf?.cold || tablePerf?.cold),
+        viewModule: Math.round(tabPerf?.viewModule || 0),
+        workflow: Math.round(tabPerf?.workflow || 0),
+        lazyPartial: Math.round(tabPerf?.lazyPartial || 0),
+        data: Math.round(tablePerf?.data || 0),
+        render: Math.round(tablePerf?.render ?? renderDuration),
+        cacheHit: Boolean(tablePerf?.cacheHit),
+        prefetched: Boolean(tablePerf?.prefetched),
+        inFlightDeduped: Boolean(tablePerf?.inFlightDeduped),
+        localSnapshot: Boolean(tablePerf?.localSnapshot),
+        total: Math.round(perfNow() - (tabPerf?.startedAt || renderStartedAt)),
+      });
+    }
+    finishPerfTransition();
+    return result;
+  }, (error) => {
+    finishPerfTransition();
+    if (isCurrentTransition()) {
+      console.error("Failed to render tab:", tabName, error);
+      this.view?.showToast?.("Không thể hiển thị dữ liệu", "Vui lòng thử lại.", "error");
+    }
+    return undefined;
+  });
   if (action === "taomoi") {
     setTimeout(() => {
       if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;
@@ -559,7 +657,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
       setRuntimeStyle(document.body, "overflow", "");
     }
   }
-  return renderTask;
+  return measuredRenderTask;
 }
 
 export function resetTimelineOnNavigation(controller, nextTab) {
@@ -603,30 +701,31 @@ export function setupProfileDropdownEvents() {
   });
 }
 export function renderTabData(tabName, action = null) {
+  let renderTask;
   switch (tabName) {
     case "dashboard":
       this.view.renderDashboard();
       break;
     case "kehoach":
-      this.view.renderKeHoachTable();
+      renderTask = this.view.renderKeHoachTable();
       break;
     case "goithau":
-      this.view.renderGoiThauTable();
+      renderTask = this.view.renderGoiThauTable();
       break;
     case "goithau-timeline":
-      this.view.renderPackageTimeline();
+      renderTask = this.view.renderPackageTimeline();
       break;
     case "chudautu":
-      this.view.renderChuDauTuTable();
+      renderTask = this.view.renderChuDauTuTable();
       break;
     case "nhathau":
-      this.view.renderNhaThauTable();
+      renderTask = this.view.renderNhaThauTable();
       break;
     case "chuyengia":
-      this.view.renderChuyenGiaTable();
+      renderTask = this.view.renderChuyenGiaTable();
       break;
     case "hopdong":
-      this.view.renderHopDongTable();
+      renderTask = this.view.renderHopDongTable();
       break;
     case "bieumau":
       this.setupWordTemplatesEvents();
@@ -712,6 +811,7 @@ export function renderTabData(tabName, action = null) {
   this.view.createIconsScoped(document.querySelector(".top-header") || document.querySelector(".app-header") || document.querySelector("header"));
   this.view.createIconsScoped(activePane);
   this.view.enhanceVisibleContent(activePane);
+  return renderTask;
 }
 export async function closeModal(modalId, options = {}) {
   const restoreRoute = options?.restoreRoute !== false;

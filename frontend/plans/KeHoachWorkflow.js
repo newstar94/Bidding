@@ -1490,6 +1490,7 @@ export async function savePlanBreakdown() {
   const finalDraftSession = findPlanVersionDraftSession(this.model, finalPlanId);
   let syncResult;
   let canonicalRefreshIsCurrent = null;
+  let modalClosedAfterDurableDraft = false;
   if (finalDraftSession) {
     const finalizeLease = captureWorkspaceLease(this.model);
     const finalizeStorage = this.model.workspaceStorage;
@@ -1497,16 +1498,33 @@ export async function savePlanBreakdown() {
       isWorkspaceLeaseCurrent(this.model, finalizeLease)
       && this.model.workspaceStorage === finalizeStorage
     );
-    try {
-      const finalizeResult = await finalizePlanVersionDraft(this, finalDraftSession, {
-        send: this.finalizePlanDraft,
-      });
-      if (finalizeResult?.workspaceChanged || !finalizeIsCurrent()) {
+    let durableDraftSaved = false;
+    let signalDurableDraftSaved;
+    const durableDraftReady = new Promise((resolve) => {
+      signalDurableDraftSaved = resolve;
+    });
+    const finalizeOutcome = finalizePlanVersionDraft(this, finalDraftSession, {
+      send: this.finalizePlanDraft,
+      onDurableDraftSaved: () => {
+        durableDraftSaved = true;
+        signalDurableDraftSaved({ type: "durable-draft" });
+      },
+    }).then(
+      (result) => ({ ok: true, result }),
+      (error) => ({ ok: false, error }),
+    );
+    const firstFinalizeMilestone = await Promise.race([
+      durableDraftReady,
+      finalizeOutcome.then((outcome) => ({ type: "finalize", outcome })),
+    ]);
+    const earlyFinalizeOutcome = firstFinalizeMilestone.type === "finalize"
+      ? firstFinalizeMilestone.outcome
+      : null;
+    if (!durableDraftSaved) {
+      if (earlyFinalizeOutcome?.ok) {
         return stalePlanFinalizeResult();
       }
-      canonicalRefreshIsCurrent = finalizeIsCurrent;
-      syncResult = { ok: true };
-    } catch (error) {
+      const error = earlyFinalizeOutcome?.error;
       await this.view.customAlert(
         "Chưa thể hoàn tất kế hoạch",
         error?.message || "Máy chủ chưa xác nhận toàn bộ chuỗi phiên bản. Bản nháp vẫn được giữ trên thiết bị.",
@@ -1514,10 +1532,44 @@ export async function savePlanBreakdown() {
       );
       return { ok: false, error };
     }
+
+    if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
+    this.backupKeHoachState = null;
+    this.backupGoiThauState = null;
+    this.tempPlanData = null;
+    this.tempPlanAction = null;
+    this.planBreakdownDraft = null;
+    await this.closeModal("modal-plan-breakdown", {
+      restoreRoute: false,
+      preserveProcurementImport: true,
+      deferPlanTableRender: true,
+    });
+    modalClosedAfterDurableDraft = true;
+
+    const completedFinalizeOutcome = earlyFinalizeOutcome || await finalizeOutcome;
+    if (!completedFinalizeOutcome.ok) {
+      if (finalizeIsCurrent()) {
+        const message = completedFinalizeOutcome.error?.message
+          || "Bản nháp đã được giữ trên thiết bị và sẽ có thể đồng bộ lại.";
+        if (typeof this.view.showToast === "function") {
+          this.view.showToast("Chưa đồng bộ kế hoạch", message, "warning");
+        } else {
+          await this.view.customAlert("Chưa đồng bộ kế hoạch", message, "alert-triangle");
+        }
+      }
+      return { ok: false, error: completedFinalizeOutcome.error };
+    }
+    const finalizeResult = completedFinalizeOutcome.result;
+    if (finalizeResult?.workspaceChanged || !finalizeIsCurrent()) {
+      return stalePlanFinalizeResult();
+    }
+    canonicalRefreshIsCurrent = finalizeIsCurrent;
+    syncResult = { ok: true };
   } else {
     syncResult = officialVersionCommitted
       ? (await renderVersionTables(), { ok: true })
       : await mutatePersistAndSync(this, explicitChanges, {
+        backgroundSync: true,
         tableKeys: [
           ...new Set([
             ...Object.keys(explicitChanges.upserts),
@@ -1528,16 +1580,18 @@ export async function savePlanBreakdown() {
       });
   }
   if (!syncResult?.ok) return;
-  this.backupKeHoachState = null;
-  this.backupGoiThauState = null;
-  this.tempPlanData = null;
-  this.tempPlanAction = null;
-  this.planBreakdownDraft = null;
-  await this.closeModal("modal-plan-breakdown", {
-    restoreRoute: false,
-    preserveProcurementImport: true,
-    deferPlanTableRender: true,
-  });
+  if (!modalClosedAfterDurableDraft) {
+    this.backupKeHoachState = null;
+    this.backupGoiThauState = null;
+    this.tempPlanData = null;
+    this.tempPlanAction = null;
+    this.planBreakdownDraft = null;
+    await this.closeModal("modal-plan-breakdown", {
+      restoreRoute: false,
+      preserveProcurementImport: true,
+      deferPlanTableRender: true,
+    });
+  }
   if (this.procurementPlanImport?.controller) {
     await this.completeProcurementPlanImportRevision?.(finalPlanId);
   } else {

@@ -633,6 +633,7 @@ export async function finalizePlanVersionDraft(controller, session, {
     headers: { "Idempotency-Key": payload.clientMutationId },
     retries: 1,
   }),
+  onDurableDraftSaved = null,
 } = {}) {
   const model = controller?.model;
   const lease = captureWorkspaceLease(model);
@@ -665,6 +666,9 @@ export async function finalizePlanVersionDraft(controller, session, {
   const payload = buildPlanDraftFinalizePayload(resources, refreshed);
   const finalizedMutationReceipt = resources.outbox?.captureReceiptForRecords?.(payload);
   if (!isCurrent()) return staleFinalizeResult();
+  if (typeof onDurableDraftSaved === "function") {
+    onDurableDraftSaved({ payload, session: clone(refreshed) });
+  }
   const response = await send(payload);
   if (!isCurrent()) return staleFinalizeResult();
   const applied = await applyCanonicalFinalizeResponse(resources, response, isCurrent);

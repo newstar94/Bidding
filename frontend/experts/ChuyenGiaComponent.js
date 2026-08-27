@@ -1,13 +1,15 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml, formatDateOnly, safeImageSrc } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { getAppController } from "../app/controllerRef.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
+  const tablePerf = beginTablePerf("chuyengia", "chuyengia");
   const table = document.getElementById("chuyengia-table");
   if (!table) return;
   const tableBody = table.querySelector("tbody");
@@ -30,18 +32,20 @@ export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
   ]);
   if (this.model.useServerSidePagination) {
     const pageSnapshot = this._chuyenGiaPageSnapshot;
+    const pageParams = { page: currentPage, pageSize, search: searchVal, sortBy, sortOrder };
+    const cachedPage = getCachedPaginatedRecords(this.model, "chuyengia", pageParams);
     if (reuseCurrentPage && pageSnapshot?.key === pageSnapshotKey) {
       slicedData = pageSnapshot.items;
       totalItems = pageSnapshot.totalItems;
+      tablePerf.dataComplete({ cacheHit: true, prefetched: Boolean(cachedPage?.prefetched) });
     } else {
-      renderTableLoading(tableBody, 7);
+      if (!cachedPage) renderTableLoading(tableBody, 7);
       try {
-        const data = await loadPaginatedRecords(this.model, "chuyengia", {
-          page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
-        });
+        const data = await loadPaginatedRecords(this.model, "chuyengia", pageParams);
         if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
         slicedData = data.items;
         totalItems = data.totalItems;
+        tablePerf.dataComplete(data);
         this._chuyenGiaPageSnapshot = {
           key: pageSnapshotKey,
           items: slicedData,
@@ -64,6 +68,7 @@ export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -115,6 +120,7 @@ export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("chuyengia-table", "chuyengia");
+  return { performance: tablePerf.complete() };
 }
 export function showChuyenGiaDetails(id) {
   if (!document.getElementById("modal-detail-chuyengia")) {

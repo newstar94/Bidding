@@ -23,7 +23,9 @@ export async function persistAndSync(controller, tableKeys, {
   afterPersist,
   allowLegacyPersistence = false,
   authoritativeBoundaryChecked = false,
+  backgroundSync = false,
   changes = null,
+  releaseBeforeRemoteSync = false,
   workspaceMutation = null,
 } = {}) {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
@@ -45,6 +47,12 @@ export async function persistAndSync(controller, tableKeys, {
   const ownsMutation = !workspaceMutation
     && typeof model?.beginWorkspaceMutation === "function";
   const mutation = workspaceMutation || (ownsMutation ? model.beginWorkspaceMutation() : null);
+  let mutationReleased = false;
+  const releaseMutation = () => {
+    if (!mutation || mutationReleased) return;
+    model.finishWorkspaceMutation?.(mutation);
+    mutationReleased = true;
+  };
   if (mutation) model.assertWorkspaceMutation?.(mutation);
   try {
   model?.assertStorageTablesWritable?.(keys);
@@ -89,7 +97,7 @@ export async function persistAndSync(controller, tableKeys, {
   // the view is rendered exactly once after the sync has committed. Rendering
   // twice can abort the first pagination request and briefly show a false
   // "cannot load data" state after a delete.
-  if (usesServerPagination && typeof afterPersist === "function") {
+  if (usesServerPagination && typeof afterPersist === "function" && !backgroundSync) {
     controller._deferPostCommitRender = true;
   }
   if (!usesServerPagination && typeof afterPersist === "function") {
@@ -97,30 +105,55 @@ export async function persistAndSync(controller, tableKeys, {
   }
   if (mutation?.outbox) await mutation.outbox.flush();
   else await model?.flushMutationOutbox?.();
-  let syncResult;
-  try {
-    syncResult = typeof controller.autoSync === "function"
-      ? await controller.autoSync()
-      : { ok: true };
-  } catch (error) {
-    syncResult = { ok: false, transport: true, error };
+  const startRemoteSync = async () => {
+    let syncResult;
+    try {
+      syncResult = typeof controller.autoSync === "function"
+        ? await controller.autoSync()
+        : { ok: true };
+    } catch (error) {
+      syncResult = { ok: false, transport: true, error };
+    }
+    if (
+      syncResult?.idempotencyKeyReused === true
+      && syncResult?.retryable !== false
+      && typeof controller.forceSyncData === "function"
+      && typeof controller.autoSync === "function"
+    ) {
+      const pullResult = await controller.forceSyncData(false, true);
+      if (!pullResult?.ok) return pullResult;
+      syncResult = await controller.autoSync({ idempotencyRecoveryAttempted: true });
+    }
+    if (!backgroundSync && usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
+      await afterPersist();
+    }
+    return syncResult;
+  };
+  if (backgroundSync) {
+    if (usesServerPagination && typeof afterPersist === "function") {
+      // The local state and outbox are durable now. Render that state
+      // immediately; the successful server response performs the canonical
+      // paginated refresh through the same callback.
+      await afterPersist();
+    }
+    const syncPromise = startRemoteSync();
+    // Once IndexedDB and the outbox are durable, the workspace lease no longer
+    // needs to be held by network latency. autoSync captures the current scope
+    // synchronously before this release, so a later workspace switch cannot
+    // redirect the request to another tenant.
+    if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
+    // autoSync owns user-visible error/conflict reporting. This handler only
+    // prevents a caller that intentionally does not await the background work
+    // from creating an unhandled rejection.
+    void syncPromise.catch((error) => {
+      console.error("Background synchronization failed:", error);
+    });
+    return { ok: true, local: true, queued: true, syncPromise };
   }
-  if (
-    syncResult?.idempotencyKeyReused === true
-    && syncResult?.retryable !== false
-    && typeof controller.forceSyncData === "function"
-    && typeof controller.autoSync === "function"
-  ) {
-    const pullResult = await controller.forceSyncData(false, true);
-    if (!pullResult?.ok) return pullResult;
-    syncResult = await controller.autoSync({ idempotencyRecoveryAttempted: true });
-  }
-  if (usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
-    await afterPersist();
-  }
-  return syncResult;
+  if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
+  return await startRemoteSync();
   } finally {
-    if (ownsMutation) model.finishWorkspaceMutation?.(mutation);
+    if (ownsMutation && !mutationReleased) releaseMutation();
   }
 }
 
@@ -230,6 +263,7 @@ export async function mutatePersistAndSync(controller, mutation, options = {}) {
       ...options,
       authoritativeBoundaryChecked: true,
       changes: mutation,
+      releaseBeforeRemoteSync: ownsMutation,
       workspaceMutation,
     });
   } finally {

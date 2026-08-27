@@ -297,6 +297,7 @@ export async function handleNhaThauSubmit(e) {
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
   await mutatePersistAndSync(this, { upserts: { nhathau: upsertRecords } }, {
+    backgroundSync: true,
     afterPersist: async () => {
       await this.closeModal("modal-nhathau");
       this.view.renderNhaThauTable();

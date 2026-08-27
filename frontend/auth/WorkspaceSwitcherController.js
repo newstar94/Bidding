@@ -76,25 +76,36 @@ export function renderWorkspaceSwitcher() {
         return;
       }
 
+      closeProfileDropdown();
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
       try {
         await this.switchWorkspaceContext(selectedWorkspaceId);
         if (typeof this.reloadEmployeesFromDatabase === "function") {
-          await this.reloadEmployeesFromDatabase();
+          // This request carries a workspace lease and can safely finish after
+          // navigation has already responded to the user. Sequence it after
+          // the authoritative pull to avoid competing DB reads.
+          const reconciliation = this._startupReconciliationPromise || Promise.resolve();
+          void Promise.resolve(reconciliation).finally(() => this.reloadEmployeesFromDatabase());
         }
         const selectedName = workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name
           || selectedWorkspaceId;
-        await this.view.customAlert(
-          "Chuyển đổi thành công",
-          `Đã chuyển sang không gian làm việc “${selectedName}”.`,
-          "check-circle"
+        this.view.showToast?.(
+          "Đã chuyển không gian làm việc",
+          `Đang làm việc tại “${selectedName}”. Dữ liệu mới nhất sẽ tự cập nhật.`,
+          "success",
         );
-        closeProfileDropdown();
       } catch (error) {
         await this.view.customAlert(
           "Lỗi hệ thống",
           `Không thể chuyển không gian làm việc: ${error.message}`,
           "alert-triangle"
         );
+      } finally {
+        if (button.isConnected) {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
       }
     });
   });

@@ -47,6 +47,7 @@ import {
   beginWorkspaceRequest,
   finishWorkspaceRequest,
 } from "./workspaceLease.js";
+import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -472,10 +473,6 @@ export class BiddingController {
       );
       if (!confirmed) return { changed: false, cancelled: true, organizationId: currentOrganizationId };
     }
-    const startupState = this.getStartupReconciliationState?.();
-    const startupReconciliationInFlight = Boolean(
-      startupState?.promise || this._startupReconciliationPromise,
-    );
     this._workspaceTransitionPromise = (async () => {
       this._workspaceSwitching = true;
       this.model.beginWorkspaceTransition?.();
@@ -485,20 +482,10 @@ export class BiddingController {
         this._backgroundSyncTimer = null;
       }
       this._backgroundSyncQueued = false;
-      if (
-        currentOrganizationId
-        && !options.skipPendingFlush
-        && navigator.onLine
-        && typeof this.autoSync === "function"
-        && !startupReconciliationInFlight
-        && !this._startupReconciliationPromise
-      ) {
-        try {
-          await this.autoSync();
-        } catch (error) {
-          console.warn("Pending mutations remain isolated in the previous workspace:", error);
-        }
-      }
+      // Every mutation above has already crossed the durable, workspace-scoped
+      // outbox boundary. Do not make navigation wait for a network push from
+      // the workspace the user is leaving; its pending batch remains isolated
+      // and will resume when that workspace becomes active again.
       this.disconnectWebSocket?.(false);
       setActiveOrganizationId(organizationId);
       window.dispatchEvent(new CustomEvent("bf:workspace-changed", {
@@ -524,22 +511,9 @@ export class BiddingController {
       this._workspacePullGenerations?.clear?.();
       this._pendingDetailRecordLoads?.clear?.();
       this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
+      // The new scope is now fully isolated and its local snapshot is ready.
+      // Unlock it before rendering so the shell can respond in the same turn.
       this.model.endWorkspaceTransition?.();
-      if (!options.localOnly && typeof this.forceSyncData === "function") {
-        // A workspace may retain a current delta cursor while its locally
-        // hydrated route tables are empty. Cross the scope boundary with an
-        // authoritative snapshot so the new workspace cannot render stale data.
-        const workspaceToken = this.model?.getWorkspaceToken?.()
-          || this.model?.workspaceScope?.key
-          || "";
-        transitionStartupReconciliation(
-          this,
-          STARTUP_RECONCILIATION_PHASE.RECONCILING,
-          { workspaceToken },
-        );
-        const pullResult = await this.forceSyncData(false, true);
-        completeStartupReconciliation(this, pullResult, workspaceToken);
-      }
       this.model.dashboardSummary = this.model.dashboardSummary || null;
       if (this.view) this.view._dashboardAggregateCache = null;
       this.renderWorkspaceSwitcher?.();
@@ -549,8 +523,47 @@ export class BiddingController {
         this.model.state.activetab = targetTab;
         await this.switchTab(targetTab, null, true);
       }
+      this._tabIntentPrefetches?.clear?.();
+      if (typeof requestAnimationFrame === "function") {
+        this.schedulePostStartupTask?.(() => this.warmPrimaryTabs(), { timeout: 700, delay: 100 });
+      }
       this.setupWebSocketConnection?.();
-      return { changed: true, organizationId, pendingPreserved: true };
+      let reconciliation = null;
+      if (!options.localOnly && typeof this.forceSyncData === "function" && navigator.onLine) {
+        // Keep the authoritative boundary: mutations in the new workspace wait
+        // for this promise, while navigation and local rendering do not.
+        const workspaceToken = this.model?.getWorkspaceToken?.()
+          || this.model?.workspaceScope?.key
+          || "";
+        reconciliation = Promise.resolve().then(async () => {
+          try {
+            const pullResult = await this.forceSyncData(false, true);
+            completeStartupReconciliation(this, pullResult, workspaceToken);
+            return pullResult;
+          } catch (error) {
+            completeStartupReconciliation(this, { ok: false, error }, workspaceToken);
+            console.warn("Workspace data refresh will be retried in the background:", error);
+            return { ok: false, error };
+          }
+        });
+        transitionStartupReconciliation(
+          this,
+          STARTUP_RECONCILIATION_PHASE.RECONCILING,
+          { promise: reconciliation, workspaceToken },
+        );
+        this._startupReconciliationPromise = reconciliation;
+        void reconciliation.finally(() => {
+          if (this._startupReconciliationPromise === reconciliation) {
+            this._startupReconciliationPromise = null;
+          }
+        });
+      }
+      return {
+        changed: true,
+        organizationId,
+        pendingPreserved: true,
+        reconciliationPending: Boolean(reconciliation),
+      };
     })().finally(() => {
       this.model.endWorkspaceTransition?.();
       this._workspaceSwitching = false;
@@ -697,6 +710,76 @@ export class BiddingController {
     } else {
       setTimeout(load, 1e3);
     }
+  }
+  getPrimaryTabWarmQueries() {
+    const pageSize = this.model?.pageSize || 10;
+    const pageParams = (table, extra = {}) => ({
+      page: this.model?.currentPage?.[table] || 1,
+      pageSize,
+      search: "",
+      sortBy: this.model?.sortState?.[table]?.field || "",
+      sortOrder: this.model?.sortState?.[table]?.order || "asc",
+      ...extra,
+    });
+    const queries = {
+      kehoach: { table: "kehoach", params: pageParams("kehoach", { nam: "", thang: "" }) },
+      goithau: { table: "goithau", params: pageParams("goithau", { trangThai: "", hinhThuc: "", nam: "", thang: "" }) },
+      chudautu: { table: "chudautu", params: pageParams("chudautu") },
+      nhathau: { table: "nhathau", params: pageParams("nhathau") },
+      chuyengia: { table: "chuyengia", params: pageParams("chuyengia") },
+      hopdong: { table: "hopdong", params: pageParams("hopdong", { nam: "", thang: "" }) },
+    };
+    const visibleTabs = new Set(
+      [...(this.view?.elements?.navButtons || [])]
+        .filter((button) => !button.hidden && button.getAttribute("aria-hidden") !== "true")
+        .map((button) => button.getAttribute("data-tab"))
+        .filter(Boolean),
+    );
+    return Object.entries(queries)
+      .filter(([tab]) => visibleTabs.size === 0 || visibleTabs.has(tab))
+      .map(([, query]) => query);
+  }
+  async warmTab(tabName) {
+    const queryByTab = Object.fromEntries(
+      this.getPrimaryTabWarmQueries().map((query) => [query.table, query]),
+    );
+    const query = queryByTab[tabName];
+    await this.warmViewModule(tabName);
+    if (!query || !this.model?.useServerSidePagination) return null;
+    return prefetchPaginatedRecords(this.model, query.table, query.params);
+  }
+  async warmViewModule(tabName) {
+    try {
+      await Promise.resolve(this.view.ensureViewModules?.(tabName));
+      return true;
+    } catch (error) {
+      console.warn(`Could not warm view module for ${tabName}:`, error);
+      return false;
+    }
+  }
+  async warmPrimaryTabs() {
+    const currentToken = () => this.model?.getWorkspaceToken?.() || this.model?.workspaceScope?.key || "";
+    const workspaceToken = currentToken();
+    // Do not make tab warming wait for the potentially slow authoritative
+    // reconciliation.  Both operations carry the same workspace lease; a
+    // later sync invalidation will discard an obsolete page entry, while the
+    // first-page request can complete during the reconciliation window.
+    if (workspaceToken !== currentToken()) return;
+    const moduleWarmPromise = Promise.all(["kehoach", "chudautu", "goithau-timeline"].map(
+      (tab) => this.warmViewModule(tab),
+    ));
+    if (!this.model?.useServerSidePagination) {
+      await moduleWarmPromise;
+      return;
+    }
+    const queries = this.getPrimaryTabWarmQueries();
+    for (let index = 0; index < queries.length; index += 2) {
+      if (workspaceToken !== currentToken()) return;
+      await Promise.all(queries.slice(index, index + 2).map(({ table, params }) => (
+        prefetchPaginatedRecords(this.model, table, params)
+      )));
+    }
+    await moduleWarmPromise;
   }
   async init() {
     this.markStartup("init:start");
@@ -914,6 +997,11 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.scheduleBackgroundSync?.(300);
       this.loadInitDataInBackground();
     }, { timeout: 2500, delay: 900 });
+    this.schedulePostStartupTask(() => this.model.hydrateRemainingStorageKeysIdle?.(), { timeout: 2500, delay: 150 });
+    // Enter the warming task promptly. A long idle delay would otherwise leave
+    // the first tab competing with a cold page request even though the shell is
+    // already interactive.
+    this.schedulePostStartupTask(() => this.warmPrimaryTabs(), { timeout: 700, delay: 100 });
   }
   registerCommands() {
     setAppController(this);

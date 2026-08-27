@@ -270,3 +270,47 @@ test("explicit mutations use record-level persistence without a full-table fallb
     },
   }]);
 });
+
+test("interactive persistence responds after durability without awaiting remote synchronization", async () => {
+  const calls = [];
+  let releaseSync;
+  const remoteSync = new Promise((resolve) => { releaseSync = resolve; });
+  const lease = {
+    outbox: {
+      async flush() { calls.push("flush"); },
+    },
+  };
+  const model = {
+    state: { goithau: [{ id: "pkg-fast" }] },
+    beginWorkspaceMutation() { calls.push("begin"); return lease; },
+    assertWorkspaceMutation() {},
+    finishWorkspaceMutation() { calls.push("finish"); },
+    workspaceMutationUsesCurrentResources() { return true; },
+    async persistChanges() { calls.push("persist"); },
+  };
+  const controller = {
+    model,
+    autoSync() {
+      calls.push("sync-start");
+      return remoteSync;
+    },
+  };
+
+  let committed = false;
+  const committing = persistAndSync(controller, "goithau", {
+    backgroundSync: true,
+    changes: { upserts: { goithau: [{ id: "pkg-fast" }] } },
+  }).then((result) => {
+    committed = true;
+    return result;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(committed, true);
+  assert.deepEqual(calls, ["begin", "persist", "flush", "sync-start", "finish"]);
+  const result = await committing;
+  assert.equal(result.local, true);
+  assert.equal(result.queued, true);
+  releaseSync({ ok: true });
+  await result.syncPromise;
+});

@@ -143,3 +143,112 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     });
   }
 });
+
+test("workspace switch renders the isolated local shell without waiting for the network pull", async () => {
+  const globalNames = [
+    "CustomEvent",
+    "document",
+    "localStorage",
+    "navigator",
+    "sessionStorage",
+    "window",
+  ];
+  const previousGlobals = Object.fromEntries(
+    globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
+  );
+  const session = memoryStorage({ bf_active_org: "personal:user-1" });
+  const local = memoryStorage({ bf_active_org: "personal:user-1" });
+  const installGlobal = (name, value) => Object.defineProperty(globalThis, name, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+  installGlobal("sessionStorage", session);
+  installGlobal("localStorage", local);
+  installGlobal("document", {
+    getElementById() { return null; },
+    querySelector() { return null; },
+  });
+  installGlobal("navigator", { onLine: true });
+  installGlobal("CustomEvent", class CustomEvent {
+    constructor(type, options = {}) {
+      this.type = type;
+      this.detail = options.detail;
+    }
+  });
+  installGlobal("window", {
+    dispatchEvent() {},
+    location: { pathname: "/tong-quan" },
+  });
+
+  let releasePull;
+  const pull = new Promise((resolve) => { releasePull = resolve; });
+  try {
+    const events = [];
+    const activeUser = {
+      id: "user-1",
+      platformRole: "user",
+      organizations: [
+        { id: "personal:user-1", name: "Cá nhân", role: "employee", scope_type: "personal", status: "active" },
+        { id: "org-fast", name: "Nhanh", role: "employee", scope_type: "organization", status: "active" },
+      ],
+    };
+    const model = {
+      STORAGE_KEYS: { ACTIVEROLE: "bf_active_role", ACTIVEUSER: "bf_active_user" },
+      beginWorkspaceTransition() {},
+      constructor: {
+        getRoleTitle: () => "Chuyên viên",
+        resolveAllowedActiveRole: () => "employee",
+      },
+      dashboardSummary: null,
+      endWorkspaceTransition() {},
+      getWorkspaceToken() { return `user-1:${this.workspaceScope.organizationId}@1`; },
+      async init({ organizationId }) {
+        this.workspaceScope = { organizationId };
+        events.push("local-ready");
+      },
+      state: { activeuser: activeUser, activerole: "employee" },
+      async waitForWorkspaceMutations() {},
+      workspaceScope: { organizationId: "personal:user-1" },
+    };
+    const controller = Object.create(BiddingController.prototype);
+    Object.assign(controller, {
+      _pendingDetailRecordLoads: new Map(),
+      _workspacePullGenerations: new Map(),
+      disconnectWebSocket() {},
+      forceSyncData: async () => {
+        events.push("pull-start");
+        const result = await pull;
+        events.push("pull-end");
+        return result;
+      },
+      getStartupPriorityKeys: () => [],
+      model,
+      renderWorkspaceSwitcher() { events.push("workspace-rendered"); },
+      setupWebSocketConnection() {},
+      async switchTab() { events.push("tab-rendered"); },
+      updateSyncState() {},
+      view: {
+        _dashboardAggregateCache: null,
+        updateActiveUserProfileDisplay() {},
+      },
+    });
+
+    const switching = controller.switchWorkspaceContext("org-fast");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.ok(events.includes("tab-rendered"), "the new workspace shell must render immediately");
+    assert.ok(events.includes("pull-start"), "authoritative reconciliation still runs");
+    assert.ok(!events.includes("pull-end"), "the regression harness must keep the network pull pending");
+
+    releasePull({ ok: true });
+    await switching;
+  } finally {
+    releasePull?.({ ok: true });
+    globalNames.forEach((name) => {
+      const descriptor = previousGlobals[name];
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    });
+  }
+});

@@ -42,6 +42,7 @@ export async function persistExpertFormChanges(controller, changedExperts, {
   }
   stageLocalRecords(controller.model, "chuyengia", changedExperts);
   return persistAndSync(controller, "chuyengia", {
+    backgroundSync: true,
     changes: { upserts: { chuyengia: changedExperts } },
     afterPersist: async () => {
       await controller.closeModal("modal-chuyengia");

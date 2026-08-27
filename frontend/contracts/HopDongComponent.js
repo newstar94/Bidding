@@ -1,7 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
-import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
@@ -15,7 +15,9 @@ import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
+import { beginTablePerf } from "../shared/perfDiagnostics.js";
 export async function renderHopDongTable() {
+  const tablePerf = beginTablePerf("hopdong", "hopdong");
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
   const yearSelect = document.getElementById("filter-hopdong-nam");
@@ -36,14 +38,18 @@ export async function renderHopDongTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    renderTableLoading(tableBody, 11);
+    const pageParams = {
+      page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
+      nam: filterNam, thang: filterThang,
+    };
+    if (!getCachedPaginatedRecords(this.model, "hopdong", pageParams)) {
+      renderTableLoading(tableBody, 11);
+    }
     try {
-      const data = await loadPaginatedRecords(this.model, "hopdong", {
-        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
-        nam: filterNam, thang: filterThang
-      });
+      const data = await loadPaginatedRecords(this.model, "hopdong", pageParams);
       slicedData = data.items;
       totalItems = data.totalItems;
+      tablePerf.dataComplete(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated contracts", e);
@@ -63,6 +69,7 @@ export async function renderHopDongTable() {
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
+    tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -139,6 +146,7 @@ export async function renderHopDongTable() {
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("hopdong-table", "hopdong");
+  return { performance: tablePerf.complete() };
 }
 export function showHopDongDetails(id, isSwitchingVersion = false) {
   let targetId = id;
