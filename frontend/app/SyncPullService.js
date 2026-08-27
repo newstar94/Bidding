@@ -74,6 +74,17 @@ function updatePullFailureState(controller, syncStatusText, {
   controller.updateSyncState({ phase: "error", message });
 }
 
+function shouldShowFullPullLoader(controller, isBackground, hasLocalDataForCurrentRoute) {
+  // The full-screen/top-bar loader is a startup affordance. Once the initial
+  // workspace sync has started, foreground refreshes keep the current tab
+  // interactive; the sync icon/status text communicates progress instead.
+  return !isBackground
+    && !controller?._initialSyncStarted
+    && !hasLocalDataForCurrentRoute
+    && controller?.view
+    && controller.view.showLoader;
+}
+
 function captureActivePlanBreakdownState(controller) {
   if (!controller?.planBreakdownDraft?.active) return null;
   return Object.fromEntries(PLAN_BREAKDOWN_DRAFT_TABLES.map((table) => [
@@ -333,8 +344,11 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
     isBackground,
     hasLocalDataForCurrentRoute,
   });
-  const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute
-    && this.view && this.view.showLoader;
+  const shouldShowFullLoader = shouldShowFullPullLoader(
+    this,
+    isBackground,
+    hasLocalDataForCurrentRoute,
+  );
   if (shouldShowFullLoader) this.view.showLoader();
   try {
     const { useVersionDelta, since, query, visibilityToken } = readSyncCursor(storage, { forceFull });

@@ -133,5 +133,41 @@
                             </form>
                         </div>
 
+                        <section class="dashboard-card profile-purchase-history"
+                            aria-labelledby="profile-purchase-history-title">
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title" id="profile-purchase-history-title">Lịch sử mua cá nhân</h3>
+                                    <p class="profile-purchase-history__description">
+                                        Các giao dịch do chính tài khoản này thực hiện.
+                                    </p>
+                                </div>
+                                <button type="button" class="btn btn-outline btn-sm"
+                                    id="profile-purchase-history-refresh">
+                                    <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                                    Làm mới
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <p class="profile-purchase-history__status" id="profile-purchase-history-status"
+                                    role="status" aria-live="polite">Đang tải lịch sử mua…</p>
+                                <div class="table-container" id="profile-purchase-history-table" hidden>
+                                    <table class="data-table" data-mobile-layout="cards">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Mã giao dịch</th>
+                                                <th scope="col">Ngày tạo</th>
+                                                <th scope="col">Loại giao dịch</th>
+                                                <th scope="col">Thanh toán</th>
+                                                <th scope="col">Kích hoạt</th>
+                                                <th scope="col" class="text-right">Số tiền</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="profile-purchase-history-body"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+
                     </div>
                 </section>

@@ -6,7 +6,10 @@ import { configureApiClient } from "../../frontend/shared/apiClient.js";
 import {
   buildOperationalDiagnostic,
   hashWorkspaceScope,
+  installReleaseDiagnostics,
+  isStaleDynamicImportError,
   reportReleaseDiagnostic,
+  recoverFromStaleDynamicImport,
 } from "../../frontend/shared/releaseDiagnostics.js";
 
 test("operational diagnostics hash workspace scope and retain only bounded dimensions", async () => {
@@ -106,4 +109,37 @@ test("expired-session telemetry does not invoke the global 403 UI handler", asyn
     globalThis.fetch = originalFetch;
     configureApiClient({ activeOrganization: () => "", onHttpError: null });
   }
+});
+
+test("Vite preload failures trigger one safe reload before rejection", () => {
+  const reloads = [];
+  const storage = new Map();
+  const listeners = new Map();
+  const target = {
+    location: {
+      pathname: "/goi-thau",
+      reload: () => reloads.push(true),
+    },
+    sessionStorage: {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, value),
+    },
+    addEventListener: (type, callback) => listeners.set(type, callback),
+  };
+  const stale = new TypeError(
+    "Failed to fetch dynamically imported module: /dist/assets/old-chunk-AbCdEf12.js",
+  );
+
+  assert.equal(isStaleDynamicImportError(stale), true);
+  installReleaseDiagnostics(target);
+  let prevented = false;
+  listeners.get("vite:preloadError")({
+    payload: stale,
+    preventDefault: () => { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(reloads.length, 1);
+  assert.equal(recoverFromStaleDynamicImport({ error: stale, target }), false);
+  assert.equal(reloads.length, 1);
+  assert.equal(recoverFromStaleDynamicImport({ error: new Error("network"), target }), false);
 });

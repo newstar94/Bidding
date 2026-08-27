@@ -42,7 +42,6 @@ import {
   workflowRequirementForRoute,
 } from "./WorkflowModuleLoader.js";
 import { createFeatureServices } from "./FeatureServices.js";
-import { exportContractWordInBackground } from "../contracts/ContractWordExport.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
@@ -1098,6 +1097,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         lucide.createIcons({ root: btn });
       }
       try {
+        const { exportContractWordInBackground } = await import("../contracts/ContractWordExport.js");
         await exportContractWordInBackground({
           packageId: dbId,
           contractNumber: soHopDong,

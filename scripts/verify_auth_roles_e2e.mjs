@@ -176,7 +176,10 @@ async function uiLogin(browser, accountData, expectedRole, contextOptions = {}) 
   await page.locator("#form-auth-login button[type='submit']").click();
   const loginResponse = await loginResponsePromise;
   try {
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+    await page.waitForFunction(() => {
+      const overlay = document.getElementById("auth-overlay");
+      return overlay && getComputedStyle(overlay).display === "none";
+    }, null, { timeout: 20_000 });
   } catch (error) {
     const body = await loginResponse.json().catch(() => ({}));
     throw new Error(
@@ -254,6 +257,57 @@ try {
     assert(new URL(secondTab.url()).pathname === "/goi-thau", `${role}: Back did not restore route`);
     await secondTab.goForward({ waitUntil: "domcontentloaded" });
     assert(new URL(secondTab.url()).pathname === "/hop-dong", `${role}: Forward did not restore route`);
+    if (key === "superadmin") {
+      let releaseRoleSync;
+      let observeRoleSync;
+      const roleSyncRelease = new Promise((resolve) => { releaseRoleSync = resolve; });
+      const roleSyncObserved = new Promise((resolve) => { observeRoleSync = resolve; });
+      let delayedRoleSync = false;
+      await page.route("**/api/get-all-data**", async (route) => {
+        if (!delayedRoleSync) {
+          delayedRoleSync = true;
+          observeRoleSync();
+          await roleSyncRelease;
+        }
+        await route.continue();
+      });
+      await page.evaluate(() => {
+        window.__bfRoleSwitchDocumentProbe = "same-document";
+      });
+      await page.locator("#header-profile-trigger").click();
+      await page.locator("#profile-dropdown-menu").waitFor({ state: "visible", timeout: 10_000 });
+      await page.locator('.dropdown-role-btn[data-switch-role="employee"]').click();
+      try {
+        await Promise.race([
+          roleSyncObserved,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Role sync request was not observed")), 10_000)),
+        ]);
+        await page.waitForFunction(() => window.location.pathname === "/tong-quan", null, { timeout: 2_000 });
+        const immediateTransitionState = await page.evaluate(() => ({
+          documentProbe: window.__bfRoleSwitchDocumentProbe,
+          initLoaderHidden: getComputedStyle(document.getElementById("system-init-loader")).visibility === "hidden",
+          topBarLoading: document.getElementById("top-bar-loader")?.classList.contains("loading") === true,
+        }));
+        assert(immediateTransitionState.documentProbe === "same-document", "Active-role switch reloaded the document");
+        assert(immediateTransitionState.initLoaderHidden, "Active-role switch showed the init loader");
+        assert(!immediateTransitionState.topBarLoading, "Active-role switch showed the top-bar loader");
+      } finally {
+        releaseRoleSync();
+      }
+      await page.waitForFunction(() => (
+        window.location.pathname === "/tong-quan"
+        && /Chuyên viên/i.test(document.getElementById("header-profile-role")?.textContent || "")
+      ), null, { timeout: 20_000 });
+      const transitionState = await page.evaluate(() => ({
+        documentProbe: window.__bfRoleSwitchDocumentProbe,
+        initLoaderHidden: getComputedStyle(document.getElementById("system-init-loader")).visibility === "hidden",
+        topBarLoading: document.getElementById("top-bar-loader")?.classList.contains("loading") === true,
+      }));
+      assert(transitionState.documentProbe === "same-document", "Active-role switch reloaded the document");
+      assert(transitionState.initLoaderHidden, "Active-role switch showed the init loader");
+      assert(!transitionState.topBarLoading, "Active-role switch showed the top-bar loader");
+      await page.unroute("**/api/get-all-data**");
+    }
     await context.close();
   }
   mark("role-menus-reload-back-forward-multitab");

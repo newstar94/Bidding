@@ -70,6 +70,40 @@ def replace_user_session(cursor, *, user_id, token, absolute_expires_at,
     )
 
 
+def load_session_user_from_cursor(cursor, token):
+    """Load one revocable session through a caller-owned transaction."""
+
+    raw_token = str(token or "").strip()
+    if not raw_token:
+        return None
+    row = cursor.execute(
+        """
+        SELECT accounts.id, accounts.ten_dang_nhap, accounts.mat_khau,
+               accounts.ho_ten, accounts.vai_tro, accounts.email,
+               accounts.anh_dai_dien,
+               accounts.trang_thai AS account_status,
+               EXISTS (
+                   SELECT 1
+                   FROM dinh_danh_ngoai AS identities
+                   WHERE identities.user_id = accounts.id
+               ) AS has_external_identity,
+               sessions.id AS session_id,
+               sessions.created_at AS session_created_at,
+               sessions.last_seen_at, sessions.idle_expires_at,
+               sessions.absolute_expires_at, sessions.revoked_at,
+               sessions.remember_me, sessions.device_info,
+               sessions.privileged_reauth_at, sessions.active_role,
+               sessions.active_role_organization_id
+        FROM auth_sessions AS sessions
+        JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
+        WHERE sessions.token_hash = ?
+        LIMIT 1
+        """,
+        (hash_session_token(raw_token),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def load_session_user(database, token):
     raw_token = str(token or "").strip()
     if not raw_token:
@@ -78,35 +112,11 @@ def load_session_user(database, token):
     outcome = "ok"
     conn = database.get_connection()
     try:
-        row = conn.execute(
-            """
-            SELECT accounts.id, accounts.ten_dang_nhap, accounts.mat_khau,
-                   accounts.ho_ten, accounts.vai_tro, accounts.email,
-                   accounts.anh_dai_dien,
-                   accounts.trang_thai AS account_status,
-                   EXISTS (
-                       SELECT 1
-                       FROM dinh_danh_ngoai AS identities
-                       WHERE identities.user_id = accounts.id
-                   ) AS has_external_identity,
-                   sessions.id AS session_id,
-                   sessions.created_at AS session_created_at,
-                   sessions.last_seen_at, sessions.idle_expires_at,
-                   sessions.absolute_expires_at, sessions.revoked_at,
-                   sessions.remember_me, sessions.device_info,
-                   sessions.privileged_reauth_at, sessions.active_role,
-                   sessions.active_role_organization_id
-            FROM auth_sessions AS sessions
-            JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
-            WHERE sessions.token_hash = ?
-            LIMIT 1
-            """,
-            (hash_session_token(raw_token),),
-        ).fetchone()
-        if not row:
+        user = load_session_user_from_cursor(conn, raw_token)
+        if not user:
             outcome = "not_found"
             return None
-        return dict(row)
+        return user
     except Exception:
         outcome = "error"
         raise

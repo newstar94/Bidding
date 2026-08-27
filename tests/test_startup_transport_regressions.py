@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from backend import app as app_module
 from backend.http_middleware import ResponseIntegrityMiddleware, SecurityHeadersMiddleware
@@ -229,6 +230,43 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
     assert '/vendor/fonts/plus-jakarta-sans-vietnamese.woff2' not in compiled
 
 
+def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
+    views_directory = tmp_path / "views"
+    manifest_directory = tmp_path / "dist" / ".vite"
+    views_directory.mkdir(parents=True)
+    manifest_directory.mkdir(parents=True)
+    index_path = views_directory / "index.html"
+    index_path.write_text(
+        """<html><head>
+<meta name="bf-app-debug" content="true">
+<link rel="stylesheet" href="/css/base.css?v=2.0">
+</head><body><script type="module" src="/frontend/app/app.js?v=2.3"></script></body></html>
+""",
+        encoding="utf-8",
+    )
+    (manifest_directory / "manifest.json").write_text(
+        json.dumps({
+            "frontend/app/app.js": {
+                "file": "assets/app-debug-12345678.js",
+                "css": ["assets/app-debug-12345678.css"],
+            },
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "USE_FRONTEND_BUNDLE", True, raising=False)
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+    monkeypatch.setattr(app_module, "_compiled_html_cache", None)
+    monkeypatch.setattr(app_module, "_compiled_html_cache_signature", None)
+
+    compiled = app_module.compile_html(str(index_path))
+
+    assert '/dist/assets/app-debug-12345678.js' in compiled
+    assert '/dist/assets/app-debug-12345678.css' in compiled
+    assert '<meta name="bf-app-debug" content="false">' in compiled
+    assert '/frontend/app/app.js' not in compiled
+
+
 def test_frontend_prewarm_reads_only_manifest_assets_inside_dist(monkeypatch, tmp_path):
     dist_directory = tmp_path / "dist"
     manifest_directory = dist_directory / ".vite"
@@ -256,3 +294,21 @@ def test_frontend_prewarm_reads_only_manifest_assets_inside_dist(monkeypatch, tm
 
     assert warmed_files == 3
     assert warmed_bytes == len(b"appsharedstyles")
+
+
+def test_foreground_sync_does_not_show_full_loader_after_startup():
+    source = (Path(app_module.project_root) / "frontend" / "app" / "SyncPullService.js").read_text(
+        encoding="utf-8"
+    )
+    assert "!controller?._initialSyncStarted" in source
+
+
+def test_active_role_switch_stays_in_spa_without_location_reload():
+    source = (Path(app_module.project_root) / "frontend" / "admin" / "AdminUserController.js").read_text(
+        encoding="utf-8"
+    )
+    role_block = source.split('bindAdminEvent(document, "click", "switch-active-role"', 1)[1].split(
+        'const btnAddEmp', 1
+    )[0]
+    assert "history.pushState" in role_block
+    assert "window.location.assign" not in role_block

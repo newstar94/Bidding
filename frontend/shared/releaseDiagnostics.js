@@ -6,6 +6,43 @@ const embeddedReleaseId = typeof __BIDDINGFLOW_RELEASE_ID__ === "string"
 
 export const RELEASE_ID = String(embeddedReleaseId || "development").slice(0, 128);
 
+const STALE_DYNAMIC_IMPORT_PATTERN = /Failed to fetch dynamically imported module/i;
+let staleBundleReloadAttempted = false;
+
+/**
+ * A tab can keep an older hashed entry bundle alive across a deployment. Its
+ * dynamic imports then point at chunks that were removed by the new release.
+ * Reload once so the tab obtains the current HTML/manifest instead of leaving
+ * the user with an unhandled promise rejection and a broken workspace.
+ */
+export const isStaleDynamicImportError = (error) => (
+  error?.name === "TypeError"
+  && STALE_DYNAMIC_IMPORT_PATTERN.test(String(error?.message || error || ""))
+);
+
+export const recoverFromStaleDynamicImport = ({ error, target = globalThis.window } = {}) => {
+  if (!isStaleDynamicImportError(error)) return false;
+  const location = target?.location;
+  if (!location || typeof location.reload !== "function") return false;
+
+  const marker = `bf-stale-bundle:${RELEASE_ID}`;
+  let storage = null;
+  try {
+    storage = target?.sessionStorage || globalThis.sessionStorage;
+    if (storage?.getItem(marker) === "1" || staleBundleReloadAttempted) return false;
+    storage?.setItem(marker, "1");
+  } catch {
+    if (staleBundleReloadAttempted) return false;
+  }
+  staleBundleReloadAttempted = true;
+  try {
+    location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const safeErrorName = value => {
   const name = String(value || "Error").trim();
   return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) ? name : "Error";
@@ -319,12 +356,21 @@ export const installReleaseDiagnostics = (target = globalThis.window) => {
     enumerable: false,
     writable: false,
   });
+  target.addEventListener("vite:preloadError", event => {
+    if (recoverFromStaleDynamicImport({ error: event.payload, target })) {
+      event.preventDefault?.();
+    }
+  });
   target.addEventListener("error", event => {
     const diagnostic = buildReleaseDiagnostic(event);
     console.error("BiddingFlow client error", diagnostic);
     void reportReleaseDiagnostic(diagnostic);
   });
   target.addEventListener("unhandledrejection", event => {
+    if (recoverFromStaleDynamicImport({ error: event.reason, target })) {
+      event.preventDefault?.();
+      return;
+    }
     const diagnostic = buildReleaseDiagnostic({
       error: event.reason,
       kind: "unhandledrejection",

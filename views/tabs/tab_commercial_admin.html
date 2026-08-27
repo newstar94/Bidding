@@ -1,9 +1,9 @@
 <section class="tab-pane commercial-control" id="tab-commercial-admin" aria-labelledby="commercial-control-title">
     <header class="commercial-control__header">
         <div>
-            <p class="commercial-control__eyebrow">Commercial operations</p>
+            <p class="commercial-control__eyebrow">Vận hành thương mại</p>
             <h2 id="commercial-control-title">Thương mại &amp; Thanh toán</h2>
-            <p>Quản lý catalog bất biến, readiness, giao dịch và rollout tại một nguồn dữ liệu có version.</p>
+            <p>Quản lý danh mục bất biến, điều kiện sẵn sàng, giao dịch và phát hành theo từng phiên bản.</p>
         </div>
         <div class="commercial-control__actions">
             <button type="button" class="btn btn-outline" id="commercial-refresh"><i data-lucide="refresh-cw"></i>Làm mới</button>
@@ -18,17 +18,17 @@
 
     <nav class="commercial-section-nav" aria-label="Các khu vực quản trị thương mại">
         <a href="#commercial-release"><span>01</span>Phát hành</a>
-        <a href="#commercial-offers"><span>02</span>Offer &amp; giá</a>
-        <a href="#commercial-policies"><span>03</span>Policy</a>
-        <a href="#commercial-providers"><span>04</span>Provider</a>
-        <a href="#commercial-orders"><span>05</span>Order &amp; activation</a>
+        <a href="#commercial-offers"><span>02</span>Gói &amp; giá</a>
+        <a href="#commercial-policies"><span>03</span>Chính sách</a>
+        <a href="#commercial-providers"><span>04</span>Cổng thanh toán</a>
+        <a href="#commercial-orders"><span>05</span>Đơn hàng &amp; kích hoạt</a>
         <a href="#commercial-history"><span>06</span>Lịch sử</a>
     </nav>
 
     <div class="commercial-grid">
         <section class="commercial-panel commercial-panel--wide" id="commercial-release">
-            <header><div><span class="commercial-panel__index">01</span><h3>Phát hành &amp; readiness</h3></div><span id="commercial-runtime-badge" class="commercial-badge">—</span></header>
-            <div id="commercial-release-content" class="commercial-panel__body commercial-skeleton" aria-busy="true">Đang đọc release…</div>
+            <header><div><span class="commercial-panel__index">01</span><h3>Phát hành &amp; điều kiện sẵn sàng</h3></div><span id="commercial-runtime-badge" class="commercial-badge">—</span></header>
+            <div id="commercial-release-content" class="commercial-panel__body commercial-skeleton" aria-busy="true">Đang đọc bản phát hành…</div>
         </section>
 
         <section class="commercial-panel commercial-panel--wide" id="commercial-offers">
@@ -37,23 +37,23 @@
         </section>
 
         <section class="commercial-panel" id="commercial-policies">
-            <header><div><span class="commercial-panel__index">03</span><h3>Policy &amp; quyết định</h3></div></header>
+            <header><div><span class="commercial-panel__index">03</span><h3>Chính sách &amp; quyết định</h3></div></header>
             <div id="commercial-policy-content" class="commercial-panel__body commercial-empty">Chưa có policy được tải.</div>
         </section>
 
         <section class="commercial-panel" id="commercial-providers">
-            <header><div><span class="commercial-panel__index">04</span><h3>Payment provider</h3></div></header>
-            <div id="commercial-provider-content" class="commercial-panel__body commercial-empty">Chưa có provider profile.</div>
+            <header><div><span class="commercial-panel__index">04</span><h3>Cổng thanh toán</h3></div></header>
+            <div id="commercial-provider-content" class="commercial-panel__body commercial-empty">Chưa có cấu hình cổng thanh toán.</div>
         </section>
 
         <section class="commercial-panel" id="commercial-orders">
-            <header><div><span class="commercial-panel__index">05</span><h3>Order &amp; activation</h3></div></header>
-            <div id="commercial-order-content" class="commercial-panel__body commercial-empty">Đang tải trạng thái order…</div>
+            <header><div><span class="commercial-panel__index">05</span><h3>Đơn hàng &amp; kích hoạt</h3></div></header>
+            <div id="commercial-order-content" class="commercial-panel__body commercial-empty">Đang tải trạng thái đơn hàng…</div>
         </section>
 
         <section class="commercial-panel" id="commercial-history">
             <header><div><span class="commercial-panel__index">06</span><h3>Lịch sử &amp; rollback</h3></div></header>
-            <div id="commercial-history-content" class="commercial-panel__body commercial-empty">Chưa có release history.</div>
+            <div id="commercial-history-content" class="commercial-panel__body commercial-empty">Chưa có lịch sử bản phát hành.</div>
         </section>
     </div>
 </section>

@@ -171,3 +171,85 @@ def test_session_bootstrap_rederives_role_for_selected_workspace():
     payload = auth_routes._attach_effective_session_role(user, access)
 
     assert payload["active_role"] == "employee"
+
+
+def test_session_bootstrap_uses_one_database_connection(monkeypatch):
+    connections = []
+    session_user = {
+        "id": "user-1",
+        "ten_dang_nhap": "tester",
+        "mat_khau": "password-hash",
+        "ho_ten": "Test User",
+        "vai_tro": "super_admin",
+        "email": "tester@example.com",
+        "anh_dai_dien": None,
+        "account_status": "active",
+        "has_external_identity": False,
+        "session_id": "session-1",
+        "last_seen_at": 1,
+        "idle_expires_at": 4_000_000_000,
+        "absolute_expires_at": 4_000_000_000,
+        "revoked_at": None,
+        "device_info": None,
+        "active_role": None,
+        "active_role_organization_id": None,
+    }
+
+    class Connection:
+        def __init__(self):
+            self.closed = False
+
+        def execute(self, _statement, _parameters=()):
+            return self
+
+        def fetchone(self):
+            return session_user
+
+        def cursor(self):
+            return self
+
+        def commit(self):
+            return None
+
+        def close(self):
+            self.closed = True
+
+    class Database:
+        def get_connection(self):
+            connection = Connection()
+            connections.append(connection)
+            return connection
+
+    monkeypatch.setattr(auth_routes, "database", Database())
+    monkeypatch.setattr(
+        auth_routes,
+        "build_user_access_payload",
+        lambda *_args: {
+            "active_org_id": None,
+            "membership_role": None,
+            "organizations": [],
+            "role": "super_admin",
+            "platform_role": "super_admin",
+            "effective_roles": ["super_admin"],
+            "subscription": None,
+            "entitlements": {"word_export": True},
+            "package_id": None,
+            "package_start_date": None,
+            "package_end_date": None,
+        },
+    )
+
+    request = type(
+        "Request",
+        (),
+        {
+            "cookies": {"session_token": "session-token"},
+            "headers": {},
+        },
+    )()
+    payload = auth_routes.build_session_bootstrap(request)
+
+    assert payload["valid"] is True
+    assert payload["user"]["id"] == "user-1"
+    assert len(connections) == 1
+    assert connections[0].closed is True

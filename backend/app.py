@@ -90,6 +90,10 @@ APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "t
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
+FRONTEND_ASSET_MODE = os.environ.get("FRONTEND_ASSET_MODE", "source").strip().lower()
+if FRONTEND_ASSET_MODE not in {"source", "bundle"}:
+    raise RuntimeError("FRONTEND_ASSET_MODE must be source or bundle.")
+USE_FRONTEND_BUNDLE = not APP_DEBUG or FRONTEND_ASSET_MODE == "bundle"
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "").strip().rstrip("/")
 BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
 ENABLE_IMAGE_CACHE_PREWARM = os.environ.get("ENABLE_IMAGE_CACHE_PREWARM", "true").lower() == "true"
@@ -189,14 +193,14 @@ def compile_html(file_path):
     """
     global _compiled_html_cache, _compiled_html_cache_signature
 
-    if not APP_DEBUG and _compiled_html_cache:
+    if USE_FRONTEND_BUNDLE and _compiled_html_cache:
         if IS_PRODUCTION:
             return _compiled_html_cache
         signature = _html_cache_signature()
         if _compiled_html_cache_signature == signature:
             return _compiled_html_cache
     else:
-        signature = None if APP_DEBUG or IS_PRODUCTION else _html_cache_signature()
+        signature = None if not USE_FRONTEND_BUNDLE or IS_PRODUCTION else _html_cache_signature()
 
     def replace_include(match):
         include_path = match.group(1).strip()
@@ -222,7 +226,7 @@ def compile_html(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         compiled = compile_content(f.read())
 
-    if not APP_DEBUG:
+    if USE_FRONTEND_BUNDLE:
         compiled = re.sub(
             r'\s*<link\s+rel="modulepreload"\s+href="/(?:frontend|views)/[^"]+">\s*',
             '\n',
@@ -323,7 +327,7 @@ def _build_index_response_payload():
 
 def _prewarm_frontend_assets():
     """Read the small critical graph once so the first user does not pay cold file I/O."""
-    if APP_DEBUG:
+    if not USE_FRONTEND_BUNDLE:
         return 0, 0
     roots = (
         APP_ENTRY,
@@ -392,7 +396,7 @@ def _prewarm_frontend_assets():
 
 def _workspace_preload_tag(session_bootstrap):
     """Preload the app entry first, then the authenticated workspace graph."""
-    if APP_DEBUG:
+    if not USE_FRONTEND_BUNDLE:
         if not session_bootstrap.get("valid"):
             return ""
         workspace_src = "/frontend/app/workspaceBootstrap.js"
@@ -533,7 +537,10 @@ async def index(request, *, not_found=False):
 
     bootstrap_started = time.perf_counter()
     try:
-        session_bootstrap = build_session_bootstrap(request)
+        session_bootstrap = await run_database_read(
+            build_session_bootstrap,
+            request,
+        )
     except Exception as exc:
         log_error(exc, "index_session_bootstrap")
         session_bootstrap = {"valid": False, "reason": "bootstrap_error"}

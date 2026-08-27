@@ -34,6 +34,7 @@ from backend.auth.roles import resolve_workspace_active_role
 from backend.auth.session_store import (
     create_session,
     load_session_user,
+    load_session_user_from_cursor,
     replace_user_session,
     revoke_session,
     revoke_user_sessions,
@@ -546,6 +547,17 @@ def _get_access_for_session(user, request):
         conn.close()
 
 
+def _get_access_for_session_cursor(cursor, user, request):
+    access = build_user_access_payload(
+        cursor,
+        user['id'],
+        user['vai_tro'],
+        _active_org_hint(request),
+        user.get('ho_ten'),
+    )
+    return _attach_effective_session_role(user, access)
+
+
 def _attach_effective_session_role(user, access_payload):
     access = dict(access_payload or {})
     active_organization_id = str(access.get("active_org_id") or "").strip()
@@ -594,30 +606,36 @@ def build_session_bootstrap(request):
     if not session_token:
         return with_server_capabilities({"valid": False, "reason": "missing_auth"})
 
-    user = _load_user_by_session_token(session_token)
-    invalid_reason = _validate_token_expiry(session_token, user)
-    if invalid_reason:
-        return with_server_capabilities({"valid": False, "reason": invalid_reason})
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        user = load_session_user_from_cursor(cursor, session_token)
+        invalid_reason = _validate_token_expiry(session_token, user)
+        if invalid_reason:
+            return with_server_capabilities({"valid": False, "reason": invalid_reason})
 
-    needs_username, suggested_username, account_linked = _get_username_setup_state(user)
-    access_payload = _get_access_for_session(user, request)
-    return with_server_capabilities({
-        "valid": True,
-        "device_info": user.get('device_info'),
-        "user": {
-            "id": user['id'],
-            "username": user['ten_dang_nhap'],
-            "name": user['ho_ten'],
-            **access_payload,
-            "active_role": access_payload.get('active_role'),
-            "email": user['email'],
-            "avatar": user.get('anh_dai_dien'),
-            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
-            "needs_username": needs_username,
-            "suggested_username": suggested_username,
-            "account_linked": account_linked
-        }
-    })
+        needs_username, suggested_username, account_linked = _get_username_setup_state(user)
+        access_payload = _get_access_for_session_cursor(cursor, user, request)
+        conn.commit()
+        return with_server_capabilities({
+            "valid": True,
+            "device_info": user.get('device_info'),
+            "user": {
+                "id": user['id'],
+                "username": user['ten_dang_nhap'],
+                "name": user['ho_ten'],
+                **access_payload,
+                "active_role": access_payload.get('active_role'),
+                "email": user['email'],
+                "avatar": user.get('anh_dai_dien'),
+                "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+                "needs_username": needs_username,
+                "suggested_username": suggested_username,
+                "account_linked": account_linked
+            }
+        })
+    finally:
+        conn.close()
 
 
 def _session_response(user, request):

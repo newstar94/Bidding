@@ -106,7 +106,43 @@ test("Commercial Control Center renders a loaded policy document into the DOM", 
 
     const status = await page.locator("#commercial-status span:last-child").textContent();
     assert.doesNotMatch(status, /getElementById/u);
+    await page.getByRole("heading", { name: "Chính sách & quyết định" }).waitFor();
+    await page.getByRole("heading", { name: "Cổng thanh toán" }).waitFor();
+    await page.getByText("Kỳ hạn gói cơ bản", { exact: true }).waitFor();
+    assert.ok(await page.locator(".commercial-policy-list li").count() > 0);
+    assert.equal(await page.getByText("Policy", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Payment provider", { exact: true }).count(), 0);
     await page.getByText("silver.internal.yearly", { exact: true }).waitFor();
     assert.equal(await page.locator("[data-offer-index='0']").count(), 4);
+    assert.equal(
+      await page.locator("[data-offer-index='0']").nth(1).inputValue(),
+      "12.000.000",
+    );
+    assert.equal(
+      await page.locator("[data-pack-index='0']").inputValue(),
+      "99.000",
+    );
+
+    const yearlyPrice = page.locator("[data-offer-index='0']").nth(1);
+    await yearlyPrice.fill("13000000");
+    await yearlyPrice.dispatchEvent("change");
+    assert.equal(
+      await page.locator("[data-offer-index='0']").nth(1).inputValue(),
+      "13.000.000",
+    );
+
+    const includedQuota = page.locator("[data-offer-index='0']").nth(2);
+    await includedQuota.fill("3000");
+    await includedQuota.dispatchEvent("change");
+    assert.equal(
+      await page.locator("[data-offer-index='0']").nth(2).inputValue(),
+      "3.000",
+    );
+
   });
+});
+
+test("commercial mutations keep the shared password step-up recovery enabled", async () => {
+  const source = await readFile(join(root, "frontend/commercial-policy/CommercialControlCenter.js"), "utf8");
+  assert.match(source, /handleHttpErrors:\s*true/u);
 });

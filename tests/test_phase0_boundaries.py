@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 
 from backend import app as app_module
@@ -21,6 +22,42 @@ def _request(*, startup_complete=True, ready=True, readiness_reason=None):
             )
         )
     )
+
+
+def test_index_session_bootstrap_does_not_block_event_loop(monkeypatch):
+    release_bootstrap = threading.Event()
+    bootstrap_observed_release = []
+
+    def blocking_session_bootstrap(_request):
+        bootstrap_observed_release.append(release_bootstrap.wait(timeout=0.25))
+        return {"valid": False, "reason": "missing_auth"}
+
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(
+        app_module,
+        "_build_index_response_payload",
+        lambda: ("__BF_SESSION_BOOTSTRAP__", '"test-etag"'),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "build_session_bootstrap",
+        blocking_session_bootstrap,
+    )
+
+    async def run_index_with_heartbeat():
+        request = SimpleNamespace(
+            cookies={},
+            headers={},
+            url=SimpleNamespace(path="/tong-quan-admin"),
+        )
+        index_task = asyncio.create_task(app_module.index(request))
+        await asyncio.sleep(0)
+        release_bootstrap.set()
+        await index_task
+
+    asyncio.run(run_index_with_heartbeat())
+
+    assert bootstrap_observed_release == [True]
 
 
 def test_health_ready_reports_bounded_startup_and_audit_reasons(monkeypatch):

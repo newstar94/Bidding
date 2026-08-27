@@ -10,10 +10,11 @@ function serviceWorkerHarness({ manifestResponse, addAll } = {}) {
   const listeners = new Map();
   const deleted = [];
   const opened = [];
+  const precached = [];
   let skipWaitingCalls = 0;
   let claimCalls = 0;
   const cache = {
-    addAll: addAll || (async () => {}),
+    addAll: addAll || (async (assets) => { precached.push(...assets); }),
     async match() { return null; },
     async put() {},
   };
@@ -68,6 +69,7 @@ function serviceWorkerHarness({ manifestResponse, addAll } = {}) {
   return {
     deleted,
     opened,
+    precached,
     runLifecycle,
     get claimCalls() { return claimCalls; },
     get skipWaitingCalls() { return skipWaitingCalls; },
@@ -105,4 +107,39 @@ test("successful install waits naturally and activation does not claim old tabs"
   await harness.runLifecycle("activate");
   assert.equal(harness.claimCalls, 0);
   assert.deepEqual(harness.deleted, ["biddingflow-assets-old-build"]);
+});
+
+
+test("install precaches dynamic chunks needed by tabs that survive a deployment", async () => {
+  const harness = serviceWorkerHarness({
+    manifestResponse: new Response(JSON.stringify({
+      "frontend/app/app.js": {
+        file: "assets/app-ABCDEFGH.js",
+        imports: ["_shared.js"],
+        dynamicImports: ["frontend/packages/GoiThauDetail.js"],
+      },
+      "_shared.js": {
+        file: "assets/shared-ABCDEFGH.js",
+      },
+      "frontend/packages/GoiThauDetail.js": {
+        file: "assets/GoiThauDetail-ABCDEFGH.js",
+        dynamicImports: ["frontend/documents/ExcelIntegration.js"],
+      },
+      "frontend/documents/ExcelIntegration.js": {
+        file: "assets/ExcelIntegration-ABCDEFGH.js",
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  });
+
+  await harness.runLifecycle("install");
+
+  assert.deepEqual(new Set(harness.precached), new Set([
+    "/dist/assets/app-ABCDEFGH.js",
+    "/dist/assets/shared-ABCDEFGH.js",
+    "/dist/assets/GoiThauDetail-ABCDEFGH.js",
+    "/dist/assets/ExcelIntegration-ABCDEFGH.js",
+  ]));
 });

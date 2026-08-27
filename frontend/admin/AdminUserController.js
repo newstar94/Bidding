@@ -343,12 +343,32 @@ export function setupRBACEvents() {
           body: JSON.stringify({ active_role: val })
         });
         const result = await response.json();
-        this.model.switchActiveRole(result.activeRole || val, userName, realUserId);
+        const activeRole = result.activeRole || val;
+        this.model.switchActiveRole(activeRole, userName, realUserId);
         this.view.updateActiveUserProfileDisplay();
         document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((m) => m.classList.remove("active"));
         if (profileDropdown) profileDropdown.classList.remove("active");
+        const targetTab = activeRole === "super_admin" ? "superadmin-dashboard" : "dashboard";
+        const targetPath = targetTab === "superadmin-dashboard" ? "/tong-quan-admin" : "/tong-quan";
+        // Keep the SPA alive: discard the old scoped snapshot, hydrate the same
+        // workspace under the server-confirmed persona, and render a cleared
+        // home route before the authoritative pull finishes. This avoids both
+        // a reload and any flash of data from the previous persona.
         await this.model.purgeWorkspaceData?.();
-        window.location.assign(val === "super_admin" ? "/tong-quan-admin" : "/tong-quan");
+        history.pushState({ tab: targetTab, action: null }, "", targetPath);
+        await this.switchTab(targetTab, null, false);
+        await this.model.init({
+          userId: realUserId,
+          organizationId: getActiveOrganizationId(),
+          priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname),
+        });
+        if (typeof this.forceSyncData === "function") {
+          await this.forceSyncData(false, true);
+        }
+        // Re-render after the new persona's authoritative snapshot is applied.
+        await this.switchTab(targetTab, null, false);
+        this.renderWorkspaceSwitcher?.();
+        this.setupWebSocketConnection?.();
       } catch (error) {
         await this.view.customAlert("Không thể chuyển chế độ", error?.message || "Vui lòng thử lại.", "alert-triangle");
       } finally {

@@ -9,8 +9,6 @@ import {
 } from "../plans/PlanVersionDraftSession.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
-import { mountCommercialControlCenter } from "../commercial-policy/CommercialControlCenter.js";
-import { mountCommercialStorefront } from "../commercial-policy/CommercialStorefront.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
 import {
   createCompactSidebarMediaQuery,
@@ -646,9 +644,11 @@ export function renderTabData(tabName, action = null) {
       this.loadSystemUsers();
       break;
     case "commercial-admin":
-      return mountCommercialControlCenter(this);
+      return import("../commercial-policy/CommercialControlCenter.js")
+        .then(({ mountCommercialControlCenter }) => mountCommercialControlCenter(this));
     case "commercial-storefront":
-      return mountCommercialStorefront(this);
+      return import("../commercial-policy/CommercialStorefront.js")
+        .then(({ mountCommercialStorefront }) => mountCommercialStorefront(this));
     case "managernhanvien":
       this.reloadEmployeesFromDatabase().then(() => {
         this.view.renderManagerNhanVienPanel();
@@ -659,7 +659,8 @@ export function renderTabData(tabName, action = null) {
       break;
     case "profile":
       this.view.renderProfileTab(this.model.state.activeuser);
-      break;
+      return import("../billing/ProfilePurchaseHistory.js")
+        .then(({ mountProfilePurchaseHistory }) => mountProfilePurchaseHistory(this));
     case "mothau":
       this.renderMoThauPanel();
       break;

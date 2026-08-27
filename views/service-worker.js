@@ -27,7 +27,7 @@ async function initialHashedAssets() {
       const assetPathname = `/dist/${String(asset || "").replace(/^\/+/, "")}`;
       if (HASHED_ASSET.test(assetPathname)) assets.push(assetPathname);
     }
-    pending.push(...(item.imports || []));
+    pending.push(...(item.imports || []), ...(item.dynamicImports || []));
   }
   const uniqueAssets = [...new Set(assets)];
   if (!uniqueAssets.length) {

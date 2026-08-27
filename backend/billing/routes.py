@@ -224,7 +224,7 @@ async def payment_result_page(_request):
     """Return users to durable order history; redirects never activate orders."""
 
     return RedirectResponse(
-        "/goi-va-thanh-toan?payment=result",
+        "/trang-ca-nhan?payment=result",
         status_code=303,
         headers={"Cache-Control": "no-store"},
     )
@@ -232,7 +232,7 @@ async def payment_result_page(_request):
 
 async def payment_cancel_page(_request):
     return RedirectResponse(
-        "/goi-va-thanh-toan?payment=cancelled",
+        "/trang-ca-nhan?payment=cancelled",
         status_code=303,
         headers={"Cache-Control": "no-store"},
     )
@@ -309,17 +309,11 @@ async def list_personal_orders_api(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
-    if actor.active_role_organization_id:
-        return JSONResponse(
-            {
-                "error": "Chưa chốt quyền đọc lịch sử thanh toán của tổ chức.",
-                "code": "BLOCKED_DECISION",
-                "decision": "organizationBillingHistoryReadAuthority",
-            },
-            status_code=409,
-        )
     connection = database.get_connection()
     try:
+        # Account information always shows the signed-in user's own purchases,
+        # even while that user is operating in an organization workspace. This
+        # query deliberately cannot return organization-owned billing history.
         rows = connection.execute(
             """SELECT * FROM billing_orders
                 WHERE owner_kind = 'account' AND account_user_id = ?

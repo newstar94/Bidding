@@ -2100,6 +2100,43 @@ table th {
   font-weight: 600;
   color: var(--text-muted);
 }
+#tab-profile .profile-purchase-history {
+  grid-column: 1 / -1;
+}
+.profile-purchase-history .card-header > div {
+  min-width: 0;
+}
+.profile-purchase-history__description {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+.profile-purchase-history__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.profile-purchase-history__status[data-tone="danger"] {
+  color: var(--danger);
+}
+.profile-purchase-history__status[data-tone="success"] {
+  margin-bottom: 14px;
+  color: var(--success);
+}
+.profile-purchase-history__amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .profile-purchase-history .card-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .profile-purchase-history .card-header .btn {
+    flex: 0 0 auto;
+  }
+}
 .header-profile-container {
   position: relative;
   display: inline-block;
