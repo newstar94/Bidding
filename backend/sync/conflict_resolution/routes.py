@@ -225,60 +225,73 @@ def _prepare_resolution_blocking(request, draft_id, arguments):
         conn.close()
 
 
-def _mark_resolved_blocking(request, scope, draft_id, mutation_id, decisions):
-    conn = database.get_connection()
-    try:
-        conn.execute("BEGIN")
-        cursor = conn.cursor()
-        role, current_scope = _request_context(request, cursor, scope["workspaceFingerprint"])
-        if current_scope != scope:
-            raise ConflictResolutionError("CONFLICT_RECORD_ACCESS_DENIED", status_code=403)
-        repository = ConflictDraftRepository(cursor)
-        metadata = repository.get_metadata(
-            organization_id=scope["organizationId"], actor_user_id=scope["actorUserId"],
-            workspace_fingerprint=scope["workspaceFingerprint"], draft_id=draft_id,
+def _mark_resolved_in_sync_transaction(
+    cursor,
+    actor,
+    *,
+    request,
+    scope,
+    draft_id,
+    mutation_id,
+    decisions,
+):
+    """Complete the draft and its required audit in the business transaction."""
+
+    if (
+        str(actor.organization_id) != str(scope["organizationId"])
+        or str(actor.user_id) != str(scope["actorUserId"])
+    ):
+        raise ConflictResolutionError("CONFLICT_RECORD_ACCESS_DENIED", status_code=403)
+    repository = ConflictDraftRepository(cursor)
+    metadata = repository.get_metadata(
+        organization_id=scope["organizationId"],
+        actor_user_id=scope["actorUserId"],
+        workspace_fingerprint=scope["workspaceFingerprint"],
+        draft_id=draft_id,
+    )
+    if metadata:
+        _load_authorized_record(
+            cursor,
+            actor.role,
+            scope,
+            metadata["entityType"],
+            metadata["recordId"],
         )
-        if metadata:
-            _load_authorized_record(cursor, role, scope, metadata["entityType"], metadata["recordId"])
-        marked = repository.mark_resolved(
-            organization_id=scope["organizationId"], actor_user_id=scope["actorUserId"],
-            workspace_fingerprint=scope["workspaceFingerprint"], draft_id=draft_id,
-            mutation_id=mutation_id,
-        )
-        if marked and metadata:
-            insert_audit_row(
-                cursor,
-                actor_user_id=scope["actorUserId"],
-                organization_id=scope["organizationId"],
-                action="sync.conflict_resolved",
-                target_type=metadata["tableName"],
-                target_id=metadata["recordId"],
-                ip_address=get_client_ip(request),
-                metadata_json=json.dumps(
-                    {
-                        "draftId": draft_id,
-                        "policyVersion": POLICY_VERSION,
-                        "expectedRowVersion": metadata["expectedRowVersion"],
-                        "previewedServerRowVersion": metadata["serverRowVersion"],
-                        "payloadDigest": metadata["payloadDigest"],
-                        "decisionDigest": canonical_digest(decisions),
-                        "decisionPaths": sorted(str(field) for field in decisions),
-                        "decisionSelections": {
-                            str(field): str(choice)
-                            for field, choice in sorted(decisions.items())
-                        },
-                        "resolutionMutationId": mutation_id,
+    marked = repository.mark_resolved(
+        organization_id=scope["organizationId"],
+        actor_user_id=scope["actorUserId"],
+        workspace_fingerprint=scope["workspaceFingerprint"],
+        draft_id=draft_id,
+        mutation_id=mutation_id,
+    )
+    if marked and metadata:
+        insert_audit_row(
+            cursor,
+            actor_user_id=scope["actorUserId"],
+            organization_id=scope["organizationId"],
+            action="sync.conflict_resolved",
+            target_type=metadata["tableName"],
+            target_id=metadata["recordId"],
+            ip_address=get_client_ip(request),
+            metadata_json=json.dumps(
+                {
+                    "draftId": draft_id,
+                    "policyVersion": POLICY_VERSION,
+                    "expectedRowVersion": metadata["expectedRowVersion"],
+                    "previewedServerRowVersion": metadata["serverRowVersion"],
+                    "payloadDigest": metadata["payloadDigest"],
+                    "decisionDigest": canonical_digest(decisions),
+                    "decisionPaths": sorted(str(field) for field in decisions),
+                    "decisionSelections": {
+                        str(field): str(choice)
+                        for field, choice in sorted(decisions.items())
                     },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+                    "resolutionMutationId": mutation_id,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
 
 
 def _discard_blocking(request, draft_id, workspace_fingerprint):
@@ -381,13 +394,20 @@ async def resolve_conflict_draft_api(request):
             _prepare_resolution_blocking, request, draft_id, arguments, timeout_seconds=10,
         )
         response = await run_database_write(
-            execute_sync_mutation, request, mutation, broadcast_websocket_event,
+            execute_sync_mutation,
+            request,
+            mutation,
+            broadcast_websocket_event,
+            transaction_completion=lambda cursor, actor: _mark_resolved_in_sync_transaction(
+                cursor,
+                actor,
+                request=request,
+                scope=scope,
+                draft_id=draft_id,
+                mutation_id=arguments["clientMutationId"],
+                decisions=arguments["decisions"],
+            ),
         )
-        if 200 <= int(response.status_code) < 300:
-            await run_database_write(
-                _mark_resolved_blocking, request, scope, draft_id,
-                arguments["clientMutationId"], arguments["decisions"],
-            )
         return response
     except ConflictResolutionError as error:
         return _error(request, error)

@@ -1244,9 +1244,6 @@ middleware = [
     Middleware(BodySizeLimitMiddleware),
 ]
 
-import contextlib
-
-
 LOCAL_DATABASE_SUPERVISOR_ENV = "BIDDINGFLOW_LOCAL_DATABASE_SUPERVISOR"
 
 

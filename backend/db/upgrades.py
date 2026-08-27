@@ -3262,6 +3262,31 @@ def _upgrade_to_v79_add_commercial_billing_and_usage(cursor, context):
             )
     context.assert_foreign_key_integrity(cursor)
 
+
+def seed_live_payos_v80_profile(cursor):
+    """Insert the v80 profile for both fresh installs and upgrade chains."""
+
+    cursor.execute(
+        """INSERT INTO payment_provider_profiles
+               (id, version, provider, environment, public_alias,
+                credential_reference, capabilities_json,
+                min_amount, max_amount, checkout_ttl_seconds,
+                timeout_ms, max_attempts, routing_priority,
+                mode, readiness_status)
+           VALUES
+               ('provider-payos-production-v2', 2, 'payos', 'production',
+                'payOS production', 'env://payos/default',
+                '{"create":true,"get":true,"cancel":true,"verify":true,"refund":false}',
+                1, 100000000, 900, 5000, 3, 5, 'live', 'ready')
+           ON CONFLICT(id) DO NOTHING"""
+    )
+
+
+def _upgrade_to_v80_add_live_payos_profile(cursor, _context):
+    """Add the immutable live profile that references process-local secrets."""
+
+    seed_live_payos_v80_profile(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3649,6 +3674,11 @@ UPGRADES = (
         "add_commercial_billing_and_usage",
         _upgrade_to_v79_add_commercial_billing_and_usage,
     ),
+    DatabaseUpgrade(
+        80,
+        "add_live_payos_profile",
+        _upgrade_to_v80_add_live_payos_profile,
+    ),
 )
 
 
@@ -3656,8 +3686,9 @@ DB_SCHEMA_VERSION = (
     UPGRADES[-1].version if UPGRADES else BASELINE_SCHEMA_VERSION
 )
 
-# V79 adds versioned commercial, billing and usage-credit persistence.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 79
+# V79 adds versioned commercial, billing and usage-credit persistence. V80 adds
+# the immutable process-local credential reference used by this runtime.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

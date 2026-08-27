@@ -8,9 +8,10 @@ import psycopg
 import pytest
 
 from backend.billing.activation import BillingActivationService
+from backend.billing.providers.base import PaymentProviderError
 from backend.billing.providers.fake import FakePaymentProvider
 from backend.billing.runtime import PaymentProviderRegistry
-from backend.billing.service import ProviderCommandExecutor
+from backend.billing.service import BillingService, ProviderCommandExecutor
 from backend.billing import webhook as billing_webhook
 from backend.db.db_helper import PostgresCursor, PostgresDatabase
 
@@ -244,12 +245,12 @@ def _insert_base_plan_order(
     }
 
 
-def _paid_result(order, *, amount=100000, occurred_at=None):
+def _paid_result(order, *, amount=100000, occurred_at=None, reference=None):
     return {
         "status": "PAID",
         "orderCode": order["order_code"],
         "amount": amount,
-        "reference": f"payment-{order['order_id']}",
+        "reference": reference or f"payment-{order['order_id']}",
         "transactionDateTime": occurred_at or order["now"],
     }
 
@@ -348,6 +349,48 @@ def test_verified_base_plan_activation_is_exactly_once(billing_cursor):
     assert tuple(subscription) == ("order", order["order_id"])
 
 
+def test_provider_transaction_cannot_activate_two_orders(billing_cursor):
+    first_order = _insert_base_plan_order(billing_cursor)
+    second_order = _insert_base_plan_order(
+        billing_cursor,
+        owner_kind="organization",
+    )
+    service = BillingActivationService(
+        billing_cursor,
+        clock=lambda: first_order["now"],
+    )
+    shared_reference = f"shared-payment-{uuid.uuid4().hex}"
+
+    first = service.apply_order_result(
+        first_order["order_id"],
+        _paid_result(first_order, reference=shared_reference),
+        provider_profile_id="provider-fake-v1",
+    )
+    second = service.apply_order_result(
+        second_order["order_id"],
+        _paid_result(second_order, reference=shared_reference),
+        provider_profile_id="provider-fake-v1",
+    )
+
+    assert first["status"] == "applied"
+    assert second == {
+        "status": "review_required",
+        "reason": "PAYMENT_TRANSACTION_ORDER_MISMATCH",
+    }
+    assert tuple(billing_cursor.execute(
+        "SELECT payment_state, activation_state FROM billing_orders WHERE id = ?",
+        (second_order["order_id"],),
+    ).fetchone()) == ("unverified", "review_required")
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE provider_transaction_id = ?",
+        (shared_reference,),
+    ).fetchone()[0] == 1
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM organization_subscriptions WHERE source_order_id = ?",
+        (second_order["order_id"],),
+    ).fetchone()[0] == 0
+
+
 def test_wrong_amount_is_reviewed_without_payment_fact_or_entitlement(billing_cursor):
     order = _insert_base_plan_order(billing_cursor)
 
@@ -367,6 +410,67 @@ def test_wrong_amount_is_reviewed_without_payment_fact_or_entitlement(billing_cu
     assert billing_cursor.execute(
         "SELECT COUNT(*) FROM account_subscriptions WHERE user_id = ?",
         (order["user_id"],),
+    ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("signed_overrides", "provider_overrides", "reason"),
+    [
+        ({"amount": 99999}, {}, "WEBHOOK_AMOUNT_MISMATCH"),
+        (
+            {},
+            {"paymentLinkId": "different-link"},
+            "PAYMENT_LINK_ID_MISMATCH",
+        ),
+    ],
+)
+def test_webhook_identity_mismatch_is_reviewed_before_activation(
+    billing_cursor,
+    signed_overrides,
+    provider_overrides,
+    reason,
+):
+    order = _insert_base_plan_order(billing_cursor)
+    event_id = f"payment-event-{uuid.uuid4().hex}"
+    signed = {
+        "orderCode": order["order_code"],
+        "amount": 100000,
+        "paymentLinkId": f"link-{order['order_code']}",
+        "reference": f"reference-{order['order_code']}",
+        **signed_overrides,
+    }
+    billing_cursor.execute(
+        """INSERT INTO payment_webhook_events
+               (id, provider_profile_id, dedupe_key, payload_hash,
+                signed_fields_json, status, available_at)
+           VALUES (?, 'provider-fake-v1', ?, ?, ?, 'pending', ?)""",
+        (
+            event_id,
+            f"dedupe-{uuid.uuid4().hex}",
+            uuid.uuid4().hex * 2,
+            json.dumps(signed, separators=(",", ":")),
+            order["now"],
+        ),
+    )
+    provider_result = {
+        **_paid_result(order),
+        "paymentLinkId": signed["paymentLinkId"],
+        **provider_overrides,
+    }
+
+    result = BillingActivationService(
+        billing_cursor, clock=lambda: order["now"]
+    ).apply_verified(
+        event_id,
+        provider_result,
+        provider_profile_id="provider-fake-v1",
+    )
+
+    assert result["status"] == "review_required"
+    assert result["reason"] == reason
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
+        (order["order_id"],),
     ).fetchone()[0] == 0
 
 
@@ -558,6 +662,196 @@ def test_fake_timeout_recovers_with_stable_command_and_activates_once(
         "SELECT COUNT(*) FROM usage_credit_grants WHERE account_user_id = ?",
         (order["user_id"],),
     ).fetchone()[0] == 1
+
+
+def test_ambiguous_cancel_queries_before_repeating_the_mutation(billing_cursor):
+    order = _insert_base_plan_order(billing_cursor)
+    command_id = f"command-{uuid.uuid4().hex}"
+    billing_cursor.execute(
+        """INSERT INTO billing_provider_commands
+               (id, order_id, command_type, provider_reference,
+                request_json, status, available_at)
+           VALUES (?, ?, 'cancel_checkout', ?, ?, 'pending', ?)""",
+        (
+            command_id,
+            order["order_id"],
+            f"cancel-{order['order_id']}",
+            json.dumps(
+                {
+                    "identifier": order["order_code"],
+                    "reason": "Người mua hủy",
+                },
+                separators=(",", ":"),
+            ),
+            order["now"],
+        ),
+    )
+
+    class AmbiguousCancelProvider:
+        cancel_calls = 0
+        get_calls = 0
+
+        def cancel_payment(self, identifier, _reason=None):
+            self.cancel_calls += 1
+            raise PaymentProviderError(
+                "PROVIDER_TRANSPORT_FAILED",
+                "ambiguous cancel",
+                outcome_unknown=True,
+                retryable=True,
+            )
+
+        def get_payment(self, identifier):
+            self.get_calls += 1
+            return {
+                "id": f"link-{identifier}",
+                "paymentLinkId": f"link-{identifier}",
+                "orderCode": int(identifier),
+                "amount": 100000,
+                "amountPaid": 0,
+                "amountRemaining": 100000,
+                "status": "CANCELLED",
+                "transactions": [],
+            }
+
+    provider = AmbiguousCancelProvider()
+    executor = ProviderCommandExecutor(
+        _TransactionDatabase(billing_cursor),
+        providers={"provider-fake-v1": provider},
+        clock=lambda: order["now"],
+    )
+
+    first = executor.execute(command_id)
+    assert first["checkout_state"] == "open"
+    billing_cursor.execute(
+        "UPDATE billing_provider_commands SET available_at = ? WHERE id = ?",
+        (order["now"], command_id),
+    )
+    second = executor.execute(command_id)
+
+    assert second["checkout_state"] == "cancelled"
+    assert provider.cancel_calls == 1
+    assert provider.get_calls == 1
+
+
+def test_paid_provider_result_stays_retryable_when_activation_transaction_fails(
+    billing_cursor,
+    monkeypatch,
+):
+    order = _insert_base_plan_order(billing_cursor)
+    billing_cursor.execute(
+        "UPDATE billing_orders SET checkout_state = 'creating' WHERE id = ?",
+        (order["order_id"],),
+    )
+    command_id = f"command-{uuid.uuid4().hex}"
+    billing_cursor.execute(
+        """INSERT INTO billing_provider_commands
+               (id, order_id, command_type, provider_reference,
+                request_json, status, available_at)
+           VALUES (?, ?, 'query_order', ?, '{}', 'pending', ?)""",
+        (
+            command_id,
+            order["order_id"],
+            f"provider-ref-{order['order_id']}",
+            order["now"],
+        ),
+    )
+
+    class PaidProvider:
+        def get_payment(self, _identifier):
+            return _paid_result(order)
+
+    original_apply = BillingActivationService.apply_order_result
+    calls = {"count": 0}
+
+    def fail_once(self, *args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("simulated activation database failure")
+        return original_apply(self, *args, **kwargs)
+
+    monkeypatch.setattr(BillingActivationService, "apply_order_result", fail_once)
+    database = _TransactionDatabase(billing_cursor)
+    executor = ProviderCommandExecutor(
+        database,
+        providers={"provider-fake-v1": PaidProvider()},
+        clock=lambda: order["now"],
+        environment={"PAYMENT_ACTIVATION_ENABLED": "true"},
+    )
+
+    first = executor.execute(command_id)
+    assert first["activation_state"] == "not_ready"
+    assert billing_cursor.execute(
+        "SELECT status, attempt_count FROM billing_provider_commands WHERE id = ?",
+        (command_id,),
+    ).fetchone() == {"status": "retry", "attempt_count": 1}
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
+        (order["order_id"],),
+    ).fetchone()[0] == 0
+
+    billing_cursor.execute(
+        "UPDATE billing_provider_commands SET available_at = ? WHERE id = ?",
+        (order["now"], command_id),
+    )
+    second = executor.execute(command_id)
+    assert second["activation_state"] == "applied"
+    assert billing_cursor.execute(
+        "SELECT status FROM billing_provider_commands WHERE id = ?",
+        (command_id,),
+    ).fetchone()[0] == "completed"
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
+        (order["order_id"],),
+    ).fetchone()[0] == 1
+
+
+def test_manual_refund_replay_survives_terminal_refund_state_and_binds_request(
+    billing_cursor,
+):
+    order = _insert_base_plan_order(billing_cursor)
+    BillingActivationService(
+        billing_cursor, clock=lambda: order["now"]
+    ).apply_order_result(
+        order["order_id"],
+        _paid_result(order),
+        provider_profile_id="provider-fake-v1",
+    )
+    service = BillingService(billing_cursor, clock=lambda: order["now"])
+    created, replayed = service.create_manual_refund_intent(
+        f"order-public-{order['order_id'].removeprefix('order-test-')}",
+        order["user_id"],
+        100000,
+        "Hoàn toàn bộ",
+        "refund-request-123",
+    )
+    assert replayed is False
+    billing_cursor.execute(
+        "UPDATE billing_refund_intents SET state = 'succeeded' WHERE id = ?",
+        (created["id"],),
+    )
+    billing_cursor.execute(
+        "UPDATE billing_orders SET payment_state = 'refunded' WHERE id = ?",
+        (order["order_id"],),
+    )
+
+    replay, replayed = service.create_manual_refund_intent(
+        f"order-public-{order['order_id'].removeprefix('order-test-')}",
+        order["user_id"],
+        100000,
+        "Hoàn toàn bộ",
+        "refund-request-123",
+    )
+    assert replayed is True
+    assert replay["id"] == created["id"]
+    with pytest.raises(Exception) as error:
+        service.create_manual_refund_intent(
+            f"order-public-{order['order_id'].removeprefix('order-test-')}",
+            order["user_id"],
+            99999,
+            "Hoàn khác",
+            "refund-request-123",
+        )
+    assert getattr(error.value, "code", None) == "IDEMPOTENCY_KEY_REUSED"
 
 
 def test_same_webhook_identity_with_changed_payload_is_held_for_review(

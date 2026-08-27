@@ -109,7 +109,10 @@ class PayOSCredentials:
     checksum_key: str
 
     def __post_init__(self):
-        if not all(str(value).strip() for value in (self.client_id, self.api_key, self.checksum_key)):
+        if not all(
+            value is not None and str(value).strip()
+            for value in (self.client_id, self.api_key, self.checksum_key)
+        ):
             raise ValueError("Incomplete payOS credentials.")
 
 
@@ -147,6 +150,8 @@ class PayOSPaymentProvider:
         identifier = self._identifier(identifier)
         data = self._call("GET", f"/v2/payment-requests/{identifier}", None)
         self._validate_status(data)
+        if data.get("id") and not data.get("paymentLinkId"):
+            data["paymentLinkId"] = str(data["id"])
         transactions = data.get("transactions")
         if transactions == {}:
             data["transactions"] = []

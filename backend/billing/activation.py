@@ -84,6 +84,18 @@ class BillingActivationService:
         if int(result.get("orderCode") or order_code) != order_code:
             return self._review(event_id, order, "PROVIDER_ORDER_CODE_MISMATCH")
         expected = int(order["total_amount"])
+        signed_amount = int(signed.get("amount") or 0)
+        if signed_amount != expected:
+            return self._review(event_id, order, "WEBHOOK_AMOUNT_MISMATCH")
+        signed_payment_link_id = str(signed.get("paymentLinkId") or "").strip()
+        result_payment_link_id = str(
+            result.get("paymentLinkId") or result.get("id") or ""
+        ).strip()
+        if (
+            not signed_payment_link_id
+            or result_payment_link_id != signed_payment_link_id
+        ):
+            return self._review(event_id, order, "PAYMENT_LINK_ID_MISMATCH")
         if amount > 0 and amount != expected:
             return self._review(event_id, order, "PAYMENT_AMOUNT_MISMATCH")
         if status not in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"} or amount < expected:
@@ -92,24 +104,23 @@ class BillingActivationService:
 
         timing = self._payment_timing(order, result)
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order_code}-payment")
-        payment_transaction_id = new_id("payment-tx")
-        inserted_payment = self.cursor.execute(
-            """INSERT INTO payment_transactions
-                   (id, order_id, provider_profile_id, provider_transaction_id,
-                    transaction_type, status, verified_paid_amount,
-                    net_settled_amount, currency, payment_timing,
-                    provider_occurred_at, evidence_json)
-               VALUES (?, ?, ?, ?, 'payment', 'verified', ?, ?, 'VND', ?, ?, ?)
-               ON CONFLICT(provider_profile_id, provider_transaction_id, transaction_type)
-               DO NOTHING""",
-            (
-                payment_transaction_id, order["id"], str(provider_profile_id),
-                tx_id, expected, expected, timing,
-                int(result.get("transactionDateTime") or result.get("createdAt") or self.clock()),
-                canonical_json({"provider": result, "webhook": signed}),
+        payment = self._insert_or_validate_payment(
+            order,
+            provider_profile_id=str(provider_profile_id),
+            provider_transaction_id=tx_id,
+            amount=expected,
+            timing=timing,
+            occurred_at=int(
+                result.get("transactionDateTime")
+                or result.get("createdAt")
+                or self.clock()
             ),
+            evidence={"provider": result, "webhook": signed},
         )
-        payment_was_inserted = inserted_payment.rowcount == 1
+        if payment["mismatch"]:
+            return self._review(event_id, order, payment["mismatch"])
+        payment_transaction_id = payment["id"]
+        payment_was_inserted = payment["inserted"]
         self.cursor.execute(
             """UPDATE billing_orders
                   SET payment_state = 'verified_paid', activation_state =
@@ -164,20 +175,23 @@ class BillingActivationService:
             return {"status": "not_paid", "providerStatus": status}
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order['provider_order_code']}-payment")
         timing = self._payment_timing(order, result)
-        payment_transaction_id = new_id("payment-tx")
-        inserted_payment = self.cursor.execute(
-            """INSERT INTO payment_transactions
-                   (id, order_id, provider_profile_id, provider_transaction_id,
-                    transaction_type, status, verified_paid_amount,
-                    net_settled_amount, currency, payment_timing,
-                    provider_occurred_at, evidence_json)
-               VALUES (?, ?, ?, ?, 'payment', 'verified', ?, ?, 'VND', ?, ?, ?)
-               ON CONFLICT(provider_profile_id, provider_transaction_id, transaction_type) DO NOTHING""",
-            (payment_transaction_id, order["id"], str(provider_profile_id), tx_id,
-             amount, amount, timing, int(result.get("transactionDateTime") or result.get("createdAt") or self.clock()),
-             canonical_json({"provider": result})),
+        payment = self._insert_or_validate_payment(
+            order,
+            provider_profile_id=str(provider_profile_id),
+            provider_transaction_id=tx_id,
+            amount=amount,
+            timing=timing,
+            occurred_at=int(
+                result.get("transactionDateTime")
+                or result.get("createdAt")
+                or self.clock()
+            ),
+            evidence={"provider": result},
         )
-        payment_was_inserted = inserted_payment.rowcount == 1
+        if payment["mismatch"]:
+            return self._mark_review(order, payment["mismatch"])
+        payment_transaction_id = payment["id"]
+        payment_was_inserted = payment["inserted"]
         self.cursor.execute(
             """UPDATE billing_orders
                   SET payment_state = 'verified_paid',
@@ -202,6 +216,82 @@ class BillingActivationService:
                 outcome=outcome,
             )
         return outcome
+
+    def _insert_or_validate_payment(
+        self,
+        order,
+        *,
+        provider_profile_id,
+        provider_transaction_id,
+        amount,
+        timing,
+        occurred_at,
+        evidence,
+    ):
+        """Bind one provider payment identity to exactly one order.
+
+        The unique provider identity is the exactly-once seam.  A conflict is
+        an idempotent replay only when the durable financial fact belongs to
+        this order and matches its immutable amount/currency snapshot.
+        """
+
+        payment_transaction_id = new_id("payment-tx")
+        inserted = self.cursor.execute(
+            """INSERT INTO payment_transactions
+                   (id, order_id, provider_profile_id, provider_transaction_id,
+                    transaction_type, status, verified_paid_amount,
+                    net_settled_amount, currency, payment_timing,
+                    provider_occurred_at, evidence_json)
+               VALUES (?, ?, ?, ?, 'payment', 'verified', ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(provider_profile_id, provider_transaction_id, transaction_type)
+               DO NOTHING""",
+            (
+                payment_transaction_id,
+                order["id"],
+                str(provider_profile_id),
+                str(provider_transaction_id),
+                int(amount),
+                int(amount),
+                str(order.get("currency") or "VND"),
+                str(timing),
+                int(occurred_at),
+                canonical_json(evidence),
+            ),
+        ).rowcount == 1
+        if inserted:
+            return {
+                "id": payment_transaction_id,
+                "inserted": True,
+                "mismatch": None,
+            }
+
+        existing = _dict(self.cursor.execute(
+            """SELECT id, order_id, status, verified_paid_amount, currency
+                 FROM payment_transactions
+                WHERE provider_profile_id = ?
+                  AND provider_transaction_id = ?
+                  AND transaction_type = 'payment'
+                FOR UPDATE""",
+            (str(provider_profile_id), str(provider_transaction_id)),
+        ).fetchone())
+        if not existing or str(existing["order_id"]) != str(order["id"]):
+            return {
+                "id": existing.get("id") if existing else None,
+                "inserted": False,
+                "mismatch": "PAYMENT_TRANSACTION_ORDER_MISMATCH",
+            }
+        if (
+            str(existing.get("status")) != "verified"
+            or int(existing.get("verified_paid_amount") or 0) != int(amount)
+            or str(existing.get("currency") or "")
+            != str(order.get("currency") or "VND")
+        ):
+            return {
+                "id": existing["id"],
+                "inserted": False,
+                "mismatch": "PAYMENT_TRANSACTION_EVIDENCE_MISMATCH",
+            }
+        return {"id": existing["id"], "inserted": False, "mismatch": None}
 
     def _record_verified_payment_effects(
         self,

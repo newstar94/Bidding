@@ -1,8 +1,9 @@
 """Runtime payment-provider resolution without persisting secret material.
 
 Provider profiles pin a credential *reference*.  The actual secret resolver is
-an infrastructure seam and can be installed by the deployment process.  This
-module deliberately has no environment-variable fallback for payOS secrets.
+an infrastructure seam installed by the application composition root.  payOS
+credentials can come from the process environment, but are never copied into
+provider profiles, application responses, logs, or durable audit metadata.
 """
 
 from __future__ import annotations
@@ -13,6 +14,13 @@ import threading
 from .providers.base import PaymentProviderError
 from .providers.fake import FakePaymentProvider
 from .providers.payos import PayOSCredentials, PayOSPaymentProvider
+
+
+PAYOS_ENV_SECRET_NAMES = {
+    "client_id": "PAYOS_CLIENT_ID",
+    "api_key": "PAYOS_API_KEY",
+    "checksum_key": "PAYOS_CHECKSUM_KEY",
+}
 
 
 class PaymentProviderRegistry:
@@ -96,3 +104,112 @@ def configure_payment_credential_resolver(resolver):
     global _runtime_registry
     _runtime_registry = PaymentProviderRegistry(credential_resolver=resolver)
     return _runtime_registry
+
+
+def build_payos_environment_credential_resolver(environment=None):
+    """Build a reference-bound resolver without persisting secret material.
+
+    Only the exact reference configured for this process can resolve.  A
+    different DB profile reference returns ``None`` instead of falling back to
+    the same merchant keys, preventing a profile/reference mix-up.
+    """
+
+    environment = os.environ if environment is None else environment
+    configured_reference = str(
+        environment.get("PAYOS_CREDENTIAL_REFERENCE", "")
+    ).strip()
+
+    def resolve(credential_reference):
+        if (
+            not configured_reference
+            or str(credential_reference or "").strip() != configured_reference
+        ):
+            return None
+        return {
+            key: environment.get(variable_name)
+            for key, variable_name in PAYOS_ENV_SECRET_NAMES.items()
+        }
+
+    return resolve
+
+
+def configure_payment_runtime(environment=None):
+    """Install the process-local payOS resolver at the application root."""
+
+    global _runtime_registry
+    environment = os.environ if environment is None else environment
+    _runtime_registry = PaymentProviderRegistry(
+        environment=environment,
+        credential_resolver=build_payos_environment_credential_resolver(
+            environment
+        ),
+    )
+    return _runtime_registry
+
+
+def validate_payment_provider_runtime(
+    database,
+    *,
+    environment=None,
+    registry=None,
+):
+    """Resolve the exact live DB profile before payment traffic is ready."""
+
+    environment = os.environ if environment is None else environment
+    payment_enabled = any(
+        str(environment.get(name, "false")).strip().casefold() == "true"
+        for name in ("PAYMENT_CHECKOUT_ENABLED", "PAYMENT_ACTIVATION_ENABLED")
+    )
+    provider_name = str(
+        environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")
+    ).strip().casefold()
+    if not payment_enabled or provider_name != "payos":
+        return None
+
+    provider_environment = str(
+        environment.get("PAYMENT_PROVIDER_ENVIRONMENT", "")
+    ).strip().casefold()
+    configured_reference = str(
+        environment.get("PAYOS_CREDENTIAL_REFERENCE", "")
+    ).strip()
+    connection = database.get_connection()
+    try:
+        row = connection.execute(
+            """SELECT id AS provider_profile_id, provider, environment,
+                      credential_reference, timeout_ms, max_attempts,
+                      mode, readiness_status
+                 FROM payment_provider_profiles
+                WHERE provider = ? AND environment = ?
+                  AND mode = 'live' AND readiness_status = 'ready'
+                ORDER BY routing_priority, version DESC LIMIT 1""",
+            (provider_name, provider_environment),
+        ).fetchone()
+    finally:
+        connection.close()
+
+    profile = dict(row) if row is not None else None
+    if (
+        not profile
+        or str(profile.get("provider") or "").strip().casefold() != "payos"
+        or str(profile.get("environment") or "").strip().casefold()
+        != "production"
+        or str(profile.get("mode") or "").strip().casefold() != "live"
+        or str(profile.get("readiness_status") or "").strip().casefold()
+        != "ready"
+    ):
+        raise RuntimeError(
+            "payOS live/ready production profile is unavailable."
+        )
+    if str(profile.get("credential_reference") or "").strip() != configured_reference:
+        raise RuntimeError(
+            "payOS database credential reference does not match "
+            "PAYOS_CREDENTIAL_REFERENCE."
+        )
+
+    active_registry = registry or payment_provider_registry()
+    try:
+        return active_registry.resolve(profile)
+    except (PaymentProviderError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "payOS credentials could not be resolved for the live provider profile."
+        ) from exc

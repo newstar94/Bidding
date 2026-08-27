@@ -22,6 +22,20 @@ from backend.commercial_policy.errors import CommercialPolicyError, REFUND_NOT_S
 KEY = "test-checksum"
 
 
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        (None, "api", KEY),
+        ("client", None, KEY),
+        ("client", "api", None),
+        ("client", "api", "   "),
+    ],
+)
+def test_payos_credentials_reject_missing_values(credentials):
+    with pytest.raises(ValueError, match="Incomplete payOS credentials"):
+        PayOSCredentials(*credentials)
+
+
 def test_payos_create_signature_uses_the_exact_five_field_contract():
     payload = {
         "orderCode": 123456789,
@@ -107,6 +121,35 @@ def test_payos_rejects_unsigned_success_and_refund_capability():
     with pytest.raises(CommercialPolicyError) as error:
         provider.refund_payment(123)
     assert error.value.code == REFUND_NOT_SUPPORTED
+
+
+def test_payos_get_normalizes_the_official_id_as_payment_link_id():
+    data = {
+        "id": "link-from-get",
+        "orderCode": 123,
+        "amount": 99000,
+        "amountPaid": 0,
+        "amountRemaining": 99000,
+        "status": "PENDING",
+        "transactions": [],
+    }
+    provider = PayOSPaymentProvider(
+        PayOSCredentials("client", "api", KEY),
+        transport=lambda *_args: (
+            200,
+            json.dumps(
+                {
+                    "code": "00",
+                    "data": data,
+                    "signature": sign_signed_data(data, KEY),
+                }
+            ).encode(),
+        ),
+    )
+
+    result = provider.get_payment(123)
+
+    assert result["paymentLinkId"] == "link-from-get"
 
 
 def test_fake_provider_duplicate_timeout_reconciliation_and_delayed_payment():

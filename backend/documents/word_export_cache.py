@@ -125,7 +125,10 @@ def _acquire_lock(lock_path: Path) -> int | None:
             )
             os.write(descriptor, f"{os.getpid()}:{time.time_ns()}".encode("ascii"))
             return descriptor
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # On Windows another thread closing and unlinking this exact lock
+            # can transiently surface as EACCES instead of EEXIST. Treat that
+            # state as ordinary lock contention and retry within the bound.
             try:
                 if time.time() - lock_path.stat().st_mtime > stale_seconds:
                     lock_path.unlink(missing_ok=True)

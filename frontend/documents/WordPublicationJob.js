@@ -4,6 +4,15 @@ import { authFetchDownload } from "../shared/view_helpers.js";
 const ACTIVE_JOB_STATUSES = new Set(["pending", "processing", "retry"]);
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_JOB_TIMEOUT_MS = 20 * 60 * 1_000;
+const TERMINAL_POLL_ERROR_CODES = new Set([
+  "AUTH_REQUIRED",
+  "DOCUMENT_EXPORT_DENIED",
+  "DOCUMENT_EXPORT_ENTITLEMENT_REQUIRED",
+  "DOCUMENT_EXPORT_SUBSCRIPTION_REQUIRED",
+  "DOCUMENT_EXPORT_PERMISSION_REVOKED",
+  "DOCUMENT_JOB_NOT_FOUND",
+  "DOCUMENT_JOB_EXPIRED",
+]);
 
 function delay(milliseconds) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
@@ -132,7 +141,15 @@ export async function runWordPublicationExportJob({
       });
     } catch (error) {
       const code = jobErrorCode(error);
-      throw new Error(jobErrorMessage(code, error instanceof Error ? error.message : String(error)));
+      if (TERMINAL_POLL_ERROR_CODES.has(code)) {
+        throw new Error(jobErrorMessage(code, error instanceof Error ? error.message : String(error)));
+      }
+      await onProgress(
+        "render",
+        "Tạm mất kết nối khi theo dõi tài liệu; hệ thống sẽ tự kết nối lại.",
+      );
+      await wait(Math.max(0, Number(pollIntervalMs) || DEFAULT_POLL_INTERVAL_MS));
+      continue;
     }
     if (ACTIVE_JOB_STATUSES.has(normalizedStatus(latest))) {
       await wait(Math.max(0, Number(pollIntervalMs) || DEFAULT_POLL_INTERVAL_MS));

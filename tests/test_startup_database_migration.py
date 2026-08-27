@@ -61,18 +61,18 @@ class _RuntimeSchemaDatabase:
         return _RuntimeSchemaConnection(self.version)
 
 
-def test_v79_runtime_requires_commercial_schema_and_retired_procurement_schema(monkeypatch):
+def test_v80_runtime_requires_live_payos_profile_metadata(monkeypatch):
     monkeypatch.setattr(
         startup_module,
         "_assert_runtime_schema_contract",
         lambda _connection: None,
     )
     assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (
-        79,
-        79,
+        80,
+        80,
     )
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 79
-    for version in (79,):
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 80
+    for version in (80,):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
             DB_RUNTIME_MIN_SCHEMA_VERSION,
@@ -83,7 +83,7 @@ def test_v79_runtime_requires_commercial_schema_and_retired_procurement_schema(m
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (75, 76, 77, 78):
+    for version in (75, 76, 77, 78, 79):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,

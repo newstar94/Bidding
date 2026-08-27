@@ -69,20 +69,44 @@ def validate_commercial_startup_configuration(environment):
     provider = str(environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")).strip().casefold()
     if provider not in {"fake", "payos"}:
         raise RuntimeError("COMMERCIAL_PAYMENT_PROVIDER must be fake or payos.")
-    if production and (config.payment_checkout_enabled or config.payment_activation_enabled):
+    payment_enabled = (
+        config.payment_checkout_enabled or config.payment_activation_enabled
+    )
+    if production and payment_enabled:
         if provider != "payos":
             raise RuntimeError("Production payment processing cannot use Fake Provider.")
-        readiness_flags = (
-            "COMMERCIAL_EXTERNAL_LEGAL_READY",
+    if provider == "payos" and payment_enabled:
+        if (
+            str(environment.get("PAYMENT_PROVIDER_ENVIRONMENT", ""))
+            .strip()
+            .casefold()
+            != "production"
+        ):
+            raise RuntimeError(
+                "payOS requires PAYMENT_PROVIDER_ENVIRONMENT=production; "
+                "payOS does not provide a separate sandbox provider."
+            )
+        readiness_flags = [
             "PAYOS_MERCHANT_AUTHORIZATION_CONFIRMED",
             "PAYOS_WEBHOOK_AUTHORIZATION_CONFIRMED",
-        )
+        ]
+        if production:
+            readiness_flags.insert(0, "COMMERCIAL_EXTERNAL_LEGAL_READY")
         missing = [name for name in readiness_flags if not _flag(environment, name)]
-        if not str(environment.get("PAYOS_CREDENTIAL_REFERENCE", "")).strip():
-            missing.append("PAYOS_CREDENTIAL_REFERENCE")
+        required_values = (
+            "PAYOS_CREDENTIAL_REFERENCE",
+            "PAYOS_CLIENT_ID",
+            "PAYOS_API_KEY",
+            "PAYOS_CHECKSUM_KEY",
+        )
+        missing.extend(
+            name
+            for name in required_values
+            if not str(environment.get(name, "")).strip()
+        )
         if missing:
             raise RuntimeError(
-                "Production payment processing is blocked by external readiness: "
+                "payOS payment processing is blocked by external readiness: "
                 + ", ".join(missing)
             )
     return config

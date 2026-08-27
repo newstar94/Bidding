@@ -59,6 +59,16 @@ def test_commercial_document_cannot_define_record_read_or_masking_capabilities()
     assert any(error["code"] == "CAPABILITY_INVALID" for error in result["errors"])
 
 
+def test_validation_bounds_credit_savings_computation_before_dynamic_programming():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["creditPacks"][0]["quantity"] = 10**12
+    document["offers"][1]["includedProcurementQuota"] = 10**12
+
+    result = validate_document(document)
+
+    assert sum(error["code"] == "VALUE_TOO_LARGE" for error in result["errors"]) == 2
+
+
 def test_production_release_requires_external_tax_and_live_provider_readiness():
     document = build_initial_draft_document(LEGACY_EXPORTS)
     personal_mapping = {capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES}

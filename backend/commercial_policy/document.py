@@ -12,6 +12,7 @@ MAX_DOCUMENT_BYTES = 262_144
 MAX_DEPTH = 12
 MAX_OFFERS = 16
 MAX_CREDIT_PACKS = 32
+MAX_CREDIT_UNITS = 100_000
 SUPPORTED_TIERS = ("personal", "silver", "gold", "diamond")
 SUPPORTED_VARIANTS = ("internal", "connected")
 SUPPORTED_EXPORT_CAPABILITIES = (
@@ -291,6 +292,8 @@ def validate_document(document, *, require_production_ready=False):
             value = offer.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value < (1 if field == "memberQuota" else 0):
                 errors.append(_error("INTEGER_REQUIRED", f"{path}.{field}", "Giá trị phải là số nguyên hợp lệ."))
+            elif value > MAX_CREDIT_UNITS:
+                errors.append(_error("VALUE_TOO_LARGE", f"{path}.{field}", "Giá trị vượt giới hạn xử lý an toàn."))
         price = offer.get("price") or {}
         amounts = [price.get("subtotal"), price.get("tax"), price.get("total")]
         if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in amounts):
@@ -320,6 +323,8 @@ def validate_document(document, *, require_production_ready=False):
             value = pack.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 errors.append(_error("INTEGER_REQUIRED", f"creditPacks[{index}].{field}", "Giá trị phải là số nguyên dương."))
+            elif field == "quantity" and value > MAX_CREDIT_UNITS:
+                errors.append(_error("VALUE_TOO_LARGE", f"creditPacks[{index}].quantity", "Số lượt vượt giới hạn xử lý an toàn."))
 
     policies = document.get("policies") or {}
     for name, policy in policies.items():
@@ -360,7 +365,11 @@ def validate_document(document, *, require_production_ready=False):
         errors.append(_error("THRESHOLD_INVALID", "policies.connectedAdvantageBasisPoints", "Ngưỡng lợi ích phải dùng integer basis points."))
         threshold = 0
     savings = []
-    if packs and offers and not any(error["code"] == "MONEY_INTEGER_REQUIRED" for error in errors):
+    savings_blockers = {
+        "INTEGER_REQUIRED", "MONEY_INTEGER_REQUIRED", "VALUE_TOO_LARGE",
+        "CREDIT_PACKS_INVALID", "OFFERS_INVALID",
+    }
+    if packs and offers and not any(error["code"] in savings_blockers for error in errors):
         savings = connected_savings(document)
         for item in savings:
             if item["savingBasisPoints"] < threshold:

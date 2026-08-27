@@ -27,6 +27,7 @@ from backend.db.upgrades import (
     ensure_commercial_v79_indexes,
     read_database_version,
     record_database_version,
+    seed_live_payos_v80_profile,
     seed_commercial_v79,
 )
 from backend.shared.logging_utils import log_error
@@ -1567,6 +1568,7 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
     )
     ensure_commercial_v79_indexes(cursor)
     seed_commercial_v79(cursor)
+    seed_live_payos_v80_profile(cursor)
     context.create_indexes_and_triggers(cursor)
     create_commercial_immutable_triggers(cursor)
     drop_retired_procurement_center_schema(cursor)

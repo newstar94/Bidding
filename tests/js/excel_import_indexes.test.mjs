@@ -111,3 +111,34 @@ test("indexed expert Excel save preserves identity and existing images", async (
   assert.equal(controller.model.state.chuyengia[0].anhChuKy, "signature-image");
   assert.equal(persisted[0].tenAnhChungChi, "certificate.webp");
 });
+
+
+test("failed Excel persistence restores the pre-import in-memory workspace", async () => {
+  const original = {
+    id: "plan-1",
+    maKeHoach: "KH-01",
+    tenKeHoach: "Tên cũ",
+    isLatest: 1,
+    rootId: "plan-1",
+    phienBan: "00",
+  };
+  const controller = {
+    model: {
+      state: { kehoach: [structuredClone(original)] },
+      persistChanges: async () => { throw new Error("IndexedDB failed"); },
+      commitLocalMutation() {},
+      parseVND: (value) => Number(value || 0),
+      convertDMYToYMD: (value) => value,
+      convertDMYHMSToYMDHMS: (value) => value,
+    },
+  };
+
+  await assert.rejects(
+    saveBasicExcelImport(controller, "kehoach", [{
+      maKeHoach: "KH-01",
+      tenKeHoach: "Tên bị rollback",
+    }]),
+    /IndexedDB failed/,
+  );
+  assert.deepEqual(controller.model.state.kehoach, [original]);
+});

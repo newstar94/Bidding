@@ -14,6 +14,17 @@ Conflict không còn tự biến mất khi F5, nhưng vẫn không quay lại ac
 
 Thêm storage tenant-scoped append-only/head cho draft và authority; rollout theo capture flag rồi resolution flag. Không migrate marker client cũ. Rollback tắt route/UI và quay về discard-on-F5; server draft cũ không replay và được purge theo retention.
 
+## Bổ sung triển khai 2026-08-26
+
+Business mutation, chuyển draft sang `resolved` và audit bắt buộc
+`sync.conflict_resolved` phải commit trong cùng một database transaction. Seam
+`transaction_completion` chỉ nhận callback nội bộ đã được route conflict đóng
+gói; nó không phải public extension point và không thay đổi authorization,
+field visibility hay payload sync. Idempotent replay cũng chạy completion trong
+transaction để sửa được outcome cũ đã commit business mutation nhưng còn draft
+active. Rollback ở bất kỳ bước nào giữ cả business mutation, draft và audit ở
+trạng thái trước request; không cần migration schema hay data rewrite.
+
 ## Regression seams
 
 F5/no replay, actor/workspace/tenant isolation, revocation no-leak, exact allowlist, null-vs-missing, unsupported relation/delete, token tamper/expiry, second race 409, audit atomicity và retention purge.

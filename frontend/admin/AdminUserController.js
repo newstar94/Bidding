@@ -413,13 +413,25 @@ export function setupRBACEvents() {
         if (existingEmp && existingEmp.email.trim().toLowerCase() !== emailInput) {
           try {
             const oldUserId = id;
-            await apiFetch("/api/auth/users/remove-from-org", {
+            const removeResponse = await apiFetch("/api/auth/users/remove-from-org", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ user_id: oldUserId })
             });
+            if (!removeResponse.ok) {
+              let removePayload = {};
+              try { removePayload = await removeResponse.json(); } catch { /* empty error body */ }
+              await this.view.customAlert(
+                "Không thể thay nhân sự",
+                removePayload.error || "Không thể gỡ nhân sự cũ khỏi tổ chức. Vui lòng xử lý các công việc đang phụ trách trước.",
+                "alert-triangle",
+              );
+              return;
+            }
           } catch (err) {
             console.error("Failed to remove the previous employee from the organization:", err);
+            await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối máy chủ để gỡ nhân sự cũ. Vui lòng thử lại.", "alert-triangle");
+            return;
           }
           const newEmpId = foundUser.id;
           const changedPermissions = [];

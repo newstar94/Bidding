@@ -67,8 +67,15 @@ async function persistExplicitUpserts(model, upsertsByTable) {
   const entries = Object.entries(upsertsByTable)
     .map(([table, records]) => [table, uniqueRecords(records)])
     .filter(([, records]) => records.length > 0);
-  for (const [table, records] of entries) {
-    await model.persistChanges(table, { upserts: records }, { throwOnError: true });
+  if (entries.length === 0) return;
+  const atomicUpserts = Object.fromEntries(entries);
+  if (entries.length > 1 && typeof model.db?.applySyncChanges === "function") {
+    // BrowserDB applies all listed stores in one IndexedDB transaction.
+    await model.db.applySyncChanges({ upserts: atomicUpserts });
+  } else {
+    for (const [table, records] of entries) {
+      await model.persistChanges(table, { upserts: records }, { throwOnError: true });
+    }
   }
   for (const [table, records] of entries) {
     model.commitLocalMutation(table, { records });
@@ -80,7 +87,7 @@ export function isBasicExcelImportType(type) {
 export function isBusinessExcelImportType(type) {
   return BUSINESS_IMPORT_TYPES.has(type);
 }
-export async function saveBasicExcelImport(controller, type, validRows) {
+async function saveBasicExcelImportInternal(controller, type, validRows) {
   if (!isBasicExcelImportType(type)) return null;
   if (type === "plan" || type === "kehoach") {
     const mappedData = validRows.map((row) => {
@@ -575,7 +582,7 @@ async function saveOpeningFinancialImport(controller, validRows, context = {}) {
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-export async function saveBusinessExcelImport(controller, type, validRows, context = {}) {
+async function saveBusinessExcelImportInternal(controller, type, validRows, context = {}) {
   if (!isBusinessExcelImportType(type)) return null;
   assertImportRecords("thongtinmothau", validRows, type === "ketquaqd" ? ["trangThai"] : []);
   if (type === "mothau") return await saveOpeningImport(controller, validRows, context);
@@ -583,5 +590,41 @@ export async function saveBusinessExcelImport(controller, type, validRows, conte
   if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows, context);
   if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows, context);
   return null;
+}
+
+const EXCEL_MUTATION_TABLES = [
+  "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong",
+  "thongtinmothau",
+];
+
+async function runRecoverableExcelMutation(controller, callback) {
+  const snapshots = Object.fromEntries(
+    EXCEL_MUTATION_TABLES
+      .filter((table) => Array.isArray(controller.model.state[table]))
+      .map((table) => [table, structuredClone(controller.model.state[table])]),
+  );
+  try {
+    return await callback();
+  } catch (error) {
+    Object.entries(snapshots).forEach(([table, records]) => {
+      controller.model.state[table] = records;
+      controller.model.entityIndexes?.invalidate?.(table);
+    });
+    throw error;
+  }
+}
+
+export async function saveBasicExcelImport(controller, type, validRows) {
+  return runRecoverableExcelMutation(
+    controller,
+    () => saveBasicExcelImportInternal(controller, type, validRows),
+  );
+}
+
+export async function saveBusinessExcelImport(controller, type, validRows, context = {}) {
+  return runRecoverableExcelMutation(
+    controller,
+    () => saveBusinessExcelImportInternal(controller, type, validRows, context),
+  );
 }
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";

@@ -1182,12 +1182,18 @@ def validate_sync_item(
         if bid_price is not None and discount_rate not in (None, ""):
             try:
                 rate = Decimal(str(discount_rate))
+                if not rate.is_finite() or rate < Decimal("0") or rate > Decimal("100"):
+                    errors.append("Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.")
+                    rate = None
+                if rate is None:
+                    raise ValueError("discount rate out of range")
                 expected = (
                     Decimal(bid_price) * (Decimal("100") - rate) / Decimal("100")
                 ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
                 item["giaSauGiamGia"] = str(int(expected))
             except (InvalidOperation, ValueError):
-                errors.append("Tỷ lệ giảm giá không hợp lệ.")
+                if not errors or errors[-1] != "Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.":
+                    errors.append("Tỷ lệ giảm giá không hợp lệ.")
         elif bid_price is not None and discount_rate in (None, ""):
             item["giaSauGiamGia"] = str(bid_price)
 

@@ -79,6 +79,11 @@ class PackageDocumentAuthorizationError(PackageDocumentError):
     status_code = 401
 
 
+class PackageDocumentIdempotencyConflict(PackageDocumentError):
+    code = "IDEMPOTENCY_KEY_REUSED"
+    status_code = 409
+
+
 def _document_error(message, code, status_code):
     return JSONResponse({"error": message, "code": code}, status_code=status_code)
 
@@ -117,6 +122,7 @@ def _document_idempotency_replay(
     actor_user_id,
     operation,
     idempotency_key,
+    request_hash=None,
 ):
     if not idempotency_key:
         return None
@@ -135,6 +141,11 @@ def _document_idempotency_replay(
     if not row:
         return None
     payload = json.loads(row[0] or "{}")
+    stored_request_hash = payload.pop("_requestHash", None)
+    if request_hash is not None and stored_request_hash != str(request_hash):
+        raise PackageDocumentIdempotencyConflict(
+            "Idempotency-Key đã được dùng cho một tệp khác."
+        )
     status_code = int(payload.pop("_statusCode", 200))
     return payload, status_code
 
@@ -147,10 +158,13 @@ def _store_document_idempotency(
     idempotency_key,
     payload,
     status_code,
+    request_hash=None,
 ):
     if not idempotency_key:
         return
     stored_payload = {**payload, "_statusCode": int(status_code)}
+    if request_hash is not None:
+        stored_payload["_requestHash"] = str(request_hash)
     cursor.execute(
         """INSERT INTO api_idempotency (
                actor_user_id, operation, idempotency_key, response_json, created_at
@@ -192,6 +206,25 @@ def _package_write_decision(cursor, session, organization_id, package_id):
         "goi_thau",
         {"id": package_id},
     )
+
+
+def _package_document_write_allowed(cursor, session, organization_id, package_id):
+    """Return UI write eligibility without turning historical reads into errors."""
+
+    immutability = package_mutability_error(
+        cursor, organization_id, package_id, lock=False
+    )
+    if immutability:
+        return False
+    return authorize_record_write(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+        "goithau",
+        "goi_thau",
+        {"id": package_id},
+    ).allowed
 
 
 def _request_evaluation_batch_id(request):
@@ -295,7 +328,7 @@ async def list_package_documents_api(request):
                 organization_id,
                 package_id,
             )
-            write_decision = _package_write_decision(
+            write_allowed = _package_document_write_allowed(
                 cursor,
                 session,
                 organization_id,
@@ -305,7 +338,7 @@ async def list_package_documents_api(request):
                 package,
                 documents,
                 batches,
-                write_allowed=write_decision.allowed,
+                write_allowed=write_allowed,
             )
             return JSONResponse(
                 {
@@ -490,6 +523,7 @@ async def upload_package_document_api(request):
             actor_user_id=session.user_id,
             operation=operation,
             idempotency_key=idempotency_key,
+            request_hash=checksum,
         )
         if replay:
             connection.commit()
@@ -582,6 +616,7 @@ async def upload_package_document_api(request):
             idempotency_key=idempotency_key,
             payload=response_payload,
             status_code=response_status,
+            request_hash=checksum,
         )
         enqueue_websocket_event(
             cursor,

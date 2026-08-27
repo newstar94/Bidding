@@ -56,10 +56,14 @@ const checkInitialSession = async () => {
       startupMark("session-check-end");
       return result;
     }
+    if (response.status === 401 || response.status === 403) {
+      return { valid: false };
+    }
+    throw new Error(`Session check unavailable (${response.status})`);
   } catch (err) {
     console.warn("Initial session check failed:", err);
+    throw err;
   }
-  return { valid: false };
 };
 const isLucideReady = () => typeof window.lucide?.createIcons === "function" && window.lucide.__bfLucideShim !== true;
 const loadLucideIcons = () => new Promise((resolve, reject) => {

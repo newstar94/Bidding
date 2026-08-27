@@ -9,7 +9,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from backend.auth.auth_helper import verify_session, verify_session_in_transaction
 from backend.commercial_policy.config import commercial_runtime_config
@@ -18,6 +18,7 @@ from backend.commercial_policy.repository import new_id
 from backend.db.db_helper import database
 from backend.shared.logging_utils import log_audit, log_error
 from backend.shared.request_validation import read_json_object
+from backend.shared.async_io import run_blocking_io
 
 from .service import BillingService, ProviderCommandExecutor, public_order_payload
 from .webhook import payment_webhook_api
@@ -179,7 +180,11 @@ async def update_fake_checkout_api(request):
         connection.commit()
         connection.close()
         connection = None
-        reconciled_order = _provider_executor().execute(command_id) if command_id else None
+        reconciled_order = (
+            await run_blocking_io(
+                _provider_executor().execute, command_id, timeout_seconds=35
+            ) if command_id else None
+        )
         return JSONResponse({
             "accepted": True,
             "providerStatus": provider_result.get("status"),
@@ -213,6 +218,24 @@ def _provider_executor():
     if _executor is None:
         _executor = ProviderCommandExecutor(database, environment=os.environ)
     return _executor
+
+
+async def payment_result_page(_request):
+    """Return users to durable order history; redirects never activate orders."""
+
+    return RedirectResponse(
+        "/goi-va-thanh-toan?payment=result",
+        status_code=303,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def payment_cancel_page(_request):
+    return RedirectResponse(
+        "/goi-va-thanh-toan?payment=cancelled",
+        status_code=303,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def create_checkout_api(request):
@@ -266,7 +289,9 @@ async def create_checkout_api(request):
         connection.close()
         connection = None
         if command_id:
-            order = _provider_executor().execute(command_id) or order
+            order = await run_blocking_io(
+                _provider_executor().execute, command_id, timeout_seconds=35
+            ) or order
         return JSONResponse(
             {"order": public_order_payload(order), "replayed": replayed},
             status_code=200 if replayed else 201,
@@ -403,7 +428,9 @@ async def cancel_personal_order_api(request):
         connection.close()
         connection = None
         if command_id:
-            order = _provider_executor().execute(command_id) or order
+            order = await run_blocking_io(
+                _provider_executor().execute, command_id, timeout_seconds=35
+            ) or order
         return JSONResponse(
             {"order": public_order_payload(order), "replayed": replayed}
         )
@@ -533,7 +560,11 @@ async def _admin_order_action(request, action):
         connection.commit()
         connection.close()
         connection = None
-        reconciled = _provider_executor().execute(command_id) if command_id else None
+        reconciled = (
+            await run_blocking_io(
+                _provider_executor().execute, command_id, timeout_seconds=35
+            ) if command_id else None
+        )
         return JSONResponse({
             "success": True,
             "action": action,
@@ -551,6 +582,8 @@ async def _admin_order_action(request, action):
 
 def billing_routes(Route):
     return [
+        Route("/thanh-toan/ket-qua", payment_result_page, methods=["GET"]),
+        Route("/thanh-toan/huy", payment_cancel_page, methods=["GET"]),
         Route(
             "/thanh-toan-gia-lap/{profile_id}/{order_code}",
             fake_checkout_page,

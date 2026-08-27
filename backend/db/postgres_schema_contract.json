@@ -3930,7 +3930,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 79,
+  "schemaVersion": 80,
   "tables": {
     "account_subscriptions": {
       "columns": {

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const MODULE_EXTENSION_PATTERN = /\.(?:js|mjs)$/u;
 const PRODUCTION_ENTRYPOINTS = Object.freeze([
   "frontend/app/app.js",
+  // Standalone development/test checkout page served by views/fake_checkout.html.
+  "frontend/billing/FakeCheckout.js",
 ]);
 
 async function listModules(root) {

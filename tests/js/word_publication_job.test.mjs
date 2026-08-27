@@ -118,6 +118,31 @@ test("Word publication job rejects a create response without a server status URL
   );
 });
 
+test("Word publication job resumes polling the same durable job after a transient request failure", async () => {
+  let polls = 0;
+  let creates = 0;
+  const result = await runWordPublicationExportJob({
+    createJobUrl: "/api/document-jobs/plan/plan-a",
+    filename: "ke-hoach.docx",
+  }, {
+    request: async (_url, options) => {
+      if (options.method === "POST") {
+        creates += 1;
+        return { jobId: "job-retry", status: "pending", statusUrl: "/jobs/job-retry" };
+      }
+      polls += 1;
+      if (polls === 1) throw new Error("temporary network failure");
+      return { jobId: "job-retry", status: "completed", downloadUrl: "/jobs/job-retry/download" };
+    },
+    download: async () => {},
+    wait: async () => {},
+  });
+
+  assert.equal(creates, 1);
+  assert.equal(polls, 2);
+  assert.equal(result.jobId, "job-retry");
+});
+
 test("Word publication job translates a server policy code into an actionable message", async () => {
   await assert.rejects(
     runWordPublicationExportJob({

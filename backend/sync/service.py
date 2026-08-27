@@ -383,7 +383,13 @@ def _persist_incoming_images(
                 staged_assets.append(staged)
 
 
-def _resolve_sync_actor_context(request, envelope, log_sync_error):
+def _resolve_sync_actor_context(
+    request,
+    envelope,
+    log_sync_error,
+    *,
+    allow_early_idempotency_replay=True,
+):
     is_valid, role_or_err = verify_session(request)
     if not is_valid:
         log_sync_error(f"Xác thực thất bại khi đồng bộ: {role_or_err}")
@@ -414,7 +420,7 @@ def _resolve_sync_actor_context(request, envelope, log_sync_error):
             user_id,
             organization_id,
         )
-        if envelope.client_mutation_id:
+        if envelope.client_mutation_id and allow_early_idempotency_replay:
             existing_mutation = authorization_cursor.execute(
                 """
                 SELECT response_json, request_hash
@@ -461,7 +467,15 @@ def _resolve_sync_actor_context(request, envelope, log_sync_error):
     ), None
 
 
-def _prepare_sync_transaction(connection, cursor, actor, envelope, log_sync_error):
+def _prepare_sync_transaction(
+    connection,
+    cursor,
+    actor,
+    envelope,
+    log_sync_error,
+    *,
+    transaction_completion=None,
+):
     if is_personal_scope_for_user(actor.organization_id, actor.user_id):
         # Authorize again only after account deletion can no longer overtake
         # this personal-workspace transaction.
@@ -515,6 +529,8 @@ def _prepare_sync_transaction(connection, cursor, actor, envelope, log_sync_erro
                     "Mã đồng bộ đã được dùng cho một nội dung khác.",
                     status_code=409,
                 )
+            if transaction_completion is not None:
+                transaction_completion(cursor, actor)
             connection.commit()
             try:
                 return None, JSONResponse(
@@ -645,6 +661,7 @@ def execute_sync_mutation(
     *,
     aggregate_version_command=False,
     finalize_draft_command=False,
+    transaction_completion=None,
 ):
     """
     [POST] /api/sync
@@ -662,10 +679,14 @@ def execute_sync_mutation(
     atomic_command = aggregate_version_command or finalize_draft_command
     try:
         envelope = SyncMutationEnvelope.from_payload(data)
-        actor_context, early_response = _resolve_sync_actor_context(
-            request,
-            envelope,
-            log_sync_error,
+        actor_context_arguments = (request, envelope, log_sync_error)
+        actor_context, early_response = (
+            _resolve_sync_actor_context(
+                *actor_context_arguments,
+                allow_early_idempotency_replay=False,
+            )
+            if transaction_completion is not None
+            else _resolve_sync_actor_context(*actor_context_arguments)
         )
         if early_response is not None:
             return early_response
@@ -684,12 +705,16 @@ def execute_sync_mutation(
             else "BEGIN"
         )
         cursor = conn.cursor()
-        transaction_context, early_response = _prepare_sync_transaction(
-            conn,
-            cursor,
-            actor_context,
-            envelope,
-            log_sync_error,
+        transaction_arguments = (
+            conn, cursor, actor_context, envelope, log_sync_error,
+        )
+        transaction_context, early_response = (
+            _prepare_sync_transaction(
+                *transaction_arguments,
+                transaction_completion=transaction_completion,
+            )
+            if transaction_completion is not None
+            else _prepare_sync_transaction(*transaction_arguments)
         )
         if early_response is not None:
             return early_response
@@ -1166,6 +1191,8 @@ def execute_sync_mutation(
         )
 
         mutation_outcome = mutation_tracker.outcome()
+        if transaction_completion is not None:
+            transaction_completion(cursor, actor_context)
         response_data = commit_sync_response(
             conn,
             cursor,

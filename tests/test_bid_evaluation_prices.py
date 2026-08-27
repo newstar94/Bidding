@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.sync import mapper
@@ -314,6 +316,15 @@ def test_sync_rejects_negative_bid_evaluation_prices():
     })
     assert "Giá xếp hạng không được nhỏ hơn 0." in errors
     assert "Giá đề nghị trúng thầu không được nhỏ hơn 0." in errors
+
+
+@pytest.mark.parametrize("discount_rate", [-1, 100.1, "NaN", "Infinity"])
+def test_sync_rejects_discount_rate_outside_0_to_100(discount_rate):
+    _, errors, _ = validate_sync_item("thong_tin_mo_thau", {
+        "giaDuThau": 100000,
+        "tyLeGiamGia": discount_rate,
+    })
+    assert any("Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100" in error for error in errors)
 
 
 def test_sync_accepts_zero_bid_evaluation_prices_as_the_current_validation_rule():

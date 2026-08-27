@@ -46,5 +46,7 @@ def test_commercial_workspace_deep_links_are_registered_for_browser_refresh():
     assert "/thuong-mai-thanh-toan" in registered_get_paths
     assert "/goi-va-thanh-toan" in registered_get_paths
     assert "/thanh-toan-gia-lap/{profile_id}/{order_code}" in registered_get_paths
+    assert "/thanh-toan/ket-qua" in registered_get_paths
+    assert "/thanh-toan/huy" in registered_get_paths
     assert validate_username("thuong_mai_thanh_toan")[0] is False
     assert validate_username("goi_va_thanh_toan")[0] is False

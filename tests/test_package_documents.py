@@ -1,12 +1,16 @@
 import sqlite3
 
+import pytest
+
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.documents.package_document_policy import compose_document_sections
 from backend.documents.package_document_service import upsert_package_document
 from backend.documents.package_document_routes import (
     _document_idempotency_replay,
+    _package_document_write_allowed,
     _store_document_idempotency,
+    PackageDocumentIdempotencyConflict,
 )
 
 
@@ -18,6 +22,22 @@ def _document(document_type, *, batch_id=None, filename=None):
         "originalFilename": filename or f"{document_type}.pdf",
         "sizeBytes": 100,
     }
+
+
+def test_historical_package_document_read_degrades_to_read_only(monkeypatch):
+    monkeypatch.setattr(
+        "backend.documents.package_document_routes.package_mutability_error",
+        lambda *_args, **kwargs: {
+            "code": "HISTORICAL_PARENT_IMMUTABLE",
+            "message": "read only",
+        },
+    )
+    assert _package_document_write_allowed(
+        object(),
+        type("Session", (), {"user_id": "user-1"})(),
+        "org-1",
+        "package-history",
+    ) is False
 
 
 def test_package_document_schema_supports_batch_scopes():
@@ -301,3 +321,26 @@ def test_document_mutation_idempotency_replays_original_response():
 
     assert status_code == 201
     assert payload == {"success": True, "document": {"id": "document-1"}}
+
+
+def test_document_upload_idempotency_rejects_a_different_file_hash():
+    cursor = _IdempotencyCursor()
+    arguments = {
+        "actor_user_id": "user-1",
+        "operation": "package_document:org-1:package-1:HSMT:general:upload",
+        "idempotency_key": "mutation-12345678",
+    }
+    _store_document_idempotency(
+        cursor,
+        **arguments,
+        payload={"success": True, "document": {"id": "document-1"}},
+        status_code=201,
+        request_hash="sha256-file-a",
+    )
+
+    with pytest.raises(PackageDocumentIdempotencyConflict):
+        _document_idempotency_replay(
+            cursor,
+            **arguments,
+            request_hash="sha256-file-b",
+        )

@@ -53,7 +53,18 @@ function renderOrders() {
 
 async function pollOrder(publicId, controller, attempt = 0) {
   window.clearTimeout(state.polling);
-  const payload = await request(`/api/billing/orders/${encodeURIComponent(publicId)}`);
+  let payload;
+  try {
+    payload = await request(`/api/billing/orders/${encodeURIComponent(publicId)}`);
+  } catch (error) {
+    if (attempt >= 39) {
+      status(`Không thể cập nhật trạng thái order (${error.code || "NETWORK_ERROR"}). Hãy bấm làm mới để tiếp tục theo dõi.`, "warning");
+      return;
+    }
+    status("Đang tạm mất kết nối; sẽ tự thử lại trạng thái thanh toán…", "warning");
+    state.polling = window.setTimeout(() => pollOrder(publicId, controller, attempt + 1).catch(() => {}), 3000);
+    return;
+  }
   const order = payload.order;
   if (TERMINAL_ACTIVATIONS.has(order.activationState) || ["cancelled", "expired", "create_failed"].includes(order.checkoutState)) {
     status(order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt." : `Order cần xử lý: ${order.activationState}.`, order.activationState === "applied" ? "success" : "warning");
@@ -68,6 +79,10 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
   const errorNode = document.getElementById(`storefront-error-${skuCode}`);
   if (errorNode) errorNode.textContent = "";
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); }
+  // Reserve the popup synchronously from the user gesture; opening it after
+  // quote/checkout awaits is blocked by several browsers.
+  const checkoutWindow = window.open("about:blank", "_blank");
+  if (checkoutWindow) checkoutWindow.opener = null;
   try {
     const actor = controller?.model?.state?.activeuser || {};
     const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
@@ -75,11 +90,24 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
     const ownerId = ownerKind === "organization" ? activeScope : actor.id || actor.user_id;
     const quote = await request("/api/billing/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerKind, ownerId, operation, skuCode }) });
     const order = await request("/api/billing/checkouts", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `storefront-${crypto.randomUUID()}` }, body: JSON.stringify({ quotePublicId: quote.publicId }) });
-    if (order.order?.checkoutUrl) window.open(order.order.checkoutUrl, "_blank", "noopener");
-    status("Checkout đã tạo. Đang chờ máy chủ đối soát thanh toán…", "neutral");
+    let popupBlocked = false;
+    if (order.order?.checkoutUrl && checkoutWindow && !checkoutWindow.closed) {
+      checkoutWindow.location.href = order.order.checkoutUrl;
+    } else if (order.order?.checkoutUrl) {
+      popupBlocked = true;
+    } else if (checkoutWindow && !checkoutWindow.closed) {
+      checkoutWindow.close();
+    }
+    status(
+      popupBlocked
+        ? "Checkout đã tạo nhưng trình duyệt chặn cửa sổ thanh toán; hãy mở lại từ lịch sử order."
+        : "Checkout đã tạo. Đang chờ máy chủ đối soát thanh toán…",
+      popupBlocked ? "warning" : "neutral",
+    );
     await pollOrder(order.order.publicId, controller);
   } catch (error) {
     const message = `${error.code}: ${error.message}`;
+    if (checkoutWindow && !checkoutWindow.closed) checkoutWindow.close();
     if (errorNode) errorNode.textContent = message;
     status(message, error.code === "BLOCKED_DECISION" ? "warning" : "danger");
   } finally { if (button) { button.disabled = false; button.removeAttribute("aria-busy"); } }
@@ -106,11 +134,21 @@ async function refresh(controller) {
       status("Cửa hàng đang tạm đóng trong khi chính sách thương mại được hoàn thiện.", "neutral");
       return;
     }
-    try { state.balance = await request("/api/billing/usage"); } catch (error) { state.balance = null; if (error.code === "BLOCKED_DECISION") status("Usage tổ chức đang chờ quyết định quyền đọc.", "warning"); }
+    let balanceFailed = false;
+    try { state.balance = await request("/api/billing/usage"); } catch (error) {
+      balanceFailed = true;
+      state.balance = null;
+      if (error.code === "BLOCKED_DECISION") status("Usage tổ chức đang chờ quyết định quyền đọc.", "warning");
+    }
     renderBalance();
-    try { const orders = await request("/api/billing/orders"); state.orders = orders.orders || []; } catch { state.orders = []; }
+    let ordersFailed = false;
+    try { const orders = await request("/api/billing/orders"); state.orders = orders.orders || []; } catch { ordersFailed = true; state.orders = []; }
     renderOrders();
-    status("Đã đồng bộ theo release hiện hành.", "success");
+    if (balanceFailed || ordersFailed) {
+      status("Bảng giá đã đồng bộ nhưng chưa tải đủ số dư/lịch sử order. Hãy thử làm mới lại.", "warning");
+    } else {
+      status("Đã đồng bộ theo release hiện hành.", "success");
+    }
   } catch (error) { status(`${error.code}: ${error.message}`, "danger"); renderOffers(controller); } finally { state.loading = false; }
 }
 

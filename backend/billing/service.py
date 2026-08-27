@@ -124,8 +124,20 @@ class BillingService:
                 "Offer đã dừng bán sau khi tạo báo giá.",
                 status_code=409,
             )
-        if projection["item_type"] == "procurement_credit_pack" and quote["operation"] != "credit_pack":
-            raise CommercialPolicyError(TRANSITION_NOT_ALLOWED, "Gói lượt cần operation credit_pack.", status_code=409)
+        item_type = str(projection["item_type"] or "")
+        operation = str(quote["operation"] or "")
+        operation_allowed = (
+            item_type == "procurement_credit_pack" and operation == "credit_pack"
+        ) or (
+            item_type == "base_plan"
+            and operation in {"purchase", "renew", "upgrade", "downgrade"}
+        )
+        if not operation_allowed:
+            raise CommercialPolicyError(
+                TRANSITION_NOT_ALLOWED,
+                "Operation không phù hợp với loại sản phẩm thương mại.",
+                status_code=409,
+            )
         provider = self._select_provider(int(quote["total_amount"]))
         order_id = new_id("billing-order")
         public_id = new_id("order")
@@ -251,15 +263,44 @@ class BillingService:
         ).fetchone())
         if not order:
             return None, False
+        try:
+            amount = int(amount)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise CommercialPolicyError(
+                "REFUND_AMOUNT_INVALID", "Số tiền hoàn không hợp lệ.", status_code=400
+            ) from error
+        if amount <= 0:
+            raise CommercialPolicyError("REFUND_AMOUNT_INVALID", "Số tiền hoàn phải dương.", status_code=400)
+        normalized_key = str(idempotency_key or "").strip()
+        if not 8 <= len(normalized_key) <= 128:
+            raise CommercialPolicyError(
+                "INVALID_IDEMPOTENCY_KEY", "Thiếu Idempotency-Key hợp lệ.", status_code=400
+            )
+        normalized_reason = str(reason or "")[:2000]
+        existing = self.cursor.execute(
+            """SELECT * FROM billing_refund_intents
+                WHERE order_id = ? AND idempotency_key = ? FOR UPDATE""",
+            (order["id"], normalized_key),
+        ).fetchone()
+        if existing:
+            existing = dict(existing)
+            if (
+                int(existing["amount"]) != amount
+                or str(existing.get("reason") or "") != normalized_reason
+                or str(existing.get("actor_user_id") or "") != str(actor_user_id)
+            ):
+                raise CommercialPolicyError(
+                    "IDEMPOTENCY_KEY_REUSED",
+                    "Idempotency-Key đã được dùng cho yêu cầu refund khác.",
+                    status_code=409,
+                )
+            return existing, True
         if order["payment_state"] not in {"verified_paid", "partially_refunded"}:
             raise CommercialPolicyError(
                 "PAYMENT_NOT_REFUNDABLE",
                 "Order chưa có payment fact đã xác minh.",
                 status_code=409,
             )
-        amount = int(amount)
-        if amount <= 0:
-            raise CommercialPolicyError("REFUND_AMOUNT_INVALID", "Số tiền hoàn phải dương.", status_code=400)
         paid = int(self.cursor.execute(
             """SELECT COALESCE(SUM(verified_paid_amount), 0)
                  FROM payment_transactions
@@ -278,13 +319,6 @@ class BillingService:
                 "Tổng refund pending/succeeded vượt payment đã xác minh.",
                 status_code=409,
             )
-        existing = self.cursor.execute(
-            """SELECT * FROM billing_refund_intents
-                WHERE order_id = ? AND idempotency_key = ? FOR UPDATE""",
-            (order["id"], str(idempotency_key)),
-        ).fetchone()
-        if existing:
-            return dict(existing), True
         intent_id = new_id("refund-intent")
         self.cursor.execute(
             """INSERT INTO billing_refund_intents
@@ -292,8 +326,8 @@ class BillingService:
                     actor_user_id, method, state, activation_revision)
                VALUES (?, ?, ?, ?, ?, ?, 'manual_off_platform', 'pending', ?)""",
             (
-                intent_id, order["id"], str(idempotency_key), amount,
-                str(reason or "")[:2000], actor_user_id, int(order["revision"]),
+                intent_id, order["id"], normalized_key, amount,
+                normalized_reason, actor_user_id, int(order["revision"]),
             ),
         )
         return _row_dict(self.cursor.execute(
@@ -344,16 +378,23 @@ class BillingService:
 
     def _select_provider(self, total_amount):
         provider_name = str(self.environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")).strip().casefold()
+        app_environment = str(self.environment.get("APP_ENV", "development")).strip().casefold()
+        provider_environment = str(
+            self.environment.get(
+                "PAYMENT_PROVIDER_ENVIRONMENT",
+                "production" if app_environment in {"prod", "production"} else "test",
+            )
+        ).strip().casefold()
         row = self.cursor.execute(
             """SELECT id, provider, environment, min_amount, max_amount,
                       checkout_ttl_seconds, timeout_ms, max_attempts, mode
                  FROM payment_provider_profiles
-                WHERE provider = ? AND readiness_status = 'ready'
+                WHERE provider = ? AND environment = ? AND readiness_status = 'ready'
                   AND mode IN ('shadow', 'live')
                   AND min_amount <= ? AND max_amount >= ?
                 ORDER BY CASE mode WHEN 'live' THEN 0 ELSE 1 END,
                          routing_priority, version DESC LIMIT 1""",
-            (provider_name, int(total_amount), int(total_amount)),
+            (provider_name, provider_environment, int(total_amount), int(total_amount)),
         ).fetchone()
         if not row:
             raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Không có payment provider sẵn sàng.", status_code=503)
@@ -398,9 +439,20 @@ class ProviderCommandExecutor:
         request = json.loads(claimed["request_json"])
         try:
             if claimed["command_type"] == "cancel_checkout":
-                result = provider.cancel_payment(
-                    request["identifier"], request.get("reason")
-                )
+                if int(claimed["attempt_count"]) > 1:
+                    result = provider.get_payment(request["identifier"])
+                    if str(result.get("status") or "").upper() not in {
+                        "CANCELLED",
+                        "EXPIRED",
+                        "PAID",
+                    }:
+                        result = provider.cancel_payment(
+                            request["identifier"], request.get("reason")
+                        )
+                else:
+                    result = provider.cancel_payment(
+                        request["identifier"], request.get("reason")
+                    )
             elif claimed["command_type"] == "query_order" or int(claimed["attempt_count"]) > 1:
                 result = provider.get_payment(claimed["provider_order_code"])
             else:
@@ -426,7 +478,9 @@ class ProviderCommandExecutor:
                           orders.public_id, orders.provider_profile_id,
                           orders.provider_order_code, orders.total_amount,
                           profile.provider, profile.credential_reference,
-                          profile.timeout_ms, profile.max_attempts
+                          profile.timeout_ms, profile.max_attempts,
+                          profile.checkout_ttl_seconds,
+                          command.last_error_code
                      FROM billing_provider_commands AS command
                      JOIN billing_orders AS orders ON orders.id = command.order_id
                      JOIN payment_provider_profiles AS profile
@@ -461,26 +515,70 @@ class ProviderCommandExecutor:
         connection = self.database.get_connection()
         try:
             connection.execute("BEGIN")
-            self._lock_owner_order_command(connection, claimed)
+            if not self._lock_owner_order_command(connection, claimed):
+                connection.rollback()
+                return
+            current_order = connection.execute(
+                """SELECT checkout_state, checkout_url, checkout_expires_at
+                     FROM billing_orders WHERE id = ?""",
+                (claimed["order_id"],),
+            ).fetchone()
             status = str(result.get("status") or "PENDING").upper()
-            checkout_state = (
-                "cancelled"
-                if claimed["command_type"] == "cancel_checkout"
-                else "open"
-            )
+            checkout_state = str(current_order[0] or "creating")
             if status == "CANCELLED":
                 checkout_state = "cancelled"
             elif status == "EXPIRED":
                 checkout_state = "expired"
-            expires_at = result.get("expiredAt") or int(self.clock()) + 900
+            elif claimed["command_type"] == "create_checkout":
+                checkout_state = "open"
+            checkout_url = result.get("checkoutUrl") or current_order[1]
+            expires_at = current_order[2]
+            if claimed["command_type"] == "create_checkout":
+                profile_deadline = int(self.clock()) + max(
+                    60, int(claimed.get("checkout_ttl_seconds") or 900)
+                )
+                provider_deadline = int(result.get("expiredAt") or profile_deadline)
+                expires_at = min(profile_deadline, provider_deadline)
+            elif result.get("expiredAt") is not None:
+                provider_deadline = int(result["expiredAt"])
+                expires_at = (
+                    min(int(expires_at), provider_deadline)
+                    if expires_at is not None else provider_deadline
+                )
             connection.execute(
                 """UPDATE billing_orders
                       SET checkout_state = ?, checkout_url = ?,
                           checkout_expires_at = ?, revision = revision + 1,
                           updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?""",
-                (checkout_state, result.get("checkoutUrl"), int(expires_at), claimed["order_id"]),
+                (
+                    checkout_state,
+                    checkout_url,
+                    int(expires_at) if expires_at is not None else None,
+                    claimed["order_id"],
+                ),
             )
+
+            # A terminal paid query must not acknowledge the provider command
+            # until its payment fact and activation transaction have committed.
+            # Otherwise a failure in the second transaction leaves a paid
+            # provider result outside every automatic retry selector.
+            activation_enabled = str(
+                self.environment.get("PAYMENT_ACTIVATION_ENABLED", "false")
+            ).strip().casefold() == "true"
+            if activation_enabled and status in {
+                "PAID", "SUCCESS", "COMPLETED", "SETTLED"
+            }:
+                from .activation import BillingActivationService
+
+                BillingActivationService(
+                    connection.cursor(),
+                    clock=self.clock,
+                ).apply_order_result(
+                    claimed["order_id"],
+                    result,
+                    provider_profile_id=claimed["provider_profile_id"],
+                )
             connection.execute(
                 """UPDATE billing_provider_commands
                       SET status = 'completed', lease_expires_at = NULL,
@@ -489,32 +587,16 @@ class ProviderCommandExecutor:
                 (claimed["id"],),
             )
             connection.commit()
-            # A provider query can return a terminal paid state without a
-            # webhook (timeout/reconciliation path).  Reuse the same
-            # exactly-once activation seam after the command transaction has
-            # committed; never activate from a redirect or client payload.
-            activation_enabled = str(
-                self.environment.get("PAYMENT_ACTIVATION_ENABLED", "false")
-            ).strip().casefold() == "true"
-            if activation_enabled and str(result.get("status") or "").upper() in {
-                "PAID", "SUCCESS", "COMPLETED", "SETTLED"
-            }:
-                activation_connection = self.database.get_connection()
-                try:
-                    activation_connection.execute("BEGIN")
-                    from .activation import BillingActivationService
-                    BillingActivationService(activation_connection.cursor(), clock=self.clock).apply_order_result(
-                        claimed["order_id"], result,
-                        provider_profile_id=claimed["provider_profile_id"],
-                    )
-                    activation_connection.commit()
-                except Exception:  # noqa: BLE001 - activation failure is durably retried
-                    activation_connection.rollback()
-                    # Command/payment fact is durable; activation is retried
-                    # by the reconciliation worker and must not turn a
-                    # successful provider response into a provider retry.
-                finally:
-                    activation_connection.close()
+        except PaymentProviderError:
+            connection.rollback()
+            raise
+        except Exception as error:  # noqa: BLE001 - keep paid command retryable
+            connection.rollback()
+            raise PaymentProviderError(
+                "BILLING_ACTIVATION_RETRY",
+                "Không thể hoàn tất giao dịch thanh toán; sẽ thử lại.",
+                retryable=True,
+            ) from error
         finally:
             connection.close()
 
@@ -522,7 +604,9 @@ class ProviderCommandExecutor:
         connection = self.database.get_connection()
         try:
             connection.execute("BEGIN")
-            self._lock_owner_order_command(connection, claimed)
+            if not self._lock_owner_order_command(connection, claimed):
+                connection.rollback()
+                return
             attempts = int(claimed["attempt_count"])
             retry = error.outcome_unknown or error.retryable
             status = (
@@ -549,8 +633,7 @@ class ProviderCommandExecutor:
         finally:
             connection.close()
 
-    @staticmethod
-    def _lock_owner_order_command(connection, claimed):
+    def _lock_owner_order_command(self, connection, claimed):
         owner = connection.execute(
             "SELECT owner_kind, account_user_id, organization_id FROM billing_orders WHERE id = ?",
             (claimed["order_id"],),
@@ -562,7 +645,16 @@ class ProviderCommandExecutor:
         else:
             connection.execute("SELECT id FROM to_chuc WHERE id = ? FOR UPDATE", (owner[2],)).fetchone()
         connection.execute("SELECT id FROM billing_orders WHERE id = ? FOR UPDATE", (claimed["order_id"],)).fetchone()
-        connection.execute("SELECT id FROM billing_provider_commands WHERE id = ? FOR UPDATE", (claimed["id"],)).fetchone()
+        command = connection.execute(
+            """SELECT status, locked_by FROM billing_provider_commands
+                 WHERE id = ? FOR UPDATE""",
+            (claimed["id"],),
+        ).fetchone()
+        return bool(
+            command
+            and str(command[0]) == "processing"
+            and str(command[1] or "") == str(self.worker_id)
+        )
 
     def _read_order(self, public_id):
         connection = self.database.get_connection()

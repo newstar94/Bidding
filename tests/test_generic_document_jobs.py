@@ -515,9 +515,9 @@ def test_job_access_dispatches_package_and_plan_to_their_existing_scope(
 
 def test_current_schema_keeps_v76_generic_job_fields():
     columns = SCHEMA_DINH_NGHIA["document_jobs"]["columns"]
-    # Commercial schema migration v79 is now the current contract; the
+    # Commercial schema migration v79 remains in the current v80 contract; the
     # generic document-job fields introduced in v76 remain present.
-    assert DB_SCHEMA_VERSION == 79
+    assert DB_SCHEMA_VERSION == 80
     assert {
         "record_type",
         "record_id",

@@ -23,6 +23,10 @@ from backend.documents.document_worker import (
     validate_document_worker_configuration,
 )
 from backend.billing.worker import billing_worker_enabled, run_billing_worker
+from backend.billing.runtime import (
+    configure_payment_runtime,
+    validate_payment_provider_runtime,
+)
 from backend.documents.award_result_excel_service import (
     run_validation_artifact_janitor,
     validate_artifact_store_configuration,
@@ -376,6 +380,12 @@ async def application_lifespan(
                 else minimum_schema_version
             ),
             schema_version,
+        )
+        payment_registry = configure_payment_runtime(os.environ)
+        validate_payment_provider_runtime(
+            database,
+            environment=os.environ,
+            registry=payment_registry,
         )
         reconcile_asset_journal(database)
         if is_production:

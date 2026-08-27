@@ -10,6 +10,7 @@ from backend.commercial_policy.config import commercial_runtime_config
 from backend.shared.async_io import BlockingIOBusyError, run_blocking_io
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_error
+from backend.usage_credits import UsageCreditService
 
 from .activation import BillingActivationService
 from .providers.base import PaymentProviderError
@@ -23,7 +24,11 @@ WEBHOOK_LEASE_SECONDS = 60
 def billing_worker_enabled(environment=None):
     """Keep draining old work when either checkout or activation is enabled."""
     config = commercial_runtime_config(os.environ if environment is None else environment)
-    return config.payment_checkout_enabled or config.payment_activation_enabled
+    return (
+        config.payment_checkout_enabled
+        or config.payment_activation_enabled
+        or config.procurement_credit_enforcement_enabled
+    )
 
 
 class BillingWorkProcessor:
@@ -65,7 +70,25 @@ class BillingWorkProcessor:
             if order_id:
                 self._retry_activation(order_id)
                 return True
+        if config.procurement_credit_enforcement_enabled:
+            if self._release_expired_usage_reservations():
+                return True
         return False
+
+    def _release_expired_usage_reservations(self):
+        connection = self.database.get_connection()
+        try:
+            connection.execute("BEGIN")
+            released = UsageCreditService(
+                connection.cursor(), clock=self.clock
+            ).release_expired_reservations(limit=100)
+            connection.commit()
+            return bool(released)
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _next_command_id(self):
         connection = self.database.get_connection()
