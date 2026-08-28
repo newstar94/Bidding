@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -68,6 +70,89 @@ def test_full_runtime_selection_still_requires_vite_manifest(
 
     with pytest.raises(RuntimeError, match="Vite manifest is missing"):
         package_production.collect_runtime_files()
+
+
+def test_frontend_artifact_validation_accepts_only_journaled_n_minus_one_assets(
+    monkeypatch,
+    tmp_path,
+):
+    dist = tmp_path / "dist"
+    manifest_path = dist / ".vite" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    assets = dist / "assets"
+    assets.mkdir()
+    current_path = assets / "app-CURRENTA.js"
+    retained_path = assets / "lazy-PREVIOUS.js"
+    current_path.write_bytes(b"current")
+    retained_bytes = b"retained N-1"
+    retained_path.write_bytes(retained_bytes)
+    manifest_bytes = json.dumps({
+        "frontend/app/app.js": {"file": "assets/app-CURRENTA.js"},
+    }).encode("utf-8")
+    manifest_path.write_bytes(manifest_bytes)
+    marker_bytes = json.dumps({"releaseId": "b" * 40}).encode("utf-8")
+    (dist / "secure-build.json").write_bytes(marker_bytes)
+    (dist / "frontend-compat-assets.json").write_text(json.dumps({
+        "version": 1,
+        "currentReleaseId": "b" * 40,
+        "previousReleaseId": "a" * 40,
+        "currentManifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "currentSecureMarkerSha256": hashlib.sha256(marker_bytes).hexdigest(),
+        "previousManifestSha256": "c" * 64,
+        "previousSecureMarkerSha256": "d" * 64,
+        "assets": [{
+            "path": "assets/lazy-PREVIOUS.js",
+            "sha256": hashlib.sha256(retained_bytes).hexdigest(),
+            "size": len(retained_bytes),
+        }],
+    }), encoding="utf-8")
+    monkeypatch.setattr(package_production, "PROJECT_ROOT", tmp_path)
+
+    package_production._validate_frontend_artifacts(manifest_path)
+
+    retained_path.write_bytes(b"tampered")
+    with pytest.raises(RuntimeError, match="compatibility asset integrity"):
+        package_production._validate_frontend_artifacts(manifest_path)
+
+
+def test_frontend_artifact_validation_rejects_first_release_journal_with_assets(
+    monkeypatch,
+    tmp_path,
+):
+    dist = tmp_path / "dist"
+    manifest_path = dist / ".vite" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    assets = dist / "assets"
+    assets.mkdir()
+    current_path = assets / "app-CURRENTA.js"
+    retained_path = assets / "lazy-ORPHAN01.js"
+    current_path.write_bytes(b"current")
+    retained_bytes = b"orphan first-release asset"
+    retained_path.write_bytes(retained_bytes)
+    manifest_bytes = json.dumps({
+        "frontend/app/app.js": {"file": "assets/app-CURRENTA.js"},
+    }).encode("utf-8")
+    manifest_path.write_bytes(manifest_bytes)
+    marker_bytes = json.dumps({"releaseId": "b" * 40}).encode("utf-8")
+    (dist / "secure-build.json").write_bytes(marker_bytes)
+    (dist / "frontend-compat-assets.json").write_text(json.dumps({
+        "version": 1,
+        "currentReleaseId": "b" * 40,
+        "previousReleaseId": None,
+        "currentManifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "currentSecureMarkerSha256": hashlib.sha256(marker_bytes).hexdigest(),
+        "previousManifestSha256": None,
+        "previousSecureMarkerSha256": None,
+        "assets": [{
+            "path": "assets/lazy-ORPHAN01.js",
+            "sha256": hashlib.sha256(retained_bytes).hexdigest(),
+            "size": len(retained_bytes),
+        }],
+    }), encoding="utf-8")
+    monkeypatch.setattr(package_production, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="compatibility journal"):
+        package_production._validate_frontend_artifacts(manifest_path)
 
 
 def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch):

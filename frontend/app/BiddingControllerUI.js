@@ -11,6 +11,7 @@ import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeS
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
 import { perfNow, reportPerf } from "../shared/perfDiagnostics.js";
+import { recoverFromStaleDynamicImport } from "../shared/releaseDiagnostics.js";
 import {
   createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
@@ -190,22 +191,6 @@ export function setupTabs() {
         this.view?.showToast?.("Không thể mở trang", "Vui lòng thử lại.", "error");
       });
     });
-    const prefetch = () => {
-      const targetTab = btn.getAttribute("data-tab");
-      if (!targetTab || typeof this.warmTab !== "function") return;
-      this._tabIntentPrefetches ||= new Set();
-      if (this._tabIntentPrefetches.has(targetTab)) return;
-      this._tabIntentPrefetches.add(targetTab);
-      void Promise.resolve()
-        .then(() => this.warmTab(targetTab))
-        .catch((error) => {
-          console.warn("Could not prefetch tab intent:", targetTab, error);
-          this._tabIntentPrefetches.delete(targetTab);
-        });
-    };
-    btn.addEventListener("pointerenter", prefetch, { passive: true });
-    btn.addEventListener("focusin", prefetch);
-    btn.addEventListener("touchstart", prefetch, { passive: true, once: true });
   });
   const viewAllPackagesBtn = document.getElementById("btn-view-all-packages");
   if (viewAllPackagesBtn) {
@@ -493,6 +478,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
       (err) => {
         finishPerfTransition();
         if (!isCurrentTransition()) return;
+        if (recoverFromStaleDynamicImport({ error: err })) return;
         console.error("Failed to load view module:", tabName, err);
         this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
       },
@@ -516,11 +502,13 @@ export function switchTab(tabName, action = null, updateState = true, transition
       (err) => {
         finishPerfTransition();
         if (!isCurrentTransition()) return;
+        if (recoverFromStaleDynamicImport({ error: err })) return;
         console.error("Failed to load workflow module:", tabName, err);
         this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
       },
     );
   }
+  this.scheduleProcurementImportResume?.(workflowRequirement);
   if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
     const gateStartedAt = perfNow();
     if (tabPerf) tabPerf.cold = true;

@@ -181,19 +181,119 @@ phục vụ người dùng thật.
 
 ## Deploy
 
+Không giải nén hoặc build đè vào `/opt/biddingflow/current`. Thư mục này là
+con trỏ release đang phục vụ; thay đổi `dist` tại chỗ tạo một cửa sổ trong đó
+HTML/manifest và các chunk thuộc hai release khác nhau. Mỗi artifact phải được
+giải nén vào một thư mục versioned mới. Trước khi đổi con trỏ, công cụ
+`scripts/prepare_frontend_asset_compatibility.py` xác minh toàn bộ inventory của
+artifact mới và các metadata/asset được chọn từ release đang phục vụ, rồi chép
+đúng tập asset mà Vite manifest của release N tham chiếu vào release N+1. Các
+file thừa không có trong manifest N không được chép. Journal
+`dist/frontend-compat-assets.json` ghi checksum của tập giữ lại.
+
 ```bash
-python scripts/backup.py create
-python scripts/backup.py verify --snapshot <snapshot>
-DATABASE_AUTO_MIGRATE=false python scripts/manage_database.py
-unzip biddingflow-production.zip -d /opt/biddingflow/releases/<release-id>
-python scripts/verify_document_sandbox.py
+set -euo pipefail
+
+RELEASE_ID="${RELEASE_ID:?export RELEASE_ID with the 40- or 64-character hexadecimal release ID}"
+ARTIFACT_SHA256="${ARTIFACT_SHA256:?export the trusted SHA-256 of biddingflow-production.zip}"
+DEPLOY_SMOKE_SCRIPT="${DEPLOY_SMOKE_SCRIPT:?export an executable approved login/read-only smoke script}"
+if [[ ! "$RELEASE_ID" =~ ^([0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$ ]]; then
+  echo "RELEASE_ID must be a full immutable hexadecimal release ID" >&2
+  exit 1
+fi
+if [[ ! "$ARTIFACT_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]] || [ ! -x "$DEPLOY_SMOKE_SCRIPT" ]; then
+  echo "A trusted artifact digest and executable smoke script are required" >&2
+  exit 1
+fi
+printf '%s  %s\n' "$ARTIFACT_SHA256" biddingflow-production.zip | sha256sum -c -
+
+NEW_RELEASE="/opt/biddingflow/releases/$RELEASE_ID"
+PREVIOUS_RELEASE=""
+if [ -L /opt/biddingflow/current ]; then
+  PREVIOUS_RELEASE="$(readlink -f /opt/biddingflow/current)"
+  if [ ! -d "$PREVIOUS_RELEASE" ]; then
+    echo "/opt/biddingflow/current points to a missing release" >&2
+    exit 1
+  fi
+elif [ -e /opt/biddingflow/current ]; then
+  echo "/opt/biddingflow/current must be a symlink" >&2
+  exit 1
+fi
+if [ -e "$NEW_RELEASE" ] || [ -L "$NEW_RELEASE" ]; then
+  echo "Refusing to overwrite existing release: $NEW_RELEASE" >&2
+  exit 1
+fi
+unzip biddingflow-production.zip -d "$NEW_RELEASE"
+
+PREPARE_FRONTEND_ARGS=(
+  --current-release "$NEW_RELEASE"
+  --expected-current-release-id "$RELEASE_ID"
+)
+if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
+  test "$NEW_RELEASE" != "$PREVIOUS_RELEASE"
+  PREPARE_FRONTEND_ARGS+=(--previous-release "$PREVIOUS_RELEASE")
+fi
+python "$NEW_RELEASE/scripts/prepare_frontend_asset_compatibility.py" \
+  "${PREPARE_FRONTEND_ARGS[@]}"
+
+python "$NEW_RELEASE/scripts/verify_document_sandbox.py"
+
+# No database mutation is allowed until extraction, the full package inventory,
+# release identity, frontend graph and static sandbox have all passed.
+python "$NEW_RELEASE/scripts/backup.py" create
+python "$NEW_RELEASE/scripts/backup.py" verify --snapshot <snapshot>
+DATABASE_AUTO_MIGRATE=false python "$NEW_RELEASE/scripts/manage_database.py"
+
+CUTOVER_STARTED=0
+rollback_failed_cutover() {
+  failure_status=$?
+  trap - ERR
+  set +e
+  if [ "$CUTOVER_STARTED" -eq 1 ]; then
+    if [ -n "$PREVIOUS_RELEASE" ]; then
+      ln -sfnT "$PREVIOUS_RELEASE" /opt/biddingflow/current.rollback
+      mv -Tf /opt/biddingflow/current.rollback /opt/biddingflow/current
+      systemctl restart biddingflow-document-worker
+      systemctl restart biddingflow
+    else
+      systemctl stop biddingflow biddingflow-document-worker
+      if [ "$(readlink -f /opt/biddingflow/current 2>/dev/null || true)" = "$NEW_RELEASE" ]; then
+        unlink /opt/biddingflow/current
+      fi
+    fi
+  fi
+  exit "$failure_status"
+}
+trap rollback_failed_cutover ERR
+
+ln -sfnT "$NEW_RELEASE" /opt/biddingflow/current.next
+CUTOVER_STARTED=1
+mv -Tf /opt/biddingflow/current.next /opt/biddingflow/current
 systemctl restart biddingflow-document-worker
 systemctl restart biddingflow
 curl --fail http://127.0.0.1:8000/health/live
 curl --fail http://127.0.0.1:8000/health/ready
+"$DEPLOY_SMOKE_SCRIPT" http://127.0.0.1:8000
+CUTOVER_STARTED=0
+trap - ERR
 ```
 
-Reverse proxy chỉ chuyển traffic sau khi live/ready và smoke login/read-only đạt. Uvicorn dùng `--no-proxy-headers`; middleware chỉ nhận proxy metadata từ peer đã allowlist.
+Lần cài đầu tiên chưa có `PREVIOUS_RELEASE`, nhưng vẫn phải chạy helper để xác
+minh release ID, manifest/checksum hiện hành, loại mọi asset từ build host không
+thuộc manifest hiện hành và ghi journal rỗng (`previousReleaseId: null`).
+Sau smoke test, không xóa asset được ghi trong
+`dist/frontend-compat-assets.json`; bản build kế tiếp tự lấy đúng manifest của
+release hiện hành nên không kéo theo N−2. Nếu Cloudflare từng nhận `404` cho
+hashed asset trong lúc deploy lỗi, purge các cached error đó sau khi origin đã
+trả `200`; việc xóa cache trình duyệt trên một máy không sửa cache edge hoặc các
+máy khác.
+
+Với kiến trúc symlink/restart hiện tại, traffic có thể chạm candidate trong lúc
+health/smoke chạy. `ERR` trap bắt buộc tự khôi phục symlink và restart release
+trước nếu live/ready hoặc smoke login/read-only lỗi; không được coi deploy hoàn
+tất trước khi trap đã được gỡ. Muốn hoàn toàn không có cửa sổ này, chạy candidate
+trên port loopback riêng và chỉ đổi upstream sau smoke. Uvicorn dùng
+`--no-proxy-headers`; middleware chỉ nhận proxy metadata từ peer đã allowlist.
 
 Sau khi tạo widget production, không sửa artifact: chỉ đặt
 `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
@@ -203,6 +303,65 @@ restart và smoke test đăng ký, quên mật khẩu, resend OTP và adaptive l
 ## Rollback
 
 Nếu code mới lỗi nhưng schema còn tương thích, chuyển traffic/symlink về release trước và restart worker/web. Không tự giảm `database_metadata.schema_version` và không chạy DDL ngược ad-hoc.
+
+Trước khi đổi symlink, ghép asset của release đang phục vụ vào release
+rollback. Như vậy các tab đã nhận graph N+1 vẫn tải được chunk trong khi
+backend quay về N. Helper đồng thời loại asset tiền nhiệm cũ không còn thuộc
+tập N ∪ N+1.
+
+```bash
+set -euo pipefail
+
+ROLLBACK_RELEASE="${ROLLBACK_RELEASE:?export ROLLBACK_RELEASE as an existing versioned release directory}"
+ROLLBACK_SMOKE_SCRIPT="${ROLLBACK_SMOKE_SCRIPT:?export an executable approved login/read-only smoke script}"
+CURRENT_RELEASE="$(readlink -f /opt/biddingflow/current)"
+if [ ! -x "$ROLLBACK_SMOKE_SCRIPT" ]; then
+  echo "ROLLBACK_SMOKE_SCRIPT must be executable" >&2
+  exit 1
+fi
+if [ ! -d "$ROLLBACK_RELEASE" ] || [ "$ROLLBACK_RELEASE" = "$CURRENT_RELEASE" ]; then
+  echo "ROLLBACK_RELEASE must be a distinct existing release directory" >&2
+  exit 1
+fi
+ROLLBACK_RELEASE="$(readlink -f "$ROLLBACK_RELEASE")"
+ROLLBACK_RELEASE_ID="$(basename "$ROLLBACK_RELEASE")"
+if [[ ! "$ROLLBACK_RELEASE_ID" =~ ^([0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$ ]]; then
+  echo "ROLLBACK_RELEASE directory name must be its immutable release ID" >&2
+  exit 1
+fi
+
+python "$ROLLBACK_RELEASE/scripts/prepare_frontend_asset_compatibility.py" \
+  --current-release "$ROLLBACK_RELEASE" \
+  --expected-current-release-id "$ROLLBACK_RELEASE_ID" \
+  --previous-release "$CURRENT_RELEASE"
+python "$ROLLBACK_RELEASE/scripts/verify_document_sandbox.py"
+
+ROLLBACK_CUTOVER_STARTED=0
+restore_failed_rollback() {
+  failure_status=$?
+  trap - ERR
+  set +e
+  if [ "$ROLLBACK_CUTOVER_STARTED" -eq 1 ]; then
+    ln -sfnT "$CURRENT_RELEASE" /opt/biddingflow/current.restore
+    mv -Tf /opt/biddingflow/current.restore /opt/biddingflow/current
+    systemctl restart biddingflow-document-worker
+    systemctl restart biddingflow
+  fi
+  exit "$failure_status"
+}
+trap restore_failed_rollback ERR
+
+ln -sfnT "$ROLLBACK_RELEASE" /opt/biddingflow/current.next
+ROLLBACK_CUTOVER_STARTED=1
+mv -Tf /opt/biddingflow/current.next /opt/biddingflow/current
+systemctl restart biddingflow-document-worker
+systemctl restart biddingflow
+curl --fail http://127.0.0.1:8000/health/live
+curl --fail http://127.0.0.1:8000/health/ready
+"$ROLLBACK_SMOKE_SCRIPT" http://127.0.0.1:8000
+ROLLBACK_CUTOVER_STARTED=0
+trap - ERR
+```
 
 Nếu migration làm thay đổi dữ liệu không tương thích:
 

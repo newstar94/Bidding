@@ -98,7 +98,6 @@ test("non-critical workspace jobs cannot enter the first-interaction window", ()
   };
   for (const marker of [
     "() => this.warmPrimaryTabs()",
-    "await this.ensureBiddingWorkflows()",
     "this.preloadPrimaryModals()",
     "this.setupFileUploads()",
     "this.setupAutoSyncBackground()",
@@ -109,6 +108,19 @@ test("non-critical workspace jobs cannot enter the first-interaction window", ()
       `${marker} must not contend with a user's first click`,
     );
   }
+});
+
+test("elapsed startup time never imports route workflow modules", () => {
+  assert.doesNotMatch(
+    controllerSource,
+    /schedulePostStartupTask\(async\s*\(\)\s*=>\s*\{\s*await this\.ensureBiddingWorkflows\(\)/,
+    "BiddingWorkflows must remain owned by an explicit route or action",
+  );
+  assert.equal(
+    POST_STARTUP_TIMING.biddingWorkflows,
+    undefined,
+    "a route-owned module must not have an elapsed-time startup trigger",
+  );
 });
 
 test("service worker cache writes do not delay the network response", () => {

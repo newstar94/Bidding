@@ -52,6 +52,7 @@ RUNTIME_FILES = (
     "scripts/configure_database_roles.py",
     "scripts/env_utils.py",
     "scripts/manage_database.py",
+    "scripts/prepare_frontend_asset_compatibility.py",
     "scripts/run_document_worker.py",
     "scripts/verify_document_worker_deployment.py",
     "scripts/benchmark_password_hash.py",
@@ -179,14 +180,101 @@ def _validate_frontend_artifacts(manifest_path: Path) -> None:
                 )
             referenced.add(asset_path)
 
+    dist_root = (PROJECT_ROOT / "dist").resolve()
+    compatibility_assets: set[str] = set()
+    compatibility_path = dist_root / "frontend-compat-assets.json"
+    if compatibility_path.is_file():
+        try:
+            compatibility = json.loads(compatibility_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RuntimeError("Frontend compatibility journal is invalid.") from error
+        marker_path = dist_root / "secure-build.json"
+        try:
+            marker_bytes = marker_path.read_bytes()
+            marker = json.loads(marker_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RuntimeError("Frontend compatibility secure marker is invalid.") from error
+        current_release_id = compatibility.get("currentReleaseId")
+        previous_release_id = compatibility.get("previousReleaseId")
+        digests = (
+            compatibility.get("currentManifestSha256"),
+            compatibility.get("currentSecureMarkerSha256"),
+            compatibility.get("previousManifestSha256"),
+            compatibility.get("previousSecureMarkerSha256"),
+        )
+        if (
+            compatibility.get("version") != 1
+            or not isinstance(current_release_id, str)
+            or not IMMUTABLE_RELEASE_ID.fullmatch(current_release_id)
+            or marker.get("releaseId") != current_release_id
+            or previous_release_id is not None
+            and (
+                not isinstance(previous_release_id, str)
+                or not IMMUTABLE_RELEASE_ID.fullmatch(previous_release_id)
+                or previous_release_id == current_release_id
+            )
+            or not all(
+                isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+                for digest in digests[:2]
+            )
+            or previous_release_id is not None
+            and not all(
+                isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+                for digest in digests[2:]
+            )
+            or previous_release_id is None
+            and any(digest is not None for digest in digests[2:])
+            or previous_release_id is None
+            and isinstance(compatibility.get("assets"), list)
+            and len(compatibility["assets"]) > 0
+            or digests[0] != hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            or digests[1] != hashlib.sha256(marker_bytes).hexdigest()
+            or not isinstance(compatibility.get("assets"), list)
+        ):
+            raise RuntimeError("Frontend compatibility journal does not match the current release.")
+        for record in compatibility["assets"]:
+            if not isinstance(record, dict):
+                raise RuntimeError("Frontend compatibility journal has an invalid asset record.")
+            asset_path = record.get("path")
+            size = record.get("size")
+            digest = record.get("sha256")
+            if (
+                not isinstance(asset_path, str)
+                or not HASHED_ASSET_PATH.fullmatch(asset_path)
+                or asset_path in referenced
+                or asset_path in compatibility_assets
+                or not isinstance(size, int)
+                or isinstance(size, bool)
+                or size < 0
+                or not isinstance(digest, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            ):
+                raise RuntimeError("Frontend compatibility journal has an invalid asset record.")
+            candidate = (dist_root / asset_path).resolve()
+            if (
+                dist_root not in candidate.parents
+                or not candidate.is_file()
+                or candidate.stat().st_size != size
+                or hashlib.sha256(candidate.read_bytes()).hexdigest() != digest
+            ):
+                raise RuntimeError(
+                    f"Frontend compatibility asset integrity mismatch: {asset_path}"
+                )
+            if candidate.suffix.lower() in {".js", ".css"} and b"sourceMappingURL=" in candidate.read_bytes():
+                raise RuntimeError(
+                    f"Production compatibility asset exposes source-map metadata: {asset_path}"
+                )
+            compatibility_assets.add(asset_path)
+
     actual = {
         path.relative_to(PROJECT_ROOT / "dist").as_posix()
         for path in (PROJECT_ROOT / "dist" / "assets").rglob("*")
         if path.is_file()
     }
-    if referenced != actual:
-        missing = sorted(actual - referenced)
-        stale = sorted(referenced - actual)
+    expected = referenced | compatibility_assets
+    if expected != actual:
+        missing = sorted(actual - expected)
+        stale = sorted(expected - actual)
         raise RuntimeError(
             "Vite asset set does not match its manifest "
             f"(unreferenced={missing[:5]}, missing={stale[:5]})."

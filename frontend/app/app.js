@@ -4,7 +4,10 @@ import { apiFetch } from "../shared/apiClient.js";
 import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
 import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
-import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
+import {
+  installReleaseDiagnostics,
+  recoverFromStaleDynamicImport,
+} from "../shared/releaseDiagnostics.js";
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
 import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
 import {
@@ -12,7 +15,10 @@ import {
   preferredWorkspaceId
 } from "../auth/sessionBootstrapPolicy.js";
 import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
-import { runApplicationBootstrap } from "./bootstrapRecovery.js";
+import {
+  handleApplicationBootstrapFailure,
+  runApplicationBootstrap,
+} from "./bootstrapRecovery.js";
 installReleaseDiagnostics();
 const startupMark = (name) => {
   try {
@@ -206,7 +212,10 @@ const startApplication = () => runApplicationBootstrap(
     onSuccess: () => window.__BF_BOOTSTRAP_COMPLETE__?.(),
     onFailure: (error) => {
       console.error("Application bootstrap failed:", error);
-      window.__BF_BOOTSTRAP_FATAL__?.(error);
+      handleApplicationBootstrapFailure(error, {
+        recover: (bootstrapError) => recoverFromStaleDynamicImport({ error: bootstrapError }),
+        onFailure: (bootstrapError) => window.__BF_BOOTSTRAP_FATAL__?.(bootstrapError),
+      });
     },
   },
 );

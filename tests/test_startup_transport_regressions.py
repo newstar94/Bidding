@@ -86,13 +86,18 @@ asyncio.run(main())
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def _response_headers_for(path: str, query_string: bytes = b"") -> dict[str, str]:
+def _response_headers_for(
+    path: str,
+    query_string: bytes = b"",
+    *,
+    status_code: int = 200,
+) -> dict[str, str]:
     messages = []
 
     async def inner_app(_scope, _receive, send):
         await send({
             "type": "http.response.start",
-            "status": 200,
+            "status": status_code,
             "headers": [
                 (b"content-type", b"application/javascript"),
                 (b"content-length", b"4"),
@@ -142,6 +147,16 @@ def test_content_hash_static_version_is_immutable():
     )
 
     assert headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_missing_content_hashed_dist_asset_is_not_cached_immutably():
+    asset_path = "/dist/assets/app-12345678.js"
+
+    existing_headers = _response_headers_for(asset_path, status_code=200)
+    missing_headers = _response_headers_for(asset_path, status_code=404)
+
+    assert existing_headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert missing_headers["cache-control"] == "no-store"
 
 
 def test_content_hash_webp_version_is_immutable():

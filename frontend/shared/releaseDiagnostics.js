@@ -6,7 +6,19 @@ const embeddedReleaseId = typeof __BIDDINGFLOW_RELEASE_ID__ === "string"
 
 export const RELEASE_ID = String(embeddedReleaseId || "development").slice(0, 128);
 
-const STALE_DYNAMIC_IMPORT_PATTERN = /Failed to fetch dynamically imported module/i;
+const STALE_BUNDLE_PATTERNS = [
+  /Failed to fetch dynamically imported module/i,
+  /error loading dynamically imported module/i,
+  /Importing a module script failed/i,
+  /Unable to preload CSS/i,
+  /Failed to load module script/i,
+];
+const STALE_BUNDLE_URL_PATTERNS = [
+  /Failed to fetch dynamically imported module:\s*([^\s"'<>]+)/i,
+  /error loading dynamically imported module:\s*([^\s"'<>]+)/i,
+  /Unable to preload CSS for\s+([^\s"'<>]+)/i,
+];
+const HASHED_ASSET_PATH_PATTERN = /^\/dist\/assets\/[A-Za-z0-9_./-]{1,240}$/;
 let staleBundleReloadAttempted = false;
 
 /**
@@ -16,31 +28,96 @@ let staleBundleReloadAttempted = false;
  * the user with an unhandled promise rejection and a broken workspace.
  */
 export const isStaleDynamicImportError = (error) => (
-  error?.name === "TypeError"
-  && STALE_DYNAMIC_IMPORT_PATTERN.test(String(error?.message || error || ""))
+  STALE_BUNDLE_PATTERNS.some((pattern) => (
+    pattern.test(String(error?.message || error || ""))
+  ))
 );
 
-export const recoverFromStaleDynamicImport = ({ error, target = globalThis.window } = {}) => {
-  if (!isStaleDynamicImportError(error)) return false;
-  const location = target?.location;
-  if (!location || typeof location.reload !== "function") return false;
-
-  const marker = `bf-stale-bundle:${RELEASE_ID}`;
-  let storage = null;
-  try {
-    storage = target?.sessionStorage || globalThis.sessionStorage;
-    if (storage?.getItem(marker) === "1" || staleBundleReloadAttempted) return false;
-    storage?.setItem(marker, "1");
-  } catch {
-    if (staleBundleReloadAttempted) return false;
+const bundleUrlCandidateFromError = error => {
+  const message = String(error?.message || error || "");
+  for (const pattern of STALE_BUNDLE_URL_PATTERNS) {
+    const candidate = message.match(pattern)?.[1];
+    if (candidate) return candidate.replace(/[),;]+$/u, "");
   }
-  staleBundleReloadAttempted = true;
+  return "";
+};
+
+const safeSameOriginAssetUrl = (candidate, location) => {
+  try {
+    const baseUrl = location?.href || (location?.origin ? `${location.origin}/` : "");
+    if (!baseUrl) return "";
+    const baseOrigin = new URL(baseUrl).origin;
+    const assetUrl = new URL(candidate, baseUrl);
+    if (!/^https?:$/u.test(assetUrl.protocol)) return "";
+    if (assetUrl.origin !== baseOrigin) return "";
+    if (assetUrl.username || assetUrl.password) return "";
+    if (!HASHED_ASSET_PATH_PATTERN.test(assetUrl.pathname)) return "";
+    return assetUrl.href;
+  } catch {
+    return "";
+  }
+};
+
+const reloadLocation = location => {
   try {
     location.reload();
     return true;
   } catch {
     return false;
   }
+};
+
+const refreshAssetThenReload = async ({ assetUrl, fetchAsset, location }) => {
+  try {
+    const response = await fetchAsset(assetUrl, {
+      cache: "reload",
+      credentials: "same-origin",
+    });
+    if (typeof response?.arrayBuffer === "function") {
+      await response.arrayBuffer();
+    } else if (typeof response?.text === "function") {
+      await response.text();
+    }
+  } catch {
+    // A fresh HTML/module graph can still recover when the explicit cache
+    // refresh fails, so retain the guarded reload fallback.
+  }
+  reloadLocation(location);
+};
+
+export const recoverFromStaleDynamicImport = ({ error, target = globalThis.window } = {}) => {
+  if (!isStaleDynamicImportError(error)) return false;
+  const location = target?.location;
+  if (!location || typeof location.reload !== "function") return false;
+
+  const candidate = bundleUrlCandidateFromError(error);
+  const assetUrl = candidate ? safeSameOriginAssetUrl(candidate, location) : "";
+  if (candidate && !assetUrl) return false;
+
+  const marker = `bf-stale-bundle:${RELEASE_ID}`;
+  let storage = null;
+  try {
+    storage = target?.sessionStorage || globalThis.sessionStorage;
+    if (staleBundleReloadAttempted || storage?.getItem(marker) === "1") return false;
+    storage?.setItem(marker, "1");
+    if (storage?.getItem(marker) !== "1") return false;
+  } catch {
+    // The module-level flag cannot survive a navigation. Without a confirmed
+    // session marker, automatically reloading here could loop forever.
+    return false;
+  }
+  staleBundleReloadAttempted = true;
+
+  const fetchAsset = target?.fetch;
+  if (assetUrl && typeof fetchAsset === "function") {
+    void refreshAssetThenReload({
+      assetUrl,
+      fetchAsset: fetchAsset.bind(target),
+      location,
+    });
+    return true;
+  }
+  return reloadLocation(location);
 };
 
 const safeErrorName = value => {
@@ -71,11 +148,17 @@ const safeBundlePath = value => {
   }
 };
 
+const bundlePathFromError = error => String(error?.message || error || "")
+  .match(/(?:https?:\/\/[^/\s]+)?(\/(?:dist\/assets|frontend)\/[A-Za-z0-9_./-]{1,240})/i)?.[1]
+  || "";
+
 export const buildReleaseDiagnostic = ({ error, filename, lineno, colno, kind = "error" } = {}) => ({
   kind: kind === "unhandledrejection" ? kind : "error",
   releaseId: RELEASE_ID,
-  errorName: safeErrorName(error?.name),
-  source: safeBundlePath(filename),
+  errorName: isStaleDynamicImportError(error)
+    ? "StaleBundle.LoadFailure"
+    : safeErrorName(error?.name),
+  source: safeBundlePath(filename || bundlePathFromError(error)),
   line: Number.isSafeInteger(lineno) && lineno > 0 ? lineno : 0,
   column: Number.isSafeInteger(colno) && colno > 0 ? colno : 0,
 });

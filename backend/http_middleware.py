@@ -23,6 +23,9 @@ from backend.shared.origin_policy import (
 
 TURNSTILE_ORIGIN = "https://challenges.cloudflare.com"
 _CONTENT_HASH_VERSION = re.compile(r"[0-9a-f]{64}\Z")
+_DIST_CONTENT_HASHED_ASSET = re.compile(
+    r"/dist/assets/.+-[A-Za-z0-9_-]{8}\.(?:js|css|png|webp|woff2|woff|ttf)\Z"
+)
 
 
 def _turnstile_enabled():
@@ -223,12 +226,21 @@ class SecurityHeadersMiddleware:
             if path.startswith(("/api/", "/ws/")):
                 headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             elif (
-                path.startswith("/dist/assets/")
-                or _CONTENT_HASH_VERSION.fullmatch(
-                    request.query_params.get("v") or ""
+                _DIST_CONTENT_HASHED_ASSET.fullmatch(path)
+                or (
+                    _CONTENT_HASH_VERSION.fullmatch(
+                        request.query_params.get("v") or ""
+                    )
+                    and path.endswith(('.js', '.css', '.png', '.webp', '.woff2', '.woff', '.ttf'))
                 )
-            ) and path.endswith(('.js', '.css', '.png', '.webp', '.woff2', '.woff', '.ttf')):
-                headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            ):
+                # A missing chunk can occur briefly while releases are switched.
+                # Never let a browser or CDN preserve that transient response under
+                # a content-addressed URL for the immutable one-year lifetime.
+                if status_code in {200, 206, 304}:
+                    headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                else:
+                    headers["Cache-Control"] = "no-store"
             elif path.endswith(('.js', '.css')):
                 headers["Cache-Control"] = "public, max-age=0, must-revalidate"
             await send(message)

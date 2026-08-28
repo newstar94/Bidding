@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
+import { createFrontendAssetRetentionPlugin } from './scripts/frontend_asset_retention.mjs';
 import { localSecureReleaseId } from './scripts/secure_release_id.mjs';
 
 const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
@@ -202,7 +203,10 @@ export default defineConfig(({ mode }) => {
     base: '/dist/',
     plugins: [
       singleBundleStylesPlugin(),
-      ...(mode === 'secure' ? [secureObfuscatorPlugin(releaseId)] : [])
+      ...(mode === 'secure' ? [
+        createFrontendAssetRetentionPlugin(),
+        secureObfuscatorPlugin(releaseId)
+      ] : [])
     ],
     define: {
       __BIDDINGFLOW_RELEASE_ID__: JSON.stringify(releaseId)

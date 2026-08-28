@@ -382,10 +382,33 @@ export class BiddingController {
       this._biddingWorkflowModulesReady = this.getWorkflowModuleLoader().isReady("bidding");
       this._partnerWorkflowModulesReady = this.getWorkflowModuleLoader().isReady("partner");
       this._workflowModulesReady = this.getWorkflowModuleLoader().isReady("all");
+      this.scheduleProcurementImportResume(requirement);
     }).catch((error) => {
       this[promiseProperty] = null;
       throw error;
     });
+  }
+  scheduleProcurementImportResume(requirement) {
+    const workspaceToken = this.model?.getWorkspaceToken?.()
+      || this.model?.workspaceScope?.key
+      || "boot";
+    if (
+      !["bidding", "all"].includes(requirement)
+      || this._procurementImportResumeWorkspaceToken === workspaceToken
+      || typeof this.resumeProcurementImportSession !== "function"
+    ) return false;
+    this._procurementImportResumeWorkspaceToken = workspaceToken;
+    this.schedulePostStartupTask(
+      () => {
+        const currentToken = this.model?.getWorkspaceToken?.()
+          || this.model?.workspaceScope?.key
+          || "boot";
+        if (currentToken !== workspaceToken) return false;
+        return this.resumeProcurementImportSession();
+      },
+      { timeout: 3000, key: "procurement-import-resume-after-navigation" },
+    );
+    return true;
   }
   ensureBiddingWorkflows() {
     return this.ensureWorkflowRequirement("bidding");
@@ -652,36 +675,13 @@ export class BiddingController {
       .filter(([tab]) => visibleTabs.size === 0 || visibleTabs.has(tab))
       .map(([, query]) => query);
   }
-  async warmTab(tabName) {
-    const queryByTab = Object.fromEntries(
-      this.getPrimaryTabWarmQueries().map((query) => [query.table, query]),
-    );
-    const query = queryByTab[tabName];
-    await this.warmViewModule(tabName);
-    if (!query || !this.model?.useServerSidePagination) return null;
-    return prefetchPaginatedRecords(this.model, query.table, query.params);
-  }
-  async warmViewModule(tabName) {
-    try {
-      await Promise.resolve(this.view.ensureViewModules?.(tabName));
-      return true;
-    } catch (error) {
-      console.warn(`Could not warm view module for ${tabName}:`, error);
-      return false;
-    }
-  }
   async warmPrimaryTabs() {
     const currentToken = () => this.model?.getWorkspaceToken?.() || this.model?.workspaceScope?.key || "";
     const workspaceToken = currentToken();
-    // Do not make tab warming wait for the potentially slow authoritative
-    // reconciliation.  Both operations carry the same workspace lease; a
-    // later sync invalidation will discard an obsolete page entry, while the
-    // first-page request can complete during the reconciliation window.
     if (workspaceToken !== currentToken()) return;
-    for (const tab of ["kehoach", "chudautu", "goithau-timeline"]) {
-      if (workspaceToken !== currentToken()) return;
-      await this.warmViewModule(tab);
-    }
+    // Route UI stays cold until explicit navigation. Only page data may warm in
+    // the background, so hover/focus and idle work cannot hide the click-owned
+    // module request or its navigation feedback.
     if (!this.model?.useServerSidePagination) return;
     const queries = this.getPrimaryTabWarmQueries();
     for (let index = 0; index < queries.length; index += 2) {
@@ -888,10 +888,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     await Promise.all(routePreparationTasks);
     await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
-    this.schedulePostStartupTask(async () => {
-      await this.ensureBiddingWorkflows();
-      await this.resumeProcurementImportSession?.();
-    }, { timeout: 3000, delay: POST_STARTUP_TIMING.biddingWorkflows });
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();

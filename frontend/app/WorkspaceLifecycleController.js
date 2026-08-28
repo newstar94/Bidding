@@ -172,7 +172,6 @@ export class WorkspaceLifecycleController {
       await host.switchTab(targetTab, null, true);
       this.assertCurrent(identity);
     }
-    host._tabIntentPrefetches?.clear?.();
     host.schedulePostStartupTask?.(
       () => hydratePlanVersionDraftSessions(model),
       {

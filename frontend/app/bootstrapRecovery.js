@@ -11,3 +11,12 @@ export async function runApplicationBootstrap(
     return false;
   }
 }
+
+export function handleApplicationBootstrapFailure(
+  error,
+  { recover = () => false, onFailure = () => {} } = {},
+) {
+  if (recover(error)) return true;
+  onFailure(error);
+  return false;
+}

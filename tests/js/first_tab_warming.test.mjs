@@ -7,6 +7,7 @@ import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import {
   beginNavigationFeedback,
   finishNavigationFeedback,
+  setupTabs,
   switchTab,
 } from "../../frontend/app/BiddingControllerUI.js";
 import {
@@ -58,6 +59,53 @@ test("primary business views stay route-specific and outside the workspace start
   });
 });
 
+test("procurement resume waits for an explicitly requested bidding workflow load", async () => {
+  const scheduled = [];
+  const resumed = [];
+  const ready = new Set();
+  let workspaceToken = "user:org-a@1";
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = { getWorkspaceToken: () => workspaceToken };
+  controller._workflowModuleLoader = {
+    async ensure(requirement) {
+      ready.add(requirement);
+      controller.resumeProcurementImportSession = async () => resumed.push(requirement);
+    },
+    isReady: (requirement) => ready.has(requirement),
+  };
+  controller.schedulePostStartupTask = (task, options) => scheduled.push({ task, options });
+
+  assert.deepEqual(scheduled, []);
+  await controller.ensureWorkflowRequirement("partner");
+  assert.deepEqual(scheduled, [], "an unrelated workflow must not resume procurement import");
+
+  await controller.ensureWorkflowRequirement("bidding");
+  assert.equal(scheduled.length, 1);
+  assert.deepEqual(scheduled[0].options, {
+    timeout: 3000,
+    key: "procurement-import-resume-after-navigation",
+  });
+  await scheduled[0].task();
+  assert.deepEqual(resumed, ["bidding"]);
+
+  await controller.ensureWorkflowRequirement("bidding");
+  assert.equal(scheduled.length, 1, "resume is scheduled once for the active workspace");
+
+  workspaceToken = "user:org-b@2";
+  await controller.ensureWorkflowRequirement("bidding");
+  assert.equal(scheduled.length, 2, "a new workspace gets its own pending-import resume");
+  assert.equal(await scheduled[0].task(), false, "a stale workspace task cannot resume after a switch");
+  await scheduled[1].task();
+  assert.deepEqual(resumed, ["bidding", "bidding"]);
+
+  const uiSource = fs.readFileSync("frontend/app/BiddingControllerUI.js", "utf8");
+  assert.match(
+    uiSource,
+    /this\.scheduleProcurementImportResume\?\.\(workflowRequirement\);/,
+    "an already-loaded bidding workflow must still resume the current workspace on navigation",
+  );
+});
+
 test("goithau loads only its route-specific list module", async () => {
   const view = new BiddingView({});
   await view.ensureViewModules("goithau");
@@ -72,6 +120,31 @@ test("goithau loads only its route-specific list module", async () => {
     pending: false,
     loadCount: 0,
   });
+});
+
+test("tab setup starts route loading from click without hover or focus prefetch", async () => {
+  const previousDocument = globalThis.document;
+  const listeners = new Map();
+  const button = {
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    getAttribute: (name) => name === "data-tab" ? "goithau" : null,
+  };
+  const switched = [];
+  globalThis.document = { getElementById: () => null };
+  const controller = {
+    view: { elements: { navButtons: [button] } },
+    switchTab: async (tab) => switched.push(tab),
+  };
+  try {
+    setupTabs.call(controller);
+    assert.deepEqual([...listeners.keys()], ["click"]);
+    listeners.get("click")();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(switched, ["goithau"]);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test("primary tab warming limits page prefetch concurrency and fills exact first-page cache", async () => {
@@ -110,54 +183,103 @@ test("primary tab warming limits page prefetch concurrency and fills exact first
   }
 });
 
-test("primary warming serializes optional view chunks before starting page prefetch", async () => {
-  const previousFetch = globalThis.fetch;
-  const gates = Object.fromEntries(
-    ["kehoach", "chudautu", "goithau-timeline"].map((tab) => [tab, deferred()]),
-  );
-  const calls = [];
-  globalThis.fetch = async () => {
-    calls.push("paginate");
-    return response({ items: [], totalItems: 0, hasMore: false, nextCursor: null });
+test("scheduled primary warming keeps route modules cold until the tab is clicked", async () => {
+  const previousDocument = globalThis.document;
+  const previousHistory = globalThis.history;
+  const previousElement = globalThis.Element;
+  class TestElement {}
+  globalThis.Element = TestElement;
+  const createClassList = () => {
+    const tokens = new Set();
+    return {
+      add: (...names) => names.forEach((name) => tokens.add(name)),
+      remove: (...names) => names.forEach((name) => tokens.delete(name)),
+      contains: (name) => tokens.has(name),
+    };
   };
-  const controller = Object.create(BiddingController.prototype);
-  controller.model = {
-    useServerSidePagination: true,
-    pageSize: 10,
-    getWorkspaceToken: () => "user:org-a@1",
-    workspaceScope: { key: "user:org-a" },
-    state: { activetab: "dashboard", kehoach: [], goithau: [], chudautu: [], nhathau: [], chuyengia: [], hopdong: [] },
-    normalizeRecordKeys: (record) => record,
-    entityIndexes: { invalidate() {} },
+  const navButton = {
+    classList: createClassList(),
+    getAttribute: (name) => name === "data-tab" ? "kehoach" : null,
   };
-  controller.view = {
-    elements: { navButtons: [] },
-    ensureViewModules(tab) {
-      calls.push(`module:${tab}`);
-      return gates[tab].promise;
+  const dashboardPane = { id: "tab-dashboard", classList: createClassList() };
+  dashboardPane.classList.add("active");
+  const planPane = { id: "tab-kehoach", classList: createClassList() };
+  const panes = [dashboardPane, planPane];
+  globalThis.document = {
+    body: {},
+    getElementById(id) {
+      return panes.find((pane) => pane.id === id) || null;
+    },
+    querySelectorAll(selector) {
+      if (selector === ".nav-btn") return [navButton];
+      if (selector === ".tab-pane") return panes;
+      return [];
     },
   };
+  globalThis.history = { pushState() {}, replaceState() {} };
+
+  const moduleLoads = [];
+  const readyModules = new Set();
+  const rendered = [];
+  const scheduled = [];
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = {
+    useServerSidePagination: false,
+    getWorkspaceToken: () => "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: {
+      activetab: "dashboard",
+      activeaction: null,
+      activerole: "manager",
+      kehoach: [],
+      goithau: [],
+      chudautu: [],
+      nhathau: [],
+      hopdong: [],
+    },
+    hasActiveEffectiveRole: () => true,
+  };
+  controller._workflowModulesReady = true;
+  controller.lazyTabPartials = {};
+  controller.routeMap = { kehoach: "ke-hoach" };
+  controller.actionMap = {};
+  controller.view = {
+    elements: {
+      navButtons: [navButton],
+      tabPanes: panes,
+      pageTitle: { textContent: "" },
+    },
+    areViewModulesReady: (tab) => readyModules.has(tab),
+    async ensureViewModules(tab) {
+      moduleLoads.push(tab);
+      readyModules.add(tab);
+    },
+  };
+  controller.renderTabData = (tab) => rendered.push(tab);
+  controller.switchTab = switchTab;
+  controller.schedulePostStartupTask = (task, options) => scheduled.push({ task, options });
+
   try {
-    const warming = controller.warmPrimaryTabs();
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls, ["module:kehoach"]);
-    gates.kehoach.resolve();
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls, ["module:kehoach", "module:chudautu"]);
-    gates.chudautu.resolve();
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls, [
-      "module:kehoach",
-      "module:chudautu",
-      "module:goithau-timeline",
-    ]);
-    gates["goithau-timeline"].resolve();
-    await warming;
-    assert.equal(calls.filter((call) => call === "paginate").length, 6);
+    assert.equal(await controller.schedulePrimaryTabWarming(), true);
+    assert.equal(scheduled.length, 1);
+    await scheduled[0].task();
+    assert.deepEqual(
+      moduleLoads,
+      [],
+      "background warming must not import route UI before explicit navigation",
+    );
+
+    await controller.switchTab("kehoach");
+    assert.deepEqual(moduleLoads, ["kehoach"]);
+    assert.deepEqual(rendered, ["kehoach"]);
+    assert.equal(planPane.classList.contains("active"), true);
   } finally {
-    Object.values(gates).forEach(({ resolve }) => resolve());
-    if (previousFetch === undefined) delete globalThis.fetch;
-    else globalThis.fetch = previousFetch;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
+    if (previousElement === undefined) delete globalThis.Element;
+    else globalThis.Element = previousElement;
   }
 });
 
@@ -218,25 +340,6 @@ test("a failed post-startup task cannot break the app", async () => {
 test("expert renderer uses the same search query key as primary-tab warming", () => {
   const source = fs.readFileSync("frontend/experts/ChuyenGiaComponent.js", "utf8");
   assert.match(source, /pageParams\s*=\s*\{\s*page:\s*currentPage,\s*pageSize,\s*search:\s*searchVal,/);
-});
-
-test("view-module warming reports a failure without rejecting the background task", async () => {
-  const previousWarn = console.warn;
-  const warnings = [];
-  console.warn = (...args) => warnings.push(args);
-  const controller = Object.create(BiddingController.prototype);
-  controller.model = { useServerSidePagination: false };
-  controller.view = {
-    elements: { navButtons: [] },
-    ensureViewModules: async () => { throw new Error("chunk unavailable"); },
-  };
-  try {
-    assert.equal(await controller.warmTab("kehoach"), null);
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0][0], /Could not warm view module/);
-  } finally {
-    console.warn = previousWarn;
-  }
 });
 
 test("workspace change stops remaining warm batches and cannot cache the old response", async () => {
@@ -450,6 +553,165 @@ test("slow navigation feedback appears after the delay and is always cleaned up"
     globalThis.clearTimeout = previousClearTimeout;
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
+  }
+});
+
+test("a caught non-stale view-module failure shows feedback without reloading", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousError = console.error;
+  const reloads = [];
+  const toasts = [];
+  const errors = [];
+  const storage = new Map();
+  globalThis.document = {
+    body: {},
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  globalThis.window = {
+    location: {
+      href: "https://demo.hosodauthau.online/tong-quan",
+      origin: "https://demo.hosodauthau.online",
+      reload: () => reloads.push(true),
+    },
+    sessionStorage: {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, String(value)),
+    },
+  };
+  console.error = (...args) => errors.push(args);
+  const controller = {
+    _workflowModulesReady: true,
+    actionMap: {},
+    lazyTabPartials: {},
+    model: {
+      state: {
+        activeaction: null,
+        activetab: "dashboard",
+        activerole: "manager",
+        chudautu: [],
+        goithau: [],
+        hopdong: [],
+        kehoach: [],
+        nhathau: [],
+      },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { kehoach: "ke-hoach" },
+    view: {
+      elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => false,
+      ensureViewModules: () => Promise.reject(new Error("ordinary module bug")),
+      showToast: (...args) => toasts.push(args),
+    },
+  };
+  controller.switchTab = switchTab;
+  try {
+    await controller.switchTab("kehoach");
+    assert.deepEqual(reloads, []);
+    assert.equal(toasts.length, 1);
+    assert.equal(errors.length, 1);
+    assert.equal(controller._tabPerfTransitions.size, 0);
+    assert.equal(controller._navigationFeedback, null);
+  } finally {
+    console.error = previousError;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("caught view and workflow stale-bundle failures request exactly one guarded reload", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousError = console.error;
+  const reloads = [];
+  const toasts = [];
+  const errors = [];
+  const storage = new Map();
+  let viewModulesReady = false;
+  let firefoxMessageReads = 0;
+  globalThis.document = {
+    body: {},
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  globalThis.window = {
+    location: {
+      href: "https://demo.hosodauthau.online/tong-quan",
+      origin: "https://demo.hosodauthau.online",
+      reload: () => reloads.push(true),
+    },
+    sessionStorage: {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, String(value)),
+    },
+  };
+  console.error = (...args) => errors.push(args);
+  const controller = {
+    _workflowModulesReady: true,
+    actionMap: {},
+    lazyTabPartials: {},
+    model: {
+      state: {
+        activeaction: null,
+        activetab: "dashboard",
+        activerole: "manager",
+        chudautu: [],
+        goithau: [],
+        hopdong: [],
+        kehoach: [],
+        nhathau: [],
+      },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { kehoach: "ke-hoach", "goithau-detail": "goi-thau-chi-tiet" },
+    view: {
+      elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => viewModulesReady,
+      ensureViewModules: () => Promise.reject(new TypeError(
+        "Failed to fetch dynamically imported module: /dist/assets/KeHoachView-AbCdEf12.js",
+      )),
+      showToast: (...args) => toasts.push(args),
+    },
+  };
+  controller.switchTab = switchTab;
+  try {
+    await controller.switchTab("kehoach");
+    assert.equal(reloads.length, 1);
+    assert.equal(toasts.length, 0, "the first stale failure should hand off to reload recovery");
+    assert.equal(errors.length, 0);
+    assert.equal(controller._tabPerfTransitions.size, 0);
+    assert.equal(controller._navigationFeedback, null);
+
+    viewModulesReady = true;
+    controller._workflowModulesReady = false;
+    controller.isWorkflowRequirementReady = () => false;
+    controller.ensureWorkflowRequirement = () => Promise.reject({
+      name: "TypeError",
+      get message() {
+        firefoxMessageReads += 1;
+        return "error loading dynamically imported module: /dist/assets/BiddingWorkflows-QwErTy12.js";
+      },
+    });
+    await controller.switchTab("goithau-detail");
+
+    assert.ok(firefoxMessageReads > 0, "the caught workflow error must reach stale-bundle recovery");
+    assert.equal(reloads.length, 1, "the session guard must prevent a second automatic reload");
+    assert.equal(toasts.length, 1, "a guarded repeat failure must retain actionable UI feedback");
+    assert.equal(errors.length, 1);
+    assert.equal(controller._tabPerfTransitions.size, 0);
+    assert.equal(controller._navigationFeedback, null);
+  } finally {
+    console.error = previousError;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
   }
 });
 
