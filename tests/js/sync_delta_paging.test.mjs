@@ -69,3 +69,18 @@ test("legacy version cursor without a visibility token forces a full sync", () =
   assert.equal(cursor.useVersionDelta, false);
   assert.deepEqual(cursor.query, { since: "0" });
 });
+
+test("cursor from another active persona forces a full sync before delta", () => {
+  const storage = new Map([
+    ["bf_last_sync_version", "91"],
+    ["bf_visibility_token", "manager-token"],
+    ["bf_sync_active_role", "manager"],
+  ]);
+
+  const cursor = readSyncCursor({
+    getItem: (key) => storage.get(key) ?? null,
+  }, { currentRole: "super_admin" });
+
+  assert.equal(cursor.useVersionDelta, false);
+  assert.deepEqual(cursor.query, { since: "0" });
+});

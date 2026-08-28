@@ -81,19 +81,19 @@ const VIEW_MODULE_LOADERS = Object.freeze({
 const VIEW_MODULES_BY_TAB = Object.freeze({
   dashboard: ["dashboard"],
   "superadmin-dashboard": ["dashboard"],
-  kehoach: ["plan"],
+  kehoach: ["business-list"],
   "kehoach-detail": ["plan"],
-  goithau: ["plan"],
+  goithau: ["business-list"],
   "goithau-timeline": ["timeline"],
   "goithau-detail": ["plan"],
   mothau: ["plan"],
   danhgiahsdt: ["plan"],
-  chudautu: ["partner"],
+  chudautu: ["business-list"],
   "chudautu-detail": ["partner"],
-  nhathau: ["partner"],
+  nhathau: ["business-list"],
   "nhathau-detail": ["partner"],
-  chuyengia: ["partner"],
-  hopdong: ["partner"],
+  chuyengia: ["business-list"],
+  hopdong: ["business-list"],
   "hopdong-detail": ["partner"],
   bieumau: ["partner"]
 });
@@ -108,6 +108,14 @@ export function getViewModuleLoadDiagnostics(moduleName) {
     pending: pendingViewModules.has(moduleName),
     loadCount: Number(viewModuleLoadCount.get(moduleName) || 0),
   };
+}
+
+export function installPrimaryBusinessViewModule(module) {
+  if (!module) throw new TypeError("Primary business view module is required.");
+  installPrototypeModules(BiddingView, [
+    { name: "primary-business-view", module },
+  ]);
+  installedViewModules.add("business-list");
 }
 
 export class BiddingView {

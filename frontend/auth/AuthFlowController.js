@@ -82,18 +82,69 @@ export function updatePasswordConfirmationState(
   return !mismatch;
 }
 
-export function createSingleFlightSubmitHandler(handler) {
+export function createSingleFlightSubmitHandler(handler, {
+  onStart = null,
+  onDuplicate = null,
+  onSettled = null,
+} = {}) {
   let inFlight = false;
   return async (event, ...args) => {
     event?.preventDefault?.();
-    if (inFlight) return undefined;
+    if (inFlight) {
+      onDuplicate?.();
+      return undefined;
+    }
     inFlight = true;
+    onStart?.();
     try {
       return await handler(event, ...args);
     } finally {
       inFlight = false;
+      onSettled?.();
     }
   };
+}
+
+export function startPostLoginReconciliation(controller) {
+  controller?.initializeStartupReconciliation?.();
+  let task;
+  try {
+    if (typeof controller?.reconcileInitialRouteData === "function") {
+      task = controller.reconcileInitialRouteData();
+    } else if (typeof controller?.forceSyncData === "function") {
+      task = controller.forceSyncData(true, true, true);
+    } else {
+      return { started: false, promise: Promise.resolve(false) };
+    }
+  } catch (error) {
+    task = Promise.reject(error);
+  }
+  const promise = Promise.resolve(task).catch((error) => {
+    console.error("Failed to reconcile workspace after login:", error);
+    return false;
+  });
+  return { started: true, promise };
+}
+
+export function resolvePostLoginActiveRole(data = {}) {
+  const effectiveRoles = Array.isArray(data.effective_roles) ? data.effective_roles : [];
+  const confirmedRole = String(data.active_role || "").trim().toLowerCase();
+  if (effectiveRoles.includes(confirmedRole)) return confirmedRole;
+  if (effectiveRoles.includes("super_admin")) return "super_admin";
+  if (effectiveRoles.includes("manager")) return "manager";
+  if (effectiveRoles.includes("employee")) return "employee";
+  return String(data.role || "employee").trim().toLowerCase() || "employee";
+}
+
+export function setLoginSubmitBusy(form, button, label, busy, defaultLabel = "Đăng nhập") {
+  if (busy) form?.setAttribute?.("aria-busy", "true");
+  else form?.removeAttribute?.("aria-busy");
+  if (button) {
+    button.disabled = busy;
+    if (busy) button.setAttribute?.("aria-busy", "true");
+    else button.removeAttribute?.("aria-busy");
+  }
+  if (label) label.textContent = busy ? "Đang đăng nhập…" : defaultLabel;
 }
 
 export function setupAuth() {
@@ -463,6 +514,9 @@ export function setupAuth() {
       }
     };
   }
+  const loginSubmitButton = formLogin.querySelector('button[type="submit"]');
+  const loginSubmitLabel = loginSubmitButton?.querySelector("span");
+  const loginSubmitDefaultLabel = loginSubmitLabel?.textContent || "Đăng nhập";
   formLogin.onsubmit = createSingleFlightSubmitHandler(async () => {
     const username = document.getElementById("login-username").value.trim();
     const password = document.getElementById("login-password").value;
@@ -527,10 +581,7 @@ export function setupAuth() {
       if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
         await installAdminModule(this.constructor);
       }
-      let activeRole = data.role || "employee";
-      if (effectiveRoles.includes("super_admin")) activeRole = "super_admin";
-      else if (effectiveRoles.includes("manager")) activeRole = "manager";
-      else if (effectiveRoles.includes("employee")) activeRole = "employee";
+      const activeRole = resolvePostLoginActiveRole(data);
       this.model.state.activeuser = {
         ...this.model.state.activeuser || {}
       };
@@ -543,14 +594,6 @@ export function setupAuth() {
       localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
       if (data.inactivity_timeout_hours) {
         localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
-      }
-      try {
-        await this.forceSyncData();
-      } catch (err) {
-        console.error("Failed to load initial data from SQLite after login:", err);
-      }
-      if (typeof this.setupWebSocketConnection === "function") {
-        this.setupWebSocketConnection();
       }
       this.view.updateActiveUserProfileDisplay();
       if (typeof this.renderWorkspaceSwitcher === "function") {
@@ -565,10 +608,31 @@ export function setupAuth() {
       hideAuthOverlay();
       this.setupRBACEvents?.();
       this.startBackgroundSessionChecker();
+      const reconciliation = startPostLoginReconciliation(this);
+      void reconciliation.promise.then(() => {
+        this.setupWebSocketConnection?.();
+      });
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ Starlette: " + err.message;
       setRuntimeStyle(errorDiv, "display", "block");
     }
+  }, {
+    onStart: () => {
+      setLoginSubmitBusy(
+        formLogin, loginSubmitButton, loginSubmitLabel, true, loginSubmitDefaultLabel,
+      );
+    },
+    onDuplicate: () => {
+      const errorDiv = document.getElementById("login-error");
+      if (!errorDiv) return;
+      errorDiv.textContent = "Yêu cầu đăng nhập đang được xử lý…";
+      setRuntimeStyle(errorDiv, "display", "block");
+    },
+    onSettled: () => {
+      setLoginSubmitBusy(
+        formLogin, loginSubmitButton, loginSubmitLabel, false, loginSubmitDefaultLabel,
+      );
+    },
   });
   formRegister.onsubmit = async (e) => {
     e.preventDefault();

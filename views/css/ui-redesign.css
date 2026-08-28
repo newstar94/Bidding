@@ -998,7 +998,86 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
 }
 
 .tab-pane.active {
-  animation-duration: 180ms;
+  animation-duration: 120ms;
+}
+
+/* Interaction feedback: never delay a fast route, only reveal waiting state
+   after the interaction exceeds the perceptible 120 ms boundary. */
+.content-viewport {
+  isolation: isolate;
+}
+
+.content-viewport::before {
+  position: sticky;
+  z-index: 20;
+  top: -1px;
+  display: block;
+  width: 100%;
+  height: 2px;
+  margin-bottom: -2px;
+  border-radius: var(--radius-pill);
+  background: var(--active-role-accent, var(--primary));
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(0.12);
+  transform-origin: left;
+}
+
+.content-viewport.bf-route-waiting::before {
+  opacity: 1;
+  animation: bf-route-progress 900ms var(--ease-out) infinite;
+}
+
+.nav-btn.bf-nav-intent {
+  background: var(--color-accent-soft, var(--primary-soft));
+}
+
+.nav-btn.bf-nav-waiting::after,
+:is(.dropdown-org-btn, .dropdown-role-btn)[aria-busy="true"]::after,
+:is(.btn, .btn-excel-action, .btn-add-row, .btn-text)[aria-busy="true"]:not(:has(.anim-spin, .animate-spin, .loading-spinner))::after {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 0.85rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  opacity: 0.72;
+  animation: bf-interaction-spin 650ms linear infinite;
+}
+
+:is(.dropdown-org-btn, .dropdown-role-btn)[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.78;
+}
+
+@keyframes bf-route-progress {
+  0% {
+    transform: translateX(0) scaleX(0.12);
+  }
+  55% {
+    transform: translateX(18%) scaleX(0.68);
+  }
+  100% {
+    transform: translateX(88%) scaleX(0.12);
+  }
+}
+
+@keyframes bf-interaction-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-pane.active,
+  .content-viewport.bf-route-waiting::before,
+  .nav-btn.bf-nav-waiting::after,
+  :is(.dropdown-org-btn, .dropdown-role-btn)[aria-busy="true"]::after,
+  :is(.btn, .btn-excel-action, .btn-add-row, .btn-text)[aria-busy="true"]:not(:has(.anim-spin, .animate-spin, .loading-spinner))::after {
+    animation: none;
+  }
 }
 
 /* Controls and toolbars */

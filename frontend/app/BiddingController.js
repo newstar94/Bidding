@@ -677,13 +677,11 @@ export class BiddingController {
     // later sync invalidation will discard an obsolete page entry, while the
     // first-page request can complete during the reconciliation window.
     if (workspaceToken !== currentToken()) return;
-    const moduleWarmPromise = Promise.all(["kehoach", "chudautu", "goithau-timeline"].map(
-      (tab) => this.warmViewModule(tab),
-    ));
-    if (!this.model?.useServerSidePagination) {
-      await moduleWarmPromise;
-      return;
+    for (const tab of ["kehoach", "chudautu", "goithau-timeline"]) {
+      if (workspaceToken !== currentToken()) return;
+      await this.warmViewModule(tab);
     }
+    if (!this.model?.useServerSidePagination) return;
     const queries = this.getPrimaryTabWarmQueries();
     for (let index = 0; index < queries.length; index += 2) {
       if (workspaceToken !== currentToken()) return;
@@ -691,7 +689,6 @@ export class BiddingController {
         prefetchPaginatedRecords(this.model, table, params)
       )));
     }
-    await moduleWarmPromise;
   }
   async init() {
     this.markStartup("init:start");
@@ -893,7 +890,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     this.schedulePostStartupTask(async () => {
       await this.ensureBiddingWorkflows();
       await this.resumeProcurementImportSession?.();
-    }, { timeout: 2200, delay: 500 });
+    }, { timeout: 3000, delay: 3000 });
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();
@@ -902,17 +899,17 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       (task, options) => this.schedulePostStartupTask(task, options),
     );
     void this.schedulePrimaryTabWarming(initialReconciliation);
-    this.schedulePostStartupTask(() => this.preloadPrimaryModals(), { timeout: 1800, delay: 400 });
+    this.schedulePostStartupTask(() => this.preloadPrimaryModals(), { timeout: 2500, delay: 2400 });
     this.schedulePostStartupTask(() => {
       this.setupFileUploads();
       this.loadHolidaysInBackground();
-    }, { timeout: 600, delay: 100 });
+    }, { timeout: 1200, delay: 1800 });
     this._initialSyncStarted = true;
     this.schedulePostStartupTask(() => {
       this.setupAutoSyncBackground();
       this.loadInitDataInBackground();
-    }, { timeout: 2500, delay: 900 });
-    this.schedulePostStartupTask(() => this.model.hydrateRemainingStorageKeysIdle?.(), { timeout: 2500, delay: 150 });
+    }, { timeout: 3000, delay: 3500 });
+    this.schedulePostStartupTask(() => this.model.hydrateRemainingStorageKeysIdle?.(), { timeout: 2500, delay: 1600 });
   }
   registerCommands() {
     setAppController(this);

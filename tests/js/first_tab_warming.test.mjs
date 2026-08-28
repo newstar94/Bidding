@@ -4,8 +4,17 @@ import test from "node:test";
 
 import { BiddingController } from "../../frontend/app/BiddingController.js";
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
-import { switchTab } from "../../frontend/app/BiddingControllerUI.js";
-import { BiddingView, getViewModuleLoadDiagnostics } from "../../frontend/app/BiddingView.js";
+import {
+  beginNavigationFeedback,
+  finishNavigationFeedback,
+  switchTab,
+} from "../../frontend/app/BiddingControllerUI.js";
+import {
+  BiddingView,
+  getViewModuleLoadDiagnostics,
+  installPrimaryBusinessViewModule,
+} from "../../frontend/app/BiddingView.js";
+import * as PrimaryBusinessView from "../../frontend/app/PrimaryBusinessView.js";
 import { loadPaginatedRecords } from "../../frontend/shared/tableDataUtils.js";
 
 function deferred() {
@@ -25,14 +34,23 @@ function response(payload) {
   });
 }
 
-test("kehoach and goithau share one plan view module load", async () => {
+test("primary business view modules are ready before the first tab click", () => {
+  installPrimaryBusinessViewModule(PrimaryBusinessView);
+  assert.deepEqual(getViewModuleLoadDiagnostics("business-list"), {
+    installed: true,
+    pending: false,
+    loadCount: 0,
+  });
+});
+
+test("kehoach and goithau reuse the statically installed business list module", async () => {
   const view = new BiddingView({});
   await Promise.all([view.ensureViewModules("kehoach"), view.ensureViewModules("goithau")]);
   await view.ensureViewModules("goithau");
-  assert.deepEqual(getViewModuleLoadDiagnostics("plan"), {
+  assert.deepEqual(getViewModuleLoadDiagnostics("business-list"), {
     installed: true,
     pending: false,
-    loadCount: 1,
+    loadCount: 0,
   });
 });
 
@@ -67,6 +85,57 @@ test("primary tab warming limits page prefetch concurrency and fills exact first
     assert.equal(maximumActive, 2);
     assert.equal(model._paginatedQueryCache.size, 6);
   } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("primary warming serializes optional view chunks before starting page prefetch", async () => {
+  const previousFetch = globalThis.fetch;
+  const gates = Object.fromEntries(
+    ["kehoach", "chudautu", "goithau-timeline"].map((tab) => [tab, deferred()]),
+  );
+  const calls = [];
+  globalThis.fetch = async () => {
+    calls.push("paginate");
+    return response({ items: [], totalItems: 0, hasMore: false, nextCursor: null });
+  };
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = {
+    useServerSidePagination: true,
+    pageSize: 10,
+    getWorkspaceToken: () => "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: { activetab: "dashboard", kehoach: [], goithau: [], chudautu: [], nhathau: [], chuyengia: [], hopdong: [] },
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  controller.view = {
+    elements: { navButtons: [] },
+    ensureViewModules(tab) {
+      calls.push(`module:${tab}`);
+      return gates[tab].promise;
+    },
+  };
+  try {
+    const warming = controller.warmPrimaryTabs();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, ["module:kehoach"]);
+    gates.kehoach.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, ["module:kehoach", "module:chudautu"]);
+    gates.chudautu.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, [
+      "module:kehoach",
+      "module:chudautu",
+      "module:goithau-timeline",
+    ]);
+    gates["goithau-timeline"].resolve();
+    await warming;
+    assert.equal(calls.filter((call) => call === "paginate").length, 6);
+  } finally {
+    Object.values(gates).forEach(({ resolve }) => resolve());
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
   }
@@ -231,14 +300,23 @@ test("rapid tab switching keeps only the newest route and cleans stale transitio
   const previousElement = globalThis.Element;
   class TestElement {}
   globalThis.Element = TestElement;
+  const createClassList = () => {
+    const tokens = new Set();
+    return {
+      add: (...names) => names.forEach((name) => tokens.add(name)),
+      remove: (...names) => names.forEach((name) => tokens.delete(name)),
+      contains: (name) => tokens.has(name),
+      get active() { return tokens.has("active"); },
+    };
+  };
   const navTabs = ["kehoach", "goithau", "nhathau"].map((tab) => ({
     tab,
-    classList: { active: false, add() { this.active = true; }, remove() { this.active = false; } },
+    classList: createClassList(),
     getAttribute(name) { return name === "data-tab" ? this.tab : null; },
   }));
   const panes = navTabs.map(({ tab }) => ({
     id: `tab-${tab}`,
-    classList: { active: false, add() { this.active = true; }, remove() { this.active = false; } },
+    classList: createClassList(),
   }));
   const pageTitle = { textContent: "" };
   globalThis.document = {
@@ -295,6 +373,63 @@ test("rapid tab switching keeps only the newest route and cleans stale transitio
     else globalThis.history = previousHistory;
     if (previousElement === undefined) delete globalThis.Element;
     else globalThis.Element = previousElement;
+  }
+});
+
+test("slow navigation feedback appears after the delay and is always cleaned up", () => {
+  const previousDocument = globalThis.document;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  const tokens = () => {
+    const values = new Set();
+    return {
+      add: (...names) => names.forEach((name) => values.add(name)),
+      remove: (...names) => names.forEach((name) => values.delete(name)),
+      contains: (name) => values.has(name),
+    };
+  };
+  const button = {
+    classList: tokens(),
+    getAttribute: (name) => name === "data-tab" ? "kehoach-detail" : null,
+  };
+  const attributes = new Map();
+  const viewport = {
+    classList: tokens(),
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name),
+  };
+  let delayedCallback = null;
+  globalThis.setTimeout = (callback) => {
+    delayedCallback = callback;
+    return 42;
+  };
+  globalThis.clearTimeout = () => {};
+  globalThis.document = {
+    querySelector: (selector) => selector === ".content-viewport" ? viewport : null,
+    querySelectorAll: (selector) => selector === ".nav-btn" ? [button] : [],
+  };
+  const controller = {};
+  try {
+    beginNavigationFeedback(controller, "kehoach-detail", 7);
+    assert.equal(button.classList.contains("bf-nav-intent"), true);
+    assert.equal(viewport.classList.contains("bf-route-waiting"), false);
+    assert.equal(attributes.has("aria-busy"), false);
+
+    delayedCallback();
+    assert.equal(button.classList.contains("bf-nav-waiting"), true);
+    assert.equal(viewport.classList.contains("bf-route-waiting"), true);
+    assert.equal(attributes.get("aria-busy"), "true");
+
+    assert.equal(finishNavigationFeedback(controller, 7), true);
+    assert.equal(button.classList.contains("bf-nav-intent"), false);
+    assert.equal(button.classList.contains("bf-nav-waiting"), false);
+    assert.equal(viewport.classList.contains("bf-route-waiting"), false);
+    assert.equal(attributes.has("aria-busy"), false);
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
   }
 });
 

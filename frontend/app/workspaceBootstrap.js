@@ -1,5 +1,6 @@
 import { BiddingModel } from "./BiddingModel.js";
-import { BiddingView } from "./BiddingView.js";
+import { BiddingView, installPrimaryBusinessViewModule } from "./BiddingView.js";
+import * as PrimaryBusinessView from "./PrimaryBusinessView.js";
 import { BiddingController } from "./BiddingController.js";
 import * as Auth from "../auth/AuthController.js";
 import * as MainUI from "./BiddingControllerUI.js";
@@ -108,6 +109,40 @@ async function bootstrapUnassignedAccount(initialSession) {
   window.lucide?.createIcons?.({ root: panel });
 }
 
+export function scheduleWorkspaceEnhancements(controller, {
+  importAssistantLoader = () => import("../assistant/AssistantLoader.js"),
+  importNotificationCenter = () => import("./NotificationCenter.js"),
+} = {}) {
+  if (typeof controller?.schedulePostStartupTask !== "function") return false;
+  controller.schedulePostStartupTask(async () => {
+    try {
+      const { initializeNotificationCenter } = await importNotificationCenter();
+      controller.notificationCenter = initializeNotificationCenter(controller);
+    } catch (error) {
+      console.warn("Notification center could not be initialized:", error);
+    }
+  }, {
+    timeout: 2500,
+    delay: 1800,
+    key: "notification-center",
+    priority: "maintenance",
+  });
+  controller.schedulePostStartupTask(async () => {
+    try {
+      const { loadAssistant } = await importAssistantLoader();
+      await loadAssistant(controller);
+    } catch (error) {
+      console.warn("Assistant could not be initialized:", error);
+    }
+  }, {
+    timeout: 3000,
+    delay: 2500,
+    key: "assistant",
+    priority: "maintenance",
+  });
+  return true;
+}
+
 export async function bootstrapWorkspace(initialSession) {
   if (!sessionHasActiveWorkspace(initialSession)) {
     await bootstrapUnassignedAccount(initialSession);
@@ -127,6 +162,7 @@ export async function bootstrapWorkspace(initialSession) {
     { name: "main-sync", module: MainSync },
     { name: "integration-bridges", module: IntegrationBridges },
   ]);
+  installPrimaryBusinessViewModule(PrimaryBusinessView);
   const model = new BiddingModel();
   model.addStorageHydrationListener(({ code, state }) => {
     if (state === "failed") {
@@ -137,16 +173,5 @@ export async function bootstrapWorkspace(initialSession) {
   const controller = new BiddingController(model, view);
   controller._initialSessionData = initialSession;
   await controller.init();
-  import("../assistant/AssistantLoader.js").then(({ loadAssistant }) => {
-    loadAssistant(controller).catch((error) => {
-      console.warn("Assistant could not be initialized:", error);
-    });
-  }).catch((error) => {
-    console.warn("Assistant module could not be loaded:", error);
-  });
-  import("./NotificationCenter.js").then(({ initializeNotificationCenter }) => {
-    controller.notificationCenter = initializeNotificationCenter(controller);
-  }).catch((error) => {
-    console.warn("Notification center could not be initialized:", error);
-  });
+  scheduleWorkspaceEnhancements(controller);
 }

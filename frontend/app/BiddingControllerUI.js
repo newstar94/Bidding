@@ -410,6 +410,45 @@ export function beginTabTransition(controller, transitionVersion = null) {
   };
 }
 
+const NAVIGATION_FEEDBACK_DELAY_MS = 120;
+
+export function beginNavigationFeedback(controller, tabName, transitionVersion) {
+  const previous = controller?._navigationFeedback;
+  if (previous?.timer) globalThis.clearTimeout?.(previous.timer);
+  previous?.button?.classList?.remove?.("bf-nav-intent", "bf-nav-waiting");
+  const viewport = globalThis.document?.querySelector?.(".content-viewport");
+  viewport?.classList?.remove?.("bf-route-waiting");
+  viewport?.removeAttribute?.("aria-busy");
+
+  const button = Array.from(globalThis.document?.querySelectorAll?.(".nav-btn") || [])
+    .find((item) => item.getAttribute?.("data-tab") === tabName) || null;
+  button?.classList?.add?.("bf-nav-intent");
+  const feedback = {
+    version: transitionVersion,
+    button,
+    viewport,
+    timer: globalThis.setTimeout?.(() => {
+      if (controller?._navigationFeedback !== feedback) return;
+      button?.classList?.add?.("bf-nav-waiting");
+      viewport?.classList?.add?.("bf-route-waiting");
+      viewport?.setAttribute?.("aria-busy", "true");
+    }, NAVIGATION_FEEDBACK_DELAY_MS),
+  };
+  controller._navigationFeedback = feedback;
+  return feedback;
+}
+
+export function finishNavigationFeedback(controller, transitionVersion) {
+  const feedback = controller?._navigationFeedback;
+  if (!feedback || feedback.version !== transitionVersion) return false;
+  if (feedback.timer) globalThis.clearTimeout?.(feedback.timer);
+  feedback.button?.classList?.remove?.("bf-nav-intent", "bf-nav-waiting");
+  feedback.viewport?.classList?.remove?.("bf-route-waiting");
+  feedback.viewport?.removeAttribute?.("aria-busy");
+  controller._navigationFeedback = null;
+  return true;
+}
+
 export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
   const firstPass = transitionVersion == null;
   const transition = beginTabTransition(this, transitionVersion);
@@ -425,9 +464,13 @@ export function switchTab(tabName, action = null, updateState = true, transition
       lazyPartial: 0,
       cold: false,
     });
+    beginNavigationFeedback(this, tabName, transitionVersion);
   }
   const tabPerf = this._tabPerfTransitions.get(transitionVersion);
-  const finishPerfTransition = () => this._tabPerfTransitions?.delete?.(transitionVersion);
+  const finishPerfTransition = () => {
+    this._tabPerfTransitions?.delete?.(transitionVersion);
+    finishNavigationFeedback(this, transitionVersion);
+  };
   if (!isCurrentTransition()) {
     finishPerfTransition();
     return;

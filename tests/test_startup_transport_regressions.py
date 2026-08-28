@@ -307,8 +307,15 @@ def test_active_role_switch_stays_in_spa_without_location_reload():
     source = (Path(app_module.project_root) / "frontend" / "admin" / "AdminUserController.js").read_text(
         encoding="utf-8"
     )
+    lifecycle_source = (
+        Path(app_module.project_root)
+        / "frontend"
+        / "app"
+        / "WorkspaceLifecycleController.js"
+    ).read_text(encoding="utf-8")
     role_block = source.split('bindAdminEvent(document, "click", "switch-active-role"', 1)[1].split(
         'const btnAddEmp', 1
     )[0]
-    assert "history.pushState" in role_block
+    assert "transitionConfirmedRole" in role_block
+    assert "history?.pushState" in lifecycle_source
     assert "window.location.assign" not in role_block

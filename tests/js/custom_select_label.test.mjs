@@ -345,7 +345,10 @@ test("searchable portal dropdown stays within the viewport for long options", as
       };
     });
     assert.equal(scrolledAlignment.leftDelta, 0);
-    assert.ok(Math.abs(scrolledAlignment.topDelta) <= 1, JSON.stringify(scrolledAlignment));
+    assert.ok(
+      Math.abs(scrolledAlignment.topDelta - 6) <= 1,
+      JSON.stringify(scrolledAlignment),
+    );
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

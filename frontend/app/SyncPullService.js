@@ -356,7 +356,11 @@ async function executeForceSyncData(
   );
   if (shouldShowFullLoader) this.view.showLoader();
   try {
-    const { useVersionDelta, since, query, visibilityToken } = readSyncCursor(storage, { forceFull });
+    const currentRole = activeSyncRole(this);
+    const { useVersionDelta, since, query, visibilityToken } = readSyncCursor(storage, {
+      forceFull,
+      currentRole,
+    });
     const queryParams = new URLSearchParams(query);
     const currentTab = typeof this.getTabNameForPath === "function"
       ? this.getTabNameForPath(window.location.pathname)
@@ -395,6 +399,7 @@ async function executeForceSyncData(
         storage.removeItem("bf_last_sync_version");
         storage.removeItem("bf_last_sync_timestamp");
         storage.removeItem("bf_visibility_token");
+        storage.removeItem("bf_sync_active_role");
         return this.forceSyncData(isBackground, true, routeOnly);
       }
     }
@@ -441,7 +446,7 @@ async function executeForceSyncData(
     if (!draftsReapplied) return stalePullResult();
     this.model?.markStorageTablesRecovered?.(changedKeys);
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
-    const committedCursor = commitSyncCursor(storage, dbData);
+    const committedCursor = commitSyncCursor(storage, dbData, { currentRole });
     if (committedCursor.syncVersion !== null) {
       this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
     }
@@ -504,6 +509,10 @@ async function executeForceSyncData(
 
 function pullFlightKey(workspace) {
   return String(workspace?.token || workspace?.organizationId || "");
+}
+
+function activeSyncRole(controller) {
+  return String(controller?.model?.state?.activerole || "").trim().toLowerCase();
 }
 
 export function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {

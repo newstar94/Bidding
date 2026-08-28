@@ -64,6 +64,8 @@ async function measureTab(page, tabCase, requestCounts) {
     if (!buttonElement || !tableBody) throw new Error(`Missing tab measurement DOM for ${tab}`);
     let skeletonObserved = Boolean(tableBody.querySelector('[data-table-state="loading"]'));
     const startedAt = performance.now();
+    const diagnosticsStart = window.__bfPerfDiagnostics?.length || 0;
+    const longTasksStart = window.__bfLongTasks?.length || 0;
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = () => {
@@ -82,6 +84,18 @@ async function measureTab(page, tabCase, requestCounts) {
         requestAnimationFrame(() => resolve({
           durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
           skeletonObserved,
+          diagnostics: (window.__bfPerfDiagnostics || []).slice(diagnosticsStart),
+          longTasks: (window.__bfLongTasks || []).slice(longTasksStart),
+          resources: performance.getEntriesByType("resource")
+            .filter((entry) => entry.startTime >= startedAt)
+            .map((entry) => ({
+              path: new URL(entry.name).pathname,
+              initiatorType: entry.initiatorType,
+              startTime: Math.round(entry.startTime),
+              duration: Math.round(entry.duration),
+              transferSize: entry.transferSize,
+              decodedBodySize: entry.decodedBodySize,
+            })),
         }));
       };
       const observer = new MutationObserver(finish);
@@ -106,6 +120,33 @@ async function measureTab(page, tabCase, requestCounts) {
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
 const page = await context.newPage();
+await page.addInitScript(() => {
+  localStorage.setItem("bf_perf_debug", "true");
+  window.__bfPerfDiagnostics = [];
+  window.__bfLongTasks = [];
+  const originalInfo = console.info.bind(console);
+  console.info = (...args) => {
+    if (args[0] === "[bf-perf]" && args[1] && typeof args[1] === "object") {
+      window.__bfPerfDiagnostics.push({ ...args[1], at: Math.round(performance.now()) });
+    }
+    originalInfo(...args);
+  };
+  if (typeof PerformanceObserver === "function") {
+    try {
+      const observer = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          window.__bfLongTasks.push({
+            startTime: Math.round(entry.startTime),
+            duration: Math.round(entry.duration),
+          });
+        });
+      });
+      observer.observe({ type: "longtask", buffered: true });
+    } catch {
+      // Long-task entries are not available in every browser runtime.
+    }
+  }
+});
 const requestCounts = new Map();
 const runtimeFailures = [];
 page.on("request", (request) => {
