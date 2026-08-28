@@ -14,6 +14,7 @@ import {
   selectableTimelinePlans,
   timelineInitialPackageReference,
   timelinePackageFamily,
+  timelinePackageOptionsForPlan,
   timelinePackageRepresentatives,
 } from "../../frontend/packages/PackageTimelineView.js";
 
@@ -251,6 +252,20 @@ test("timeline package picker shows one package family without exposing revision
   assert.deepEqual(
     timelinePackageFamily([package00, package01], package01).map((pkg) => pkg.id),
     [package00.id, package01.id],
+  );
+});
+
+test("timeline local package options match the selected active plan snapshot", () => {
+  const records = [
+    { id: "a-00", rootId: "a", phienBan: "00", keHoachId: "plan-a" },
+    { id: "a-01", rootId: "a", phienBan: "01", ke_hoach_id: "plan-a" },
+    { id: "archived", rootId: "archived", keHoachId: "plan-a", archivedAt: "2026-08-01" },
+    { id: "other", rootId: "other", keHoachId: "plan-b" },
+  ];
+
+  assert.deepEqual(
+    timelinePackageOptionsForPlan(records, "plan-a").map((pkg) => pkg.id),
+    ["a-01"],
   );
 });
 

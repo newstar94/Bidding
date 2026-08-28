@@ -499,6 +499,122 @@ test("rapid tab switching keeps only the newest route and cleans stale transitio
   }
 });
 
+test("a cold detail-tab click starts view, workflow, and partial dependencies in parallel", async () => {
+  const previousDocument = globalThis.document;
+  const previousHistory = globalThis.history;
+  const previousElement = globalThis.Element;
+  globalThis.Element = class TestElement {};
+  const createClassList = () => {
+    const tokens = new Set();
+    return {
+      add: (...names) => names.forEach((name) => tokens.add(name)),
+      remove: (...names) => names.forEach((name) => tokens.delete(name)),
+      contains: (name) => tokens.has(name),
+    };
+  };
+  const deferredGate = () => {
+    let resolve;
+    const promise = new Promise((resolvePromise) => {
+      resolve = resolvePromise;
+    });
+    return { promise, resolve };
+  };
+  const starts = [];
+  const gates = {
+    view: deferredGate(),
+    workflow: deferredGate(),
+    partial: deferredGate(),
+  };
+  let viewReady = false;
+  let workflowReady = false;
+  let partialReady = false;
+  const navButton = {
+    classList: createClassList(),
+    getAttribute: (name) => name === "data-tab" ? "goithau-detail" : null,
+  };
+  const pane = { id: "tab-goithau-detail", classList: createClassList() };
+  const viewport = { classList: createClassList(), setAttribute() {}, removeAttribute() {} };
+  globalThis.document = {
+    body: {},
+    getElementById(id) {
+      if (id === "tab-goithau-detail") return partialReady ? pane : null;
+      return null;
+    },
+    querySelector(selector) {
+      if (selector === ".content-viewport") return viewport;
+      return null;
+    },
+    querySelectorAll(selector) {
+      if (selector === ".nav-btn") return [navButton];
+      if (selector === ".tab-pane") return [pane];
+      if (selector.startsWith(".modal-overlay")) return [];
+      return [];
+    },
+  };
+  globalThis.history = { pushState() {}, replaceState() {} };
+  const controller = {
+    _workflowModulesReady: false,
+    lazyTabPartials: { "goithau-detail": "/tabs/tab_goithau_detail.html" },
+    model: {
+      state: {
+        activetab: "dashboard",
+        activeaction: null,
+        activerole: "manager",
+        goithau: [],
+        kehoach: [],
+        hopdong: [],
+        chudautu: [],
+        nhathau: [],
+      },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { "goithau-detail": "goi-thau-chi-tiet" },
+    actionMap: {},
+    view: {
+      elements: { navButtons: [navButton], tabPanes: [pane], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => viewReady,
+      ensureViewModules: () => {
+        starts.push("view");
+        return gates.view.promise;
+      },
+    },
+    isWorkflowRequirementReady: () => workflowReady,
+    ensureWorkflowRequirement: () => {
+      starts.push("workflow");
+      return gates.workflow.promise;
+    },
+    ensureLazyTab: () => {
+      starts.push("partial");
+      return gates.partial.promise;
+    },
+    scheduleProcurementImportResume() {},
+    renderTabData() {},
+  };
+  controller.switchTab = switchTab;
+  try {
+    const transition = controller.switchTab("goithau-detail");
+    assert.deepEqual(
+      starts,
+      ["view", "workflow", "partial"],
+      "all cold route dependencies must start on the explicit click",
+    );
+    viewReady = true;
+    workflowReady = true;
+    partialReady = true;
+    gates.view.resolve();
+    gates.workflow.resolve();
+    gates.partial.resolve();
+    await transition;
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
+    if (previousElement === undefined) delete globalThis.Element;
+    else globalThis.Element = previousElement;
+  }
+});
+
 test("slow navigation feedback appears after the delay and is always cleaned up", () => {
   const previousDocument = globalThis.document;
   const previousSetTimeout = globalThis.setTimeout;
@@ -556,7 +672,7 @@ test("slow navigation feedback appears after the delay and is always cleaned up"
   }
 });
 
-test("a caught non-stale view-module failure shows feedback without reloading", async () => {
+test("caught non-stale dependency failures show one actionable toast without reloading", async () => {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   const previousError = console.error;
@@ -583,7 +699,7 @@ test("a caught non-stale view-module failure shows feedback without reloading", 
   };
   console.error = (...args) => errors.push(args);
   const controller = {
-    _workflowModulesReady: true,
+    _workflowModulesReady: false,
     actionMap: {},
     lazyTabPartials: {},
     model: {
@@ -599,20 +715,22 @@ test("a caught non-stale view-module failure shows feedback without reloading", 
       },
       hasActiveEffectiveRole: () => true,
     },
-    routeMap: { kehoach: "ke-hoach" },
+    routeMap: { "goithau-detail": "goi-thau-chi-tiet" },
     view: {
       elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
       areViewModulesReady: () => false,
       ensureViewModules: () => Promise.reject(new Error("ordinary module bug")),
       showToast: (...args) => toasts.push(args),
     },
+    isWorkflowRequirementReady: () => false,
+    ensureWorkflowRequirement: () => Promise.reject(new Error("ordinary workflow bug")),
   };
   controller.switchTab = switchTab;
   try {
-    await controller.switchTab("kehoach");
+    await controller.switchTab("goithau-detail");
     assert.deepEqual(reloads, []);
     assert.equal(toasts.length, 1);
-    assert.equal(errors.length, 1);
+    assert.equal(errors.length, 2, "each failure should remain available in diagnostics");
     assert.equal(controller._tabPerfTransitions.size, 0);
     assert.equal(controller._navigationFeedback, null);
   } finally {
@@ -624,7 +742,7 @@ test("a caught non-stale view-module failure shows feedback without reloading", 
   }
 });
 
-test("caught view and workflow stale-bundle failures request exactly one guarded reload", async () => {
+test("parallel dependency failures settle before stale-bundle recovery and request one guarded reload", async () => {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   const previousError = console.error;
@@ -634,6 +752,7 @@ test("caught view and workflow stale-bundle failures request exactly one guarded
   const storage = new Map();
   let viewModulesReady = false;
   let firefoxMessageReads = 0;
+  const workflowFailure = deferred();
   globalThis.document = {
     body: {},
     getElementById: () => null,
@@ -653,7 +772,7 @@ test("caught view and workflow stale-bundle failures request exactly one guarded
   };
   console.error = (...args) => errors.push(args);
   const controller = {
-    _workflowModulesReady: true,
+    _workflowModulesReady: false,
     actionMap: {},
     lazyTabPartials: {},
     model: {
@@ -673,24 +792,42 @@ test("caught view and workflow stale-bundle failures request exactly one guarded
     view: {
       elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
       areViewModulesReady: () => viewModulesReady,
-      ensureViewModules: () => Promise.reject(new TypeError(
-        "Failed to fetch dynamically imported module: /dist/assets/KeHoachView-AbCdEf12.js",
-      )),
+      ensureViewModules: () => Promise.reject(new Error("ordinary view module bug")),
       showToast: (...args) => toasts.push(args),
     },
+    isWorkflowRequirementReady: () => false,
+    ensureWorkflowRequirement: () => workflowFailure.promise,
   };
   controller.switchTab = switchTab;
   try {
-    await controller.switchTab("kehoach");
+    let transitionSettled = false;
+    const transition = controller.switchTab("goithau-detail");
+    void transition.then(() => { transitionSettled = true; });
+    await new Promise((resolve) => setImmediate(resolve));
+    const settledBeforeWorkflowFailure = transitionSettled;
+    workflowFailure.reject({
+      name: "TypeError",
+      get message() {
+        firefoxMessageReads += 1;
+        return "error loading dynamically imported module: /dist/assets/BiddingWorkflows-QwErTy12.js";
+      },
+    });
+    await transition;
+
+    assert.equal(
+      settledBeforeWorkflowFailure,
+      false,
+      "the route must inspect every dependency result instead of failing fast",
+    );
+    assert.ok(firefoxMessageReads > 0, "a later stale failure must reach stale-bundle recovery");
     assert.equal(reloads.length, 1);
-    assert.equal(toasts.length, 0, "the first stale failure should hand off to reload recovery");
+    assert.equal(toasts.length, 0, "stale recovery should suppress ordinary failure toast noise");
     assert.equal(errors.length, 0);
     assert.equal(controller._tabPerfTransitions.size, 0);
     assert.equal(controller._navigationFeedback, null);
 
     viewModulesReady = true;
-    controller._workflowModulesReady = false;
-    controller.isWorkflowRequirementReady = () => false;
+    const messageReadsBeforeGuardedRetry = firefoxMessageReads;
     controller.ensureWorkflowRequirement = () => Promise.reject({
       name: "TypeError",
       get message() {
@@ -700,7 +837,10 @@ test("caught view and workflow stale-bundle failures request exactly one guarded
     });
     await controller.switchTab("goithau-detail");
 
-    assert.ok(firefoxMessageReads > 0, "the caught workflow error must reach stale-bundle recovery");
+    assert.ok(
+      firefoxMessageReads > messageReadsBeforeGuardedRetry,
+      "the guarded retry must still inspect the workflow error",
+    );
     assert.equal(reloads.length, 1, "the session guard must prevent a second automatic reload");
     assert.equal(toasts.length, 1, "a guarded repeat failure must retain actionable UI feedback");
     assert.equal(errors.length, 1);

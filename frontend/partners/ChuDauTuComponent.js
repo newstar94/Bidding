@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { escapeHtml, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -27,7 +28,9 @@ export async function renderChuDauTuTable() {
       renderTableLoading(tableBody, 8);
     }
     try {
-      const data = await loadPaginatedRecords(this.model, "chudautu", pageParams);
+      const data = await loadPaginatedRecords(this.model, "chudautu", pageParams, {
+        cancellationOwner: "ui:investor-list",
+      });
       slicedData = data.items;
       totalItems = data.totalItems;
       tablePerf.dataComplete(data);
@@ -226,6 +229,6 @@ export function renderChuDauTuVersionDetails(versionId) {
       }
       initCustomSelect("fullpage-cdt-version-select");
     }
-    lucide.createIcons();
+    renderLucideIcons(contentEl, lucide);
   }
 }

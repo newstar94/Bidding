@@ -316,8 +316,9 @@ export function renderExcelPreview(rows, importType) {
     if (input) input.select();
   };
   setRuntimeStyle(previewContainer, "display", "block");
-  getAppController()?.initFlatpickr?.(tableBody);
-  lucide.createIcons();
+  const appController = getAppController();
+  appController?.initFlatpickr?.(tableBody);
+  appController?.view?.createIconsScoped?.(previewContainer);
 }
 export function populatePhathanhHsmtForm(gt, model) {
   const form = document.getElementById("form-phathanh-hsmt");

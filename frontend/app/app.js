@@ -10,6 +10,7 @@ import {
 } from "../shared/releaseDiagnostics.js";
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
 import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import {
   embeddedSessionNeedsWorkspaceRefresh,
   preferredWorkspaceId
@@ -113,17 +114,17 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
   document.head.appendChild(script);
 });
 let lucideReadyPromise;
-const loadAndRenderLucideIcons = () => {
+const loadAndRenderLucideIcons = async (roots = []) => {
   if (!lucideReadyPromise) {
-    lucideReadyPromise = loadLucideIcons().then(() => {
-      window.lucide.createIcons();
-      return true;
-    }).catch((err) => {
+    lucideReadyPromise = loadLucideIcons().then(() => true).catch((err) => {
       console.warn("Lucide icons could not be loaded:", err);
       return false;
     });
   }
-  return lucideReadyPromise;
+  const loaded = await lucideReadyPromise;
+  if (!loaded) return false;
+  roots.filter(Boolean).forEach((root) => renderLucideIcons(root, window.lucide));
+  return true;
 };
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
@@ -135,9 +136,7 @@ const bootstrapApplication = async () => {
     const { bootstrapLandingPage } = await import("../landing/LandingPage.js");
     await bootstrapLandingPage(readSessionBootstrap());
     requestAnimationFrame(() => {
-      loadAndRenderLucideIcons().then((loaded) => {
-        if (loaded) window.lucide.createIcons();
-      });
+      void loadAndRenderLucideIcons([document.getElementById("landing-page")]);
       scheduleServiceWorkerRegistration();
     });
     return;
@@ -146,9 +145,7 @@ const bootstrapApplication = async () => {
     const { bootstrapLegalPage } = await import("../legal/LegalPage.js");
     await bootstrapLegalPage();
     requestAnimationFrame(() => {
-      loadAndRenderLucideIcons().then((loaded) => {
-        if (loaded) window.lucide.createIcons();
-      });
+      void loadAndRenderLucideIcons([document.getElementById("legal-page")]);
       scheduleServiceWorkerRegistration();
     });
     return;
@@ -157,9 +154,7 @@ const bootstrapApplication = async () => {
     const { bootstrapNotFoundPage } = await import("../errors/NotFoundPage.js");
     await bootstrapNotFoundPage();
     requestAnimationFrame(() => {
-      loadAndRenderLucideIcons().then((loaded) => {
-        if (loaded) window.lucide.createIcons();
-      });
+      void loadAndRenderLucideIcons([document.getElementById("bf-not-found-page")]);
       scheduleServiceWorkerRegistration();
     });
     return;
@@ -182,9 +177,15 @@ const bootstrapApplication = async () => {
   }
   requestAnimationFrame(() => {
     startupMark("first-app-frame");
-    loadAndRenderLucideIcons().then((loaded) => {
-      if (loaded) window.lucide.createIcons();
-    });
+    const iconRoots = initialSession?.valid
+      ? [
+          document.getElementById("sidebar"),
+          document.querySelector(".top-header") || document.querySelector(".app-header"),
+          document.querySelector(".tab-pane.active"),
+          document.querySelector(".unassigned-workspace-panel"),
+        ]
+      : [document.getElementById("auth-overlay")];
+    void loadAndRenderLucideIcons(iconRoots);
     scheduleServiceWorkerRegistration();
   });
 };

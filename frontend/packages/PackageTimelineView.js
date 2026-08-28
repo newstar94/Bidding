@@ -332,6 +332,16 @@ export function timelinePackageRepresentatives(records = []) {
   return selectLatestVersionsByRoot(Array.isArray(records) ? records : []);
 }
 
+export function timelinePackageOptionsForPlan(records = [], planId = "") {
+  const normalizedPlanId = String(planId || "").trim();
+  if (!normalizedPlanId) return [];
+  return timelinePackageRepresentatives((Array.isArray(records) ? records : []).filter((pkg) => (
+    String(pkg?.keHoachId || pkg?.ke_hoach_id || "") === normalizedPlanId
+    && !pkg?.archivedAt
+    && !pkg?.archived_at
+  )));
+}
+
 export function timelinePackageFamily(records = [], pkg = null) {
   if (!pkg?.id) return [];
   const rootId = versionRootId(pkg);
@@ -426,6 +436,8 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
       pageSize: 200,
       search,
       ...(planId ? { keHoachId: planId } : {})
+    }, {
+      cancellationOwner: "ui:package-timeline-options"
     });
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     const representatives = timelinePackageRepresentatives(result.items);
@@ -433,6 +445,9 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
     updateLiveStatus(`Đã tìm thấy ${representatives.length} gói thầu.`);
   } catch (error) {
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
+    if ([401, 403].includes(Number(error?.status))) {
+      renderPackageOptions(view, [], search);
+    }
     if (error?.name !== "AbortError") {
       updateLiveStatus("Không thể tải danh sách gói thầu.");
       view.showToast("Thất bại", "Không thể tải danh sách gói thầu. Vui lòng thử lại.", "error");
@@ -976,14 +991,18 @@ function bindTimelineEvents(view, pane) {
   if (pane.dataset.eventsBound === "true") return;
   pane.dataset.eventsBound = "true";
   initTimelineComboboxes(view);
-  element("timeline-plan-select")?.addEventListener("change", async () => {
+  element("timeline-plan-select")?.addEventListener("change", () => {
     const state = timelineState(view);
+    clearTimeout(state.packageSearchTimer);
+    state.packageSearchTimer = null;
     state.packageQuery = "";
     const packageSelect = element("timeline-package-select");
     if (packageSelect) packageSelect.value = "";
-    await selectPackage(view, "");
-    renderPackageOptions(view, [], "");
-    await loadPackageOptions(view, "");
+    void selectPackage(view, "");
+    const planId = element("timeline-plan-select")?.value || "";
+    const localPackages = timelinePackageOptionsForPlan(view.model.state.goithau, planId);
+    renderPackageOptions(view, localPackages, "");
+    void loadPackageOptions(view, "");
   });
   element("timeline-package-select")?.addEventListener("change", (event) => {
     timelineState(view).packageQuery = "";

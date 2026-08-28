@@ -12,6 +12,7 @@ import { renderPackageStatusBadge } from "../shared/statusBadges.js";
 import { normalizeToastFeedback } from "../shared/toastFeedback.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import { enhanceTableRowPagination } from "../shared/TablePagination.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 
 export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
@@ -165,16 +166,8 @@ export class BiddingView {
     const tabPane = element.closest(".tab-pane");
     return !tabPane || tabPane.classList.contains("active");
   }
-  createIconsScoped(root = document) {
-    const iconLibrary = window.lucide;
-    if (!iconLibrary || typeof iconLibrary.createIcons !== "function") return;
-    const hasPendingIcon = root?.matches?.("i[data-lucide]") || root?.querySelector?.("i[data-lucide]");
-    if (!hasPendingIcon) return;
-    try {
-      iconLibrary.createIcons({ root });
-    } catch {
-      iconLibrary.createIcons();
-    }
+  createIconsScoped(root = null) {
+    return renderLucideIcons(root);
   }
   enhanceVisibleContent(container = null) {
     this.enhanceAllTables(container || this.getActiveEnhancementRoot());
@@ -803,7 +796,7 @@ export class BiddingView {
         setRuntimeStyle(okBtn, "background", "");
         setRuntimeStyle(okBtn, "borderColor", "");
       }
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       const onOk = () => {
         cleanup();
         resolve(true);
@@ -868,7 +861,7 @@ export class BiddingView {
       opt2ChoiceBtn.id = "btn-dialog-opt2";
       opt2ChoiceBtn.textContent = option2Text;
       buttonContainer.append(cancelChoiceBtn, opt1ChoiceBtn, opt2ChoiceBtn);
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       const opt1Btn = document.getElementById("btn-dialog-opt1");
       const opt2Btn = document.getElementById("btn-dialog-opt2");
       const cancelBtn = document.getElementById("btn-dialog-cancel");
@@ -943,7 +936,7 @@ export class BiddingView {
         selectEl.appendChild(optionEl);
       });
       messageEl.replaceChildren(promptText, selectEl);
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       modal.classList.add("active");
       const onOk = () => {
         const selectEl2 = document.getElementById("dialog-custom-select");
@@ -1188,7 +1181,7 @@ export class BiddingView {
       cancelBtn.addEventListener("click", onCancel);
       if (closeBtn) closeBtn.addEventListener("click", onCancel);
       updateState();
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       modal.classList.add("active");
       requestAnimationFrame(() => allSelect?.focus());
     });
@@ -1289,9 +1282,7 @@ export class BiddingView {
     closeButton.innerHTML = trustedHTML('<i data-lucide="x"></i>');
     toast.append(iconWrap, content, closeButton);
     container.appendChild(toast);
-    if (window.lucide) {
-      lucide.createIcons({ root: toast });
-    }
+    this.createIconsScoped(toast);
     let isHiding = false;
     let autoDismissTimer;
     const dismissToast = () => {
@@ -1413,7 +1404,7 @@ export class BiddingView {
         setRuntimeStyle(okBtn, "background", "");
         setRuntimeStyle(okBtn, "borderColor", "");
       }
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       const triggerFocus = () => {
         if (invalidEls.length > 0) {
           focusInvalidControl(invalidEls[0]);
@@ -1552,7 +1543,7 @@ export class BiddingView {
             secondaryButton.disabled = false;
             secondaryButton.removeAttribute("aria-busy");
             secondaryButton.innerHTML = trustedHTML(originalLabel);
-            globalThis.lucide?.createIcons?.();
+            this.createIconsScoped(secondaryButton);
           }
         };
         secondaryButton.addEventListener("click", onSecondaryAction);
@@ -1575,7 +1566,7 @@ export class BiddingView {
       okBtn.className = "btn btn-primary";
       setRuntimeStyle(okBtn, "background", "");
       setRuntimeStyle(okBtn, "borderColor", "");
-      lucide.createIcons();
+      this.createIconsScoped(modal);
       const onOk = async () => {
         let val = inputEl.value;
         if (isDatePicker && val) {
@@ -1710,7 +1701,7 @@ export class BiddingView {
         setRuntimeStyle(iconContainer, "color", "var(--warning)");
         iconEl.setAttribute("data-lucide", "alert-circle");
         applyDialogTone(modal, "alert-circle");
-        if (window.lucide) window.lucide.createIcons({ root: iconContainer });
+        this.createIconsScoped(iconContainer);
       }
       buttonsContainer.innerHTML = trustedHTML(`
                 <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-server">Dùng bản Server</button>

@@ -188,7 +188,6 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
       break;
     case "preparation_action":
       renderPreparationActionPanel(contentWrapper, gt);
-      lucide.createIcons();
       break;
     case "goods":
       await renderPackageGoodsPanel(this, { contentWrapper, pkg: gt });
@@ -271,7 +270,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
       });
       break;
   }
-  lucide.createIcons();
+  this.createIconsScoped?.(contentWrapper);
   if (appController?.setupExcelImportEvents) {
     appController.setupExcelImportEvents();
   }

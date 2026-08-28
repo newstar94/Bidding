@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import {
@@ -574,7 +575,7 @@ export async function editKeHoach(id, {
       statusId: "procurement-lookup-plan-status",
     }),
   });
-  lucide.createIcons();
+  renderLucideIcons(document.getElementById("modal-kehoach"), lucide);
   assertEditCapabilityCurrent();
   this.view.openModal("modal-kehoach");
   const addWorkingDays = (startDateStr, days) => {
@@ -936,7 +937,7 @@ export async function openPlanBreakdownModal(planId) {
   this.updateBreakdownTotal(planId);
   assertModalCapabilityCurrent();
   this.view.openModal("modal-plan-breakdown");
-  lucide.createIcons();
+  renderLucideIcons(document.getElementById("modal-plan-breakdown"), lucide);
   await this.loadBreakdownPackageDetails(planId);
   assertModalCapabilityCurrent();
 }
@@ -978,7 +979,7 @@ async function loadBreakdownPackageDetailsForPlan(controller, planId) {
   if (String(document.getElementById("breakdown-plan-id")?.value || "") !== String(planId)) return;
   controller.renderBreakdownPackagesList(planId);
   controller.updateBreakdownTotal(planId);
-  lucide.createIcons();
+  renderLucideIcons(document.getElementById("tbody-breakdown-goithau"), lucide);
 }
 
 export function loadBreakdownPackageDetails(planId) {

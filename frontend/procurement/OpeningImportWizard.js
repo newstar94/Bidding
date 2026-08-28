@@ -218,7 +218,7 @@ export function applyOpeningImportToDraft({
   };
   const table = document.getElementById("mothau-table");
   if (table) enhanceTableRowPagination(table);
-  globalThis.lucide?.createIcons?.();
+  this.view?.createIconsScoped?.(tbody);
   return { added: additions.length };
 }
 
@@ -301,7 +301,7 @@ export async function importOpeningFromMuasamcong({
       button.disabled = false;
       button.removeAttribute("aria-busy");
       button.innerHTML = trustedHTML(originalLabel);
-      globalThis.lucide?.createIcons?.();
+      this.view?.createIconsScoped?.(button);
     }
   }
 }
@@ -424,7 +424,7 @@ export async function importFinancialOpeningFromMuasamcong({
       button.disabled = false;
       button.removeAttribute("aria-busy");
       button.innerHTML = trustedHTML(originalLabel);
-      globalThis.lucide?.createIcons?.();
+      view.createIconsScoped?.(button);
     }
   }
 }

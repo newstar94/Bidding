@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
@@ -45,7 +46,9 @@ export async function renderKeHoachTable() {
       renderTableLoading(tableBody, 10);
     }
     try {
-      const data = await loadPaginatedRecords(this.model, "kehoach", pageParams);
+      const data = await loadPaginatedRecords(this.model, "kehoach", pageParams, {
+        cancellationOwner: "ui:plan-list",
+      });
       slicedData = data.items;
       totalItems = data.totalItems;
       tablePerf.dataComplete(data);
@@ -128,7 +131,8 @@ export async function renderKeHoachTable() {
     }, { colSpan: 10, rowHeight: 82, onRender: () => lucide.createIcons({ root: tableBody }) });
     executeAppCommand("renderTablePagination", "kehoach-pagination", totalItems, currentPage, pageSize);
   }
-  lucide.createIcons();
+  renderLucideIcons(tableBody, lucide);
+  renderLucideIcons(document.getElementById("kehoach-pagination"), lucide);
   this.enhanceTableHeaders("kehoach-table", "kehoach");
   return { performance: tablePerf.complete() };
 }
@@ -477,5 +481,5 @@ export async function renderPlanVersionDetails(versionId) {
       canResolve: this.model.state.activerole === "super_admin",
     },
   );
-  lucide.createIcons();
+  renderLucideIcons(document.getElementById("fullpage-kehoach-content"), lucide);
 }

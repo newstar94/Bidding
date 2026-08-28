@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
@@ -48,7 +49,7 @@ export function updateRoleContextShell(activeRole = "employee") {
     dashboardButton.dataset.tooltip = context.dashboardLabel;
     dashboardButton.setAttribute("aria-label", context.dashboardLabel);
   }
-  globalThis.lucide?.createIcons?.();
+  renderLucideIcons(document.getElementById("sidebar"));
 }
 
 export function getUserInitials(name, username = "") {
@@ -327,7 +328,8 @@ export function renderSuperAdminPanel() {
                     `;
       }).join(""));
     }
-    lucide.createIcons();
+    renderLucideIcons(document.getElementById("sa-pricing-grid"), lucide);
+    renderLucideIcons(tbody, lucide);
   });
 }
 export function renderManagerNhanVienPanel() {
@@ -471,7 +473,9 @@ export function renderManagerNhanVienPanel() {
     matrixTbody,
     document.getElementById("manager-matrix-pagination"),
   );
-  lucide.createIcons();
+  renderLucideIcons(tbody, lucide);
+  renderLucideIcons(document.getElementById("manager-employees-pagination"), lucide);
+  renderLucideIcons(document.getElementById("manager-matrix-pagination"), lucide);
 }
 
 function describeEmployeeAssignment(model, assignment) {
@@ -577,7 +581,8 @@ export function renderManagerHoSoGiayPanel() {
       this.renderManagerHoSoGiayPanel();
     },
   );
-  lucide.createIcons();
+  renderLucideIcons(tbody, lucide);
+  renderLucideIcons(document.getElementById("manager-hosogiay-pagination"), lucide);
 }
 export function renderProfileTab(user) {
   if (!user) return;
@@ -704,5 +709,6 @@ export function renderSystemUsersTable(usersList, currentUsername) {
       this.renderSystemUsersTable(users, currentUsername);
     },
   );
-  lucide.createIcons();
+  renderLucideIcons(tbody, lucide);
+  renderLucideIcons(document.getElementById("sa-users-pagination"), lucide);
 }

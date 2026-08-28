@@ -329,7 +329,6 @@ function bindDirectBidRows(view, root, pkg) {
   (existing.length > 0 ? existing : [{}]).forEach((bid) => appendDirectBidRow(view, root, pkg, tbody, bid));
   root.querySelector("#btn-cdtrug-add-bidder")?.addEventListener("click", () => {
     appendDirectBidRow(view, root, pkg, tbody);
-    globalThis.window?.lucide?.createIcons();
   });
 }
 
@@ -363,7 +362,7 @@ function appendApprovalBidderRow(view, root, pkg) {
     <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete row-remove-bidder bf-s-2e8164f9a4" aria-label="Xóa nhà thầu"><i data-lucide="trash-2" class="bf-s-3e32597019"></i></button></td>
   `);
   tbody.appendChild(tr);
-  globalThis.window?.lucide?.createIcons();
+  view.createIconsScoped?.(tr);
   initializeAwardResultBidderRow(view, tr);
 }
 

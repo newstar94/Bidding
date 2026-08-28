@@ -270,7 +270,8 @@ export function renderDanhGiaHsdtPanel() {
       });
       this._renderBidEvaluationProgress = renderProgress;
       renderProgress();
-      lucide.createIcons();
+      this.view.createIconsScoped?.(summaryContainer);
+      this.view.createIconsScoped?.(evaluationContainer);
       if (typeof this.unifyTableInputsHeight === "function") {
         this.unifyTableInputsHeight(document);
       }

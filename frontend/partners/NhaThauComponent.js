@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { escapeHtml, initCustomSelect, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -41,7 +42,9 @@ export async function renderNhaThauTable() {
       renderTableLoading(tableBody, 8);
     }
     try {
-      const data = await loadPaginatedRecords(this.model, "nhathau", pageParams);
+      const data = await loadPaginatedRecords(this.model, "nhathau", pageParams, {
+        cancellationOwner: "ui:contractor-list",
+      });
       slicedData = data.items;
       totalItems = data.totalItems;
       tablePerf.dataComplete(data);
@@ -347,6 +350,6 @@ export function renderNhaThauVersionDetails(versionId) {
       }
       initCustomSelect("fullpage-nt-version-select");
     }
-    lucide.createIcons();
+    renderLucideIcons(contentEl, lucide);
   }
 }

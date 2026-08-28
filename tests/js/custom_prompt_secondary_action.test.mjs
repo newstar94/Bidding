@@ -112,3 +112,82 @@ test("prompt secondary import action is accessible, responsive, and fills the fi
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("reused custom dialog renders the newly requested Lucide icon", async () => {
+  const modalMarkup = await readFile(
+    new URL("../../views/modals/modal_custom_dialog.html", import.meta.url),
+    "utf8",
+  );
+  const server = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      if (pathname === "/") {
+        response.writeHead(200, { "content-type": contentType(".html") });
+        response.end(`<!doctype html><html><head><meta charset="utf-8">
+          <link rel="stylesheet" href="/views/css/tokens.css">
+          <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
+          <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/views/css/generated-static-styles.css">
+          <link rel="stylesheet" href="/views/css/ui-redesign.css">
+          <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
+        </head><body>${modalMarkup}</body></html>`);
+        return;
+      }
+      const filePath = join(projectRoot, pathname.replace(/^\//, ""));
+      const payload = await readFile(filePath);
+      response.writeHead(200, { "content-type": contentType(pathname) });
+      response.end(payload);
+    } catch {
+      if (!response.headersSent) response.writeHead(404);
+      if (!response.writableEnded) response.end("Not Found");
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${address.port}/`);
+    await page.addScriptTag({ url: "/views/vendor/lucide/lucide.min.js" });
+    await page.evaluate(async () => {
+      const modal = document.getElementById("modal-custom-dialog");
+      modal.removeAttribute("inert");
+      modal.setAttribute("aria-hidden", "false");
+      const { BiddingView } = await import("/frontend/app/BiddingView.js");
+      globalThis.dialogTestView = new BiddingView({});
+      globalThis.dialogTestResult = globalThis.dialogTestView.customConfirm(
+        "First dialog",
+        "Warning icon",
+        "alert-triangle",
+      );
+    });
+
+    const dialogIcon = page.locator("#dialog-icon");
+    await dialogIcon.waitFor({ state: "attached" });
+    assert.equal(await dialogIcon.evaluate((icon) => icon.tagName), "svg");
+    assert.equal(await dialogIcon.getAttribute("data-lucide"), "alert-triangle");
+    assert.ok((await dialogIcon.getAttribute("class"))?.includes("lucide-alert-triangle"));
+
+    await page.locator("#btn-dialog-cancel").click();
+    assert.equal(await page.evaluate(() => globalThis.dialogTestResult), false);
+    await page.evaluate(() => {
+      globalThis.dialogTestResult = globalThis.dialogTestView.customConfirm(
+        "Second dialog",
+        "Danger icon",
+        "trash-2",
+      );
+    });
+
+    await dialogIcon.waitFor({ state: "attached" });
+    assert.equal(await dialogIcon.evaluate((icon) => icon.tagName), "svg");
+    assert.equal(await dialogIcon.getAttribute("data-lucide"), "trash-2");
+    assert.ok((await dialogIcon.getAttribute("class"))?.includes("lucide-trash-2"));
+    await page.locator("#btn-dialog-cancel").click();
+    assert.equal(await page.evaluate(() => globalThis.dialogTestResult), false);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

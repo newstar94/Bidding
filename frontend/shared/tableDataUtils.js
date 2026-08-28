@@ -4,7 +4,12 @@ import {
   captureWorkspaceLease,
 } from "../app/workspaceLease.js";
 import { perfNow, reportPerf } from "./perfDiagnostics.js";
-import { paginatedProjectionStore } from "./PaginatedProjectionStore.js";
+import {
+  assertProjectionAuthorizationScopeCurrent,
+  captureProjectionAuthorizationScope,
+  paginatedProjectionStore,
+  projectionAuthorizationChangedError,
+} from "./PaginatedProjectionStore.js";
 
 const PAGINATION_CACHE_TTL_MS = 30_000;
 
@@ -12,12 +17,123 @@ function paginationCacheKey(model, table, params, lease) {
   return paginatedProjectionStore(model).key(table, params, lease);
 }
 
+function capturePaginatedLease(model, options = {}) {
+  const lease = captureWorkspaceLease(model, options);
+  return Object.freeze({
+    ...lease,
+    projectionAuthorizationScope: captureProjectionAuthorizationScope(model),
+  });
+}
+
+function assertPaginatedLeaseCurrent(model, lease) {
+  assertWorkspaceLeaseCurrent(model, lease);
+  assertProjectionAuthorizationScopeCurrent(model, lease?.projectionAuthorizationScope);
+  return lease;
+}
+
 function cacheEntryIsFresh(entry, now = Date.now()) {
   return Boolean(entry && now - entry.fetchedAt < PAGINATION_CACHE_TTL_MS);
 }
 
-export function getCachedPaginatedRecords(model, table, params = {}) {
-  const lease = captureWorkspaceLease(model);
+function normalizedCancellationOwner(owner) {
+  if (owner === undefined || owner === null) return "";
+  return String(owner).trim();
+}
+
+function paginationSupersededError() {
+  const error = new Error("Paginated request superseded by its owner");
+  error.name = "AbortError";
+  error.code = "PAGINATION_SUPERSEDED";
+  return error;
+}
+
+function waitForOwnedPaginationRequest(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(signal.reason instanceof Error
+      ? signal.reason
+      : paginationSupersededError());
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(
+      reject,
+      signal.reason instanceof Error ? signal.reason : paginationSupersededError(),
+    );
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
+function consumePaginationRequest(request, cancellationOwner) {
+  if (!cancellationOwner) {
+    request.unownedConsumers = Number(request.unownedConsumers || 0) + 1;
+    return Promise.resolve(request.promise).finally(() => {
+      request.unownedConsumers = Math.max(0, Number(request.unownedConsumers || 0) - 1);
+    });
+  }
+
+  request.ownerConsumers ||= new Map();
+  const existing = request.ownerConsumers.get(cancellationOwner);
+  if (existing?.promise) return existing.promise;
+
+  const controller = new AbortController();
+  const consumer = { controller, promise: null };
+  consumer.promise = waitForOwnedPaginationRequest(request.promise, controller.signal)
+    .finally(() => {
+      if (request.ownerConsumers?.get(cancellationOwner) === consumer) {
+        request.ownerConsumers.delete(cancellationOwner);
+      }
+    });
+  request.ownerConsumers.set(cancellationOwner, consumer);
+  return consumer.promise;
+}
+
+function cancelSupersededPaginationRequests(
+  model,
+  table,
+  lease,
+  currentKey,
+  cancellationOwner,
+) {
+  if (!cancellationOwner || !(model?._paginationRequests instanceof Map)) return;
+  for (const [requestKey, request] of model._paginationRequests.entries()) {
+    if (
+      requestKey === currentKey
+      || String(request?.table || "") !== String(table || "")
+      || request?.lease?.token !== lease.token
+      || request?.lease?.scope !== lease.scope
+      || request?.lease?.db !== lease.db
+      || request?.lease?.state !== lease.state
+    ) continue;
+    const consumer = request?.ownerConsumers?.get?.(cancellationOwner);
+    if (!consumer) continue;
+    request.ownerConsumers.delete(cancellationOwner);
+    const error = paginationSupersededError();
+    consumer.controller?.abort?.(error);
+    if (
+      request.ownerConsumers.size === 0
+      && Number(request.unownedConsumers || 0) === 0
+    ) {
+      request.controller?.abort?.(error);
+      if (model._paginationRequests.get(requestKey) === request) {
+        model._paginationRequests.delete(requestKey);
+      }
+    }
+  }
+}
+
+export function getCachedPaginatedRecords(model, table, params = {}, capturedLease = null) {
+  const lease = capturedLease || capturePaginatedLease(model);
   const entry = paginatedProjectionStore(model).read(table, params, lease);
   if (!entry) return null;
   return {
@@ -34,6 +150,21 @@ export function getCachedPaginatedRecords(model, table, params = {}) {
 export function invalidatePaginatedQueryCache(model, table = null) {
   if (!model) return;
   paginatedProjectionStore(model).invalidate(table);
+}
+
+export function invalidatePaginatedAuthorizationScope(model) {
+  if (!model) return;
+  const currentRevision = Number(model.visibilityRevision || 0);
+  model.visibilityRevision = Number.isSafeInteger(currentRevision)
+    ? currentRevision + 1
+    : 1;
+  paginatedProjectionStore(model).disposeWorkspace();
+  if (model._planPackageHydrationRequests instanceof Map) {
+    for (const request of model._planPackageHydrationRequests.values()) {
+      request?.controller?.abort?.(projectionAuthorizationChangedError());
+    }
+    model._planPackageHydrationRequests.clear();
+  }
 }
 
 const PLAN_SCOPED_PACKAGE_CHILD_TABLES = new Set([
@@ -117,8 +248,10 @@ export async function hydratePlanPackageRecords(model, planId) {
 
   model._planPackageHydrationRequests ||= new Map();
   const controller = new AbortController();
-  const lease = captureWorkspaceLease(model, { controller });
-  const requestKey = `${lease.token}:${normalizedPlanId}`;
+  const lease = capturePaginatedLease(model, { controller });
+  const requestKey = paginationCacheKey(model, "goithau", {
+    hydrationPlanId: normalizedPlanId,
+  }, lease);
   const existing = model._planPackageHydrationRequests.get(requestKey);
   if (existing) return existing.promise || existing;
 
@@ -136,7 +269,7 @@ export async function hydratePlanPackageRecords(model, planId) {
       });
       if (cursor) query.set("cursor", cursor);
       const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
-      assertWorkspaceLeaseCurrent(model, lease);
+      assertPaginatedLeaseCurrent(model, lease);
       hydrated.push(...cachePaginatedRecords(model, "goithau", data?.items || [], lease));
       const nextCursor = String(data?.nextCursor || "");
       if (!data?.hasMore || !nextCursor || nextCursor === cursor) break;
@@ -153,7 +286,17 @@ export async function hydratePlanPackageRecords(model, planId) {
   return request;
 }
 
-export async function loadPaginatedRecords(model, table, params = {}, { prefetch = false } = {}) {
+/**
+ * `cancellationOwner` identifies one UI request sequence. A newer query only
+ * supersedes an older consumer with the same owner, table and workspace;
+ * authorization changes fence every predecessor request separately.
+ */
+export async function loadPaginatedRecords(
+  model,
+  table,
+  params = {},
+  { prefetch = false, cancellationOwner: rawCancellationOwner = "" } = {},
+) {
   const startedAt = perfNow();
   // Plan aggregate workflows often start by loading package-owned child rows.
   // Hydrate their parent package snapshots first; otherwise a newly-created plan
@@ -166,33 +309,42 @@ export async function loadPaginatedRecords(model, table, params = {}, { prefetch
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) query.set(key, String(value));
   });
-  const lease = captureWorkspaceLease(model);
-  const key = paginationCacheKey(model, table, params, lease);
-  const cached = getCachedPaginatedRecords(model, table, params);
+  const paginatedLease = capturePaginatedLease(model);
+  const key = paginationCacheKey(model, table, params, paginatedLease);
+  const cancellationOwner = normalizedCancellationOwner(rawCancellationOwner);
+  model._paginationRequests ||= new Map();
+  cancelSupersededPaginationRequests(
+    model,
+    table,
+    paginatedLease,
+    key,
+    cancellationOwner,
+  );
+  const cached = getCachedPaginatedRecords(model, table, params, paginatedLease);
   if (cached && !cached.stale) {
     reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: false, duration: Math.round(perfNow() - startedAt), cacheHit: true, prefetched: cached.prefetched });
     return cached;
   }
-  model._paginationRequests ||= new Map();
   const existing = model._paginationRequests.get(key);
-  if (existing?.promise) {
-    const result = await existing.promise;
+  if (existing?.controller?.signal?.aborted) {
+    if (model._paginationRequests.get(key) === existing) {
+      model._paginationRequests.delete(key);
+    }
+  } else if (existing?.promise) {
+    const result = await consumePaginationRequest(existing, cancellationOwner);
     reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: true, duration: Math.round(perfNow() - startedAt), cacheHit: false, prefetched: false, inFlightDeduped: true });
     return { ...result, cacheHit: false, inFlightDeduped: true };
   }
-  [...model._paginationRequests.entries()]
-    .filter(([requestKey]) => {
-      const activeRole = encodeURIComponent(String(model?.state?.activerole || ""));
-      return requestKey.startsWith(`${lease.token || lease.scope || "workspace"}:${activeRole}:${table}:`)
-        && requestKey !== key;
-    })
-    .forEach(([, request]) => request?.controller?.abort?.());
   const controller = new AbortController();
-  const requestLease = captureWorkspaceLease(model, { controller });
+  const requestLease = Object.freeze({
+    ...paginatedLease,
+    controller,
+    signal: controller.signal,
+  });
   const requestPromise = (async () => {
     try {
       const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
-      assertWorkspaceLeaseCurrent(model, requestLease);
+      assertPaginatedLeaseCurrent(model, requestLease);
       const result = {
         items: cachePaginatedRecords(model, table, data?.items || [], requestLease, {
           preserveQueryCache: true,
@@ -242,8 +394,14 @@ export async function loadPaginatedRecords(model, table, params = {}, { prefetch
       }
     }
   })();
-  model._paginationRequests.set(key, { controller, lease: requestLease, promise: requestPromise });
-  return requestPromise;
+  const request = {
+    controller,
+    lease: requestLease,
+    promise: requestPromise,
+    table: String(table || ""),
+  };
+  model._paginationRequests.set(key, request);
+  return consumePaginationRequest(request, cancellationOwner);
 }
 
 export function prefetchPaginatedRecords(model, table, params = {}) {
@@ -277,7 +435,11 @@ export function cachePaginatedRecords(
   { preserveQueryCache = false } = {},
 ) {
   const lease = workspaceLease || captureWorkspaceLease(model);
-  assertWorkspaceLeaseCurrent(model, lease);
+  if (lease?.projectionAuthorizationScope) {
+    assertPaginatedLeaseCurrent(model, lease);
+  } else {
+    assertWorkspaceLeaseCurrent(model, lease);
+  }
   const normalized = (typeof model?.normalizeRecordKeys === "function"
     ? (records || []).map((record) => model.normalizeRecordKeys(record, key))
     : records || []

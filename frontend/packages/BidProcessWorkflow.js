@@ -319,7 +319,8 @@ export function renderMoThauPanel() {
       bids.forEach((bid) => this.addMoThauRow(caseType, gt, bid, isReadOnly));
     }
     refreshOpeningDraftPagination(this, gtId);
-    lucide.createIcons();
+    this.view.createIconsScoped?.(summaryContainer);
+    this.view.createIconsScoped?.(bidContainer);
   };
   select.onchange = handlePackageSelection;
   handlePackageSelection();
@@ -343,7 +344,7 @@ export function renderMoThauPanel() {
       else if (is1G1T) caseType = hasPhanLo ? "1G1T_WITH_LOT" : "1G1T_NO_LOT";
       this.addMoThauRow(caseType, gt);
       refreshOpeningDraftPagination(this, gt.id, { showLastPage: true });
-      lucide.createIcons();
+      this.view.createIconsScoped?.(tbody);
     };
   }
 }
@@ -826,7 +827,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         tr.remove();
         if (tbody.children.length === 0) {
           this.addMoThauRow(caseType, gt);
-          lucide.createIcons();
+          this.view.createIconsScoped?.(tbody);
         }
         refreshOpeningDraftPagination(this, gt.id);
       }

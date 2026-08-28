@@ -38,7 +38,9 @@ Các primary tab đã được tách thành route chunk, nhưng module vẫn đ�
 5. Primary route module không được import bởi idle warming, hover, focus hay touch. Cú click
    hoặc route navigation rõ ràng sở hữu lần import đầu tiên. Background warming chỉ được
    prefetch page data hiện hành; phản hồi `bf-nav-intent` xuất hiện ngay và waiting state xuất
-   hiện nếu transition vượt ngưỡng 120 ms.
+   hiện nếu transition vượt ngưỡng 120 ms. View module, workflow module và lazy HTML partial
+   mà route còn thiếu được khởi động song song trong cùng thao tác navigation; route chỉ
+   activate/render sau khi toàn bộ dependency đã hoàn tất thành công.
 6. Khi đã từng phát tán response 404 cache dài, operator phải purge cached error tại CDN sau
    khi origin đã phục vụ asset đúng. Xóa cache trên một máy không thay thế bước này.
 
@@ -50,6 +52,8 @@ Các primary tab đã được tách thành route chunk, nhưng module vẫn đ�
   tiếp tục tải lazy chunk trong grace window N+1; reload chuyển sang graph N+1.
 - Lần bấm tab đầu tiên có thể thực sự chờ route chunk thay vì được hover/idle tải trước. Dữ
   liệu trang vẫn có thể là cache hit, nên không bắt buộc hiển thị spinner trên transition nhanh.
+  Tải song song chỉ thay đổi timing; readiness gate, stale-transition guard và failure feedback
+  của từng loại dependency vẫn được bảo toàn.
 - Production package chỉ chấp nhận asset ngoài manifest hiện hành khi asset đó nằm trong
   journal N−1 hợp lệ và checksum/size khớp; file thừa hoặc tamper vẫn làm package thất bại.
 
@@ -71,5 +75,7 @@ Có thể quay lui riêng semantics tab bằng cách khôi phục intent/module 
 - Bootstrap: production entry failure làm mới graph và reload đúng một lần; lần sau hiện fatal
   fallback có thể thao tác thay vì để shell chết im lặng.
 - Diagnostics: nhận diện wording stale bundle trên các browser và chỉ gửi path asset đã lọc.
-- Tab: không request route UI trước navigation; click bắt đầu đúng một request, giữ pane cũ và
-  waiting feedback trong khi chunk bị chặn, rồi activate/render và dọn feedback khi hoàn tất.
+- Tab: không request route UI trước navigation; click bắt đầu đúng một lần cho mỗi dependency
+  còn thiếu, đồng thời khởi động view/workflow/partial mà không chờ tuần tự, giữ pane cũ và
+  waiting feedback trong khi dependency bị chặn, rồi activate/render và dọn feedback khi tất
+  cả hoàn tất.

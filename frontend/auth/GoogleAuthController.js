@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { ApiError, apiFetch, postJson } from "../shared/apiClient.js";
@@ -107,7 +108,7 @@ export function setupGoogleSignIn() {
     } catch (_) {
     }
     if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
-    if (typeof lucide !== "undefined") lucide.createIcons();
+    if (typeof lucide !== "undefined") renderLucideIcons(modalOverlay, lucide);
     input.oninput = () => {
       const val = input.value.toLowerCase();
       input.value = val.replace(/[^a-z0-9_]/g, "");

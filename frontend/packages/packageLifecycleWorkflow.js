@@ -141,7 +141,6 @@ export async function deleteGoiThau(id) {
     this.recalculatePlanTotal(localTarget.keHoachId);
     this.renderBreakdownPackagesList(localTarget.keHoachId);
     this.updateBreakdownTotal(localTarget.keHoachId);
-    globalThis.lucide?.createIcons?.();
     return { ok: true, draft: true };
   }
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);

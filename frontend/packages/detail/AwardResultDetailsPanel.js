@@ -183,7 +183,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             error.message,
             "alert-triangle",
           ),
-          refreshIcons: () => lucide.createIcons()
+          refreshIcons: () => view.createIconsScoped?.(contentWrapper)
         });
         bindAwardResultExcelExport(contentWrapper, {
           packageId: id,
@@ -193,7 +193,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             error?.message || "Vui lòng thử lại.",
             "alert-triangle",
           ),
-          refreshIcons: () => lucide.createIcons(),
+          refreshIcons: () => view.createIconsScoped?.(contentWrapper),
         });
       } else {
         const scopedResultPackage = activeScopedEvaluation

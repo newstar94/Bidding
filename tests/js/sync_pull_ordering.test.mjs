@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { forceSyncData } from "../../frontend/app/SyncPullService.js";
 import { autoSync } from "../../frontend/app/SyncPushService.js";
+import { loadPaginatedRecords } from "../../frontend/shared/tableDataUtils.js";
 
 function deferred() {
   let resolve;
@@ -873,7 +874,11 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
       timestamp: "v5",
     }), { status: 200, headers: { "content-type": "application/json" } }),
   ];
-  globalThis.fetch = async () => responses.shift();
+  const requestedUrls = [];
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    return responses.shift();
+  };
   globalThis.document = { getElementById: () => null };
   globalThis.window = { location: { pathname: "/goi-thau" } };
   Object.defineProperty(globalThis, "navigator", {
@@ -899,16 +904,23 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
     routeMap: {},
     updateSyncState() {},
     hasLocalWorkspaceData: () => true,
+    getSyncTableKeysForPath: () => ["goithau"],
   };
   controller.forceSyncData = (...args) => forceSyncData.call(controller, ...args);
 
   try {
-    const result = await controller.forceSyncData(false, false, false);
+    const result = await controller.forceSyncData(false, false, true);
 
     assert.equal(result.ok, true);
     assert.deepEqual(model.state.goithau, [{ id: "package-5", name: "FULL VERSION 5" }]);
     assert.equal(storage.getItem("bf_last_sync_version"), "5");
     assert.equal(storage.getItem("bf_last_sync_timestamp"), "v5");
+    assert.match(requestedUrls[0], /[?&]tables=goithau(?:&|$)/u);
+    if (resetCode === "SYNC_VISIBILITY_RESET_REQUIRED") {
+      assert.doesNotMatch(requestedUrls[1], /[?&]tables=/u);
+    } else {
+      assert.match(requestedUrls[1], /[?&]tables=goithau(?:&|$)/u);
+    }
   } finally {
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
@@ -924,6 +936,114 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
 }
 });
 }
+
+test("a route-only visibility change escalates before stale pagination or non-route rows survive", async () => {
+  const paginationRequest = deferred();
+  let paginationAborted = false;
+  const syncUrls = [];
+  const persistenceCalls = [];
+  let syncRequestCount = 0;
+  const storage = memoryStorage();
+  storage.setItem("bf_visibility_token", "wide");
+  const restoreGlobals = installPullGlobals((url, options = {}) => {
+    if (String(url).startsWith("/api/paginate?")) {
+      options.signal?.addEventListener?.("abort", () => {
+        paginationAborted = true;
+        paginationRequest.resolve(new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }, { once: true });
+      return paginationRequest.promise;
+    }
+    syncUrls.push(String(url));
+    syncRequestCount += 1;
+    const payload = syncRequestCount === 1
+      ? {
+          goithau: [{ id: "partial-route-row" }],
+          visibilityToken: "narrow",
+          partial: true,
+        }
+      : {
+          goithau: [],
+          nhathau: [],
+          kehoach: [],
+          recordManifest: { goithau: [], nhathau: [], kehoach: [] },
+          syncVersion: 2,
+          timestamp: "narrow-snapshot",
+          visibilityToken: "narrow",
+          partial: false,
+        };
+    return Promise.resolve(new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+  });
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storage,
+    state: {
+      activeuser: { id: "user" },
+      activerole: "manager",
+      kehoach: [],
+      goithau: [],
+      nhathau: [{ id: "revoked-non-route-row" }],
+    },
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    entityIndexes: { invalidate() {} },
+    db: {
+      async applySyncChanges(changes) { persistenceCalls.push(changes); },
+    },
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState() {},
+    hasLocalWorkspaceData: () => true,
+    getSyncTableKeysForPath: () => ["goithau"],
+  };
+  controller.forceSyncData = (...args) => forceSyncData.call(controller, ...args);
+
+  try {
+    const paginatedOutcome = loadPaginatedRecords(model, "kehoach", { page: 1 }).then(
+      (value) => ({ status: "fulfilled", value }),
+      (reason) => ({ status: "rejected", reason }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const syncResult = await controller.forceSyncData(true, false, true);
+    const stalePagination = await paginatedOutcome;
+
+    assert.equal(syncResult.ok, true);
+    assert.equal(paginationAborted, true);
+    assert.equal(stalePagination.status, "rejected");
+    assert.equal(stalePagination.reason?.name, "AbortError");
+    assert.equal(storage.getItem("bf_visibility_token"), "narrow");
+    assert.equal(model.visibilityRevision, 1);
+    assert.deepEqual(model.state.kehoach, []);
+    assert.deepEqual(model.state.goithau, []);
+    assert.deepEqual(model.state.nhathau, []);
+    assert.equal(model._paginationRequests.size, 0);
+    assert.equal(model._paginatedQueryCache.size, 0);
+    assert.equal(syncUrls.length, 2);
+    assert.match(syncUrls[0], /[?&]tables=goithau(?:&|$)/u);
+    assert.doesNotMatch(syncUrls[1], /[?&]tables=/u);
+    assert.equal(persistenceCalls.length, 1, "the partial predecessor must not be persisted");
+    assert.deepEqual(persistenceCalls[0].replacements.nhathau, []);
+  } finally {
+    paginationRequest.resolve(new Response(JSON.stringify({ items: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    restoreGlobals();
+  }
+});
 
 test("workspace_change_during_pull_outbox_flush_with_new_workspace_storage_failure_does_not_update_new_workspace", async () => {
   const flush = deferred();

@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
@@ -46,7 +47,9 @@ export async function renderHopDongTable() {
       renderTableLoading(tableBody, 11);
     }
     try {
-      const data = await loadPaginatedRecords(this.model, "hopdong", pageParams);
+      const data = await loadPaginatedRecords(this.model, "hopdong", pageParams, {
+        cancellationOwner: "ui:contract-list",
+      });
       slicedData = data.items;
       totalItems = data.totalItems;
       tablePerf.dataComplete(data);
@@ -367,7 +370,7 @@ export async function renderContractVersionDetails(versionId) {
       };
       initCustomSelect("fullpage-hd-version-select");
     }
-    lucide.createIcons();
+    renderLucideIcons(contentEl, lucide);
     renderActivityTimeline(contentEl.querySelector("[data-contract-activity]"), {
       targetType: "hopdong",
       targetId: hd.id,

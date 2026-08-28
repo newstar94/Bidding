@@ -350,7 +350,7 @@ export async function renderPackageDocumentsPanel(view, { contentWrapper, packag
     if (!currentPanelStillActive(view, packageId)) return;
     contentWrapper.innerHTML = trustedHTML(buildPackageDocumentsMarkup(data, { summaryMarkup }));
     bindDocumentActions(view, packageId, data, contentWrapper, pkg);
-    globalThis.lucide?.createIcons?.();
+    view.createIconsScoped?.(contentWrapper);
   } catch (error) {
     if (!currentPanelStillActive(view, packageId)) return;
     contentWrapper.innerHTML = trustedHTML(`
@@ -361,6 +361,6 @@ export async function renderPackageDocumentsPanel(view, { contentWrapper, packag
     contentWrapper.querySelector("[data-document-retry]")?.addEventListener("click", () => {
       renderPackageDocumentsPanel(view, { contentWrapper, packageId, pkg });
     });
-    globalThis.lucide?.createIcons?.();
+    view.createIconsScoped?.(contentWrapper);
   }
 }

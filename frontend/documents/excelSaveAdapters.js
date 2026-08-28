@@ -414,7 +414,7 @@ async function saveOpeningImport(controller, validRows, context = {}) {
     } else {
       newBids.forEach((bid) => controller.addMoThauRow(caseType, goiThau, bid));
     }
-    lucide.createIcons();
+    controller.view?.createIconsScoped?.(tbody);
   }
   return validRows.length;
 }

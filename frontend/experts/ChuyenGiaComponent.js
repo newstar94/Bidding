@@ -41,7 +41,9 @@ export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
     } else {
       if (!cachedPage) renderTableLoading(tableBody, 7);
       try {
-        const data = await loadPaginatedRecords(this.model, "chuyengia", pageParams);
+        const data = await loadPaginatedRecords(this.model, "chuyengia", pageParams, {
+          cancellationOwner: "ui:expert-list",
+        });
         if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
         slicedData = data.items;
         totalItems = data.totalItems;

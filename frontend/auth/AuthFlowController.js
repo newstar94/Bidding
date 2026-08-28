@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { focusInvalidControl } from "../app/formStateUtils.js";
 import { setValidationError } from "../shared/FormValidation.js";
 import { trustedScriptURL } from "../shared/trustedTypes.js";
@@ -859,7 +860,7 @@ export function setupAuth() {
         }
       }
       if (typeof lucide !== "undefined" && typeof lucide.createIcons === "function") {
-        lucide.createIcons();
+        renderLucideIcons(btn, lucide);
         const newSvg = btn.querySelector("svg");
         if (newSvg) {
           setRuntimeStyle(newSvg, "cssText", "position:static; pointer-events:none; width:16px; height:16px;");

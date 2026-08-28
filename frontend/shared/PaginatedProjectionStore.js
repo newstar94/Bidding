@@ -11,31 +11,132 @@ function canonical(value) {
   return value === undefined ? null : value;
 }
 
-function scopeRevision(model) {
+function storedVisibilityToken(model) {
+  try {
+    return String(model?.workspaceStorage?.getItem?.("bf_visibility_token") ?? "");
+  } catch {
+    return "";
+  }
+}
+
+function projectionWorkspaceKey(model) {
+  return String(model?.getWorkspaceToken?.() || model?.workspaceScope?.key || "");
+}
+
+export function projectionAuthorizationVisibilityToken(model) {
+  const persistedToken = storedVisibilityToken(model);
+  const observation = model?._paginatedProjectionVisibility;
+  if (observation?.workspaceKey !== projectionWorkspaceKey(model)) return persistedToken;
+  // If another tab advances storage to a third fingerprint, prefer that newer
+  // persisted observation. A route-only response deliberately remains ahead
+  // of its persisted cursor until workspace-wide reconciliation completes.
+  if (
+    persistedToken !== observation.persistedToken
+    && persistedToken !== observation.token
+  ) return persistedToken;
+  return String(observation.token || "");
+}
+
+export function observeProjectionAuthorizationVisibilityToken(model, token) {
+  const normalizedToken = String(token || "");
+  const changed = projectionAuthorizationVisibilityToken(model) !== normalizedToken;
+  model._paginatedProjectionVisibility = Object.freeze({
+    workspaceKey: projectionWorkspaceKey(model),
+    token: normalizedToken,
+    persistedToken: storedVisibilityToken(model),
+  });
+  return changed;
+}
+
+export function captureProjectionAuthorizationScope(model) {
+  return Object.freeze({
+    identity: String(model?.state?.activeuser?.id || model?.workspaceScope?.userId || ""),
+    organization: String(model?.workspaceScope?.organizationId || ""),
+    role: String(model?.state?.activerole || ""),
+    visibilityRevision: String(model?.visibilityRevision ?? ""),
+    permissionRevision: String(model?.permissionRevision ?? ""),
+    assignmentRevision: String(model?.assignmentRevision ?? ""),
+    recordScopeRevision: String(model?.recordScopeRevision ?? ""),
+    visibilityToken: projectionAuthorizationVisibilityToken(model),
+  });
+}
+
+function scopeRevision(scope) {
   return [
-    model?.visibilityRevision,
-    model?.permissionRevision,
-    model?.assignmentRevision,
-    model?.recordScopeRevision,
-    model?.workspaceStorage?.getItem?.("bf_visibility_token"),
+    scope?.visibilityRevision,
+    scope?.permissionRevision,
+    scope?.assignmentRevision,
+    scope?.recordScopeRevision,
+    scope?.visibilityToken,
   ].map((value) => String(value ?? "")).join(".");
 }
 
-export function normalizedProjectionKey(model, table, query = {}, lease = {}) {
-  const identity = String(model?.state?.activeuser?.id || model?.workspaceScope?.userId || "");
-  const organization = String(model?.workspaceScope?.organizationId || lease.scope || "");
+export function projectionAuthorizationScopeIsCurrent(model, capturedScope) {
+  if (!capturedScope) return false;
+  const currentScope = captureProjectionAuthorizationScope(model);
+  return Object.keys(currentScope).every((key) => (
+    currentScope[key] === capturedScope[key]
+  ));
+}
+
+export function projectionAuthorizationChangedError() {
+  const error = new Error("Authorization scope changed before the paginated request completed");
+  error.name = "AbortError";
+  error.code = "PAGINATION_AUTHORIZATION_SCOPE_CHANGED";
+  return error;
+}
+
+function projectionScopeDisposedError(reason = null) {
+  if (reason instanceof Error) return reason;
+  const error = new Error("Paginated projection scope was disposed");
+  error.name = "AbortError";
+  error.code = "PAGINATION_PROJECTION_SCOPE_DISPOSED";
+  return error;
+}
+
+export function assertProjectionAuthorizationScopeCurrent(model, capturedScope) {
+  if (!projectionAuthorizationScopeIsCurrent(model, capturedScope)) {
+    throw projectionAuthorizationChangedError();
+  }
+  return capturedScope;
+}
+
+function projectionLease(model, lease = {}) {
+  if (lease?.projectionAuthorizationScope) return lease;
+  return Object.freeze({
+    ...lease,
+    projectionAuthorizationScope: captureProjectionAuthorizationScope(model),
+  });
+}
+
+function projectionScopeSegments(model, table, lease = {}) {
+  const authorizationScope = lease?.projectionAuthorizationScope
+    || captureProjectionAuthorizationScope(model);
+  const identity = authorizationScope.identity;
+  const organization = authorizationScope.organization || String(lease.scope || "");
   const generation = String(lease.token || model?.getWorkspaceToken?.() || model?.workspaceScope?.key || "");
-  const role = String(model?.state?.activerole || "");
+  const role = authorizationScope.role;
   return [
     PAGINATED_PROJECTION_SCHEMA,
     encodeURIComponent(identity),
     encodeURIComponent(organization),
     encodeURIComponent(role),
-    encodeURIComponent(scopeRevision(model)),
+    encodeURIComponent(scopeRevision(authorizationScope)),
     encodeURIComponent(generation),
     encodeURIComponent(String(table || "")),
+  ];
+}
+
+export function normalizedProjectionKey(model, table, query = {}, lease = {}) {
+  return [
+    ...projectionScopeSegments(model, table, lease),
     encodeURIComponent(JSON.stringify(canonical(query))),
   ].join(":");
+}
+
+export function projectionKeyMatchesScopeAndTable(key, model, table, lease = {}) {
+  const prefix = `${projectionScopeSegments(model, table, lease).join(":")}:`;
+  return String(key || "").startsWith(prefix);
 }
 
 export class PaginatedProjectionStore {
@@ -61,7 +162,12 @@ export class PaginatedProjectionStore {
   }
 
   read(table, query = {}, lease = {}, now = Date.now()) {
-    const key = this.key(table, query, lease);
+    const capturedLease = projectionLease(this.model, lease);
+    if (!projectionAuthorizationScopeIsCurrent(
+      this.model,
+      capturedLease.projectionAuthorizationScope,
+    )) return null;
+    const key = this.key(table, query, capturedLease);
     const entry = this.cache.get(key);
     if (!entry) return null;
     this.cache.delete(key);
@@ -70,7 +176,12 @@ export class PaginatedProjectionStore {
   }
 
   setValue(table, query, value, lease = {}) {
-    const key = this.key(table, query, lease);
+    const capturedLease = projectionLease(this.model, lease);
+    assertProjectionAuthorizationScopeCurrent(
+      this.model,
+      capturedLease.projectionAuthorizationScope,
+    );
+    const key = this.key(table, query, capturedLease);
     this.cache.delete(key);
     this.cache.set(key, { ...value, key });
     while (this.cache.size > this.maxEntries) {
@@ -80,20 +191,32 @@ export class PaginatedProjectionStore {
   }
 
   query(table, query, loader, { lease = {}, prefetch = false } = {}) {
-    const key = this.key(table, query, lease);
-    const cached = this.read(table, query, lease);
+    const capturedLease = projectionLease(this.model, lease);
+    const key = this.key(table, query, capturedLease);
+    const cached = this.read(table, query, capturedLease);
     if (cached && !cached.stale) return Promise.resolve({ ...cached, cacheHit: true });
     const existing = this.flights.get(key);
-    if (existing?.promise) return existing.promise;
+    if (existing?.controller?.signal?.aborted) {
+      if (this.flights.get(key) === existing) this.flights.delete(key);
+    } else if (existing?.promise) {
+      return existing.promise;
+    }
     const controller = new AbortController();
     const promise = Promise.resolve()
       .then(() => loader({ signal: controller.signal, cached }))
       .then((value) => {
+        if (controller.signal.aborted) {
+          throw projectionScopeDisposedError(controller.signal.reason);
+        }
+        assertProjectionAuthorizationScopeCurrent(
+          this.model,
+          capturedLease.projectionAuthorizationScope,
+        );
         this.setValue(table, query, {
           ...value,
           fetchedAt: Date.now(),
           prefetched: prefetch,
-        }, lease);
+        }, capturedLease);
         return value;
       })
       .finally(() => {
@@ -128,7 +251,8 @@ export class PaginatedProjectionStore {
   }
 
   disposeWorkspace() {
-    for (const flight of this.flights.values()) flight?.controller?.abort?.("Projection scope disposed");
+    const error = projectionScopeDisposedError();
+    for (const flight of this.flights.values()) flight?.controller?.abort?.(error);
     this.flights.clear();
     this.cache.clear();
   }

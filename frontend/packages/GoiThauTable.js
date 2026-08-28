@@ -109,7 +109,9 @@ export async function renderGoiThauTable() {
       renderTableLoading(tableBody, 8);
     }
     try {
-      const data = await loadPaginatedRecords(this.model, "goithau", pageParams);
+      const data = await loadPaginatedRecords(this.model, "goithau", pageParams, {
+        cancellationOwner: "ui:package-list",
+      });
       slicedData = data.items;
       totalItems = data.totalItems;
       tablePerf.dataComplete(data);

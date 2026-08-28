@@ -25,6 +25,11 @@ import {
   beginWorkspaceRequest,
   finishWorkspaceRequest,
 } from "./workspaceLease.js";
+import {
+  invalidatePaginatedAuthorizationScope,
+  invalidatePaginatedQueryCache,
+} from "../shared/tableDataUtils.js";
+import { observeProjectionAuthorizationVisibilityToken } from "../shared/PaginatedProjectionStore.js";
 
 
 const DETAIL_ROUTE_TABLE = {
@@ -297,6 +302,59 @@ async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
   return { ok: false, error, storageDegraded: true };
 }
 
+function fencePaginatedAuthorizationScope(controller, storage, snapshot) {
+  const incomingVisibilityToken = String(snapshot?.visibilityToken || "");
+  if (!incomingVisibilityToken) return false;
+  const changed = observeProjectionAuthorizationVisibilityToken(
+    controller?.model,
+    incomingVisibilityToken,
+  );
+  if (changed) {
+    // A snapshot with a different visibility fingerprint invalidates every
+    // paginated response started under the predecessor authorization scope.
+    invalidatePaginatedAuthorizationScope(controller?.model);
+  }
+  return changed;
+}
+
+function resetSyncCursorForFullRetry(model, storage) {
+  storage.removeItem("bf_last_sync_version");
+  storage.removeItem("bf_last_sync_timestamp");
+  storage.removeItem("bf_visibility_token");
+  storage.removeItem("bf_sync_active_role");
+  observeProjectionAuthorizationVisibilityToken(model, "");
+  invalidatePaginatedAuthorizationScope(model);
+}
+
+async function retryRequiredFullSync(controller, {
+  response,
+  forceFull,
+  pullIsCurrent,
+  stalePullResult,
+  storage,
+  isBackground,
+  routeOnly,
+}) {
+  if (response.status !== 409 || forceFull) return null;
+  let payload = null;
+  try { payload = await response.clone().json(); } catch { payload = null; }
+  if (!pullIsCurrent()) return { handled: true, result: stalePullResult() };
+  if (
+    !["FULL_SYNC_REQUIRED", "SYNC_VISIBILITY_RESET_REQUIRED"].includes(payload?.code)
+    && !payload?.requiresFullSync
+  ) return null;
+  resetSyncCursorForFullRetry(controller.model, storage);
+  const visibilityReset = payload?.code === "SYNC_VISIBILITY_RESET_REQUIRED";
+  return {
+    handled: true,
+    result: controller.forceSyncData(
+      isBackground,
+      true,
+      visibilityReset ? false : routeOnly,
+    ),
+  };
+}
+
 async function executeForceSyncData(
   isBackground = false,
   forceFull = false,
@@ -391,18 +449,16 @@ async function executeForceSyncData(
       });
     }
     if (!pullIsCurrent()) return stalePullResult();
-    if (response.status === 409 && !forceFull) {
-      let resyncPayload = null;
-      try { resyncPayload = await response.clone().json(); } catch { resyncPayload = null; }
-      if (!pullIsCurrent()) return stalePullResult();
-      if (["FULL_SYNC_REQUIRED", "SYNC_VISIBILITY_RESET_REQUIRED"].includes(resyncPayload?.code) || resyncPayload?.requiresFullSync) {
-        storage.removeItem("bf_last_sync_version");
-        storage.removeItem("bf_last_sync_timestamp");
-        storage.removeItem("bf_visibility_token");
-        storage.removeItem("bf_sync_active_role");
-        return this.forceSyncData(isBackground, true, routeOnly);
-      }
-    }
+    const fullSyncRetry = await retryRequiredFullSync(this, {
+      response,
+      forceFull,
+      pullIsCurrent,
+      stalePullResult,
+      storage,
+      isBackground,
+      routeOnly,
+    });
+    if (fullSyncRetry?.handled) return fullSyncRetry.result;
     if (response.status === 401 || response.status === 403) {
       let errorMsg = "";
       try { errorMsg = (await response.clone().json())?.error || ""; } catch { errorMsg = ""; }
@@ -432,6 +488,13 @@ async function executeForceSyncData(
     if (!pullIsCurrent()) {
       return stalePullResult();
     }
+    const visibilityScopeChanged = fencePaginatedAuthorizationScope(this, storage, dbData);
+    if (visibilityScopeChanged && dbData?.partial) {
+      // A route-only snapshot cannot remove rows from other modules. Once its
+      // visibility fingerprint changes, reconcile the whole workspace before
+      // accepting any part of that snapshot as authoritative.
+      return this.forceSyncData(isBackground, true, false);
+    }
     const draftLocalState = captureActivePlanBreakdownState(this);
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
@@ -447,6 +510,7 @@ async function executeForceSyncData(
     this.model?.markStorageTablesRecovered?.(changedKeys);
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData, { currentRole });
+    if (visibilityScopeChanged) invalidatePaginatedQueryCache(this.model);
     if (committedCursor.syncVersion !== null) {
       this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
     }

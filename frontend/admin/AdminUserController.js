@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
@@ -235,7 +236,7 @@ function renderPersonalAccessSettings() {
         ? "Được xuất Word trong phạm vi Cá nhân theo gói cá nhân đang hoạt động."
         : "Chưa có gói cá nhân: vẫn được thêm, sửa, xóa dữ liệu nhưng chức năng xuất Word bị khóa."
   );
-  globalThis.lucide?.createIcons?.();
+  renderLucideIcons(document.getElementById("detail-su-personal-entitlement"));
 }
 
 function renderOrganizationAccessSettings(controller, user, organizationId) {
@@ -263,7 +264,7 @@ function renderOrganizationAccessSettings(controller, user, organizationId) {
       ? `Được xuất Word khi làm việc trong ${organization.name}; quyền lấy từ gói của tổ chức.`
       : `${organization?.name || "Tổ chức"} chưa có gói trả phí hoạt động nên chức năng xuất Word bị khóa.`
   );
-  globalThis.lucide?.createIcons?.();
+  renderLucideIcons(document.getElementById("detail-su-organization-entitlement"));
 }
 
 async function updateOrganizationSubscription(organizationId, action, extra = {}) {
@@ -351,7 +352,7 @@ export async function showSystemUserDetail(userId) {
     const form = document.getElementById("form-detail-system-user");
     form.__detailUser = user;
     renderOrganizationAccessSettings(this, user, selectedOrganization?.id || "");
-    globalThis.lucide?.createIcons?.();
+    renderLucideIcons(document.getElementById("modal-detail-system-user"));
     this.view.openModal("modal-detail-system-user");
   } catch (err) {
     await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối đến máy chủ: " + err.message, "alert-triangle");
@@ -649,7 +650,7 @@ export function setupRBACEvents() {
       formHsg.reset();
       document.getElementById("form-hosogiay-id").value = "";
       document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
-      lucide.createIcons();
+      renderLucideIcons(document.getElementById("btn-save-hosogiay"), lucide);
       this.view.renderManagerHoSoGiayPanel();
       this.view.showToast?.(
         "Đã lưu trạng thái hợp đồng",
@@ -690,7 +691,7 @@ export function setupRBACEvents() {
     document.querySelectorAll("[data-document-capability]").forEach((input) => {
       input.disabled = document.getElementById("detail-su-role")?.value === "manager" || !enabled;
     });
-    globalThis.lucide?.createIcons?.();
+    renderLucideIcons(document.getElementById("detail-su-organization-entitlement"));
   });
   const organizationRoleSelect = document.getElementById("detail-su-role");
   bindAdminEvent(organizationRoleSelect, "change", "toggle-inherited-manager-permissions", (event) => {
@@ -1351,7 +1352,7 @@ export function editHoSoGiayStatus(id) {
   document.getElementById("hsg-name").value = status.name;
   document.getElementById("hsg-color").value = status.color;
   document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="save"></i> Cập nhật trạng thái');
-  lucide.createIcons();
+  renderLucideIcons(document.getElementById("btn-save-hosogiay"), lucide);
 }
 export async function deleteHoSoGiayStatus(id) {
   const status = await refreshRecordBeforeDelete(this, "customcontractstatuses", id);

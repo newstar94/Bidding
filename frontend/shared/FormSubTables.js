@@ -1,5 +1,6 @@
 import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
+import { renderLucideIcons } from "./lucideIcons.js";
 import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { escapeHtml } from "./view_helpers.js";
@@ -51,7 +52,7 @@ export function addPhanLoRow(data = {}) {
   });
   tbody.appendChild(tr);
   this.recalculateTotalLotPrice();
-  lucide.createIcons();
+  renderLucideIcons(tr, lucide);
 }
 export function _loadPhanLoRows(list) {
   const tbody = document.getElementById("phanlo-tbody");
@@ -112,7 +113,7 @@ export function addTuyChonMuaThemRow(data = {}) {
     tr.remove();
   });
   tbody.appendChild(tr);
-  lucide.createIcons();
+  renderLucideIcons(tr, lucide);
 }
 export function _loadTuyChonMuaThemRows(list) {
   const tbody = document.getElementById("tuychonmuathem-tbody");
@@ -219,7 +220,7 @@ export function addGiaHanRow(data = {}) {
   });
   tbody.appendChild(tr);
   this.updateGiaHanIndices();
-  lucide.createIcons();
+  renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }
@@ -273,7 +274,7 @@ export function addYeuCauLamRoRow(data = {}) {
   });
   tbody.appendChild(tr);
   this.updateYeuCauLamRoIndices();
-  lucide.createIcons();
+  renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }
@@ -327,7 +328,7 @@ export function addTraLoiLamRoRow(data = {}) {
   });
   tbody.appendChild(tr);
   this.updateTraLoiLamRoIndices();
-  lucide.createIcons();
+  renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }

@@ -11,7 +11,10 @@ import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeS
 import { workflowRequirementForRoute } from "./WorkflowModuleLoader.js";
 import { resolveLatestVersion } from "../shared/versionResolver.js";
 import { perfNow, reportPerf } from "../shared/perfDiagnostics.js";
-import { recoverFromStaleDynamicImport } from "../shared/releaseDiagnostics.js";
+import {
+  isStaleDynamicImportError,
+  recoverFromStaleDynamicImport,
+} from "../shared/releaseDiagnostics.js";
 import {
   createCompactSidebarMediaQuery,
   createSidebarMediaQuery,
@@ -434,6 +437,49 @@ export function finishNavigationFeedback(controller, transitionVersion) {
   return true;
 }
 
+function dependencyFailure(kind, error) {
+  return { kind, error };
+}
+
+function startTabDependency(kind, load, tabPerf, timingKey) {
+  const startedAt = perfNow();
+  let task;
+  try {
+    task = load();
+  } catch (error) {
+    task = Promise.reject(error);
+  }
+  return Promise.resolve(task).then(
+    (result) => {
+      if (tabPerf) tabPerf[timingKey] += perfNow() - startedAt;
+      return result;
+    },
+    (error) => Promise.reject(dependencyFailure(kind, error)),
+  );
+}
+
+function reportTabDependencyFailures(controller, tabName, failures) {
+  const staleFailure = failures.find(({ error }) => isStaleDynamicImportError(error));
+  if (staleFailure && recoverFromStaleDynamicImport({ error: staleFailure.error })) return;
+
+  failures.forEach(({ kind, error }) => {
+    if (kind === "workflow") {
+      console.error("Failed to load workflow module:", tabName, error);
+    } else if (kind === "partial") {
+      console.error("Failed to lazy-load tab:", tabName, error);
+    } else {
+      console.error("Failed to load view module:", tabName, error);
+    }
+  });
+
+  const hasInterfaceFailure = failures.some(({ kind }) => kind !== "workflow");
+  if (hasInterfaceFailure) {
+    controller.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
+  } else {
+    controller.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
+  }
+}
+
 export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
   const firstPass = transitionVersion == null;
   const transition = beginTabTransition(this, transitionVersion);
@@ -463,72 +509,56 @@ export function switchTab(tabName, action = null, updateState = true, transition
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
   action = guardedRoute.action;
+  const routeDependencies = [];
   if (!this.view.areViewModulesReady(tabName)) {
-    const gateStartedAt = perfNow();
     if (tabPerf) tabPerf.cold = true;
-    return this.view.ensureViewModules(tabName).then(
-      () => {
-        if (tabPerf) tabPerf.viewModule += perfNow() - gateStartedAt;
-        if (!isCurrentTransition()) {
-          finishPerfTransition();
-          return;
-        }
-        return this.switchTab(tabName, action, updateState, transitionVersion);
-      },
-      (err) => {
-        finishPerfTransition();
-        if (!isCurrentTransition()) return;
-        if (recoverFromStaleDynamicImport({ error: err })) return;
-        console.error("Failed to load view module:", tabName, err);
-        this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
-      },
-    );
+    routeDependencies.push(startTabDependency(
+      "view",
+      () => this.view.ensureViewModules(tabName),
+      tabPerf,
+      "viewModule",
+    ));
   }
   const workflowRequirement = workflowRequirementForRoute(tabName, action);
   const workflowReady = this._workflowModulesReady
     || this.isWorkflowRequirementReady?.(workflowRequirement);
   if (!workflowReady) {
-    const gateStartedAt = perfNow();
     if (tabPerf) tabPerf.cold = true;
-    return this.ensureWorkflowRequirement(workflowRequirement).then(
-      () => {
-        if (tabPerf) tabPerf.workflow += perfNow() - gateStartedAt;
-        if (!isCurrentTransition()) {
-          finishPerfTransition();
-          return;
-        }
-        return this.switchTab(tabName, action, updateState, transitionVersion);
-      },
-      (err) => {
+    routeDependencies.push(startTabDependency(
+      "workflow",
+      () => this.ensureWorkflowRequirement(workflowRequirement),
+      tabPerf,
+      "workflow",
+    ));
+  }
+  if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
+    if (tabPerf) tabPerf.cold = true;
+    routeDependencies.push(startTabDependency(
+      "partial",
+      () => this.ensureLazyTab(tabName),
+      tabPerf,
+      "lazyPartial",
+    ));
+  }
+  if (routeDependencies.length) {
+    return Promise.allSettled(routeDependencies).then((results) => {
+      const failures = results
+        .filter(({ status }) => status === "rejected")
+        .map(({ reason }) => reason);
+      if (failures.length) {
         finishPerfTransition();
         if (!isCurrentTransition()) return;
-        if (recoverFromStaleDynamicImport({ error: err })) return;
-        console.error("Failed to load workflow module:", tabName, err);
-        this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
-      },
-    );
+        reportTabDependencyFailures(this, tabName, failures);
+        return;
+      }
+      if (!isCurrentTransition()) {
+        finishPerfTransition();
+        return;
+      }
+      return this.switchTab(tabName, action, updateState, transitionVersion);
+    });
   }
   this.scheduleProcurementImportResume?.(workflowRequirement);
-  if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
-    const gateStartedAt = perfNow();
-    if (tabPerf) tabPerf.cold = true;
-    return this.ensureLazyTab(tabName).then(
-      () => {
-        if (tabPerf) tabPerf.lazyPartial += perfNow() - gateStartedAt;
-        if (!isCurrentTransition()) {
-          finishPerfTransition();
-          return;
-        }
-        return this.switchTab(tabName, action, updateState, transitionVersion);
-      },
-      (err) => {
-        finishPerfTransition();
-        if (!isCurrentTransition()) return;
-        console.error("Failed to lazy-load tab:", tabName, err);
-        this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
-      },
-    );
-  }
   if (!isCurrentTransition()) return;
   resetTimelineOnNavigation(this, tabName);
   this.model.state.activetab = tabName;

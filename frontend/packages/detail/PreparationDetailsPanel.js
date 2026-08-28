@@ -317,7 +317,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                         ` : ""}
                     `}
                 `);
-        lucide.createIcons();
+        view.createIconsScoped?.(contentWrapper);
         const btnEditBottom = document.getElementById("btn-edit-goithau-bottom");
         if (btnEditBottom) {
           btnEditBottom.onclick = () => {
