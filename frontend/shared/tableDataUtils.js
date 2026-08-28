@@ -4,26 +4,12 @@ import {
   captureWorkspaceLease,
 } from "../app/workspaceLease.js";
 import { perfNow, reportPerf } from "./perfDiagnostics.js";
+import { paginatedProjectionStore } from "./PaginatedProjectionStore.js";
 
 const PAGINATION_CACHE_TTL_MS = 30_000;
 
-function stableQueryKey(params = {}) {
-  return Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => [key, Array.isArray(value) ? value.map(String) : String(value)])
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(JSON.stringify(value))}`)
-    .join("&");
-}
-
-function paginationCacheFor(model) {
-  model._paginatedQueryCache ||= new Map();
-  return model._paginatedQueryCache;
-}
-
 function paginationCacheKey(model, table, params, lease) {
-  const activeRole = String(model?.state?.activerole || "");
-  return `${lease.token || lease.scope || "workspace"}:${encodeURIComponent(activeRole)}:${table}:${stableQueryKey(params)}`;
+  return paginatedProjectionStore(model).key(table, params, lease);
 }
 
 function cacheEntryIsFresh(entry, now = Date.now()) {
@@ -32,7 +18,7 @@ function cacheEntryIsFresh(entry, now = Date.now()) {
 
 export function getCachedPaginatedRecords(model, table, params = {}) {
   const lease = captureWorkspaceLease(model);
-  const entry = paginationCacheFor(model).get(paginationCacheKey(model, table, params, lease));
+  const entry = paginatedProjectionStore(model).read(table, params, lease);
   if (!entry) return null;
   return {
     items: entry.items,
@@ -46,16 +32,8 @@ export function getCachedPaginatedRecords(model, table, params = {}) {
 }
 
 export function invalidatePaginatedQueryCache(model, table = null) {
-  const cache = model?._paginatedQueryCache;
-  if (!(cache instanceof Map)) return;
-  if (!table) {
-    cache.clear();
-    return;
-  }
-  const suffix = `:${table}:`;
-  [...cache.keys()].forEach((key) => {
-    if (key.includes(suffix)) cache.delete(key);
-  });
+  if (!model) return;
+  paginatedProjectionStore(model).invalidate(table);
 }
 
 const PLAN_SCOPED_PACKAGE_CHILD_TABLES = new Set([
@@ -226,11 +204,11 @@ export async function loadPaginatedRecords(model, table, params = {}, { prefetch
         prefetched: prefetch,
         inFlightDeduped: false,
       };
-      paginationCacheFor(model).set(key, {
+      paginatedProjectionStore(model).setValue(table, params, {
         ...result,
         fetchedAt: Date.now(),
         prefetched: prefetch,
-      });
+      }, requestLease);
       if (!prefetch) {
         model._lastPaginatedQueries ||= new Map();
         model._lastPaginatedQueries.set(table, { ...params });

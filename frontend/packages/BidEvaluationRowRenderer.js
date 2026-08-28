@@ -1,4 +1,5 @@
 import { executeAppCommand } from "../app/commandBus.js";
+import { renderChunkedSequence } from "../shared/ChunkedRenderer.js";
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../app/domUtils.js";
 import {
   getExactContractorVersion,
@@ -483,55 +484,37 @@ export function renderBidEvaluationRowsBatched(context = {}, options = {}) {
     isReadOnly = false,
     onRankingChange = () => {},
   } = context;
-  const chunkSize = Math.max(1, Number(options.chunkSize) || 10);
-  const scheduleFrame = typeof options.scheduleFrame === "function"
-    ? options.scheduleFrame
-    : (callback) => {
-      if (typeof globalThis.requestAnimationFrame === "function") {
-        return globalThis.requestAnimationFrame(callback);
-      }
-      return globalThis.setTimeout(callback, 0);
-    };
   const revision = beginRowRender(root, model, pkg);
   if (renderEmptyRows(root, bids)) return Promise.resolve([]);
 
   const rows = [];
   const sequence = { previousAllFailed: true };
-  let nextIndex = 0;
-  return new Promise((resolve, reject) => {
-    const renderChunk = () => {
-      try {
-        if (root.__bfBidEvaluationRowRenderRevision !== revision) {
-          resolve([]);
-          return;
-        }
-        const endIndex = Math.min(bids.length, nextIndex + chunkSize);
-        const ownerDocument = root.ownerDocument || globalThis.document;
-        const batchRoot = ownerDocument?.createDocumentFragment?.() || root;
-        while (nextIndex < endIndex) {
-          rows.push(appendBidEvaluationRow({
-            root: batchRoot,
-            pkg,
-            bid: bids[nextIndex],
-            model,
-            presentation,
-            isReadOnly,
-            onRankingChange,
-            sequence,
-          }));
-          nextIndex += 1;
-        }
-        if (batchRoot !== root) root.appendChild(batchRoot);
-        if (nextIndex < bids.length) {
-          scheduleFrame(renderChunk);
-          return;
-        }
-        onRankingChange();
-        resolve(rows);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    renderChunk();
+  return renderChunkedSequence(root, bids, (chunk) => {
+    const ownerDocument = root.ownerDocument || globalThis.document;
+    const batchRoot = ownerDocument?.createDocumentFragment?.() || root;
+    chunk.forEach((bid) => {
+      rows.push(appendBidEvaluationRow({
+        root: batchRoot,
+        pkg,
+        bid,
+        model,
+        presentation,
+        isReadOnly,
+        onRankingChange,
+        sequence,
+      }));
+    });
+    if (batchRoot !== root) root.appendChild(batchRoot);
+  }, {
+    chunkSize: Math.max(1, Number(options.chunkSize) || 10),
+    budgetMs: options.budgetMs || 12,
+    scheduleFrame: options.scheduleFrame,
+    now: options.now,
+    onChunk: options.onChunk,
+    isCurrent: () => root.__bfBidEvaluationRowRenderRevision === revision,
+  }).then(({ cancelled }) => {
+    if (cancelled) return [];
+    onRankingChange();
+    return rows;
   });
 }

@@ -205,7 +205,7 @@ try {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 15_000 });
+  await page.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 15_000 });
   mark("login");
 
   await openCreateModal(page, "/chu-dau-tu", "#btn-add-chudautu", "#modal-chudautu");

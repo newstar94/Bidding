@@ -66,7 +66,18 @@ export function scheduleBackgroundSync(delay = 500) {
       const startupReconciliation = this._startupReconciliationPromise;
       if (startupReconciliation) await startupReconciliation;
       if (!workspaceIsCurrent(this, workspace)) return;
-      await this.forceSyncData(true);
+      const pullResult = await this.forceSyncData(true);
+      if (
+        pullResult?.ok !== false
+        && workspaceIsCurrent(this, workspace)
+        && typeof this.warmPrimaryTabs === "function"
+      ) {
+        // Authoritative pulls invalidate page projections for changed tables.
+        // Refill only missing/stale first pages before the next tab click;
+        // warmPrimaryTabs is cache-aware, bounded to two requests at a time and
+        // checks the exact workspace generation between batches.
+        await this.warmPrimaryTabs();
+      }
     } catch (err) {
       console.error("Background sync failed:", err);
     } finally {

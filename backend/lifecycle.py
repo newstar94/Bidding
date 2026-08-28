@@ -36,6 +36,7 @@ from backend.documents.template_catalog.compatibility import (
     run_word_template_retention_janitor,
 )
 from backend.observability.metrics import (
+    monitor_filesystem_metrics,
     monitor_multiprocess_metrics,
     monitor_operational_artifacts,
 )
@@ -428,6 +429,7 @@ async def application_lifespan(
         monitor_audit_chain(database, application=application)
     )
     artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
+    filesystem_metrics_task = asyncio.create_task(monitor_filesystem_metrics())
     multiprocess_metrics_task = asyncio.create_task(
         monitor_multiprocess_metrics(application)
     )
@@ -456,6 +458,7 @@ async def application_lifespan(
             monitor_task,
             audit_monitor_task,
             artifact_monitor_task,
+            filesystem_metrics_task,
             multiprocess_metrics_task,
             email_delivery_task,
             billing_worker_task,
@@ -497,6 +500,7 @@ async def application_lifespan(
             monitor_task,
             audit_monitor_task,
             artifact_monitor_task,
+            filesystem_metrics_task,
             multiprocess_metrics_task,
             broker_task,
             email_delivery_task,

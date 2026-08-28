@@ -146,6 +146,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     const scrollX = window.scrollX || window.pageXOffset;
     const scrollY = window.scrollY || window.pageYOffset;
     const viewportPadding = 8;
+    const dropdownGap = 6;
     const availableWidth = Math.max(0, window.innerWidth - (viewportPadding * 2));
     const pixels = (value) => Number.parseFloat(value) || 0;
     const contentWidth = config.fitContent
@@ -174,7 +175,7 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       Math.max(viewportPadding, window.innerWidth - dropdownWidth - viewportPadding),
     );
     const dropdownHeight = list.offsetHeight || 220;
-    const placeAbove = window.innerHeight - rect.bottom < dropdownHeight
+    const placeAbove = window.innerHeight - rect.bottom < dropdownHeight + dropdownGap
       && rect.top > dropdownHeight;
     wrapper.classList.toggle("drop-up", placeAbove);
     setRuntimeStyles(list, {
@@ -185,7 +186,9 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       minWidth: `${dropdownWidth}px`,
       maxWidth: `${availableWidth}px`,
       left: `${left + scrollX}px`,
-      top: `${placeAbove ? rect.top + scrollY - dropdownHeight : rect.bottom + scrollY}px`,
+      top: `${placeAbove
+        ? rect.top + scrollY - dropdownHeight - dropdownGap
+        : rect.bottom + scrollY + dropdownGap}px`,
     });
   };
 

@@ -7,6 +7,7 @@ import os
 import time
 
 from backend.commercial_policy.config import commercial_runtime_config
+from backend.commercial_policy.repository import new_id
 from backend.shared.async_io import BlockingIOBusyError, run_blocking_io
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_error
@@ -70,10 +71,103 @@ class BillingWorkProcessor:
             if order_id:
                 self._retry_activation(order_id)
                 return True
+        if config.payment_checkout_enabled or config.payment_activation_enabled:
+            if self._expire_local_checkout():
+                return True
+            if self._schedule_open_order_reconciliation():
+                return True
         if config.procurement_credit_enforcement_enabled:
             if self._release_expired_usage_reservations():
                 return True
         return False
+
+    def _expire_local_checkout(self):
+        connection = self.database.get_connection()
+        try:
+            connection.execute("BEGIN")
+            row = connection.execute(
+                """SELECT id FROM billing_orders
+                    WHERE payment_state = 'unverified'
+                      AND checkout_state IN ('creating', 'open')
+                      AND checkout_expires_at IS NOT NULL
+                      AND checkout_expires_at <= ?
+                    ORDER BY checkout_expires_at, id
+                    LIMIT 1 FOR UPDATE SKIP LOCKED""",
+                (int(self.clock()),),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                return False
+            order_id = row["id"] if hasattr(row, "keys") else row[0]
+            connection.execute(
+                """UPDATE billing_orders
+                      SET checkout_state = 'expired', revision = revision + 1,
+                          updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND payment_state = 'unverified'
+                      AND checkout_state IN ('creating', 'open')""",
+                (order_id,),
+            )
+            connection.commit()
+            return True
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _schedule_open_order_reconciliation(self):
+        """Create one idempotent query command for an open unverified order."""
+        connection = self.database.get_connection()
+        now = int(self.clock())
+        try:
+            connection.execute("BEGIN")
+            row = connection.execute(
+                """SELECT orders.id, orders.provider_reference,
+                          orders.provider_order_code
+                     FROM billing_orders AS orders
+                    WHERE orders.payment_state = 'unverified'
+                      AND orders.checkout_state IN ('creating', 'open')
+                      AND (orders.checkout_expires_at IS NULL
+                           OR orders.checkout_expires_at > ?)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM billing_provider_commands AS active
+                           WHERE active.order_id = orders.id
+                             AND active.status IN ('pending', 'retry', 'processing')
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM billing_provider_commands AS query
+                           WHERE query.order_id = orders.id
+                             AND query.command_type = 'query_order'
+                      )
+                    ORDER BY orders.updated_at, orders.id
+                    LIMIT 1 FOR UPDATE OF orders SKIP LOCKED""",
+                (now,),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                return False
+            order = dict(row)
+            connection.execute(
+                """INSERT INTO billing_provider_commands
+                       (id, order_id, command_type, provider_reference,
+                        request_json, status, available_at)
+                   VALUES (?, ?, 'query_order', ?, ?, 'pending', ?)
+                   ON CONFLICT(order_id, command_type) DO NOTHING""",
+                (
+                    new_id("billing-command"),
+                    order["id"],
+                    order["provider_reference"],
+                    '{"reconciliation":"periodic"}',
+                    now,
+                ),
+            )
+            connection.commit()
+            return True
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _release_expired_usage_reservations(self):
         connection = self.database.get_connection()
@@ -244,6 +338,7 @@ async def run_billing_worker(database, *, environment=None, registry=None):
             processed = await run_blocking_io(
                 processor.process_next,
                 timeout_seconds=35.0,
+                lane="billing",
             )
         except BlockingIOBusyError:
             processed = False

@@ -426,7 +426,11 @@ test("initial route reconciliation is deferred until the shell can become intera
     calls.push(["scheduled", options]);
   });
 
-  assert.deepEqual(calls, [["scheduled", { timeout: 2200, delay: 0 }]]);
+  assert.deepEqual(calls, [["scheduled", {
+    timeout: 2200,
+    delay: 0,
+    priority: "reconcile",
+  }]]);
   assert.equal(typeof scheduledTask, "function");
   await scheduledTask();
   assert.deepEqual(calls.slice(1), ["push", "pull"]);

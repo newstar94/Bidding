@@ -194,6 +194,7 @@ def test_health_response_uses_closed_contract_and_never_exposes_secrets(monkeypa
 
     async def inline(function, *args, **kwargs):
         kwargs.pop("timeout_seconds", None)
+        kwargs.pop("lane", None)
         return function(*args, **kwargs)
 
     monkeypatch.setattr(routes_module, "run_blocking_io", inline)
@@ -360,3 +361,71 @@ def test_blocking_lookup_wires_tenant_raw_cache_and_skips_duplicate_save(
     assert captured["rawLoad"][0:2] == ("org-1", "PL2600244105")
     assert captured["rawLoad"][2]["revision_mode"] == "SELECTED"
     assert captured["rawLoad"][2]["revision_numbers"] == ["00"]
+
+
+def test_snapshot_and_usage_settlement_share_one_transaction(monkeypatch):
+    events = []
+
+    class Connection:
+        def execute(self, statement, _parameters=None):
+            events.append("begin" if statement == "BEGIN" else "execute")
+
+        def commit(self): events.append("commit")
+        def rollback(self): events.append("rollback")
+        def close(self): events.append("close")
+
+    connection = Connection()
+
+    class Database:
+        def get_connection(self):
+            events.append("connection")
+            return connection
+
+    class RawRepository:
+        def __init__(self, *, database): self.database = database
+        def load_fresh_plan_bundle(self, *_args, **_kwargs): return None
+        def save_bundle(self, _organization_id, _bundle, *, connection=None):
+            events.append(("save", connection))
+            return {"inserted": 1, "duplicates": 0}
+
+    class Service:
+        def lookup(self, *_args, **_kwargs):
+            return {
+                "rawBundle": {"complete": True},
+                "metrics": {"cache": {"layer": "NONE"}},
+            }
+
+    monkeypatch.setattr(routes_module, "database", Database())
+    monkeypatch.setattr(routes_module, "ProcurementRawSnapshotRepository", RawRepository)
+    monkeypatch.setattr(routes_module, "build_lookup_service", Service)
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda *_args: (type("Session", (), {"user_id": "user-1"})(), "org-1"),
+    )
+    monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
+    monkeypatch.setattr(
+        routes_module,
+        "_reserve_procurement_usage",
+        lambda *_args, **_kwargs: [{"id": "reservation-1"}],
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "_finish_procurement_usage",
+        lambda _reservations, *, consume, reason, connection=None: events.append(
+            ("settle", consume, reason, connection)
+        ),
+    )
+    monkeypatch.setattr(routes_module, "get_request_id", lambda _request: "req-1")
+
+    result = routes_module._lookup_blocking(
+        object(),
+        {"code": "PL2600244105", "detailLevel": "COMPLETE"},
+    )
+
+    assert result["rawSnapshot"]["inserted"] == 1
+    assert ("save", connection) in events
+    assert ("settle", True, "committed", connection) in events
+    assert events.index(("save", connection)) < events.index(
+        ("settle", True, "committed", connection)
+    ) < events.index("commit")

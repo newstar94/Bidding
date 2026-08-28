@@ -15,6 +15,7 @@ from backend.commercial_policy.document import canonical_json
 from backend.commercial_policy.repository import CommercialRepository, new_id
 from backend.shared.logging_utils import log_audit
 from backend.usage_credits import UsageCreditService, UsageOwner
+from .provider_timestamp import parse_provider_transaction_time
 
 
 def _dict(row):
@@ -102,7 +103,15 @@ class BillingActivationService:
             self._event_state(event_id, "processed", None)
             return {"status": "not_paid", "orderId": order["id"], "providerStatus": status}
 
-        timing = self._payment_timing(order, result)
+        transaction_time = parse_provider_transaction_time(result)
+        if not transaction_time.ok:
+            return self._review(
+                event_id,
+                order,
+                transaction_time.reason,
+                evidence=self._timestamp_review_evidence(result),
+            )
+        timing = self._payment_timing(order, transaction_time.unix_seconds)
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order_code}-payment")
         payment = self._insert_or_validate_payment(
             order,
@@ -110,11 +119,7 @@ class BillingActivationService:
             provider_transaction_id=tx_id,
             amount=expected,
             timing=timing,
-            occurred_at=int(
-                result.get("transactionDateTime")
-                or result.get("createdAt")
-                or self.clock()
-            ),
+            occurred_at=transaction_time.unix_seconds,
             evidence={"provider": result, "webhook": signed},
         )
         if payment["mismatch"]:
@@ -174,18 +179,21 @@ class BillingActivationService:
         if status not in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"}:
             return {"status": "not_paid", "providerStatus": status}
         tx_id = str(result.get("reference") or result.get("paymentLinkId") or f"{order['provider_order_code']}-payment")
-        timing = self._payment_timing(order, result)
+        transaction_time = parse_provider_transaction_time(result)
+        if not transaction_time.ok:
+            return self._mark_review(
+                order,
+                transaction_time.reason,
+                evidence=self._timestamp_review_evidence(result),
+            )
+        timing = self._payment_timing(order, transaction_time.unix_seconds)
         payment = self._insert_or_validate_payment(
             order,
             provider_profile_id=str(provider_profile_id),
             provider_transaction_id=tx_id,
             amount=amount,
             timing=timing,
-            occurred_at=int(
-                result.get("transactionDateTime")
-                or result.get("createdAt")
-                or self.clock()
-            ),
+            occurred_at=transaction_time.unix_seconds,
             evidence={"provider": result},
         )
         if payment["mismatch"]:
@@ -563,7 +571,7 @@ class BillingActivationService:
         self.cursor.execute("UPDATE billing_orders SET activation_state = 'applied', revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order["id"],))
         return {"status": "applied"}
 
-    def _mark_review(self, order, reason):
+    def _mark_review(self, order, reason, *, evidence=None):
         activation_id = new_id("subscription-activation")
         self.cursor.execute(
             """INSERT INTO billing_subscription_activations
@@ -571,13 +579,22 @@ class BillingActivationService:
                VALUES (?, ?, 'review_required', '{}', '{}', ?)
                ON CONFLICT(order_id) DO UPDATE SET state = 'review_required', reason_code = excluded.reason_code,
                  updated_at = CURRENT_TIMESTAMP""",
-            (activation_id, order["id"], str(reason)[:200]),
+            (
+                activation_id,
+                order["id"],
+                str(reason)[:200],
+            ),
         )
+        if evidence:
+            self.cursor.execute(
+                "UPDATE billing_subscription_activations SET after_json = ? WHERE order_id = ?",
+                (canonical_json(evidence), order["id"]),
+            )
         self.cursor.execute("UPDATE billing_orders SET activation_state = 'review_required', revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order["id"],))
         return {"status": "review_required", "reason": str(reason)}
 
-    def _review(self, event_id, order, reason):
-        self._mark_review(order, reason)
+    def _review(self, event_id, order, reason, *, evidence=None):
+        self._mark_review(order, reason, evidence=evidence)
         self._event_state(event_id, "review", reason)
         return {"status": "review_required", "reason": reason, "orderId": order["id"]}
 
@@ -590,8 +607,19 @@ class BillingActivationService:
             (state, error, state, int(self.clock()), str(event_id)),
         )
 
-    def _payment_timing(self, order, result):
-        occurred = int(result.get("transactionDateTime") or result.get("createdAt") or self.clock())
+    @staticmethod
+    def _timestamp_review_evidence(result):
+        payload = result if isinstance(result, dict) else {}
+        return {
+            "providerOrderCode": payload.get("orderCode"),
+            "paymentLinkId": payload.get("paymentLinkId") or payload.get("id"),
+            "providerReference": payload.get("reference"),
+            "providerStatus": payload.get("status"),
+            "transactionDateTime": payload.get("transactionDateTime"),
+            "createdAt": payload.get("createdAt"),
+        }
+
+    def _payment_timing(self, order, occurred):
         try:
             expiry = int(order.get("checkout_expires_at") or 0)
         except (TypeError, ValueError):

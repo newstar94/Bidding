@@ -110,7 +110,7 @@ test("successful install waits naturally and activation does not claim old tabs"
 });
 
 
-test("install precaches dynamic chunks needed by tabs that survive a deployment", async () => {
+test("install precaches only the static entry graph and leaves feature chunks on demand", async () => {
   const harness = serviceWorkerHarness({
     manifestResponse: new Response(JSON.stringify({
       "frontend/app/app.js": {
@@ -139,7 +139,5 @@ test("install precaches dynamic chunks needed by tabs that survive a deployment"
   assert.deepEqual(new Set(harness.precached), new Set([
     "/dist/assets/app-ABCDEFGH.js",
     "/dist/assets/shared-ABCDEFGH.js",
-    "/dist/assets/GoiThauDetail-ABCDEFGH.js",
-    "/dist/assets/ExcelIntegration-ABCDEFGH.js",
   ]));
 });

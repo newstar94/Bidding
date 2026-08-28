@@ -10,6 +10,8 @@ import {
   beginWorkspaceRequest,
   finishWorkspaceRequest,
 } from "../app/workspaceLease.js";
+import { organizationMembershipCommand } from "./OrganizationMembershipCommand.js";
+import { workspaceLifecycleController } from "../app/WorkspaceLifecycleController.js";
 import {
   buildProfileUpdatePayload,
   deriveEmailChangeUiState,
@@ -24,6 +26,37 @@ function bindAdminEvent(element, eventName, bindingName, handler) {
   if (element.__bfBoundEvents.has(bindingKey)) return;
   element.__bfBoundEvents.add(bindingKey);
   element.addEventListener(eventName, handler);
+}
+
+const SWITCHABLE_ACTIVE_ROLES = new Set(["super_admin", "manager", "employee"]);
+
+function allowedActiveRoles(user) {
+  const source = Array.isArray(user?.dbRoles) && user.dbRoles.length
+    ? user.dbRoles
+    : String(user?.dbRole || user?.role || "").split(",");
+  const roles = new Set(source.map((role) => String(role).trim().toLowerCase()).filter(Boolean));
+  if (roles.has("super_admin")) return new Set(["super_admin", "manager", "employee"]);
+  if (roles.has("owner") || roles.has("manager")) return new Set(["manager", "employee"]);
+  return new Set(["employee"]);
+}
+
+async function confirmedActiveRole(response, currentUser) {
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error("Máy chủ trả dữ liệu chuyển vai trò không hợp lệ.");
+  }
+  const requestId = String(payload?.requestId || response.headers?.get?.("x-request-id") || "").trim();
+  if (!response.ok) {
+    const suffix = requestId ? ` Mã yêu cầu: ${requestId}.` : "";
+    throw new Error(`${payload?.error || payload?.message || "Máy chủ từ chối chuyển vai trò."}${suffix}`);
+  }
+  const activeRole = String(payload?.activeRole || "").trim().toLowerCase();
+  if (!SWITCHABLE_ACTIVE_ROLES.has(activeRole) || !allowedActiveRoles(currentUser).has(activeRole)) {
+    throw new Error("Vai trò máy chủ xác nhận không hợp lệ cho tài khoản này.");
+  }
+  return activeRole;
 }
 
 async function persistAdminUpserts(model, upsertsByTable) {
@@ -325,7 +358,6 @@ export async function showSystemUserDetail(userId) {
   }
 }
 export function setupRBACEvents() {
-  const profileDropdown = document.getElementById("profile-dropdown-menu");
   bindAdminEvent(document, "click", "switch-active-role", async (e) => {
       const btn = e.target.closest?.(".dropdown-role-btn");
       if (!btn) return;
@@ -342,34 +374,16 @@ export function setupRBACEvents() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ active_role: val })
         });
-        const result = await response.json();
-        const activeRole = result.activeRole || val;
-        this.model.switchActiveRole(activeRole, userName, realUserId);
-        this.view.updateActiveUserProfileDisplay();
-        document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((m) => m.classList.remove("active"));
-        if (profileDropdown) profileDropdown.classList.remove("active");
+        const activeRole = await confirmedActiveRole(response, currentUser);
         const targetTab = activeRole === "super_admin" ? "superadmin-dashboard" : "dashboard";
         const targetPath = targetTab === "superadmin-dashboard" ? "/tong-quan-admin" : "/tong-quan";
-        // Clear the previous persona before painting the new home route. The
-        // IndexedDB purge is deliberately allowed to finish after that paint.
-        await this.model.prepareWorkspaceRoleTransition?.();
-        history.pushState({ tab: targetTab, action: null }, "", targetPath);
-        void Promise.resolve(this.switchTab(targetTab, null, false)).catch((error) => {
-          console.error("Failed to render the active-role home route:", error);
-          this.view?.showToast?.("Không thể mở trang tổng quan", "Vui lòng thử lại.", "error");
-        });
-        await this.model.purgeWorkspaceData?.();
-        await this.model.init({
+        await workspaceLifecycleController(this).transitionConfirmedRole({
+          activeRole,
+          userName,
           userId: realUserId,
-          organizationId: getActiveOrganizationId(),
-          priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname),
+          targetTab,
+          targetPath,
         });
-        this.initializeStartupReconciliation?.();
-        // The route is already interactive. Reconcile permissions and records
-        // in the background; mutation boundaries still wait for this promise.
-        void this.reconcileInitialRouteData?.();
-        this.renderWorkspaceSwitcher?.();
-        this.setupWebSocketConnection?.();
       } catch (error) {
         await this.view.customAlert("Không thể chuyển chế độ", error?.message || "Vui lòng thử lại.", "alert-triangle");
       } finally {
@@ -391,6 +405,17 @@ export function setupRBACEvents() {
   }
   const formEmp = document.getElementById("form-manager-employee");
   if (formEmp) {
+    const employeeEmail = document.getElementById("emp-email");
+    let candidatePrefetchTimer = null;
+    if (typeof employeeEmail?.addEventListener === "function") bindAdminEvent(employeeEmail, "input", "prefetch-membership-candidate", () => {
+      if (candidatePrefetchTimer) clearTimeout(candidatePrefetchTimer);
+      const email = employeeEmail?.value?.trim?.().toLowerCase() || "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) return;
+      candidatePrefetchTimer = setTimeout(() => {
+        candidatePrefetchTimer = null;
+        void organizationMembershipCommand(this).prefetchCandidate(email);
+      }, 250);
+    });
     bindAdminEvent(formEmp, "submit", "save-manager-employee", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formEmp)) return;
@@ -419,16 +444,14 @@ export function setupRBACEvents() {
       let lookupFailureMessage = "";
       setEmployeeSubmitBusy(true);
       try {
-        const res = await apiFetch(`/api/organizations/membership-candidate?email=${encodeURIComponent(emailInput)}`);
-        const lookupResult = await res.json();
-        if (res.ok) {
-          foundUser = lookupResult.candidate;
-        } else {
-          lookupFailureMessage = lookupResult.error || "Không thể tra cứu tài khoản nhân sự.";
-        }
+        // Submit always revalidates even when typing already prefetched it.
+        foundUser = await organizationMembershipCommand(this).lookupCandidate(
+          emailInput,
+          { revalidate: true },
+        );
       } catch (err) {
         console.error("Failed to load account information:", err);
-        lookupFailureMessage = "Không thể kết nối máy chủ để tra cứu tài khoản.";
+        lookupFailureMessage = err?.message || "Không thể kết nối máy chủ để tra cứu tài khoản.";
       }
       if (!foundUser) {
         setEmployeeSubmitBusy(false);
@@ -1280,9 +1303,13 @@ export async function reAddEmployee(id, actionButton = null) {
   }
 }
 export async function reloadEmployeesFromDatabase() {
+  return organizationMembershipCommand(this).reloadProjection(async () => {
   const request = beginWorkspaceRequest(this.model);
   try {
-    const usersRes = await apiFetch("/api/auth/users", { signal: request.signal });
+    const [usersRes, formerRes] = await Promise.all([
+      apiFetch("/api/auth/users", { signal: request.signal }),
+      apiFetch("/api/organizations/former-members", { signal: request.signal }),
+    ]);
     assertWorkspaceLeaseCurrent(this.model, request.lease);
     if (usersRes.ok) {
       const users = await usersRes.json();
@@ -1304,9 +1331,6 @@ export async function reloadEmployeesFromDatabase() {
       assertWorkspaceLeaseCurrent(this.model, request.lease);
       this.view.populateNhanVienPhuTrachDropdowns();
     }
-    const formerRes = await apiFetch("/api/organizations/former-members", {
-      signal: request.signal,
-    });
     assertWorkspaceLeaseCurrent(this.model, request.lease);
     const formerEmployees = formerRes.ok ? await formerRes.json() : [];
     assertWorkspaceLeaseCurrent(this.model, request.lease);
@@ -1318,6 +1342,7 @@ export async function reloadEmployeesFromDatabase() {
   } finally {
     finishWorkspaceRequest(this.model, request);
   }
+  });
 }
 export function editHoSoGiayStatus(id) {
   const status = this.model.state.customcontractstatuses.find((s) => s.id === id);

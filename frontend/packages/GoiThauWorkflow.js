@@ -114,7 +114,10 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     await persistActivePlanVersionDraftSession(controller, planId);
     return { ok: true, draft: true };
   }
-  Object.entries(explicitUpserts).forEach(([table, records]) => {
+  const aggregateUpserts = Object.fromEntries(
+    Object.entries(explicitUpserts).filter(([table]) => table !== "assignments"),
+  );
+  Object.entries(aggregateUpserts).forEach(([table, records]) => {
     stageLocalRecords(controller.model, table, records);
   });
   return persistAndSync(controller, [
@@ -123,10 +126,9 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     "hanghoaduthaunhathau",
     "kehoach",
     "thongtinmothau",
-    "assignments",
   ], {
     backgroundSync: true,
-    changes: { upserts: explicitUpserts },
+    changes: { upserts: aggregateUpserts },
     afterPersist,
   });
 }

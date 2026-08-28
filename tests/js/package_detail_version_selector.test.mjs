@@ -54,6 +54,14 @@ test("package detail version selector uses the shared styled dropdown", async ()
     components,
     /\.custom-select-options\.version-select-options li\s*\{[^}]*font-size:\s*0\.75rem[^}]*text-align:\s*center/su,
   );
+  assert.match(
+    combobox,
+    /const dropdownGap = 6;[\s\S]*rect\.bottom \+ scrollY \+ dropdownGap/su,
+  );
+  assert.match(
+    combobox,
+    /rect\.top \+ scrollY - dropdownHeight - dropdownGap/su,
+  );
   assert.match(index, /components\.css\?v=2\.0/u);
 });
 

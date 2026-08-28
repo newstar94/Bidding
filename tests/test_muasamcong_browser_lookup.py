@@ -656,6 +656,16 @@ def test_lookup_service_circuit_breaker_stops_repeating_browser_failures():
         service.lookup("IB2600000002")
     assert source.calls == 3
 
+    started = time.perf_counter()
+    for _ in range(20):
+        with pytest.raises(
+            ProcurementLookupError, match="PROCUREMENT_LOOKUP_BUSY"
+        ):
+            service.lookup("IB2600000002")
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    assert elapsed_ms < 250
+    assert source.calls == 3
+
     now[0] = 131.0
     with pytest.raises(
         ProcurementLookupError, match="PROCUREMENT_BROWSER_FAILED"

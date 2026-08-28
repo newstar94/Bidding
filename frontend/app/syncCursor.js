@@ -54,6 +54,7 @@ export async function fetchDeltaSnapshot(apiFetch, {
   afterVersion,
   visibilityToken,
   headers,
+  signal,
   maxPages = 10_000,
 } = {}) {
   const aggregate = { deletions: [] };
@@ -68,7 +69,7 @@ export async function fetchDeltaSnapshot(apiFetch, {
             ...(visibilityToken ? { visibility_token: visibilityToken } : {}),
           },
     );
-    lastResponse = await apiFetch(`/api/sync/delta?${query}`, { headers });
+    lastResponse = await apiFetch(`/api/sync/delta?${query}`, { headers, signal });
     if (!lastResponse.ok) return { response: lastResponse, snapshot: null };
     const page = await lastResponse.json();
     Object.entries(page).forEach(([key, value]) => {

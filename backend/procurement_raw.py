@@ -157,7 +157,7 @@ class ProcurementRawSnapshotRepository:
     def __init__(self, *, database):
         self.database = database
 
-    def save_bundle(self, organization_id, bundle):
+    def save_bundle(self, organization_id, bundle, *, connection=None):
         if not isinstance(bundle, dict) or bundle.get("schemaVersion") != (
             "biddingflow-muasamcong-raw-bundle-v2"
         ):
@@ -171,7 +171,8 @@ class ProcurementRawSnapshotRepository:
             raise ValueError("Raw bundle ownership is incomplete")
         inserted = 0
         duplicates = 0
-        connection = self.database.get_connection()
+        owns_connection = connection is None
+        connection = connection or self.database.get_connection()
         try:
             for revision_number, revision_id, package_key, source in (
                 iter_raw_sources(bundle)
@@ -232,12 +233,15 @@ class ProcurementRawSnapshotRepository:
                     duplicates += 1
                 else:
                     inserted += 1
-            connection.commit()
+            if owns_connection:
+                connection.commit()
         except Exception:
-            connection.rollback()
+            if owns_connection:
+                connection.rollback()
             raise
         finally:
-            connection.close()
+            if owns_connection:
+                connection.close()
         return {"inserted": inserted, "duplicates": duplicates}
 
     def load_fresh_plan_bundle(

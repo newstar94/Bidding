@@ -176,18 +176,28 @@ def _lookup_blocking(request, payload):
         "layer"
     ) if isinstance(result, dict) else None
     if isinstance(raw_bundle, dict) and cache_layer != "RAW_SNAPSHOT":
-        result["rawSnapshot"] = raw_repository.save_bundle(
-            organization_id, raw_bundle
-        )
-        committed = (
-            bool(raw_bundle.get("complete"))
-            and int(result["rawSnapshot"].get("inserted") or 0) > 0
-        )
-        _finish_procurement_usage(
-            reservations,
-            consume=committed,
-            reason="authoritative_snapshot_duplicate" if not committed else "committed",
-        )
+        connection = database.get_connection()
+        try:
+            connection.execute("BEGIN")
+            result["rawSnapshot"] = raw_repository.save_bundle(
+                organization_id, raw_bundle, connection=connection
+            )
+            committed = (
+                bool(raw_bundle.get("complete"))
+                and int(result["rawSnapshot"].get("inserted") or 0) > 0
+            )
+            _finish_procurement_usage(
+                reservations,
+                consume=committed,
+                reason="authoritative_snapshot_duplicate" if not committed else "committed",
+                connection=connection,
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
     else:
         _finish_procurement_usage(reservations, consume=False, reason="cache_hit")
     _observe_shadow_procurement_usage(
@@ -338,12 +348,16 @@ def _observe_shadow_procurement_usage(request, result, *, inserted):
     )
 
 
-def _finish_procurement_usage(reservations, *, consume, reason):
+def _finish_procurement_usage(
+    reservations, *, consume, reason, connection=None
+):
     if not reservations:
         return
-    connection = database.get_connection()
+    owns_connection = connection is None
+    connection = connection or database.get_connection()
     try:
-        connection.execute("BEGIN")
+        if owns_connection:
+            connection.execute("BEGIN")
         service = UsageCreditService(connection.cursor())
         for reservation in reservations:
             if consume:
@@ -353,12 +367,15 @@ def _finish_procurement_usage(reservations, *, consume, reason):
                 )
             else:
                 service.release_reservation_item(reservation["id"], reason)
-        connection.commit()
+        if owns_connection:
+            connection.commit()
     except Exception:
-        connection.rollback()
+        if owns_connection:
+            connection.rollback()
         raise
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def _public_health(result):
@@ -514,6 +531,7 @@ async def lookup_procurement(request):
                 ProcurementLookupSettings.from_environ()
                 .request_timeout_seconds
             ),
+            lane="procurement",
         )
         return JSONResponse(result)
     except BlockingIOBusyError:
@@ -546,6 +564,7 @@ async def procurement_health(request):
         result = await run_blocking_io(
             lambda: get_muasamcong_source().health(),
             timeout_seconds=30,
+            lane="procurement",
         )
         return JSONResponse(_public_health(result))
     except ProcurementLookupError as error:

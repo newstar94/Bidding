@@ -6,6 +6,7 @@ import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
+import { cancelChunkedRender, renderChunkedSequence } from "../shared/ChunkedRenderer.js";
 import {
   selectLatestVersion,
   selectLatestVersionsByRoot,
@@ -599,10 +600,54 @@ function renderTimelineTable(view) {
       </tr>`);
   });
   if (!html.length) html.push(`<tr><td colspan="7" class="timeline-no-results">Không có mốc phù hợp với bộ lọc.</td></tr>`);
+  const focused = tbody.contains?.(globalThis.document?.activeElement)
+    ? globalThis.document.activeElement
+    : null;
+  const focusState = focused?.closest?.("tr[data-entry-id]") ? {
+    entryId: focused.closest("tr[data-entry-id]").dataset.entryId,
+    field: focused.dataset?.timelineField || "",
+    selectionStart: focused.selectionStart,
+    selectionEnd: focused.selectionEnd,
+  } : null;
   tbody.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
-  tbody.innerHTML = trustedHTML(html.join(""));
-  view.initFlatpickr(tbody);
-  view.createIconsScoped(element("timeline-table-wrap"));
+  tbody.innerHTML = trustedHTML("");
+  tbody.setAttribute?.("aria-busy", "true");
+  const tableWrap = element("timeline-table-wrap");
+  const renderPromise = renderChunkedSequence(tbody, html, (chunk) => {
+    tbody.insertAdjacentHTML("beforeend", trustedHTML(chunk.join("")));
+  }, {
+    chunkSize: 10,
+    budgetMs: 12,
+    onComplete: ({ cancelled }) => {
+      if (cancelled) return;
+      tbody.setAttribute?.("aria-busy", "false");
+      view.initFlatpickr(tbody);
+      view.createIconsScoped(tableWrap);
+      if (focusState) {
+        const row = [...tbody.querySelectorAll?.("tr[data-entry-id]") || []]
+          .find((candidate) => candidate.dataset.entryId === focusState.entryId);
+        const control = [...row?.querySelectorAll?.("[data-timeline-field]") || []]
+          .find((candidate) => candidate.dataset.timelineField === focusState.field);
+        control?.focus?.({ preventScroll: true });
+        if (
+          typeof control?.setSelectionRange === "function"
+          && Number.isInteger(focusState.selectionStart)
+          && Number.isInteger(focusState.selectionEnd)
+        ) {
+          control.setSelectionRange(focusState.selectionStart, focusState.selectionEnd);
+        }
+      }
+    },
+  });
+  void renderPromise.catch((error) => {
+    tbody.setAttribute?.("aria-busy", "false");
+    console.error("Không thể hiển thị timeline theo từng phần:", error);
+    const errorBox = element("timeline-error");
+    if (errorBox) {
+      errorBox.textContent = "Không thể hiển thị timeline. Vui lòng thử làm mới.";
+      errorBox.hidden = false;
+    }
+  });
 }
 
 function setActionAvailability(state) {
@@ -1035,6 +1080,7 @@ export function resetPackageTimeline() {
     statusFilter.__bfAccessibleCombobox?.refresh();
   }
   const tbody = element("timeline-table-body");
+  if (tbody) cancelChunkedRender(tbody);
   tbody?.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
   if (tbody) tbody.innerHTML = trustedHTML("");
   setHidden("timeline-empty", false);

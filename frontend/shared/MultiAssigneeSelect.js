@@ -1,4 +1,4 @@
-import { generateRecordId } from "./idUtils.js";
+import { applyAssignmentBatch } from "./AssignmentBatch.js";
 
 export function normalizeAssigneeIds(values) {
   const source = Array.isArray(values) ? values : [values];
@@ -94,18 +94,8 @@ export function computeAssignmentDelta(existingAssignments, selectedIds) {
 export async function applyAssignmentDelta(model, { targetId, type, selectedIds }) {
   const existing = assignmentRowsFor(model?.state?.assignments, targetId, type);
   const delta = computeAssignmentDelta(existing, selectedIds);
-  for (const assignment of delta.removedAssignments) {
-    await model.deleteRecord("assignments", assignment.id);
-  }
-  for (const employeeId of delta.addedIds) {
-    await model.addRecord("assignments", {
-      id: generateRecordId("assignments"),
-      empId: employeeId,
-      targetId,
-      type,
-    });
-  }
-  return delta;
+  const batch = await applyAssignmentBatch(model, { ...delta, targetId, type });
+  return { ...delta, ...batch };
 }
 
 function renderChips(select, chips) {

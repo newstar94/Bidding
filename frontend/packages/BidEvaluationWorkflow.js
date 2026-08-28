@@ -276,7 +276,7 @@ export function renderDanhGiaHsdtPanel() {
       }
     };
     if (bids.length > 50) {
-      renderBidEvaluationRowsBatched(rowRenderContext, { chunkSize: 50 }).then((rows) => {
+      renderBidEvaluationRowsBatched(rowRenderContext, { chunkSize: 10, budgetMs: 12 }).then((rows) => {
         if (rows.length === bids.length) finalizeRowRender();
       }).catch((error) => {
         console.error("Failed to render bid evaluation rows", error);

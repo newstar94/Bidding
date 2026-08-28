@@ -75,8 +75,11 @@ test("active-role shell renders before the previous persona snapshot purge compl
     };
     const controller = {
       model: {
-        state: { activeuser: { id: "user-1", name: "Người dùng" } },
-        switchActiveRole() { events.push("role-confirmed"); },
+        state: { activeuser: { id: "user-1", name: "Người dùng", dbRoles: ["manager"] } },
+        switchActiveRole(role) {
+          this.state.activerole = role;
+          events.push("role-confirmed");
+        },
         async prepareWorkspaceRoleTransition() { events.push("memory-cleared"); },
         async purgeWorkspaceData() { events.push("purge-start"); await purge.promise; },
         async init() { events.push("local-ready"); },
@@ -110,6 +113,98 @@ test("active-role shell renders before the previous persona snapshot purge compl
     assert.ok(events.indexOf("shell-rendered") < events.indexOf("local-ready"));
   } finally {
     purge.resolve();
+    restore();
+  }
+});
+
+for (const failure of [
+  { name: "403", response: () => new Response(JSON.stringify({ error: "Không có quyền", requestId: "req-403" }), { status: 403, headers: { "content-type": "application/json" } }) },
+  { name: "409", response: () => new Response(JSON.stringify({ error: "Phiên đã thay đổi" }), { status: 409, headers: { "content-type": "application/json" } }) },
+  { name: "invalid JSON", response: () => new Response("not-json", { status: 200, headers: { "content-type": "application/json" } }) },
+  { name: "network failure", response: () => { throw new TypeError("network down"); } },
+]) {
+  test(`active-role ${failure.name} keeps persona route cache and workspace generation unchanged`, async () => {
+    const events = [];
+    const document = emptyDocument();
+    const restore = installGlobals({
+      document,
+      fetch: async () => failure.response(),
+      history: { pushState() { events.push("route"); } },
+      localStorage: memoryStorage({ bf_active_org: "org-1" }),
+      location: { origin: "http://localhost" },
+      navigator: { onLine: true },
+      sessionStorage: memoryStorage({ bf_active_org: "org-1", bf_user_id: "user-1" }),
+      window: { location: { pathname: "/goi-thau" } },
+    });
+    try {
+      const button = {
+        disabled: false,
+        attributes: new Map([["data-switch-role", "employee"]]),
+        getAttribute(name) { return this.attributes.get(name) || null; },
+        removeAttribute(name) { this.attributes.delete(name); },
+        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+      };
+      const controller = {
+        model: {
+          state: { activeuser: { id: "user-1", name: "Người dùng", dbRoles: ["manager"] }, activerole: "manager" },
+          constructor: { resolveAllowedActiveRole: (_user, role) => role },
+          switchActiveRole() { events.push("role"); },
+          prepareWorkspaceRoleTransition() { events.push("clear"); },
+          purgeWorkspaceData() { events.push("purge"); },
+          init() { events.push("init"); },
+        },
+        view: {
+          updateActiveUserProfileDisplay() { events.push("profile"); },
+          async customAlert(_title, message) { events.push(`alert:${message}`); },
+        },
+        switchTab() { events.push("tab"); },
+      };
+      setupRBACEvents.call(controller);
+      await document.listeners.get("click")({ target: { closest: () => button } });
+      assert.deepEqual(events.filter((event) => ["role", "route", "clear", "purge", "init", "profile", "tab"].includes(event)), []);
+      assert.equal(controller.model.state.activerole, "manager");
+      assert.equal(button.disabled, false);
+      if (failure.name === "403") assert.match(events.find((event) => event.startsWith("alert:")), /req-403/u);
+    } finally {
+      restore();
+    }
+  });
+}
+
+test("active-role rejects a server role outside the user's allowed set", async () => {
+  const events = [];
+  const document = emptyDocument();
+  const restore = installGlobals({
+    document,
+    fetch: async () => new Response(JSON.stringify({ activeRole: "super_admin" }), { status: 200, headers: { "content-type": "application/json" } }),
+    history: { pushState() { events.push("route"); } },
+    localStorage: memoryStorage({ bf_active_org: "org-1" }),
+    location: { origin: "http://localhost" },
+    navigator: { onLine: true },
+    sessionStorage: memoryStorage({ bf_active_org: "org-1", bf_user_id: "user-1" }),
+    window: { location: { pathname: "/tong-quan" } },
+  });
+  try {
+    const button = {
+      disabled: false,
+      attributes: new Map([["data-switch-role", "employee"]]),
+      getAttribute(name) { return this.attributes.get(name) || null; },
+      removeAttribute(name) { this.attributes.delete(name); },
+      setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    };
+    const controller = {
+      model: {
+        state: { activeuser: { id: "user-1", dbRoles: ["employee"] }, activerole: "employee" },
+        constructor: { resolveAllowedActiveRole: () => "employee" },
+        switchActiveRole() { events.push("role"); },
+      },
+      view: { async customAlert(_title, message) { events.push(`alert:${message}`); } },
+    };
+    setupRBACEvents.call(controller);
+    await document.listeners.get("click")({ target: { closest: () => button } });
+    assert.ok(!events.includes("role"));
+    assert.match(events.find((event) => event.startsWith("alert:")), /không hợp lệ/u);
+  } finally {
     restore();
   }
 });
@@ -205,6 +300,81 @@ test("confirmed organization member renders before background reload and sync co
   } finally {
     reload.resolve();
     sync.resolve({ ok: true });
+    restore();
+  }
+});
+
+test("member quota conflict leaves local membership permission and assignments unchanged", async () => {
+  const submitButton = {
+    disabled: false,
+    setAttribute() {},
+  };
+  const form = {
+    listener: null,
+    addEventListener(_type, listener) { this.listener = listener; },
+    querySelector() { return submitButton; },
+    setAttribute() {},
+  };
+  const input = (value) => ({ value });
+  const document = emptyDocument({
+    "form-manager-employee": form,
+    "form-employee-id": input(""),
+    "emp-name": input("Nguyễn Văn A"),
+    "emp-phone": input("0900000000"),
+    "emp-email": input("a@example.test"),
+  });
+  let requestCount = 0;
+  const restore = installGlobals({
+    document,
+    fetch: async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({
+          candidate: { id: "employee-1", name: "Nguyễn Văn A", email: "a@example.test" },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        code: "MEMBER_QUOTA_EXCEEDED",
+        error: "Đã đạt giới hạn nhân sự.",
+      }), { status: 409, headers: { "content-type": "application/json" } });
+    },
+    localStorage: memoryStorage({ bf_active_org: "org-1" }),
+    location: { origin: "http://localhost" },
+    navigator: { onLine: true },
+    sessionStorage: memoryStorage({ bf_active_org: "org-1" }),
+  });
+  try {
+    const initialPermission = [{ id: "permission-existing", empId: "employee-existing" }];
+    const initialAssignments = [{ id: "assignment-existing", empId: "employee-existing" }];
+    const alerts = [];
+    const controller = {
+      model: {
+        state: {
+          activeuser: {
+            organizations: [{
+              id: "org-1", role: "manager", scope_type: "organization", status: "active",
+              subscription: { member_quota: 1, member_count: 1 },
+            }],
+          },
+          employees: [],
+          permissionmatrix: [...initialPermission],
+          assignments: [...initialAssignments],
+        },
+        async persistChanges() { assert.fail("409 must not persist local membership"); },
+      },
+      view: {
+        validateForm: () => true,
+        async customAlert(title, message) { alerts.push([title, message]); },
+      },
+    };
+    setupRBACEvents.call(controller);
+    await form.listener({ preventDefault() {} });
+
+    assert.deepEqual(controller.model.state.employees, []);
+    assert.deepEqual(controller.model.state.permissionmatrix, initialPermission);
+    assert.deepEqual(controller.model.state.assignments, initialAssignments);
+    assert.match(alerts.at(-1)?.[1] || "", /giới hạn nhân sự/u);
+  } finally {
     restore();
   }
 });

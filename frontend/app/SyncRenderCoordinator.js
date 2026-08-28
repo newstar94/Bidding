@@ -70,22 +70,31 @@ export function shouldRefreshRouteAfterBackgroundSync(
 export function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
   if (!changedKeys || changedKeys.size === 0 || !controller.view) return Promise.resolve();
   const renderPromises = [];
-  const renderIfChanged = (keys, renderFn, requiredElementId = null) => {
-    if (keys.some((key) => changedKeys.has(key)) && typeof renderFn === "function" && (!requiredElementId || document.getElementById(requiredElementId))) {
+  const activeTab = String(controller.model?.state?.activetab || "");
+  controller._dirtyRouteProjections ||= new Set();
+  const renderIfChanged = (keys, renderFn, routeNames, requiredElementId = null) => {
+    if (!keys.some((key) => changedKeys.has(key)) || typeof renderFn !== "function") return;
+    const routes = Array.isArray(routeNames) ? routeNames : [routeNames];
+    if (!routes.includes(activeTab)) {
+      routes.filter(Boolean).forEach((route) => controller._dirtyRouteProjections.add(route));
+      return;
+    }
+    if (!requiredElementId || document.getElementById(requiredElementId)) {
       const renderPromise = Promise.resolve(renderFn.call(controller.view)).catch((err) => {
         console.error(`Failed to render changed state${requiredElementId ? ` for ${requiredElementId}` : ""}:`, err);
       });
       renderPromises.push(renderPromise);
+      routes.forEach((route) => controller._dirtyRouteProjections.delete(route));
     }
   };
-  renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, "tab-dashboard");
-  renderIfChanged(["kehoach", "chudautu", "goithau"], controller.view.renderKeHoachTable, "tab-kehoach");
-  renderIfChanged(["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "kehoach", "chudautu", "nhathau", "thongtinmothau", "assignments"], controller.view.renderGoiThauTable, "tab-goithau");
-  renderIfChanged(["goithau", "kehoach", "hopdong", "thongtinmothau"], controller.view.renderPackageTimeline, "tab-goithau-timeline");
-  renderIfChanged(["chudautu", "kehoach"], controller.view.renderChuDauTuTable, "tab-chudautu");
-  renderIfChanged(["nhathau", "goithau", "hopdong", "thongtinmothau"], controller.view.renderNhaThauTable, "tab-nhathau");
-  renderIfChanged(["chuyengia", "assignments"], controller.view.renderChuyenGiaTable, "tab-chuyengia");
-  renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "tab-hopdong");
+  renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, ["dashboard", "superadmin-dashboard"], "tab-dashboard");
+  renderIfChanged(["kehoach", "chudautu", "goithau"], controller.view.renderKeHoachTable, "kehoach", "tab-kehoach");
+  renderIfChanged(["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "kehoach", "chudautu", "nhathau", "thongtinmothau", "assignments"], controller.view.renderGoiThauTable, "goithau", "tab-goithau");
+  renderIfChanged(["goithau", "kehoach", "hopdong", "thongtinmothau"], controller.view.renderPackageTimeline, "goithau-timeline", "tab-goithau-timeline");
+  renderIfChanged(["chudautu", "kehoach"], controller.view.renderChuDauTuTable, "chudautu", "tab-chudautu");
+  renderIfChanged(["nhathau", "goithau", "hopdong", "thongtinmothau"], controller.view.renderNhaThauTable, "nhathau", "tab-nhathau");
+  renderIfChanged(["chuyengia", "assignments"], controller.view.renderChuyenGiaTable, "chuyengia", "tab-chuyengia");
+  renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "hopdong", "tab-hopdong");
   if (isBackground) {
     const workspace = captureWorkspace(controller);
     const hasWorkspaceCapability = Boolean(workspace.token || workspace.organizationId);
@@ -101,9 +110,9 @@ export function renderChangedState(controller, changedKeys, { isBackground = fal
         "mothau",
         "danhgiahsdt"
       ]);
-      const activeTab = controller.model?.state?.activetab;
-      if (!detailTabs.has(activeTab)) return;
-      controller.renderTabData?.(activeTab, controller.model?.state?.activeaction || null);
+      const currentActiveTab = controller.model?.state?.activetab;
+      if (!detailTabs.has(currentActiveTab)) return;
+      controller.renderTabData?.(currentActiveTab, controller.model?.state?.activeaction || null);
     });
   }
   return Promise.all(renderPromises);

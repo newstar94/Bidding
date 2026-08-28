@@ -27,7 +27,9 @@ async function initialHashedAssets() {
       const assetPathname = `/dist/${String(asset || "").replace(/^\/+/, "")}`;
       if (HASHED_ASSET.test(assetPathname)) assets.push(assetPathname);
     }
-    pending.push(...(item.imports || []), ...(item.dynamicImports || []));
+    // Installation owns only the static app shell. Feature chunks are cached
+    // by the fetch handler after their first route/intent use.
+    pending.push(...(item.imports || []));
   }
   const uniqueAssets = [...new Set(assets)];
   if (!uniqueAssets.length) {

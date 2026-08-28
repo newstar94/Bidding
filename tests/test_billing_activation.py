@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import uuid
 import asyncio
+from types import SimpleNamespace
 
 import psycopg
 import pytest
@@ -12,6 +13,8 @@ from backend.billing.providers.base import PaymentProviderError
 from backend.billing.providers.fake import FakePaymentProvider
 from backend.billing.runtime import PaymentProviderRegistry
 from backend.billing.service import BillingService, ProviderCommandExecutor
+from backend.billing import service as billing_service_module
+from backend.billing.worker import BillingWorkProcessor
 from backend.billing import webhook as billing_webhook
 from backend.db.db_helper import PostgresCursor, PostgresDatabase
 
@@ -55,6 +58,7 @@ def _insert_base_plan_order(
     checkout_expires_at=None,
     owner_kind="account",
     item_type="base_plan",
+    create_order=True,
 ):
     token = uuid.uuid4().hex
     actor = cursor.execute(
@@ -132,6 +136,7 @@ def _insert_base_plan_order(
     )
     decision_payload = {
             "itemType": item_type,
+            "skuCode": f"test-sku-{token}",
             "releaseChecksum": release_checksum,
             "benefits": (
                 {
@@ -189,6 +194,15 @@ def _insert_base_plan_order(
             now + 900,
         ),
     )
+    if not create_order:
+        return {
+            "public_quote": public_quote,
+            "user_id": user_id,
+            "organization_id": organization_id,
+            "owner_kind": owner_kind,
+            "item_type": item_type,
+            "now": now,
+        }
     order_code = int(token[:7], 16) + 1
     cursor.execute(
         """INSERT INTO billing_orders
@@ -242,6 +256,7 @@ def _insert_base_plan_order(
         "owner_kind": owner_kind,
         "item_type": item_type,
         "now": now,
+        "public_quote": public_quote,
     }
 
 
@@ -664,6 +679,55 @@ def test_fake_timeout_recovers_with_stable_command_and_activates_once(
     ).fetchone()[0] == 1
 
 
+def test_checkout_retries_provider_order_code_collision_and_pins_expiry(
+    billing_cursor,
+    monkeypatch,
+):
+    existing = _insert_base_plan_order(billing_cursor)
+    pending = _insert_base_plan_order(billing_cursor, create_order=False)
+    second_code = existing["order_code"] + 1
+    while billing_cursor.execute(
+        """SELECT 1 FROM billing_orders
+             WHERE provider_profile_id = 'provider-fake-v1'
+               AND provider_order_code = ?""",
+        (second_code,),
+    ).fetchone():
+        second_code += 1
+    generated = iter([existing["order_code"], second_code])
+    monkeypatch.setattr(
+        billing_service_module,
+        "_stable_order_code",
+        lambda _order_id, _attempt=0: next(generated),
+    )
+    actor = SimpleNamespace(
+        user_id=pending["user_id"],
+        active_role="employee",
+        active_role_organization_id=None,
+        platform_role="user",
+    )
+
+    order, command_id, replayed = BillingService(
+        billing_cursor,
+        clock=lambda: pending["now"],
+        environment={
+            "APP_ENV": "development",
+            "COMMERCIAL_PAYMENT_PROVIDER": "fake",
+            "PAYMENT_PROVIDER_ENVIRONMENT": "test",
+            "APP_PUBLIC_URL": "https://app.example",
+        },
+    ).create_checkout(actor, pending["public_quote"], "collision-retry-123")
+
+    assert replayed is False
+    assert command_id
+    assert order["provider_order_code"] == second_code
+    request = json.loads(billing_cursor.execute(
+        "SELECT request_json FROM billing_provider_commands WHERE id = ?",
+        (command_id,),
+    ).fetchone()[0])
+    assert request["expiredAt"] == order["checkout_expires_at"]
+    assert request["expiredAt"] > pending["now"]
+
+
 def test_ambiguous_cancel_queries_before_repeating_the_mutation(billing_cursor):
     order = _insert_base_plan_order(billing_cursor)
     command_id = f"command-{uuid.uuid4().hex}"
@@ -803,6 +867,75 @@ def test_paid_provider_result_stays_retryable_when_activation_transaction_fails(
         "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
         (order["order_id"],),
     ).fetchone()[0] == 1
+
+
+def test_periodic_reconciliation_converges_an_open_order_without_webhook(
+    billing_cursor,
+):
+    order = _insert_base_plan_order(billing_cursor)
+    database = _TransactionDatabase(billing_cursor)
+
+    class PaidProvider:
+        def get_payment(self, _identifier):
+            return _paid_result(order)
+
+    processor = BillingWorkProcessor(
+        database,
+        environment={
+            "PAYMENT_CHECKOUT_ENABLED": "true",
+            "PAYMENT_ACTIVATION_ENABLED": "true",
+        },
+        registry=PaymentProviderRegistry(
+            credential_resolver=lambda _reference: None,
+        ),
+        clock=lambda: order["now"],
+    )
+    processor.registry.install("provider-fake-v1", PaidProvider())
+
+    assert processor._schedule_open_order_reconciliation() is True
+    command = billing_cursor.execute(
+        """SELECT id, status FROM billing_provider_commands
+             WHERE order_id = ? AND command_type = 'query_order'""",
+        (order["order_id"],),
+    ).fetchone()
+    assert command["status"] == "pending"
+
+    ProviderCommandExecutor(
+        database,
+        providers={"provider-fake-v1": PaidProvider()},
+        clock=lambda: order["now"],
+        environment={"PAYMENT_ACTIVATION_ENABLED": "true"},
+    ).execute(command["id"])
+
+    reconciled = billing_cursor.execute(
+        """SELECT payment_state, activation_state FROM billing_orders
+             WHERE id = ?""",
+        (order["order_id"],),
+    ).fetchone()
+    assert tuple(reconciled) == ("verified_paid", "applied")
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
+        (order["order_id"],),
+    ).fetchone()[0] == 1
+
+
+def test_local_checkout_expiry_uses_the_pinned_boundary(billing_cursor):
+    order = _insert_base_plan_order(
+        billing_cursor,
+        checkout_expires_at=1_800_000_100,
+    )
+    processor = BillingWorkProcessor(
+        _TransactionDatabase(billing_cursor),
+        environment={"PAYMENT_CHECKOUT_ENABLED": "true"},
+        clock=lambda: 1_800_000_100,
+    )
+
+    assert processor._expire_local_checkout() is True
+    state = billing_cursor.execute(
+        "SELECT checkout_state FROM billing_orders WHERE id = ?",
+        (order["order_id"],),
+    ).fetchone()[0]
+    assert state == "expired"
 
 
 def test_manual_refund_replay_survives_terminal_refund_state_and_binds_request(

@@ -292,7 +292,7 @@ export function scheduleInitialRouteReconciliation(controller, scheduleTask) {
         controller._startupReconciliationPromise = null;
       }
     }
-  }, { timeout: 2200, delay: 0 });
+  }, { timeout: 2200, delay: 0, priority: "reconcile" });
   return scheduledPromise;
 }
 

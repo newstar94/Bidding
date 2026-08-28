@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import { scheduleBackgroundSync } from "../../frontend/app/WorkspaceEventBridge.js";
@@ -14,6 +15,17 @@ function deferred() {
 function nextTimerTurn() {
   return new Promise((resolve) => setTimeout(resolve, 5));
 }
+
+test("startup does not queue a duplicate full pull after route reconciliation", () => {
+  const source = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
+  const setupAt = source.indexOf("this.setupAutoSyncBackground();");
+  assert.ok(setupAt >= 0);
+  assert.doesNotMatch(
+    source.slice(setupAt, setupAt + 160),
+    /scheduleBackgroundSync/,
+    "the route reconciliation is already authoritative; a second startup pull invalidates warm pages",
+  );
+});
 
 test("scheduled background sync waits for initial reconciliation single-flight", async () => {
   const startup = deferred();
@@ -38,6 +50,28 @@ test("scheduled background sync waits for initial reconciliation single-flight",
   startup.resolve(true);
   await nextTimerTurn();
   assert.deepEqual(calls, ["pull"]);
+});
+
+test("successful background pull restores primary-tab warming after cache invalidation", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    },
+    async forceSyncData() {
+      calls.push("pull");
+      return { ok: true };
+    },
+    async warmPrimaryTabs() {
+      calls.push("warm");
+    },
+  };
+
+  scheduleBackgroundSync.call(controller, 0);
+  await nextTimerTurn();
+  assert.deepEqual(calls, ["pull", "warm"]);
 });
 
 test("a startup completion from the old workspace cannot start a background pull", async () => {

@@ -793,6 +793,12 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
     client: { async lookup() { assert.fail("must use sequential session"); } },
     document: { getElementById: (id) => controls[id] || null },
   });
+  const phases = [];
+  const setStatus = lookup.setStatus.bind(lookup);
+  lookup.setStatus = (element, message, state) => {
+    phases.push(message);
+    setStatus(element, message, state);
+  };
 
   const pending = lookup.run({
     kind: "PLAN",
@@ -807,6 +813,7 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
   assert.equal(loading.code.hidden, false);
   assert.equal(loading.code.textContent, "PL2600000001");
   assert.equal(form.attributes.get("aria-busy"), "true");
+  assert.equal(phases[0], "Đang kết nối Mua Sắm Công…");
 
   resolvePrepare({
     importSession: {
@@ -815,6 +822,12 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
     },
   });
   await pending;
+
+  assert.deepEqual(phases.slice(0, 3), [
+    "Đang kết nối Mua Sắm Công…",
+    "Đang tìm phiên bản hồ sơ…",
+    "Đang chuẩn bị bản xem trước…",
+  ]);
 
   assert.equal(loading.hidden, true);
   assert.equal(loading.attributes.get("aria-busy"), "false");

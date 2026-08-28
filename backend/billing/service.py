@@ -21,11 +21,12 @@ from .providers.base import PaymentProviderError
 from .runtime import payment_provider_registry
 
 
-def _stable_order_code(order_id):
+def _stable_order_code(order_id, collision_attempt=0):
     # billing_orders.provider_order_code is a PostgreSQL INTEGER. Keep the
     # deterministic provider identity inside the positive signed 31-bit range;
     # uniqueness is still enforced per immutable provider profile.
-    return int(sha256(order_id.encode("utf-8")).hexdigest()[:8], 16) % 2_147_483_647 + 1
+    identity = f"{order_id}:{max(0, int(collision_attempt))}"
+    return int(sha256(identity.encode("utf-8")).hexdigest()[:8], 16) % 2_147_483_647 + 1
 
 
 def _row_dict(row):
@@ -142,27 +143,44 @@ class BillingService:
         order_id = new_id("billing-order")
         public_id = new_id("order")
         provider_reference = f"bf-{public_id}"
-        provider_order_code = _stable_order_code(order_id)
-        self.cursor.execute(
-            """INSERT INTO billing_orders
+        checkout_expires_at = now + max(
+            60, int(provider.get("checkout_ttl_seconds") or 900)
+        )
+        provider_order_code = None
+        for collision_attempt in range(8):
+            candidate_code = _stable_order_code(order_id, collision_attempt)
+            inserted = self.cursor.execute(
+                """INSERT INTO billing_orders
                    (id, public_id, quote_id, actor_user_id, account_user_id,
                     organization_id, owner_kind, operation, idempotency_key,
                     request_hash, release_id, provider_profile_id,
                     provider_order_code, provider_reference, decision_json,
                     subtotal_amount, tax_amount, total_amount, currency,
-                    expected_subscription_revision)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                order_id, public_id, quote["id"], actor.user_id,
-                quote.get("account_user_id"), quote.get("organization_id"),
-                quote["owner_kind"], quote["operation"], idempotency_key,
-                request_hash, quote["release_id"], provider["id"],
-                provider_order_code, provider_reference, quote["decision_json"],
-                quote["subtotal_amount"], quote["tax_amount"],
-                quote["total_amount"], quote["currency"],
-                quote.get("expected_subscription_revision"),
-            ),
-        )
+                    expected_subscription_revision, checkout_expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(provider_profile_id, provider_order_code)
+               DO NOTHING RETURNING id""",
+                (
+                    order_id, public_id, quote["id"], actor.user_id,
+                    quote.get("account_user_id"), quote.get("organization_id"),
+                    quote["owner_kind"], quote["operation"], idempotency_key,
+                    request_hash, quote["release_id"], provider["id"],
+                    candidate_code, provider_reference, quote["decision_json"],
+                    quote["subtotal_amount"], quote["tax_amount"],
+                    quote["total_amount"], quote["currency"],
+                    quote.get("expected_subscription_revision"),
+                    checkout_expires_at,
+                ),
+            ).fetchone()
+            if inserted is not None:
+                provider_order_code = candidate_code
+                break
+        if provider_order_code is None:
+            raise CommercialPolicyError(
+                "PROVIDER_ORDER_CODE_EXHAUSTED",
+                "Không thể cấp mã thanh toán duy nhất; vui lòng thử lại.",
+                status_code=503,
+            )
         order_item_id = new_id("billing-order-item")
         self.cursor.execute(
             """INSERT INTO billing_order_items
@@ -182,6 +200,7 @@ class BillingService:
             "description": public_id[-9:].upper(),
             "cancelUrl": f"{origin}/thanh-toan/huy",
             "returnUrl": f"{origin}/thanh-toan/ket-qua",
+            "expiredAt": checkout_expires_at,
         }
         command_id = new_id("billing-command")
         self.cursor.execute(
@@ -467,6 +486,15 @@ class ProviderCommandExecutor:
             self._fail(claimed, error)
         return self._read_order(claimed["public_id"])
 
+    def _reconciliation_interval(self):
+        return max(
+            10,
+            min(
+                3600,
+                int(self.environment.get("PAYMENT_RECONCILIATION_INTERVAL_SECONDS", 60)),
+            ),
+        )
+
     def _claim(self, command_id):
         connection = self.database.get_connection()
         try:
@@ -534,11 +562,13 @@ class ProviderCommandExecutor:
             checkout_url = result.get("checkoutUrl") or current_order[1]
             expires_at = current_order[2]
             if claimed["command_type"] == "create_checkout":
-                profile_deadline = int(self.clock()) + max(
-                    60, int(claimed.get("checkout_ttl_seconds") or 900)
+                local_deadline = int(expires_at) if expires_at is not None else (
+                    int(self.clock()) + max(
+                        60, int(claimed.get("checkout_ttl_seconds") or 900)
+                    )
                 )
-                provider_deadline = int(result.get("expiredAt") or profile_deadline)
-                expires_at = min(profile_deadline, provider_deadline)
+                provider_deadline = int(result.get("expiredAt") or local_deadline)
+                expires_at = min(local_deadline, provider_deadline)
             elif result.get("expiredAt") is not None:
                 provider_deadline = int(result["expiredAt"])
                 expires_at = (
@@ -579,12 +609,24 @@ class ProviderCommandExecutor:
                     result,
                     provider_profile_id=claimed["provider_profile_id"],
                 )
+            keep_reconciling = (
+                claimed["command_type"] == "query_order"
+                and status in {"PENDING", "PROCESSING", "UNDERPAID"}
+                and (expires_at is None or int(expires_at) > int(self.clock()))
+            )
             connection.execute(
                 """UPDATE billing_provider_commands
-                      SET status = 'completed', lease_expires_at = NULL,
-                          locked_by = NULL, last_error_code = NULL,
-                          updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                (claimed["id"],),
+                      SET status = ?, attempt_count = ?, available_at = ?,
+                          lease_expires_at = NULL, locked_by = NULL,
+                          last_error_code = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?""",
+                (
+                    "pending" if keep_reconciling else "completed",
+                    0 if keep_reconciling else int(claimed["attempt_count"]),
+                    int(self.clock()) + self._reconciliation_interval()
+                    if keep_reconciling else int(self.clock()),
+                    claimed["id"],
+                ),
             )
             connection.commit()
         except PaymentProviderError:
@@ -615,12 +657,19 @@ class ProviderCommandExecutor:
                 else "dead"
             )
             available_at = int(self.clock()) + min(30, 2 ** attempts)
+            next_attempt_count = attempts
+            if claimed["command_type"] == "query_order" and status == "dead":
+                # A failed bounded attempt cycle must not permanently disable
+                # missed-webhook reconciliation for an otherwise open order.
+                status = "pending"
+                next_attempt_count = 0
+                available_at = int(self.clock()) + self._reconciliation_interval()
             connection.execute(
                 """UPDATE billing_provider_commands
-                      SET status = ?, available_at = ?, lease_expires_at = NULL,
+                      SET status = ?, attempt_count = ?, available_at = ?, lease_expires_at = NULL,
                           locked_by = NULL, last_error_code = ?,
                           updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                (status, available_at, error.code, claimed["id"]),
+                (status, next_attempt_count, available_at, error.code, claimed["id"]),
             )
             if status == "dead":
                 connection.execute(

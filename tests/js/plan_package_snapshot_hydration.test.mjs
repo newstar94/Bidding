@@ -10,6 +10,7 @@ import {
   loadPaginatedRecords,
   prefetchPaginatedRecords,
 } from "../../frontend/shared/tableDataUtils.js";
+import { normalizedProjectionKey } from "../../frontend/shared/PaginatedProjectionStore.js";
 
 function deferred() {
   let resolve;
@@ -277,7 +278,13 @@ test("paginated first page cache deduplicates prefetch and click without mixing 
     await loadPaginatedRecords(model, "kehoach", params);
     assert.equal(requests, 5, "loading another query must not evict the cached first page");
 
-    const entry = [...model._paginatedQueryCache.values()][0];
+    const entry = model._paginatedQueryCache.get(normalizedProjectionKey(
+      model,
+      "kehoach",
+      params,
+      { token: model.getWorkspaceToken(), scope: model.workspaceScope.key },
+    ));
+    assert.ok(entry, "the exact first-page projection must remain cached");
     entry.fetchedAt = Date.now() - 31_000;
     assert.equal(getCachedPaginatedRecords(model, "kehoach", params).stale, true);
     await loadPaginatedRecords(model, "kehoach", params);

@@ -131,6 +131,79 @@ test("new version stages the complete confirmed assignee set", async () => {
   );
 });
 
+test("assignment batch uses one IndexedDB transaction and one outbox flush", async () => {
+  const calls = [];
+  const outbox = {
+    checkpoint: () => ({ queue: {} }),
+    enqueue(command) { calls.push(`outbox:${command.kind}`); },
+    async flush() { calls.push("flush"); },
+    restore() {},
+  };
+  const mutation = { state: null, db: null, outbox };
+  const model = {
+    state: { assignments: [{ id: "old-a", empId: "a", targetId: "pkg-1", type: "goithau" }] },
+    db: {
+      async applySyncChanges(changes) { calls.push("idb"); assert.equal(changes.deletions.assignments.length, 1); },
+    },
+    beginWorkspaceMutation() { mutation.state = this.state; mutation.db = this.db; return mutation; },
+    commitWorkspaceMutation(_mutation, _table, options) {
+      outbox.enqueue({ kind: options.deletedIds ? "delete" : "upsert" });
+    },
+    finishWorkspaceMutation() { calls.push("finish"); },
+    entityIndexes: { invalidate() {} },
+  };
+  await applyAssignmentDelta(model, {
+    targetId: "pkg-1",
+    type: "goithau",
+    selectedIds: ["b", "c"],
+  });
+  assert.equal(calls.filter((call) => call === "idb").length, 1);
+  assert.equal(calls.filter((call) => call === "flush").length, 1);
+  assert.deepEqual(model.state.assignments.map(({ empId }) => empId).sort(), ["b", "c"]);
+});
+
+test("assignment batch rolls state, IndexedDB and outbox back when flush fails", async () => {
+  const original = { id: "old-a", empId: "a", targetId: "pkg-1", type: "goithau" };
+  const durableWrites = [];
+  const checkpoint = { queue: { revision: 7 } };
+  let restoredCheckpoint = null;
+  let flushCount = 0;
+  const outbox = {
+    checkpoint: () => checkpoint,
+    enqueue() {},
+    restore(value) { restoredCheckpoint = value; },
+    async flush() {
+      flushCount += 1;
+      if (flushCount === 1) throw new Error("outbox unavailable");
+    },
+  };
+  const mutation = { state: null, db: null, outbox };
+  const model = {
+    state: { assignments: [original] },
+    db: {
+      async applySyncChanges(changes) { durableWrites.push(changes); },
+    },
+    beginWorkspaceMutation() { mutation.state = this.state; mutation.db = this.db; return mutation; },
+    commitWorkspaceMutation() {},
+    finishWorkspaceMutation() {},
+    entityIndexes: { invalidate() {} },
+  };
+
+  await assert.rejects(
+    applyAssignmentDelta(model, {
+      targetId: "pkg-1",
+      type: "goithau",
+      selectedIds: ["b"],
+    }),
+    /outbox unavailable/u,
+  );
+
+  assert.deepEqual(model.state.assignments, [original]);
+  assert.equal(durableWrites.length, 2);
+  assert.deepEqual(durableWrites[1], { replacements: { assignments: [original] } });
+  assert.equal(restoredCheckpoint, checkpoint);
+});
+
 
 test("timeline maps stable action keys and absolute timestamps", () => {
   const value = "2026-07-29T08:30:00+07:00";

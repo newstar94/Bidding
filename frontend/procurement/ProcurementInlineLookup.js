@@ -264,7 +264,7 @@ export class ProcurementInlineLookup {
     };
     setButtonLoading(button, true);
     setLookupLoading(loadingScreen, form, true, code);
-    this.setStatus(status, "Đang lấy dữ liệu từ Mua Sắm Công…", "loading");
+    this.setStatus(status, "Đang kết nối Mua Sắm Công…", "loading");
     try {
       if (normalizedKind === "PACKAGE" || normalizedKind === "PLAN") {
         const prepare = normalizedKind === "PACKAGE"
@@ -279,6 +279,7 @@ export class ProcurementInlineLookup {
           workspaceLease: workspaceLease || null,
         }, { signal: this.lookupController.signal });
         if (!isUiCapabilityCurrent()) return null;
+        this.setStatus(status, "Đang tìm phiên bản hồ sơ…", "loading");
         const importSession = preview?.importSession;
         if (!importSession?.sessionId || !(importSession.revisions || []).length) {
           throw new Error("Phiên nhập gói thầu chưa sẵn sàng.");
@@ -355,6 +356,7 @@ export class ProcurementInlineLookup {
           ),
           saveRevision: async () => ({ ok: true }),
         });
+        this.setStatus(status, "Đang chuẩn bị bản xem trước…", "loading");
         const currentDraft = await sequential.loadCurrent();
         assertUiCapabilityCurrent();
         // A completed inline import installs a live sequential flow on the
@@ -406,6 +408,7 @@ export class ProcurementInlineLookup {
         { signal: this.lookupController.signal },
       );
       if (!isUiCapabilityCurrent()) return null;
+      this.setStatus(status, "Đang chuẩn bị bản xem trước…", "loading");
       if (
         preview?.schemaVersion !== PREVIEW_SCHEMA
         || preview?.kind !== normalizedKind

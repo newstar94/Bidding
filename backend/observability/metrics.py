@@ -90,6 +90,12 @@ _HTTP_DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 _PROCESS_STARTED_AT = time.time()
 _lock = threading.Lock()
+_filesystem_refresh_lock = threading.Lock()
+_filesystem_snapshot: dict[str, Any] = {
+    "value": None,
+    "checked_at": 0.0,
+    "success": False,
+}
 
 _active_http_requests = 0
 _http_request_log_failures = 0
@@ -396,7 +402,7 @@ async def monitor_operational_artifacts():
         await asyncio.sleep(interval)
 
 
-def _filesystem_metrics() -> dict[str, Any]:
+def _collect_filesystem_metrics() -> dict[str, Any]:
     from backend.shared.helpers import database
 
     now = time.time()
@@ -768,6 +774,76 @@ def _series_counter(aggregated, family, *, category="counters") -> Counter:
         key = labels[0] if len(labels) == 1 else tuple(labels)
         result[key] = value
     return result
+
+
+def _filesystem_snapshot_ttl() -> float:
+    try:
+        value = float(os.environ.get("METRICS_OPERATIONAL_SNAPSHOT_TTL_SECONDS", "30"))
+    except ValueError:
+        value = 30.0
+    return min(300.0, max(5.0, value))
+
+
+def refresh_filesystem_metrics(*, force: bool = False) -> dict[str, Any]:
+    """Refresh one expensive operational snapshot while preserving last-good."""
+
+    with _filesystem_refresh_lock:
+        with _lock:
+            cached_value = _filesystem_snapshot.get("value")
+            cached_at = float(_filesystem_snapshot.get("checked_at") or 0.0)
+            cached_success = bool(_filesystem_snapshot.get("success"))
+        if (
+            not force
+            and cached_value is not None
+            and time.time() - cached_at < _filesystem_snapshot_ttl()
+        ):
+            return {**cached_value, "_collection_success": cached_success}
+        try:
+            value = _collect_filesystem_metrics()
+        except Exception:  # noqa: BLE001 - preserve last-good metrics on collector failure.
+            with _lock:
+                _filesystem_snapshot["checked_at"] = time.time()
+                _filesystem_snapshot["success"] = False
+                previous = _filesystem_snapshot.get("value")
+            if previous is None:
+                raise
+            return {**previous, "_collection_success": False}
+        with _lock:
+            _filesystem_snapshot.update(
+                {"value": value, "checked_at": time.time(), "success": True}
+            )
+        return {**value, "_collection_success": True}
+
+
+def _filesystem_metrics() -> dict[str, Any]:
+    now = time.time()
+    with _lock:
+        value = _filesystem_snapshot.get("value")
+        checked_at = float(_filesystem_snapshot.get("checked_at") or 0.0)
+        success = bool(_filesystem_snapshot.get("success"))
+    if value is not None and now - checked_at < _filesystem_snapshot_ttl():
+        return {**value, "_collection_success": success}
+    return refresh_filesystem_metrics()
+
+
+async def monitor_filesystem_metrics():
+    """Keep expensive DB/filesystem metrics off the request-time scrape path."""
+
+    from backend.shared.async_io import run_blocking_io
+
+    while True:
+        try:
+            await run_blocking_io(
+                refresh_filesystem_metrics,
+                force=True,
+                timeout_seconds=30.0,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - monitoring must survive collector failure.
+            # Last-known-good remains available and carries success=0.
+            log_error(error, "filesystem_metrics_refresh", level="WARN")
+        await asyncio.sleep(_filesystem_snapshot_ttl())
 
 
 def _series_value(aggregated, category, family, *labels, default=0):
@@ -1253,6 +1329,7 @@ def render_prometheus(application: object | None = None) -> str:
     filesystem_ok = 1
     try:
         filesystem = _filesystem_metrics()
+        filesystem_ok = 1 if filesystem.get("_collection_success", True) else 0
     except (OSError, ValueError, TypeError):
         filesystem_ok = 0
         filesystem = {"postgres_database_bytes": 0, "postgres_pool": {}, "websocket_outbox_rows": 0, "websocket_outbox_oldest_seconds": 0, "websocket_cluster_active_connections": 0, "background_jobs": {}, "partner_upstream_open": {}, "postgres_stats": {}, "postgres_waiting_locks": 0, "postgres_wal_bytes": 0, "disk": {}, "backup_timestamp": None, "backup_age": None, "restore_timestamp": None, "restore_age": None}
@@ -1401,6 +1478,7 @@ class ObservabilityMiddleware:
 def _reset_metrics_for_tests() -> None:
     global _active_http_requests, _http_request_log_failures
     with _lock:
+        _filesystem_snapshot.update({"value": None, "checked_at": 0.0, "success": False})
         _active_http_requests = 0
         _http_request_log_failures = 0
         _http_requests.clear()

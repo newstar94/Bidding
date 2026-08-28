@@ -314,3 +314,45 @@ test("interactive persistence responds after durability without awaiting remote 
   releaseSync({ ok: true });
   await result.syncPromise;
 });
+
+test("local durable result does not wait for a delayed paginated renderer", async () => {
+  let releaseRender;
+  const delayedRender = new Promise((resolve) => { releaseRender = resolve; });
+  const calls = [];
+  const lease = { outbox: { async flush() { calls.push("flush"); } } };
+  const model = {
+    state: { kehoach: [{ id: "plan-fast" }] },
+    useServerSidePagination: true,
+    beginWorkspaceMutation() { return lease; },
+    assertWorkspaceMutation() {},
+    finishWorkspaceMutation() { calls.push("finish"); },
+    workspaceMutationUsesCurrentResources() { return true; },
+    async persistChanges() { calls.push("persist"); },
+  };
+  const controller = {
+    model,
+    autoSync() { calls.push("sync-start"); return Promise.resolve({ ok: true }); },
+  };
+
+  let settled = false;
+  const resultPromise = persistAndSync(controller, "kehoach", {
+    backgroundSync: true,
+    changes: { upserts: { kehoach: [{ id: "plan-fast" }] } },
+    afterPersist: async () => {
+      calls.push("local-feedback");
+      await delayedRender;
+      calls.push("render-complete");
+    },
+  }).then((result) => {
+    settled = true;
+    return result;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(settled, true, "the caller must settle after IndexedDB/outbox durability");
+  assert.ok(calls.includes("local-feedback"));
+  assert.ok(!calls.includes("render-complete"));
+  const result = await resultPromise;
+  releaseRender();
+  await result.syncPromise;
+});

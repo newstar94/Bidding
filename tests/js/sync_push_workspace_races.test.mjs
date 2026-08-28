@@ -32,7 +32,7 @@ function raceController() {
   const model = {
     workspaceScope: { key: "user:org-a", organizationId: "org-a" },
     workspaceStorage: storageA,
-    state: { goithau: [] },
+    state: { activetab: "goithau", goithau: [] },
     getWorkspaceToken: () => token,
     isWorkspaceCurrent: (candidate) => candidate === token,
   };
@@ -52,13 +52,13 @@ function raceController() {
       token = "user:org-b@2";
       model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
       model.workspaceStorage = storageB;
-      model.state = { goithau: [{ id: "package-b" }] };
+      model.state = { activetab: "goithau", goithau: [{ id: "package-b" }] };
     },
     switchToSameOrgNewEpoch() {
       token = "user:org-a@2";
       model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
       model.workspaceStorage = storageB;
-      model.state = { goithau: [{ id: "package-new-epoch" }] };
+      model.state = { activetab: "goithau", goithau: [{ id: "package-new-epoch" }] };
     },
   };
 }

@@ -11,20 +11,16 @@ import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState
 import { isSessionAuthenticationFailure } from "../auth/AuthSessionController.js";
 import { quarantineForcedSession } from "../auth/logoutMutationSafety.js";
 import {
-  applyAccessContext,
   normalizeOrganizations,
   organizationEmployeeProfile,
   selectActiveOrganization
 } from "../auth/accessContext.js";
 import {
   awaitAuthoritativeMutationBoundary as awaitStartupAuthoritativeMutationBoundary,
-  completeStartupReconciliation,
   getStartupReconciliationState as readStartupReconciliationState,
   initializeStartupReconciliation,
   reconcileRouteDataAtStartup,
   scheduleInitialRouteReconciliation,
-  STARTUP_RECONCILIATION_PHASE,
-  transitionStartupReconciliation,
 } from "./startupReconciliation.js";
 import { resolveCommandArgs } from "../shared/commandArgs.js";
 import {
@@ -48,6 +44,8 @@ import {
   finishWorkspaceRequest,
 } from "./workspaceLease.js";
 import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
+import { workspaceTaskScheduler } from "../shared/WorkspaceTaskScheduler.js";
+import { workspaceLifecycleController } from "./WorkspaceLifecycleController.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -292,24 +290,56 @@ export class BiddingController {
       console.table(metrics);
     }
   }
-  schedulePostStartupTask(task, { timeout = 1500, delay = 0 } = {}) {
-    const run = () => {
-      try {
-        Promise.resolve(task()).catch((err) => {
-          console.error("Post-startup task failed:", err);
-        });
-      } catch (err) {
-        console.error("Post-startup task failed:", err);
-      }
+  schedulePostStartupTask(task, {
+    timeout = 1500,
+    delay = 0,
+    key = null,
+    priority = "maintenance",
+    lane = "network",
+  } = {}) {
+    const workspaceToken = this.model?.getWorkspaceToken?.() || this.model?.workspaceScope?.key || "boot";
+    const schedule = () => {
+      void workspaceTaskScheduler(this).schedule(task, {
+        key: key ? `${workspaceToken}:${key}` : undefined,
+        priority,
+        lane,
+        delay,
+        idleTimeout: timeout,
+      }).catch((err) => {
+        if (err?.name !== "AbortError") console.error("Post-startup task failed:", err);
+      });
     };
-    const scheduleIdle = () => {
-      if ("requestIdleCallback" in window) {
-        requestIdleCallback(run, { timeout });
-      } else {
-        setTimeout(run, delay);
-      }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => requestAnimationFrame(schedule));
+    } else {
+      schedule();
+    }
+  }
+  schedulePrimaryTabWarming(reconciliation = null) {
+    const workspaceToken = this.model?.getWorkspaceToken?.()
+      || this.model?.workspaceScope?.key
+      || "boot";
+    const schedule = () => {
+      const currentToken = this.model?.getWorkspaceToken?.()
+        || this.model?.workspaceScope?.key
+        || "boot";
+      if (workspaceToken !== currentToken) return false;
+      this.schedulePostStartupTask(() => this.warmPrimaryTabs(), {
+        timeout: 700,
+        delay: 0,
+        key: "primary-tab-warm-after-reconcile",
+        priority: "warm",
+      });
+      return true;
     };
-    requestAnimationFrame(() => requestAnimationFrame(scheduleIdle));
+    if (!reconciliation || typeof reconciliation.then !== "function") {
+      return Promise.resolve(schedule());
+    }
+    // A pull invalidates page projections for every changed table. Warming
+    // before that boundary wastes the requests and makes the first click cold.
+    // Warm after either success or failure: failures keep the durable local
+    // workspace usable, while the exact workspace token prevents stale work.
+    return Promise.resolve(reconciliation).then(schedule, schedule);
   }
   async reconcileInitialRouteData() {
     return reconcileRouteDataAtStartup(this);
@@ -447,132 +477,14 @@ export class BiddingController {
     });
   }
   getActiveUserWorkspaceList() {
-    const currentUser = this.model?.state?.activeuser || {};
-    return normalizeOrganizations(currentUser).filter((organization) => organization.status === "active");
+    return workspaceLifecycleController(this).activeOrganizations();
   }
   async switchWorkspaceContext(nextOrgId, options = {}) {
-    const organizationId = String(nextOrgId || "").trim();
-    if (!organizationId) throw new Error("Thiếu organization ID khi đổi workspace");
-    if (this._workspaceTransitionPromise) return this._workspaceTransitionPromise;
-    const currentUser = this.model?.state?.activeuser || {};
-    const organization = this.getActiveUserWorkspaceList().find((item) => item.id === organizationId);
-    if (!organization && !options.accessRevoked) {
-      throw new Error("Tổ chức không còn khả dụng trong phiên hiện tại");
-    }
-    const currentOrganizationId = this.model?.workspaceScope?.organizationId || getActiveOrganizationId();
-    if (currentOrganizationId === organizationId && this.model?.workspaceScope?.organizationId === organizationId) {
-      return { changed: false, organizationId };
-    }
-    const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
-    if (!options.accessRevoked && !options.skipUnsyncedWarning && hasUnsavedForm) {
-      const details = "biểu mẫu đang nhập chưa được lưu";
-      const confirmed = await this.view?.customConfirm?.(
-        "Đổi workspace?",
-        `Workspace hiện tại còn ${details}. Dữ liệu đã lưu trên thiết bị vẫn được giữ riêng theo workspace; nội dung biểu mẫu chưa lưu sẽ không tự chuyển sang workspace mới.`,
-        "refresh-cw"
-      );
-      if (!confirmed) return { changed: false, cancelled: true, organizationId: currentOrganizationId };
-    }
-    this._workspaceTransitionPromise = (async () => {
-      this._workspaceSwitching = true;
-      this.model.beginWorkspaceTransition?.();
-      await this.model.waitForWorkspaceMutations?.();
-      if (this._backgroundSyncTimer) {
-        clearTimeout(this._backgroundSyncTimer);
-        this._backgroundSyncTimer = null;
-      }
-      this._backgroundSyncQueued = false;
-      // Every mutation above has already crossed the durable, workspace-scoped
-      // outbox boundary. Do not make navigation wait for a network push from
-      // the workspace the user is leaving; its pending batch remains isolated
-      // and will resume when that workspace becomes active again.
-      this.disconnectWebSocket?.(false);
-      setActiveOrganizationId(organizationId);
-      window.dispatchEvent(new CustomEvent("bf:workspace-changed", {
-        detail: { organizationId, previousOrganizationId: currentOrganizationId }
-      }));
-      applyAccessContext(currentUser, {
-        ...currentUser,
-        active_org_id: organizationId,
-        platform_role: currentUser.platformRole
-      });
-      this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(currentUser);
-      currentUser.title = this.model.constructor.getRoleTitle(this.model.state.activerole);
-      sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.model.state.activerole));
-      sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(currentUser));
-      localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(currentUser));
-      await this.model.init({
-        userId: currentUser.id || sessionStorage.getItem("bf_user_id"),
-        organizationId,
-        priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname)
-      });
-      await hydratePlanVersionDraftSessions(this.model);
-      this.initializeStartupReconciliation();
-      this._workspacePullGenerations?.clear?.();
-      this._pendingDetailRecordLoads?.clear?.();
-      this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
-      // The new scope is now fully isolated and its local snapshot is ready.
-      // Unlock it before rendering so the shell can respond in the same turn.
-      this.model.endWorkspaceTransition?.();
-      this.model.dashboardSummary = this.model.dashboardSummary || null;
-      if (this.view) this.view._dashboardAggregateCache = null;
-      this.renderWorkspaceSwitcher?.();
-      this.view?.updateActiveUserProfileDisplay?.();
-      if (typeof this.switchTab === "function") {
-        const targetTab = this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
-        this.model.state.activetab = targetTab;
-        await this.switchTab(targetTab, null, true);
-      }
-      this._tabIntentPrefetches?.clear?.();
-      if (typeof requestAnimationFrame === "function") {
-        this.schedulePostStartupTask?.(() => this.warmPrimaryTabs(), { timeout: 700, delay: 100 });
-      }
-      this.setupWebSocketConnection?.();
-      let reconciliation = null;
-      if (!options.localOnly && typeof this.forceSyncData === "function" && navigator.onLine) {
-        // Keep the authoritative boundary: mutations in the new workspace wait
-        // for this promise, while navigation and local rendering do not.
-        const workspaceToken = this.model?.getWorkspaceToken?.()
-          || this.model?.workspaceScope?.key
-          || "";
-        reconciliation = Promise.resolve().then(async () => {
-          try {
-            const pullResult = await this.forceSyncData(false, true);
-            completeStartupReconciliation(this, pullResult, workspaceToken);
-            return pullResult;
-          } catch (error) {
-            completeStartupReconciliation(this, { ok: false, error }, workspaceToken);
-            console.warn("Workspace data refresh will be retried in the background:", error);
-            return { ok: false, error };
-          }
-        });
-        transitionStartupReconciliation(
-          this,
-          STARTUP_RECONCILIATION_PHASE.RECONCILING,
-          { promise: reconciliation, workspaceToken },
-        );
-        this._startupReconciliationPromise = reconciliation;
-        void reconciliation.finally(() => {
-          if (this._startupReconciliationPromise === reconciliation) {
-            this._startupReconciliationPromise = null;
-          }
-        });
-      }
-      return {
-        changed: true,
-        organizationId,
-        pendingPreserved: true,
-        reconciliationPending: Boolean(reconciliation),
-      };
-    })().finally(() => {
-      this.model.endWorkspaceTransition?.();
-      this._workspaceSwitching = false;
-      this._workspaceTransitionPromise = null;
-    });
-    return this._workspaceTransitionPromise;
+    return workspaceLifecycleController(this).switchWorkspace(nextOrgId, options);
   }
   async resetWorkspaceData(nextOrg = "") {
     if (nextOrg) return this.switchWorkspaceContext(nextOrg, { skipPendingFlush: true, accessRevoked: true });
+    workspaceLifecycleController(this).cancelCurrentScope();
     this.disconnectWebSocket?.(false);
     setActiveOrganizationId("");
     await this.model?.deactivateWorkspace?.();
@@ -985,7 +897,11 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();
-    scheduleInitialRouteReconciliation(this, (task, options) => this.schedulePostStartupTask(task, options));
+    const initialReconciliation = scheduleInitialRouteReconciliation(
+      this,
+      (task, options) => this.schedulePostStartupTask(task, options),
+    );
+    void this.schedulePrimaryTabWarming(initialReconciliation);
     this.schedulePostStartupTask(() => this.preloadPrimaryModals(), { timeout: 1800, delay: 400 });
     this.schedulePostStartupTask(() => {
       this.setupFileUploads();
@@ -994,14 +910,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     this._initialSyncStarted = true;
     this.schedulePostStartupTask(() => {
       this.setupAutoSyncBackground();
-      this.scheduleBackgroundSync?.(300);
       this.loadInitDataInBackground();
     }, { timeout: 2500, delay: 900 });
     this.schedulePostStartupTask(() => this.model.hydrateRemainingStorageKeysIdle?.(), { timeout: 2500, delay: 150 });
-    // Enter the warming task promptly. A long idle delay would otherwise leave
-    // the first tab competing with a cold page request even though the shell is
-    // already interactive.
-    this.schedulePostStartupTask(() => this.warmPrimaryTabs(), { timeout: 700, delay: 100 });
   }
   registerCommands() {
     setAppController(this);

@@ -105,9 +105,11 @@ def test_payos_create_verifies_signed_response_and_does_not_send_idempotency_hea
         "description": "DH0000123",
         "cancelUrl": "https://app.example/cancel",
         "returnUrl": "https://app.example/return",
+        "expiredAt": 1_800_000_900,
     })
     assert result["paymentLinkId"] == "link-1"
     assert "x-idempotency-key" not in captured["headers"]
+    assert captured["body"]["expiredAt"] == 1_800_000_900
     assert captured["body"]["signature"] == sign_create_request(captured["body"], KEY)
 
 
@@ -188,4 +190,5 @@ def test_stable_provider_order_code_fits_postgres_integer():
     first = _stable_order_code("billing-order-example")
 
     assert first == _stable_order_code("billing-order-example")
+    assert first != _stable_order_code("billing-order-example", 1)
     assert 1 <= first <= 2_147_483_647

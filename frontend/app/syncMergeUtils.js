@@ -10,11 +10,16 @@ export function mergeIncomingRecords(model, key, incoming) {
   if (!Array.isArray(model.state[key])) {
     model.state[key] = [];
   }
+  const indexById = new Map(
+    model.state[key].map((record, index) => [String(record?.id), index]),
+  );
   incoming.forEach((item) => {
-    const idx = model.state[key].findIndex((x) => String(x.id) === String(item.id));
-    if (idx !== -1) {
-      model.state[key][idx] = item;
+    const id = String(item?.id);
+    const index = indexById.get(id);
+    if (index !== undefined) {
+      model.state[key][index] = item;
     } else {
+      indexById.set(id, model.state[key].length);
       model.state[key].push(item);
     }
   });

@@ -72,19 +72,33 @@ test("primary tab warming limits page prefetch concurrency and fills exact first
   }
 });
 
-test("post-startup warming stays after loader hide and a failed task cannot break the app", async () => {
+test("post-startup warming waits for authoritative reconciliation before filling page caches", async () => {
   const controllerSource = fs.readFileSync("frontend/app/BiddingController.js", "utf8");
   const loaderHiddenAt = controllerSource.indexOf("hideInitLoader();");
-  const warmingScheduledAt = controllerSource.indexOf(
-    "this.schedulePostStartupTask(() => this.warmPrimaryTabs()",
-    loaderHiddenAt,
-  );
-  assert.ok(loaderHiddenAt >= 0 && warmingScheduledAt > loaderHiddenAt);
-  assert.match(
-    controllerSource.slice(warmingScheduledAt, warmingScheduledAt + 180),
-    /timeout:\s*700,\s*delay:\s*100/,
-    "warming must enter the reconciliation wait promptly instead of waiting for a long idle timeout",
-  );
+  const reconciliationAt = controllerSource.indexOf("scheduleInitialRouteReconciliation", loaderHiddenAt);
+  const warmingAt = controllerSource.indexOf("schedulePrimaryTabWarming", reconciliationAt);
+  assert.ok(loaderHiddenAt >= 0 && reconciliationAt > loaderHiddenAt && warmingAt > reconciliationAt);
+
+  const pendingReconciliation = deferred();
+  const scheduled = [];
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = { getWorkspaceToken: () => "user:org-a@1" };
+  controller.schedulePostStartupTask = (task, options) => scheduled.push({ task, options });
+  const warming = controller.schedulePrimaryTabWarming(pendingReconciliation.promise);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(scheduled.length, 0, "warming must not race the pull that invalidates query caches");
+  pendingReconciliation.resolve(true);
+  assert.equal(await warming, true);
+  assert.equal(scheduled.length, 1);
+  assert.deepEqual(scheduled[0].options, {
+    timeout: 700,
+    delay: 0,
+    key: "primary-tab-warm-after-reconcile",
+    priority: "warm",
+  });
+});
+
+test("a failed post-startup task cannot break the app", async () => {
 
   const previousWindow = globalThis.window;
   const previousAnimationFrame = globalThis.requestAnimationFrame;
@@ -110,6 +124,11 @@ test("post-startup warming stays after loader hide and a failed task cannot brea
     if (previousIdleCallback === undefined) delete globalThis.requestIdleCallback;
     else globalThis.requestIdleCallback = previousIdleCallback;
   }
+});
+
+test("expert renderer uses the same search query key as primary-tab warming", () => {
+  const source = fs.readFileSync("frontend/experts/ChuyenGiaComponent.js", "utf8");
+  assert.match(source, /pageParams\s*=\s*\{\s*page:\s*currentPage,\s*pageSize,\s*search:\s*searchVal,/);
 });
 
 test("view-module warming reports a failure without rejecting the background task", async () => {

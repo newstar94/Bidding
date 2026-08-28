@@ -57,6 +57,17 @@ test("canonical E2E harnesses use actionability and condition barriers", () => {
   assert.deepEqual(violations, []);
 });
 
+test("canonical E2E auth barriers tolerate an overlay detached during navigation", () => {
+  const violations = [];
+  for (const name of canonicalE2eScripts) {
+    const source = fs.readFileSync(path.join(scriptsRoot, name), "utf8");
+    if (/getComputedStyle\(document\.getElementById\("auth-overlay"\)\)\.display\s*===\s*"none"/u.test(source)) {
+      violations.push(`${name}: detached auth overlay can throw`);
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
 
 test("canonical E2E harnesses derive calendar values from the test clock", () => {
   const violations = [];

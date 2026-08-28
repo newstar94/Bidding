@@ -297,7 +297,12 @@ async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
   return { ok: false, error, storageDegraded: true };
 }
 
-async function executeForceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
+async function executeForceSyncData(
+  isBackground = false,
+  forceFull = false,
+  routeOnly = false,
+  signal = null,
+) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
   const pullResources = capturePullResources(this);
@@ -315,7 +320,7 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
   this._workspacePullGenerations ||= new Map();
   const pullGeneration = (this._workspacePullGenerations.get(pullKey) || 0) + 1;
   this._workspacePullGenerations.set(pullKey, pullGeneration);
-  const pullIsCurrent = () => pullResourcesAreCurrent(
+  const pullIsCurrent = () => !signal?.aborted && pullResourcesAreCurrent(
     this, workspace, pullResources, pullKey, pullGeneration,
   );
   const stalePullResult = () => workspaceIsCurrent(this, workspace)
@@ -371,12 +376,14 @@ async function executeForceSyncData(isBackground = false, forceFull = false, rou
         afterVersion: query.after_version,
         visibilityToken,
         headers: requestHeaders,
+        signal,
       });
       response = delta.response;
       dbData = delta.snapshot;
     } else {
       response = await apiFetch(`/api/get-all-data?${queryParams.toString()}`, {
         headers: requestHeaders,
+        signal,
       });
     }
     if (!pullIsCurrent()) return stalePullResult();
@@ -507,10 +514,22 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
   const key = pullFlightKey(workspace);
   this._workspacePullFlights ||= new Map();
   let flights = this._workspacePullFlights.get(key);
-  if (!flights) {
-    flights = new Set();
+  if (!(flights instanceof Map)) {
+    flights = new Map();
     this._workspacePullFlights.set(key, flights);
   }
+
+  const requestKey = `${isBackground ? "background" : "foreground"}:${forceFull ? "full" : "delta"}:${routeOnly ? "route" : "workspace"}`;
+  const existing = flights.get(requestKey);
+  if (existing?.promise) return existing.promise;
+
+  // A different pull for the same workspace supersedes older network work.
+  // The generation guard remains the final protection when a transport does
+  // not implement AbortSignal correctly.
+  for (const [otherKey, flight] of flights) {
+    if (otherKey !== requestKey) flight.controller?.abort?.("Pull superseded");
+  }
+  const requestController = new AbortController();
 
   const activePush = this._autoSyncOwner?.workspaceToken === key
     ? this._autoSyncOwner.promise
@@ -526,15 +545,21 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
           workspaceChanged: true,
         };
       }
-      return executeForceSyncData.call(this, isBackground, forceFull, routeOnly);
+      return executeForceSyncData.call(
+        this,
+        isBackground,
+        forceFull,
+        routeOnly,
+        requestController.signal,
+      );
     });
   let tracked;
   tracked = run.finally(() => {
-    flights.delete(tracked);
+    if (flights.get(requestKey)?.promise === tracked) flights.delete(requestKey);
     if (flights.size === 0 && this._workspacePullFlights?.get(key) === flights) {
       this._workspacePullFlights.delete(key);
     }
   });
-  flights.add(tracked);
+  flights.set(requestKey, { controller: requestController, promise: tracked });
   return tracked;
 }

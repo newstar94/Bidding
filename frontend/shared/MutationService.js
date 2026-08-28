@@ -1,4 +1,5 @@
 import { isSyncedStateKey } from "./persistencePolicy.js";
+import { workspaceMutationCoordinator } from "./WorkspaceMutationCoordinator.js";
 
 function explicitTableChanges(changes, table) {
   if (!changes || typeof changes !== "object") return null;
@@ -20,6 +21,8 @@ function explicitTableChanges(changes, table) {
 }
 
 export async function persistAndSync(controller, tableKeys, {
+  afterCanonicalSync,
+  afterLocalDurable,
   afterPersist,
   allowLegacyPersistence = false,
   authoritativeBoundaryChecked = false,
@@ -92,6 +95,7 @@ export async function persistAndSync(controller, tableKeys, {
     return { ok: false, code: "WORKSPACE_CHANGED", workspaceChanged: true };
   }
   const usesServerPagination = Boolean(model?.useServerSidePagination);
+  const phaseCoordinator = workspaceMutationCoordinator(controller);
   // The server-side mutation flow already refreshes changed tables from
   // autoSync(). Defer that refresh when the caller supplies afterPersist so
   // the view is rendered exactly once after the sync has committed. Rendering
@@ -127,14 +131,17 @@ export async function persistAndSync(controller, tableKeys, {
     if (!backgroundSync && usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
       await afterPersist();
     }
+    if (syncResult?.ok !== false && typeof afterCanonicalSync === "function") {
+      await phaseCoordinator.afterCanonicalSync(keys.join(","), afterCanonicalSync);
+    }
     return syncResult;
   };
   if (backgroundSync) {
-    if (usesServerPagination && typeof afterPersist === "function") {
+    const localCallback = afterLocalDurable || afterPersist;
+    if (typeof localCallback === "function") {
       // The local state and outbox are durable now. Render that state
-      // immediately; the successful server response performs the canonical
-      // paginated refresh through the same callback.
-      await afterPersist();
+      // immediately without making delayed pagination part of the save path.
+      phaseCoordinator.afterLocalDurable(localCallback);
     }
     const syncPromise = startRemoteSync();
     // Once IndexedDB and the outbox are durable, the workspace lease no longer

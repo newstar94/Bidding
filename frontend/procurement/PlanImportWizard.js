@@ -722,7 +722,7 @@ export class PlanImportWizard {
       && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
       && this.controller?.model?.workspaceStorage === originStorage
     );
-    this.setStatus("Đang chuẩn bị preview từ nguồn…");
+    this.setStatus("Đang kết nối Mua Sắm Công…");
     try {
       const preview = await this.client.preparePlan({
         code,
@@ -732,6 +732,7 @@ export class PlanImportWizard {
         workspaceLease: this.workspaceLease || null,
       }, { signal: this.prepareController.signal });
       if (!isPrepareCapabilityCurrent()) return;
+      this.setStatus("Đang tìm phiên bản hồ sơ…");
       this.preview = preview;
       const draft = this.draftStore.load();
       const draftMatchesPreview = draft?.bundleDigest === preview.bundleDigest;
@@ -740,6 +741,7 @@ export class PlanImportWizard {
       ) ? draft.decisions : {
         packageMatches: {}, fieldConflicts: {}, fieldValues: {},
       };
+      this.setStatus("Đang chuẩn bị bản xem trước…");
       renderPlan(this.modal, preview);
       renderPackages(this.modal, preview, this.decisions);
       renderIssues(this.modal, preview, this.decisions);

@@ -165,14 +165,39 @@ _pool = _BlockingIOPool(
     queue_size=_bounded_env_int("BLOCKING_IO_MAX_QUEUE", 16, 0, 128),
 )
 
+_lane_lock = threading.Lock()
+_lanes: dict[str, _BlockingIOPool] = {}
+
+
+def _normalized_lane_name(value: str | None) -> str:
+    name = str(value or "default").strip().lower().replace("-", "_")
+    return name if name and name.replace("_", "").isalnum() else "default"
+
+
+def _lane_pool(name: str | None) -> _BlockingIOPool:
+    lane = _normalized_lane_name(name)
+    if lane == "default":
+        return _pool
+    with _lane_lock:
+        pool = _lanes.get(lane)
+        if pool is None:
+            prefix = f"BLOCKING_IO_{lane.upper()}"
+            pool = _BlockingIOPool(
+                workers=_bounded_env_int(f"{prefix}_MAX_WORKERS", 2, 1, 16),
+                queue_size=_bounded_env_int(f"{prefix}_MAX_QUEUE", 4, 0, 64),
+            )
+            _lanes[lane] = pool
+        return pool
+
 
 async def run_blocking_io(
     function: Callable[..., Any],
     *args: Any,
     timeout_seconds: float | None = 15.0,
+    lane: str | None = None,
     **kwargs: Any,
 ) -> Any:
-    return await _pool.run(
+    return await _lane_pool(lane).run(
         function,
         *args,
         timeout_seconds=timeout_seconds,
@@ -182,3 +207,11 @@ async def run_blocking_io(
 
 def get_blocking_io_stats() -> BlockingIOStats:
     return _pool.stats()
+
+
+def get_blocking_io_lane_stats() -> dict[str, BlockingIOStats]:
+    with _lane_lock:
+        lanes = dict(_lanes)
+    return {"default": _pool.stats(), **{
+        name: pool.stats() for name, pool in lanes.items()
+    }}

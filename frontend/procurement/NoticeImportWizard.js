@@ -157,7 +157,7 @@ export class NoticeImportWizard {
     const selectedRevision = this.modal.querySelector(
       "[data-procurement-notice-revision]",
     ).value || null;
-    this.setStatus("Đang chuẩn bị preview thông báo…");
+    this.setStatus("Đang kết nối Mua Sắm Công…");
     try {
       const preview = await this.client.prepareNotice({
         code,
@@ -167,7 +167,9 @@ export class NoticeImportWizard {
         workspaceLease: requestWorkspaceLease || null,
       }, { signal: this.prepareController.signal });
       if (!isPrepareCapabilityCurrent()) return;
+      this.setStatus("Đang tìm phiên bản hồ sơ…");
       this.preview = preview;
+      this.setStatus("Đang chuẩn bị bản xem trước…");
       renderPreview(this.modal, preview);
       this.refreshApplyGate();
       this.setStatus(

@@ -163,6 +163,9 @@ async function waitForApp(page) {
 }
 
 async function uiLogin(browser, accountData, expectedRole, contextOptions = {}) {
+  // Authentication and authorization are the subject of this suite. Keep the
+  // service-worker lifecycle in its dedicated smoke tests so a worker install
+  // or cache shutdown cannot retain a multi-tab auth context indefinitely.
   const context = await browser.newContext({ locale: "vi-VN", ...contextOptions });
   const page = await context.newPage();
   await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
@@ -247,7 +250,7 @@ try {
     assert(await page.locator(`#${deniedId}`).isVisible() === deniedVisible, `${role}: wrong denied-menu visibility`);
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForApp(page);
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none");
+    await page.locator("#auth-overlay").waitFor({ state: "hidden" });
     const secondTab = await context.newPage();
     await secondTab.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
     await waitForApp(secondTab);
@@ -444,7 +447,7 @@ try {
   })).catch(() => null);
   await workspaceUi.page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(workspaceUi.page);
-  await workspaceUi.page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none");
+  await workspaceUi.page.locator("#auth-overlay").waitFor({ state: "hidden" });
   const workspaceRefreshEvidence = await workspaceRefreshRequest;
   const workspaceClientState = await workspaceUi.page.evaluate(() => ({
     session: sessionStorage.getItem("bf_active_org"),
@@ -566,7 +569,7 @@ try {
   }, { timeout: 20_000 });
   await xssPage.goto(`${baseURL}/chuyen-gia`, { waitUntil: "domcontentloaded" });
   await waitForApp(xssPage);
-  await xssPage.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+  await xssPage.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
   await initialExpertPage;
   const searchedExpertPage = xssPage.waitForResponse((candidate) => {
     const url = new URL(candidate.url());
@@ -583,7 +586,9 @@ try {
   if (!xssVisible) {
     const diagnostics = await xssPage.evaluate(() => ({
       route: location.pathname,
-      overlay: getComputedStyle(document.getElementById("auth-overlay")).display,
+      overlay: document.getElementById("auth-overlay")
+        ? getComputedStyle(document.getElementById("auth-overlay")).display
+        : "detached",
       search: document.getElementById("search-chuyengia")?.value || "",
       tableText: document.getElementById("chuyengia-table")?.innerText || "",
       bodyText: document.body.innerText.slice(-1500),

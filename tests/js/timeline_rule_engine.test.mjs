@@ -195,6 +195,7 @@ test("timeline renders every filtered milestone without pagination", () => {
   assert.match(source, /const rows = filteredRows\(state\);[\s\S]*?rows\.forEach\(\(row\) => \{/);
   assert.doesNotMatch(source, /paginateTableItems|renderTablePagination|timeline-pagination/);
   assert.doesNotMatch(markup, /timeline-pagination|Phân trang timeline/);
+  assert.match(source, /void renderPromise\.catch\(/u);
 });
 
 test("timeline sticky header stays above row controls while scrolling", () => {

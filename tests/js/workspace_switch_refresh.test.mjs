@@ -60,6 +60,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
   try {
     const syncCalls = [];
     const pushCalls = [];
+    const cancelledScopes = [];
     const activeUser = {
       id: "user-1",
       name: "Chuyên viên",
@@ -89,6 +90,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
         resolveAllowedActiveRole: () => "employee",
       },
       endWorkspaceTransition() {},
+      getWorkspaceToken() { return `user-1:${this.workspaceScope.organizationId}@7`; },
       async init({ organizationId }) {
         this.workspaceScope = { organizationId };
       },
@@ -99,6 +101,10 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     const controller = Object.create(BiddingController.prototype);
     Object.assign(controller, {
       _pendingDetailRecordLoads: new Map(),
+      _workspaceTaskScheduler: {
+        cancelScope(prefix) { cancelledScopes.push(prefix); },
+        schedule() { return Promise.resolve(); },
+      },
       _workspacePullGenerations: new Map(),
       _startupReconciliationPromise: Promise.resolve({ ok: false, stale: true }),
       autoSync: async () => {
@@ -130,6 +136,7 @@ test("workspace switch forces an authoritative pull before rendering", async () 
     );
     assert.equal(model.workspaceScope.organizationId, "org-hcp");
     assert.equal(session.getItem("bf_active_org"), "org-hcp");
+    assert.deepEqual(cancelledScopes, ["user-1:personal:user-1@7:"]);
     assert.deepEqual(
       pushCalls,
       [],
@@ -225,6 +232,10 @@ test("workspace switch renders the isolated local shell without waiting for the 
       getStartupPriorityKeys: () => [],
       model,
       renderWorkspaceSwitcher() { events.push("workspace-rendered"); },
+      schedulePrimaryTabWarming(reconciliation) {
+        events.push("warm-scheduled");
+        void reconciliation?.then?.(() => events.push("warm-after-pull"));
+      },
       setupWebSocketConnection() {},
       async switchTab() { events.push("tab-rendered"); },
       updateSyncState() {},
@@ -240,9 +251,13 @@ test("workspace switch renders the isolated local shell without waiting for the 
     assert.ok(events.includes("tab-rendered"), "the new workspace shell must render immediately");
     assert.ok(events.includes("pull-start"), "authoritative reconciliation still runs");
     assert.ok(!events.includes("pull-end"), "the regression harness must keep the network pull pending");
+    assert.ok(events.includes("warm-scheduled"));
+    assert.ok(!events.includes("warm-after-pull"), "warming must not race cache-invalidating reconciliation");
 
     releasePull({ ok: true });
     await switching;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(events.includes("warm-after-pull"));
   } finally {
     releasePull?.({ ok: true });
     globalNames.forEach((name) => {

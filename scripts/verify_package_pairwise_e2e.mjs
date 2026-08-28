@@ -158,7 +158,7 @@ try {
   await page.locator("#login-username").fill(account.username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => getComputedStyle(document.getElementById("auth-overlay")).display === "none", null, { timeout: 20_000 });
+  await page.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
 
   for (const testCase of cases) {
     await createPackage(page, testCase, httpErrors);

@@ -16,6 +16,33 @@ test("explicit package workflow navigation is captured before asynchronous hydra
   assert.equal(view._currentWorkflowTab, "result");
 });
 
+test("a package delta renders only the active list and marks hidden projections dirty", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { getElementById: () => ({}) };
+  const calls = [];
+  const controller = {
+    model: { state: { activetab: "goithau" } },
+    view: {
+      renderDashboard: () => calls.push("dashboard"),
+      renderKeHoachTable: () => calls.push("kehoach"),
+      renderGoiThauTable: () => calls.push("goithau"),
+      renderPackageTimeline: () => calls.push("timeline"),
+      renderNhaThauTable: () => calls.push("nhathau"),
+      renderHopDongTable: () => calls.push("hopdong"),
+    },
+  };
+  try {
+    await renderChangedState(controller, new Set(["goithau"]));
+    assert.deepEqual(calls, ["goithau"]);
+    assert.ok(controller._dirtyRouteProjections.has("dashboard"));
+    assert.ok(controller._dirtyRouteProjections.has("goithau-timeline"));
+    assert.ok(controller._dirtyRouteProjections.has("nhathau"));
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test("background reconciliation renders the current route after navigation", async () => {
   const previousDocument = globalThis.document;
   const previousAnimationFrame = globalThis.requestAnimationFrame;
