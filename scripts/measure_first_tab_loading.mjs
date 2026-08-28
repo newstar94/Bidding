@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { FIRST_TAB_WARM_SETTLE_MS } from "../frontend/app/startupTiming.js";
 
 const argumentsSet = new Set(process.argv.slice(2));
 const shouldAssert = argumentsSet.has("--assert");
@@ -10,7 +11,10 @@ const username = process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admi
 const password = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD;
 const activeRole = process.env.FIRST_TAB_ACTIVE_ROLE || "manager";
 const route = process.env.FIRST_TAB_ROUTE || (activeRole === "super_admin" ? "/tong-quan-admin" : "/tong-quan");
-const warmSettleMs = Math.max(0, Number(process.env.FIRST_TAB_WARM_SETTLE_MS || 4000));
+const warmSettleMs = Math.max(
+  0,
+  Number(process.env.FIRST_TAB_WARM_SETTLE_MS || FIRST_TAB_WARM_SETTLE_MS),
+);
 const tabLimitMs = Math.max(1, Number(process.env.FIRST_TAB_LIMIT_MS || 100));
 const outputPath = path.resolve(
   process.env.FIRST_TAB_METRICS_OUTPUT || "data/logs/first-tab-performance.json",

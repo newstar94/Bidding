@@ -27,6 +27,39 @@ async function expectFilterDropdownToOpen(page, route, selectId) {
   await expect(page.locator(`#${listboxId}`)).toBeVisible();
 }
 
+test("authenticated cold load hydrates icons and navigation handlers", async ({ page }) => {
+  const runtimeFailures = [];
+  const appOrigin = new URL(String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000")).origin;
+  page.on("pageerror", (error) => runtimeFailures.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const location = message.location();
+    if (!location.url || location.url.startsWith(appOrigin)) {
+      runtimeFailures.push(`console: ${message.text()}`);
+    }
+  });
+
+  const login = await page.context().request.post("/api/auth/login", {
+    data: { username, password, remember: false },
+  });
+  expect(login.ok()).toBe(true);
+
+  const response = await page.goto("/tong-quan", { waitUntil: "domcontentloaded" });
+  expect(response?.ok()).toBe(true);
+  await page.waitForFunction(() => (
+    performance.getEntriesByName("bf:first-app-frame").length > 0
+  ));
+  await waitForApp(page);
+  await expect(page.locator("i[data-lucide]")).toHaveCount(0);
+  expect(await page.locator("svg[data-lucide]").count()).toBeGreaterThan(0);
+
+  const profile = page.locator("#header-profile-trigger");
+  await expect(profile).toBeVisible();
+  await profile.click();
+  await expect(page.locator("#profile-dropdown-menu")).toHaveClass(/active/);
+  expect(runtimeFailures).toEqual([]);
+});
+
 test("required browser renders public routes, shell, and filter dropdowns", async ({ page }) => {
   const landing = await page.goto("/", { waitUntil: "domcontentloaded" });
   expect(landing?.ok()).toBe(true);

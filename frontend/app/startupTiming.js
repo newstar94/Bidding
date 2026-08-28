@@ -1,0 +1,17 @@
+export const POST_STARTUP_INTERACTION_GRACE_MS = 6000;
+
+export const POST_STARTUP_TIMING = Object.freeze({
+  primaryTabWarm: POST_STARTUP_INTERACTION_GRACE_MS + 1000,
+  fileAndHolidaySetup: POST_STARTUP_INTERACTION_GRACE_MS + 6000,
+  remainingStorageHydration: POST_STARTUP_INTERACTION_GRACE_MS + 8000,
+  notificationCenter: POST_STARTUP_INTERACTION_GRACE_MS + 10000,
+  primaryModalPreload: POST_STARTUP_INTERACTION_GRACE_MS + 12000,
+  assistant: POST_STARTUP_INTERACTION_GRACE_MS + 14000,
+  // BiddingWorkflows is the largest secure chunk (~943 KB). It is loaded by
+  // the action/route intent that needs it; automatic preload must not compete
+  // with an active browser session.
+  biddingWorkflows: POST_STARTUP_INTERACTION_GRACE_MS + 120000,
+  backgroundSync: POST_STARTUP_INTERACTION_GRACE_MS + 30000,
+});
+
+export const FIRST_TAB_WARM_SETTLE_MS = POST_STARTUP_TIMING.primaryTabWarm + 5000;

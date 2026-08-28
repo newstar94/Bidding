@@ -1,12 +1,3 @@
-import { BiddingModel } from "./BiddingModel.js";
-import { BiddingView, installPrimaryBusinessViewModule } from "./BiddingView.js";
-import * as PrimaryBusinessView from "./PrimaryBusinessView.js";
-import { BiddingController } from "./BiddingController.js";
-import * as Auth from "../auth/AuthController.js";
-import * as MainUI from "./BiddingControllerUI.js";
-import * as MainForms from "./BiddingControllerForms.js";
-import * as MainSync from "./BiddingControllerSync.js";
-import * as IntegrationBridges from "./IntegrationWorkflowBridges.js";
 import { installPrototypeModules } from "./moduleRegistry.js";
 import { installAdminModule } from "./adminModuleLoader.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -14,6 +5,7 @@ import { beginExplicitLogout, hideInitLoader } from "../auth/authRuntimeState.js
 import { setActiveOrganizationId } from "./workspaceState.js";
 import { reportIndexedDBReadFailure } from "../shared/releaseDiagnostics.js";
 import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
+import { POST_STARTUP_TIMING } from "./startupTiming.js";
 
 export function sessionHasActiveWorkspace(initialSession) {
   const user = initialSession?.user;
@@ -123,7 +115,7 @@ export function scheduleWorkspaceEnhancements(controller, {
     }
   }, {
     timeout: 2500,
-    delay: 1800,
+    delay: POST_STARTUP_TIMING.notificationCenter,
     key: "notification-center",
     priority: "maintenance",
   });
@@ -136,7 +128,7 @@ export function scheduleWorkspaceEnhancements(controller, {
     }
   }, {
     timeout: 3000,
-    delay: 2500,
+    delay: POST_STARTUP_TIMING.assistant,
     key: "assistant",
     priority: "maintenance",
   });
@@ -148,6 +140,25 @@ export async function bootstrapWorkspace(initialSession) {
     await bootstrapUnassignedAccount(initialSession);
     return;
   }
+  const [
+    { BiddingModel },
+    { BiddingView },
+    { BiddingController },
+    Auth,
+    MainUI,
+    MainForms,
+    MainSync,
+    IntegrationBridges,
+  ] = await Promise.all([
+    import("./BiddingModel.js"),
+    import("./BiddingView.js"),
+    import("./BiddingController.js"),
+    import("../auth/AuthController.js"),
+    import("./BiddingControllerUI.js"),
+    import("./BiddingControllerForms.js"),
+    import("./BiddingControllerSync.js"),
+    import("./IntegrationWorkflowBridges.js"),
+  ]);
   const effectiveRoles = initialSession?.user?.effective_roles || [];
   const needsAdmin = effectiveRoles.some((role) => ["manager", "super_admin"].includes(role));
   const Admin = needsAdmin ? await installAdminModule(BiddingController) : {
@@ -162,7 +173,6 @@ export async function bootstrapWorkspace(initialSession) {
     { name: "main-sync", module: MainSync },
     { name: "integration-bridges", module: IntegrationBridges },
   ]);
-  installPrimaryBusinessViewModule(PrimaryBusinessView);
   const model = new BiddingModel();
   model.addStorageHydrationListener(({ code, state }) => {
     if (state === "failed") {

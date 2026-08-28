@@ -23,7 +23,7 @@ const ROUTES = Object.freeze([
   [
     "frontend/documents/WordPublication.js",
     ".word-publication-page",
-    "frontend/app/workspaceBootstrap.js",
+    "frontend/app/IntegrationWorkflowBridges.js",
   ],
   [
     "frontend/documents/WordTemplateAssignments.js",

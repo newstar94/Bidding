@@ -73,6 +73,12 @@ const VIEW_MODULE_LOADERS = Object.freeze({
     await module.ensureDashboardStyles();
     return module;
   },
+  "plan-list": () => import("../plans/KeHoachView.js"),
+  "package-list": () => import("../packages/GoiThauTable.js"),
+  "investor-list": () => import("../partners/ChuDauTuComponent.js"),
+  "contractor-list": () => import("../partners/NhaThauComponent.js"),
+  "expert-list": () => import("../experts/ChuyenGiaComponent.js"),
+  "contract-list": () => import("../contracts/HopDongComponent.js"),
   plan: () => import("./PlanView.js"),
   partner: () => import("../partners/PartnerView.js"),
   timeline: () => import("../packages/PackageTimelineView.js")
@@ -81,19 +87,19 @@ const VIEW_MODULE_LOADERS = Object.freeze({
 const VIEW_MODULES_BY_TAB = Object.freeze({
   dashboard: ["dashboard"],
   "superadmin-dashboard": ["dashboard"],
-  kehoach: ["business-list"],
+  kehoach: ["plan-list"],
   "kehoach-detail": ["plan"],
-  goithau: ["business-list"],
+  goithau: ["package-list"],
   "goithau-timeline": ["timeline"],
   "goithau-detail": ["plan"],
   mothau: ["plan"],
   danhgiahsdt: ["plan"],
-  chudautu: ["business-list"],
+  chudautu: ["investor-list"],
   "chudautu-detail": ["partner"],
-  nhathau: ["business-list"],
+  nhathau: ["contractor-list"],
   "nhathau-detail": ["partner"],
-  chuyengia: ["business-list"],
-  hopdong: ["business-list"],
+  chuyengia: ["expert-list"],
+  hopdong: ["contract-list"],
   "hopdong-detail": ["partner"],
   bieumau: ["partner"]
 });
@@ -108,14 +114,6 @@ export function getViewModuleLoadDiagnostics(moduleName) {
     pending: pendingViewModules.has(moduleName),
     loadCount: Number(viewModuleLoadCount.get(moduleName) || 0),
   };
-}
-
-export function installPrimaryBusinessViewModule(module) {
-  if (!module) throw new TypeError("Primary business view module is required.");
-  installPrototypeModules(BiddingView, [
-    { name: "primary-business-view", module },
-  ]);
-  installedViewModules.add("business-list");
 }
 
 export class BiddingView {

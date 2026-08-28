@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from backend import app as app_module
 from backend.http_middleware import ResponseIntegrityMiddleware, SecurityHeadersMiddleware
@@ -157,7 +158,7 @@ def test_dynamic_response_keeps_defensive_chunked_framing():
     assert "content-length" not in headers
 
 
-def test_production_preloads_hashed_app_before_authenticated_workspace(monkeypatch, tmp_path):
+def test_bundle_mode_preloads_app_graph_and_authenticated_workspace_entry(monkeypatch, tmp_path):
     manifest_directory = tmp_path / "dist" / ".vite"
     manifest_directory.mkdir(parents=True)
     manifest = {
@@ -187,7 +188,46 @@ def test_production_preloads_hashed_app_before_authenticated_workspace(monkeypat
         '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/workspace-12345678.js">',
-        '<link rel="modulepreload" href="/dist/assets/workspace-shared-12345678.js">',
+    ]
+
+
+def test_production_preloads_app_graph_and_authenticated_workspace_entry(monkeypatch, tmp_path):
+    dist_root = tmp_path / "dist"
+    assets_directory = dist_root / "assets"
+    assets_directory.mkdir(parents=True)
+    manifest = {
+        "frontend/app/app.js": {
+            "file": "assets/app-12345678.js",
+            "imports": ["_app-shared.js"],
+        },
+        "_app-shared.js": {"file": "assets/app-shared-12345678.js"},
+        "frontend/app/workspaceBootstrap.js": {
+            "file": "assets/workspace-12345678.js",
+            "imports": ["_workspace-shared.js"],
+        },
+        "_workspace-shared.js": {"file": "assets/workspace-shared-12345678.js"},
+    }
+    for entry in manifest.values():
+        (dist_root / entry["file"]).write_text("export {};", encoding="utf-8")
+    frontend_assets = SimpleNamespace(manifest=manifest, dist_root=dist_root)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", True)
+    monkeypatch.setattr(
+        app_module,
+        "assert_production_frontend_ready",
+        lambda _project_root: frontend_assets,
+    )
+
+    anonymous = app_module._workspace_preload_tag({"valid": False})
+    authenticated = app_module._workspace_preload_tag({"valid": True})
+
+    assert anonymous.splitlines() == [
+        '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+    ]
+    assert authenticated.splitlines() == [
+        '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/workspace-12345678.js">',
     ]
 
 

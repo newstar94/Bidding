@@ -57,6 +57,7 @@ from backend.frontend_assets import (
     APP_ENTRY,
     FrontendAssetError,
     assert_production_frontend_ready,
+    resolve_frontend_entry,
     resolve_preload_graph,
 )
 
@@ -430,17 +431,20 @@ def _workspace_preload_tag(session_bootstrap):
     if IS_PRODUCTION:
         frontend_assets = assert_production_frontend_ready(project_root)
         workspace_entry = 'frontend/app/workspaceBootstrap.js'
-        preload_roots = [APP_ENTRY]
-        if session_bootstrap.get("valid") and workspace_entry in frontend_assets.manifest:
-            preload_roots.append(workspace_entry)
-        preload_files = resolve_preload_graph(
+        preload_files = list(resolve_preload_graph(
             frontend_assets.manifest,
             frontend_assets.dist_root,
-            tuple(preload_roots),
-        )
+            (APP_ENTRY,),
+        ))
+        if session_bootstrap.get("valid") and workspace_entry in frontend_assets.manifest:
+            preload_files.append(resolve_frontend_entry(
+                frontend_assets.manifest,
+                frontend_assets.dist_root,
+                workspace_entry,
+            ))
         return "\n".join(
             f'<link rel="modulepreload" href="/dist/{bundle_file}">'
-            for bundle_file in preload_files
+            for bundle_file in dict.fromkeys(preload_files)
         )
 
     manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
@@ -449,27 +453,27 @@ def _workspace_preload_tag(session_bootstrap):
             manifest = json.load(manifest_file)
         workspace_entry = 'frontend/app/workspaceBootstrap.js'
         app_entry = 'frontend/app/app.js'
-        preload_roots = [app_entry]
-        if session_bootstrap.get("valid") and workspace_entry in manifest:
-            preload_roots.append(workspace_entry)
         visited = set()
         preload_files = []
-        for preload_root in preload_roots:
-            pending = [preload_root]
-            while pending:
-                manifest_key = pending.pop(0)
-                if manifest_key in visited:
-                    continue
-                visited.add(manifest_key)
-                entry = manifest.get(manifest_key, {})
-                bundle_file = entry.get('file')
-                if bundle_file:
-                    preload_files.append(bundle_file)
-                pending.extend(entry.get('imports') or [])
+        pending = [app_entry]
+        while pending:
+            manifest_key = pending.pop(0)
+            if manifest_key in visited:
+                continue
+            visited.add(manifest_key)
+            entry = manifest.get(manifest_key, {})
+            bundle_file = entry.get('file')
+            if bundle_file:
+                preload_files.append(bundle_file)
+            pending.extend(entry.get('imports') or [])
+        if session_bootstrap.get("valid") and workspace_entry in manifest:
+            workspace_file = manifest[workspace_entry].get('file')
+            if workspace_file:
+                preload_files.append(workspace_file)
         if preload_files:
             return "\n".join(
                 f'<link rel="modulepreload" href="/dist/{bundle_file}">'
-                for bundle_file in preload_files
+                for bundle_file in dict.fromkeys(preload_files)
             )
     except Exception as exc:
         log_error(exc, "workspace_preload_manifest")

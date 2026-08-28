@@ -3,6 +3,10 @@ import fs from "node:fs";
 import test from "node:test";
 
 import { scheduleWorkspaceEnhancements } from "../../frontend/app/workspaceBootstrap.js";
+import {
+  POST_STARTUP_INTERACTION_GRACE_MS,
+  POST_STARTUP_TIMING,
+} from "../../frontend/app/startupTiming.js";
 
 const appSource = fs.readFileSync("frontend/app/app.js", "utf8");
 const workspaceSource = fs.readFileSync("frontend/app/workspaceBootstrap.js", "utf8");
@@ -23,6 +27,27 @@ test("notification center is loaded after controller init without blocking start
   const controllerInit = workspaceSource.indexOf("await controller.init()");
   const enhancementSchedule = workspaceSource.indexOf("scheduleWorkspaceEnhancements(controller)");
   assert.ok(controllerInit >= 0 && enhancementSchedule > controllerInit);
+});
+
+test("primary business views do not block workspace startup", () => {
+  assert.doesNotMatch(workspaceSource, /^import .*PrimaryBusinessView/m);
+  assert.doesNotMatch(workspaceSource, /installPrimaryBusinessViewModule/);
+});
+
+test("workspace runtime is split out of the bootstrap entry", () => {
+  for (const moduleName of [
+    "BiddingModel",
+    "BiddingView",
+    "BiddingController",
+    "AuthController",
+    "BiddingControllerUI",
+    "BiddingControllerForms",
+    "BiddingControllerSync",
+    "IntegrationWorkflowBridges",
+  ]) {
+    assert.doesNotMatch(workspaceSource, new RegExp(`^import .*${moduleName}`, "m"));
+    assert.match(workspaceSource, new RegExp(`import\\([^)]*${moduleName}\\.js`));
+  }
 });
 
 test("assistant and notification imports wait behind the post-startup interaction grace", async () => {
@@ -46,7 +71,9 @@ test("assistant and notification imports wait behind the post-startup interactio
 
   assert.deepEqual(imports, [], "optional chunks must not compete with the first interaction");
   assert.equal(scheduled.length, 2);
-  assert.ok(scheduled.every(({ options }) => options.delay >= 1500));
+  assert.ok(scheduled.every(({ options }) => (
+    options.delay >= POST_STARTUP_INTERACTION_GRACE_MS
+  )));
   assert.ok(scheduled.every(({ options }) => options.priority === "maintenance"));
 
   await scheduled[0].task();
@@ -63,11 +90,14 @@ test("non-critical workspace jobs cannot enter the first-interaction window", ()
   const scheduledDelayAfter = (marker) => {
     const start = controllerSource.indexOf(marker);
     assert.ok(start >= 0, `missing startup job: ${marker}`);
-    const match = controllerSource.slice(start, start + 500).match(/delay:\s*(\d+)/);
+    const match = controllerSource.slice(start, start + 500).match(
+      /delay:\s*POST_STARTUP_TIMING\.(\w+)/,
+    );
     assert.ok(match, `missing startup delay: ${marker}`);
-    return Number(match[1]);
+    return POST_STARTUP_TIMING[match[1]];
   };
   for (const marker of [
+    "() => this.warmPrimaryTabs()",
     "await this.ensureBiddingWorkflows()",
     "this.preloadPrimaryModals()",
     "this.setupFileUploads()",
@@ -75,7 +105,7 @@ test("non-critical workspace jobs cannot enter the first-interaction window", ()
     "this.model.hydrateRemainingStorageKeysIdle?.()",
   ]) {
     assert.ok(
-      scheduledDelayAfter(marker) >= 1500,
+      scheduledDelayAfter(marker) >= POST_STARTUP_INTERACTION_GRACE_MS,
       `${marker} must not contend with a user's first click`,
     );
   }

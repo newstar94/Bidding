@@ -12,10 +12,9 @@ import {
 import {
   BiddingView,
   getViewModuleLoadDiagnostics,
-  installPrimaryBusinessViewModule,
 } from "../../frontend/app/BiddingView.js";
-import * as PrimaryBusinessView from "../../frontend/app/PrimaryBusinessView.js";
 import { loadPaginatedRecords } from "../../frontend/shared/tableDataUtils.js";
+import { POST_STARTUP_TIMING } from "../../frontend/app/startupTiming.js";
 
 function deferred() {
   let resolve;
@@ -34,21 +33,42 @@ function response(payload) {
   });
 }
 
-test("primary business view modules are ready before the first tab click", () => {
-  installPrimaryBusinessViewModule(PrimaryBusinessView);
-  assert.deepEqual(getViewModuleLoadDiagnostics("business-list"), {
-    installed: true,
+test("primary business views stay route-specific and outside the workspace startup graph", () => {
+  const viewSource = fs.readFileSync("frontend/app/BiddingView.js", "utf8");
+  const workspaceSource = fs.readFileSync("frontend/app/workspaceBootstrap.js", "utf8");
+  for (const [moduleName, modulePath] of [
+    ["plan-list", "../plans/KeHoachView.js"],
+    ["package-list", "../packages/GoiThauTable.js"],
+    ["investor-list", "../partners/ChuDauTuComponent.js"],
+    ["contractor-list", "../partners/NhaThauComponent.js"],
+    ["expert-list", "../experts/ChuyenGiaComponent.js"],
+    ["contract-list", "../contracts/HopDongComponent.js"],
+  ]) {
+    assert.match(
+      viewSource,
+      new RegExp(`["']${moduleName}["']:\\s*\\(\\)\\s*=>\\s*import\\(["']${modulePath.replaceAll(".", "\\.")}["']\\)`),
+    );
+  }
+  assert.doesNotMatch(viewSource, /PrimaryBusinessView/);
+  assert.doesNotMatch(workspaceSource, /^import .*PrimaryBusinessView/m);
+  assert.deepEqual(getViewModuleLoadDiagnostics("package-list"), {
+    installed: false,
     pending: false,
     loadCount: 0,
   });
 });
 
-test("kehoach and goithau reuse the statically installed business list module", async () => {
+test("goithau loads only its route-specific list module", async () => {
   const view = new BiddingView({});
-  await Promise.all([view.ensureViewModules("kehoach"), view.ensureViewModules("goithau")]);
   await view.ensureViewModules("goithau");
-  assert.deepEqual(getViewModuleLoadDiagnostics("business-list"), {
+  await view.ensureViewModules("goithau");
+  assert.deepEqual(getViewModuleLoadDiagnostics("package-list"), {
     installed: true,
+    pending: false,
+    loadCount: 1,
+  });
+  assert.deepEqual(getViewModuleLoadDiagnostics("plan-list"), {
+    installed: false,
     pending: false,
     loadCount: 0,
   });
@@ -161,7 +181,7 @@ test("post-startup warming waits for authoritative reconciliation before filling
   assert.equal(scheduled.length, 1);
   assert.deepEqual(scheduled[0].options, {
     timeout: 700,
-    delay: 0,
+    delay: POST_STARTUP_TIMING.primaryTabWarm,
     key: "primary-tab-warm-after-reconcile",
     priority: "warm",
   });
