@@ -215,6 +215,59 @@ test("workspace_b_does_not_reuse_workspace_a_auto_sync_promise", async () => {
   }
 });
 
+test("permission matrix mutation waits for manager persona instead of being rejected", async () => {
+  const previousFetch = globalThis.fetch;
+  const phases = [];
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    throw new Error("permission mutation must not leave the browser under super admin persona");
+  };
+  const model = {
+    state: { activerole: "super_admin" },
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: { setItem() {}, removeItem() {} },
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (candidate) => candidate === "user:org-a@1",
+    getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+    repairPendingDuplicatePlanVersions: () => null,
+    buildMutationSyncPayload: () => ({
+      payload: {
+        permissionmatrix: [{
+          id: "perm-pending",
+          empId: "employee-1",
+          kehoach: "view",
+        }],
+        clientMutationId: "mutation-permission",
+        baseSyncVersion: "1",
+        deletions: [],
+      },
+      snapshot: { id: "receipt-permission" },
+    }),
+  };
+  const controller = {
+    model,
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState: (patch) => phases.push(patch),
+  };
+
+  try {
+    assert.deepEqual(await autoSync.call(controller), {
+      ok: true,
+      skipped: true,
+      localMutationsPending: true,
+      requiredActiveRole: "manager",
+    });
+    assert.equal(fetchCount, 0);
+    assert.equal(phases.at(-1)?.phase, "localPending");
+    assert.match(phases.at(-1)?.message || "", /Quản lý/u);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 
 test("sync status distinguishes durable, pending, validation, transport, and offline states", () => {
   assert.equal(deriveSyncStatus({ phase: "serverSaved", lastSyncedAt: 1 }).state, "server-saved");

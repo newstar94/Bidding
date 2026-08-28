@@ -70,6 +70,15 @@ function staleWorkspaceResult(extra = {}) {
   };
 }
 
+function mutationRequiresManagerPersona(payload) {
+  if (Array.isArray(payload?.permissionmatrix) && payload.permissionmatrix.length > 0) {
+    return true;
+  }
+  return (payload?.deletions || []).some((deletion) => (
+    ["permissionmatrix", "ma_tran_phan_quyen"].includes(String(deletion?.table || ""))
+  ));
+}
+
 function logRowVersionConflicts(data, snapshot, workspace) {
   for (const error of getSyncValidationErrors(data)) {
     if (error?.code !== "ROW_VERSION_CONFLICT") continue;
@@ -470,6 +479,22 @@ export function autoSync(options = {}) {
       : { ok: true, skipped: true });
   }
   const { payload, snapshot } = mutationBatch;
+  if (
+    mutationRequiresManagerPersona(payload)
+    && String(this.model?.state?.activerole || "").trim().toLowerCase() !== "manager"
+  ) {
+    this.updateSyncState({
+      phase: "localPending",
+      online: globalThis.navigator?.onLine !== false,
+      message: "Thay đổi quyền đã được lưu trên thiết bị · Chuyển sang vai trò Quản lý để đồng bộ",
+    });
+    return Promise.resolve({
+      ok: true,
+      skipped: true,
+      localMutationsPending: true,
+      requiredActiveRole: "manager",
+    });
+  }
   this.updateSyncState({ phase: "syncing" });
   if (mutationAffectsDashboard(payload)) payload.includeDashboardSummary = true;
   const request = apiFetch("/api/sync", {
