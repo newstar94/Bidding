@@ -10,8 +10,8 @@ export function buildAwardResultExcelButtonMarkup(enabled = false) {
   return `
     <button class="btn btn-outline action-strong" id="btn-export-award-result-excel"
       ${enabled ? "" : "disabled"}
-      title="${enabled ? "Điền kết quả vào file Excel mẫu của muasamcong" : "Cần quyền truy cập và gói trả phí đang hoạt động để xuất Excel"}">
-      <i data-lucide="sheet"></i> Xuất file nhập kết quả muasamcong
+      title="${enabled ? "Điền kết quả vào file Excel mẫu tương thích" : "Cần quyền truy cập và gói trả phí đang hoạt động để xuất Excel"}">
+      <i data-lucide="sheet"></i> Xuất file nhập kết quả
     </button>`;
 }
 
@@ -21,7 +21,7 @@ export function buildAwardResultExcelPanelMarkup() {
       aria-labelledby="award-result-excel-title">
       <div class="award-result-excel-panel-header">
         <div>
-          <h5 id="award-result-excel-title">Điền file kết quả muasamcong</h5>
+          <h5 id="award-result-excel-title">Điền file kết quả</h5>
           <p class="text-muted">Chọn file .xlsx, kiểm tra đối chiếu rồi xác nhận tải file đã điền.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" data-award-excel-close

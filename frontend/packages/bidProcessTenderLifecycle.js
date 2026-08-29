@@ -94,11 +94,11 @@ async function performMoThauGoiThau(id) {
     {
       inputLabel: "Thời gian mở thầu",
       secondaryAction: canImportOpening ? {
-        label: "Lấy dữ liệu mở thầu từ Mua sắm công",
+        label: "Lấy dữ liệu mở thầu tự động",
         icon: "cloud-download",
         description: "Tự điền thời gian và dữ liệu nhà thầu vào biên bản mở thầu.",
         loadingLabel: "Đang lấy dữ liệu…",
-        loadingStatus: "Đang kết nối và đọc biên bản mở thầu từ Mua sắm công…",
+        loadingStatus: "Đang lấy biên bản mở thầu tự động…",
         errorMessage: "Không thể lấy biên bản mở thầu. Vui lòng kiểm tra mã TBMT và thử lại.",
         run: async () => {
           preparedOpening = null;
@@ -113,7 +113,7 @@ async function performMoThauGoiThau(id) {
             value: result.applied.opening?.openingAt
               ? this.model.formatForDatetimeLocal(result.applied.opening.openingAt)
               : "",
-            status: `Đã lấy ${contractorCount} nhà thầu từ Mua sắm công.`,
+            status: `Đã tự động lấy dữ liệu của ${contractorCount} nhà thầu.`,
           };
         },
       } : null,
@@ -169,7 +169,7 @@ async function performMoThauGoiThau(id) {
   ) {
     await this.view.customAlert(
       "Dữ liệu gói thầu đã thay đổi",
-      "Bản ghi gói thầu đã thay đổi sau khi lấy dữ liệu Mua sắm công. Vui lòng mở lại thao tác và lấy dữ liệu mới.",
+      "Bản ghi gói thầu đã thay đổi sau khi lấy dữ liệu tự động. Vui lòng mở lại thao tác và lấy dữ liệu mới.",
       "alert-triangle",
     );
     return { ok: false, code: "PROCUREMENT_PREVIEW_STALE" };
@@ -232,7 +232,7 @@ async function performMoThauGoiThau(id) {
   await this.view.customAlert(
     "Thành công",
     importedDraft
-      ? `Đã mở thầu và điền ${importedDraft.added || 0} dòng dữ liệu từ Mua sắm công vào biên bản. Vui lòng kiểm tra và lưu lại.`
+      ? `Đã mở thầu và tự động điền ${importedDraft.added || 0} dòng dữ liệu vào biên bản. Vui lòng kiểm tra và lưu lại.`
       : `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
     "check-circle"
   );

@@ -70,12 +70,12 @@ test("prompt secondary import action is accessible, responsive, and fills the fi
         {
           inputLabel: "Thời gian mở thầu",
           secondaryAction: {
-            label: "Lấy dữ liệu mở thầu từ Mua sắm công",
+            label: "Lấy dữ liệu mở thầu tự động",
             icon: "cloud-download",
             description: "Tự điền dữ liệu vào biên bản mở thầu.",
             run: async () => ({
               value: "07/08/2026 09:00",
-              status: "Đã lấy 1 nhà thầu từ Mua sắm công.",
+              status: "Đã tự động lấy dữ liệu của 1 nhà thầu.",
             }),
           },
         },
@@ -83,12 +83,12 @@ test("prompt secondary import action is accessible, responsive, and fills the fi
     });
 
     const action = page.locator('[aria-describedby="dialog-prompt-secondary-status"]');
-    assert.equal(await action.textContent(), " Lấy dữ liệu mở thầu từ Mua sắm công");
+    assert.equal(await action.textContent(), " Lấy dữ liệu mở thầu tự động");
     assert.equal(await page.locator('label[for="dialog-prompt-input"]').textContent(), "Thời gian mở thầu");
     await action.click();
     await page.waitForFunction(() => (
       document.getElementById("dialog-prompt-secondary-status")?.textContent
-        === "Đã lấy 1 nhà thầu từ Mua sắm công."
+        === "Đã tự động lấy dữ liệu của 1 nhà thầu."
     ));
     assert.equal(await page.locator("#dialog-prompt-input").inputValue(), "07/08/2026 09:00");
     const layout = await page.locator("#modal-custom-dialog .modal-card").evaluate((card) => {

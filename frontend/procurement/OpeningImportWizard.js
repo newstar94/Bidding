@@ -291,7 +291,7 @@ export async function importOpeningFromMuasamcong({
       stale ? "Preview đã cũ" : "Không thể lấy dữ liệu mở thầu",
       stale
         ? "Gói thầu đã thay đổi. Hãy lấy lại preview trước khi áp dụng."
-        : "Không thể lấy dữ liệu từ Mua Sắm Công. Vui lòng thử lại.",
+        : "Không thể lấy dữ liệu tự động. Vui lòng thử lại.",
       "alert-triangle",
     );
   } finally {
@@ -413,7 +413,7 @@ export async function importFinancialOpeningFromMuasamcong({
       stale ? "Preview đã cũ" : "Không thể lấy dữ liệu tài chính",
       stale
         ? "Gói thầu đã thay đổi. Hãy lấy lại preview."
-        : "Không thể lấy biên bản mở E-HSĐXTC từ Mua Sắm Công.",
+        : "Không thể lấy biên bản mở E-HSĐXTC tự động.",
       "alert-triangle",
     );
     return false;

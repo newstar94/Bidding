@@ -189,7 +189,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           packageId: id,
           packageCode: gt.maGoiThau || "GoiThau",
           onError: (error) => view.customAlert(
-            "Không thể xuất file muasamcong",
+            "Không thể xuất file kết quả",
             error?.message || "Vui lòng thử lại.",
             "alert-triangle",
           ),

@@ -1,6 +1,7 @@
 import { ProcurementLookupClient } from "./ProcurementLookupClient.js";
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
+import { presentAutomaticDataMessage } from "./sourcePresentation.js";
 import { fillPackageFormFromProcurementDraft } from "./ProcurementDraftWorkflow.js";
 import {
   forgetProcurementImportSession,
@@ -182,7 +183,7 @@ export class ProcurementInlineLookup {
   setStatus(status, message, state = "idle") {
     if (!status) return;
     status.hidden = false;
-    status.textContent = message;
+    status.textContent = presentAutomaticDataMessage(message);
     status.dataset.state = state;
     status.setAttribute("aria-live", state === "error" ? "assertive" : "polite");
   }
@@ -264,7 +265,7 @@ export class ProcurementInlineLookup {
     };
     setButtonLoading(button, true);
     setLookupLoading(loadingScreen, form, true, code);
-    this.setStatus(status, "Đang kết nối Mua Sắm Công…", "loading");
+    this.setStatus(status, "Đang lấy dữ liệu tự động…", "loading");
     try {
       if (normalizedKind === "PACKAGE" || normalizedKind === "PLAN") {
         const prepare = normalizedKind === "PACKAGE"
@@ -373,7 +374,7 @@ export class ProcurementInlineLookup {
         if (cancellation && typeof cancellation.then === "function") {
           const cancelled = await cancellation;
           if (!cancelled) {
-            throw new Error("Không thể hủy phiên nhập Mua Sắm Công trước đó. Vui lòng thử lại.");
+            throw new Error("Không thể hủy phiên lấy dữ liệu tự động trước đó. Vui lòng thử lại.");
           }
         }
         assertUiCapabilityCurrent();
@@ -460,7 +461,7 @@ export class ProcurementInlineLookup {
       if (error?.name === "AbortError") return null;
       this.setStatus(
         status,
-        error?.message || "Không thể lấy dữ liệu từ Mua Sắm Công.",
+        error?.message || "Không thể lấy dữ liệu tự động.",
         "error",
       );
       return null;
@@ -564,7 +565,7 @@ export async function completeProcurementPackageImportRevision(savedPackageId) {
   const nextRevision = flow.controller.revisions[flow.controller.currentIndex + 1];
   const shouldContinue = await this.view.customConfirm(
     `Đã lưu phiên bản ${savedRevision}`,
-    `Gói thầu trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
+    `Dữ liệu gói thầu tự động còn phiên bản ${nextRevision.revisionNumber}. Bạn có muốn tiếp tục nhập phiên bản này không?`,
     "help-circle",
   );
   assertPackageImportCapabilityCurrent(this, flow);

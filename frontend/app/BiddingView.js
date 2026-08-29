@@ -1522,7 +1522,7 @@ export class BiddingView {
           secondaryButton.disabled = true;
           secondaryButton.setAttribute("aria-busy", "true");
           secondaryButton.textContent = secondaryAction.loadingLabel || "Đang lấy dữ liệu…";
-          secondaryStatus.textContent = secondaryAction.loadingStatus || "Đang kết nối Mua sắm công…";
+          secondaryStatus.textContent = secondaryAction.loadingStatus || "Đang lấy dữ liệu tự động…";
           setRuntimeStyle(secondaryStatus, "color", "var(--text-muted)");
           try {
             const result = await secondaryAction.run();

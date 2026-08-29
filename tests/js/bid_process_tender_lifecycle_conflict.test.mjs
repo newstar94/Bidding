@@ -161,7 +161,7 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
     view: {
       async customPrompt(...args) {
         const action = args[7]?.secondaryAction;
-        assert.equal(action?.label, "Lấy dữ liệu mở thầu từ Mua sắm công");
+        assert.equal(action?.label, "Lấy dữ liệu mở thầu tự động");
         const result = await action.run();
         calls.push(["prompt-import-status", result.status]);
         return result.value;
@@ -194,7 +194,7 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
 
   assert.deepEqual(calls, [
     ["prepare-opening", "package-1"],
-    ["prompt-import-status", "Đã lấy 2 nhà thầu từ Mua sắm công."],
+    ["prompt-import-status", "Đã tự động lấy dữ liệu của 2 nhà thầu."],
     ["stage", "goithau", "2026-08-07T09:00:00"],
     ["persist", "goithau"],
     ["sync"],

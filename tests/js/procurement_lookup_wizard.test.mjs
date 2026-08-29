@@ -727,7 +727,7 @@ test("apply mutates only selected controls and never submits the form", () => {
 
 function inlineButton() {
   return {
-    textContent: "Lấy dữ liệu từ Mua Sắm Công",
+    textContent: "Lấy dữ liệu tự động",
     disabled: false,
     dataset: {},
     setAttribute() {},
@@ -813,7 +813,7 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
   assert.equal(loading.code.hidden, false);
   assert.equal(loading.code.textContent, "PL2600000001");
   assert.equal(form.attributes.get("aria-busy"), "true");
-  assert.equal(phases[0], "Đang kết nối Mua Sắm Công…");
+  assert.equal(phases[0], "Đang lấy dữ liệu tự động…");
 
   resolvePrepare({
     importSession: {
@@ -824,7 +824,7 @@ test("inline MSC lookup shows and closes its loading screen", async () => {
   await pending;
 
   assert.deepEqual(phases.slice(0, 3), [
-    "Đang kết nối Mua Sắm Công…",
+    "Đang lấy dữ liệu tự động…",
     "Đang tìm phiên bản hồ sơ…",
     "Đang chuẩn bị bản xem trước…",
   ]);
@@ -1177,7 +1177,7 @@ test("inline plan lookup prepares all revisions and opens editable revision 00 w
   );
   assert.match(status.textContent, /phiên bản 00/i);
   assert.equal(status.dataset.state, "success");
-  assert.equal(button.textContent, "Lấy dữ liệu từ Mua Sắm Công");
+  assert.equal(button.textContent, "Lấy dữ liệu tự động");
   assert.equal(button.disabled, false);
 });
 
@@ -1716,7 +1716,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
 
   assert.match(planModal, /id="procurement-lookup-plan-enabled"/);
   assert.match(planModal, /id="procurement-lookup-plan-loading"/);
-  assert.match(planModal, /<span>Lấy từ MSC<\/span>/);
+  assert.match(planModal, /<span>Lấy dữ liệu tự động<\/span>/);
   assert.doesNotMatch(planModal, /id="btn-open-procurement-lookup-plan"/);
   assert.doesNotMatch(planModal, /id="btn-open-procurement-import"/);
   assert.match(planModal, /id="procurement-lookup-plan-status"/);
@@ -1744,7 +1744,7 @@ test("plan and package forms expose inline lookup without a comparison modal", (
   assert.match(packageModal, /id="procurement-lookup-package-enabled"/);
   assert.match(packageModal, /id="procurement-lookup-package-loading"/);
   assert.match(packageModal, /class="package-identity-grid col-span-2"/);
-  assert.match(packageModal, /<span>Lấy từ MSC<\/span>/);
+  assert.match(packageModal, /<span>Lấy dữ liệu tự động<\/span>/);
   assert.doesNotMatch(packageModal, /id="btn-open-procurement-lookup-package"/);
   assert.doesNotMatch(packageModal, /id="btn-open-procurement-notice-import"/);
   assert.match(packageModal, /id="procurement-lookup-package-status"/);

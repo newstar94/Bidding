@@ -1,4 +1,5 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { presentAutomaticDataMessage } from "./sourcePresentation.js";
 import {
   captureWorkspaceLease,
   currentWorkspaceToken,
@@ -119,7 +120,7 @@ export class NoticeImportWizard {
   setStatus(message, urgent = false) {
     const status = this.modal.querySelector("[data-procurement-notice-status]");
     status.setAttribute("aria-live", urgent ? "assertive" : "polite");
-    status.textContent = message;
+    status.textContent = presentAutomaticDataMessage(message);
   }
 
   refreshApplyGate() {
@@ -157,7 +158,7 @@ export class NoticeImportWizard {
     const selectedRevision = this.modal.querySelector(
       "[data-procurement-notice-revision]",
     ).value || null;
-    this.setStatus("Đang kết nối Mua Sắm Công…");
+    this.setStatus("Đang lấy dữ liệu tự động…");
     try {
       const preview = await this.client.prepareNotice({
         code,

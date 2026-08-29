@@ -13,6 +13,7 @@ import {
   rememberProcurementImportSession,
 } from "./ProcurementImportResume.js";
 import { packageNoticeLabel, planPreviewFields } from "./fieldMapping.js";
+import { presentAutomaticDataMessage } from "./sourcePresentation.js";
 import {
   captureWorkspaceLease,
   currentWorkspaceToken,
@@ -694,7 +695,7 @@ export class PlanImportWizard {
   setStatus(message, urgent = false) {
     const status = this.modal.querySelector("[data-procurement-status]");
     status.setAttribute("aria-live", urgent ? "assertive" : "polite");
-    status.textContent = message;
+    status.textContent = presentAutomaticDataMessage(message);
   }
 
   async prepare() {
@@ -722,7 +723,7 @@ export class PlanImportWizard {
       && isWorkspaceLeaseCurrent(this.controller?.model, originLease)
       && this.controller?.model?.workspaceStorage === originStorage
     );
-    this.setStatus("Đang kết nối Mua Sắm Công…");
+    this.setStatus("Đang lấy dữ liệu tự động…");
     try {
       const preview = await this.client.preparePlan({
         code,
@@ -1501,7 +1502,7 @@ export async function completeProcurementPlanImportRevision(savedPlanId) {
     ? true
     : await this.view.customConfirm(
       `Đã lưu phiên bản ${savedRevision}`,
-      `Kế hoạch trên Mua Sắm Công còn phiên bản ${nextRevision.revisionNumber}. `
+      `Dữ liệu kế hoạch tự động còn phiên bản ${nextRevision.revisionNumber}. `
         + (discardsLocalDraft
           ? "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
           : "Nếu không tiếp tục, hệ thống sẽ dừng tại phiên bản hiện tại; các phiên bản đã lưu được giữ nguyên. ")

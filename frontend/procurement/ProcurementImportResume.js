@@ -232,7 +232,7 @@ export async function resumeProcurementImportSession({
       ))
     ));
     const shouldResume = await this.view?.customConfirm?.(
-      "Tiếp tục nhập từ Mua Sắm Công",
+      "Tiếp tục lấy dữ liệu tự động",
       `Phiên nhập ${session.familyNo} đang dở ở phiên bản ${currentRevision.revisionNumber}. `
         + (hasLocalPlanDraft
           ? "Nếu không tiếp tục, toàn bộ bản nháp của lần nhập này sẽ bị hủy và xóa. "
