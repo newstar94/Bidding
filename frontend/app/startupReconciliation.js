@@ -105,6 +105,10 @@ function syncUxPatchForPhase(phase, error = null) {
   return null;
 }
 
+function publishReconciliationPhase(controller, phase) {
+  controller?.publishStartupReconciliationPhase?.(phase);
+}
+
 export function getStartupReconciliationState(controller) {
   const state = controller?._startupReconciliationState;
   const workspaceToken = currentWorkspaceToken(controller);
@@ -142,6 +146,7 @@ export function transitionStartupReconciliation(
     promise,
   };
   controller._startupReconciliationState = state;
+  publishReconciliationPhase(controller, phase);
   const uxPatch = syncUxPatchForPhase(phase, error);
   const preserveActionableFailure = phase === STARTUP_RECONCILIATION_PHASE.SYNC_ERROR
     && ACTIONABLE_SYNC_UX_PHASES.has(String(controller._syncUxState?.phase || ""));
@@ -163,6 +168,7 @@ export function initializeStartupReconciliation(controller) {
     promise: null,
   };
   controller._startupReconciliationState = state;
+  publishReconciliationPhase(controller, phase);
   const uxPatch = syncUxPatchForPhase(phase);
   if (uxPatch) controller.updateSyncState?.(uxPatch);
   return state;

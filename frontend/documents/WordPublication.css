@@ -483,6 +483,10 @@
   justify-content: center;
 }
 
+.word-publication-export-dialog-actions [data-word-publication-confirm] {
+  transition: none;
+}
+
 .word-publication-export-dialog-actions [data-word-publication-confirm]:not(:disabled),
 .word-publication-export-dialog-actions [data-word-publication-confirm]:not(:disabled) span,
 .word-publication-export-dialog-actions [data-word-publication-confirm]:not(:disabled) svg {

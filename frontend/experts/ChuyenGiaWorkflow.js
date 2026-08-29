@@ -44,7 +44,7 @@ export async function persistExpertFormChanges(controller, changedExperts, {
   return persistAndSync(controller, "chuyengia", {
     backgroundSync: true,
     changes: { upserts: { chuyengia: changedExperts } },
-    afterPersist: async () => {
+    afterCanonicalSync: async () => {
       await controller.closeModal("modal-chuyengia");
       controller.view.renderChuyenGiaTable();
     },

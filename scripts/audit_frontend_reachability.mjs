@@ -10,6 +10,12 @@ const PRODUCTION_ENTRYPOINTS = Object.freeze([
   // Standalone development/test checkout page served by views/fake_checkout.html.
   "frontend/billing/FakeCheckout.js",
 ]);
+// Static command-surface inventory consumed by audit_controller_commands and
+// focused tests. Runtime intentionally assembles the same exports through the
+// sequential loader so this facade cannot collapse the secure build graph.
+const NON_RUNTIME_CONTRACT_MODULES = Object.freeze([
+  "frontend/packages/BiddingWorkflows.js",
+]);
 
 async function listModules(root) {
   const modules = [];
@@ -106,14 +112,22 @@ export async function auditFrontendReachability(projectRoot) {
   const frontendRoot = path.join(projectRoot, "frontend");
   const { graph, unresolved } = await buildProductionModuleGraph(frontendRoot);
   const entrypoints = PRODUCTION_ENTRYPOINTS.map((entrypoint) => path.join(projectRoot, entrypoint));
+  const contractModules = new Set(
+    NON_RUNTIME_CONTRACT_MODULES.map((moduleFile) => path.join(projectRoot, moduleFile)),
+  );
   const missingEntrypoints = entrypoints.filter((entrypoint) => !graph.has(entrypoint));
+  const missingContractModules = [...contractModules].filter((moduleFile) => !graph.has(moduleFile));
   const reachable = reachableModules(graph, entrypoints.filter((entrypoint) => graph.has(entrypoint)));
-  const orphanModules = [...graph.keys()].filter((moduleFile) => !reachable.has(moduleFile));
+  const orphanModules = [...graph.keys()].filter(
+    (moduleFile) => !reachable.has(moduleFile) && !contractModules.has(moduleFile),
+  );
   return {
     moduleCount: graph.size,
     reachableCount: reachable.size,
     entrypoints: entrypoints.map((file) => projectRelative(projectRoot, file)),
+    contractModules: [...contractModules].map((file) => projectRelative(projectRoot, file)),
     missingEntrypoints: missingEntrypoints.map((file) => projectRelative(projectRoot, file)),
+    missingContractModules: missingContractModules.map((file) => projectRelative(projectRoot, file)),
     unresolved: unresolved.map(({ source, specifier }) => ({
       source: projectRelative(projectRoot, source),
       specifier,
@@ -126,7 +140,12 @@ async function main() {
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const report = await auditFrontendReachability(projectRoot);
   console.log(JSON.stringify(report, null, 2));
-  if (report.missingEntrypoints.length || report.unresolved.length || report.orphanModules.length) {
+  if (
+    report.missingEntrypoints.length
+    || report.missingContractModules.length
+    || report.unresolved.length
+    || report.orphanModules.length
+  ) {
     process.exitCode = 1;
   }
 }

@@ -240,6 +240,7 @@ test("stale-window mutation is pulled before its first push", async () => {
 
 test("startup reconciliation exposes an operation-backed state contract", async () => {
   const pull = deferred();
+  const publishedPhases = [];
   const model = {
     workspaceScope: { key: "user:org-a" },
     getWorkspaceToken: () => "user:org-a@1",
@@ -248,6 +249,7 @@ test("startup reconciliation exposes an operation-backed state contract", async 
   const controller = {
     model,
     markStartup() {},
+    publishStartupReconciliationPhase(phase) { publishedPhases.push(phase); },
     async autoSync() { return { ok: true, skipped: true }; },
     async forceSyncData() { return pull.promise; },
   };
@@ -270,6 +272,11 @@ test("startup reconciliation exposes an operation-backed state contract", async 
       getStartupReconciliationState(controller).phase,
       STARTUP_RECONCILIATION_PHASE.RECONCILED,
     );
+    assert.deepEqual(publishedPhases, [
+      STARTUP_RECONCILIATION_PHASE.LOCAL_READY,
+      STARTUP_RECONCILIATION_PHASE.RECONCILING,
+      STARTUP_RECONCILIATION_PHASE.RECONCILED,
+    ]);
   });
 });
 

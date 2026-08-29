@@ -41,7 +41,6 @@ const STATIC_WORKFLOW_METHODS = new Set([
 const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../shared/BiddingCalculations.js"),
   () => import("../packages/BidEvaluationWorkflow.js"),
-  () => import("../packages/DetailedEvaluationWorkflow.js"),
   () => import("../plans/KeHoachWorkflow.js"),
   () => import("../procurement/PlanImportWizard.js"),
   () => import("../procurement/NoticeImportWizard.js"),
@@ -52,6 +51,14 @@ const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../packages/BidProcessWorkflow.js"),
   () => import("../shared/FormSubTables.js"),
   () => import("../shared/PartnerHelpers.js"),
+]);
+
+const DETAILED_EVALUATION_EXPORTS = Object.freeze([
+  "closeDetailedEvaluation",
+  "importDetailedEvaluationExcel",
+  "openDetailedEvaluation",
+  "renderDetailedEvaluation",
+  "saveDetailedEvaluation",
 ]);
 
 // These helpers are exported by their concrete modules for focused tests and
@@ -77,10 +84,18 @@ const BIDDING_WORKFLOW_PRIVATE_EXPORTS = Object.freeze([
   "verifyMuasamcongDetailedEvaluationContractor",
 ]);
 
-export async function importBiddingWorkflowsSequentially() {
+export async function importBiddingWorkflowsSequentially({
+  importDetailedEvaluation = () => import("../packages/DetailedEvaluationWorkflow.js"),
+} = {}) {
   const workflowModule = Object.create(null);
   for (const importWorkflowModule of BIDDING_WORKFLOW_IMPORTERS) {
     Object.assign(workflowModule, await importWorkflowModule());
+  }
+  for (const exportName of DETAILED_EVALUATION_EXPORTS) {
+    workflowModule[exportName] = async function (...args) {
+      const detailedEvaluation = await importDetailedEvaluation();
+      return detailedEvaluation[exportName].apply(this, args);
+    };
   }
   for (const privateExport of BIDDING_WORKFLOW_PRIVATE_EXPORTS) {
     delete workflowModule[privateExport];

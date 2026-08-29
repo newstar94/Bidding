@@ -4,7 +4,12 @@ import { captureModalReturnState, hasModalReturnState, updateModalReturnAction }
 import {
   resolvePartnerVersionForDate,
 } from "../partners/contractorVersionBinding.js";
-import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
+import {
+  preserveRowVersion,
+  rememberSelectedVersion,
+  removeAllVersions,
+  removeLatestVersion,
+} from "../shared/VersionedEntityService.js";
 import {
   persistAndSync,
   refreshRecordBeforeDelete,
@@ -717,18 +722,23 @@ export async function handleHopDongSubmit(e) {
     updateModalReturnAction(finalHdId);
   }
   const contractRootId = String(data.rootId || data.id);
+  rememberSelectedVersion(this.model.state, "selectedHopDongVersion", data);
   const changedContracts = this.model.state.hopdong.filter(
     (contract) => String(contract.rootId || contract.id) === contractRootId,
   );
-  stageLocalRecords(this.model, "hopdong", changedContracts);
-  const syncResult = await persistAndSync(this, "hopdong", {
+  const syncResult = await persistContractFormChanges(this, changedContracts);
+  if (!syncResult?.ok) return;
+}
+
+export async function persistContractFormChanges(controller, changedContracts) {
+  stageLocalRecords(controller.model, "hopdong", changedContracts);
+  return persistAndSync(controller, "hopdong", {
     backgroundSync: true,
     changes: { upserts: { hopdong: changedContracts } },
-    afterPersist: async () => {
-      this.closeModal("modal-hopdong");
-      await this.view.renderHopDongTable();
+    afterCanonicalSync: async () => {
+      await controller.closeModal("modal-hopdong");
+      await controller.view.renderHopDongTable();
     },
   });
-  if (!syncResult?.ok) return;
 }
 import { generateRecordId } from "../shared/idUtils.js";

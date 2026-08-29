@@ -19,7 +19,7 @@ async function waitForApp(page) {
 
 async function waitForInitialReconciliation(page) {
   await page.waitForFunction(() => (
-    document.getElementById("btn-force-sync")?.dataset.syncState === "server-saved"
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
   ));
 }
 
@@ -27,7 +27,15 @@ async function isolateHostInjectedScripts(context) {
   // Some developer machines inject AdGuard userscripts into every document.
   // This scenario intentionally performs many cold navigations, so keep its
   // manually-created contexts as isolated as Playwright's standard fixtures.
-  await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  // Register only the injected-script signatures: a catch-all route also
+  // intercepts every application API request and can delay sync commits.
+  const blockInjectedScript = (route) => route.abort("blockedbyclient");
+  await context.route(
+    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
+    blockInjectedScript,
+  );
+  await context.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
+  await context.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
 }
 
 async function login(page) {
@@ -47,13 +55,20 @@ async function gotoCleanupReady(page, route) {
   await page.goto(route, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.waitForFunction(() => {
-    const state = document.getElementById("btn-force-sync")?.dataset.syncState;
-    return state === "server-saved" || state === "conflict";
+    const state = document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase;
+    return state === "RECONCILED" || state === "CONFLICT";
   });
 }
 
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
-  await gotoReady(page, route);
+  const currentPath = new URL(page.url()).pathname.replace(/\/$/, "") || "/";
+  const targetPath = new URL(route, page.url()).pathname.replace(/\/$/, "") || "/";
+  if (currentPath === targetPath) {
+    await waitForApp(page);
+    await waitForInitialReconciliation(page);
+  } else {
+    await gotoReady(page, route);
+  }
   await page.locator(buttonSelector).click();
   await expect(page.locator(`${modalSelector}.active`)).toBeVisible();
 }
@@ -85,6 +100,21 @@ async function checkMountedCheckbox(locator) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
+}
+
+async function openPlanDetails(page, row) {
+  const details = page.locator("#fullpage-kh-version-select");
+  const action = row.locator('[data-bf-action="show-plan"]');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await details.count()) return details;
+    await action.click();
+    const attached = await details.waitFor({ state: "attached", timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (attached) return details;
+  }
+  expect(await details.count(), "plan detail did not open after the delegated action retry").toBe(1);
+  return details;
 }
 
 async function dismissOptionalDialog(page) {
@@ -152,7 +182,16 @@ async function createOwner(page, { code, name }) {
   await page.locator("#cdt-chucvudaidien").fill("Giám đốc");
   await selectFirstAddress(page, "#cdt-tinh", "#cdt-xa");
   await page.locator("#cdt-diachichitiet").fill("01 Đường kiểm thử xung đột");
+  const ownerCommitPromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/sync"
+      && (response.request().postDataJSON()?.chudautu || []).some((owner) => (
+        String(owner.maChuDauTu || "").toLowerCase() === String(code).toLowerCase()
+      ))
+  ));
   await submitModal(page, "#form-chudautu", "#modal-chudautu");
+  const ownerCommitResponse = await ownerCommitPromise;
+  expect(ownerCommitResponse.ok(), await ownerCommitResponse.text().catch(() => "")).toBe(true);
 }
 
 async function createExpert(page, { name, suffix }) {
@@ -165,6 +204,102 @@ async function createExpert(page, { name, suffix }) {
   await page.locator("#cg-ngaycapchungchi").fill(clock.date(-3_600));
   await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
   await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
+}
+
+async function createReferenceFixtures(page, {
+  suffix, ownerCode, ownerName, baselineExpertName, expertName,
+}) {
+  const timestamp = new Date().toISOString();
+  const idSuffix = suffix.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+  const cccdSuffix = suffix.replace(/\D/g, "").slice(-9).padStart(9, "0");
+  const ownerId = `row-conflict-owner-${idSuffix}`;
+  const baselineExpertId = `row-conflict-expert-base-${idSuffix}`;
+  const expertId = `row-conflict-expert-add-${idSuffix}`;
+  const result = await page.evaluate(async ({ payload, mutationId }) => {
+    const csrfToken = document.cookie.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("csrf_token="))
+      ?.slice("csrf_token=".length) || "";
+    const organizationId = sessionStorage.getItem("bf_active_org")
+      || localStorage.getItem("bf_active_org")
+      || "";
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Active-Org": encodeURIComponent(organizationId),
+        "X-CSRF-Token": decodeURIComponent(csrfToken),
+      },
+      body: JSON.stringify({
+        ...payload,
+        baseSyncVersion: Number(localStorage.getItem("bf_last_sync_version") || 0),
+        clientMutationId: mutationId,
+      }),
+    });
+    return { ok: response.ok, status: response.status, body: await response.json() };
+  }, {
+    mutationId: `row-conflict-reference-${idSuffix}`,
+    payload: {
+      chudautu: [{
+        id: ownerId,
+        rootId: ownerId,
+        phienBan: 0,
+        isLatest: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        maChuDauTu: ownerCode,
+        tenChuDauTu: ownerName,
+        ngayApDung: clock.date(-60),
+        danhXung: "Ong",
+        daiDienCdt: "Nguyen Van Kiem Thu",
+        chucVuNguoiDungDau: "Giam doc",
+        chucVuDaiDien: "Giam doc",
+        diaChi: "01 Duong kiem thu xung dot",
+      }],
+      chuyengia: [
+        {
+          id: baselineExpertId,
+          rootId: baselineExpertId,
+          phienBan: 0,
+          isLatest: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          hoTen: baselineExpertName,
+          soCCCD: `079${cccdSuffix}`,
+          ngayCapCCCD: clock.date(-3_650),
+          noiCapCCCD: "Cuc Canh sat QLHC ve TTXH",
+          soChungChi: `${suffix}-BASE-CC`,
+          ngayCapChungChi: clock.date(-3_600),
+          donViCapChungChi: "Cuc Quan ly Dau thau",
+        },
+        {
+          id: expertId,
+          rootId: expertId,
+          phienBan: 0,
+          isLatest: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          hoTen: expertName,
+          soCCCD: `078${cccdSuffix}`,
+          ngayCapCCCD: clock.date(-3_650),
+          noiCapCCCD: "Cuc Canh sat QLHC ve TTXH",
+          soChungChi: `${suffix}-ADD-CC`,
+          ngayCapChungChi: clock.date(-3_600),
+          donViCapChungChi: "Cuc Quan ly Dau thau",
+        },
+      ],
+    },
+  });
+  expect(result, JSON.stringify(result.body)).toMatchObject({ ok: true, status: 200 });
+  const [owners, baselineExperts, addedExperts] = await Promise.all([
+    readServerRecords(page, { table: "chudautu", field: "maChuDauTu", value: ownerCode }),
+    readServerRecords(page, { table: "chuyengia", field: "hoTen", value: baselineExpertName }),
+    readServerRecords(page, { table: "chuyengia", field: "hoTen", value: expertName }),
+  ]);
+  expect(owners).toHaveLength(1);
+  expect(baselineExperts).toHaveLength(1);
+  expect(addedExperts).toHaveLength(1);
 }
 
 async function createPlan00(page, { code, name, ownerName }) {
@@ -218,9 +353,8 @@ async function createPlan01(page, { planCode }) {
   await page.locator("#search-kehoach").fill(planCode);
   const sourceRow = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
   await expect(sourceRow).toBeVisible();
-  await sourceRow.locator('[data-bf-action="show-plan"]').click();
-  await expect(page.locator("#fullpage-kh-version-select")).toBeAttached();
-  const historicalPlanId = await page.locator("#fullpage-kh-version-select").inputValue();
+  const sourceVersionSelect = await openPlanDetails(page, sourceRow);
+  const historicalPlanId = await sourceVersionSelect.inputValue();
   expect(historicalPlanId).toBeTruthy();
 
   await page.locator("#btn-edit-kehoach-fullpage").click();
@@ -243,9 +377,8 @@ async function createPlan01(page, { planCode }) {
   await page.locator("#search-kehoach").fill(planCode);
   const latestRow = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
   await expect(latestRow).toBeVisible();
-  await latestRow.locator('[data-bf-action="show-plan"]').click();
-  await expect(page.locator("#fullpage-kh-version-select")).toBeAttached();
-  const versions = await page.locator("#fullpage-kh-version-select").evaluate((element) => ({
+  const latestVersionSelect = await openPlanDetails(page, latestRow);
+  const versions = await latestVersionSelect.evaluate((element) => ({
     selected: element.value,
     options: [...element.options].map((option) => ({ value: option.value, text: option.textContent.trim() })),
   }));
@@ -318,17 +451,6 @@ async function createPackageVersion01(page, {
   };
 }
 
-async function confirmDeleteAll(page) {
-  const dialog = page.locator("#modal-custom-dialog.active");
-  await expect(dialog).toBeVisible();
-  if (await page.locator("#btn-dialog-opt2").count()) {
-    await page.locator("#btn-dialog-opt2").click();
-  } else {
-    await page.locator("#btn-dialog-ok").click();
-  }
-  await expect(dialog).toBeHidden({ timeout: 20_000 });
-}
-
 async function readServerRows(page, { table, filters = {} }) {
   return page.evaluate(async ({ tableName, queryFilters }) => {
     const rows = [];
@@ -384,27 +506,50 @@ async function readServerRecords(page, { table, field, value = null }) {
 }
 
 async function deleteSearchedEntity(page, {
-  route, searchSelector, tableSelector, expectedText, table, exactField,
+  route, expectedText, table, exactField,
 }) {
   // This scenario intentionally creates a durable conflict draft. Cleanup must
   // remain operable while the sync pill advertises that expected conflict.
   await gotoCleanupReady(page, route);
-  const before = await readServerRecords(page, { table, field: exactField, value: expectedText });
-  if (before.length === 0) return { alreadyAbsent: true };
-  await page.locator(searchSelector).fill(expectedText);
-  const row = page.locator(`${tableSelector} tbody tr`).filter({ hasText: expectedText }).first();
-  await expect(row, `${table}:${expectedText} exists on the server but is missing from cleanup UI`).toBeVisible();
-  await row.locator('[data-bf-action^="delete-"]').click();
-  await confirmDeleteAll(page);
-  await expect.poll(
-    async () => (await readServerRecords(page, {
-      table,
-      field: exactField,
-      value: expectedText,
-    })).length,
-    { timeout: 30_000, message: `${table}:${expectedText} remained after cleanup` },
-  ).toBe(0);
-  return { deleted: before.length };
+  let records = await readServerRecords(page, { table, field: exactField, value: expectedText });
+  if (records.length === 0) return { alreadyAbsent: true };
+  const deletedIds = new Set();
+  while (records.length > 0) {
+    const repeatedId = records.find((record) => deletedIds.has(String(record.id)));
+    expect(repeatedId, `${table}:${expectedText} cleanup made no server progress`).toBeUndefined();
+    records.forEach((record) => deletedIds.add(String(record.id)));
+    const result = await page.evaluate(async ({ tableName, pendingRecords }) => {
+      const csrfToken = document.cookie.split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("csrf_token="))
+        ?.slice("csrf_token=".length) || "";
+      const organizationId = sessionStorage.getItem("bf_active_org")
+        || localStorage.getItem("bf_active_org")
+        || "";
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Active-Org": encodeURIComponent(organizationId),
+          "X-CSRF-Token": decodeURIComponent(csrfToken),
+        },
+        body: JSON.stringify({
+          baseSyncVersion: localStorage.getItem("bf_last_sync_version") || "0",
+          clientMutationId: `row-conflict-cleanup-${crypto.randomUUID()}`,
+          deletions: pendingRecords.map((record) => ({
+            table: tableName,
+            id: record.id,
+            expectedVersion: record.rowVersion,
+          })),
+        }),
+      });
+      return { ok: response.ok, status: response.status, body: await response.json() };
+    }, { tableName: table, pendingRecords: records });
+    expect(result, JSON.stringify(result.body)).toMatchObject({ ok: true, status: 200 });
+    records = await readServerRecords(page, { table, field: exactField, value: expectedText });
+  }
+  return { deleted: deletedIds.size };
 }
 
 function cleanupTargetsForSuffix(suffix) {
@@ -439,20 +584,37 @@ function cleanupTargetsForSuffix(suffix) {
 
 async function cleanupCreatedEntities(page, targets) {
   const failures = [];
-  for (const target of targets) {
-    // Each delete can finish with a late route restoration from the modal that
-    // owned it. Retire that document after the target is verified so it cannot
-    // interrupt navigation for the next, unrelated cleanup target.
-    const targetPage = await page.context().newPage();
-    try {
-      await deleteSearchedEntity(targetPage, target);
-    } catch (error) {
-      failures.push(new Error(
-        `${target.table}:${target.expectedText}: ${error?.message || error}`,
-        { cause: error },
-      ));
-    } finally {
-      await targetPage.close().catch(() => undefined);
+  // Use a fresh storage context for cleanup. The scenario deliberately keeps
+  // its primary context in a durable row conflict; sharing that IndexedDB
+  // state makes unrelated fixture deletes inherit the conflict and stall.
+  const browser = page.context().browser();
+  const cleanupContext = browser
+    ? await browser.newContext({
+      serviceWorkers: "block",
+      storageState: await page.context().storageState(),
+    })
+    : page.context();
+  if (cleanupContext !== page.context()) await isolateHostInjectedScripts(cleanupContext);
+  try {
+    for (const target of targets) {
+      // Each delete can finish with a late route restoration from the modal
+      // that owned it. Retire that document after the target is verified so it
+      // cannot interrupt navigation for the next, unrelated cleanup target.
+      const targetPage = await cleanupContext.newPage();
+      try {
+        await deleteSearchedEntity(targetPage, target);
+      } catch (error) {
+        failures.push(new Error(
+          `${target.table}:${target.expectedText}: ${error?.message || error}`,
+          { cause: error },
+        ));
+      } finally {
+        await targetPage.close().catch(() => undefined);
+      }
+    }
+  } finally {
+    if (cleanupContext !== page.context()) {
+      await cleanupContext.close().catch(() => undefined);
     }
   }
   if (failures.length > 0) {
@@ -511,10 +673,14 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
   try {
     await login(pageA);
     await cleanupStaleRowConflictFixtures(pageA, { excludeSuffix: suffix });
-    await createOwner(pageA, { code: ownerCode, name: ownerName });
+    await createReferenceFixtures(pageA, {
+      suffix,
+      ownerCode,
+      ownerName,
+      baselineExpertName,
+      expertName,
+    });
     cleanupEnabled = true;
-    await createExpert(pageA, { name: baselineExpertName, suffix: `${suffix}-BASE` });
-    await createExpert(pageA, { name: expertName, suffix: `${suffix}-ADD` });
     await createPlan00(pageA, { code: planCode, name: planName00, ownerName });
     await createPackage00(pageA, {
       code: packageCode,
@@ -738,13 +904,10 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await contextB?.close().catch(() => undefined);
     contextB = null;
     if (cleanupEnabled) {
-      const cleanupPage = await contextA.newPage();
       try {
-        await cleanupCreatedEntities(cleanupPage, cleanupTargetsForSuffix(suffix));
+        await cleanupCreatedEntities(pageA, cleanupTargetsForSuffix(suffix));
       } catch (error) {
         cleanupFailure = error;
-      } finally {
-        await cleanupPage.close().catch(() => undefined);
       }
     }
     await contextA.close().catch(() => undefined);

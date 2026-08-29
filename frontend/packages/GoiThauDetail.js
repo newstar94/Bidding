@@ -2,26 +2,13 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { checkBidQualified } from "./detail/PackageTabs.js";
-import { renderCancellationPanel } from "./detail/CancellationPanel.js";
-import { renderPreparationActionPanel } from "./detail/PreparationPanel.js";
 import { apiFetch } from "../shared/apiClient.js";
-import { renderPreparationDetailsPanel } from "./detail/PreparationDetailsPanel.js";
-import { renderAwardResultDetailsPanel } from "./detail/AwardResultDetailsPanel.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
-import { renderTechnicalEvaluationPanel } from "./detail/TechnicalEvaluationPanel.js";
-import { renderFinancialEvaluationPanel } from "./detail/FinancialEvaluationPanel.js";
-import { renderFinancialOpeningPanel } from "./detail/FinancialOpeningPanel.js";
-import { savePackageCancellation } from "./packageCancellation.js";
 import { PackageDetailModule } from "./detail/PackageDetailModule.js";
 import { packageWorkspaceFor } from "./detail/PackageWorkspaceState.js";
 import * as lifecyclePolicy from "./LifecyclePolicy.js";
 import { buildPackageDetailViewModel } from "./detail/PackageDetailViewModel.js";
-import { renderPackageOpeningPanel } from "./detail/PackageOpeningPanel.js";
-import { renderQualifiedApprovalPanel } from "./detail/QualifiedApprovalPanel.js";
-import { renderPackageDocumentsPanel } from "./detail/PackageDocumentsPanel.js";
-import { renderPackageGoodsPanel } from "./PackageGoodsWorkflow.js";
-import { renderActivityTimeline } from "../shared/ActivityTimeline.js";
 import { restoreDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { linkedPlanIdsForPackage } from "./detail/packagePlanApprovals.js";
@@ -183,34 +170,54 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
   if (!contentWrapper) return;
   contentWrapper.innerHTML = trustedHTML("");
   switch (this._currentWorkflowTab) {
-    case "preparation":
+    case "preparation": {
+      const { renderPreparationDetailsPanel } = await import("./detail/PreparationDetailsPanel.js");
+      if (!isCurrentRender()) return;
       renderPreparationDetailsPanel(this, { contentWrapper, gt, id, isEditable, appController });
       break;
-    case "preparation_action":
+    }
+    case "preparation_action": {
+      const { renderPreparationActionPanel } = await import("./detail/PreparationPanel.js");
+      if (!isCurrentRender()) return;
       renderPreparationActionPanel(contentWrapper, gt);
       break;
-    case "goods":
+    }
+    case "goods": {
+      const { renderPackageGoodsPanel } = await import("./PackageGoodsWorkflow.js");
+      if (!isCurrentRender()) return;
       await renderPackageGoodsPanel(this, { contentWrapper, pkg: gt });
       break;
+    }
     case "opening":
-    case "opening_tech":
+    case "opening_tech": {
+      const { renderPackageOpeningPanel } = await import("./detail/PackageOpeningPanel.js");
+      if (!isCurrentRender()) return;
       renderPackageOpeningPanel(this, { contentWrapper, pkg: gt, appController });
       break;
-    case "eval_tech":
+    }
+    case "eval_tech": {
+      const { renderTechnicalEvaluationPanel } = await import("./detail/TechnicalEvaluationPanel.js");
+      if (!isCurrentRender()) return;
       renderTechnicalEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
       if (appController) {
         appController.currentDanhGiaTab = "technical";
         appController.renderDanhGiaHsdtPanel?.();
       }
       break;
-    case "eval_fin":
+    }
+    case "eval_fin": {
+      const { renderFinancialEvaluationPanel } = await import("./detail/FinancialEvaluationPanel.js");
+      if (!isCurrentRender()) return;
       renderFinancialEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
       if (appController) {
         appController.currentDanhGiaTab = "financial";
         appController.renderDanhGiaHsdtPanel?.();
       }
       break;
-    case "qualified":
+    }
+    case "qualified": {
+      const { renderQualifiedApprovalPanel } = await import("./detail/QualifiedApprovalPanel.js");
+      if (!isCurrentRender()) return;
       renderQualifiedApprovalPanel(this, {
         contentWrapper,
         pkg: gt,
@@ -219,7 +226,10 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
         appController,
       });
       break;
-    case "opening_fin":
+    }
+    case "opening_fin": {
+      const { renderFinancialOpeningPanel } = await import("./detail/FinancialOpeningPanel.js");
+      if (!isCurrentRender()) return;
       renderFinancialOpeningPanel(this, {
         contentWrapper,
         pkg: gt,
@@ -227,10 +237,22 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
         appController,
       });
       break;
-    case "result":
+    }
+    case "result": {
+      const { renderAwardResultDetailsPanel } = await import("./detail/AwardResultDetailsPanel.js");
+      if (!isCurrentRender()) return;
       renderAwardResultDetailsPanel(this, { contentWrapper, gt, id, isEditable, appController });
       break;
+    }
     case "cancel": {
+      const [
+        { renderCancellationPanel },
+        { savePackageCancellation },
+      ] = await Promise.all([
+        import("./detail/CancellationPanel.js"),
+        import("./packageCancellation.js"),
+      ]);
+      if (!isCurrentRender()) return;
       renderCancellationPanel(contentWrapper, {
         pkg: gt,
         formatDate: (value) => this.model.formatForDateInput(value),
@@ -253,14 +275,19 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
       });
       break;
     }
-    case "documents":
+    case "documents": {
+      const { renderPackageDocumentsPanel } = await import("./detail/PackageDocumentsPanel.js");
+      if (!isCurrentRender()) return;
       await renderPackageDocumentsPanel(this, {
         contentWrapper,
         packageId: gt.id,
         pkg: gt,
       });
       break;
-    case "activity":
+    }
+    case "activity": {
+      const { renderActivityTimeline } = await import("../shared/ActivityTimeline.js");
+      if (!isCurrentRender()) return;
       contentWrapper.innerHTML = trustedHTML('<section class="activity-panel" aria-label="Lịch sử chỉnh sửa"><h3>Lịch sử chỉnh sửa</h3><div data-activity-timeline></div></section>');
       await renderActivityTimeline(contentWrapper.querySelector("[data-activity-timeline]"), {
         targetType: "goithau",
@@ -269,6 +296,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
           && this._currentWorkflowTab === "activity",
       });
       break;
+    }
   }
   this.createIconsScoped?.(contentWrapper);
   if (appController?.setupExcelImportEvents) {

@@ -416,6 +416,10 @@ export class BiddingController {
   async awaitAuthoritativeMutationBoundary() {
     return awaitStartupAuthoritativeMutationBoundary(this);
   }
+  publishStartupReconciliationPhase(phase) {
+    const indicator = document.getElementById("btn-force-sync");
+    if (indicator) indicator.dataset.startupReconciliationPhase = String(phase || "");
+  }
   getWorkflowModuleLoader() {
     if (!this._workflowModuleLoader) {
       this._workflowModuleLoader = new WorkflowModuleLoader({

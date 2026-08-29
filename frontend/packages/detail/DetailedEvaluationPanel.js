@@ -1,6 +1,5 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
-import { renderBidderGoodsPanelMarkup } from "../BidderGoodsWorkflow.js";
 import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
@@ -514,7 +513,7 @@ export function renderDetailedEvaluationPanel(container, {
   readOnly = false,
   canReopen = false,
   warning = "",
-  bidderGoodsState = null,
+  bidderGoodsMarkup = "",
 } = {}) {
   if (!container) return;
   const rows = new Map(
@@ -743,7 +742,7 @@ export function renderDetailedEvaluationPanel(container, {
       </div>
       <div id="detailed-evaluation-tab-panel" class="detailed-evaluation-tab-panel" role="tabpanel" aria-labelledby="detailed-evaluation-tab-${escapeHtml(activeGroup)}">
         ${technicalMethodSelector}
-        ${bidderGoodsLayout ? renderBidderGoodsPanelMarkup(bidderGoodsState || {}) : `
+        ${bidderGoodsLayout ? bidderGoodsMarkup : `
         ${technicalMethodRequired ? '<div class="package-panel-empty detailed-technical-method-empty">Chọn phương pháp đánh giá kỹ thuật hoặc nhập file Excel để tiếp tục.</div>' : `
         <div class="table-container package-table-frame has-bottom-space detailed-evaluation-table-frame">
         <table class="data-table detailed-evaluation-table ${binaryLayout ? `detailed-evaluation-table-binary detailed-evaluation-table-${activeGroup}` : financialLayout ? "detailed-evaluation-table-financial" : technicalPassFailLayout ? "detailed-evaluation-table-technical-pass-fail" : technicalScoreLayout ? "detailed-evaluation-table-technical-score" : ""}" data-no-sort="true" data-density="comfortable" data-row-pagination="true" aria-label="Báo cáo đánh giá chi tiết">

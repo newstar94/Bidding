@@ -109,10 +109,23 @@ const waitForApp = async (page) => {
   }, null, { timeout: 20_000 });
 };
 
+const waitForInitialReconciliation = async (page) => {
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
+  ), null, { timeout: 20_000 });
+};
+
 const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
-  const response = await page.goto(`${baseURL}${route}`, { waitUntil: "domcontentloaded" });
-  if (!response?.ok()) throw new Error(`${route} returned HTTP ${response?.status() || "unknown"}`);
-  await waitForApp(page);
+  const currentPath = new URL(page.url()).pathname.replace(/\/$/, "") || "/";
+  const targetPath = new URL(route, baseURL).pathname.replace(/\/$/, "") || "/";
+  if (currentPath === targetPath) {
+    await waitForApp(page);
+  } else {
+    const response = await page.goto(`${baseURL}${route}`, { waitUntil: "domcontentloaded" });
+    if (!response?.ok()) throw new Error(`${route} returned HTTP ${response?.status() || "unknown"}`);
+    await waitForApp(page);
+  }
+  await waitForInitialReconciliation(page);
   await page.locator(buttonSelector).click();
   await page.locator(`${modalSelector}.active`).waitFor({ state: "visible", timeout: 10_000 });
 };
@@ -189,6 +202,14 @@ const select = (page, selector, option) => page.locator(selector).selectOption(o
 
 try {
   const page = await browser.newPage({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
+  page.setDefaultTimeout(20_000);
+  const blockInjectedScript = (route) => route.abort("blockedbyclient");
+  await page.route(
+    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
+    blockInjectedScript,
+  );
+  await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
+  await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
   page.on("response", async (response) => {
     if (response.status() >= 400 && response.url().includes("/api/")
@@ -379,7 +400,7 @@ try {
         toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
           .map((toast) => toast.textContent?.trim() || ""),
       };
-    }, `GÃ³i hÃ ng hÃ³a ${runId}`);
+    }, `Gói hàng hóa ${runId}`);
     throw new Error(`Tender publication did not expose opening action: ${JSON.stringify({
       browserState,
       recentHttpErrors: httpErrors.slice(-8),
@@ -506,7 +527,9 @@ try {
   await page.locator('input[name="hd-goithau-checkbox"]').check();
   await select(page, "#hd-nhanvienphutrach", { index: 1 });
   await select(page, "#hd-trangthai-hopdong", { label: "Đang thực hiện" });
-  await submitModal(page, "#form-hopdong", "#modal-hopdong");
+  await submitModal(page, "#form-hopdong", "#modal-hopdong", {
+    diagnostics: "contract create",
+  });
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
   const contractRow = page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng ${runId}` });
   await contractRow.waitFor({ state: "visible", timeout: 15_000 });
@@ -601,7 +624,9 @@ try {
     const appraisalRows = page.locator("#to-thamdinh-tbody tr");
     await specialistRows.nth(0).locator('input[name="tochuyengia-select"]').check();
     await appraisalRows.nth(1).locator('input[name="tothamdinh-select"]').check();
-    await submitModal(page, "#form-goithau", "#modal-goithau");
+    await submitModal(page, "#form-goithau", "#modal-goithau", {
+      diagnostics: `additional package ${suffix}`,
+    });
     await page.locator("#search-goithau").fill(title);
     await page.getByText(title, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   };
@@ -940,7 +965,39 @@ try {
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await lotOpeningSync;
-  await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+  await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 }).catch(async (error) => {
+    const browserState = await page.evaluate((expectedName) => {
+      const pkg = globalThis.app?.model?.state?.goithau?.find?.(
+        (item) => item.tenGoiThau === expectedName,
+      );
+      return {
+        package: pkg ? {
+          id: pkg.id,
+          rowVersion: pkg.rowVersion,
+          trangThai: pkg.trangThai,
+          phuongThucLuaChon: pkg.phuongThucLuaChon,
+          thoiGianMoThau: pkg.thoiGianMoThau,
+        } : null,
+        activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+          ?.getAttribute("data-workflow-tab") || "",
+        tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((tab) => ({
+          id: tab.getAttribute("data-workflow-tab") || "",
+          selected: tab.getAttribute("aria-selected") || "",
+          visible: Boolean(tab.getClientRects().length),
+        })),
+        workflowText: document.getElementById("detail-workflow-content-wrapper")
+          ?.innerText?.slice(0, 1200) || "",
+        dialogText: document.querySelector("#modal-custom-dialog.active")?.innerText || "",
+        toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+          .map((toast) => toast.textContent?.trim() || ""),
+      };
+    }, twoEnvelopePackage);
+    throw new Error(`Two-envelope opening panel did not render: ${JSON.stringify({
+      browserState,
+      recentHttpErrors: httpErrors.slice(-8),
+      pageErrors: pageErrors.slice(-8),
+    })}; ${error.message}`);
+  });
   await page.waitForFunction(() => (
     document.getElementById("detail-workflow-status-badge")?.textContent?.includes("Đã mở thầu")
   ), null, { timeout: 15_000 });

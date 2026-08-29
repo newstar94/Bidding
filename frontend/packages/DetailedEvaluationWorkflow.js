@@ -1,5 +1,4 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
-import { readExcelWorkbookSheets } from "../documents/excelFileReader.js";
 import { renderDetailedEvaluationPanel } from "./detail/DetailedEvaluationPanel.js";
 import {
   bindDetailedEvaluationPanelController,
@@ -8,11 +7,6 @@ import {
   confirmDetailedEvaluationDiscard,
 } from "./DetailedEvaluationPanelController.js";
 import {
-  validateMuasamcongContractorIdentity,
-} from "./detailedEvaluationExcel.js";
-import { resolveBidContractorName } from "../partners/contractorVersionBinding.js";
-import { analyzeDetailedEvaluationWorkbook } from "./DetailedEvaluationImport.js";
-import {
   addDetailedEvaluationCriterion as addDetailedEvaluationCriterionWithController,
   removeDetailedEvaluationCriterion,
 } from "./DetailedEvaluationCriteriaController.js";
@@ -20,18 +14,12 @@ import {
   getDetailedEvaluationProgress,
   isDetailedEvaluationSummaryOwned,
 } from "./detailedEvaluationSelectors.js";
-import { executeDetailedEvaluationSave } from "./DetailedEvaluationSaveWorkflow.js";
 import {
   applyDetailedEvaluationProjection,
   buildDetailedEvaluationDraft,
   buildReopenedDetailedEvaluationReport,
   resolveDetailedEvaluationState,
 } from "./DetailedEvaluationState.js";
-import {
-  bindBidderGoodsPanel,
-  buildBidderGoodsPanelState,
-  initializeBidderGoodsFromRequirements,
-} from "./BidderGoodsWorkflow.js";
 import { BIDDER_GOODS_TAB } from "./bidderGoodsSelectors.js";
 import {
   getForcedTechnicalEvaluationMethod,
@@ -112,10 +100,14 @@ export async function renderDetailedEvaluation() {
     && isDetailedEvaluationSummaryOwned(state.report)
     ? "Báo cáo chi tiết đang được chỉnh sửa. Kết quả tổng hợp chưa được cập nhật."
     : "";
-  let bidderGoodsState = null;
+  let bidderGoodsWorkflow = null;
+  let bidderGoodsMarkup = "";
   if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {
-    initializeBidderGoodsFromRequirements(this, state);
-    bidderGoodsState = buildBidderGoodsPanelState(this, state);
+    bidderGoodsWorkflow = await import("./BidderGoodsWorkflow.js");
+    bidderGoodsWorkflow.initializeBidderGoodsFromRequirements(this, state);
+    bidderGoodsMarkup = bidderGoodsWorkflow.renderBidderGoodsPanelMarkup(
+      bidderGoodsWorkflow.buildBidderGoodsPanelState(this, state),
+    );
   }
   renderDetailedEvaluationPanel(detail, {
     ...state,
@@ -123,7 +115,7 @@ export async function renderDetailedEvaluation() {
     criteria: groupCriteria,
     progress,
     warning,
-    bidderGoodsState,
+    bidderGoodsMarkup,
   });
   bindDetailedEvaluationPanelController({
     appController: this,
@@ -139,9 +131,7 @@ export async function renderDetailedEvaluation() {
       setTechnicalMethod: (method) => setDetailedTechnicalEvaluationMethod.call(this, method),
     },
   });
-  if (this.selectedDetailedEvaluationTab === BIDDER_GOODS_TAB) {
-    bindBidderGoodsPanel(this, state, detail);
-  }
+  bidderGoodsWorkflow?.bindBidderGoodsPanel(this, state, detail);
   syncDetailedEvaluationNavigation(this, state.pkg.id);
 }
 
@@ -149,6 +139,13 @@ export async function importDetailedEvaluationExcel(file) {
   const state = resolveDetailedEvaluationState(this);
   if (!state?.bid || !state.report || state.readOnly) return false;
   try {
+    const [
+      { readExcelWorkbookSheets },
+      { analyzeDetailedEvaluationWorkbook },
+    ] = await Promise.all([
+      import("../documents/excelFileReader.js"),
+      import("./DetailedEvaluationImport.js"),
+    ]);
     const sheets = await readExcelWorkbookSheets(file);
     const analysis = analyzeDetailedEvaluationWorkbook({
       state,
@@ -199,6 +196,13 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
   state,
   sheets,
 ) {
+  const [
+    { validateMuasamcongContractorIdentity },
+    { resolveBidContractorName },
+  ] = await Promise.all([
+    import("./detailedEvaluationExcel.js"),
+    import("../partners/contractorVersionBinding.js"),
+  ]);
   const selectedContractorName = resolveBidContractorName(controller.model, state.bid)
     || String(state.bid?.tenNhaThau || "").trim();
   const identity = validateMuasamcongContractorIdentity(sheets, selectedContractorName);
@@ -229,6 +233,7 @@ export async function saveDetailedEvaluation({
 } = {}) {
   const state = resolveDetailedEvaluationState(this);
   const detail = this.view.getActiveElement("danhgiahsdt-detail-view");
+  const { executeDetailedEvaluationSave } = await import("./DetailedEvaluationSaveWorkflow.js");
   return executeDetailedEvaluationSave({
     appController: this,
     state,

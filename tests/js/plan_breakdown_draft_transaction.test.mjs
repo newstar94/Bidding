@@ -47,6 +47,7 @@ import {
   savePlanVersionDraftSession,
 } from "../../frontend/plans/PlanVersionDraftSession.js";
 import { persistExpertFormChanges } from "../../frontend/experts/ChuyenGiaWorkflow.js";
+import { persistContractFormChanges } from "../../frontend/contracts/HopDongWorkflow.js";
 import {
   completeProcurementPlanImportRevision,
   originatePlanImportFlow,
@@ -1271,6 +1272,72 @@ test("saving an expert inside an edit breakdown session remains memory-only", as
 
   assert.deepEqual(result, { ok: true, draft: true });
   assert.deepEqual(calls, ["closeModal", "render"]);
+});
+
+test("saving an expert keeps its form open until remote synchronization succeeds", async () => {
+  const calls = [];
+  let finishSync;
+  const remoteSync = new Promise((resolve) => { finishSync = resolve; });
+  const lease = {
+    outbox: { async flush() { calls.push("flush"); } },
+  };
+  const controller = {
+    model: {
+      state: { chuyengia: [] },
+      beginWorkspaceMutation() { return lease; },
+      assertWorkspaceMutation() {},
+      finishWorkspaceMutation() { calls.push("finish"); },
+      workspaceMutationUsesCurrentResources() { return true; },
+      async persistChanges() { calls.push("persist"); },
+    },
+    autoSync() { calls.push("sync-start"); return remoteSync; },
+    async closeModal() { calls.push("closeModal"); },
+    view: { renderChuyenGiaTable() { calls.push("render"); } },
+  };
+
+  const result = await persistExpertFormChanges(controller, [{
+    id: "expert-pending", rootId: "expert-pending", isLatest: 1,
+  }], { draft: false });
+
+  assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+  finishSync({ ok: true });
+  await result.syncPromise;
+  assert.deepEqual(calls, [
+    "persist", "flush", "sync-start", "finish", "closeModal", "render",
+  ]);
+});
+
+test("saving a contract keeps its form open until remote synchronization succeeds", async () => {
+  const calls = [];
+  let finishSync;
+  const remoteSync = new Promise((resolve) => { finishSync = resolve; });
+  const lease = {
+    outbox: { async flush() { calls.push("flush"); } },
+  };
+  const controller = {
+    model: {
+      state: { hopdong: [] },
+      beginWorkspaceMutation() { return lease; },
+      assertWorkspaceMutation() {},
+      finishWorkspaceMutation() { calls.push("finish"); },
+      workspaceMutationUsesCurrentResources() { return true; },
+      async persistChanges() { calls.push("persist"); },
+    },
+    autoSync() { calls.push("sync-start"); return remoteSync; },
+    async closeModal() { calls.push("closeModal"); },
+    view: { async renderHopDongTable() { calls.push("render"); } },
+  };
+
+  const result = await persistContractFormChanges(controller, [{
+    id: "contract-pending", rootId: "contract-pending", isLatest: 1,
+  }]);
+
+  assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+  finishSync({ ok: true });
+  await result.syncPromise;
+  assert.deepEqual(calls, [
+    "persist", "flush", "sync-start", "finish", "closeModal", "render",
+  ]);
 });
 
 test("draft assignments are changed in memory without calling model persistence methods", () => {
