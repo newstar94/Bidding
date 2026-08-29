@@ -8,6 +8,25 @@ from backend.commercial_policy.config import (
 
 def test_commercial_runtime_defaults_remain_fully_disabled():
     config = CommercialRuntimeConfig.from_environment({})
+    assert not config.trial_full_access_enabled
+    assert config.mode == "off"
+    assert not config.enabled
+    assert not config.payment_checkout_enabled
+    assert not config.payment_activation_enabled
+    assert not config.procurement_credit_enforcement_enabled
+
+
+def test_trial_full_access_disables_every_commercial_enforcement_switch():
+    config = CommercialRuntimeConfig.from_environment({
+        "TRIAL_FULL_ACCESS_ENABLED": "true",
+        "COMMERCIAL_POLICY_ENABLED": "true",
+        "COMMERCIAL_POLICY_MODE": "enforce",
+        "PAYMENT_CHECKOUT_ENABLED": "true",
+        "PAYMENT_ACTIVATION_ENABLED": "true",
+        "PROCUREMENT_CREDIT_ENFORCEMENT_ENABLED": "true",
+    })
+
+    assert config.trial_full_access_enabled
     assert config.mode == "off"
     assert not config.enabled
     assert not config.payment_checkout_enabled

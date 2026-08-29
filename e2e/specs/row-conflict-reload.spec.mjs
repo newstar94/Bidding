@@ -46,18 +46,19 @@ async function login(page) {
 }
 
 async function gotoReady(page, route) {
+  const currentUrl = page.url();
+  const currentPath = /^https?:/u.test(currentUrl)
+    ? new URL(currentUrl).pathname.replace(/\/$/, "") || "/"
+    : null;
+  const targetPath = new URL(route, "http://e2e.local").pathname.replace(/\/$/, "") || "/";
+  if (currentPath !== null && currentPath === targetPath) {
+    await waitForApp(page);
+    await waitForInitialReconciliation(page);
+    return;
+  }
   await page.goto(route, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await waitForInitialReconciliation(page);
-}
-
-async function gotoCleanupReady(page, route) {
-  await page.goto(route, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await page.waitForFunction(() => {
-    const state = document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase;
-    return state === "RECONCILED" || state === "CONFLICT";
-  });
 }
 
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
@@ -135,15 +136,20 @@ async function savePlanBreakdown(page, timeout = 30_000) {
   await dismissOptionalDialog(page);
 }
 
-async function selectVisibleVersion(packageRow, label) {
+async function selectVisibleVersion(page, packageRow, label) {
   const nativeSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
   const option = nativeSelect.locator("option").filter({ hasText: label });
   await expect(option).toHaveCount(1);
   const selectedId = await option.getAttribute("value");
   expect(selectedId).toBeTruthy();
-  // Version changes rerender the row and regenerate combobox ids. Drive the
-  // stable delegated change seam, then assert the replacement accessible UI.
-  await nativeSelect.selectOption(selectedId, { force: true });
+  const combobox = packageRow.getByRole("combobox", {
+    name: /Chọn phiên bản gói thầu/i,
+  });
+  // Exercise the same accessible control as a user. The native select is a
+  // hidden implementation detail and can be transiently disabled while its
+  // replacement row is mounted, especially in WebKit.
+  await combobox.click();
+  await page.getByRole("option", { name: label, exact: true }).click();
   await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
     .toHaveValue(selectedId);
   await expect(packageRow.getByRole("combobox", {
@@ -506,11 +512,10 @@ async function readServerRecords(page, { table, field, value = null }) {
 }
 
 async function deleteSearchedEntity(page, {
-  route, expectedText, table, exactField,
+  expectedText, table, exactField,
 }) {
   // This scenario intentionally creates a durable conflict draft. Cleanup must
   // remain operable while the sync pill advertises that expected conflict.
-  await gotoCleanupReady(page, route);
   let records = await readServerRecords(page, { table, field: exactField, value: expectedText });
   if (records.length === 0) return { alreadyAbsent: true };
   const deletedIds = new Set();
@@ -596,22 +601,24 @@ async function cleanupCreatedEntities(page, targets) {
     : page.context();
   if (cleanupContext !== page.context()) await isolateHostInjectedScripts(cleanupContext);
   try {
+    // Cleanup only needs an authenticated same-origin document for fetch,
+    // cookies, and workspace storage. Bootstrapping an application route for
+    // every table adds five unrelated WebKit cold navigations to teardown.
+    const targetPage = await cleanupContext.newPage();
     for (const target of targets) {
-      // Each delete can finish with a late route restoration from the modal
-      // that owned it. Retire that document after the target is verified so it
-      // cannot interrupt navigation for the next, unrelated cleanup target.
-      const targetPage = await cleanupContext.newPage();
       try {
+        if (targetPage.url() === "about:blank") {
+          await targetPage.goto("/health/ready", { waitUntil: "domcontentloaded" });
+        }
         await deleteSearchedEntity(targetPage, target);
       } catch (error) {
         failures.push(new Error(
           `${target.table}:${target.expectedText}: ${error?.message || error}`,
           { cause: error },
         ));
-      } finally {
-        await targetPage.close().catch(() => undefined);
       }
     }
+    await targetPage.close().catch(() => undefined);
   } finally {
     if (cleanupContext !== page.context()) {
       await cleanupContext.close().catch(() => undefined);
@@ -812,12 +819,12 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
     const versionSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
     await expect(versionSelect.locator("option")).toHaveCount(2);
-    await selectVisibleVersion(packageRow, "00");
+    await selectVisibleVersion(pageA, packageRow, "00");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(0);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(0);
     await expect(packageRow.locator('.action-btn[data-bf-action="show-package"]')).toHaveCount(1);
-    await selectVisibleVersion(packageRow, "01");
+    await selectVisibleVersion(pageA, packageRow, "01");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
@@ -830,9 +837,12 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
 
+    const authenticatedState = await contextA.storageState();
     contextB = await browser.newContext({
       serviceWorkers: "block",
-      storageState: await contextA.storageState(),
+      // A separate client shares the authenticated server session, not the
+      // first client's local mutation/outbox storage.
+      storageState: { cookies: authenticatedState.cookies, origins: [] },
     });
     await isolateHostInjectedScripts(contextB);
     pageB = await contextB.newPage();
@@ -891,7 +901,6 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await waitForApp(pageA);
     await waitForInitialReconciliation(pageA);
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
-    await gotoReady(pageA, "/goi-thau");
     packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow).toContainText(packageNameB);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);

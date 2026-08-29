@@ -25,6 +25,10 @@ import {
   synchronizeProfileMenu,
   synchronizeSidebarViewport
 } from "./shellAccessibility.js";
+import {
+  isTrialFullAccess,
+  resolveTrialVisibleTab,
+} from "../commercial-policy/trialMode.js";
 function requiredRoleForTab(tabName) {
   if (["superadmin-dashboard", "superadmin", "commercial-admin"].includes(tabName)) return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
@@ -79,10 +83,22 @@ function canAccessTab(controller, tabName) {
   return !requiredRole || controller.model.hasActiveEffectiveRole(requiredRole);
 }
 function guardTabAccess(controller, tabName, action = null, updateState = true) {
+  const fallbackTab = defaultTabForRole(controller.model);
+  const visibleTab = resolveTrialVisibleTab(
+    tabName,
+    fallbackTab,
+    isTrialFullAccess(document)
+  );
+  if (visibleTab !== tabName) {
+    if (updateState) {
+      const fallbackUrl = controller.routeMap[visibleTab] || visibleTab;
+      history.replaceState({ tab: visibleTab, action: null }, "", "/" + fallbackUrl);
+    }
+    return { tabName: visibleTab, action: null };
+  }
   if (canAccessTab(controller, tabName)) {
     return { tabName, action };
   }
-  const fallbackTab = defaultTabForRole(controller.model);
   if (typeof controller.view?.showToast === "function") {
     controller.view.showToast(
       "Không có quyền truy cập",
@@ -819,6 +835,7 @@ export function renderTabData(tabName, action = null) {
       break;
     case "profile":
       this.view.renderProfileTab(this.model.state.activeuser);
+      if (isTrialFullAccess(document)) break;
       return import("../billing/ProfilePurchaseHistory.js")
         .then(({ mountProfilePurchaseHistory }) => mountProfilePurchaseHistory(this));
     case "mothau":

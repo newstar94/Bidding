@@ -34,6 +34,7 @@ from backend.shared.subscription_policy import (
     get_account_subscriptions_by_user_ids,
     legacy_subscription_expiry,
 )
+from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.request_validation import read_json_object
 
 
@@ -288,6 +289,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         organization_package_id = str(data.get("organization_package_id") or "none").strip().lower()
         permissions = data.get("permissions")
         document_capabilities = data.get("document_capabilities")
+        trial_access = trial_full_access_enabled()
 
         if not user_id or platform_role not in {"super_admin", "user"}:
             return JSONResponse(
@@ -304,11 +306,15 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 },
                 status_code=403,
             )
-        if document_capabilities is not None and not isinstance(document_capabilities, dict):
+        if (
+            not trial_access
+            and document_capabilities is not None
+            and not isinstance(document_capabilities, dict)
+        ):
             return JSONResponse({"error": "Cấu hình quyền xuất Word không hợp lệ."}, status_code=400)
 
         normalized_capabilities = {}
-        if document_capabilities is not None:
+        if not trial_access and document_capabilities is not None:
             for field in _SENSITIVE_CAPABILITY_FIELDS:
                 value = document_capabilities.get(field)
                 if not isinstance(value, bool):
@@ -369,41 +375,42 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         )
 
         now = int(time.time())
-        if account_package_id in {"", "none"}:
-            cursor.execute("DELETE FROM account_subscriptions WHERE user_id = ?", (user_id,))
-        else:
-            account_package = cursor.execute(
-                "SELECT 1 FROM goi_dich_vu WHERE id = ? AND trang_thai = 'active'",
-                (account_package_id,),
-            ).fetchone()
-            if not account_package:
-                conn.rollback()
-                return JSONResponse({"error": "Gói cá nhân không hợp lệ hoặc đã khóa."}, status_code=400)
-            current_account = cursor.execute(
-                "SELECT starts_at, expires_at FROM account_subscriptions WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()
-            starts_at = int(current_account[0]) if current_account else now
-            expires_at = (
-                int(current_account[1])
-                if current_account and current_account[1]
-                else legacy_subscription_expiry(now)
-            )
-            if expires_at <= now:
-                starts_at, expires_at = now, legacy_subscription_expiry(now)
-            cursor.execute(
-                """INSERT INTO account_subscriptions (
-                       user_id, package_id, status, starts_at, expires_at
-                   ) VALUES (?, ?, 'active', ?, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                       package_id = excluded.package_id,
-                       status = 'active',
-                       starts_at = excluded.starts_at,
-                       expires_at = excluded.expires_at,
-                       revision = account_subscriptions.revision + 1,
-                       updated_at = CURRENT_TIMESTAMP""",
-                (user_id, account_package_id, starts_at, expires_at),
-            )
+        if not trial_access:
+            if account_package_id in {"", "none"}:
+                cursor.execute("DELETE FROM account_subscriptions WHERE user_id = ?", (user_id,))
+            else:
+                account_package = cursor.execute(
+                    "SELECT 1 FROM goi_dich_vu WHERE id = ? AND trang_thai = 'active'",
+                    (account_package_id,),
+                ).fetchone()
+                if not account_package:
+                    conn.rollback()
+                    return JSONResponse({"error": "Gói cá nhân không hợp lệ hoặc đã khóa."}, status_code=400)
+                current_account = cursor.execute(
+                    "SELECT starts_at, expires_at FROM account_subscriptions WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                starts_at = int(current_account[0]) if current_account else now
+                expires_at = (
+                    int(current_account[1])
+                    if current_account and current_account[1]
+                    else legacy_subscription_expiry(now)
+                )
+                if expires_at <= now:
+                    starts_at, expires_at = now, legacy_subscription_expiry(now)
+                cursor.execute(
+                    """INSERT INTO account_subscriptions (
+                           user_id, package_id, status, starts_at, expires_at
+                       ) VALUES (?, ?, 'active', ?, ?)
+                       ON CONFLICT(user_id) DO UPDATE SET
+                           package_id = excluded.package_id,
+                           status = 'active',
+                           starts_at = excluded.starts_at,
+                           expires_at = excluded.expires_at,
+                           revision = account_subscriptions.revision + 1,
+                           updated_at = CURRENT_TIMESTAMP""",
+                    (user_id, account_package_id, starts_at, expires_at),
+                )
 
         if organization_id:
             lock_organization_membership_invariants(cursor, organization_id)
@@ -445,56 +452,57 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 (organization_role, user_id, organization_id),
             )
 
-            if organization_package_id in {"", "none"}:
-                cursor.execute(
-                    "DELETE FROM organization_subscriptions WHERE organization_id = ?",
-                    (organization_id,),
-                )
-            else:
-                org_package = cursor.execute(
-                    """SELECT han_muc_nhan_su FROM goi_dich_vu
-                       WHERE id = ? AND trang_thai = 'active'""",
-                    (organization_package_id,),
-                ).fetchone()
-                if not org_package:
-                    conn.rollback()
-                    return JSONResponse({"error": "Gói tổ chức không hợp lệ hoặc đã khóa."}, status_code=400)
-                current_org_subscription = cursor.execute(
-                    """SELECT starts_at, expires_at FROM organization_subscriptions
-                       WHERE organization_id = ?""",
-                    (organization_id,),
-                ).fetchone()
-                org_starts_at = int(current_org_subscription[0]) if current_org_subscription else now
-                org_expires_at = (
-                    int(current_org_subscription[1])
-                    if current_org_subscription and current_org_subscription[1]
-                    else legacy_subscription_expiry(now)
-                )
-                if org_expires_at <= now:
-                    org_starts_at, org_expires_at = (
-                        now,
-                        legacy_subscription_expiry(now),
+            if not trial_access:
+                if organization_package_id in {"", "none"}:
+                    cursor.execute(
+                        "DELETE FROM organization_subscriptions WHERE organization_id = ?",
+                        (organization_id,),
                     )
-                cursor.execute(
-                    """INSERT INTO organization_subscriptions (
-                           organization_id, package_id, status, starts_at,
-                           expires_at, member_quota
-                       ) VALUES (?, ?, 'active', ?, ?, ?)
-                       ON CONFLICT(organization_id) DO UPDATE SET
-                           package_id = excluded.package_id,
-                           status = 'active',
-                           starts_at = excluded.starts_at,
-                           expires_at = excluded.expires_at,
-                           member_quota = excluded.member_quota,
-                           revision = organization_subscriptions.revision + 1,
-                           updated_at = CURRENT_TIMESTAMP""",
-                    (
-                        organization_id, organization_package_id, org_starts_at,
-                        org_expires_at, int(org_package[0]),
-                    ),
-                )
+                else:
+                    org_package = cursor.execute(
+                        """SELECT han_muc_nhan_su FROM goi_dich_vu
+                           WHERE id = ? AND trang_thai = 'active'""",
+                        (organization_package_id,),
+                    ).fetchone()
+                    if not org_package:
+                        conn.rollback()
+                        return JSONResponse({"error": "Gói tổ chức không hợp lệ hoặc đã khóa."}, status_code=400)
+                    current_org_subscription = cursor.execute(
+                        """SELECT starts_at, expires_at FROM organization_subscriptions
+                           WHERE organization_id = ?""",
+                        (organization_id,),
+                    ).fetchone()
+                    org_starts_at = int(current_org_subscription[0]) if current_org_subscription else now
+                    org_expires_at = (
+                        int(current_org_subscription[1])
+                        if current_org_subscription and current_org_subscription[1]
+                        else legacy_subscription_expiry(now)
+                    )
+                    if org_expires_at <= now:
+                        org_starts_at, org_expires_at = (
+                            now,
+                            legacy_subscription_expiry(now),
+                        )
+                    cursor.execute(
+                        """INSERT INTO organization_subscriptions (
+                               organization_id, package_id, status, starts_at,
+                               expires_at, member_quota
+                           ) VALUES (?, ?, 'active', ?, ?, ?)
+                           ON CONFLICT(organization_id) DO UPDATE SET
+                               package_id = excluded.package_id,
+                               status = 'active',
+                               starts_at = excluded.starts_at,
+                               expires_at = excluded.expires_at,
+                               member_quota = excluded.member_quota,
+                               revision = organization_subscriptions.revision + 1,
+                               updated_at = CURRENT_TIMESTAMP""",
+                        (
+                            organization_id, organization_package_id, org_starts_at,
+                            org_expires_at, int(org_package[0]),
+                        ),
+                    )
 
-            if normalized_capabilities:
+            if not trial_access and normalized_capabilities:
                 cursor.execute(
                     """INSERT INTO document_export_capabilities (
                            organization_id, user_id, financial, identity, signature
@@ -519,13 +527,18 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             request=request,
             metadata={
                 "platform_role": platform_role,
-                "account_package_id": account_package_id,
+                "account_package_id": None if trial_access else account_package_id,
                 "organization_id": organization_id or None,
                 "organization_role": organization_role or None,
-                "organization_package_id": organization_package_id if organization_id else None,
+                "organization_package_id": (
+                    organization_package_id
+                    if organization_id and not trial_access
+                    else None
+                ),
                 "document_capabilities": {
                     field: bool(value) for field, value in normalized_capabilities.items()
                 },
+                "trial_full_access": trial_access,
             },
             cursor=cursor,
             required=True,
@@ -544,7 +557,14 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
             )
         conn.commit()
         return JSONResponse(
-            {"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."}
+            {
+                "success": True,
+                "message": (
+                    "Đã lưu thiết lập quyền."
+                    if trial_access
+                    else "Đã lưu thiết lập quyền và gói dịch vụ."
+                ),
+            }
         )
     except Exception as exc:
         if conn:

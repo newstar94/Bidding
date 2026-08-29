@@ -84,6 +84,7 @@ if os.path.exists(env_path):
 
 from backend.shared.paths import IMAGE_DIR
 from backend.security.turnstile import public_turnstile_config
+from backend.commercial_policy.config import trial_full_access_enabled
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
@@ -302,6 +303,10 @@ def _build_index_response_payload():
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
     google_client_id = _public_google_client_id()
     html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
+    html_content = html_content.replace(
+        "__TRIAL_FULL_ACCESS_ENABLED__",
+        "true" if trial_full_access_enabled() else "false",
+    )
     turnstile = public_turnstile_config()
     html_content = html_content.replace(
         "__TURNSTILE_ENABLED__",

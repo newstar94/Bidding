@@ -5,6 +5,7 @@ import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { isTrialFullAccess } from "../commercial-policy/trialMode.js";
 import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
 import {
   assertWorkspaceLeaseCurrent,
@@ -122,6 +123,7 @@ function showLoginAfterSecurityChange(controller) {
   if (loginPassword) loginPassword.value = "";
 }
 export async function triggerUpgradePrompt() {
+  if (isTrialFullAccess(document)) return;
   await this.view.customAlert(
     "Hạn mức Đạt giới hạn!",
     "⚠️ Bạn đã sử dụng hết số lượng nhân viên tối đa của Gói Vàng (15 tài khoản).\n\nVui lòng nâng cấp lên Gói Kim Cương (Không giới hạn nhân viên) để tiếp tục mở rộng quy mô phòng thầu của đơn vị!\n\nLiên hệ Hotline BiddingFlow: 1900.8888 để được hỗ trợ nâng cấp gói cước VIP trong 5 phút.",
@@ -434,7 +436,12 @@ export function setupRBACEvents() {
       const quotaLimit = Number(activeOrganization?.subscription?.member_quota || 0);
       const memberCount = Number(activeOrganization?.subscription?.member_count || 0);
       const id = document.getElementById("form-employee-id").value;
-      if (!id && quotaLimit > 0 && memberCount >= quotaLimit) {
+      if (
+        !isTrialFullAccess(document)
+        && !id
+        && quotaLimit > 0
+        && memberCount >= quotaLimit
+      ) {
         await this.triggerUpgradePrompt();
         return;
       }
@@ -723,18 +730,24 @@ export function setupRBACEvents() {
           submitButton.disabled = true;
           submitButton.textContent = "Đang lưu...";
         }
+        const trialAccess = isTrialFullAccess(document);
+        const accessSettingsPayload = {
+          user_id: userId,
+          platform_role: platformRole,
+          organization_id: organizationId || null,
+          organization_role: organizationId ? document.getElementById("detail-su-role").value : null,
+        };
+        if (!trialAccess) {
+          Object.assign(accessSettingsPayload, {
+            account_package_id: accountPackageId,
+            organization_package_id: organizationId ? document.getElementById("detail-su-package").value : null,
+            document_capabilities: organizationId ? documentCapabilities : null,
+          });
+        }
         const response = await apiFetch("/api/auth/users/access-settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: userId,
-            platform_role: platformRole,
-            account_package_id: accountPackageId,
-            organization_id: organizationId || null,
-            organization_role: organizationId ? document.getElementById("detail-su-role").value : null,
-            organization_package_id: organizationId ? document.getElementById("detail-su-package").value : null,
-            document_capabilities: organizationId ? documentCapabilities : null
-          })
+          body: JSON.stringify(accessSettingsPayload)
         });
         const payload = await response.json();
         if (!response.ok) {

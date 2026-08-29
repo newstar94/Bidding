@@ -690,8 +690,8 @@ export function renderSystemUsersTable(usersList, currentUsername) {
                 <td class="bf-s-018e18ec8e">${escapeHTML(user.name)}</td>
                 <td>${escapeHTML(user.email) || "--"}</td>
                 <td>${getRoleBadge(user.role)}</td>
-                <td>${getPackageBadge(subscription.package_id)}</td>
-                <td>${calculateRemainingDays(subscription.end_date)}</td>
+                            <td data-commercial-only>${getPackageBadge(subscription.package_id)}</td>
+                            <td data-commercial-only>${calculateRemainingDays(subscription.end_date)}</td>
                 <td class="text-right" data-bf-stop>
                     <div class="action-btn-group bf-s-225682f723">
                         ${detailBtn}

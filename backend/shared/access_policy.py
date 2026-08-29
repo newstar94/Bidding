@@ -4,6 +4,7 @@ from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.subscription_policy import can_use_word_export
+from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.module_registry import (
     CANONICAL_PERMISSION_MODULES,
     TABLE_TO_MODULE,
@@ -234,6 +235,8 @@ def resolve_document_export_capabilities(cursor, role_str, user_id, organization
 
     if not can_use_word_export(cursor, role_str, user_id, organization_id):
         return DocumentExportCapabilities()
+    if trial_full_access_enabled():
+        return DocumentExportCapabilities.allow_all()
     if is_personal_workspace_owner(cursor, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
     if is_organization_manager(cursor, role_str, user_id, organization_id):

@@ -3,6 +3,9 @@
   padding: 0;
   box-sizing: border-box;
 }
+html[data-trial-full-access="true"] [data-commercial-only] {
+  display: none;
+}
 body {
   font-family: var(--font-body, var(--font-primary));
   background-color: var(--bg-app);

@@ -7,6 +7,7 @@ import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.j
 import {
   isPackageDraftSaveActive,
   capturePackageSaveBaseState,
+  refreshPackageSavePlans,
   packageSaveBaseUpserts,
   packageSyncRequiresReload,
   renderPackageSaveTables,
@@ -1188,6 +1189,52 @@ test("package save captures pre-edit base snapshots for every staged aggregate r
   assert.deepEqual(baseUpserts.kehoach, [{
     id: "plan-1", rowVersion: 7, tenKeHoach: "Before plan",
   }]);
+});
+
+test("package save refreshes a reference-only plan before capturing its mutation base", async () => {
+  const referencePlan = {
+    id: "plan-reference",
+    rootId: "plan-root",
+    maKeHoach: "KH-01",
+    tenKeHoach: "Projection only",
+    referenceOnly: true,
+  };
+  const authoritativePlan = {
+    ...referencePlan,
+    tenDuAnDuToan: "Dự toán đầy đủ",
+    loaiHinhMuaSam: "Dự toán mua sắm",
+    ngayPheDuyet: "2026-08-30",
+    quyetDinhPheDuyet: "01/QĐ",
+    rowVersion: 7,
+    referenceOnly: false,
+  };
+  const state = {
+    goithau: [{ id: "package-1", keHoachId: referencePlan.id, rowVersion: 3 }],
+    goithauhanghoa: [],
+    hanghoaduthaunhathau: [],
+    kehoach: [referencePlan],
+    thongtinmothau: [],
+  };
+  const calls = [];
+  const controller = {
+    model: {
+      state,
+      entityIndexes: { invalidate() {} },
+    },
+    async fetchRecordByLookup(table, id) {
+      calls.push([table, id]);
+      state.kehoach[0] = structuredClone(authoritativePlan);
+      return state.kehoach[0];
+    },
+  };
+
+  await refreshPackageSavePlans(controller, [referencePlan.id]);
+  const baseState = capturePackageSaveBaseState(state);
+
+  assert.deepEqual(calls, [["kehoach", referencePlan.id]]);
+  assert.equal(baseState.kehoach[0].rowVersion, 7);
+  assert.equal(baseState.kehoach[0].tenDuAnDuToan, "Dự toán đầy đủ");
+  assert.equal(baseState.kehoach[0].referenceOnly, false);
 });
 
 test("package save renders only view projections installed for the active route", () => {

@@ -35,9 +35,12 @@ _FAKE_CHECKOUT_HTML = (
 
 
 def _fake_checkout_environment_allowed():
-    return str(os.environ.get("APP_ENV", "development")).strip().casefold() in {
+    return (
+        not commercial_runtime_config().trial_full_access_enabled
+        and str(os.environ.get("APP_ENV", "development")).strip().casefold() in {
         "development", "dev", "test", "testing",
-    }
+        }
+    )
 
 
 def _fake_checkout_context(connection, request):

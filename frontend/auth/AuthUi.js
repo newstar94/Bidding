@@ -88,8 +88,11 @@ export function hideAuthOverlay() {
 }
 export function reloadWithInitLoader() {
   const initLoader = showInitLoader();
+  // The full-screen Google success overlay must never be the fallback UI for
+  // a reload. Some auth-only shells can legitimately omit the workspace
+  // loader, but the pending overlay still has to be dismissed immediately.
+  hideGoogleAuthPending();
   if (initLoader) {
-    hideGoogleAuthPending();
     void initLoader.offsetHeight;
   }
   requestAnimationFrame(() => {

@@ -70,6 +70,31 @@ def test_legacy_public_packages_expose_configured_export_capabilities(monkeypatc
     assert connection.closed
 
 
+def test_trial_public_catalog_does_not_expose_prices_or_open_database(monkeypatch):
+    monkeypatch.setattr(
+        config,
+        "commercial_runtime_config",
+        lambda: SimpleNamespace(
+            enabled=False,
+            mode="off",
+            trial_full_access_enabled=True,
+        ),
+    )
+
+    def fail_if_database_is_opened():
+        raise AssertionError("Trial catalog must not read commercial package data")
+
+    monkeypatch.setattr(auth_routes.database, "get_connection", fail_if_database_is_opened)
+
+    response = auth_routes._list_public_packages_sync(None)
+
+    assert response.status_code == 200
+    assert _payload(response) == {
+        "availability": "trial",
+        "packages": [],
+    }
+
+
 def test_release_projection_preserves_offer_capabilities(monkeypatch):
     connection = _Connection()
     catalog = {

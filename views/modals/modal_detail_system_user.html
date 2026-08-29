@@ -4,7 +4,7 @@
         <div class="modal-header">
             <div>
                 <h3 id="detail-su-title">Chi tiết & Thiết lập Tài khoản</h3>
-                <p class="access-settings-subtitle">Quản lý độc lập vai trò, gói dịch vụ và quyền theo phạm vi.</p>
+                <p class="access-settings-subtitle" data-commercial-only>Quản lý độc lập vai trò, gói dịch vụ và quyền theo phạm vi.</p>
             </div>
             <button type="button" class="modal-close" data-close="modal-detail-system-user"
                 aria-label="Đóng cửa sổ thiết lập"></button>
@@ -38,8 +38,8 @@
                 <section class="access-settings-section" aria-labelledby="detail-su-platform-heading">
                     <div class="access-settings-section-heading">
                         <div>
-                            <h4 id="detail-su-platform-heading">Quyền hệ thống & gói cá nhân</h4>
-                            <p>Gói cá nhân chỉ áp dụng khi người dùng làm việc trong phạm vi Cá nhân.</p>
+                            <h4 id="detail-su-platform-heading">Quyền hệ thống</h4>
+                            <p data-commercial-only>Gói cá nhân chỉ áp dụng khi người dùng làm việc trong phạm vi Cá nhân.</p>
                         </div>
                     </div>
                     <div class="form-grid">
@@ -51,7 +51,7 @@
                             </select>
                             <span class="helper-text">Super Admin có quyền quản trị toàn nền tảng.</span>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" data-commercial-only>
                             <label for="detail-su-account-package">Gói dịch vụ cá nhân</label>
                             <select id="detail-su-account-package">
                                 <option value="none">Không có gói trả phí</option>
@@ -59,7 +59,7 @@
                             <span class="helper-text">Không có gói: vẫn được thêm, sửa, xóa; không được xuất Word.</span>
                         </div>
                     </div>
-                    <div class="access-entitlement-summary" id="detail-su-personal-entitlement" role="status"></div>
+                    <div class="access-entitlement-summary" id="detail-su-personal-entitlement" role="status" data-commercial-only></div>
                 </section>
 
                 <section class="access-settings-section" id="detail-su-organization-section"
@@ -67,7 +67,7 @@
                     <div class="access-settings-section-heading">
                         <div>
                             <h4 id="detail-su-organization-heading">Quyền trong tổ chức</h4>
-                            <p>Gói tổ chức áp dụng cho mọi thành viên khi làm việc trong tổ chức này.</p>
+                            <p data-commercial-only>Gói tổ chức áp dụng cho mọi thành viên khi làm việc trong tổ chức này.</p>
                         </div>
                     </div>
                     <div class="form-grid">
@@ -82,7 +82,7 @@
                                 <option value="employee">Chuyên viên</option>
                             </select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" data-commercial-only>
                             <label for="detail-su-package">Gói dịch vụ của tổ chức</label>
                             <select id="detail-su-package">
                                 <option value="none">Không có gói trả phí</option>
@@ -90,10 +90,10 @@
                             <span class="helper-text">Thay đổi này ảnh hưởng đến toàn bộ thành viên tổ chức.</span>
                         </div>
                     </div>
-                    <div class="access-entitlement-summary" id="detail-su-organization-entitlement" role="status"></div>
+                    <div class="access-entitlement-summary" id="detail-su-organization-entitlement" role="status" data-commercial-only></div>
                 </section>
 
-                <section class="access-settings-section" id="detail-su-document-capabilities-section"
+                <section class="access-settings-section" id="detail-su-document-capabilities-section" data-commercial-only
                     aria-labelledby="detail-su-document-capabilities-heading" hidden>
                     <div class="access-settings-section-heading">
                         <div>

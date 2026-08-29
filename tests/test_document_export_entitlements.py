@@ -114,6 +114,49 @@ def test_super_admin_bypasses_plan_but_cross_organization_member_does_not():
         connection.close()
 
 
+def test_trial_grants_all_export_formats_only_inside_an_authorized_scope(monkeypatch):
+    monkeypatch.setenv("TRIAL_FULL_ACCESS_ENABLED", "true")
+    connection = _database(word=0, excel=0, award=0)
+    try:
+        cursor = connection.cursor()
+        for export_format, feature in (
+            ("docx", None),
+            ("xlsx", None),
+            ("xlsx", "award_result"),
+        ):
+            assert can_use_document_export(
+                cursor,
+                "employee",
+                "employee",
+                "org",
+                format=export_format,
+                feature=feature,
+            ) is True
+        assert can_use_document_export(
+            cursor,
+            "employee",
+            "personal-user",
+            "personal:personal-user",
+            format="docx",
+        ) is True
+        assert can_use_document_export(
+            cursor,
+            "employee",
+            "outsider",
+            "org",
+            format="docx",
+        ) is False
+        assert can_use_document_export(
+            cursor,
+            "employee",
+            "personal-user",
+            "personal:someone-else",
+            format="docx",
+        ) is False
+    finally:
+        connection.close()
+
+
 def test_v37_legacy_backfill_and_schema_capabilities_are_registered():
     statements = []
 

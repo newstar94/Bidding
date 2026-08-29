@@ -11,6 +11,7 @@ def _flag(environment, name, default="false"):
 
 @dataclass(frozen=True)
 class CommercialRuntimeConfig:
+    trial_full_access_enabled: bool
     enabled: bool
     mode: str
     payment_checkout_enabled: bool
@@ -19,13 +20,27 @@ class CommercialRuntimeConfig:
 
     @classmethod
     def from_environment(cls, environment):
+        trial_enabled = _flag(environment, "TRIAL_FULL_ACCESS_ENABLED")
         config = cls(
-            enabled=_flag(environment, "COMMERCIAL_POLICY_ENABLED"),
-            mode=str(environment.get("COMMERCIAL_POLICY_MODE", "off")).strip().casefold(),
-            payment_checkout_enabled=_flag(environment, "PAYMENT_CHECKOUT_ENABLED"),
-            payment_activation_enabled=_flag(environment, "PAYMENT_ACTIVATION_ENABLED"),
-            procurement_credit_enforcement_enabled=_flag(
-                environment, "PROCUREMENT_CREDIT_ENFORCEMENT_ENABLED"
+            trial_full_access_enabled=trial_enabled,
+            enabled=False if trial_enabled else _flag(environment, "COMMERCIAL_POLICY_ENABLED"),
+            mode=(
+                "off"
+                if trial_enabled
+                else str(environment.get("COMMERCIAL_POLICY_MODE", "off"))
+                .strip()
+                .casefold()
+            ),
+            payment_checkout_enabled=(
+                False if trial_enabled else _flag(environment, "PAYMENT_CHECKOUT_ENABLED")
+            ),
+            payment_activation_enabled=(
+                False if trial_enabled else _flag(environment, "PAYMENT_ACTIVATION_ENABLED")
+            ),
+            procurement_credit_enforcement_enabled=(
+                False
+                if trial_enabled
+                else _flag(environment, "PROCUREMENT_CREDIT_ENFORCEMENT_ENABLED")
             ),
         )
         config.validate()
@@ -58,6 +73,12 @@ def commercial_runtime_config(environment=None):
 
         environment = os.environ
     return CommercialRuntimeConfig.from_environment(environment)
+
+
+def trial_full_access_enabled(environment=None):
+    """Return the deployment-wide trial switch used at entitlement seams."""
+
+    return commercial_runtime_config(environment).trial_full_access_enabled
 
 
 def validate_commercial_startup_configuration(environment):

@@ -4,6 +4,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { isTrialFullAccess } from "../commercial-policy/trialMode.js";
 import { getHolidays } from "../shared/runtimeState.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import {
@@ -606,7 +607,9 @@ export async function renderSuperAdminDashboard() {
   try {
     [usersResponse, packagesResponse] = await Promise.all([
       apiFetch("/api/auth/users"),
-      apiFetch("/api/system-packages"),
+      isTrialFullAccess(document)
+        ? Promise.resolve({ ok: true, json: async () => cachedPackages })
+        : apiFetch("/api/system-packages"),
     ]);
   } catch (error) {
     await this.customAlert?.(
@@ -676,8 +679,8 @@ export async function renderSuperAdminDashboard() {
                                 <td class="bf-s-78e97210a5">${escapeHtml(org.name)}</td>
                                 <td>${org.manager ? escapeHtml(org.manager) : '<span class="text-muted">Chưa cấu hình</span>'}</td>
                                 <td>${org.phone ? escapeHtml(org.phone) : '<span class="text-muted">Chưa có</span>'}</td>
-                                <td><span class="badge ${pkgClass}">${pkgName}</span></td>
-                                <td class="bf-s-6e8bcfac8d">${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
+                                <td data-commercial-only><span class="badge ${pkgClass}">${pkgName}</span></td>
+                                <td class="bf-s-6e8bcfac8d" data-commercial-only>${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
                                 <td>${statusBadge}</td>
                             </tr>
                         `;

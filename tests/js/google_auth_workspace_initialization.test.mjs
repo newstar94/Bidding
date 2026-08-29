@@ -5,6 +5,7 @@ import {
   continueGoogleLoginAfterAuthentication,
   initializeGoogleWorkspaceAfterAuthentication,
 } from "../../frontend/auth/GoogleAuthController.js";
+import { reloadWithInitLoader } from "../../frontend/auth/AuthUi.js";
 
 
 function memoryStorage() {
@@ -15,6 +16,73 @@ function memoryStorage() {
     setItem(key, value) { values.set(key, String(value)); },
   };
 }
+
+
+test("Google completion hides its pending overlay even when the init loader is unavailable", () => {
+  const previousDocument = globalThis.document;
+  const previousElement = globalThis.Element;
+  const previousRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const previousWindow = globalThis.window;
+  const insertedRules = [];
+  const classes = new Set();
+
+  class FakeElement {}
+  const pending = new FakeElement();
+  pending.classList = {
+    add(value) { classes.add(value); },
+    remove(value) { classes.delete(value); },
+  };
+  const runtimeLink = {
+    sheet: {
+      cssRules: [],
+      insertRule(rule) {
+        insertedRules.push(rule);
+        this.cssRules.push(rule);
+      },
+    },
+  };
+  const animationFrames = [];
+  let reloads = 0;
+
+  globalThis.Element = FakeElement;
+  globalThis.document = {
+    body: { classList: { add() {}, remove() {} } },
+    getElementById(id) {
+      if (id === "google-auth-pending-overlay") return pending;
+      return null;
+    },
+    querySelector(selector) {
+      return selector === "link[data-runtime-styles]" ? runtimeLink : null;
+    },
+  };
+  globalThis.requestAnimationFrame = (callback) => {
+    animationFrames.push(callback);
+  };
+  globalThis.window = { location: { reload() { reloads += 1; } } };
+
+  try {
+    reloadWithInitLoader();
+
+    assert.ok(
+      insertedRules.some((rule) => rule.includes("display:none")),
+      "the success overlay must be dismissed before a best-effort reload",
+    );
+    assert.equal(animationFrames.length, 1);
+    animationFrames.shift()();
+    assert.equal(animationFrames.length, 1);
+    animationFrames.shift()();
+    assert.equal(reloads, 1);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousElement === undefined) delete globalThis.Element;
+    else globalThis.Element = previousElement;
+    if (previousRequestAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = previousRequestAnimationFrame;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
 
 
 test("fresh AuthShell Google login reloads before admin or model initialization", async () => {

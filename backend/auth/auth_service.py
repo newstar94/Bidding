@@ -12,6 +12,7 @@ from backend.auth.roles import (
 )
 from backend.shared.workspace_scope import personal_workspace_payload
 from backend.shared.subscription_policy import get_account_subscription
+from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.date_utils import vietnam_date_from_epoch
 from backend.shared.client_ip import (
     get_client_ip as get_client_ip,
@@ -253,6 +254,16 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
                 get_account_subscription(cursor, user_id),
             )
         )
+    if trial_full_access_enabled():
+        trial_entitlements = {
+            "word_export": True,
+            "excel_export": True,
+            "award_result_excel_export": True,
+            "source": "trial_full_access",
+        }
+        for organization in organizations:
+            if organization.get("status") == "active":
+                organization["entitlements"] = dict(trial_entitlements)
     active_organizations = [org for org in organizations if org["status"] == "active"]
     hint = str(active_org_hint or '').strip()
     selected = next(

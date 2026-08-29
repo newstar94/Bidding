@@ -9,7 +9,11 @@ import {
   setPackageSubTableActionsVisible,
 } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
-import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import {
+  persistAndSync,
+  refreshRecordBeforeMutation,
+  stageLocalRecords,
+} from "../shared/MutationService.js";
 import {
   createInitialVersion,
   ensureVersionEhsmtAdjustment,
@@ -147,6 +151,22 @@ export function capturePackageSaveBaseState(state) {
     table,
     structuredClone(Array.isArray(state?.[table]) ? state[table] : []),
   ]));
+}
+
+export async function refreshPackageSavePlans(controller, planIds) {
+  const uniquePlanIds = [...new Set(
+    (Array.isArray(planIds) ? planIds : [planIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  )];
+  const refreshed = [];
+  // Refresh sequentially because refreshRecordBeforeMutation replaces the
+  // table projection after each fetch. Parallel copies could overwrite a
+  // sibling refresh when a package moves between two plans.
+  for (const planId of uniquePlanIds) {
+    refreshed.push(await refreshRecordBeforeMutation(controller, "kehoach", planId));
+  }
+  return refreshed.filter(Boolean);
 }
 
 export function packageSaveBaseUpserts(baseState, explicitUpserts) {
@@ -925,6 +945,14 @@ export async function handleGoiThauSubmit(e) {
       oldPlanId = oldGt.keHoachId;
     }
   }
+  const selectedPlanId = formVals.keHoachId;
+  const latestPlan = this.model.getLatestPlan(selectedPlanId);
+  const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
+  // The package route can hold plans as lightweight relationship projections.
+  // Refresh collateral plan rows before capturing expectedVersion so an
+  // unrelated partial/stale plan cannot mask the package row conflict that the
+  // user is actually resolving.
+  await refreshPackageSavePlans(this, [oldPlanId, planIdToSave]);
   const packageSaveBaseState = capturePackageSaveBaseState(this.model.state);
   let inputCode = document.getElementById("gt-ma").value.trim();
   if (inputCode) {
@@ -1158,9 +1186,6 @@ export async function handleGoiThauSubmit(e) {
       }
     }
   }
-  const selectedPlanId = formVals.keHoachId;
-  const latestPlan = this.model.getLatestPlan(selectedPlanId);
-  const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
   // A plan-version draft is the durable boundary for the whole aggregate.
   // The child package modal can be opened after the breakdown controller has
   // moved to another version (or after its transient breakdown marker was

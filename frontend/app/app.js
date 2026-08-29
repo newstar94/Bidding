@@ -16,10 +16,12 @@ import {
   preferredWorkspaceId
 } from "../auth/sessionBootstrapPolicy.js";
 import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
+import { applyTrialCommercialPresentation } from "../commercial-policy/trialMode.js";
 import {
   handleApplicationBootstrapFailure,
   runApplicationBootstrap,
 } from "./bootstrapRecovery.js";
+applyTrialCommercialPresentation(document);
 installReleaseDiagnostics();
 const startupMark = (name) => {
   try {

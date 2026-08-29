@@ -35,6 +35,7 @@ from backend.shared.subscription_policy import (
     LEGACY_SUBSCRIPTION_TERM_DAYS,
     SECONDS_PER_DAY,
 )
+from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
 from backend.notifications.service import (
@@ -257,6 +258,44 @@ def _lock_organization_member_quota(cursor, organization_id):
         (organization_id,),
     ).fetchone()[0])
     return subscription, member_count
+
+
+def _organization_member_quota_error(cursor, organization_id):
+    """Return the legacy commercial quota error, or None when access is allowed."""
+
+    if trial_full_access_enabled():
+        return None
+    subscription, member_count = _lock_organization_member_quota(
+        cursor, organization_id
+    )
+    now = int(time.time())
+    if (
+        not subscription
+        or subscription['status'] != 'active'
+        or subscription['organization_status'] != 'active'
+        or subscription['package_status'] != 'active'
+        or subscription['expires_at'] is not None
+        and int(subscription['expires_at']) <= now
+    ):
+        return JSONResponse(
+            {
+                "error": "Gói dịch vụ của tổ chức không hoạt động.",
+                "code": "ORG_SUBSCRIPTION_INACTIVE",
+            },
+            status_code=403,
+        )
+    member_quota = int(subscription['member_quota'])
+    if member_count >= member_quota:
+        return JSONResponse(
+            {
+                "error": "Tổ chức đã sử dụng hết hạn mức thành viên.",
+                "code": "ORG_MEMBER_QUOTA_EXCEEDED",
+                "quota": member_quota,
+                "current": member_count,
+            },
+            status_code=409,
+        )
+    return None
 
 
 async def update_organization_subscription_api(request):
@@ -728,34 +767,10 @@ def _add_user_to_org_sync(request, role_or_err, data):
             conn.rollback()
             return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
 
-        subscription, member_count = _lock_organization_member_quota(
-            cursor, org_id
-        )
-        now = int(time.time())
-        if (
-            not subscription
-            or subscription['status'] != 'active'
-            or subscription['organization_status'] != 'active'
-            or subscription['package_status'] != 'active'
-            or subscription['expires_at'] is not None and int(subscription['expires_at']) <= now
-        ):
+        quota_error = _organization_member_quota_error(cursor, org_id)
+        if quota_error is not None:
             conn.rollback()
-            return JSONResponse(
-                {"error": "Gói dịch vụ của tổ chức không hoạt động.", "code": "ORG_SUBSCRIPTION_INACTIVE"},
-                status_code=403,
-            )
-        member_quota = int(subscription['member_quota'])
-        if member_count >= member_quota:
-            conn.rollback()
-            return JSONResponse(
-                {
-                    "error": "Tổ chức đã sử dụng hết hạn mức thành viên.",
-                    "code": "ORG_MEMBER_QUOTA_EXCEEDED",
-                    "quota": member_quota,
-                    "current": member_count,
-                },
-                status_code=409,
-            )
+            return quota_error
 
         if membership:
             cursor.execute(

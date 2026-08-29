@@ -1,4 +1,8 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import {
+  applyTrialCommercialPresentation,
+  isTrialFullAccess,
+} from "../commercial-policy/trialMode.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getJvData } from "../packages/jvDataStore.js";
 import { safeImageSrc } from "../shared/view_helpers.js";
@@ -148,6 +152,7 @@ export class BiddingController {
         template.innerHTML = trustedHTML(html.trim());
         const root = document.getElementById(isTab ? "lazy-tab-root" : "lazy-modal-root") || document.querySelector(isTab ? ".content-viewport" : "body");
         root.appendChild(template.content);
+        applyTrialCommercialPresentation(document);
         this.view.elements.navButtons = document.querySelectorAll(".nav-btn");
         this.view.elements.tabPanes = document.querySelectorAll(".tab-pane");
         if (isTab) {
@@ -670,7 +675,9 @@ export class BiddingController {
       try {
         const [usersRes, pkgsRes] = await Promise.all([
           apiFetch("/api/auth/users", { signal: request.signal }),
-          apiFetch("/api/system-packages", { signal: request.signal })
+          isTrialFullAccess(document)
+            ? Promise.resolve(null)
+            : apiFetch("/api/system-packages", { signal: request.signal })
         ]);
         assertWorkspaceLeaseCurrent(this.model, request.lease);
         if (usersRes.ok) {
@@ -692,7 +699,7 @@ export class BiddingController {
           assertWorkspaceLeaseCurrent(this.model, request.lease);
           this.view.populateNhanVienPhuTrachDropdowns();
         }
-        if (pkgsRes.ok) {
+        if (pkgsRes?.ok) {
           const pkgs = await pkgsRes.json();
           assertWorkspaceLeaseCurrent(this.model, request.lease);
           request.lease.state.systempackages = pkgs;

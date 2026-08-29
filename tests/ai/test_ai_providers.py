@@ -749,13 +749,24 @@ def test_transport_blocks_redirect_before_reaching_redirected_host():
 
 
 def test_transport_ignores_ambient_proxy_environment(monkeypatch):
-    class OkHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
+    captured = {}
 
-        def log_message(self, *_args):
-            return
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class FakeOpener:
+        def open(self, request, *, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return FakeOpener()
 
     monkeypatch.setenv("HTTP_PROXY", "http://ambient-proxy.invalid")
     monkeypatch.setenv("HTTPS_PROXY", "https://ambient-proxy.invalid")
@@ -766,22 +777,23 @@ def test_transport_ignores_ambient_proxy_environment(monkeypatch):
             AssertionError("ambient proxy discovery must remain disabled")
         ),
     )
-    server = ThreadingHTTPServer(("127.0.0.1", 0), OkHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_port}/health"
+    monkeypatch.setattr(urllib.request, "build_opener", fake_build_opener)
+    request = urllib.request.Request("http://127.0.0.1:11434/health")
+
+    assert list(
+        stream_http(
+            request,
+            timeout_seconds=10,
+            parser=lambda _response: (),
+            allow_loopback_http=True,
         )
-        assert list(
-            stream_http(
-                request,
-                timeout_seconds=10,
-                parser=lambda _response: (),
-                allow_loopback_http=True,
-            )
-        ) == []
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+    ) == []
+
+    proxy_handler = next(
+        handler
+        for handler in captured["handlers"]
+        if isinstance(handler, urllib.request.ProxyHandler)
+    )
+    assert proxy_handler.proxies == {}
+    assert captured["request"] is request
+    assert captured["timeout"] == 10

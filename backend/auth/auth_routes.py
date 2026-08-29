@@ -1946,12 +1946,17 @@ def _list_public_packages_sync(request):
     """Expose active commercial package metadata for the public landing page."""
     conn = None
     try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
         from backend.commercial_policy.config import commercial_runtime_config
         from backend.commercial_policy.service import CommercialPolicy
 
         commercial_config = commercial_runtime_config()
+        if getattr(commercial_config, "trial_full_access_enabled", False):
+            return JSONResponse(
+                {"availability": "trial", "packages": []},
+                headers={"Cache-Control": "public, max-age=300"},
+            )
+        conn = database.get_connection()
+        cursor = conn.cursor()
         if commercial_config.enabled and commercial_config.mode in {"shadow", "enforce"}:
             catalog = CommercialPolicy(
                 cursor, include_shadow=commercial_config.mode == "shadow"

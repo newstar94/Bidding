@@ -322,7 +322,9 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   applySessionAwareLinks(session);
   installHeaderState();
   installSectionReveal();
-  void loadPublicPackages();
+  if (document.documentElement.dataset.trialFullAccess !== "true") {
+    void loadPublicPackages();
+  }
 }
 import { APP_DEBUG } from "../app/appConfig.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";

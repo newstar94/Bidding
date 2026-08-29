@@ -3,6 +3,7 @@
 import time
 
 from backend.auth.auth_helper import get_effective_roles
+from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.shared.date_utils import vietnam_date_from_epoch
 
@@ -178,9 +179,13 @@ def can_use_document_export(
 
     if "super_admin" in get_effective_roles(str(role_str or "")):
         return True
+    trial_access = trial_full_access_enabled()
     if is_personal_scope_for_user(organization_id, user_id):
-        return subscription_has_capability(
-            get_account_subscription(cursor, user_id), capability
+        return bool(
+            trial_access
+            or subscription_has_capability(
+                get_account_subscription(cursor, user_id), capability
+            )
         )
     membership = cursor.execute(
         """SELECT 1 FROM thanh_vien_to_chuc
@@ -191,8 +196,11 @@ def can_use_document_export(
     ).fetchone()
     return bool(
         membership
-        and subscription_has_capability(
-            get_organization_subscription(cursor, organization_id), capability
+        and (
+            trial_access
+            or subscription_has_capability(
+                get_organization_subscription(cursor, organization_id), capability
+            )
         )
     )
 
