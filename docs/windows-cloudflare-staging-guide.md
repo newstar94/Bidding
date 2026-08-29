@@ -272,11 +272,11 @@ Cloudflare Tunnel có thể chạy dưới dạng Windows Service, nhưng Biddin
 2. Trigger: `At startup` hoặc `At log on`.
 3. Chọn **Run whether user is logged on or not**.
 4. Action:
-   - Program: đường dẫn tới `python.exe` của môi trường đang dùng.
+   - Program: `powershell.exe`.
    - Arguments:
 
 ```text
--m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --no-proxy-headers
+-NoProfile -ExecutionPolicy Bypass -File D:\Bidding\scripts\run_demo_server.ps1
 ```
 
    - Start in:
@@ -285,9 +285,26 @@ Cloudflare Tunnel có thể chạy dưới dạng Windows Service, nhưng Biddin
 D:\Bidding
 ```
 
-5. Bật tự khởi động lại khi task lỗi.
+5. Bật tự khởi động lại khi task lỗi (khuyến nghị sau 1 phút, tối thiểu 3 lần) và
+   `Start the task as soon as possible after a scheduled start is missed`.
 
-Không chọn `--reload` cho phiên dùng thử từ xa.
+Script supervisor đọc release ID từ secure artifact, ép `APP_DEBUG=False`, dùng frontend bundle,
+ghi stdout/stderr theo từng lần chạy vào `data/logs` và từ chối khởi động nếu cổng 8000 bị một tiến
+trình không healthy chiếm giữ. Không chạy trực tiếp `python backend/app.py` song song với task; nếu
+health đã xanh thì script thoát thành công thay vì tạo lỗi `WinError 10048`.
+
+Nếu tài khoản Windows không có quyền đăng ký Task Scheduler, có thể dùng khóa `Run` theo người dùng;
+script đã tự giám sát và khởi động lại child process sau 5 giây:
+
+```powershell
+New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' `
+  -Name 'BiddingFlowDemo' `
+  -Value 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "D:\Bidding\scripts\run_demo_server.ps1"' `
+  -PropertyType String -Force
+```
+
+Không dùng `--reload` cho phiên dùng thử từ xa. Reloader cố ý khởi động hai process và restart server
+khi source thay đổi, nên người dùng bên ngoài sẽ quan sát thấy gián đoạn giống crash.
 
 ## 15. Firewall và router
 

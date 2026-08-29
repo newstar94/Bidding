@@ -86,7 +86,7 @@ test("assistant and notification imports wait behind the post-startup interactio
   assert.deepEqual(controller.notificationCenter, { ready: true });
 });
 
-test("non-critical workspace jobs cannot enter the first-interaction window", () => {
+test("optional workspace jobs cannot enter the first-interaction window", () => {
   const scheduledDelayAfter = (marker) => {
     const start = controllerSource.indexOf(marker);
     assert.ok(start >= 0, `missing startup job: ${marker}`);
@@ -97,17 +97,45 @@ test("non-critical workspace jobs cannot enter the first-interaction window", ()
     return POST_STARTUP_TIMING[match[1]];
   };
   for (const marker of [
-    "() => this.warmPrimaryTabs()",
     "this.preloadPrimaryModals()",
-    "this.setupFileUploads()",
-    "this.setupAutoSyncBackground()",
-    "this.model.hydrateRemainingStorageKeysIdle?.()",
+    "this.loadHolidaysInBackground()",
   ]) {
     assert.ok(
       scheduledDelayAfter(marker) >= POST_STARTUP_INTERACTION_GRACE_MS,
       `${marker} must not contend with a user's first click`,
     );
   }
+});
+
+test("authoritative data readiness is not hidden behind multi-second startup timers", () => {
+  assert.equal(
+    POST_STARTUP_TIMING.primaryTabWarm,
+    0,
+    "exact first-page caches should start as soon as reconciliation releases them",
+  );
+  assert.ok(
+    POST_STARTUP_TIMING.remainingStorageHydration <= 1000,
+    "the model already dispatches remaining IndexedDB reads through requestIdleCallback",
+  );
+  assert.ok(
+    POST_STARTUP_TIMING.referenceData <= 1500,
+    "authorized employee/package reference data must not remain unavailable for tens of seconds",
+  );
+  assert.equal(
+    POST_STARTUP_TIMING.backgroundSync,
+    undefined,
+    "live sync listeners must be armed directly after the interactive shell",
+  );
+  assert.doesNotMatch(
+    controllerSource,
+    /schedulePostStartupTask\(\(\)\s*=>\s*\{\s*this\.setupAutoSyncBackground\(\)/u,
+    "WebSocket/focus/storage listeners must not wait for a maintenance timer",
+  );
+  assert.doesNotMatch(
+    controllerSource,
+    /schedulePostStartupTask\(\s*\(\)\s*=>\s*this\.model\.hydrateRemainingStorageKeysIdle/u,
+    "dispatching the model's own idle hydration should happen immediately",
+  );
 });
 
 test("elapsed startup time never imports route workflow modules", () => {
@@ -123,9 +151,15 @@ test("elapsed startup time never imports route workflow modules", () => {
   );
 });
 
-test("service worker cache writes do not delay the network response", () => {
-  assert.doesNotMatch(serviceWorkerSource, /await cache\.put\(request, response\.clone\(\)\)/);
-  assert.match(serviceWorkerSource, /event\.waitUntil\(/);
+test("service worker cannot intercept the secure module graph", () => {
+  assert.doesNotMatch(serviceWorkerSource, /addEventListener\(["']fetch["']/u);
+  assert.doesNotMatch(serviceWorkerSource, /respondWith\s*\(/u);
+  assert.doesNotMatch(serviceWorkerSource, /manifest\.json/u);
+  assert.doesNotMatch(serviceWorkerSource, /cache\.(?:match|put)\s*\(/u);
+  assert.doesNotMatch(serviceWorkerSource, /addAll\s*\(/u);
+  assert.doesNotMatch(serviceWorkerSource, /\bfetch\s*\(/u);
+  assert.match(serviceWorkerSource, /registration\.unregister\s*\(/u);
+  assert.match(serviceWorkerSource, /clients\.claim\s*\(/u);
 });
 
 test("runtime CSS rules are appended after bundled static styles", () => {

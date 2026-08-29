@@ -192,6 +192,10 @@ export class PaginatedProjectionStore {
 
   query(table, query, loader, { lease = {}, prefetch = false } = {}) {
     const capturedLease = projectionLease(this.model, lease);
+    assertProjectionAuthorizationScopeCurrent(
+      this.model,
+      capturedLease.projectionAuthorizationScope,
+    );
     const key = this.key(table, query, capturedLease);
     const cached = this.read(table, query, capturedLease);
     if (cached && !cached.stale) return Promise.resolve({ ...cached, cacheHit: true });

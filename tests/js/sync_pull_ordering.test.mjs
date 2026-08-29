@@ -98,6 +98,50 @@ function outboxSettleWorkspaceRaceController({ storageA, storageB, flush }) {
   };
 }
 
+test("background pull never owns remaining IndexedDB hydration", async () => {
+  const restore = installPullGlobals(async () => new Response(JSON.stringify({
+    goithau: [{ id: "package-1", rowVersion: 2 }],
+    syncVersion: 2,
+    timestamp: "v2",
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  const storage = memoryStorage();
+  let hydrationCalls = 0;
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storage,
+    state: { goithau: [] },
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    rebaseMutationBatch() {},
+    hydrateRemainingStorageKeysIdle() { hydrationCalls += 1; },
+    db: { async applySyncChanges() {} },
+  };
+  const controller = {
+    model,
+    view: null,
+    routeMap: {},
+    updateSyncState() {},
+    hasLocalWorkspaceData: () => true,
+  };
+
+  try {
+    const result = await forceSyncData.call(controller, true, false, false);
+
+    assert.equal(result.ok, true);
+    assert.equal(
+      hydrationCalls,
+      0,
+      "startup/workspace orchestration must release hydration after reconciliation and mutation replay",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("workspace_change_during_outbox_settle_cannot_touch_new_workspace_cursor", async () => {
   const flush = deferred();
   const storageA = memoryStorage();

@@ -60,6 +60,7 @@ test("timeline shows authorized local packages immediately while plan options re
   const requestStarted = deferred();
   const releaseRequest = deferred();
   let paginateRequest = null;
+  const recordLookupRequests = [];
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
@@ -89,6 +90,11 @@ test("timeline shows authorized local packages immediately while plan options re
         });
         return;
       }
+      if (url.pathname === "/api/record") {
+        recordLookupRequests.push(Object.fromEntries(url.searchParams));
+        writeJson(response, { error: "Unexpected record lookup" }, 500);
+        return;
+      }
       const filePath = join(projectRoot, url.pathname.replace(/^\//u, ""));
       const payload = await readFile(filePath);
       response.writeHead(200, { "content-type": contentType(url.pathname) });
@@ -107,13 +113,16 @@ test("timeline shows authorized local packages immediately while plan options re
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${address.port}/`);
     const immediateOptions = await page.evaluate(async () => {
-      const { renderPackageTimeline } = await import(
-        "/frontend/packages/PackageTimelineView.js"
-      );
+      const [timelineModule, tableDataModule] = await Promise.all([
+        import("/frontend/packages/PackageTimelineView.js"),
+        import("/frontend/shared/tableDataUtils.js"),
+      ]);
+      const { renderPackageTimeline } = timelineModule;
       const view = {
         model: {
           getWorkspaceToken: () => "user-a:org-a@1",
           normalizeRecordKeys: (record) => record,
+          useServerSidePagination: true,
           state: {
             activerole: "manager",
             activeuser: { id: "user-a", wordExportEnabled: true },
@@ -125,6 +134,7 @@ test("timeline shows authorized local packages immediately while plan options re
               isLatest: 1,
               maKeHoach: "KH-A",
               tenKeHoach: "Kế hoạch A",
+              pheDuyet: "Quyết định phê duyệt",
             }],
             goithau: [{
               id: "package-local",
@@ -135,7 +145,9 @@ test("timeline shows authorized local packages immediately while plan options re
               maGoiThau: "GT-LOCAL",
               tenGoiThau: "Gói thầu đã có trong phiên",
               trangThai: "Đang mời thầu",
-              referenceOnly: true,
+              referenceOnly: false,
+              hinhThucLuaChon: "OPEN_BIDDING",
+              timelineItems: [],
             }],
           },
           workspaceScope: { key: "user-a:org-a", organizationId: "org-a" },
@@ -144,6 +156,23 @@ test("timeline shows authorized local packages immediately while plan options re
         initFlatpickr() {},
         showToast() {},
       };
+      tableDataModule.reconcileTimelinePackageOptionProjection(view.model, {
+        useServerSidePagination: true,
+        visibilityToken: "scope-a",
+        referenceData: {
+          goithau: view.model.state.goithau.map((pkg) => ({
+            id: pkg.id,
+            rootId: pkg.rootId,
+            phienBan: pkg.phienBan,
+            isLatest: pkg.isLatest,
+            keHoachId: pkg.keHoachId,
+            maGoiThau: pkg.maGoiThau,
+            tenGoiThau: pkg.tenGoiThau,
+            trangThai: pkg.trangThai,
+            referenceOnly: true,
+          })),
+        },
+      });
       renderPackageTimeline.call(view);
       const planSelect = document.getElementById("timeline-plan-select");
       planSelect.value = "plan-a";
@@ -166,6 +195,19 @@ test("timeline shows authorized local packages immediately while plan options re
       search: "",
       keHoachId: "plan-a",
     });
+    await page.evaluate(() => {
+      const packageSelect = document.getElementById("timeline-package-select");
+      packageSelect.value = "package-local";
+      packageSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForFunction(() => (
+      document.getElementById("timeline-live-status")?.textContent?.includes("Đã tải")
+    ));
+    assert.deepEqual(
+      recordLookupRequests,
+      [],
+      "a complete local record confirmed by the current authorized projection must not be fetched again",
+    );
     assert.deepEqual(
       await page.locator("#timeline-package-select option").evaluateAll((options) => (
         options.map((option) => ({ text: option.textContent, value: option.value }))
@@ -242,9 +284,11 @@ test("switching plans cancels a pending package search from the previous plan", 
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${address.port}/`);
     await page.evaluate(async () => {
-      const { renderPackageTimeline } = await import(
-        "/frontend/packages/PackageTimelineView.js"
-      );
+      const [timelineModule, tableDataModule] = await Promise.all([
+        import("/frontend/packages/PackageTimelineView.js"),
+        import("/frontend/shared/tableDataUtils.js"),
+      ]);
+      const { renderPackageTimeline } = timelineModule;
       const plans = ["a", "b"].map((suffix) => ({
         id: `plan-${suffix}`,
         rootId: `plan-${suffix}-root`,
@@ -266,6 +310,7 @@ test("switching plans cancels a pending package search from the previous plan", 
         model: {
           getWorkspaceToken: () => "user-a:org-a@1",
           normalizeRecordKeys: (record) => record,
+          useServerSidePagination: true,
           state: {
             activerole: "manager",
             activeuser: { id: "user-a", wordExportEnabled: true },
@@ -279,6 +324,11 @@ test("switching plans cancels a pending package search from the previous plan", 
         initFlatpickr() {},
         showToast() {},
       };
+      tableDataModule.reconcileTimelinePackageOptionProjection(view.model, {
+        useServerSidePagination: true,
+        visibilityToken: "scope-a",
+        referenceData: { goithau: view.model.state.goithau },
+      });
       renderPackageTimeline.call(view);
       const planSelect = document.getElementById("timeline-plan-select");
       planSelect.value = "plan-a";
@@ -321,9 +371,8 @@ test("switching plans cancels a pending package search from the previous plan", 
   }
 });
 
-test("package refresh preserves local options on network failure but clears them on authorization rejection", async () => {
-  const networkAttempts = deferred();
-  let networkAttemptCount = 0;
+test("package refresh preserves local options on server failure but clears them on authorization rejection", async () => {
+  const serverFailureObserved = deferred();
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
@@ -334,9 +383,8 @@ test("package refresh preserves local options on network failure but clears them
       }
       if (url.pathname === "/api/paginate") {
         if (url.searchParams.get("keHoachId") === "plan-network") {
-          networkAttemptCount += 1;
-          if (networkAttemptCount >= 2) networkAttempts.resolve();
-          response.destroy();
+          serverFailureObserved.resolve();
+          writeJson(response, { error: "Service unavailable" }, 500);
           return;
         }
         writeJson(response, { error: "Forbidden" }, 403);
@@ -359,9 +407,11 @@ test("package refresh preserves local options on network failure but clears them
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${address.port}/`);
     const immediateNetworkOptions = await page.evaluate(async () => {
-      const { renderPackageTimeline } = await import(
-        "/frontend/packages/PackageTimelineView.js"
-      );
+      const [timelineModule, tableDataModule] = await Promise.all([
+        import("/frontend/packages/PackageTimelineView.js"),
+        import("/frontend/shared/tableDataUtils.js"),
+      ]);
+      const { renderPackageTimeline } = timelineModule;
       const plans = ["network", "forbidden"].map((suffix) => ({
         id: `plan-${suffix}`,
         rootId: `plan-${suffix}-root`,
@@ -384,6 +434,7 @@ test("package refresh preserves local options on network failure but clears them
         model: {
           getWorkspaceToken: () => "user-a:org-a@1",
           normalizeRecordKeys: (record) => record,
+          useServerSidePagination: true,
           state: {
             activerole: "manager",
             activeuser: { id: "user-a", wordExportEnabled: true },
@@ -397,6 +448,11 @@ test("package refresh preserves local options on network failure but clears them
         initFlatpickr() {},
         showToast(...args) { globalThis.__timelineToasts.push(args); },
       };
+      tableDataModule.reconcileTimelinePackageOptionProjection(view.model, {
+        useServerSidePagination: true,
+        visibilityToken: "scope-a",
+        referenceData: { goithau: view.model.state.goithau },
+      });
       renderPackageTimeline.call(view);
       const planSelect = document.getElementById("timeline-plan-select");
       planSelect.value = "plan-network";
@@ -405,7 +461,7 @@ test("package refresh preserves local options on network failure but clears them
         .map((option) => option.value);
     });
     assert.deepEqual(immediateNetworkOptions, ["", "package-local-network"]);
-    await networkAttempts.promise;
+    await serverFailureObserved.promise;
     await page.waitForFunction(() => globalThis.__timelineToasts.length === 1);
     assert.deepEqual(
       await page.locator("#timeline-package-select option").evaluateAll((options) => (
@@ -435,7 +491,7 @@ test("package refresh preserves local options on network failure but clears them
       "a final authorization rejection must remove the local package options",
     );
   } finally {
-    networkAttempts.resolve();
+    serverFailureObserved.resolve();
     await browser?.close();
     await closeServer(server);
   }

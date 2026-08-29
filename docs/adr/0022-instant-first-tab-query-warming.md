@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-27
+- Amended by ADR 0024: primary route-module warming được khôi phục sau khi retire service worker;
+  page-data prefetch, exact-query cache và in-flight deduplication trong ADR này vẫn có hiệu lực.
 
 ## Bối cảnh
 
@@ -27,15 +29,13 @@ blocking `/api/paginate` không có page cache, in-flight deduplication hoặc w
    pageSize, search, filter, sort và các scope parameter liên quan).
 3. Các caller cùng exact query dùng chung một in-flight promise. Query khác page,
    search, filter hoặc sort không dùng chung kết quả.
-4. Sau khi initial route đã render và loader đã ẩn, tác vụ idle làm ấm module
-   `plan`, `partner`, `timeline`, hydrate phần IndexedDB còn lại và prefetch page hiện
-   tại của sáu bảng chính với concurrency tối đa 2. Tác vụ warming vào hàng đợi idle
-   với timeout ngắn (700 ms, fallback 100 ms) để bắt đầu chờ reconciliation sớm;
-   reconciliation và request prefetch vẫn không chặn critical startup path; module
-   warming và page prefetch chạy song song để không để module timeline giữ request
-   bảng đầu tiên.
-5. Pointer intent (`pointerenter`, `focusin`, `touchstart`) được phép làm ấm module và
-   exact page query nhưng không activate tab, đổi URL hoặc render pane ẩn.
+4. Sau khi initial route đã render và loader đã ẩn, module của primary menu đang hiển thị được
+   tải nền ngay mà không chặn current route. Hydrate IndexedDB còn lại và prefetch page hiện tại
+   của sáu bảng chính chỉ bắt đầu sau authoritative reconciliation, với concurrency tối đa 2.
+   Module warming và page-data warming dùng lifecycle riêng để route code không phải chờ pull,
+   còn projection cache không thể được làm ấm từ dữ liệu stale.
+5. Primary module warming không activate tab, đổi URL hoặc render pane ẩn. Pointer intent không
+   cần sở hữu import riêng vì background warming và click cùng dùng in-flight module registry.
 6. Khi exact cache đã có, renderer giữ nội dung hiện có và không thay bằng skeleton.
    Entry quá TTL được hiển thị theo stale-while-revalidate và đồng thời gọi lại server;
    lỗi mạng có thể tiếp tục dùng entry cũ nhưng lỗi authorization không được fallback.
@@ -65,13 +65,15 @@ blocking `/api/paginate` không có page cache, in-flight deduplication hoặc w
 ## Chuyển đổi và quay lui
 
 Không cần migration schema hoặc dữ liệu. Cache chỉ tồn tại trong bộ nhớ của phiên và
-tự hết hạn. Có thể quay lui bằng cách bỏ post-startup/intent warming và paginated cache;
-server-side pagination cùng dữ liệu bền vững không cần chuyển đổi ngược.
+tự hết hạn. Có thể quay lui page-data prefetch và paginated cache mà không cần chuyển
+đổi dữ liệu bền vững. Module warming không còn thuộc quyết định đang có hiệu lực của
+ADR này; mọi thay đổi semantics tải primary route module phải tuân theo ADR 0024.
 
 ## Kiểm thử hồi quy
 
-- `kehoach` và `goithau` chỉ import module `plan` một lần.
-- Warming chạy sau loader, giới hạn concurrency 2 và lỗi task không phá startup.
+- Primary route module được request nền đúng một lần sau shell; click sau warming không phát sinh
+  import và module registry vẫn deduplicate click cực sớm với background in-flight import.
+- Page-data warming chạy sau loader, giới hạn concurrency 2 và lỗi task không phá startup.
 - Prefetch và click exact query chỉ tạo một request; page/search/filter/sort có key riêng.
 - TTL và mutation invalidation buộc revalidation đúng lúc.
 - Workspace token/epoch và active role không dùng nhầm cache; request vai trò cũ bị abort.
@@ -79,5 +81,6 @@ server-side pagination cùng dữ liệu bền vững không cần chuyển đ�
 - Chuyển nhanh Kế hoạch → Gói thầu → Nhà thầu chỉ route/render tab cuối.
 - Sáu renderer không dựng skeleton khi exact query cache đã có.
 - Stale workspace response không ghi state hoặc IndexedDB.
-- `npm run test:first-tab-performance` đo browser thật sau warming, yêu cầu mỗi tab
-  chính dưới 100 ms, không skeleton, không duplicate `/api/paginate` và không lỗi runtime.
+- `npm run test:first-tab-performance` đo browser thật sau warming với ngưỡng tổng mặc định
+  100 ms. Lượt đầu phải không còn click-owned route module; mọi lượt phải không dựng skeleton,
+  không duplicate `/api/paginate` và không có lỗi runtime.

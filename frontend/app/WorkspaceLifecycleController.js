@@ -213,7 +213,9 @@ export class WorkspaceLifecycleController {
         }
       });
     }
+    void host.scheduleRemainingStorageHydration?.(reconciliation);
     void host.schedulePrimaryTabWarming?.(reconciliation);
+    void host.scheduleReferenceDataLoading?.(reconciliation);
     return {
       changed: true,
       organizationId,
@@ -267,7 +269,9 @@ export class WorkspaceLifecycleController {
         console.warn("Đối soát vai trò sẽ được thử lại ở nền:", error);
       }
     });
+    void host.scheduleRemainingStorageHydration?.(reconciliation);
     void host.schedulePrimaryTabWarming?.(reconciliation);
+    void host.scheduleReferenceDataLoading?.(reconciliation);
     host.renderWorkspaceSwitcher?.();
     host.setupWebSocketConnection?.();
     return { activeRole, identity };

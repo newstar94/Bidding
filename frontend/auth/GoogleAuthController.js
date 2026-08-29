@@ -2,6 +2,10 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
+import {
+  initializeInteractiveLoginModel,
+  startInteractivePostLoginServices,
+} from "./AuthFlowController.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { ApiError, apiFetch, postJson } from "../shared/apiClient.js";
 import { validateUsernameClient } from "./usernameClientPolicy.js";
@@ -38,6 +42,75 @@ export function resetSetUsernameButton(submitBtn) {
   return btnSpan;
 }
 
+export async function initializeGoogleWorkspaceAfterAuthentication(
+  controller,
+  data,
+  activeRole,
+  { installAdmin = installAdminModule } = {},
+) {
+  if (controller?._workspaceDeferredUntilReload) {
+    await controller._finishGoogleLogin(activeRole);
+    return { deferredUntilReload: true };
+  }
+  const effectiveRoles = data.effective_roles || [];
+  if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
+    await installAdmin(controller.constructor);
+  }
+  await initializeInteractiveLoginModel(controller);
+  controller.model.state.activeuser = {
+    ...controller.model.state.activeuser || {}
+  };
+  applyAccessContext(controller.model.state.activeuser, data);
+  controller.model.switchActiveRole(activeRole, data.name || data.username, data.id);
+  controller.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
+  controller.model.state.activeuser.avatar = data.avatar || "";
+  controller.model.state.activeuser.email = data.email || "";
+  controller.model.state.activeuser.package_id = data.package_id || "none";
+  localStorage.setItem(
+    controller.model.STORAGE_KEYS.ACTIVEUSER,
+    JSON.stringify(controller.model.state.activeuser),
+  );
+  if (data.inactivity_timeout_hours) {
+    localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
+  }
+  await controller._finishGoogleLogin(activeRole);
+  return { deferredUntilReload: false };
+}
+
+export async function continueGoogleLoginAfterAuthentication(
+  controller,
+  data,
+  activeRole,
+  {
+    documentRef = globalThis.document,
+    hidePending = hideGoogleAuthPending,
+    initializeWorkspace = initializeGoogleWorkspaceAfterAuthentication,
+    reload = reloadWithInitLoader,
+  } = {},
+) {
+  if (!data.needs_username) {
+    return initializeWorkspace(controller, data, activeRole);
+  }
+  hidePending();
+  controller._showSetUsernameModal(
+    activeRole,
+    async () => {
+      const submitBtn = documentRef?.getElementById?.("btn-set-username-submit");
+      const btnSpan = submitBtn ? submitBtn.querySelector("span") : null;
+      if (btnSpan) btnSpan.textContent = "Đang khởi tạo thiết lập...";
+      try {
+        await initializeWorkspace(controller, data, activeRole);
+      } catch (initErr) {
+        console.error("Failed to init model after username set:", initErr);
+        reload();
+      }
+    },
+    data.suggested_username || "",
+    data.account_linked || false,
+  );
+  return { usernameRequired: true };
+}
+
 export function setupGoogleSignIn() {
   if (isGoogleIdentityInitialized()) return;
   const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
@@ -56,14 +129,6 @@ export function setupGoogleSignIn() {
     }
     hideAuthOverlay();
     try {
-      try {
-        await this.forceSyncData();
-      } catch (err) {
-        console.error("Failed sync after Google login:", err);
-      }
-      if (typeof this.setupWebSocketConnection === "function") {
-        this.setupWebSocketConnection();
-      }
       this.view.updateActiveUserProfileDisplay();
       if (typeof this.renderWorkspaceSwitcher === "function") this.renderWorkspaceSwitcher();
       if (activeRole === "super_admin") {
@@ -71,6 +136,11 @@ export function setupGoogleSignIn() {
       } else {
         await this.switchTab("dashboard");
       }
+      // Reconciliation derives its route projection from the selected URL.
+      // Start it only after navigation so Google login cannot reconcile the
+      // stale /dang-nhap route while still returning the UI without awaiting
+      // the authoritative pull.
+      startInteractivePostLoginServices(this);
       this.setupProfileDropdownEvents?.();
       this.setupRBACEvents?.();
       this.startBackgroundSessionChecker();
@@ -229,69 +299,10 @@ export function setupGoogleSignIn() {
         this._workspaceDeferredUntilReload = true;
       }
       const effectiveRoles = data.effective_roles || [];
-      if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
-        await installAdminModule(this.constructor);
-      }
       let activeRole = data.role || "employee";
       if (effectiveRoles.includes("super_admin")) activeRole = "super_admin";
       else if (effectiveRoles.includes("manager")) activeRole = "manager";
-      if (data.needs_username) {
-        hideGoogleAuthPending();
-        this._showSetUsernameModal(
-          activeRole,
-          async () => {
-            const submitBtn = document.getElementById("btn-set-username-submit");
-            const btnSpan = submitBtn ? submitBtn.querySelector("span") : null;
-            if (btnSpan) btnSpan.textContent = "Đang khởi tạo thiết lập...";
-            try {
-              if (this._workspaceDeferredUntilReload) {
-                await this._finishGoogleLogin(activeRole);
-                return;
-              }
-              await this.model.init();
-              this.model.state.activeuser = {
-                ...this.model.state.activeuser || {}
-              };
-              applyAccessContext(this.model.state.activeuser, data);
-              this.model.switchActiveRole(activeRole, data.name || data.username, data.id);
-              this.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
-              this.model.state.activeuser.avatar = data.avatar || "";
-              this.model.state.activeuser.email = data.email || "";
-              this.model.state.activeuser.package_id = data.package_id || "none";
-              localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-              if (data.inactivity_timeout_hours) {
-                localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
-              }
-              await this._finishGoogleLogin(activeRole);
-            } catch (initErr) {
-              console.error("Failed to init model after username set:", initErr);
-              reloadWithInitLoader();
-            }
-          },
-          data.suggested_username || "",
-          data.account_linked || false
-        );
-        return;
-      }
-      if (this._workspaceDeferredUntilReload) {
-        await this._finishGoogleLogin(activeRole);
-        return;
-      }
-      await this.model.init();
-      this.model.state.activeuser = {
-        ...this.model.state.activeuser || {}
-      };
-      applyAccessContext(this.model.state.activeuser, data);
-      this.model.switchActiveRole(activeRole, data.name || data.username, data.id);
-      this.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
-      this.model.state.activeuser.avatar = data.avatar || "";
-      this.model.state.activeuser.email = data.email || "";
-      this.model.state.activeuser.package_id = data.package_id || "none";
-      localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-      if (data.inactivity_timeout_hours) {
-        localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
-      }
-      await this._finishGoogleLogin(activeRole);
+      await continueGoogleLoginAfterAuthentication(this, data, activeRole);
     } catch (err) {
       showGoogleLoginError("Lỗi kết nối Google: " + err.message);
     }

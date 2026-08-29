@@ -15,7 +15,18 @@ const warmSettleMs = Math.max(
   0,
   Number(process.env.FIRST_TAB_WARM_SETTLE_MS || FIRST_TAB_WARM_SETTLE_MS),
 );
-const tabLimitMs = Math.max(1, Number(process.env.FIRST_TAB_LIMIT_MS || 100));
+const coldRouteModuleLimitMs = Math.max(
+  1,
+  Number(process.env.FIRST_TAB_COLD_ROUTE_LIMIT_MS || 100),
+);
+const dataRenderLimitMs = Math.max(
+  1,
+  Number(process.env.FIRST_TAB_DATA_RENDER_LIMIT_MS || process.env.FIRST_TAB_LIMIT_MS || 100),
+);
+const measurementThresholdsMs = {
+  "cold-click-owned-route-module": coldRouteModuleLimitMs,
+  "data-render-repeat": dataRenderLimitMs,
+};
 const outputPath = path.resolve(
   process.env.FIRST_TAB_METRICS_OUTPUT || "data/logs/first-tab-performance.json",
 );
@@ -121,6 +132,52 @@ async function measureTab(page, tabCase, requestCounts) {
   };
 }
 
+function lastDiagnostic(item, phase) {
+  return [...(item.diagnostics || [])]
+    .reverse()
+    .find((diagnostic) => diagnostic?.phase === phase && diagnostic?.tabName === item.tab);
+}
+
+function classifyVisit(item, visitKind) {
+  if (item.skipped) {
+    return {
+      ...item,
+      visitKind,
+      measurementClass: "skipped",
+      durationLimitMs: null,
+    };
+  }
+
+  const tabComplete = lastDiagnostic(item, "tab-complete");
+  const tableComplete = lastDiagnostic(item, "table-complete");
+  const routeDependencyMs = Math.max(
+    0,
+    Number(tabComplete?.viewModule || 0),
+    Number(tabComplete?.workflow || 0),
+    Number(tabComplete?.lazyPartial || 0),
+  );
+  const routeModuleResourceObserved = (item.resources || []).some(
+    (resource) => resource?.initiatorType === "script",
+  );
+  const coldClickOwnedRouteModule = visitKind === "first"
+    && (routeDependencyMs > 0 || routeModuleResourceObserved);
+  const measurementClass = coldClickOwnedRouteModule
+    ? "cold-click-owned-route-module"
+    : "data-render-repeat";
+  const diagnosticDataRenderMs = Number(tableComplete?.total);
+
+  return {
+    ...item,
+    visitKind,
+    measurementClass,
+    coldClickOwnedRouteModule,
+    routeDependencyMs,
+    dataRenderMs: Number.isFinite(diagnosticDataRenderMs) ? diagnosticDataRenderMs : null,
+    durationLimitMs: measurementThresholdsMs[measurementClass],
+    dataRenderLimitMs,
+  };
+}
+
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
 const page = await context.newPage();
@@ -174,10 +231,15 @@ try {
   await page.waitForTimeout(warmSettleMs);
 
   const firstVisits = [];
-  for (const tabCase of tabCases) firstVisits.push(await measureTab(page, tabCase, requestCounts));
+  for (const tabCase of tabCases) {
+    firstVisits.push(classifyVisit(await measureTab(page, tabCase, requestCounts), "first"));
+  }
   const repeatVisits = [];
   for (const tabCase of tabCases.slice(0, 2)) {
-    repeatVisits.push(await measureTab(page, { ...tabCase, label: `${tabCase.label} (lặp lại)` }, requestCounts));
+    repeatVisits.push(classifyVisit(
+      await measureTab(page, { ...tabCase, label: `${tabCase.label} (lặp lại)` }, requestCounts),
+      "repeat",
+    ));
   }
 
   const measuredVisits = [...firstVisits, ...repeatVisits].filter((item) => !item.skipped);
@@ -185,7 +247,23 @@ try {
     ? ["No visible business tabs were available for measurement"]
     : measuredVisits.flatMap((item) => {
     const itemFailures = [];
-    if (item.durationMs > tabLimitMs) itemFailures.push(`${item.label}: ${item.durationMs} ms > ${tabLimitMs} ms`);
+    if (item.visitKind === "first" && item.coldClickOwnedRouteModule) {
+      itemFailures.push(
+        `${item.label}: route module was still click-owned after the warming window`,
+      );
+    }
+    if (item.durationMs > item.durationLimitMs) {
+      itemFailures.push(
+        `${item.label} [${item.measurementClass}]: ${item.durationMs} ms > ${item.durationLimitMs} ms`,
+      );
+    }
+    if (item.dataRenderMs == null) {
+      itemFailures.push(`${item.label} [data-render]: missing table-complete diagnostic`);
+    } else if (item.dataRenderMs > dataRenderLimitMs) {
+      itemFailures.push(
+        `${item.label} [data-render]: ${item.dataRenderMs} ms > ${dataRenderLimitMs} ms`,
+      );
+    }
     if (item.skeletonObserved) itemFailures.push(`${item.label}: skeleton observed after warming`);
     if (item.paginationRequests > 0) itemFailures.push(`${item.label}: ${item.paginationRequests} duplicate pagination request(s)`);
     return itemFailures;
@@ -197,7 +275,7 @@ try {
     route,
     activeRole,
     warmSettleMs,
-    tabLimitMs,
+    measurementThresholdsMs,
     loaderHiddenMs,
     firstVisits,
     repeatVisits,

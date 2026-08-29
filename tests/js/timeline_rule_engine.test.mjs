@@ -11,12 +11,17 @@ import { ensureVersionEhsmtAdjustment } from "../../frontend/shared/VersionedEnt
 import {
   findTimelineContracts,
   buildTimelineLineagePresentation,
+  fetchTimelinePackage,
+  immediateTimelinePackageOptions,
   selectableTimelinePlans,
   timelineInitialPackageReference,
   timelinePackageFamily,
   timelinePackageOptionsForPlan,
   timelinePackageRepresentatives,
 } from "../../frontend/packages/PackageTimelineView.js";
+import {
+  reconcileTimelinePackageOptionProjection,
+} from "../../frontend/shared/tableDataUtils.js";
 
 test("timeline plan selector shows one representative for each version lineage", () => {
   const historical = {
@@ -44,6 +49,75 @@ test("timeline plan selector shows one representative for each version lineage",
     selectableTimelinePlans(view).map((plan) => plan.id),
     [current.id],
   );
+});
+
+test("timeline immediate options reject a cache captured by an older authorization scope", () => {
+  const model = {
+    getWorkspaceToken: () => "user-a:org-a@1",
+    normalizeRecordKeys: (record) => record,
+    useServerSidePagination: true,
+    workspaceScope: { key: "user-a:org-a", organizationId: "org-a" },
+    state: {
+      activerole: "employee",
+      activeuser: { id: "user-a" },
+      kehoach: [{ id: "plan-a", isLatest: 1 }],
+      goithau: [{
+        id: "package-a",
+        rootId: "package-a-root",
+        keHoachId: "plan-a",
+        isLatest: 1,
+      }],
+    },
+  };
+  const view = { model };
+
+  reconcileTimelinePackageOptionProjection(model, {
+    useServerSidePagination: true,
+    visibilityToken: "scope-a",
+    referenceData: { goithau: model.state.goithau },
+  });
+  assert.deepEqual(
+    immediateTimelinePackageOptions(view, "plan-a").map((pkg) => pkg.id),
+    ["package-a"],
+  );
+
+  model.visibilityRevision = 1;
+  assert.deepEqual(
+    immediateTimelinePackageOptions(view, "plan-a"),
+    [],
+    "raw workspace rows must not repopulate options after authorization changes",
+  );
+});
+
+test("timeline reuses a complete local package confirmed by the current authorized projection", async () => {
+  const localPackage = {
+    id: "package-a",
+    rootId: "package-a-root",
+    keHoachId: "plan-a",
+    isLatest: 1,
+    referenceOnly: false,
+    hinhThucLuaChon: "OPEN_BIDDING",
+    timelineItems: [],
+  };
+  const model = {
+    getWorkspaceToken: () => "user-a:org-a@1",
+    normalizeRecordKeys: (record) => record,
+    useServerSidePagination: true,
+    workspaceScope: { key: "user-a:org-a", organizationId: "org-a" },
+    state: {
+      activerole: "employee",
+      activeuser: { id: "user-a" },
+      goithau: [localPackage],
+    },
+  };
+  reconcileTimelinePackageOptionProjection(model, {
+    useServerSidePagination: true,
+    visibilityToken: "scope-a",
+    referenceData: { goithau: [{ ...localPackage, referenceOnly: true }] },
+  });
+
+  assert.equal(await fetchTimelinePackage({ model }, localPackage.id), localPackage);
+  assert.equal(model._workspaceRequestControllers, undefined);
 });
 
 const base = {

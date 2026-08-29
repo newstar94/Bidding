@@ -28,6 +28,7 @@ import {
 import {
   invalidatePaginatedAuthorizationScope,
   invalidatePaginatedQueryCache,
+  reconcileTimelinePackageOptionProjection,
 } from "../shared/tableDataUtils.js";
 import { observeProjectionAuthorizationVisibilityToken } from "../shared/PaginatedProjectionStore.js";
 
@@ -302,7 +303,7 @@ async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
   return { ok: false, error, storageDegraded: true };
 }
 
-function fencePaginatedAuthorizationScope(controller, storage, snapshot) {
+function fencePaginatedAuthorizationScope(controller, snapshot) {
   const incomingVisibilityToken = String(snapshot?.visibilityToken || "");
   if (!incomingVisibilityToken) return false;
   const changed = observeProjectionAuthorizationVisibilityToken(
@@ -488,7 +489,7 @@ async function executeForceSyncData(
     if (!pullIsCurrent()) {
       return stalePullResult();
     }
-    const visibilityScopeChanged = fencePaginatedAuthorizationScope(this, storage, dbData);
+    const visibilityScopeChanged = fencePaginatedAuthorizationScope(this, dbData);
     if (visibilityScopeChanged && dbData?.partial) {
       // A route-only snapshot cannot remove rows from other modules. Once its
       // visibility fingerprint changes, reconcile the whole workspace before
@@ -511,6 +512,7 @@ async function executeForceSyncData(
     this.model?.acknowledgeServerDeletions?.(deletionsByTable);
     const committedCursor = commitSyncCursor(storage, dbData, { currentRole });
     if (visibilityScopeChanged) invalidatePaginatedQueryCache(this.model);
+    reconcileTimelinePackageOptionProjection(this.model, dbData);
     if (committedCursor.syncVersion !== null) {
       this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
     }
@@ -525,9 +527,6 @@ async function executeForceSyncData(
       if (detailTabs.some((tab) => this.routeMap[tab] === (parts[0] || "")) && parts[1]) {
         this.handlePathRouting(window.location.pathname, false, true);
       }
-    }
-    if (isBackground && typeof this.model?.hydrateRemainingStorageKeysIdle === "function") {
-      this.model.hydrateRemainingStorageKeysIdle();
     }
     if (routeOnly && typeof this.scheduleBackgroundSync === "function") {
       this.scheduleBackgroundSync(900);

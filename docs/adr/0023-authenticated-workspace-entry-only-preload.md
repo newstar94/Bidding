@@ -64,14 +64,46 @@ preload root đệ quy; không có chuyển đổi dữ liệu ngược.
 
 ## Bổ sung lịch hậu khởi động
 
-Quyết định số 5 ở trên được thay thế bởi lịch tập trung trong `startupTiming.js`. Browser được dành
-ít nhất 6.000 ms sau startup cho first frame, Lucide hydration và thao tác đầu tiên. Primary-tab
-warming bắt đầu từ 7.000 ms; các tác vụ không thiết yếu còn lại được giãn. Chunk workflow lớn nhất
-(`BiddingWorkflows`, khoảng 943 KB secure) không còn preload tự động trong phiên hoạt động mà chỉ
-được tải theo route hoặc intent thực sự cần nó. Route hoặc intent của người dùng vẫn tải module cần
-thiết ngay lập tức và không phải chờ lịch nền.
+Quyết định số 5 ở trên được thay thế bởi lịch tập trung trong `startupTiming.js`. Shell và route hiện
+tại vẫn được ưu tiên để có thể tương tác trước. Ngay sau khi shell sẵn sàng, ứng dụng bắt đầu một
+authoritative route reconciliation duy nhất, gắn WebSocket/focus/storage listeners và đăng ký file
+upload. Phần IndexedDB còn lại được giao cho idle dispatcher ngay sau khi reconciliation cùng bước
+persist authoritative hoàn tất, tránh race đọc/ghi startup mà không quay lại timer 14 giây. Các tác
+vụ realtime và dữ liệu không còn bị giữ bởi timer 14–36 giây.
 
-Performance harness chờ hết cửa sổ warming mới đo first-tab cache. Regression tests khóa ngưỡng
-tương tác tối thiểu và secure browser smoke xác nhận icon cùng navigation handler hoạt động trên
-cold load. Thay đổi lịch này không tác động dữ liệu hiển thị, masking, role, permission, scope,
-capability, entitlement hoặc authorization semantics.
+Primary-tab warming chỉ prefetch dữ liệu trang đầu và chờ reconciliation hoàn tất, nhưng không cộng
+thêm delay 7 giây. Reference data được xếp lịch sau reconciliation với độ trễ 750 ms và kiểm tra exact
+workspace token cả lúc xếp lịch lẫn lúc thực thi. Dữ liệu ngày nghỉ vẫn là tác vụ tùy chọn sau 7 giây;
+notification center, modal chính và assistant tiếp tục nằm sau interaction grace. Đăng nhập trực tiếp
+hoặc Google cũng khởi động reconciliation ở nền và gắn WebSocket ngay, không giữ giao diện đăng nhập
+cho đến khi full pull hoàn tất.
+
+Chunk workflow và primary route UI không được preload do idle, hover, focus hay timer. Lần click hoặc
+route navigation rõ ràng vẫn sở hữu lần import đầu tiên theo ADR 0024; warming hậu khởi động chỉ làm
+ấm dữ liệu được phép đọc, không làm ấm renderer.
+
+Đây là thay đổi timing-only: không đổi API, schema, dữ liệu hiển thị, masking/redaction, role, module
+permission, assignment scope, record scope, capability, entitlement hoặc authorization semantics.
+Không cần migration dữ liệu. Cần build lại secure artifact và restart backend để shell dùng manifest
+mới. Regression tests khóa single-flight reconciliation, workspace-token stale guard, listener sẵn
+sàng ngay, cache trang đầu sau reconciliation và việc Google/password login không chờ full pull.
+
+## Bổ sung hiệu chuẩn benchmark startup
+
+Benchmark startup chính thức phải đo artifact secure và tách nhiễu do phần mềm bảo vệ endpoint chèn
+vào Chromium khỏi mã ứng dụng. Harness dùng CDP `Network.setBlockedURLs` để chặn exact URL pattern
+ngoài origin (mặc định `http://local.adguard.org/*`); không dùng Playwright request routing vì routing
+làm vô hiệu HTTP cache và khiến phép đo warm mất ý nghĩa. Kết quả phải ghi release ID nhúng trong app,
+phiên bản browser, Node/platform/CPU, pattern đã chặn và trạng thái service worker để một báo cáo không
+thể vô tình trộn nhiều release hoặc nhiều môi trường.
+
+Ngưỡng cũ cold/warm `800/325 ms` được tạo trước secure graph hiện hành và thấp hơn cả baseline đã ghi
+ngày 27/08 (`2253/810 ms`). So sánh 30/30 cùng host cho thấy release mới cải thiện so với N−1:
+cold P95 `1926 → 1704 ms`, warm P95 `352 → 319 ms`; benchmark sạch 30/30 của release mới đạt
+`1841/391 ms`, long task `92/66 ms` và không có runtime failure. Vì vậy ngưỡng mặc định được hiệu
+chuẩn thành cold/warm P95 `2100/450 ms`, giữ nguyên longest task `100 ms`. Release evidence vẫn phải
+ưu tiên so sánh candidate với N−1 trên cùng host; việc nới ngưỡng không được bỏ qua runtime failure,
+release-ID mismatch hoặc long task của chính ứng dụng.
+
+Hiệu chuẩn này chỉ thay đổi phép đo và release gate. Nó không thay đổi trình tự đăng nhập, dữ liệu tải,
+API, schema, hiển thị dữ liệu hoặc bất kỳ semantics quyền/phạm vi nào.

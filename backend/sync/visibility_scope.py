@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.shared.access_policy import (
+    ORGANIZATION_MANAGER_ROLES,
     WRITE_PROTECTED_KEYS,
-    has_active_organization_membership,
-    has_module_permission,
     is_organization_manager,
     is_personal_workspace_owner,
 )
@@ -66,32 +65,33 @@ class VisibilityScope:
             )
             or is_personal_workspace_owner(cursor, user_id, organization_id)
         )
-        active = has_active_organization_membership(
-            cursor, role_str, user_id, organization_id
-        )
         permissions = {}
-        if active and not unrestricted:
-            for module in sorted(set(TABLE_TO_MODULE.values())):
-                if has_module_permission(
-                    cursor,
-                    role_str,
-                    user_id,
-                    organization_id,
-                    module,
-                    "view",
-                ):
-                    permissions[module] = (
-                        "edit"
-                        if has_module_permission(
-                            cursor,
-                            role_str,
-                            user_id,
-                            organization_id,
-                            module,
-                            "edit",
-                        )
-                        else "view"
-                    )
+        if not unrestricted:
+            columns = sorted(set(TABLE_TO_MODULE.values()))
+            row = cursor.execute(
+                "SELECT lower(trim(member.vai_tro_trong_to_chuc)), "  # noqa: S608 - columns come from canonical module registry
+                + ", ".join(f"permission.{column}" for column in columns)
+                + " FROM thanh_vien_to_chuc AS member "
+                "LEFT JOIN ma_tran_phan_quyen AS permission "
+                "ON permission.organization_id = member.organization_id "
+                "AND permission.emp_id = member.user_id "
+                "WHERE member.organization_id = ? AND member.user_id = ? "
+                "AND COALESCE(member.trang_thai_thanh_vien, 'active') = 'active' "
+                "LIMIT 1",  # noqa: S608 - columns come from canonical module registry
+                (organization_id, user_id),
+            ).fetchone()
+            if row:
+                membership_role = str(row[0] or "").strip().lower()
+                inherited_view = (
+                    getattr(role_str, "active_role", None) == "employee"
+                    and membership_role in ORGANIZATION_MANAGER_ROLES
+                )
+                for index, module in enumerate(columns, start=1):
+                    stored_permission = str(row[index] or "").strip().lower()
+                    if stored_permission == "edit":
+                        permissions[module] = "edit"
+                    elif stored_permission == "view" or inherited_view:
+                        permissions[module] = "view"
         return cls(
             organization_id=str(organization_id),
             user_id=str(user_id),

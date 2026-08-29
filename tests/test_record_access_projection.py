@@ -1049,6 +1049,132 @@ def test_active_persona_package_parity_through_http_read_endpoints(monkeypatch):
         database.close()
 
 
+@pytest.mark.parametrize(
+    ("membership_role", "keep_permission_matrix"),
+    [
+        ("employee", True),
+        ("manager", False),
+    ],
+)
+def test_paginate_package_visibility_has_bounded_authorization_queries(
+    monkeypatch,
+    membership_role,
+    keep_permission_matrix,
+):
+    """Timeline pagination must not resolve every module one query at a time."""
+
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, user_id, package_id = _seed_denied_package(cursor)
+        plan_id = cursor.execute(
+            "SELECT ke_hoach_id FROM goi_thau WHERE id = ?",
+            (package_id,),
+        ).fetchone()[0]
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+                  SET vai_tro_trong_to_chuc = ?
+                WHERE organization_id = ? AND user_id = ?""",
+            (membership_role, organization_id, user_id),
+        )
+        cursor.execute(
+            """UPDATE phan_cong_nhan_su
+                  SET id_nhan_vien = ?
+                WHERE organization_id = ? AND id_muc_tieu = ?""",
+            (user_id, organization_id, package_id),
+        )
+        if not keep_permission_matrix:
+            cursor.execute(
+                """DELETE FROM ma_tran_phan_quyen
+                    WHERE organization_id = ? AND emp_id = ?""",
+                (organization_id, user_id),
+            )
+
+        query_count = {"value": 0}
+
+        class CountingCursor:
+            def __init__(self, delegate):
+                self.delegate = delegate
+
+            def execute(self, statement, parameters=None):
+                query_count["value"] += 1
+                self.delegate.execute(statement, parameters)
+                return self
+
+            def fetchone(self):
+                return self.delegate.fetchone()
+
+            def fetchall(self):
+                return self.delegate.fetchall()
+
+            def __iter__(self):
+                return iter(self.delegate)
+
+        class BorrowedConnection:
+            def cursor(self):
+                return CountingCursor(connection.cursor())
+
+            def close(self):
+                return None
+
+        class CountingDatabase:
+            def get_connection(self):
+                return BorrowedConnection()
+
+        async def inline_database_read(function, *args, **kwargs):
+            kwargs.pop("timeout_seconds", None)
+            return function(*args, **kwargs)
+
+        role = SessionRole(
+            "user",
+            user_id,
+            platform_role="user",
+            active_role="employee",
+        )
+        monkeypatch.setattr(pagination_module, "database", CountingDatabase())
+        monkeypatch.setattr(
+            pagination_module,
+            "verify_session",
+            lambda _request: (True, role),
+        )
+        monkeypatch.setattr(
+            pagination_module,
+            "get_active_org",
+            lambda *_args, **_kwargs: organization_id,
+        )
+        monkeypatch.setattr(
+            pagination_module,
+            "run_database_read",
+            inline_database_read,
+        )
+
+        app = Starlette(
+            routes=[Route("/api/paginate", pagination_module.paginate_records)]
+        )
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/paginate",
+                params={
+                    "table": "goithau",
+                    "page": "1",
+                    "pageSize": "200",
+                    "search": "",
+                    "keHoachId": plan_id,
+                },
+                headers={"X-Active-Org": organization_id},
+            )
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()["items"]] == [package_id]
+        assert str(response.json()["items"][0]["giaGoiThau"]) == "100000000"
+        assert query_count["value"] <= 20
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
 def test_legacy_sensitive_read_grant_is_inert_for_record_projection():
     database = _test_database()
     connection = database.get_connection()

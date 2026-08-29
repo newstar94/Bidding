@@ -92,6 +92,14 @@ test("active-role shell renders before the previous persona snapshot purge compl
       switchTab() { events.push("shell-rendered"); },
       initializeStartupReconciliation() { events.push("boundary-ready"); },
       reconcileInitialRouteData() { events.push("reconcile-start"); return Promise.resolve(true); },
+      scheduleRemainingStorageHydration(reconciliation) {
+        events.push("hydration-scheduled");
+        void reconciliation.then(() => events.push("hydration-after-reconcile"));
+      },
+      scheduleReferenceDataLoading(reconciliation) {
+        events.push("reference-scheduled");
+        void reconciliation.then(() => events.push("reference-after-reconcile"));
+      },
       renderWorkspaceSwitcher() {},
       setupWebSocketConnection() {},
       getStartupPriorityKeys() { return []; },
@@ -111,6 +119,8 @@ test("active-role shell renders before the previous persona snapshot purge compl
     await handling;
     assert.ok(events.indexOf("memory-cleared") < events.indexOf("shell-rendered"));
     assert.ok(events.indexOf("shell-rendered") < events.indexOf("local-ready"));
+    assert.ok(events.indexOf("reconcile-start") < events.indexOf("hydration-after-reconcile"));
+    assert.ok(events.indexOf("reconcile-start") < events.indexOf("reference-after-reconcile"));
   } finally {
     purge.resolve();
     restore();

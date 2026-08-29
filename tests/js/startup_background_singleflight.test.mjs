@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 import { scheduleBackgroundSync } from "../../frontend/app/WorkspaceEventBridge.js";
+import { startSessionWorkspaceRefresh } from "../../frontend/auth/AuthFlowController.js";
 
 function deferred() {
   let resolve;
@@ -25,6 +26,21 @@ test("startup does not queue a duplicate full pull after route reconciliation", 
     /scheduleBackgroundSync/,
     "the route reconciliation is already authoritative; a second startup pull invalidates warm pages",
   );
+});
+
+test("authenticated workspace bootstrap owns the initial pull without a duplicate session refresh", () => {
+  const calls = [];
+  assert.equal(startSessionWorkspaceRefresh(
+    () => calls.push("refresh"),
+    { routeManagedByWorkspaceBootstrap: true },
+  ), false);
+  assert.deepEqual(calls, []);
+
+  assert.equal(startSessionWorkspaceRefresh(
+    () => calls.push("refresh"),
+    { routeManagedByWorkspaceBootstrap: false },
+  ), true);
+  assert.deepEqual(calls, ["refresh"]);
 });
 
 test("scheduled background sync waits for initial reconciliation single-flight", async () => {

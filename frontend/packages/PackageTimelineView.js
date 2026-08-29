@@ -2,7 +2,17 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { getAppController } from "../app/controllerRef.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { getJson } from "../shared/apiClient.js";
-import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
+import {
+  abortPaginatedTableRequests,
+  getCachedPaginatedRecords,
+  getTimelinePackageOptionRecords,
+  invalidatePaginatedQueryCache,
+  invalidateTimelinePackageOptionProjection,
+  loadPaginatedRecords,
+  reconcileTimelinePackageOptionPage,
+  timelinePackageIsPendingLocal,
+  timelinePackagePageQuery,
+} from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
@@ -97,6 +107,7 @@ function timelineState(view) {
     loading: false,
     restoreAttempted: false,
     restoringSelection: false,
+    restoreRequestVersion: 0,
     selectionRequestVersion: 0,
     optionsRequestVersion: 0
   };
@@ -124,6 +135,7 @@ export function resetTimelineSession(view) {
     state.loading = false;
     state.restoreAttempted = true;
     state.restoringSelection = false;
+    state.restoreRequestVersion = Number(state.restoreRequestVersion || 0) + 1;
     state.selectionRequestVersion = Number(state.selectionRequestVersion || 0) + 1;
     state.optionsRequestVersion = Number(state.optionsRequestVersion || 0) + 1;
   }
@@ -133,6 +145,12 @@ export function resetTimelineSession(view) {
 
 function isCurrentTimelineRequest(view, state, key, version) {
   return view?._packageTimelineState === state && state?.[key] === version;
+}
+
+function cancelTimelineSelectionRestore(state) {
+  if (!state) return;
+  state.restoreRequestVersion = Number(state.restoreRequestVersion || 0) + 1;
+  state.restoringSelection = false;
 }
 
 function element(id) {
@@ -261,7 +279,18 @@ function cachePlan(view, rawRecord) {
 
 export async function fetchTimelinePackage(view, id) {
   const local = (view.model.state.goithau || []).find((item) => String(item.id) === String(id));
-  if (local?.timelineItems && local.referenceOnly !== true && local.hinhThucLuaChon !== undefined) return local;
+  const currentAuthorizedOption = getTimelinePackageOptionRecords(view.model)
+    .some((item) => String(item?.id) === String(id));
+  const canUseLocalRecord = !view.model?.useServerSidePagination
+    || globalThis.navigator?.onLine === false
+    || currentAuthorizedOption
+    || timelinePackageIsPendingLocal(view.model, id);
+  if (
+    canUseLocalRecord
+    && local?.timelineItems
+    && local.referenceOnly !== true
+    && local.hinhThucLuaChon !== undefined
+  ) return local;
   const request = beginWorkspaceRequest(view.model);
   try {
     const data = await getJson(`/api/record?table=goithau&lookup=${encodeURIComponent(id)}`, {
@@ -340,6 +369,24 @@ export function timelinePackageOptionsForPlan(records = [], planId = "") {
     && !pkg?.archivedAt
     && !pkg?.archived_at
   )));
+}
+
+export function immediateTimelinePackageOptions(view, planId = "") {
+  const normalizedPlanId = String(planId || "").trim();
+  if (!normalizedPlanId) return [];
+  if (!view?.model?.useServerSidePagination) {
+    return timelinePackageOptionsForPlan(view?.model?.state?.goithau || [], normalizedPlanId);
+  }
+  const cached = getCachedPaginatedRecords(
+    view.model,
+    "goithau",
+    timelinePackagePageQuery(normalizedPlanId),
+  );
+  if (cached) return timelinePackageRepresentatives(cached.items || []);
+  return timelinePackageOptionsForPlan(
+    getTimelinePackageOptionRecords(view.model),
+    normalizedPlanId,
+  );
 }
 
 export function timelinePackageFamily(records = [], pkg = null) {
@@ -431,21 +478,27 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
   state.loading = true;
   updateLiveStatus("Đang tìm gói thầu...");
   try {
-    const result = await loadPaginatedRecords(view.model, "goithau", {
-      page: 1,
-      pageSize: 200,
-      search,
-      ...(planId ? { keHoachId: planId } : {})
-    }, {
+    const result = await loadPaginatedRecords(
+      view.model,
+      "goithau",
+      timelinePackagePageQuery(planId, search),
+      {
       cancellationOwner: "ui:package-timeline-options"
-    });
+      },
+    );
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
+    reconcileTimelinePackageOptionPage(view.model, planId, result.items, {
+      replacePlan: !search && !result.hasMore,
+    });
     const representatives = timelinePackageRepresentatives(result.items);
     renderPackageOptions(view, representatives, search);
     updateLiveStatus(`Đã tìm thấy ${representatives.length} gói thầu.`);
   } catch (error) {
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     if ([401, 403].includes(Number(error?.status))) {
+      abortPaginatedTableRequests(view.model, "goithau");
+      invalidatePaginatedQueryCache(view.model, "goithau");
+      invalidateTimelinePackageOptionProjection(view.model);
       renderPackageOptions(view, [], search);
     }
     if (error?.name !== "AbortError") {
@@ -826,6 +879,8 @@ async function selectPackage(view, packageId) {
 
 async function restoreTimelineSelection(view, selection) {
   const state = timelineState(view);
+  const requestVersion = Number(state.restoreRequestVersion || 0) + 1;
+  state.restoreRequestVersion = requestVersion;
   state.restoringSelection = true;
   try {
     if (!isTimelinePlanSelectable(view, selection.planId)) {
@@ -835,25 +890,35 @@ async function restoreTimelineSelection(view, selection) {
     const planSelect = element("timeline-plan-select");
     syncTimelineSelectValue(planSelect, selection.planId);
     await selectPackage(view, selection.packageId);
-    if (!state.package) return;
+    if (!isCurrentTimelineRequest(view, state, "restoreRequestVersion", requestVersion)) return;
+    const restoredPackage = state.package;
+    if (!restoredPackage) return;
 
     renderPlanOptions(view);
-    const actualPlanId = String(state.package.keHoachId || state.plan?.id || selection.planId);
+    const actualPlanId = String(restoredPackage.keHoachId || state.plan?.id || selection.planId);
     syncTimelineSelectValue(planSelect, actualPlanId);
     await loadPackageOptions(view, "");
+    if (!isCurrentTimelineRequest(view, state, "restoreRequestVersion", requestVersion)) return;
+    const currentPackage = state.package;
+    if (!currentPackage) return;
 
-    const selectedRootId = versionRootId(state.package);
+    const selectedRootId = versionRootId(currentPackage);
     let selectedRepresentative = state.packageOptions.find(
       (pkg) => versionRootId(pkg) === selectedRootId,
     );
     if (!selectedRepresentative) {
-      renderPackageOptions(view, [state.package, ...state.packageOptions], "");
-      selectedRepresentative = state.package;
+      renderPackageOptions(view, [currentPackage, ...state.packageOptions], "");
+      selectedRepresentative = currentPackage;
     }
     const packageSelect = element("timeline-package-select");
     syncTimelineSelectValue(packageSelect, selectedRepresentative.id);
+  } catch (error) {
+    if (!isCurrentTimelineRequest(view, state, "restoreRequestVersion", requestVersion)) return;
+    throw error;
   } finally {
-    state.restoringSelection = false;
+    if (isCurrentTimelineRequest(view, state, "restoreRequestVersion", requestVersion)) {
+      state.restoringSelection = false;
+    }
   }
 }
 
@@ -993,6 +1058,7 @@ function bindTimelineEvents(view, pane) {
   initTimelineComboboxes(view);
   element("timeline-plan-select")?.addEventListener("change", () => {
     const state = timelineState(view);
+    cancelTimelineSelectionRestore(state);
     clearTimeout(state.packageSearchTimer);
     state.packageSearchTimer = null;
     state.packageQuery = "";
@@ -1000,13 +1066,14 @@ function bindTimelineEvents(view, pane) {
     if (packageSelect) packageSelect.value = "";
     void selectPackage(view, "");
     const planId = element("timeline-plan-select")?.value || "";
-    const localPackages = timelinePackageOptionsForPlan(view.model.state.goithau, planId);
-    renderPackageOptions(view, localPackages, "");
+    renderPackageOptions(view, immediateTimelinePackageOptions(view, planId), "");
     void loadPackageOptions(view, "");
   });
   element("timeline-package-select")?.addEventListener("change", (event) => {
-    timelineState(view).packageQuery = "";
-    selectPackage(view, event.target.value);
+    const state = timelineState(view);
+    cancelTimelineSelectionRestore(state);
+    state.packageQuery = "";
+    void selectPackage(view, event.target.value);
   });
   element("timeline-status-filter")?.addEventListener("change", (event) => {
     timelineState(view).filters.status = event.target.value;
@@ -1071,7 +1138,7 @@ export function suspendPackageTimeline() {
   if (!state) return null;
   clearTimeout(state.packageSearchTimer);
   state.loading = false;
-  state.restoringSelection = false;
+  cancelTimelineSelectionRestore(state);
   state.selectionRequestVersion = Number(state.selectionRequestVersion || 0) + 1;
   state.optionsRequestVersion = Number(state.optionsRequestVersion || 0) + 1;
   return state;
@@ -1125,7 +1192,15 @@ export function renderPackageTimeline() {
     state.restoreAttempted = true;
     const selection = readTimelineSelection(this.model);
     if (selection) {
-      restoreTimelineSelection(this, selection);
+      void restoreTimelineSelection(this, selection).catch((error) => {
+        const errorBox = element("timeline-error");
+        if (errorBox) {
+          errorBox.textContent = error?.message || "Không thể khôi phục timeline.";
+          errorBox.hidden = false;
+        }
+        setHidden("timeline-loading", true);
+        setHidden("timeline-table-wrap", true);
+      });
       return;
     }
   }

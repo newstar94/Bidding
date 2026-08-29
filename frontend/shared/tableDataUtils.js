@@ -7,11 +7,16 @@ import { perfNow, reportPerf } from "./perfDiagnostics.js";
 import {
   assertProjectionAuthorizationScopeCurrent,
   captureProjectionAuthorizationScope,
+  normalizedProjectionKey,
   paginatedProjectionStore,
   projectionAuthorizationChangedError,
 } from "./PaginatedProjectionStore.js";
 
 const PAGINATION_CACHE_TTL_MS = 30_000;
+const TIMELINE_PACKAGE_OPTION_PROJECTION = Object.freeze({
+  table: "timeline-package-options",
+  query: Object.freeze({ version: 1 }),
+});
 
 function paginationCacheKey(model, table, params, lease) {
   return paginatedProjectionStore(model).key(table, params, lease);
@@ -147,8 +152,211 @@ export function getCachedPaginatedRecords(model, table, params = {}, capturedLea
   };
 }
 
+export function timelinePackagePageQuery(planId, search = "") {
+  const normalizedPlanId = String(planId || "").trim();
+  return {
+    page: 1,
+    pageSize: 200,
+    search: String(search || ""),
+    ...(normalizedPlanId ? { keHoachId: normalizedPlanId } : {}),
+  };
+}
+
+function timelinePackageOptionProjectionKey(model) {
+  return normalizedProjectionKey(
+    model,
+    TIMELINE_PACKAGE_OPTION_PROJECTION.table,
+    TIMELINE_PACKAGE_OPTION_PROJECTION.query,
+  );
+}
+
+function currentTimelinePackageOptionProjection(model) {
+  const projection = model?._timelinePackageOptionProjection;
+  if (!projection || projection.key !== timelinePackageOptionProjectionKey(model)) return null;
+  return projection;
+}
+
+function normalizeTimelinePackageOptions(model, records = []) {
+  const byId = new Map();
+  (Array.isArray(records) ? records : []).forEach((rawRecord) => {
+    const normalized = typeof model?.normalizeRecordKeys === "function"
+      ? model.normalizeRecordKeys(rawRecord, "goithau")
+      : rawRecord;
+    const id = String(normalized?.id || "");
+    if (!id) return;
+    byId.set(id, { ...normalized });
+  });
+  return [...byId.values()];
+}
+
+function currentMutationBatch(model) {
+  try {
+    return typeof model?.getMutationQueue === "function" ? model.getMutationQueue() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function timelinePackageIsPendingLocal(model, recordId) {
+  const id = String(recordId || "").trim();
+  if (!id) return false;
+  return Boolean(currentMutationBatch(model)?.upserts?.goithau?.[id]);
+}
+
+function overlayPendingTimelinePackageMutations(model, records = []) {
+  const byId = new Map(
+    normalizeTimelinePackageOptions(model, records)
+      .map((record) => [String(record.id), record]),
+  );
+  const mutationBatch = currentMutationBatch(model);
+  normalizeTimelinePackageOptions(
+    model,
+    Object.values(mutationBatch?.upserts?.goithau || {}),
+  ).forEach((record) => byId.set(String(record.id), record));
+  Object.values(mutationBatch?.patches?.goithau || {}).forEach((patch) => {
+    const id = String(patch?.id || "");
+    const existing = byId.get(id);
+    if (id && existing) byId.set(id, { ...existing, ...patch });
+  });
+  (mutationBatch?.deletes || []).forEach((deletion) => {
+    if (String(deletion?.table || "") === "goithau") {
+      byId.delete(String(deletion?.id || ""));
+    }
+  });
+  return [...byId.values()];
+}
+
+function storeTimelinePackageOptionProjection(
+  model,
+  records = [],
+  { overlayPending = true } = {},
+) {
+  if (!model) return [];
+  const items = overlayPending
+    ? overlayPendingTimelinePackageMutations(model, records)
+    : normalizeTimelinePackageOptions(model, records);
+  model._timelinePackageOptionProjection = Object.freeze({
+    key: timelinePackageOptionProjectionKey(model),
+    items: Object.freeze(items),
+  });
+  return items;
+}
+
+export function getTimelinePackageOptionRecords(model) {
+  const current = currentTimelinePackageOptionProjection(model);
+  return current ? overlayPendingTimelinePackageMutations(model, current.items) : [];
+}
+
+/**
+ * Reconcile the timeline's lightweight option projection only from server
+ * evidence. A full sync replaces it with the complete authorized reference
+ * projection; later deltas merge their authorized package rows and tombstones.
+ * It intentionally never fabricates an exact `/api/paginate` response.
+ */
+export function reconcileTimelinePackageOptionProjection(
+  model,
+  snapshot = {},
+  { allowHydratedSnapshot = false } = {},
+) {
+  const usesServerPagination = Boolean(
+    model?.useServerSidePagination || snapshot?.useServerSidePagination,
+  );
+  if (!usesServerPagination) {
+    if (model) delete model._timelinePackageOptionProjection;
+    return [];
+  }
+
+  const references = snapshot?.referenceData?.goithau;
+  const current = currentTimelinePackageOptionProjection(model);
+  const hydratedFallback = !Array.isArray(references)
+    && !current
+    && allowHydratedSnapshot
+    && snapshot?.visibilityToken
+    ? model?.state?.goithau || []
+    : null;
+  if (!Array.isArray(references) && !current && !hydratedFallback) return [];
+
+  const byId = new Map(
+    normalizeTimelinePackageOptions(
+      model,
+      Array.isArray(references) ? references : current?.items || hydratedFallback,
+    ).map((record) => [String(record.id), record]),
+  );
+  if (!Array.isArray(references)) {
+    normalizeTimelinePackageOptions(model, snapshot?.goithau || []).forEach((record) => {
+      byId.set(String(record.id), record);
+    });
+  }
+  (snapshot?.deletions || []).forEach((deletion) => {
+    if (String(deletion?.table || "") === "goithau") {
+      byId.delete(String(deletion?.id || ""));
+    }
+  });
+  if (Array.isArray(snapshot?.recordManifest?.goithau)) {
+    const allowedIds = new Set(snapshot.recordManifest.goithau.map(String));
+    for (const id of byId.keys()) {
+      if (!allowedIds.has(id)) byId.delete(id);
+    }
+  }
+  return storeTimelinePackageOptionProjection(model, [...byId.values()]);
+}
+
+export function reconcileTimelinePackageOptionPage(
+  model,
+  planId,
+  records = [],
+  { replacePlan = false } = {},
+) {
+  const normalizedPlanId = String(planId || "").trim();
+  if (!model?.useServerSidePagination || !normalizedPlanId) return [];
+  const current = getTimelinePackageOptionRecords(model);
+  const retained = replacePlan
+    ? current.filter((record) => (
+      String(record?.keHoachId || record?.ke_hoach_id || "") !== normalizedPlanId
+    ))
+    : current;
+  const byId = new Map(
+    normalizeTimelinePackageOptions(model, retained)
+      .map((record) => [String(record.id), record]),
+  );
+  normalizeTimelinePackageOptions(model, records).forEach((record) => {
+    byId.set(String(record.id), record);
+  });
+  return storeTimelinePackageOptionProjection(model, [
+    ...byId.values(),
+  ]);
+}
+
+export function invalidateTimelinePackageOptionProjection(model, recordId = "") {
+  if (!model) return;
+  const normalizedRecordId = String(recordId || "").trim();
+  const current = currentTimelinePackageOptionProjection(model);
+  if (!normalizedRecordId || !current) {
+    delete model._timelinePackageOptionProjection;
+    return;
+  }
+  storeTimelinePackageOptionProjection(
+    model,
+    current.items.filter((record) => String(record?.id || "") !== normalizedRecordId),
+    { overlayPending: false },
+  );
+}
+
+export function abortPaginatedTableRequests(model, table) {
+  if (!model || !table) return;
+  const error = projectionAuthorizationChangedError();
+  for (const [key, request] of model._paginationRequests || []) {
+    if (String(request?.table || "") !== String(table)) continue;
+    request?.controller?.abort?.(error);
+    if (model._paginationRequests.get(key) === request) {
+      model._paginationRequests.delete(key);
+    }
+  }
+}
+
 export function invalidatePaginatedQueryCache(model, table = null) {
   if (!model) return;
+  if (!table) delete model._timelinePackageOptionProjection;
   paginatedProjectionStore(model).invalidate(table);
 }
 
@@ -158,6 +366,7 @@ export function invalidatePaginatedAuthorizationScope(model) {
   model.visibilityRevision = Number.isSafeInteger(currentRevision)
     ? currentRevision + 1
     : 1;
+  delete model._timelinePackageOptionProjection;
   paginatedProjectionStore(model).disposeWorkspace();
   if (model._planPackageHydrationRequests instanceof Map) {
     for (const request of model._planPackageHydrationRequests.values()) {

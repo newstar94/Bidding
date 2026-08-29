@@ -67,3 +67,20 @@ test("identical re-exports may share a prototype command without an override", (
     sharedCommand: "feature-a",
   });
 });
+
+
+test("prototype modules can never be installed on Object.prototype", () => {
+  const commandName = "__biddingflow_object_prototype_guard__";
+
+  assert.throws(
+    () => installPrototypeModules(Object, [{
+      name: "unsafe-controller",
+      module: { [commandName]() {} },
+    }]),
+    /Object\.prototype/u,
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(Object.prototype, commandName),
+    false,
+  );
+});

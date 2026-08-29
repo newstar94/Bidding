@@ -106,6 +106,12 @@ export function createSingleFlightSubmitHandler(handler, {
   };
 }
 
+export function initializeInteractiveLoginModel(controller) {
+  const pathname = globalThis.window?.location?.pathname || "/";
+  const priorityKeys = controller?.getStartupPriorityKeys?.(pathname);
+  return controller?.model?.init?.({ priorityKeys });
+}
+
 export function startPostLoginReconciliation(controller) {
   controller?.initializeStartupReconciliation?.();
   let task;
@@ -125,6 +131,43 @@ export function startPostLoginReconciliation(controller) {
     return false;
   });
   return { started: true, promise };
+}
+
+export function startInteractivePostLoginServices(controller) {
+  const reconciliation = startPostLoginReconciliation(controller);
+  const reconciliationPromise = reconciliation.promise;
+  for (const methodName of [
+    "scheduleRemainingStorageHydration",
+    "schedulePrimaryTabWarming",
+    "scheduleReferenceDataLoading",
+  ]) {
+    try {
+      controller?.[methodName]?.call(controller, reconciliationPromise);
+    } catch (error) {
+      console.error(`Failed to schedule ${methodName} after login:`, error);
+    }
+  }
+  try {
+    // The socket client is idempotent for the active workspace. Arm it now so
+    // live updates are available while the authoritative pull continues in
+    // the background; background pulls already wait on the reconciliation
+    // promise before touching workspace data.
+    controller?.setupWebSocketConnection?.();
+  } catch (error) {
+    console.error("Failed to connect workspace updates after login:", error);
+  }
+  return reconciliation;
+}
+
+export function startSessionWorkspaceRefresh(
+  refreshWorkspace,
+  { routeManagedByWorkspaceBootstrap = false } = {},
+) {
+  if (routeManagedByWorkspaceBootstrap || typeof refreshWorkspace !== "function") {
+    return false;
+  }
+  refreshWorkspace();
+  return true;
 }
 
 export function resolvePostLoginActiveRole(data = {}) {
@@ -343,7 +386,9 @@ export function setupAuth() {
           if (!routeManagedByWorkspaceBootstrap && !canShowLocalFirst && !shouldWaitForDetailData) {
             void showCachedWorkspace();
           }
-          refreshWorkspaceInBackground();
+          startSessionWorkspaceRefresh(refreshWorkspaceInBackground, {
+            routeManagedByWorkspaceBootstrap,
+          });
         }
         this.startBackgroundSessionChecker();
       }
@@ -577,7 +622,7 @@ export function setupAuth() {
         reloadWithInitLoader();
         return;
       }
-      await this.model.init();
+      await initializeInteractiveLoginModel(this);
       const effectiveRoles = data.effective_roles || [];
       if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
         await installAdminModule(this.constructor);
@@ -609,10 +654,7 @@ export function setupAuth() {
       hideAuthOverlay();
       this.setupRBACEvents?.();
       this.startBackgroundSessionChecker();
-      const reconciliation = startPostLoginReconciliation(this);
-      void reconciliation.promise.then(() => {
-        this.setupWebSocketConnection?.();
-      });
+      startInteractivePostLoginServices(this);
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ Starlette: " + err.message;
       setRuntimeStyle(errorDiv, "display", "block");

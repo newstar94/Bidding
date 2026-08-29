@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-28
+- Amended: 2026-08-29 — retire service-worker asset interception
+- Amended: 2026-08-29 — restore non-blocking primary menu module warming
 
 ## Bối cảnh
 
@@ -13,9 +15,24 @@ vì vậy có thể tiếp tục nhận chunk lỗi trong khi máy khác hoặc 
 vẫn hoạt động bình thường. Nếu entry production chưa chạy, diagnostics bên trong app cũng
 chưa thể tự khôi phục; triệu chứng là Lucide chưa hydrate và mọi handler chưa được gắn.
 
+Điều tra browser sau đó xác nhận service worker cache-first hiện hành tự tạo một failure mode
+khác: shell đăng nhập đăng ký worker, lần tải lại sau đăng nhập trở thành controlled page, rồi
+worker intercept toàn bộ fan-out chunk JS/CSS của secure module graph. Trên một số máy, renderer
+đi vào trạng thái CPU cao và không hoàn tất module graph dù API đăng nhập và dữ liệu đều phản hồi
+nhanh. Cùng kịch bản không treo khi chặn service worker hoặc khi navigation chưa có worker điều
+khiển. Vì compatibility asset đã được đảm bảo tại HTTP/deployment bằng cache immutable và tập N−1,
+service worker không còn cần sở hữu asset cache.
+
 Các primary tab đã được tách thành route chunk, nhưng module vẫn được tải trước lần bấm do
 `pointerenter`/`focusin`/`touchstart` và primary-tab warming. Điều này làm mất semantics
 “bấm tab mới tải giao diện”, đồng thời che phản hồi điều hướng trong lần mở đầu tiên.
+
+Sau khi service worker đã được xác nhận là nguyên nhân làm treo module graph và bị retire, đo đạc
+trên secure artifact cho thấy semantics click-owned lại đặt 20–350 ms tải/parse route module lên
+chính lần bấm đầu tiên. Trên máy hoặc mạng chậm, transition vượt 120 ms và hiển thị trạng thái
+loading dù exact page data đã được làm ấm và phần data/render chỉ mất 5–10 ms. Chủ sản phẩm yêu cầu
+menu Kế hoạch, Gói thầu và các danh sách chính mở ngay; module warming không dùng service-worker
+cache nên không tái tạo failure mode đã điều tra.
 
 ## Quyết định
 
@@ -35,38 +52,52 @@ Các primary tab đã được tách thành route chunk, nhưng module vẫn đ�
    `/dist/assets/app-<hash>.js`, làm mới graph hiện hành rồi reload tối đa một lần cho entry
    release đó. Sau khi app đã chạy, stale dynamic import recovery nhận wording của Chromium,
    Firefox, Safari và Vite CSS preload, vẫn có session guard chống vòng lặp.
-5. Primary route module không được import bởi idle warming, hover, focus hay touch. Cú click
-   hoặc route navigation rõ ràng sở hữu lần import đầu tiên. Background warming chỉ được
-   prefetch page data hiện hành; phản hồi `bf-nav-intent` xuất hiện ngay và waiting state xuất
-   hiện nếu transition vượt ngưỡng 120 ms. View module, workflow module và lazy HTML partial
-   mà route còn thiếu được khởi động song song trong cùng thao tác navigation; route chỉ
-   activate/render sau khi toàn bộ dependency đã hoàn tất thành công.
+5. Sau khi shell hiện hành đã tương tác được, module của các primary menu đang hiển thị được tải
+   nền ngay, không chặn loader, đăng nhập, current-route render hay authoritative reconciliation.
+   Exact page-data warming vẫn phải chờ reconciliation để không giữ projection stale. Nếu người
+   dùng điều hướng trước khi module warming hoàn tất, navigation dùng chung in-flight import và
+   readiness gate hiện có; `bf-nav-intent` xuất hiện ngay và waiting state chỉ xuất hiện nếu
+   transition vượt 120 ms. Workflow module và lazy HTML partial của detail route vẫn click-owned
+   và được khởi động song song khi navigation cần chúng. Không dùng service worker để preload,
+   đọc hoặc cache bất kỳ module nào.
 6. Khi đã từng phát tán response 404 cache dài, operator phải purge cached error tại CDN sau
    khi origin đã phục vụ asset đúng. Xóa cache trên một máy không thay thế bước này.
+7. Service worker trở thành retirement worker không có `fetch` listener, manifest precache,
+   `respondWith`, cache read hoặc cache write. Install gọi `skipWaiting()`; activate xóa mọi cache
+   có namespace `biddingflow-assets-*`, gọi `clients.claim()` để thay worker cũ trên tab hiện tại,
+   rồi tự `unregister()`. Claim chỉ tồn tại trong lifecycle chuyển tiếp; worker không còn sau khi
+   activate hoàn tất. Browser regression loop xác nhận registration được claim rồi unregister không
+   còn treo; điều gây treo là fetch interception/cache-first graph của worker cũ. Immutable HTTP
+   caching, exact N−1 retention và bootstrap stale-graph recovery là các cơ chế duy nhất sở hữu
+   compatibility asset sau thay đổi này.
 
 ## Ảnh hưởng tương thích
 
 - Không thay đổi API nghiệp vụ, schema, dữ liệu hiển thị, masking/redaction, role, module
   permission, assignment scope, record scope, capability, entitlement hoặc authorization.
-- URL hashed hiện hành và service-worker cache namespace giữ nguyên. Release N tab có thể
-  tiếp tục tải lazy chunk trong grace window N+1; reload chuyển sang graph N+1.
-- Lần bấm tab đầu tiên có thể thực sự chờ route chunk thay vì được hover/idle tải trước. Dữ
-  liệu trang vẫn có thể là cache hit, nên không bắt buộc hiển thị spinner trên transition nhanh.
-  Tải song song chỉ thay đổi timing; readiness gate, stale-transition guard và failure feedback
-  của từng loại dependency vẫn được bảo toàn.
+- URL hashed hiện hành giữ nguyên; namespace service-worker cũ chỉ còn được nhận diện để xóa khi
+  retirement worker activate. Release N tab tiếp tục tải lazy chunk từ tập N−1 tại origin trong
+  grace window N+1; reload chuyển sang graph N+1 mà không qua service-worker interception.
+- Sau cửa sổ warming, lần bấm primary menu không phát sinh route-module request và dùng exact page
+  cache đã được reconcile. Click cực sớm có thể dùng chung import đang chạy; readiness gate,
+  stale-transition guard và failure feedback của từng dependency vẫn được bảo toàn.
 - Production package chỉ chấp nhận asset ngoài manifest hiện hành khi asset đó nằm trong
   journal N−1 hợp lệ và checksum/size khớp; file thừa hoặc tamper vẫn làm package thất bại.
 
 ## Chuyển đổi và quay lui
 
 Không có migration schema hay dữ liệu. Cần chạy lại secure build, restart backend để shell
-dùng manifest mới, triển khai theo release directory versioned và purge cached 404 cũ tại
-Cloudflare nếu có. Trước rollback code, release N được chuẩn bị lại với N+1
+dùng manifest và retirement worker mới, triển khai theo release directory versioned và purge
+cached 404 cũ tại Cloudflare nếu có. Worker mới tự kích hoạt, xóa cache `biddingflow-assets-*`,
+claim các tab hiện tại rồi tự gỡ registration; không yêu cầu người dùng xóa cache thủ công. Trước rollback
+code, release N được chuẩn bị lại với N+1
 (đang phục vụ) là previous release, để giữ graph N+1 và loại predecessor cũ hơn;
 sau đó symlink mới chuyển atomically về N. Không hạ schema.
 
-Có thể quay lui riêng semantics tab bằng cách khôi phục intent/module warming, nhưng không
-được quay lui `no-store` cho asset lỗi hoặc deployment N−1 nếu còn client mở tab cũ.
+Có thể quay lui riêng module warming mà không thay đổi dữ liệu hoặc schema, nhưng việc đó tái tạo
+loading ở lần bấm primary menu và cần đo lại browser gate. Không được quay lui `no-store` cho asset
+lỗi, deployment N−1 hoặc service-worker retirement. Khôi phục fetch interception cần một ADR mới
+cùng browser regression loop chứng minh không tái tạo startup crash.
 
 ## Kiểm thử hồi quy
 
@@ -75,7 +106,13 @@ Có thể quay lui riêng semantics tab bằng cách khôi phục intent/module 
 - Bootstrap: production entry failure làm mới graph và reload đúng một lần; lần sau hiện fatal
   fallback có thể thao tác thay vì để shell chết im lặng.
 - Diagnostics: nhận diện wording stale bundle trên các browser và chỉ gửi path asset đã lọc.
-- Tab: không request route UI trước navigation; click bắt đầu đúng một lần cho mỗi dependency
-  còn thiếu, đồng thời khởi động view/workflow/partial mà không chờ tuần tự, giữ pane cũ và
-  waiting feedback trong khi dependency bị chặn, rồi activate/render và dọn feedback khi tất
-  cả hoàn tất.
+- Service worker: install gọi `skipWaiting`; activate xóa toàn bộ cache asset cũ, claim client rồi
+  unregister; source không có fetch interception, manifest precache, `respondWith`, `cache.match`
+  hay `cache.put`. Browser login loop phải xanh khi service worker được phép hoạt động.
+- Primary tab: module của menu đang hiển thị được warm đúng một lần sau shell, không chờ
+  reconciliation; page data chỉ warm sau reconciliation. Browser gate phải xác nhận sau cửa sổ
+  warming không còn script route nào bắt đầu từ click, không waiting/skeleton, không duplicate
+  pagination và tổng transition không vượt 100 ms.
+- Detail tab: click vẫn khởi động đúng một lần các dependency còn thiếu, đồng thời khởi động
+  view/workflow/partial mà không chờ tuần tự, giữ pane cũ và waiting feedback trong khi dependency
+  bị chặn, rồi activate/render và dọn feedback khi tất cả hoàn tất.

@@ -10,6 +10,9 @@ export function getPrototypeModuleInventory(TargetClass) {
 
 export function installPrototypeModules(TargetClass, modules, { allowOverride = false } = {}) {
   if (!TargetClass?.prototype) throw new TypeError("TargetClass must expose a prototype");
+  if (TargetClass === Object || TargetClass.prototype === Object.prototype) {
+    throw new TypeError("Controller modules cannot be installed on Object.prototype");
+  }
   const installed = installedModules.get(TargetClass) || new Map();
 
   modules.forEach(({ name, module }) => {

@@ -183,7 +183,7 @@ test("primary tab warming limits page prefetch concurrency and fills exact first
   }
 });
 
-test("scheduled primary warming keeps route modules cold until the tab is clicked", async () => {
+test("scheduled primary warming prepares route modules before the tab is clicked", async () => {
   const previousDocument = globalThis.document;
   const previousHistory = globalThis.history;
   const previousElement = globalThis.Element;
@@ -261,12 +261,12 @@ test("scheduled primary warming keeps route modules cold until the tab is clicke
 
   try {
     assert.equal(await controller.schedulePrimaryTabWarming(), true);
-    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled.length, 2, "module and post-reconciliation data warming are scheduled independently");
     await scheduled[0].task();
     assert.deepEqual(
       moduleLoads,
-      [],
-      "background warming must not import route UI before explicit navigation",
+      ["kehoach"],
+      "background warming must prepare visible primary route UI before navigation",
     );
 
     await controller.switchTab("kehoach");
@@ -293,20 +293,92 @@ test("post-startup warming waits for authoritative reconciliation before filling
   const pendingReconciliation = deferred();
   const scheduled = [];
   const controller = Object.create(BiddingController.prototype);
-  controller.model = { getWorkspaceToken: () => "user:org-a@1" };
+  controller.model = {
+    getWorkspaceToken: () => "user:org-a@1",
+    useServerSidePagination: false,
+  };
   controller.schedulePostStartupTask = (task, options) => scheduled.push({ task, options });
   const warming = controller.schedulePrimaryTabWarming(pendingReconciliation.promise);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(scheduled.length, 0, "warming must not race the pull that invalidates query caches");
-  pendingReconciliation.resolve(true);
-  assert.equal(await warming, true);
-  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled.length, 1, "route modules should warm without waiting for data reconciliation");
   assert.deepEqual(scheduled[0].options, {
     timeout: 700,
     delay: POST_STARTUP_TIMING.primaryTabWarm,
-    key: "primary-tab-warm-after-reconcile",
+    key: "primary-tab-module-warm",
+    priority: "local",
+  });
+  pendingReconciliation.resolve(true);
+  assert.equal(await warming, true);
+  assert.equal(scheduled.length, 2);
+  assert.deepEqual(scheduled[1].options, {
+    timeout: 700,
+    delay: POST_STARTUP_TIMING.primaryTabWarm,
+    key: "primary-tab-data-warm-after-reconcile",
     priority: "warm",
   });
+});
+
+test("reference data starts shortly after reconciliation and rejects a stale workspace", async () => {
+  const pendingReconciliation = deferred();
+  const scheduled = [];
+  const loads = [];
+  let workspaceToken = "user:org-a@1";
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = { getWorkspaceToken: () => workspaceToken };
+  controller.schedulePostStartupTask = (task, options) => scheduled.push({ task, options });
+  controller.loadInitDataInBackground = (options) => loads.push({ options, workspaceToken });
+
+  const scheduling = controller.scheduleReferenceDataLoading(pendingReconciliation.promise);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(scheduled.length, 0, "reference requests must not compete with reconciliation");
+
+  pendingReconciliation.resolve(true);
+  assert.equal(await scheduling, true);
+  assert.equal(scheduled.length, 1);
+  assert.deepEqual(scheduled[0].options, {
+    timeout: 1200,
+    delay: POST_STARTUP_TIMING.referenceData,
+    key: "reference-data-after-reconcile",
+    priority: "local",
+  });
+
+  workspaceToken = "user:org-b@2";
+  assert.equal(await scheduled[0].task(), false);
+  assert.deepEqual(loads, []);
+});
+
+test("remaining IndexedDB hydration starts only after authoritative reconciliation", async () => {
+  const pendingReconciliation = deferred();
+  const hydrated = [];
+  let workspaceToken = "user:org-a@1";
+  const controller = Object.create(BiddingController.prototype);
+  controller.model = {
+    getWorkspaceToken: () => workspaceToken,
+    hydrateRemainingStorageKeysIdle: () => hydrated.push(workspaceToken),
+  };
+
+  const scheduling = controller.scheduleRemainingStorageHydration(
+    pendingReconciliation.promise,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    hydrated,
+    [],
+    "IndexedDB reads must not race the authoritative startup pull/persistence",
+  );
+
+  pendingReconciliation.resolve(true);
+  assert.equal(await scheduling, true);
+  assert.deepEqual(hydrated, ["user:org-a@1"]);
+
+  const staleReconciliation = deferred();
+  const staleScheduling = controller.scheduleRemainingStorageHydration(
+    staleReconciliation.promise,
+  );
+  workspaceToken = "user:org-b@2";
+  staleReconciliation.resolve(true);
+  assert.equal(await staleScheduling, false);
+  assert.deepEqual(hydrated, ["user:org-a@1"]);
 });
 
 test("a failed post-startup task cannot break the app", async () => {

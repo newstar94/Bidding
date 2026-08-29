@@ -320,27 +320,89 @@ export class BiddingController {
     const workspaceToken = this.model?.getWorkspaceToken?.()
       || this.model?.workspaceScope?.key
       || "boot";
+    const isCurrentWorkspace = () => {
+      const currentToken = this.model?.getWorkspaceToken?.()
+        || this.model?.workspaceScope?.key
+        || "boot";
+      return workspaceToken === currentToken;
+    };
+    if (!isCurrentWorkspace()) return Promise.resolve(false);
+
+    // Primary menu code is workspace-independent and can be fetched as soon as
+    // the shell is interactive. Keeping it behind reconciliation moved the
+    // network/parse cost onto the user's first click and exposed route loading.
+    this.schedulePostStartupTask(() => this.warmPrimaryTabModules(), {
+      timeout: 700,
+      delay: POST_STARTUP_TIMING.primaryTabWarm,
+      key: "primary-tab-module-warm",
+      priority: "local",
+    });
+
+    const scheduleData = () => {
+      if (!isCurrentWorkspace()) return false;
+      this.schedulePostStartupTask(() => this.warmPrimaryTabData(), {
+        timeout: 700,
+        delay: POST_STARTUP_TIMING.primaryTabWarm,
+        key: "primary-tab-data-warm-after-reconcile",
+        priority: "warm",
+      });
+      return true;
+    };
+    if (!reconciliation || typeof reconciliation.then !== "function") {
+      return Promise.resolve(scheduleData());
+    }
+    // A pull invalidates page projections for every changed table, so only the
+    // data half waits for reconciliation. Route modules are already warming.
+    return Promise.resolve(reconciliation).then(scheduleData, scheduleData);
+  }
+  scheduleReferenceDataLoading(reconciliation = null) {
+    const workspaceToken = this.model?.getWorkspaceToken?.()
+      || this.model?.workspaceScope?.key
+      || "boot";
     const schedule = () => {
       const currentToken = this.model?.getWorkspaceToken?.()
         || this.model?.workspaceScope?.key
         || "boot";
       if (workspaceToken !== currentToken) return false;
-      this.schedulePostStartupTask(() => this.warmPrimaryTabs(), {
-        timeout: 700,
-        delay: POST_STARTUP_TIMING.primaryTabWarm,
-        key: "primary-tab-warm-after-reconcile",
-        priority: "warm",
+      this.schedulePostStartupTask(() => {
+        const taskToken = this.model?.getWorkspaceToken?.()
+          || this.model?.workspaceScope?.key
+          || "boot";
+        if (workspaceToken !== taskToken) return false;
+        this.loadInitDataInBackground({ idleTimeout: 800 });
+        return true;
+      }, {
+        timeout: 1200,
+        delay: POST_STARTUP_TIMING.referenceData,
+        key: "reference-data-after-reconcile",
+        priority: "local",
       });
       return true;
     };
     if (!reconciliation || typeof reconciliation.then !== "function") {
       return Promise.resolve(schedule());
     }
-    // A pull invalidates page projections for every changed table. Warming
-    // before that boundary wastes the requests and makes the first click cold.
-    // Warm after either success or failure: failures keep the durable local
-    // workspace usable, while the exact workspace token prevents stale work.
     return Promise.resolve(reconciliation).then(schedule, schedule);
+  }
+  scheduleRemainingStorageHydration(reconciliation = null) {
+    const workspaceToken = this.model?.getWorkspaceToken?.()
+      || this.model?.workspaceScope?.key
+      || "boot";
+    const hydrate = () => {
+      const currentToken = this.model?.getWorkspaceToken?.()
+        || this.model?.workspaceScope?.key
+        || "boot";
+      if (workspaceToken !== currentToken) return false;
+      // The model dispatches the actual reads through requestIdleCallback.
+      // Release them only after authoritative pull/persistence settles so an
+      // early idle callback cannot race IndexedDB state replacement.
+      this.model?.hydrateRemainingStorageKeysIdle?.();
+      return true;
+    };
+    if (!reconciliation || typeof reconciliation.then !== "function") {
+      return Promise.resolve(hydrate());
+    }
+    return Promise.resolve(reconciliation).then(hydrate, hydrate);
   }
   async reconcileInitialRouteData() {
     return reconcileRouteDataAtStartup(this);
@@ -598,7 +660,7 @@ export class BiddingController {
       .map((key) => String(key || "").toLowerCase())
       .filter((key) => ["chudautu", "kehoach", "goithau", "goithauhanghoa", "hanghoaduthaunhathau", "chuyengia", "nhathau", "hopdong", "assignments", "customcontractstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
   }
-  loadInitDataInBackground() {
+  loadInitDataInBackground({ idleTimeout = 800 } = {}) {
     const load = async () => {
       const request = beginWorkspaceRequest(this.model);
       try {
@@ -642,9 +704,9 @@ export class BiddingController {
       }
     };
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(load, { timeout: 2500 });
+      requestIdleCallback(load, { timeout: idleTimeout });
     } else {
-      setTimeout(load, 1e3);
+      setTimeout(load, Math.min(idleTimeout, 800));
     }
   }
   getPrimaryTabWarmQueries() {
@@ -673,23 +735,35 @@ export class BiddingController {
     );
     return Object.entries(queries)
       .filter(([tab]) => visibleTabs.size === 0 || visibleTabs.has(tab))
-      .map(([, query]) => query);
+      .map(([tab, query]) => ({ tab, ...query }));
   }
-  async warmPrimaryTabs() {
+  async warmPrimaryTabModules(queries = this.getPrimaryTabWarmQueries()) {
     const currentToken = () => this.model?.getWorkspaceToken?.() || this.model?.workspaceScope?.key || "";
     const workspaceToken = currentToken();
     if (workspaceToken !== currentToken()) return;
-    // Route UI stays cold until explicit navigation. Only page data may warm in
-    // the background, so hover/focus and idle work cannot hide the click-owned
-    // module request or its navigation feedback.
-    if (!this.model?.useServerSidePagination) return;
-    const queries = this.getPrimaryTabWarmQueries();
+    await Promise.allSettled(
+      [...new Set(queries.map(({ tab }) => tab))].map((tab) => (
+        Promise.resolve(this.view?.ensureViewModules?.(tab))
+      )),
+    );
+  }
+  async warmPrimaryTabData(queries = this.getPrimaryTabWarmQueries()) {
+    const currentToken = () => this.model?.getWorkspaceToken?.() || this.model?.workspaceScope?.key || "";
+    const workspaceToken = currentToken();
+    if (workspaceToken !== currentToken() || !this.model?.useServerSidePagination) return;
     for (let index = 0; index < queries.length; index += 2) {
       if (workspaceToken !== currentToken()) return;
       await Promise.all(queries.slice(index, index + 2).map(({ table, params }) => (
         prefetchPaginatedRecords(this.model, table, params)
       )));
     }
+  }
+  async warmPrimaryTabs() {
+    const queries = this.getPrimaryTabWarmQueries();
+    await Promise.all([
+      this.warmPrimaryTabModules(queries),
+      this.warmPrimaryTabData(queries),
+    ]);
   }
   async init() {
     this.markStartup("init:start");
@@ -895,24 +969,23 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this,
       (task, options) => this.schedulePostStartupTask(task, options),
     );
+    // Arm live update sources as soon as the shell is interactive.  The
+    // reconciliation promise above remains the single-flight boundary for any
+    // background pull started by these listeners.
+    this._initialSyncStarted = true;
+    this.setupAutoSyncBackground();
+    this.setupFileUploads();
+    void this.scheduleRemainingStorageHydration(initialReconciliation);
     void this.schedulePrimaryTabWarming(initialReconciliation);
+    void this.scheduleReferenceDataLoading(initialReconciliation);
     this.schedulePostStartupTask(() => this.preloadPrimaryModals(), {
       timeout: 2500,
       delay: POST_STARTUP_TIMING.primaryModalPreload,
     });
-    this.schedulePostStartupTask(() => {
-      this.setupFileUploads();
-      this.loadHolidaysInBackground();
-    }, { timeout: 1200, delay: POST_STARTUP_TIMING.fileAndHolidaySetup });
-    this._initialSyncStarted = true;
-    this.schedulePostStartupTask(() => {
-      this.setupAutoSyncBackground();
-      this.loadInitDataInBackground();
-    }, { timeout: 3000, delay: POST_STARTUP_TIMING.backgroundSync });
-    this.schedulePostStartupTask(
-      () => this.model.hydrateRemainingStorageKeysIdle?.(),
-      { timeout: 2500, delay: POST_STARTUP_TIMING.remainingStorageHydration },
-    );
+    this.schedulePostStartupTask(() => this.loadHolidaysInBackground(), {
+      timeout: 1200,
+      delay: POST_STARTUP_TIMING.holidayData,
+    });
   }
   registerCommands() {
     setAppController(this);

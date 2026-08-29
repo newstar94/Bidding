@@ -236,6 +236,14 @@ test("workspace switch renders the isolated local shell without waiting for the 
         events.push("warm-scheduled");
         void reconciliation?.then?.(() => events.push("warm-after-pull"));
       },
+      scheduleRemainingStorageHydration(reconciliation) {
+        events.push("hydration-scheduled");
+        void reconciliation?.then?.(() => events.push("hydration-after-pull"));
+      },
+      scheduleReferenceDataLoading(reconciliation) {
+        events.push("reference-scheduled");
+        void reconciliation?.then?.(() => events.push("reference-after-pull"));
+      },
       setupWebSocketConnection() {},
       async switchTab() { events.push("tab-rendered"); },
       updateSyncState() {},
@@ -252,12 +260,18 @@ test("workspace switch renders the isolated local shell without waiting for the 
     assert.ok(events.includes("pull-start"), "authoritative reconciliation still runs");
     assert.ok(!events.includes("pull-end"), "the regression harness must keep the network pull pending");
     assert.ok(events.includes("warm-scheduled"));
+    assert.ok(events.includes("hydration-scheduled"));
+    assert.ok(events.includes("reference-scheduled"));
     assert.ok(!events.includes("warm-after-pull"), "warming must not race cache-invalidating reconciliation");
+    assert.ok(!events.includes("hydration-after-pull"), "IndexedDB hydration must not race authoritative reconciliation");
+    assert.ok(!events.includes("reference-after-pull"), "reference data must not race authoritative reconciliation");
 
     releasePull({ ok: true });
     await switching;
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(events.includes("warm-after-pull"));
+    assert.ok(events.includes("hydration-after-pull"));
+    assert.ok(events.includes("reference-after-pull"));
   } finally {
     releasePull?.({ ok: true });
     globalNames.forEach((name) => {
