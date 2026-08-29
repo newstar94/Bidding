@@ -317,8 +317,25 @@ try {
   mark("goods-persisted");
 
   await page.locator('button[data-workflow-tab="preparation_action"]').click();
-  await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click();
-  await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
+  await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click({ timeout: 10_000 });
+  await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 }).catch(async (error) => {
+    const browserState = await page.evaluate(() => ({
+      activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+        ?.getAttribute("data-workflow-tab") || "",
+      releaseButtonVisible: Boolean(
+        document.querySelector('button[data-fn="phatHanhHsmtGoiThau"]')?.getClientRects().length,
+      ),
+      lazyModalPresent: Boolean(document.getElementById("modal-phathanh-hsmt")),
+      dialogText: document.querySelector("#modal-custom-dialog.active")?.innerText || "",
+      toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+        .map((toast) => toast.textContent?.trim() || ""),
+    }));
+    throw new Error(`Tender publication modal did not open: ${JSON.stringify({
+      browserState,
+      recentHttpErrors: httpErrors.slice(-8),
+      pageErrors: pageErrors.slice(-8),
+    })}; ${error.message}`);
+  });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-HSMT`);
   await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
@@ -332,7 +349,43 @@ try {
   await page.locator("#btn-confirm-phathanh").click();
   await confirmDialog(page);
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "hidden", timeout: 15_000 });
-  await page.locator('button[data-fn="moThauGoiThau"]').waitFor({ state: "visible", timeout: 15_000 });
+  await page.locator('button[data-fn="moThauGoiThau"]').waitFor({ state: "visible", timeout: 15_000 }).catch(async (error) => {
+    const browserState = await page.evaluate((expectedName) => {
+      const pkg = globalThis.app?.model?.state?.goithau?.find?.(
+        (item) => item.tenGoiThau === expectedName,
+      );
+      const activeDialog = document.querySelector("#modal-custom-dialog.active");
+      return {
+        package: pkg ? {
+          id: pkg.id,
+          rowVersion: pkg.rowVersion,
+          trangThai: pkg.trangThai,
+          thoiGianDangTai: pkg.thoiGianDangTai,
+          thoiGianDongThau: pkg.thoiGianDongThau,
+        } : null,
+        activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+          ?.getAttribute("data-workflow-tab") || "",
+        workflowButtons: [...document.querySelectorAll("#detail-workflow-content-wrapper [data-fn]")]
+          .map((button) => ({
+            fn: button.getAttribute("data-fn") || "",
+            visible: Boolean(button.getClientRects().length),
+          })),
+        workflowText: document.getElementById("detail-workflow-content-wrapper")
+          ?.innerText?.slice(0, 1000) || "",
+        dialog: activeDialog ? {
+          title: activeDialog.querySelector("#dialog-title")?.textContent?.trim() || "",
+          message: activeDialog.querySelector("#dialog-message")?.textContent?.trim() || "",
+        } : null,
+        toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+          .map((toast) => toast.textContent?.trim() || ""),
+      };
+    }, `GÃ³i hÃ ng hÃ³a ${runId}`);
+    throw new Error(`Tender publication did not expose opening action: ${JSON.stringify({
+      browserState,
+      recentHttpErrors: httpErrors.slice(-8),
+      pageErrors: pageErrors.slice(-8),
+    })}; ${error.message}`);
+  });
   mark("tender-published");
 
   await page.locator('button[data-fn="moThauGoiThau"]').click();

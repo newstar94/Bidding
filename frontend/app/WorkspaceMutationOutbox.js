@@ -251,12 +251,19 @@ export class WorkspaceMutationOutbox {
       Object.entries(receipt[operation] || {}).forEach(([table, records]) => {
         Object.entries(records || {}).forEach(([id, generation]) => {
           const key = recordKey(operation === "patches" ? "patch" : "upsert", table, id);
-          if (this.recordGenerations.get(key) !== generation) return;
-          const record = this.queue[operation]?.[table]?.[id];
+          const hasSentMaterializedRecord = Boolean(
+            receipt.recordSnapshots?.[operation]?.[table]?.[id]
+            && receipt.baseSnapshots?.[table]?.[id],
+          );
+          if (this.recordGenerations.get(key) !== generation && !hasSentMaterializedRecord) return;
+          const record = hasSentMaterializedRecord
+            ? receipt.recordSnapshots[operation][table][id]
+            : this.queue[operation]?.[table]?.[id];
           if (!record) return;
           queue[operation][table] ||= {};
           queue[operation][table][id] = cloneValue(record);
-          const base = this.queue.baseSnapshots?.[table]?.[id];
+          const base = receipt.baseSnapshots?.[table]?.[id]
+            || this.queue.baseSnapshots?.[table]?.[id];
           if (base) {
             queue.baseSnapshots[table] ||= {};
             queue.baseSnapshots[table][id] = cloneValue(base);
@@ -1045,6 +1052,23 @@ export class WorkspaceMutationOutbox {
       const generation = this.tableGenerations.get(table);
       if (generation !== undefined) dirtyTables[table] = generation;
     });
+    const recordSnapshots = {
+      upserts: cloneValue(this.queue.upserts || {}),
+      patches: cloneValue(this.queue.patches || {}),
+    };
+    const baseSnapshots = {};
+    [...Object.keys(upserts), ...Object.keys(patches)].forEach((table) => {
+      const ids = new Set([
+        ...Object.keys(upserts[table] || {}),
+        ...Object.keys(patches[table] || {}),
+      ]);
+      ids.forEach((id) => {
+        const base = this.queue.baseSnapshots?.[table]?.[id];
+        if (!base) return;
+        baseSnapshots[table] ||= {};
+        baseSnapshots[table][id] = cloneValue(base);
+      });
+    });
     return {
       id: `${this.queue.clientMutationId}:${this.queue.revision}`,
       clientMutationId: this.queue.clientMutationId,
@@ -1053,6 +1077,8 @@ export class WorkspaceMutationOutbox {
       patches,
       deletes,
       dirtyTables,
+      recordSnapshots,
+      baseSnapshots,
     };
   }
 

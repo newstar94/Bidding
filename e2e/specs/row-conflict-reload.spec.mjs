@@ -23,19 +23,33 @@ async function waitForInitialReconciliation(page) {
   ));
 }
 
+async function isolateHostInjectedScripts(context) {
+  // Some developer machines inject AdGuard userscripts into every document.
+  // This scenario intentionally performs many cold navigations, so keep its
+  // manually-created contexts as isolated as Playwright's standard fixtures.
+  await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+}
+
 async function login(page) {
-  await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await page.locator("#login-username").fill(username);
-  await page.locator("#login-password").fill(password);
-  await page.locator("#form-auth-login button[type='submit']").click();
-  await expect(page.locator("#auth-overlay")).toBeHidden();
+  const response = await page.context().request.post("/api/auth/login", {
+    data: { username, password, remember: false },
+  });
+  expect(response.ok(), await response.text().catch(() => "")).toBe(true);
 }
 
 async function gotoReady(page, route) {
   await page.goto(route, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await waitForInitialReconciliation(page);
+}
+
+async function gotoCleanupReady(page, route) {
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.waitForFunction(() => {
+    const state = document.getElementById("btn-force-sync")?.dataset.syncState;
+    return state === "server-saved" || state === "conflict";
+  });
 }
 
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
@@ -91,39 +105,37 @@ async function savePlanBreakdown(page, timeout = 30_000) {
   await dismissOptionalDialog(page);
 }
 
-async function selectVisibleVersion(page, packageRow, label) {
+async function selectVisibleVersion(packageRow, label) {
   const nativeSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
   const option = nativeSelect.locator("option").filter({ hasText: label });
   await expect(option).toHaveCount(1);
   const selectedId = await option.getAttribute("value");
   expect(selectedId).toBeTruthy();
-  const combobox = packageRow.locator(".bf-combobox-input");
-  await expect(combobox).toHaveAttribute("role", "combobox");
-  await combobox.click();
-  const listboxId = await combobox.getAttribute("aria-controls");
-  expect(listboxId).toBeTruthy();
-  await page.locator(`#${listboxId}`).getByRole("option", {
-    name: label,
-    exact: true,
-  }).click();
+  // Version changes rerender the row and regenerate combobox ids. Drive the
+  // stable delegated change seam, then assert the replacement accessible UI.
+  await nativeSelect.selectOption(selectedId, { force: true });
   await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
     .toHaveValue(selectedId);
+  await expect(packageRow.getByRole("combobox", {
+    name: /Chọn phiên bản gói thầu/i,
+  })).toHaveValue(label);
 }
 
 async function searchPackageRow(page, packageCode) {
-  const normalizedCode = String(packageCode).toLocaleLowerCase("vi");
+  const normalizedCode = String(packageCode).toLowerCase();
   const input = page.locator("#search-goithau");
-  await input.fill("");
-  const responsePromise = page.waitForResponse((response) => {
-    if (response.request().method() !== "GET") return false;
-    const url = new URL(response.url());
-    return url.pathname === "/api/paginate"
-      && url.searchParams.get("table") === "goithau"
-      && String(url.searchParams.get("search") || "").toLocaleLowerCase("vi") === normalizedCode;
-  });
-  await input.fill(packageCode);
-  const response = await responsePromise;
-  expect(response.ok(), await response.text().catch(() => "")).toBe(true);
+  if ((await input.inputValue()).toLowerCase() !== normalizedCode) {
+    const responsePromise = page.waitForResponse((response) => {
+      if (response.request().method() !== "GET") return false;
+      const url = new URL(response.url());
+      return url.pathname === "/api/paginate"
+        && url.searchParams.get("table") === "goithau"
+        && String(url.searchParams.get("search") || "").toLowerCase() === normalizedCode;
+    });
+    await input.fill(packageCode);
+    const response = await responsePromise;
+    expect(response.ok(), await response.text().catch(() => "")).toBe(true);
+  }
   const row = page.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
   await expect(row).toBeVisible();
   return row;
@@ -374,7 +386,9 @@ async function readServerRecords(page, { table, field, value = null }) {
 async function deleteSearchedEntity(page, {
   route, searchSelector, tableSelector, expectedText, table, exactField,
 }) {
-  await gotoReady(page, route);
+  // This scenario intentionally creates a durable conflict draft. Cleanup must
+  // remain operable while the sync pill advertises that expected conflict.
+  await gotoCleanupReady(page, route);
   const before = await readServerRecords(page, { table, field: exactField, value: expectedText });
   if (before.length === 0) return { alreadyAbsent: true };
   await page.locator(searchSelector).fill(expectedText);
@@ -426,13 +440,19 @@ function cleanupTargetsForSuffix(suffix) {
 async function cleanupCreatedEntities(page, targets) {
   const failures = [];
   for (const target of targets) {
+    // Each delete can finish with a late route restoration from the modal that
+    // owned it. Retire that document after the target is verified so it cannot
+    // interrupt navigation for the next, unrelated cleanup target.
+    const targetPage = await page.context().newPage();
     try {
-      await deleteSearchedEntity(page, target);
+      await deleteSearchedEntity(targetPage, target);
     } catch (error) {
       failures.push(new Error(
         `${target.table}:${target.expectedText}: ${error?.message || error}`,
         { cause: error },
       ));
+    } finally {
+      await targetPage.close().catch(() => undefined);
     }
   }
   if (failures.length > 0) {
@@ -463,7 +483,11 @@ async function cleanupStaleRowConflictFixtures(page, {
 }
 
 test("plan 01 breakdown is one commit, historical stays view-only, and real package conflict reloads server state", async ({ browser }) => {
+  // Contexts provide the required client/storage isolation. Reuse the project
+  // browser process so Firefox does not run two traced browser runtimes in the
+  // same single-worker job after the preceding matrix scenarios.
   const contextA = await browser.newContext({ serviceWorkers: "block" });
+  await isolateHostInjectedScripts(contextA);
   await contextA.routeWebSocket("**/ws/sync", async (webSocket) => {
     await webSocket.close({ code: 1000, reason: "Deterministic conflict test isolation" });
   });
@@ -622,12 +646,12 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
     const versionSelect = packageRow.locator('select[data-bf-change="change-package-version"]');
     await expect(versionSelect.locator("option")).toHaveCount(2);
-    await selectVisibleVersion(pageA, packageRow, "00");
+    await selectVisibleVersion(packageRow, "00");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(0);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(0);
     await expect(packageRow.locator('.action-btn[data-bf-action="show-package"]')).toHaveCount(1);
-    await selectVisibleVersion(pageA, packageRow, "01");
+    await selectVisibleVersion(packageRow, "01");
     packageRow = pageA.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
@@ -644,6 +668,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
       serviceWorkers: "block",
       storageState: await contextA.storageState(),
     });
+    await isolateHostInjectedScripts(contextB);
     pageB = await contextB.newPage();
     const packageIdA = await openLatestPackageForEdit(pageA, packageCode);
     const packageIdB = await openLatestPackageForEdit(pageB, packageCode);

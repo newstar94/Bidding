@@ -2,7 +2,7 @@
 .commercial-control__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-4); }
 .commercial-control__header h2 { margin: 2px 0 6px; font-size: clamp(1.45rem, 2vw, 2rem); letter-spacing: -0.035em; }
 .commercial-control__header p { margin: 0; color: var(--ink-muted); max-width: 720px; }
-.commercial-control__eyebrow { color: var(--brand) !important; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+p.commercial-control__eyebrow { color: var(--brand); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
 .commercial-control__actions, .commercial-toolbar-buttons { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .commercial-status { min-height: 42px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-muted); margin-bottom: var(--space-4); }
 .commercial-status__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ink-subtle); }
@@ -94,10 +94,10 @@
 }
 @media (max-width: 520px) {
   .commercial-section-nav { grid-template-columns: repeat(2, 1fr); }
-  .commercial-section-nav a { border-right: 1px solid var(--line) !important; border-bottom: 1px solid var(--line); }
-  .commercial-section-nav a:nth-child(even) { border-right: 0 !important; }
+  .commercial-section-nav a:nth-child(n) { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .commercial-section-nav a:nth-child(even) { border-right: 0; }
   .commercial-section-nav a:nth-last-child(-n+2) { border-bottom: 0; }
   .commercial-metrics, .commercial-release-toolbar, .commercial-credit-packs { grid-template-columns: 1fr; }
   .commercial-control__actions .btn, .commercial-toolbar-buttons .btn { flex: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .commercial-control * { scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { html .commercial-control * { scroll-behavior: auto; } }

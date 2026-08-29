@@ -26,6 +26,7 @@ from backend.db.upgrades import (
     DatabaseUpgradeContext,
     apply_database_upgrades,
 )
+from scripts.audit_fk_indexes import find_missing_foreign_key_indexes
 
 
 V1_SOURCE_COMMIT = "1fe7dd42"
@@ -370,7 +371,7 @@ def test_real_postgres_v1_chain_reaches_latest_catalog_and_preserves_data():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
-def test_fresh_v47_catalog_keeps_only_constraint_backed_audit_successor_index(
+def test_fresh_catalog_keeps_only_constraint_backed_audit_successor_index(
     monkeypatch,
 ):
     database_url = _test_database_url()
@@ -400,6 +401,7 @@ def test_fresh_v47_catalog_keeps_only_constraint_backed_audit_successor_index(
 
         assert create_fresh_database(cursor, _upgrade_context()) == DB_SCHEMA_VERSION
         assert_schema_contract(cursor)
+        assert find_missing_foreign_key_indexes(connection)["missing"] == []
         fresh_definition = cursor.execute(
             "SELECT pg_get_functiondef('bf_log_synced_delete()'::regprocedure)"
         ).fetchone()[0]
@@ -416,6 +418,25 @@ def test_fresh_v47_catalog_keeps_only_constraint_backed_audit_successor_index(
             ).fetchall()
         }
         assert names == {"audit_log_chain_id_previous_hash_key"}
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v81_upgrade_covers_commercial_foreign_keys():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=80,
+        ) == 80
+        missing_at_v80 = find_missing_foreign_key_indexes(connection)["missing"]
+        assert len(missing_at_v80) == 32
+
+        assert apply_database_upgrades(cursor, 80, context) == DB_SCHEMA_VERSION
+        assert find_missing_foreign_key_indexes(connection)["missing"] == []
     finally:
         _close_fixture_connection(connection, cursor, schema_name)
 

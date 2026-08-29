@@ -168,7 +168,6 @@ export class WorkspaceLifecycleController {
     if (typeof host.switchTab === "function") {
       const targetTab = model.state.activerole === "super_admin"
         ? "superadmin-dashboard" : "dashboard";
-      model.state.activetab = targetTab;
       await host.switchTab(targetTab, null, true);
       this.assertCurrent(identity);
     }

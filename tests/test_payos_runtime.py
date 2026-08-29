@@ -185,8 +185,10 @@ def test_v80_migration_adds_immutable_live_profile_without_secret_values():
 
     _upgrade_to_v80_add_live_payos_profile(Cursor(), None)
 
-    assert DB_SCHEMA_VERSION == 80
-    assert UPGRADES[-1].name == "add_live_payos_profile"
+    assert DB_SCHEMA_VERSION >= 80
+    assert next(upgrade.name for upgrade in UPGRADES if upgrade.version == 80) == (
+        "add_live_payos_profile"
+    )
     assert "provider-payos-production-v2" in statements[0]
     assert "env://payos/default" in statements[0]
     assert "'live', 'ready'" in statements[0]

@@ -122,6 +122,12 @@ test("goithau loads only its route-specific list module", async () => {
   });
 });
 
+test("plan list and detail share the concrete plan view module", () => {
+  const view = new BiddingView({});
+  assert.deepEqual(view.getRequiredViewModules("kehoach"), ["plan-list"]);
+  assert.deepEqual(view.getRequiredViewModules("kehoach-detail"), ["plan-list"]);
+});
+
 test("tab setup starts route loading from click without hover or focus prefetch", async () => {
   const previousDocument = globalThis.document;
   const listeners = new Map();

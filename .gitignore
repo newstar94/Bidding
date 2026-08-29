@@ -94,3 +94,4 @@ data/e2e-artifacts/
 .codex*
 .hallmark
 .env.before-staging
+trace*

@@ -6,7 +6,12 @@ import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
 import {
   isPackageDraftSaveActive,
+  capturePackageSaveBaseState,
+  packageSaveBaseUpserts,
   packageSyncRequiresReload,
+  renderPackageSaveTables,
+  restorePackageEditorAfterSyncConflict,
+  showPackageSyncReloadToast,
   persistPackageFormChanges,
   shouldShowPackageSyncFailureDialog,
 } from "../../frontend/packages/GoiThauWorkflow.js";
@@ -1095,6 +1100,116 @@ test("confirmed package row conflict uses the F5 toast without a second failure 
     ok: false,
     status: 500,
   }), false);
+});
+
+test("legacy row conflict restores the package editor for retry after F5", () => {
+  const form = { dataset: { submitState: "saving" }, setAttribute() {}, removeAttribute() {} };
+  const modal = { dataset: { editorState: "saving" }, setAttribute() {}, removeAttribute() {} };
+
+  assert.equal(packageSyncRequiresReload({ ok: false, status: 409, conflict: true }), true);
+  restorePackageEditorAfterSyncConflict(form, modal);
+
+  assert.equal(form.dataset.submitState, "ready");
+  assert.equal(modal.dataset.editorState, "ready");
+});
+
+test("legacy row conflict toast keeps the actionable Vietnamese reload message", () => {
+  const calls = [];
+  showPackageSyncReloadToast({
+    showToast(...args) {
+      calls.push(args);
+    },
+  });
+
+  assert.deepEqual(calls, [[
+    "Dữ liệu đã thay đổi trên máy chủ",
+    "Nhấn F5 để tải trạng thái mới nhất trước khi chỉnh sửa lại.",
+    "warning",
+  ]]);
+});
+
+test("package form waits for the authoritative conflict result before deciding to close", async () => {
+  let releaseSync;
+  const remoteSync = new Promise((resolve) => { releaseSync = resolve; });
+  const state = {
+    goithau: [],
+    goithauhanghoa: [],
+    hanghoaduthaunhathau: [],
+    kehoach: [],
+    thongtinmothau: [],
+  };
+  const controller = {
+    model: {
+      state,
+      commitLocalMutation() {},
+      async persistChanges() {},
+      async flushMutationOutbox() {},
+    },
+    autoSync() {
+      return remoteSync;
+    },
+  };
+  const packageRecord = { id: "package-conflict", keHoachId: "plan-conflict" };
+  const resultPromise = persistPackageFormChanges(controller, {
+    goithau: [packageRecord],
+    goithauhanghoa: [],
+    hanghoaduthaunhathau: [],
+    kehoach: [],
+    thongtinmothau: [],
+    assignments: [],
+  });
+  let settled = false;
+  void resultPromise.then(() => { settled = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false, "the editor must not close while conflict status is unknown");
+
+  const conflict = { ok: false, conflictQuarantined: true };
+  releaseSync(conflict);
+  assert.deepEqual(await resultPromise, conflict);
+});
+
+test("package save captures pre-edit base snapshots for every staged aggregate row", () => {
+  const state = {
+    goithau: [{ id: "package-1", rowVersion: 4, tenGoiThau: "Before" }],
+    kehoach: [{ id: "plan-1", rowVersion: 7, tenKeHoach: "Before plan" }],
+  };
+  const baseState = capturePackageSaveBaseState(state);
+  state.goithau[0].tenGoiThau = "After";
+  state.kehoach[0].tenKeHoach = "After plan";
+  const baseUpserts = packageSaveBaseUpserts(baseState, {
+    goithau: [state.goithau[0]],
+    kehoach: [state.kehoach[0]],
+  });
+
+  assert.deepEqual(baseUpserts.goithau, [{
+    id: "package-1", rowVersion: 4, tenGoiThau: "Before",
+  }]);
+  assert.deepEqual(baseUpserts.kehoach, [{
+    id: "plan-1", rowVersion: 7, tenKeHoach: "Before plan",
+  }]);
+});
+
+test("package save renders only view projections installed for the active route", () => {
+  let packageRenders = 0;
+  assert.doesNotThrow(() => renderPackageSaveTables({
+    renderGoiThauTable() {
+      packageRenders += 1;
+    },
+  }));
+  assert.equal(packageRenders, 1);
+});
+
+test("package save refreshes package and plan projections when both are installed", () => {
+  const rendered = [];
+  renderPackageSaveTables({
+    renderGoiThauTable() {
+      rendered.push("package");
+    },
+    renderKeHoachTable() {
+      rendered.push("plan");
+    },
+  });
+  assert.deepEqual(rendered, ["package", "plan"]);
 });
 
 test("editing an existing plan activates the same memory-only breakdown boundary", async () => {

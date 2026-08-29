@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { deleteHopDong } from "../../frontend/contracts/HopDongWorkflow.js";
+import { deleteChuyenGia } from "../../frontend/experts/ChuyenGiaWorkflow.js";
 import { deleteKeHoach } from "../../frontend/plans/KeHoachWorkflow.js";
 
 function memoryStorage() {
@@ -104,5 +105,76 @@ test("deleting a contract retains the server row version after removing its loca
     table: "hopdong",
     id: contract.id,
     expectedVersion: 12,
+  }]);
+});
+
+test("deleting an expert uses the authoritative refreshed row version", async () => {
+  const staleHistoricalExpert = {
+    id: "expert-00",
+    rootId: "expert-00",
+    phienBan: "00",
+    isLatest: 0,
+    rowVersion: 1,
+    hoTen: "Historical expert with stale local version",
+  };
+  const staleExpert = {
+    id: "expert-01",
+    rootId: "expert-00",
+    phienBan: "01",
+    isLatest: 1,
+    rowVersion: 1,
+    hoTen: "Expert with stale local version",
+  };
+  const authoritativeHistoricalExpert = {
+    ...staleHistoricalExpert,
+    rowVersion: 2,
+  };
+  const authoritativeExpert = {
+    ...staleExpert,
+    allVersions: [
+      { id: staleExpert.id, phienBan: 1 },
+      { id: staleHistoricalExpert.id, phienBan: 0 },
+    ],
+  };
+  const model = new BiddingModel();
+  model.workspaceScope = { key: "user:org", organizationId: "org" };
+  model.workspaceStorage = memoryStorage();
+  model.db = {
+    stores: ["chuyengia"],
+    async get() { return null; },
+    async set() {},
+  };
+  model.state.activerole = "manager";
+  model.state.chuyengia = [staleHistoricalExpert, staleExpert];
+  model.state.goithau = [];
+  model.persistChanges = async () => {};
+
+  const controller = {
+    model,
+    view: {
+      customConfirm: async () => true,
+      customVersionDeleteChoice: async () => 2,
+      renderChuyenGiaTable: async () => {},
+    },
+    // The mutation seam must consume this returned authority directly instead
+    // of relying on an incidental state mutation by the concrete fetcher.
+    fetchRecordByLookup: async (_table, id) => (
+      id === staleHistoricalExpert.id
+        ? authoritativeHistoricalExpert
+        : authoritativeExpert
+    ),
+    autoSync: async () => ({ ok: true }),
+  };
+
+  await deleteChuyenGia.call(controller, staleExpert.id);
+
+  assert.deepEqual(model.buildMutationSyncPayload()?.payload.deletions, [{
+    table: "chuyengia",
+    id: staleHistoricalExpert.id,
+    expectedVersion: 2,
+  }, {
+    table: "chuyengia",
+    id: staleExpert.id,
+    expectedVersion: 1,
   }]);
 });

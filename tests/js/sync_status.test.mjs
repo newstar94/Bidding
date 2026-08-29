@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { afterEach, test } from "node:test";
 
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { deriveSyncStatus } from "../../frontend/app/syncStatus.js";
@@ -10,6 +10,13 @@ import {
 } from "../../frontend/app/SyncCoordinator.js";
 import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
 import { hashWorkspaceScope } from "../../frontend/shared/releaseDiagnostics.js";
+import {
+  CONFLICT_CENTER_CAPABILITY,
+  invalidateServerCapabilities,
+  updateServerCapabilitiesFromSession,
+} from "../../frontend/auth/serverCapabilities.js";
+
+afterEach(() => invalidateServerCapabilities());
 
 function deferredResult() {
   let resolve;
@@ -416,6 +423,11 @@ test("successful push row versions update canonical state, durable store, and ne
 });
 
 test("model persists server recovery before clearing and flushing the active outbox", async () => {
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+  });
   const checkpoint = {
     queue: {
       clientMutationId: "mutation-1",
@@ -449,6 +461,11 @@ test("model persists server recovery before clearing and flushing the active out
 });
 
 test("row conflict quarantine keeps unrelated records from the same receipt active", async () => {
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+  });
   const sentCheckpoint = {
     queue: {
       clientMutationId: "mutation-xy", baseSyncVersion: "11", revision: 2,
@@ -457,6 +474,7 @@ test("row conflict quarantine keeps unrelated records from the same receipt acti
         goithau: {
           "package-x": { id: "package-x", rowVersion: 1, tenGoiThau: "X" },
           "package-y": { id: "package-y", rowVersion: 2, tenGoiThau: "Y" },
+          "package-z": { id: "package-z", rowVersion: 3, tenGoiThau: "Z" },
         },
       },
       patches: {}, deletes: [],
@@ -480,19 +498,22 @@ test("row conflict quarantine keeps unrelated records from the same receipt acti
 
   const result = await model.quarantineMutationBatch({
     data: {
-      errors: [{ table: "goithau", id: "package-x", code: "ROW_VERSION_CONFLICT" }],
+      errors: [
+        { table: "goithau", id: "package-x", code: "ROW_VERSION_CONFLICT" },
+        { table: "goithau", id: "package-y", code: "HISTORICAL_RECORD_IMMUTABLE" },
+      ],
     },
     snapshot: { id: "receipt-xy" },
   });
 
   assert.equal(result.id, "conflict-x");
-  assert.deepEqual(Object.keys(quarantined.queue.upserts.goithau), ["package-x"]);
+  assert.deepEqual(Object.keys(quarantined.queue.upserts.goithau), ["package-x", "package-y"]);
   assert.deepEqual(calls, [
     "ack",
     ["enqueue", {
       kind: "upsert",
       table: "goithau",
-      records: [{ id: "package-y", rowVersion: 2, tenGoiThau: "Y" }],
+      records: [{ id: "package-z", rowVersion: 3, tenGoiThau: "Z" }],
       baseRecords: [],
     }],
     "flush",
@@ -500,6 +521,11 @@ test("row conflict quarantine keeps unrelated records from the same receipt acti
 });
 
 test("model never clears the active outbox when recovery persistence fails", async () => {
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+  });
   const calls = [];
   const model = new BiddingModel();
   model._getMutationOutbox = () => ({
@@ -522,7 +548,67 @@ test("model never clears the active outbox when recovery persistence fails", asy
   assert.deepEqual(calls, []);
 });
 
+test("model quarantines a row conflict for the session when conflict center is unavailable", async () => {
+  const sentCheckpoint = {
+    queue: {
+      clientMutationId: "mutation-session",
+      baseSyncVersion: "12",
+      revision: 3,
+      dirtyTables: {},
+      upserts: {
+        goithau: {
+          "package-conflict": { id: "package-conflict", rowVersion: 2 },
+          "package-unrelated": { id: "package-unrelated", rowVersion: 4 },
+        },
+      },
+      patches: {},
+      deletes: [],
+    },
+    localDeletions: [],
+  };
+  const calls = [];
+  const model = new BiddingModel();
+  model._getMutationOutbox = () => ({
+    checkpoint: () => structuredClone(sentCheckpoint),
+    checkpointForReceipt: () => structuredClone(sentCheckpoint),
+    ack(receipt) { calls.push(["ack", receipt.id]); return true; },
+    enqueue(command) { calls.push(["enqueue", structuredClone(command)]); return true; },
+    async flush() { calls.push(["flush"]); },
+  });
+  model._captureServerConflictDrafts = async () => {
+    assert.fail("an unsupported session must not call conflict-center capture");
+  };
+
+  const result = await model.quarantineMutationBatch({
+    data: {
+      errors: [{
+        table: "goi_thau",
+        id: "package-conflict",
+        code: "ROW_VERSION_CONFLICT",
+      }],
+    },
+    snapshot: { id: "receipt-session" },
+  });
+
+  assert.deepEqual(result, { sessionOnly: true });
+  assert.deepEqual(calls, [
+    ["ack", "receipt-session"],
+    ["enqueue", {
+      kind: "upsert",
+      table: "goithau",
+      records: [{ id: "package-unrelated", rowVersion: 4 }],
+      baseRecords: [],
+    }],
+    ["flush"],
+  ]);
+});
+
 test("model restores the active outbox when quarantine flushing fails", async () => {
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+  });
   const checkpoint = {
     queue: {
       clientMutationId: "mutation-rollback",
@@ -1037,6 +1123,66 @@ test("row-version rejection is quarantined without blocking later syncs", async 
   assert.deepEqual(calls[0], ["quarantine", { data, snapshot }]);
   assert.equal(calls.some((call) => call[0] === "state" && call[1] === "conflict"), true);
   assert.equal(calls.some((call) => call[0] === "state" && call[1] === "recoveryPending"), false);
+});
+
+test("session-only row conflict requires reload without entering generic conflict resolution", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: {
+        setItem(key, value) { calls.push(["storage", key, value]); },
+      },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      async quarantineMutationBatch(details) {
+        calls.push(["quarantine", details]);
+        return { sessionOnly: true };
+      },
+    },
+    updateSyncState(state) { calls.push(["state", state]); },
+    view: {
+      showToast(title, message, kind) { calls.push(["toast", title, message, kind]); },
+    },
+  };
+  const data = {
+    status: "conflict",
+    currentSyncVersion: 14,
+    errors: [{
+      table: "goi_thau",
+      id: "package-1",
+      code: "ROW_VERSION_CONFLICT",
+    }],
+  };
+  const snapshot = { id: "receipt-session" };
+
+  const result = await applyFailedPush(controller, { status: 409, data, snapshot });
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 409,
+    data,
+    conflictQuarantined: true,
+    reloadRequired: true,
+    sessionOnlyConflict: true,
+  });
+  assert.deepEqual(controller._syncConflict, {
+    serverSyncVersion: 14,
+    message: "Server data changed before local sync.",
+    reloadRequired: true,
+  });
+  assert.equal(calls.some((call) => (
+    call[0] === "storage"
+    && call[1] === "bf_conflict_server_sync_version"
+    && call[2] === "14"
+  )), true);
+  assert.equal(calls.some((call) => (
+    call[0] === "toast"
+    && call[1] === "Dữ liệu đã thay đổi trên máy chủ"
+    && call[2].includes("Nhấn F5")
+    && call[3] === "warning"
+  )), true);
+  assert.equal(calls.some((call) => call[0] === "state" && call[1].phase === "conflict"), true);
 });
 
 test("background auto sync keeps the visible state until F5 after quarantining a conflict", async () => {

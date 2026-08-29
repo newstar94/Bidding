@@ -170,7 +170,25 @@ export async function persistAndSync(controller, tableKeys, {
  * expectedVersion so the first delete request is not rejected as a conflict.
  */
 export async function refreshRecordBeforeDelete(controller, tableKey, recordId) {
-  return refreshRecordBeforeMutation(controller, tableKey, recordId);
+  const target = await refreshRecordBeforeMutation(controller, tableKey, recordId);
+  if (!target || typeof controller?.fetchRecordByLookup !== "function") return target;
+
+  const familyRoot = String(target.rootId || target.id || "");
+  const records = controller?.model?.state?.[tableKey] || [];
+  const familyIds = new Set([
+    ...(Array.isArray(target.allVersions) ? target.allVersions : [])
+      .map((version) => String(version?.id || "")),
+    ...records
+      .filter((record) => String(record?.rootId || record?.id || "") === familyRoot)
+      .map((record) => String(record?.id || "")),
+  ].filter(Boolean));
+  familyIds.delete(String(target.id));
+  await Promise.all(
+    [...familyIds].map((id) => refreshRecordBeforeMutation(controller, tableKey, id)),
+  );
+  return controller.model.state[tableKey]?.find(
+    (record) => String(record?.id) === String(target.id),
+  ) || target;
 }
 
 /**
@@ -183,22 +201,40 @@ export async function refreshRecordBeforeMutation(controller, tableKey, recordId
   ) || null;
   if (typeof controller?.fetchRecordByLookup !== "function") return localRecord;
   try {
-    return await controller.fetchRecordByLookup(tableKey, recordId) || localRecord;
+    const authoritativeRecord = await controller.fetchRecordByLookup(tableKey, recordId);
+    if (!authoritativeRecord) return localRecord;
+    const records = Array.isArray(controller?.model?.state?.[tableKey])
+      ? controller.model.state[tableKey]
+      : [];
+    const index = records.findIndex(
+      (record) => String(record?.id) === String(authoritativeRecord.id),
+    );
+    const nextRecords = [...records];
+    if (index >= 0) nextRecords[index] = authoritativeRecord;
+    else nextRecords.push(authoritativeRecord);
+    replaceTableProjection(controller.model, tableKey, nextRecords);
+    return authoritativeRecord;
   } catch (error) {
     console.warn(`[Sync] Could not refresh ${tableKey}/${recordId} before mutation.`, error);
     return localRecord;
   }
 }
 
-export function stageLocalRecords(model, table, records, workspaceMutation = null) {
+export function stageLocalRecords(
+  model,
+  table,
+  records,
+  workspaceMutation = null,
+  baseRecords = [],
+) {
   const staged = (Array.isArray(records) ? records : [records]).filter(
     (record) => record?.id !== undefined && record?.id !== null && String(record.id) !== "",
   );
   if (!table || !staged.length || typeof model?.commitLocalMutation !== "function") return [];
   if (workspaceMutation && typeof model.commitWorkspaceMutation === "function") {
-    model.commitWorkspaceMutation(workspaceMutation, table, { records: staged });
+    model.commitWorkspaceMutation(workspaceMutation, table, { records: staged, baseRecords });
   } else {
-    model.commitLocalMutation(table, { records: staged });
+    model.commitLocalMutation(table, { records: staged, baseRecords });
   }
   return staged;
 }

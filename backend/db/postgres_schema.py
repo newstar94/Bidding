@@ -19,12 +19,14 @@ from backend.db.schema import (
 )
 from backend.contracts.contract_statuses import DEFAULT_CONTRACT_STATUSES
 from backend.db.upgrades import (
+    COMMERCIAL_V81_FK_INDEX_NAMES,
     DB_SCHEMA_VERSION,
     DatabaseUpgradeContext,
     REQUIRED_POST_V64_FK_INDEXES,
     apply_database_upgrades,
     drop_retired_procurement_center_schema,
     ensure_commercial_v79_indexes,
+    ensure_commercial_v81_fk_indexes,
     read_database_version,
     record_database_version,
     seed_live_payos_v80_profile,
@@ -1407,6 +1409,7 @@ def _historical_v46_catalog(latest_catalog):
         name: spec
         for name, spec in catalog["indexes"].items()
         if spec.get("table") not in post_v46_tables
+        and name not in COMMERCIAL_V81_FK_INDEX_NAMES
     }
     catalog["triggers"] = {
         name: spec
@@ -1567,6 +1570,7 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
         (organization_id,),
     )
     ensure_commercial_v79_indexes(cursor)
+    ensure_commercial_v81_fk_indexes(cursor)
     seed_commercial_v79(cursor)
     seed_live_payos_v80_profile(cursor)
     context.create_indexes_and_triggers(cursor)

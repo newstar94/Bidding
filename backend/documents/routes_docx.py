@@ -1047,10 +1047,9 @@ def _prepare_plan_render(
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, "plan"
     )
-    context = docx_service.build_plan_context(
+    context, record_revision = docx_service.build_plan_context_snapshot(
         plan_id, user_id, organization_id, capabilities
     )
-    record_revision = int((context.get("ke_hoach") or {}).get("row_version") or 1)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
     apply_custom_mappings(context, mappings)
@@ -1115,14 +1114,13 @@ def _prepare_report_render(
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, document_type
     )
-    context = docx_service.build_report_context(
+    context, record_revision = docx_service.build_report_context_snapshot(
         package_id,
         user_id,
         organization_id,
         document_type,
         capabilities,
     )
-    record_revision = int((context.get("goi_thau") or {}).get("row_version") or 1)
     _scope_contracts_for_word_publication(context, publication_type)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)

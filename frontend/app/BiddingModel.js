@@ -47,13 +47,17 @@ const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
 );
 
 function splitConflictCheckpoint(checkpoint, data = {}) {
-  const conflictKeys = new Set((data.errors || [])
-    .filter((error) => error?.code === "ROW_VERSION_CONFLICT" && error?.id)
+  const errors = Array.isArray(data.errors) ? data.errors : [];
+  const hasRowVersionConflict = errors.some(
+    (error) => error?.code === "ROW_VERSION_CONFLICT" && error?.id,
+  );
+  const rejectedKeys = new Set(errors
+    .filter((error) => error?.id)
     .map((error) => {
       const table = STATE_KEY_BY_SERVER_TABLE[error.table] || String(error.table || "");
       return `${table}:${String(error.id)}`;
     }));
-  if (!checkpoint?.queue || conflictKeys.size === 0) {
+  if (!checkpoint?.queue || !hasRowVersionConflict || rejectedKeys.size === 0) {
     return { conflicting: checkpoint, unrelated: null };
   }
   const createPartition = () => ({
@@ -70,7 +74,7 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
   for (const operation of ["upserts", "patches"]) {
     Object.entries(checkpoint.queue[operation] || {}).forEach(([table, records]) => {
       Object.entries(records || {}).forEach(([id, record]) => {
-        const target = conflictKeys.has(`${table}:${String(id)}`) ? conflicting : unrelated;
+        const target = rejectedKeys.has(`${table}:${String(id)}`) ? conflicting : unrelated;
         target.queue[operation][table] ||= {};
         target.queue[operation][table][id] = structuredClone(record);
         const base = checkpoint.queue.baseSnapshots?.[table]?.[id];
@@ -82,17 +86,17 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
     });
   }
   for (const deletion of checkpoint.queue.deletes || []) {
-    const target = conflictKeys.has(`${deletion.table}:${String(deletion.id)}`)
+    const target = rejectedKeys.has(`${deletion.table}:${String(deletion.id)}`)
       ? conflicting : unrelated;
     target.queue.deletes.push(structuredClone(deletion));
   }
   for (const deletion of checkpoint.localDeletions || []) {
-    const target = conflictKeys.has(`${deletion.table}:${String(deletion.id)}`)
+    const target = rejectedKeys.has(`${deletion.table}:${String(deletion.id)}`)
       ? conflicting : unrelated;
     target.localDeletions.push(structuredClone(deletion));
   }
   Object.entries(checkpoint.queue.dirtyTables || {}).forEach(([table, value]) => {
-    const conflictsInTable = [...conflictKeys].some((key) => key.startsWith(`${table}:`));
+    const conflictsInTable = [...rejectedKeys].some((key) => key.startsWith(`${table}:`));
     const target = conflictsInTable ? conflicting : unrelated;
     target.queue.dirtyTables[table] = value;
   });
@@ -886,6 +890,7 @@ export class BiddingModel {
     return cleared;
   }
   async _captureServerConflictDrafts(checkpoint, data = {}, snapshot = null) {
+    if (!hasServerCapability(CONFLICT_CENTER_CAPABILITY)) return [];
     const workspaceFingerprint = String(this.workspaceScope?.key || "");
     if (!workspaceFingerprint || !checkpoint?.queue) return [];
     const supported = new Map([
@@ -897,11 +902,15 @@ export class BiddingModel {
     const requests = errors.map((error) => {
       const entityType = supported.get(String(error.table || ""));
       const recordId = String(error.id || "");
-      if (!entityType || !recordId) return null;
+      if (!entityType || !recordId) {
+        return null;
+      }
       const base = checkpoint.queue.baseSnapshots?.[entityType]?.[recordId];
-      const local = (this.state?.[entityType] || []).find(
-        (record) => String(record?.id || "") === recordId,
-      );
+      const local = checkpoint.queue.upserts?.[entityType]?.[recordId]
+        || checkpoint.queue.patches?.[entityType]?.[recordId]
+        || (this.state?.[entityType] || []).find(
+          (record) => String(record?.id || "") === recordId,
+        );
       const expectedRowVersion = Number(
         error.expectedVersion ?? base?.rowVersion ?? local?.rowVersion,
       );
@@ -920,9 +929,10 @@ export class BiddingModel {
         localIntent: structuredClone(local),
       };
     });
-    if (requests.length === 0 || requests.some((request) => !request)) return [];
+    const validRequests = requests.filter(Boolean);
+    if (validRequests.length === 0) return [];
     const drafts = await Promise.all(
-      requests.map((request) => this._getConflictCenterClient().capture(request)),
+      validRequests.map((request) => this._getConflictCenterClient().capture(request)),
     );
     return this._getConflictRecoveryStore().remember(drafts);
   }
@@ -936,19 +946,22 @@ export class BiddingModel {
     if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
     const { conflicting, unrelated } = splitConflictCheckpoint(checkpoint, data);
-    let drafts;
-    try {
-      drafts = await this._captureServerConflictDrafts(conflicting, data, snapshot);
-    } catch {
-      return null;
+    const durableRecoveryEnabled = hasServerCapability(CONFLICT_CENTER_CAPABILITY);
+    let drafts = [];
+    if (durableRecoveryEnabled) {
+      try {
+        drafts = await this._captureServerConflictDrafts(conflicting, data, snapshot);
+      } catch {
+        return null;
+      }
+      if (drafts.length === 0) return null;
     }
-    if (drafts.length === 0) return null;
     try {
       if (scopedReceipt) outbox.ack(snapshot);
       else outbox.discard();
       if (unrelated) requeueCheckpoint(outbox, unrelated, this.state);
       await outbox.flush();
-      return drafts[0];
+      return durableRecoveryEnabled ? drafts[0] : { sessionOnly: true };
     } catch (_error) {
       outbox.restore(activeCheckpoint);
       try { await outbox.flush(); } catch { /* store exposes the durability failure */ }

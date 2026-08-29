@@ -83,8 +83,17 @@ export function markLatestVersion(records, target) {
   return latest;
 }
 
-export function removeLatestVersion(records, target) {
+function deletionFamily(records, target) {
   const family = getVersionFamily(records, target);
+  const targetId = String(target?.id || "");
+  if (!targetId) return family;
+  return family.map((record) => (
+    String(record?.id || "") === targetId ? target : record
+  ));
+}
+
+export function removeLatestVersion(records, target) {
+  const family = deletionFamily(records, target);
   if (!family.length) return { records: [...(records || [])], removed: [], latest: null };
   const latestVersion = Math.max(...family.map(versionNumber));
   const removed = family.filter((record) => versionNumber(record) === latestVersion);
@@ -96,7 +105,7 @@ export function removeLatestVersion(records, target) {
 }
 
 export function removeAllVersions(records, target) {
-  const family = getVersionFamily(records, target);
+  const family = deletionFamily(records, target);
   const ids = new Set(family.map((record) => String(record.id)));
   return {
     records: (records || []).filter((record) => !ids.has(String(record.id))),

@@ -329,7 +329,7 @@ def load_plan_versions(cursor, plan, organization_id):
     )
     return versions
 
-def build_plan_context(plan_id, user_id, org_name, capabilities=None):
+def _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -411,14 +411,33 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    return project_docx_context(
-        "plan",
-        unified_context,
-        capabilities,
-        organization_id=org_name,
+    return (
+        project_docx_context(
+            "plan",
+            unified_context,
+            capabilities,
+            organization_id=org_name,
+        ),
+        int(plan.get("row_version") or 1),
     )
 
-def build_report_context(
+
+def build_plan_context(plan_id, user_id, org_name, capabilities=None):
+    context, _record_revision = _build_plan_context_snapshot(
+        plan_id,
+        user_id,
+        org_name,
+        capabilities,
+    )
+    return context
+
+
+def build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
+    """Return the projected plan DTO and its internal authoritative revision."""
+    return _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities)
+
+
+def _build_report_context_snapshot(
     package_id,
     user_id,
     org_name,
@@ -614,9 +633,46 @@ def build_report_context(
         'today': now.date().isoformat()
     }
     unified_context.update(build_detailed_evaluation_context(pkg, bids))
-    return project_docx_context(
+    return (
+        project_docx_context(
+            type_param,
+            unified_context,
+            capabilities,
+            organization_id=org_name,
+        ),
+        int(pkg.get("row_version") or 1),
+    )
+
+
+def build_report_context(
+    package_id,
+    user_id,
+    org_name,
+    type_param,
+    capabilities=None,
+):
+    context, _record_revision = _build_report_context_snapshot(
+        package_id,
+        user_id,
+        org_name,
         type_param,
-        unified_context,
         capabilities,
-        organization_id=org_name,
+    )
+    return context
+
+
+def build_report_context_snapshot(
+    package_id,
+    user_id,
+    org_name,
+    type_param,
+    capabilities=None,
+):
+    """Return the projected report DTO and its internal authoritative revision."""
+    return _build_report_context_snapshot(
+        package_id,
+        user_id,
+        org_name,
+        type_param,
+        capabilities,
     )

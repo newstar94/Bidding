@@ -89,7 +89,7 @@ const VIEW_MODULES_BY_TAB = Object.freeze({
   dashboard: ["dashboard"],
   "superadmin-dashboard": ["dashboard"],
   kehoach: ["plan-list"],
-  "kehoach-detail": ["plan"],
+  "kehoach-detail": ["plan-list"],
   goithau: ["package-list"],
   "goithau-timeline": ["timeline"],
   "goithau-detail": ["plan"],

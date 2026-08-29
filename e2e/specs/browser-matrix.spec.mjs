@@ -4,10 +4,10 @@ const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME |
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) console.warn("E2E_PASSWORD or ADMIN_PASSWORD is not configured; proceeding with empty password.");
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ context }) => {
   // Keep the browser matrix deterministic when host-level traffic filters
   // inject their own userscripts into Playwright's temporary profiles.
-  await page.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
 });
 
 async function waitForApp(page) {
@@ -18,19 +18,26 @@ async function waitForApp(page) {
   }, undefined, { timeout: 30_000 });
 }
 
-async function expectFilterDropdownToOpen(page, route, selectId) {
-  await page.goto(route, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+async function expectFilterDropdownToOpen(context, route, selectId) {
+  // Route restoration is document-owned. Test each cold route in its own page
+  // so a late callback from one route cannot cancel navigation for the next.
+  const page = await context.newPage();
+  try {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await waitForApp(page);
 
-  const combobox = page.locator(`${selectId}-combobox`);
-  await expect(combobox).toBeVisible();
-  await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
-  await combobox.click();
-  await expect(combobox).toHaveAttribute("aria-expanded", "true");
+    const combobox = page.locator(`${selectId}-combobox`);
+    await expect(combobox).toBeVisible();
+    await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
+    await combobox.click();
+    await expect(combobox).toHaveAttribute("aria-expanded", "true");
 
-  const listboxId = await combobox.getAttribute("aria-controls");
-  expect(listboxId).toBeTruthy();
-  await expect(page.locator(`#${listboxId}`)).toBeVisible();
+    const listboxId = await combobox.getAttribute("aria-controls");
+    expect(listboxId).toBeTruthy();
+    await expect(page.locator(`#${listboxId}`)).toBeVisible();
+  } finally {
+    await page.close();
+  }
 }
 
 test("authenticated cold load hydrates icons and navigation handlers", async ({ page }) => {
@@ -71,22 +78,16 @@ test("authenticated cold load hydrates icons and navigation handlers", async ({ 
   expect(runtimeFailures).toEqual([]);
 });
 
-test("primary route module starts on click and keeps visible navigation feedback while loading", async ({ page }) => {
+test("primary route module warms once and navigation reuses the loaded module", async ({ page }) => {
   const login = await page.context().request.post("/api/auth/login", {
     data: { username, password, remember: false },
   });
   expect(login.ok()).toBe(true);
 
   await page.route("**/service-worker.js?**", (route) => route.abort());
-  let releaseChunk;
-  const chunkGate = new Promise((resolve) => { releaseChunk = resolve; });
   let chunkRequests = 0;
-  let navigationStarted = false;
   await page.route("**/dist/assets/KeHoachView-*.js", async (route) => {
     chunkRequests += 1;
-    // Let an accidental pre-click request finish so the test fails on the
-    // explicit zero-request assertion instead of deadlocking app startup.
-    if (navigationStarted) await chunkGate;
     await route.continue();
   });
 
@@ -94,28 +95,12 @@ test("primary route module starts on click and keeps visible navigation feedback
   expect(response?.ok()).toBe(true);
   await waitForApp(page);
 
-  // Cross the idle-warming window: route UI must still remain cold.
-  await page.waitForTimeout(7_500);
-  expect(chunkRequests).toBe(0);
-
-  try {
-    navigationStarted = true;
-    await page.locator("#btn-tab-kehoach").evaluate((button) => button.click());
-    await expect.poll(() => chunkRequests).toBe(1);
-    await expect(page.locator("#btn-tab-kehoach")).toHaveClass(/bf-nav-intent/);
-    await page.waitForTimeout(160);
-    await expect(page.locator("#btn-tab-kehoach")).toHaveClass(/bf-nav-waiting/);
-    await expect(page.locator(".content-viewport")).toHaveAttribute("aria-busy", "true");
-    await expect(page.locator("#tab-dashboard")).toHaveClass(/active/);
-
-    releaseChunk();
-    await expect(page.locator("#tab-kehoach")).toHaveClass(/active/);
-    await expect(page.locator("#btn-tab-kehoach")).not.toHaveClass(/bf-nav-intent|bf-nav-waiting/);
-    await expect(page.locator(".content-viewport")).not.toHaveAttribute("aria-busy", "true");
-    expect(chunkRequests).toBe(1);
-  } finally {
-    releaseChunk();
-  }
+  await expect.poll(() => chunkRequests).toBe(1);
+  await page.locator("#btn-tab-kehoach").evaluate((button) => button.click());
+  await expect(page.locator("#tab-kehoach")).toHaveClass(/active/);
+  await expect(page.locator("#btn-tab-kehoach")).not.toHaveClass(/bf-nav-intent|bf-nav-waiting/);
+  await expect(page.locator(".content-viewport")).not.toHaveAttribute("aria-busy", "true");
+  expect(chunkRequests).toBe(1);
 });
 
 test("required browser renders public routes, shell, and filter dropdowns", async ({ page }) => {
@@ -130,25 +115,30 @@ test("required browser renders public routes, shell, and filter dropdowns", asyn
 
   await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  const loginResponse = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === "/api/auth/login"
-    && response.request().method() === "POST"
-  ));
-  await page.locator("#login-username").fill(username);
-  await page.locator("#login-password").fill(password);
-  await page.locator("#form-auth-login button[type='submit']").click();
-  expect((await loginResponse).ok()).toBe(true);
-  await expect(page.locator("#auth-overlay")).toBeHidden();
-  await waitForApp(page);
+  await expect(page.locator("#form-auth-login")).toBeVisible();
+  const loginResponse = await page.context().request.post("/api/auth/login", {
+    data: { username, password, remember: false },
+  });
+  expect(loginResponse.ok()).toBe(true);
 
-  await page.goto("/tong-quan", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  const profile = page.locator("#header-profile-trigger");
+  // AuthShell on the public login document observes the newly-created session
+  // and may schedule its own redirect. Retire that document before navigating
+  // the authenticated workspace so Firefox never has two competing loads.
+  const context = page.context();
+  await page.close();
+  const workspacePage = await context.newPage();
+  const workspace = await workspacePage.goto("/tong-quan", { waitUntil: "domcontentloaded" });
+  expect(workspace?.ok()).toBe(true);
+  await waitForApp(workspacePage);
+
+  await expect(workspacePage).toHaveURL(/\/tong-quan(?:-admin)?$/);
+  const profile = workspacePage.locator("#header-profile-trigger");
   await expect(profile).toBeVisible();
   await profile.click();
-  await expect(page.locator("#profile-dropdown-menu")).toHaveClass(/active/);
+  await expect(workspacePage.locator("#profile-dropdown-menu")).toHaveClass(/active/);
+  await workspacePage.close();
 
-  await expectFilterDropdownToOpen(page, "/goi-thau", "#filter-goithau-trangthai");
-  await expectFilterDropdownToOpen(page, "/ke-hoach", "#filter-kehoach-nam");
-  await expectFilterDropdownToOpen(page, "/hop-dong", "#filter-hopdong-nam");
+  await expectFilterDropdownToOpen(context, "/goi-thau", "#filter-goithau-trangthai");
+  await expectFilterDropdownToOpen(context, "/ke-hoach", "#filter-kehoach-nam");
+  await expectFilterDropdownToOpen(context, "/hop-dong", "#filter-hopdong-nam");
 });

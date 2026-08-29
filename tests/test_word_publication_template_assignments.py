@@ -676,8 +676,8 @@ def test_report_render_uses_assigned_template_and_rejects_inapplicable_type(
         lambda *_args: ({}, []),
     )
     monkeypatch.setattr(
-        "backend.documents.routes_docx.docx_service.build_report_context",
-        lambda *_args: {"goi_thau": dict(package)},
+        "backend.documents.routes_docx.docx_service.build_report_context_snapshot",
+        lambda *_args: ({"goi_thau": dict(package)}, 1),
     )
     monkeypatch.setattr(
         "backend.documents.routes_docx.enrich_context_with_lot_summaries",
@@ -805,8 +805,8 @@ def test_report_render_scopes_contracts_to_the_publication_function(
         ),
     )
     monkeypatch.setattr(
-        "backend.documents.routes_docx.docx_service.build_report_context",
-        lambda *_args: {
+        "backend.documents.routes_docx.docx_service.build_report_context_snapshot",
+        lambda *_args: ({
             "goi_thau": dict(package),
             "hop_dong_list": [
                 {
@@ -818,7 +818,7 @@ def test_report_render_scopes_contracts_to_the_publication_function(
                     "phan_loai": "  TƯ VẤN  ",
                 },
             ],
-        },
+        }, 1),
     )
     monkeypatch.setattr(
         "backend.documents.routes_docx.enrich_context_with_lot_summaries",
@@ -872,3 +872,62 @@ def test_report_render_scopes_contracts_to_the_publication_function(
     assert [item["id"] for item in context["ds_hop_dong"]] == (
         expected_contract_ids
     )
+
+
+def test_report_render_uses_internal_snapshot_revision_without_exposing_it(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._load_word_export_policy",
+        lambda *_args: ({}, []),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.docx_service.build_report_context_snapshot",
+        lambda *_args: ({"goi_thau": {"id": "package-a"}}, 7),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.enrich_context_with_lot_summaries",
+        lambda _context: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.enrich_context_with_filtered_bidders",
+        lambda _context: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.apply_custom_mappings",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.apply_computed_mappings",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.lowercase_partner_identity_codes",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.seal_docx_context",
+        lambda _type, context, *_args, **_kwargs: (context, {}),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx.sensitive_capability_groups_present",
+        lambda _context: set(),
+    )
+    monkeypatch.setattr(
+        "backend.documents.routes_docx._word_template_scope",
+        lambda *_args: ("organization", "org-a"),
+    )
+
+    context, manifest, templates, sensitive_groups = _prepare_report_render(
+        "package-a",
+        "user-a",
+        "org-a",
+        "manager",
+        "evaluation",
+        skip_template_resolution=True,
+    )
+
+    assert manifest["record_revision"] == 7
+    assert "row_version" not in context["goi_thau"]
+    assert templates is None
+    assert sensitive_groups == []

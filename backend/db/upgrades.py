@@ -3025,8 +3025,56 @@ COMMERCIAL_V79_INDEXES = (
 )
 
 
+# Keep the published v79 migration immutable. These indexes are installed by
+# v81 for existing databases and directly by the canonical fresh-schema path.
+COMMERCIAL_V81_FK_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_plan_fk ON account_subscriptions (plan_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_source_order_fk ON account_subscriptions (source_order_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_invoice_requests_transaction_fk ON billing_invoice_requests (payment_transaction_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_items_order_fk ON billing_order_items (order_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_items_sku_fk ON billing_order_items (sku_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_items_plan_fk ON billing_order_items (plan_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_order_items_price_fk ON billing_order_items (price_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_orders_quote_fk ON billing_orders (organization_id, quote_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_orders_release_fk ON billing_orders (release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_plan_versions_legacy_package_fk ON billing_plan_versions (legacy_package_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_prices_sku_fk ON billing_prices (sku_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_quotes_actor_fk ON billing_quotes (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_quotes_account_fk ON billing_quotes (account_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_quotes_release_fk ON billing_quotes (release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_refund_intents_actor_fk ON billing_refund_intents (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_billing_skus_plan_fk ON billing_skus (plan_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_drafts_base_release_fk ON commercial_drafts (base_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_drafts_creator_fk ON commercial_drafts (created_by)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_drafts_updater_fk ON commercial_drafts (updated_by)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_release_timeline_release_fk ON commercial_release_timeline (release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_release_timeline_actor_fk ON commercial_release_timeline (actor_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_releases_base_release_fk ON commercial_releases (base_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_releases_publisher_fk ON commercial_releases (published_by)",
+    "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_plan_fk ON organization_subscriptions (plan_version_id)",
+    "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_source_order_fk ON organization_subscriptions (organization_id, source_order_id)",
+    "CREATE INDEX IF NOT EXISTS idx_payment_transactions_order_fk ON payment_transactions (order_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_credit_grants_order_item_fk ON usage_credit_grants (order_item_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_credit_grants_release_fk ON usage_credit_grants (release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_ledger_grant_fk ON usage_ledger (grant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_ledger_reservation_fk ON usage_ledger (reservation_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_reservations_account_fk ON usage_reservations (account_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usage_reservations_grant_fk ON usage_reservations (organization_id, grant_id)",
+)
+
+COMMERCIAL_V81_FK_INDEX_NAMES = frozenset(
+    statement.partition(" ON ")[0].rsplit(" ", 1)[-1]
+    for statement in COMMERCIAL_V81_FK_INDEXES
+)
+
+
 def ensure_commercial_v79_indexes(cursor):
     for statement in COMMERCIAL_V79_INDEXES:
+        cursor.execute(statement)
+
+
+def ensure_commercial_v81_fk_indexes(cursor):
+    for statement in COMMERCIAL_V81_FK_INDEXES:
         cursor.execute(statement)
 
 
@@ -3286,6 +3334,13 @@ def _upgrade_to_v80_add_live_payos_profile(cursor, _context):
     """Add the immutable live profile that references process-local secrets."""
 
     seed_live_payos_v80_profile(cursor)
+
+
+def _upgrade_to_v81_index_commercial_foreign_keys(cursor, context):
+    """Cover child-side foreign keys added by the commercial v79 schema."""
+
+    ensure_commercial_v81_fk_indexes(cursor)
+    context.assert_foreign_key_integrity(cursor)
 
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
@@ -3679,6 +3734,11 @@ UPGRADES = (
         "add_live_payos_profile",
         _upgrade_to_v80_add_live_payos_profile,
     ),
+    DatabaseUpgrade(
+        81,
+        "index_commercial_foreign_keys",
+        _upgrade_to_v81_index_commercial_foreign_keys,
+    ),
 )
 
 
@@ -3687,7 +3747,8 @@ DB_SCHEMA_VERSION = (
 )
 
 # V79 adds versioned commercial, billing and usage-credit persistence. V80 adds
-# the immutable process-local credential reference used by this runtime.
+# the immutable process-local credential reference used by this runtime. V81
+# adds child-side indexes without changing the runtime data contract.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

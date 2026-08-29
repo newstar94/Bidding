@@ -22,3 +22,11 @@ ffefd5fc30dfb4f01d7c779b6918f191d8f48ec5:dist/controllers/app.bundle.js:generic-
 # Reviewed false positive: historical public Google reCAPTCHA site key.
 # It was removed from runtime source and is not a private server credential.
 b2ebe0b1753b372eb92b6a35559191063c6bde5d:backend/integrations/muasamcong_browser/session_provider.mjs:generic-api-key:5
+
+# Reviewed false positive: deterministic document idempotency key used only by
+# a historical test fixture; it is not an authentication credential.
+083f7da3127bd8490b562f770aacd2b3bc8f6716:tests/test_package_documents.py:generic-api-key:331
+
+# Reviewed false positive: deterministic OTP HMAC material installed only via
+# monkeypatch in a historical test; production reads its key from the runtime.
+4258f3038e33b10f5891d225329a6554c6bfe283:tests/test_auth_security_hardening.py:generic-api-key:53

@@ -181,7 +181,11 @@ const bootstrapApplication = async () => {
       ? [
           document.getElementById("sidebar"),
           document.querySelector(".top-header") || document.querySelector(".app-header"),
-          document.querySelector(".tab-pane.active"),
+          document.querySelector(".content-viewport"),
+          document.getElementById("auth-overlay"),
+          document.getElementById("modal-set-username-overlay"),
+          document.getElementById("modal-custom-dialog"),
+          document.getElementById("offline-indicator-banner"),
           document.querySelector(".unassigned-workspace-panel"),
         ]
       : [document.getElementById("auth-overlay")];

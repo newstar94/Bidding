@@ -34,6 +34,7 @@ import {
 } from "../shared/MultiAssigneeSelect.js";
 import { derivePackagePrice } from "./packagePricing.js";
 import { parseLotListForDisplay } from "./lotJsonParser.js";
+import { getGoiThauFormInputValues } from "./GoiThauModals.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { assignNewPackageLotIds, clonePackageGoodsForSnapshot } from "./packageGoodsVersioning.js";
 import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
@@ -106,6 +107,7 @@ export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow
 export async function persistPackageFormChanges(controller, explicitUpserts, {
   draft = false,
   afterPersist,
+  baseUpserts = {},
 } = {}) {
   const planId = explicitUpserts?.goithau?.[0]?.keHoachId
     || explicitUpserts?.kehoach?.[0]?.id
@@ -118,7 +120,7 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     Object.entries(explicitUpserts).filter(([table]) => table !== "assignments"),
   );
   Object.entries(aggregateUpserts).forEach(([table, records]) => {
-    stageLocalRecords(controller.model, table, records);
+    stageLocalRecords(controller.model, table, records, null, baseUpserts[table] || []);
   });
   return persistAndSync(controller, [
     "goithau",
@@ -127,10 +129,31 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     "kehoach",
     "thongtinmothau",
   ], {
-    backgroundSync: true,
     changes: { upserts: aggregateUpserts },
     afterPersist,
   });
+}
+
+const PACKAGE_SAVE_AGGREGATE_TABLES = [
+  "goithau",
+  "goithauhanghoa",
+  "hanghoaduthaunhathau",
+  "kehoach",
+  "thongtinmothau",
+];
+
+export function capturePackageSaveBaseState(state) {
+  return Object.fromEntries(PACKAGE_SAVE_AGGREGATE_TABLES.map((table) => [
+    table,
+    structuredClone(Array.isArray(state?.[table]) ? state[table] : []),
+  ]));
+}
+
+export function packageSaveBaseUpserts(baseState, explicitUpserts) {
+  return Object.fromEntries(PACKAGE_SAVE_AGGREGATE_TABLES.map((table) => {
+    const stagedIds = new Set((explicitUpserts?.[table] || []).map((record) => String(record?.id || "")));
+    return [table, (baseState?.[table] || []).filter((record) => stagedIds.has(String(record?.id || "")))];
+  }));
 }
 
 export function isPackageDraftSaveActive(controller, planId) {
@@ -149,7 +172,27 @@ export function shouldShowPackageSyncFailureDialog(syncResult) {
 export function packageSyncRequiresReload(syncResult) {
   return Boolean(
     syncResult?.conflictQuarantined === true
-    || syncResult?.reloadRequired === true,
+    || syncResult?.reloadRequired === true
+    || syncResult?.conflict === true
+    || syncResult?.status === 409,
+  );
+}
+
+export function renderPackageSaveTables(view) {
+  view?.renderGoiThauTable?.();
+  view?.renderKeHoachTable?.();
+}
+
+export function restorePackageEditorAfterSyncConflict(form, modal) {
+  if (form) form.dataset.submitState = "ready";
+  setPackageEditorState(modal, "ready");
+}
+
+export function showPackageSyncReloadToast(view) {
+  return view?.showToast?.(
+    "Dữ liệu đã thay đổi trên máy chủ",
+    "Nhấn F5 để tải trạng thái mới nhất trước khi chỉnh sửa lại.",
+    "warning",
   );
 }
 
@@ -855,7 +898,7 @@ export async function handleGoiThauSubmit(e) {
   const assignedEmpSelect = document.getElementById("gt-nhanvienphutrach");
   const assignedEmpIds = resolvePackageAssigneeIds(selectedAssigneeIds(assignedEmpSelect));
   if (!this.view.validateForm(form)) return;
-  const formVals = this.view.getGoiThauFormInputValues(this.model);
+  const formVals = getGoiThauFormInputValues(this.model);
   if (formVals.giaGoiThau < 0) {
     await this.view.customAlert("Dữ liệu không hợp lệ", "Giá gói thầu không được nhỏ hơn 0.", "alert-triangle", document.getElementById("gt-giagoithau"));
     return;
@@ -882,6 +925,7 @@ export async function handleGoiThauSubmit(e) {
       oldPlanId = oldGt.keHoachId;
     }
   }
+  const packageSaveBaseState = capturePackageSaveBaseState(this.model.state);
   let inputCode = document.getElementById("gt-ma").value.trim();
   if (inputCode) {
     let isDuplicate = false;
@@ -1341,12 +1385,22 @@ export async function handleGoiThauSubmit(e) {
   );
   const syncResult = await persistPackageFormChanges(this, explicitUpserts, {
     draft: draftPackageSave,
+    baseUpserts: packageSaveBaseUpserts(packageSaveBaseState, explicitUpserts),
     afterPersist: () => {
-      this.view.renderGoiThauTable();
-      this.view.renderKeHoachTable();
+      renderPackageSaveTables(this.view);
     },
   });
-  if (packageSyncRequiresReload(syncResult)) return;
+  if (packageSyncRequiresReload(syncResult)) {
+    const packageModal = document.getElementById("modal-goithau");
+    restorePackageEditorAfterSyncConflict(form, packageModal);
+    if (
+      syncResult?.conflictQuarantined !== true
+      && syncResult?.reloadRequired !== true
+    ) {
+      showPackageSyncReloadToast(this.view);
+    }
+    return;
+  }
   if (shouldShowPackageSyncFailureDialog(syncResult)) {
     await this.view.customAlert(
       "Lỗi đồng bộ",

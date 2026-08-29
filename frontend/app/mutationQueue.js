@@ -42,10 +42,31 @@ function filterReceiptBySentOperations(snapshot, sent) {
       return Object.keys(filtered).length > 0 ? [[table, filtered]] : [];
     }),
   );
+  const filterBaseSnapshots = (records = {}) => Object.fromEntries(
+    Object.entries(records || {}).flatMap(([table, values]) => {
+      const ids = new Set([
+        ...(sent.upserts[table] || []),
+        ...(sent.patches[table] || []),
+      ].map(String));
+      const filtered = Object.fromEntries(
+        Object.entries(values || {}).filter(([id]) => ids.has(String(id))),
+      );
+      return Object.keys(filtered).length > 0 ? [[table, filtered]] : [];
+    }),
+  );
   return {
     ...snapshot,
     upserts: filterRecords(snapshot.upserts, sent.upserts),
     patches: filterRecords(snapshot.patches, sent.patches),
+    recordSnapshots: snapshot.recordSnapshots
+      ? {
+        upserts: filterRecords(snapshot.recordSnapshots.upserts, sent.upserts),
+        patches: filterRecords(snapshot.recordSnapshots.patches, sent.patches),
+      }
+      : undefined,
+    baseSnapshots: snapshot.baseSnapshots
+      ? filterBaseSnapshots(snapshot.baseSnapshots)
+      : undefined,
     deletes: Object.fromEntries(
       Object.entries(snapshot.deletes || {}).filter(([key]) => sent.deletes.has(key)),
     ),

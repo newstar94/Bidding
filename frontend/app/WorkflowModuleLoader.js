@@ -38,6 +38,56 @@ const STATIC_WORKFLOW_METHODS = new Set([
   "triggerExcelTemplateDownload",
 ]);
 
+const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
+  () => import("../shared/BiddingCalculations.js"),
+  () => import("../packages/BidEvaluationWorkflow.js"),
+  () => import("../packages/DetailedEvaluationWorkflow.js"),
+  () => import("../plans/KeHoachWorkflow.js"),
+  () => import("../procurement/PlanImportWizard.js"),
+  () => import("../procurement/NoticeImportWizard.js"),
+  () => import("../procurement/ProcurementInlineLookup.js"),
+  () => import("../procurement/ProcurementImportResume.js"),
+  () => import("../procurement/OpeningImportWizard.js"),
+  () => import("../packages/GoiThauWorkflow.js"),
+  () => import("../packages/BidProcessWorkflow.js"),
+  () => import("../shared/FormSubTables.js"),
+  () => import("../shared/PartnerHelpers.js"),
+]);
+
+// These helpers are exported by their concrete modules for focused tests and
+// internal composition, but BiddingWorkflows.js intentionally does not expose
+// them to the controller command surface.
+const BIDDING_WORKFLOW_PRIVATE_EXPORTS = Object.freeze([
+  "addDetailedEvaluationCriterion",
+  "applyDetailedEvaluationProjection",
+  "applyRawAddressToAddressControls",
+  "buildDetailedEvaluationDraft",
+  "buildReopenedDetailedEvaluationReport",
+  "collectActiveGroupRows",
+  "collectConfiguredDetailedEvaluationCriteria",
+  "commitEvaluationLotScopeChange",
+  "composeInternalAddress",
+  "initAddressDropdowns",
+  "parseStoredInternalAddress",
+  "parseVietnamAddress",
+  "setDetailedTechnicalEvaluationMethod",
+  "splitAddressParts",
+  "stripAdministrativeSuffix",
+  "stripVietnamCountrySuffix",
+  "verifyMuasamcongDetailedEvaluationContractor",
+]);
+
+export async function importBiddingWorkflowsSequentially() {
+  const workflowModule = Object.create(null);
+  for (const importWorkflowModule of BIDDING_WORKFLOW_IMPORTERS) {
+    Object.assign(workflowModule, await importWorkflowModule());
+  }
+  for (const privateExport of BIDDING_WORKFLOW_PRIVATE_EXPORTS) {
+    delete workflowModule[privateExport];
+  }
+  return Object.freeze(workflowModule);
+}
+
 export function workflowRequirementForRoute(tabName, action = null) {
   if (BIDDING_ROUTES.has(tabName)) return "bidding";
   if (action !== "taomoi") return null;
@@ -55,7 +105,7 @@ export function workflowRequirementForMethod(methodName) {
 
 export class WorkflowModuleLoader {
   constructor({
-    importBidding = () => import("../packages/BiddingWorkflows.js"),
+    importBidding = importBiddingWorkflowsSequentially,
     importPartner = () => import("../partners/PartnerWorkflows.js"),
     install,
   }) {

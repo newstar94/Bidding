@@ -77,6 +77,28 @@ test("outbox only acknowledges the generations that were sent", async () => {
   await outbox.flush();
 });
 
+test("receipt checkpoint keeps the sent local intent and base across a newer generation", () => {
+  const { outbox } = createOutbox();
+  const base = { id: "package-1", rowVersion: 4, name: "server base" };
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [{ ...base, name: "first local" }],
+    baseRecords: [base],
+  });
+  const receipt = outbox.snapshotForSync({}).snapshot;
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [{ ...base, name: "newer local" }],
+    baseRecords: [{ ...base, name: "must not replace base" }],
+  });
+
+  const checkpoint = outbox.checkpointForReceipt(receipt);
+  assert.equal(checkpoint.queue.upserts.goithau["package-1"].name, "first local");
+  assert.equal(checkpoint.queue.baseSnapshots.goithau["package-1"].name, "server base");
+});
+
 test("record-scoped receipt preserves unrelated and newer outbox generations", () => {
   const { outbox } = createOutbox();
   outbox.enqueue({

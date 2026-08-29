@@ -313,15 +313,17 @@ def test_batch_cache_misses_are_standardized_and_rendered_in_one_worker(
     monkeypatch.setenv("WORD_EXPORT_STANDARDIZATION_MODE", "off")
     monkeypatch.setenv("WORD_EXPORT_CACHE_ENABLED", "false")
     monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path / "jobs"))
-    original_popen = document_worker.subprocess.Popen
+    original_start_worker = document_worker._start_worker_process
     process_count = 0
 
-    def counting_popen(*args, **kwargs):
+    def counting_start_worker(*args, **kwargs):
         nonlocal process_count
         process_count += 1
-        return original_popen(*args, **kwargs)
+        return original_start_worker(*args, **kwargs)
 
-    monkeypatch.setattr(document_worker.subprocess, "Popen", counting_popen)
+    monkeypatch.setattr(
+        document_worker, "_start_worker_process", counting_start_worker,
+    )
     template = _renderable_template()
 
     result = run_document_job(

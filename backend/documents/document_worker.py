@@ -413,6 +413,14 @@ def _read_result(result_path: Path, job_dir: Path) -> Any:
     raise DocumentWorkerError(message)
 
 
+def _start_worker_process(
+    command: list[str], popen_kwargs: dict[str, Any],
+) -> subprocess.Popen[bytes]:
+    """Start exactly one isolated document worker for a prepared job."""
+
+    return subprocess.Popen(command, **popen_kwargs)
+
+
 def _prepare_render_payload_cache(
     operation: str,
     payload: dict[str, Any],
@@ -631,7 +639,7 @@ def run_document_job(
             elif hasattr(subprocess, "CREATE_NO_WINDOW"):
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-            process = subprocess.Popen(command, **popen_kwargs)
+            process = _start_worker_process(command, popen_kwargs)
             windows_job_handle = None
             try:
                 try:
@@ -735,7 +743,7 @@ def _run_staged_document_job(
             popen_kwargs["start_new_session"] = True
         elif hasattr(subprocess, "CREATE_NO_WINDOW"):
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        process = subprocess.Popen(command, **popen_kwargs)
+        process = _start_worker_process(command, popen_kwargs)
         windows_job_handle = None
         try:
             try:

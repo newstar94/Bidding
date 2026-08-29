@@ -18,15 +18,10 @@ async function waitForApp(page) {
 }
 
 async function login(page) {
-  await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await page.waitForFunction(
-    () => typeof document.getElementById("form-auth-login")?.onsubmit === "function",
-  );
-  await page.locator("#login-username").fill(username);
-  await page.locator("#login-password").fill(password);
-  await page.locator("#form-auth-login button[type='submit']").click();
-  await expect(page.locator("#auth-overlay")).toBeHidden();
+  const response = await page.context().request.post("/api/auth/login", {
+    data: { username, password, remember: false },
+  });
+  expect(response.ok(), await response.text().catch(() => "")).toBe(true);
 }
 
 async function waitForInitialReconciliation(page) {

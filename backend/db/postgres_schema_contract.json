@@ -743,6 +743,20 @@
       "table": "account_subscriptions",
       "valid": true
     },
+    "idx_account_subscriptions_plan_fk": {
+      "definition": "CREATE INDEX idx_account_subscriptions_plan_fk ON $SCHEMA.account_subscriptions USING btree (plan_version_id)",
+      "live": true,
+      "ready": true,
+      "table": "account_subscriptions",
+      "valid": true
+    },
+    "idx_account_subscriptions_source_order_fk": {
+      "definition": "CREATE INDEX idx_account_subscriptions_source_order_fk ON $SCHEMA.account_subscriptions USING btree (source_order_id)",
+      "live": true,
+      "ready": true,
+      "table": "account_subscriptions",
+      "valid": true
+    },
     "idx_account_subscriptions_status_expiry": {
       "definition": "CREATE INDEX idx_account_subscriptions_status_expiry ON $SCHEMA.account_subscriptions USING btree (status, expires_at)",
       "live": true,
@@ -1009,6 +1023,41 @@
       "table": "hang_hoa_du_thau_nha_thau",
       "valid": true
     },
+    "idx_billing_invoice_requests_transaction_fk": {
+      "definition": "CREATE INDEX idx_billing_invoice_requests_transaction_fk ON $SCHEMA.billing_invoice_requests USING btree (payment_transaction_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_invoice_requests",
+      "valid": true
+    },
+    "idx_billing_order_items_order_fk": {
+      "definition": "CREATE INDEX idx_billing_order_items_order_fk ON $SCHEMA.billing_order_items USING btree (order_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_order_items",
+      "valid": true
+    },
+    "idx_billing_order_items_plan_fk": {
+      "definition": "CREATE INDEX idx_billing_order_items_plan_fk ON $SCHEMA.billing_order_items USING btree (plan_version_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_order_items",
+      "valid": true
+    },
+    "idx_billing_order_items_price_fk": {
+      "definition": "CREATE INDEX idx_billing_order_items_price_fk ON $SCHEMA.billing_order_items USING btree (price_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_order_items",
+      "valid": true
+    },
+    "idx_billing_order_items_sku_fk": {
+      "definition": "CREATE INDEX idx_billing_order_items_sku_fk ON $SCHEMA.billing_order_items USING btree (sku_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_order_items",
+      "valid": true
+    },
     "idx_billing_order_owner_account": {
       "definition": "CREATE INDEX idx_billing_order_owner_account ON $SCHEMA.billing_orders USING btree (account_user_id, created_at DESC) WHERE (account_user_id IS NOT NULL)",
       "live": true,
@@ -1023,11 +1072,39 @@
       "table": "billing_orders",
       "valid": true
     },
+    "idx_billing_orders_quote_fk": {
+      "definition": "CREATE INDEX idx_billing_orders_quote_fk ON $SCHEMA.billing_orders USING btree (organization_id, quote_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
+    "idx_billing_orders_release_fk": {
+      "definition": "CREATE INDEX idx_billing_orders_release_fk ON $SCHEMA.billing_orders USING btree (release_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_orders",
+      "valid": true
+    },
     "idx_billing_plan_release": {
       "definition": "CREATE INDEX idx_billing_plan_release ON $SCHEMA.billing_plan_versions USING btree (release_id, sales_state, tier, variant)",
       "live": true,
       "ready": true,
       "table": "billing_plan_versions",
+      "valid": true
+    },
+    "idx_billing_plan_versions_legacy_package_fk": {
+      "definition": "CREATE INDEX idx_billing_plan_versions_legacy_package_fk ON $SCHEMA.billing_plan_versions USING btree (legacy_package_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_plan_versions",
+      "valid": true
+    },
+    "idx_billing_prices_sku_fk": {
+      "definition": "CREATE INDEX idx_billing_prices_sku_fk ON $SCHEMA.billing_prices USING btree (sku_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_prices",
       "valid": true
     },
     "idx_billing_quote_expiry": {
@@ -1037,8 +1114,43 @@
       "table": "billing_quotes",
       "valid": true
     },
+    "idx_billing_quotes_account_fk": {
+      "definition": "CREATE INDEX idx_billing_quotes_account_fk ON $SCHEMA.billing_quotes USING btree (account_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "idx_billing_quotes_actor_fk": {
+      "definition": "CREATE INDEX idx_billing_quotes_actor_fk ON $SCHEMA.billing_quotes USING btree (actor_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "idx_billing_quotes_release_fk": {
+      "definition": "CREATE INDEX idx_billing_quotes_release_fk ON $SCHEMA.billing_quotes USING btree (release_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_quotes",
+      "valid": true
+    },
+    "idx_billing_refund_intents_actor_fk": {
+      "definition": "CREATE INDEX idx_billing_refund_intents_actor_fk ON $SCHEMA.billing_refund_intents USING btree (actor_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "billing_refund_intents",
+      "valid": true
+    },
     "idx_billing_sku_release": {
       "definition": "CREATE INDEX idx_billing_sku_release ON $SCHEMA.billing_skus USING btree (release_id, sales_state, display_order)",
+      "live": true,
+      "ready": true,
+      "table": "billing_skus",
+      "valid": true
+    },
+    "idx_billing_skus_plan_fk": {
+      "definition": "CREATE INDEX idx_billing_skus_plan_fk ON $SCHEMA.billing_skus USING btree (plan_version_id)",
       "live": true,
       "ready": true,
       "table": "billing_skus",
@@ -1212,6 +1324,27 @@
       "table": "commercial_drafts",
       "valid": true
     },
+    "idx_commercial_drafts_base_release_fk": {
+      "definition": "CREATE INDEX idx_commercial_drafts_base_release_fk ON $SCHEMA.commercial_drafts USING btree (base_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_drafts",
+      "valid": true
+    },
+    "idx_commercial_drafts_creator_fk": {
+      "definition": "CREATE INDEX idx_commercial_drafts_creator_fk ON $SCHEMA.commercial_drafts USING btree (created_by)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_drafts",
+      "valid": true
+    },
+    "idx_commercial_drafts_updater_fk": {
+      "definition": "CREATE INDEX idx_commercial_drafts_updater_fk ON $SCHEMA.commercial_drafts USING btree (updated_by)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_drafts",
+      "valid": true
+    },
     "idx_commercial_outbox_claim": {
       "definition": "CREATE INDEX idx_commercial_outbox_claim ON $SCHEMA.commercial_outbox USING btree (status, available_at)",
       "live": true,
@@ -1221,6 +1354,34 @@
     },
     "idx_commercial_release_effective": {
       "definition": "CREATE INDEX idx_commercial_release_effective ON $SCHEMA.commercial_releases USING btree (scope_key, effective_from DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_releases",
+      "valid": true
+    },
+    "idx_commercial_release_timeline_actor_fk": {
+      "definition": "CREATE INDEX idx_commercial_release_timeline_actor_fk ON $SCHEMA.commercial_release_timeline USING btree (actor_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_release_timeline",
+      "valid": true
+    },
+    "idx_commercial_release_timeline_release_fk": {
+      "definition": "CREATE INDEX idx_commercial_release_timeline_release_fk ON $SCHEMA.commercial_release_timeline USING btree (release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_release_timeline",
+      "valid": true
+    },
+    "idx_commercial_releases_base_release_fk": {
+      "definition": "CREATE INDEX idx_commercial_releases_base_release_fk ON $SCHEMA.commercial_releases USING btree (base_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_releases",
+      "valid": true
+    },
+    "idx_commercial_releases_publisher_fk": {
+      "definition": "CREATE INDEX idx_commercial_releases_publisher_fk ON $SCHEMA.commercial_releases USING btree (published_by)",
       "live": true,
       "ready": true,
       "table": "commercial_releases",
@@ -2423,6 +2584,20 @@
       "table": "organization_subscriptions",
       "valid": true
     },
+    "idx_organization_subscriptions_plan_fk": {
+      "definition": "CREATE INDEX idx_organization_subscriptions_plan_fk ON $SCHEMA.organization_subscriptions USING btree (plan_version_id)",
+      "live": true,
+      "ready": true,
+      "table": "organization_subscriptions",
+      "valid": true
+    },
+    "idx_organization_subscriptions_source_order_fk": {
+      "definition": "CREATE INDEX idx_organization_subscriptions_source_order_fk ON $SCHEMA.organization_subscriptions USING btree (organization_id, source_order_id)",
+      "live": true,
+      "ready": true,
+      "table": "organization_subscriptions",
+      "valid": true
+    },
     "idx_organization_subscriptions_status_expiry": {
       "definition": "CREATE INDEX idx_organization_subscriptions_status_expiry ON $SCHEMA.organization_subscriptions USING btree (status, expires_at)",
       "live": true,
@@ -2547,6 +2722,13 @@
       "live": true,
       "ready": true,
       "table": "password_reset_tokens",
+      "valid": true
+    },
+    "idx_payment_transactions_order_fk": {
+      "definition": "CREATE INDEX idx_payment_transactions_order_fk ON $SCHEMA.payment_transactions USING btree (order_id)",
+      "live": true,
+      "ready": true,
+      "table": "payment_transactions",
       "valid": true
     },
     "idx_pending_email_changes_expiry": {
@@ -2836,6 +3018,20 @@
       "table": "tieu_chi_danh_gia",
       "valid": true
     },
+    "idx_usage_credit_grants_order_item_fk": {
+      "definition": "CREATE INDEX idx_usage_credit_grants_order_item_fk ON $SCHEMA.usage_credit_grants USING btree (order_item_id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
+    "idx_usage_credit_grants_release_fk": {
+      "definition": "CREATE INDEX idx_usage_credit_grants_release_fk ON $SCHEMA.usage_credit_grants USING btree (release_id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_credit_grants",
+      "valid": true
+    },
     "idx_usage_grant_account_expiry": {
       "definition": "CREATE INDEX idx_usage_grant_account_expiry ON $SCHEMA.usage_credit_grants USING btree (account_user_id, feature, expires_at) WHERE (account_user_id IS NOT NULL)",
       "live": true,
@@ -2850,8 +3046,36 @@
       "table": "usage_credit_grants",
       "valid": true
     },
+    "idx_usage_ledger_grant_fk": {
+      "definition": "CREATE INDEX idx_usage_ledger_grant_fk ON $SCHEMA.usage_ledger USING btree (grant_id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_ledger",
+      "valid": true
+    },
+    "idx_usage_ledger_reservation_fk": {
+      "definition": "CREATE INDEX idx_usage_ledger_reservation_fk ON $SCHEMA.usage_ledger USING btree (reservation_id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_ledger",
+      "valid": true
+    },
     "idx_usage_reservation_lease": {
       "definition": "CREATE INDEX idx_usage_reservation_lease ON $SCHEMA.usage_reservations USING btree (state, lease_expires_at)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
+    "idx_usage_reservations_account_fk": {
+      "definition": "CREATE INDEX idx_usage_reservations_account_fk ON $SCHEMA.usage_reservations USING btree (account_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "usage_reservations",
+      "valid": true
+    },
+    "idx_usage_reservations_grant_fk": {
+      "definition": "CREATE INDEX idx_usage_reservations_grant_fk ON $SCHEMA.usage_reservations USING btree (organization_id, grant_id)",
       "live": true,
       "ready": true,
       "table": "usage_reservations",
@@ -3930,7 +4154,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 80,
+  "schemaVersion": 81,
   "tables": {
     "account_subscriptions": {
       "columns": {

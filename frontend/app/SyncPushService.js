@@ -261,6 +261,37 @@ export async function applyFailedPush(controller, {
         recoveryDraftId: recoveryDraft.id,
       };
     }
+    if (recoveryDraft?.sessionOnly === true) {
+      controller._syncConflict = {
+        serverSyncVersion: data.currentSyncVersion ?? null,
+        message: data.message || data.error || "Server data changed before local sync.",
+        reloadRequired: true,
+      };
+      controller.updateSyncState({
+        phase: "conflict",
+        online: true,
+        message: "Dữ liệu đã thay đổi trên máy chủ · Nhấn F5 để tải trạng thái mới nhất",
+      });
+      if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
+        (workspace.storage || currentWorkspaceStorage(controller)).setItem(
+          "bf_conflict_server_sync_version",
+          String(data.currentSyncVersion),
+        );
+      }
+      controller.view?.showToast?.(
+        "Dữ liệu đã thay đổi trên máy chủ",
+        "Nhấn F5 để tải trạng thái mới nhất trước khi chỉnh sửa lại.",
+        "warning",
+      );
+      return {
+        ok: false,
+        status,
+        data,
+        conflictQuarantined: true,
+        reloadRequired: true,
+        sessionOnlyConflict: true,
+      };
+    }
   }
   if (status === 409 || data.status === "conflict") {
     void reportSyncConflict({
