@@ -183,5 +183,11 @@ export async function bootstrapWorkspace(initialSession) {
   const controller = new BiddingController(model, view);
   controller._initialSessionData = initialSession;
   await controller.init();
+  try {
+    const { startUsageAnalyticsTracker } = await import("./UsageAnalyticsTracker.js");
+    startUsageAnalyticsTracker(controller);
+  } catch (error) {
+    console.warn("Usage analytics could not be initialized:", error);
+  }
   scheduleWorkspaceEnhancements(controller);
 }

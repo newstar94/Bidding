@@ -5,6 +5,7 @@ import {
   loadPaginatedRecords,
   paginatedSearchHasChanged,
 } from "../../frontend/shared/tableDataUtils.js";
+import { bindPaginatedTableSearch } from "../../frontend/app/BiddingControllerForms.js";
 import { paginatedProjectionStore } from "../../frontend/shared/PaginatedProjectionStore.js";
 
 function deferred() {
@@ -64,6 +65,41 @@ test("a delayed search debounce does not reset a page rendered by sync", () => {
     paginatedSearchHasChanged({ useServerSidePagination: false }, "chuyengia", "x"),
     true,
   );
+});
+
+test("a search input resets pagination before a background render can adopt the new query", () => {
+  const previousDocument = globalThis.document;
+  const input = new EventTarget();
+  input.value = "tìm kiếm mới";
+  const model = {
+    useServerSidePagination: true,
+    currentPage: { chuyengia: 2 },
+    _lastPaginatedQueries: new Map([
+      ["chuyengia", { page: 2, search: "phân trang thử nghiệm" }],
+    ]),
+  };
+  let renders = 0;
+  globalThis.document = {
+    getElementById: (id) => id === "search-chuyengia" ? input : null,
+  };
+
+  try {
+    const debouncedRender = bindPaginatedTableSearch(model, {
+      inputId: "search-chuyengia",
+      table: "chuyengia",
+      render: () => { renders += 1; },
+    });
+    input.dispatchEvent(new Event("input"));
+    assert.equal(model.currentPage.chuyengia, 1, "the input event must reset the page synchronously");
+
+    model._lastPaginatedQueries.set("chuyengia", { page: 1, search: input.value });
+    model.currentPage.chuyengia = 2;
+    debouncedRender.flush();
+    assert.equal(model.currentPage.chuyengia, 2, "the delayed render must not undo later pagination");
+    assert.equal(renders, 1);
+  } finally {
+    globalThis.document = previousDocument;
+  }
 });
 
 test("a newer paginated search aborts the older request owned by the same list", async () => {

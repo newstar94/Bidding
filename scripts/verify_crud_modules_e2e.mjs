@@ -63,7 +63,17 @@ async function gotoRoute(page, route) {
 }
 
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
+  const routeTable = route === "/chu-dau-tu" ? "chudautu" : "";
+  const routeDataReady = routeTable
+    ? page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.ok()
+        && url.pathname === "/api/paginate"
+        && url.searchParams.get("table") === routeTable;
+    }, { timeout: 20_000 })
+    : null;
   await gotoRoute(page, route);
+  if (routeDataReady) await routeDataReady;
   await page.locator(buttonSelector).click();
   await page.locator(`${modalSelector}.active`).waitFor({ state: "visible", timeout: 10_000 });
 }

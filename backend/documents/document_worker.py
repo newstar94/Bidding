@@ -50,6 +50,9 @@ from backend.documents.document_job_policy import (
 from backend.documents.document_source_authority import (
     verify_document_job_source_authority,
 )
+from backend.usage_analytics.service import (
+    record_word_export_success_best_effort,
+)
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
@@ -1207,7 +1210,7 @@ def _finish_durable_document_job(
             if status == "completed"
             else max(0, int(claimed.get("progress_completed_items") or 0))
         )
-        connection.execute(
+        updated = connection.execute(
             """UPDATE document_jobs
                SET status = ?, available_at = ?, locked_at = NULL,
                    locked_by = NULL, last_error_code = ?,
@@ -1229,6 +1232,18 @@ def _finish_durable_document_job(
                 claimed["lock_token"],
             ),
         )
+        if (
+            status == "completed"
+            and int(updated.rowcount or 0) == 1
+            and owner_scoped
+            and claimed.get("operation") in {"render_docx", "render_docx_batch"}
+        ):
+            record_word_export_success_best_effort(
+                connection.cursor(),
+                user_id=claimed["user_id"],
+                organization_id=claimed["organization_id"],
+                now=now,
+            )
         connection.commit()
     except Exception:
         connection.rollback()

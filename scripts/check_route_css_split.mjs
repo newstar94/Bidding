@@ -26,6 +26,11 @@ const ROUTES = Object.freeze([
     "frontend/app/IntegrationWorkflowBridges.js",
   ],
   [
+    "frontend/admin/UsageAnalyticsView.js",
+    ".usage-analytics__metrics",
+    "frontend/app/BiddingControllerUI.js",
+  ],
+  [
     "frontend/documents/WordTemplateAssignments.js",
     ".word-template-assignment-card",
     "frontend/documents/WordIntegration.js",

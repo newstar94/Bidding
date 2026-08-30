@@ -30,7 +30,7 @@ import {
   resolveTrialVisibleTab,
 } from "../commercial-policy/trialMode.js";
 function requiredRoleForTab(tabName) {
-  if (["superadmin-dashboard", "superadmin", "commercial-admin"].includes(tabName)) return "super_admin";
+  if (["superadmin-dashboard", "superadmin", "usage-analytics", "commercial-admin"].includes(tabName)) return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
   return null;
 }
@@ -659,6 +659,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
     "xuatban-word": "Xuất bản Word",
     "superadmin-dashboard": "Bảng điều khiển Super Admin BiddingFlow",
     superadmin: "Quản lý Đơn vị & Tài khoản Thành viên",
+    "usage-analytics": "Phân tích mức độ sử dụng",
     "commercial-admin": "Thương mại & Thanh toán",
     managernhanvien: "Quản lý Chuyên viên & Phân quyền Matrix",
     managerhosogiay: "Cấu hình trạng thái hợp đồng",
@@ -693,6 +694,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
         localSnapshot: Boolean(tablePerf?.localSnapshot),
         total: Math.round(perfNow() - (tabPerf?.startedAt || renderStartedAt)),
       });
+      this.usageAnalyticsTracker?.trackFeature?.(tabName);
     }
     finishPerfTransition();
     return result;
@@ -819,6 +821,9 @@ export function renderTabData(tabName, action = null) {
       this.view.renderSuperAdminPanel();
       this.loadSystemUsers();
       break;
+    case "usage-analytics":
+      return import("../admin/UsageAnalyticsView.js")
+        .then(({ mountUsageAnalytics }) => mountUsageAnalytics(this));
     case "commercial-admin":
       return import("../commercial-policy/CommercialControlCenter.js")
         .then(({ mountCommercialControlCenter }) => mountCommercialControlCenter(this));

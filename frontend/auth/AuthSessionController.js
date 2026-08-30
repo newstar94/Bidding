@@ -89,6 +89,7 @@ export function checkInactivity() {
       if (!claimSessionTermination()) return true;
       invalidateServerCapabilities();
       if (this._sessionInterval) clearInterval(this._sessionInterval);
+      this.usageAnalyticsTracker?.stop?.();
       this.disconnectWebSocket?.(false);
       void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
         console.error("Failed to clear inactive workspace data:", error);
@@ -138,6 +139,7 @@ export function startBackgroundSessionChecker() {
         if (!claimSessionTermination()) return;
         this._sessionExpiryHandled = true;
         clearInterval(this._sessionInterval);
+        this.usageAnalyticsTracker?.stop?.();
         this.disconnectWebSocket?.(false);
         void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
           console.error("Failed to clear expired workspace data:", error);

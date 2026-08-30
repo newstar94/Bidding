@@ -17,7 +17,7 @@ _ROUTE_PATTERN = re.compile(
     r'^\s*(?:"([^"]+)"|([A-Za-z0-9_-]+)):\s*\[\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\]',
     re.MULTILINE,
 )
-_ADMIN_TABS = frozenset({"superadmin-dashboard", "superadmin"})
+_ADMIN_TABS = frozenset({"superadmin-dashboard", "superadmin", "usage-analytics"})
 _MANAGER_TABS = frozenset({"managernhanvien", "managerhosogiay"})
 _TAB_PERMISSIONS = {
     "kehoach": "kehoach",

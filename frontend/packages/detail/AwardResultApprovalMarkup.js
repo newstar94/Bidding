@@ -416,7 +416,7 @@ export function buildAwardResultApprovalMarkup(view, {
 
                     <div class="bf-s-004d08f0e5 official-result-form-actions">
                         ${scopedDraft?.isEditingOfficialResult ? `<button type="button" class="btn btn-outline-secondary bf-s-a9f6996ecf scoped-result-cancel-button" id="btn-cancel-official-result-edit">Hủy chỉnh sửa</button>` : ""}
-                        <button class="btn btn-primary bf-s-a9f6996ecf" id="btn-approve-award">
+                        <button type="button" class="btn btn-primary bf-s-a9f6996ecf" id="btn-approve-award">
                             <i data-lucide="${scopedDraft?.isEditingOfficialResult ? "save" : "check-circle2"}"></i> ${scopedDraft?.isEditingOfficialResult ? "Lưu thay đổi" : scopedDraft ? "Phê duyệt kết quả đợt" : "Phê duyệt & Hoàn thành LCNT"}
                         </button>
                     </div>

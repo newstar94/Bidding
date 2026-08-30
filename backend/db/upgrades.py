@@ -3342,6 +3342,62 @@ def _upgrade_to_v81_index_commercial_foreign_keys(cursor, context):
     ensure_commercial_v81_fk_indexes(cursor)
     context.assert_foreign_key_integrity(cursor)
 
+
+def _upgrade_to_v82_add_product_usage_analytics(cursor, context):
+    """Add bounded hourly product-usage rollups for commercial analytics."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v82 requires the canonical table builder.")
+    create_sql = context.build_create_table_sql(
+        "product_usage_hourly",
+        SCHEMA_DINH_NGHIA["product_usage_hourly"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace(
+            "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+        )
+    cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("product_usage_hourly",),
+            if_not_exists=True,
+        )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_product_usage_presence_recent "
+        "ON product_usage_hourly (last_seen_at, user_id) "
+        "WHERE metric_key = 'presence.heartbeat'",
+        "CREATE INDEX IF NOT EXISTS idx_product_usage_feature_window "
+        "ON product_usage_hourly (feature_key, window_started_at, user_id) "
+        "WHERE metric_key = 'feature.used'",
+        "DROP INDEX IF EXISTS idx_product_usage_user_window",
+        "CREATE INDEX IF NOT EXISTS idx_product_usage_metric_window "
+        "ON product_usage_hourly (metric_key, window_started_at, user_id) "
+        "INCLUDE (event_count)",
+        "CREATE INDEX IF NOT EXISTS idx_product_usage_user_fk "
+        "ON product_usage_hourly (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_product_usage_hourly_owner_type_owner "
+        "ON product_usage_hourly (owner_type, organization_id)",
+        "CREATE INDEX IF NOT EXISTS idx_activity_product_usage "
+        "ON nhat_ky_thuc_hien (occurred_at, actor_user_id) "
+        "WHERE actor_user_id IS NOT NULL",
+    ):
+        cursor.execute(statement)
+    if callable(context.create_trigger_functions):
+        context.create_trigger_functions(cursor)
+        cursor.execute(
+            "DROP TRIGGER IF EXISTS trg_product_usage_hourly_workspace_owner "
+            "ON product_usage_hourly"
+        )
+        cursor.execute(
+            "CREATE TRIGGER trg_product_usage_hourly_workspace_owner "
+            "BEFORE INSERT OR UPDATE ON product_usage_hourly "
+            "FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3739,6 +3795,11 @@ UPGRADES = (
         "index_commercial_foreign_keys",
         _upgrade_to_v81_index_commercial_foreign_keys,
     ),
+    DatabaseUpgrade(
+        82,
+        "add_product_usage_analytics",
+        _upgrade_to_v82_add_product_usage_analytics,
+    ),
 )
 
 
@@ -3748,7 +3809,7 @@ DB_SCHEMA_VERSION = (
 
 # V79 adds versioned commercial, billing and usage-credit persistence. V80 adds
 # the immutable process-local credential reference used by this runtime. V81
-# adds child-side indexes without changing the runtime data contract.
+# adds child-side indexes. V82 adds bounded product-usage rollups.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

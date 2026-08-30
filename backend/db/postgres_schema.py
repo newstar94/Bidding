@@ -95,6 +95,7 @@ _BIGINT_COLUMNS = frozenset(
         "used_at",
         "window_started_at",
         "last_seen_at",
+        "first_seen_at",
         "idle_expires_at",
         "absolute_expires_at",
         "revoked_at",
@@ -349,7 +350,7 @@ def _create_search_indexes(cursor) -> None:
         )
 
 
-def _create_indexes(cursor) -> None:
+def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
     versioned_tables = (
         "chu_dau_tu",
         "ke_hoach_lcnt",
@@ -660,6 +661,17 @@ def _create_indexes(cursor) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record ON deleted_records (organization_id, table_name, record_id)",
         *REQUIRED_POST_V64_FK_INDEXES,
     )
+    if include_product_usage:
+        # Drop the superseded pre-release v82 index name so local schemas are
+        # reconciled to the same catalog as clean installations.
+        cursor.execute("DROP INDEX IF EXISTS idx_product_usage_user_window")
+        statements += (
+            "CREATE INDEX IF NOT EXISTS idx_product_usage_presence_recent ON product_usage_hourly (last_seen_at, user_id) WHERE metric_key = 'presence.heartbeat'",
+            "CREATE INDEX IF NOT EXISTS idx_product_usage_feature_window ON product_usage_hourly (feature_key, window_started_at, user_id) WHERE metric_key = 'feature.used'",
+            "CREATE INDEX IF NOT EXISTS idx_product_usage_metric_window ON product_usage_hourly (metric_key, window_started_at, user_id) INCLUDE (event_count)",
+            "CREATE INDEX IF NOT EXISTS idx_product_usage_user_fk ON product_usage_hourly (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_activity_product_usage ON nhat_ky_thuc_hien (occurred_at, actor_user_id) WHERE actor_user_id IS NOT NULL",
+        )
     for statement in statements:
         if any(table_name in statement for table_name in RETIRED_PROCUREMENT_CENTER_TABLES):
             continue
@@ -1111,9 +1123,10 @@ class _HistoricalSchemaCursor:
 
 def create_indexes_and_triggers(cursor) -> None:
     target = cursor
-    if _application_tables(cursor) != set(SCHEMA_DINH_NGHIA):
+    current_schema = _application_tables(cursor) == set(SCHEMA_DINH_NGHIA)
+    if not current_schema:
         target = _HistoricalSchemaCursor(cursor)
-    _create_indexes(target)
+    _create_indexes(target, include_product_usage=current_schema)
     _create_triggers(target)
 
 
@@ -1358,6 +1371,7 @@ def _historical_v46_catalog(latest_catalog):
         "usage_ledger",
         "billing_invoice_requests",
         "commercial_outbox",
+        "product_usage_hourly",
         "procurement_source_revision",
         "procurement_source_binding",
         "procurement_import_operation",
@@ -1410,6 +1424,7 @@ def _historical_v46_catalog(latest_catalog):
         for name, spec in catalog["indexes"].items()
         if spec.get("table") not in post_v46_tables
         and name not in COMMERCIAL_V81_FK_INDEX_NAMES
+        and name != "idx_activity_product_usage"
     }
     catalog["triggers"] = {
         name: spec

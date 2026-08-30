@@ -441,6 +441,81 @@ def test_v81_upgrade_covers_commercial_foreign_keys():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_v82_upgrade_adds_usage_rollup_fk_indexes_and_owner_trigger():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=81,
+        ) == 81
+        assert cursor.execute(
+            "SELECT to_regclass('product_usage_hourly')"
+        ).fetchone()[0] is None
+        assert cursor.execute(
+            "SELECT to_regclass('idx_activity_product_usage')"
+        ).fetchone()[0] is None
+
+        assert apply_database_upgrades(cursor, 81, context) == DB_SCHEMA_VERSION
+
+        assert cursor.execute(
+            "SELECT to_regclass('product_usage_hourly')"
+        ).fetchone()[0] == "product_usage_hourly"
+        assert cursor.execute(
+            """SELECT data_type
+                 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'product_usage_hourly'
+                  AND column_name = 'first_seen_at'"""
+        ).fetchone()[0] == "bigint"
+        assert {
+            row[0]
+            for row in cursor.execute(
+                """SELECT indexname
+                     FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'product_usage_hourly'"""
+            ).fetchall()
+        } >= {
+            "idx_product_usage_presence_recent",
+            "idx_product_usage_feature_window",
+            "idx_product_usage_metric_window",
+            "idx_product_usage_user_fk",
+            "idx_product_usage_hourly_owner_type_owner",
+            "product_usage_hourly_pkey",
+        }
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_constraint
+                WHERE connamespace = current_schema()::regnamespace
+                  AND conrelid = 'product_usage_hourly'::regclass
+                  AND contype = 'f'
+                  AND convalidated"""
+        ).fetchone()[0] == 1
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_trigger
+                WHERE tgrelid = 'product_usage_hourly'::regclass
+                  AND tgname = 'trg_product_usage_hourly_workspace_owner'
+                  AND NOT tgisinternal"""
+        ).fetchone()[0] == 1
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_indexes
+                WHERE schemaname = current_schema()
+                  AND tablename = 'nhat_ky_thuc_hien'
+                  AND indexname = 'idx_activity_product_usage'
+                  AND indexdef LIKE '%(occurred_at, actor_user_id)%'
+                  AND indexdef LIKE '%WHERE (actor_user_id IS NOT NULL)%'"""
+        ).fetchone()[0] == 1
+        assert find_missing_foreign_key_indexes(connection)["missing"] == []
+        assert_schema_contract(cursor)
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
     connection, cursor, schema_name = _open_fixture_connection()
     try:

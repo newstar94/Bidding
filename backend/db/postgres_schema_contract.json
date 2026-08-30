@@ -778,6 +778,13 @@
       "table": "nhat_ky_thuc_hien",
       "valid": true
     },
+    "idx_activity_product_usage": {
+      "definition": "CREATE INDEX idx_activity_product_usage ON $SCHEMA.nhat_ky_thuc_hien USING btree (occurred_at, actor_user_id) WHERE (actor_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "nhat_ky_thuc_hien",
+      "valid": true
+    },
     "idx_activity_target_timeline": {
       "definition": "CREATE INDEX idx_activity_target_timeline ON $SCHEMA.nhat_ky_thuc_hien USING btree (organization_id, target_type, target_root_id, occurred_at DESC, id DESC)",
       "live": true,
@@ -2885,6 +2892,41 @@
       "table": "procurement_import_session",
       "valid": true
     },
+    "idx_product_usage_feature_window": {
+      "definition": "CREATE INDEX idx_product_usage_feature_window ON $SCHEMA.product_usage_hourly USING btree (feature_key, window_started_at, user_id) WHERE (metric_key = 'feature.used'::text)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
+    "idx_product_usage_hourly_owner_type_owner": {
+      "definition": "CREATE INDEX idx_product_usage_hourly_owner_type_owner ON $SCHEMA.product_usage_hourly USING btree (owner_type, organization_id)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
+    "idx_product_usage_metric_window": {
+      "definition": "CREATE INDEX idx_product_usage_metric_window ON $SCHEMA.product_usage_hourly USING btree (metric_key, window_started_at, user_id) INCLUDE (event_count)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
+    "idx_product_usage_presence_recent": {
+      "definition": "CREATE INDEX idx_product_usage_presence_recent ON $SCHEMA.product_usage_hourly USING btree (last_seen_at, user_id) WHERE (metric_key = 'presence.heartbeat'::text)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
+    "idx_product_usage_user_fk": {
+      "definition": "CREATE INDEX idx_product_usage_user_fk ON $SCHEMA.product_usage_hourly USING btree (user_id)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
     "idx_provider_command_claim": {
       "definition": "CREATE INDEX idx_provider_command_claim ON $SCHEMA.billing_provider_commands USING btree (status, available_at)",
       "live": true,
@@ -3809,6 +3851,13 @@
       "table": "procurement_source_revision",
       "valid": true
     },
+    "product_usage_hourly_pkey": {
+      "definition": "CREATE UNIQUE INDEX product_usage_hourly_pkey ON $SCHEMA.product_usage_hourly USING btree (window_started_at, user_id, organization_id, metric_key, feature_key)",
+      "live": true,
+      "ready": true,
+      "table": "product_usage_hourly",
+      "valid": true
+    },
     "rate_limit_buckets_pkey": {
       "definition": "CREATE UNIQUE INDEX rate_limit_buckets_pkey ON $SCHEMA.rate_limit_buckets USING btree (bucket_key)",
       "live": true,
@@ -4154,7 +4203,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 81,
+  "schemaVersion": 82,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -22322,6 +22371,168 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "product_usage_hourly": {
+      "columns": {
+        "event_count": {
+          "default": "1",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "feature_key": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "first_seen_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "last_seen_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "metric_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "owner_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "window_started_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        }
+      },
+      "constraints": {
+        "fk_product_usage_hourly_1_d0816114": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "product_usage_hourly_check": {
+          "deferrable": false,
+          "definition": "CHECK (last_seen_at >= first_seen_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_check1": {
+          "deferrable": false,
+          "definition": "CHECK (metric_key = 'feature.used'::text AND feature_key <> ''::text OR metric_key <> 'feature.used'::text AND feature_key = ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_check2": {
+          "deferrable": false,
+          "definition": "CHECK (owner_type = 'personal'::text AND organization_id ~~ 'personal:%'::text OR owner_type = 'organization'::text AND organization_id !~~ 'personal:%'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_event_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_count >= 1 AND event_count <= 2147483647)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_feature_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(feature_key) <= 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_first_seen_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (first_seen_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_metric_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (metric_key = ANY (ARRAY['presence.heartbeat'::text, 'feature.used'::text, 'word_export.completed'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_owner_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_type = ANY (ARRAY['organization'::text, 'personal'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (window_started_at, user_id, organization_id, metric_key, feature_key)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "product_usage_hourly_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (user_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "product_usage_hourly_window_started_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (window_started_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "rate_limit_buckets": {
       "columns": {
         "attempt_count": {
@@ -27081,6 +27292,11 @@
       "definition": "CREATE TRIGGER trg_procurement_source_revision_immutable BEFORE DELETE OR UPDATE ON procurement_source_revision FOR EACH ROW EXECUTE FUNCTION bf_forbid_audit_mutation()",
       "enabled": "O",
       "table": "procurement_source_revision"
+    },
+    "product_usage_hourly.trg_product_usage_hourly_workspace_owner": {
+      "definition": "CREATE TRIGGER trg_product_usage_hourly_workspace_owner BEFORE INSERT OR UPDATE ON product_usage_hourly FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "enabled": "O",
+      "table": "product_usage_hourly"
     },
     "record_edit_ownership.trg_record_edit_ownership_workspace": {
       "definition": "CREATE TRIGGER trg_record_edit_ownership_workspace BEFORE INSERT OR UPDATE ON record_edit_ownership FOR EACH ROW EXECUTE FUNCTION bf_validate_record_edit_owner()",

@@ -4,7 +4,11 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
-import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
+import {
+  isExpectedSyncReset,
+  isExpectedTelemetryAuthFailure,
+  isExpectedTelemetryBackpressure,
+} from "./lib/e2eHttpErrors.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -137,18 +141,6 @@ async function waitForApp(page) {
     return loader?.getAttribute("aria-busy") === "false"
       && getComputedStyle(loader).visibility === "hidden";
   }, null, { timeout: 20_000 });
-  await waitForWorkflowSettled(page);
-}
-
-async function waitForWorkflowSettled(page) {
-  // The startup shell can finish before its last delta-sync projection
-  // replaces the active workflow panel. Interact only after that response
-  // stream has been quiet, so an in-flight sync cannot discard unsaved DOM
-  // values immediately after an otherwise valid user action.
-  await page.waitForLoadState("networkidle", { timeout: 20_000 });
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  }));
 }
 
 const workflowTabReadySelectors = {
@@ -428,19 +420,31 @@ async function waitForInitialJointVentureEvaluation(page) {
 
 function twoEnvelopeTechnicalEvaluationBarrier({ reportUnready = false } = {}) {
   const rows = [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")];
+  const saveButton = document.getElementById("btn-danhgiahsdt-save");
   const rowState = rows.map((row) => ({
     isJointVenture: row.textContent?.includes("Liên danh") === true,
     validity: row.querySelector(".mt-dg-hop-le")?.value || "",
     capacity: row.querySelector(".mt-dg-nang-luc")?.value || "",
     technical: row.querySelector(".mt-dg-ky-thuat")?.value || "",
+    conclusion: row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
   }));
   const ready = rowState.length === 2
     && rowState.every((row) => (
       row.validity === "Đạt"
       && row.capacity === "Đạt"
       && row.technical === (row.isJointVenture ? "Đạt" : "Không đạt")
-    ));
-  return reportUnready ? { ready, rowState } : ready;
+      && (row.isJointVenture
+        ? row.conclusion === "Đạt"
+        : row.conclusion.startsWith("Không đạt"))
+    ))
+    && saveButton?.isConnected === true
+    && typeof saveButton.onclick === "function";
+  return reportUnready ? {
+    ready,
+    rowState,
+    saveConnected: saveButton?.isConnected === true,
+    saveBound: typeof saveButton?.onclick === "function",
+  } : ready;
 }
 
 async function waitForTwoEnvelopeTechnicalEvaluation(page) {
@@ -524,7 +528,6 @@ async function waitForOpeningAdvance(page, httpErrors, pageErrors, label) {
       throw new Error(`${label} blocked: ${dialogText}; HTTP=${JSON.stringify(httpErrors)}; pageErrors=${JSON.stringify(pageErrors)}`);
     }
     await activateWorkflowTab(page, "eval_tech", { activate: false });
-    await waitForWorkflowSettled(page);
   } catch (error) {
     const diagnostics = await page.evaluate(() => ({
       dialogClass: document.getElementById("modal-custom-dialog")?.className || "",
@@ -561,7 +564,8 @@ try {
     responseTrace.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
     if (responseTrace.length > 80) responseTrace.shift();
     if (response.status() >= 400 && response.url().includes("/api/")
-      && !isExpectedTelemetryBackpressure(response)) {
+      && !isExpectedTelemetryBackpressure(response)
+      && !isExpectedTelemetryAuthFailure(response)) {
       let body = "";
       try { body = await response.text(); } catch {}
       if (isExpectedSyncReset(response, body)) return;
@@ -1177,12 +1181,8 @@ try {
       independentPriceValue: independentPrice,
       rejectJointValue: rejectJoint,
     });
-    // Ranking/conclusion updates are intentionally batched to animation frames.
-    // Wait for that public UI state to settle before submitting the report so
-    // the click cannot race the pending low-price/conclusion projection.
-    await page.evaluate(() => new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    }));
+    // Wait for the concrete public UI projection before submitting the report
+    // so the click cannot race a pending low-price/conclusion update.
     let evaluationReadiness = null;
     const readinessInput = {
       expectedCount: expectedRows,

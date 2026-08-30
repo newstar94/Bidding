@@ -50,3 +50,31 @@ def test_commercial_workspace_deep_links_are_registered_for_browser_refresh():
     assert "/thanh-toan/huy" in registered_get_paths
     assert validate_username("thuong_mai_thanh_toan")[0] is False
     assert validate_username("goi_va_thanh_toan")[0] is False
+
+
+def test_usage_analytics_routes_and_reserved_spa_slug_are_registered():
+    from backend.app import routes
+    from backend.auth.username_validator import validate_username
+    from backend.usage_analytics.routes import (
+        usage_analytics_event_api,
+        usage_analytics_summary_api,
+    )
+
+    registered = {
+        (route.path, frozenset(getattr(route, "methods", set())), route.endpoint)
+        for route in routes
+        if hasattr(route, "endpoint")
+    }
+
+    assert (
+        "/api/usage-analytics/events",
+        frozenset({"POST"}),
+        usage_analytics_event_api,
+    ) in registered
+    assert (
+        "/api/admin/usage-analytics/summary",
+        frozenset({"GET", "HEAD"}),
+        usage_analytics_summary_api,
+    ) in registered
+    assert any(path == "/phan-tich-su-dung" for path, _methods, _endpoint in registered)
+    assert validate_username("phan_tich_su_dung")[0] is False

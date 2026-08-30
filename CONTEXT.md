@@ -201,8 +201,16 @@ Kết quả bất biến gắn một phiên bản kế hoạch hoặc gói thầ
 _Avoid_: Luật áp dụng suy ra theo ngày hiện tại, fallback latest
 
 **Căn cứ lập kế hoạch**:
-Văn bản hoặc tài liệu được viện dẫn khi lập một phiên bản Kế hoạch LCNT, được ghi nhận bằng câu nguyên văn và thường gồm tên, số hoặc ký hiệu, ngày và đơn vị ban hành.
+Văn bản hoặc tài liệu được viện dẫn khi lập một phiên bản Kế hoạch LCNT, được ghi nhận bằng câu nguyên văn và có thể phân tích thành loại hoặc tên văn bản, số hoặc ký hiệu, ngày ban hành, đơn vị ban hành và trích yếu.
 _Avoid_: Ràng buộc pháp lý, kết luận tuân thủ, văn bản tự suy ra từ hồ sơ nguồn
+
+**Trích yếu căn cứ**:
+Nội dung khái quát đối tượng hoặc việc được văn bản căn cứ điều chỉnh, thường đứng sau cụm “về việc”; trích yếu độc lập với loại hoặc tên văn bản.
+_Avoid_: Tên văn bản, đơn vị ban hành, toàn bộ câu căn cứ nguyên văn
+
+**Tên căn cứ**:
+Tên trình bày được dẫn xuất từ loại hoặc tên gọi văn bản và trích yếu khi có, nối bằng cụm “về việc”; tên căn cứ không thay thế hai thành phần nguồn hoặc câu căn cứ nguyên văn.
+_Avoid_: Tên văn bản, trích yếu, câu căn cứ nguyên văn
 
 **Finding tuân thủ xác định**:
 Kết quả do bộ quy tắc đã được duyệt tạo ra từ snapshot và bằng chứng cụ thể; AI chỉ được giải thích finding chứ không tạo hoặc đổi trạng thái finding.

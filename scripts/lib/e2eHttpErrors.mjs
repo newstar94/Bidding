@@ -16,6 +16,15 @@ export function isExpectedTelemetryBackpressure(response) {
   });
 }
 
+export function isExpectedTelemetryAuthFailure(response) {
+  return [401, 403].includes(response?.status?.())
+    && matchesResponse(response, {
+      status: response.status(),
+      method: "POST",
+      pathname: "/api/usage-analytics/events",
+    });
+}
+
 export function isExpectedSyncReset(response, body) {
   if (!matchesResponse(response, {
     status: 409,

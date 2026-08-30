@@ -157,6 +157,7 @@
     "bieu-mau": ["bieumau", "Quản lý Biểu mẫu & Từ điển", "biểu mẫu và từ điển"],
     "xuat-ban-word": ["xuatban-word", "Xuất bản Word", "xuất bản Word"],
     "tong-quan-admin": ["superadmin-dashboard", "Bảng điều khiển Super Admin BiddingFlow", "tổng quan quản trị"],
+    "phan-tich-su-dung": ["usage-analytics", "Phân tích mức độ sử dụng", "phân tích mức độ sử dụng"],
     "quan-ly-tai-khoan": ["superadmin", "Quản lý Đơn vị & Tài khoản Thành viên", "tài khoản thành viên"],
     "nhan-su": ["managernhanvien", "Quản lý Chuyên viên & Phân quyền Matrix", "nhân sự và phân quyền"],
     "trang-thai-hop-dong": ["managerhosogiay", "Cấu hình trạng thái hợp đồng", "trạng thái hợp đồng"],

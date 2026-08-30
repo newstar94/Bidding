@@ -617,6 +617,7 @@ from backend.startup import validate_startup_configuration, verify_database_resp
 from backend.lifecycle_policy_routes import lifecycle_policy_routes
 from backend.commercial_policy.routes import commercial_policy_routes
 from backend.billing.routes import billing_routes
+from backend.usage_analytics.routes import usage_analytics_routes
 
 from backend.auth.otp_routes import (
     register_api,
@@ -994,6 +995,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 routes = [
     *ai_routes,
+    *usage_analytics_routes(Route),
     Route("/health/live", health_live_api, methods=["GET"]),
     Route("/health/ready", health_ready_api, methods=["GET"]),
     Route("/metrics", metrics_api, methods=["GET"]),
@@ -1131,6 +1133,7 @@ routes = [
     Route("/tong-quan-admin", index, methods=["GET"]),
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
     Route("/thuong-mai-thanh-toan", index, methods=["GET"]),
+    Route("/phan-tich-su-dung", index, methods=["GET"]),
     Route("/goi-va-thanh-toan", index, methods=["GET"]),
     Route("/nhan-su", index, methods=["GET"]),
     Route("/trang-thai-ho-so", index, methods=["GET"]),

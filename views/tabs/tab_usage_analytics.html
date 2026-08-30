@@ -1,0 +1,151 @@
+<section class="tab-pane usage-analytics" id="tab-usage-analytics" aria-labelledby="usage-analytics-title">
+    <header class="usage-analytics__hero">
+        <div>
+            <p class="usage-analytics__eyebrow">PRODUCT INTELLIGENCE</p>
+            <h2 id="usage-analytics-title">Phân tích mức độ sử dụng</h2>
+            <p>Theo dõi tín hiệu sử dụng tổng hợp để thiết kế gói dịch vụ và ưu tiên hoạt động bán hàng.</p>
+        </div>
+        <div class="usage-analytics__meta">
+            <div class="usage-analytics__freshness" id="usage-analytics-freshness" aria-live="polite">
+                <span class="usage-analytics__status-dot" aria-hidden="true"></span>
+                <span>Chưa tải dữ liệu</span>
+            </div>
+            <p class="usage-analytics__coverage" id="usage-analytics-coverage" hidden>
+                <i data-lucide="info" aria-hidden="true"></i>
+                <span id="usage-analytics-coverage-text"></span>
+            </p>
+        </div>
+    </header>
+
+    <form class="usage-analytics__filters" id="usage-analytics-filter-form">
+        <div class="usage-analytics__filter-fields">
+            <label for="usage-analytics-from">
+                <span>Từ ngày</span>
+                <input class="form-control" id="usage-analytics-from" name="from" type="date" required>
+            </label>
+            <label for="usage-analytics-to">
+                <span>Đến ngày</span>
+                <input class="form-control" id="usage-analytics-to" name="to" type="date" required>
+            </label>
+            <label for="usage-analytics-bucket">
+                <span>Độ phân giải</span>
+                <select class="form-control" id="usage-analytics-bucket" name="bucket" data-no-custom="true">
+                    <option value="hour">Theo giờ</option>
+                    <option value="day">Theo ngày</option>
+                </select>
+            </label>
+        </div>
+        <div class="usage-analytics__filter-actions">
+            <button class="btn btn-outline" type="button" data-usage-range="7">7 ngày</button>
+            <button class="btn btn-outline" type="button" data-usage-range="30">30 ngày</button>
+            <button class="btn btn-primary" type="submit">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                Cập nhật
+            </button>
+        </div>
+        <p class="usage-analytics__timezone"><i data-lucide="clock-3" aria-hidden="true"></i> Múi giờ hiển thị: Asia/Ho_Chi_Minh</p>
+        <p class="usage-analytics__filter-error" id="usage-analytics-filter-error" role="alert" hidden></p>
+    </form>
+
+    <div class="usage-analytics__state" id="usage-analytics-loading" role="status" hidden>
+        <span class="usage-analytics__spinner" aria-hidden="true"></span>
+        <span>Đang tổng hợp dữ liệu sử dụng…</span>
+    </div>
+    <div class="usage-analytics__state usage-analytics__state--error" id="usage-analytics-error" role="alert" hidden>
+        <i data-lucide="circle-alert" aria-hidden="true"></i>
+        <div>
+            <strong>Chưa thể tải dữ liệu sử dụng</strong>
+            <p id="usage-analytics-error-message">Vui lòng thử lại.</p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="usage-analytics-retry" type="button">Thử lại</button>
+    </div>
+    <div class="usage-analytics__state usage-analytics__state--empty" id="usage-analytics-empty" role="status" hidden>
+        <div class="usage-analytics__empty-icon"><i data-lucide="inbox" aria-hidden="true"></i></div>
+        <div class="usage-analytics__empty-copy">
+            <strong>Khoảng đã chọn chưa có dữ liệu theo dõi</strong>
+            <p>Giai đoạn này nằm trước thời điểm hệ thống bắt đầu ghi nhận dữ liệu sử dụng, nên không thể diễn giải các chỉ số lịch sử là 0. Hãy chọn khoảng thời gian gần đây hơn hoặc quay lại sau.</p>
+        </div>
+        <article class="usage-analytics__empty-online" aria-label="Số người đang online hiện tại">
+            <span>Đang online hiện tại</span>
+            <strong id="usage-empty-online-now">0</strong>
+            <small>Người dùng hoạt động gần đây</small>
+        </article>
+    </div>
+
+    <div id="usage-analytics-content" hidden>
+        <section class="usage-analytics__metrics" aria-label="Chỉ số sử dụng chính">
+            <article class="usage-metric usage-metric--live">
+                <div class="usage-metric__icon"><i data-lucide="radio" aria-hidden="true"></i></div>
+                <div>
+                    <span>Đang online</span>
+                    <strong id="usage-online-now">0</strong>
+                    <small>Người dùng hoạt động gần đây</small>
+                </div>
+            </article>
+            <article class="usage-metric">
+                <div class="usage-metric__icon"><i data-lucide="users" aria-hidden="true"></i></div>
+                <div>
+                    <span>Người dùng hoạt động</span>
+                    <strong id="usage-active-users">0</strong>
+                    <small>Trong khoảng thời gian đã chọn</small>
+                </div>
+            </article>
+            <article class="usage-metric">
+                <div class="usage-metric__icon"><i data-lucide="briefcase-business" aria-hidden="true"></i></div>
+                <div>
+                    <span>Hoạt động công việc / người</span>
+                    <strong id="usage-jobs-average">0</strong>
+                    <small id="usage-jobs-basis" title="Đếm hoạt động nghiệp vụ thành công, không phải số quy trình hoàn tất">0 hoạt động / 0 người</small>
+                </div>
+            </article>
+            <article class="usage-metric">
+                <div class="usage-metric__icon"><i data-lucide="file-down" aria-hidden="true"></i></div>
+                <div>
+                    <span>Lượt xuất Word / người</span>
+                    <strong id="usage-word-average">0</strong>
+                    <small id="usage-word-basis">0 lượt / 0 người</small>
+                </div>
+            </article>
+        </section>
+
+        <section class="usage-analytics__peak" aria-labelledby="usage-peak-title">
+            <div class="usage-analytics__peak-icon"><i data-lucide="trending-up" aria-hidden="true"></i></div>
+            <div>
+                <p>Khung giờ cao điểm</p>
+                <h3 id="usage-peak-title"><span id="usage-peak-count">0</span> người hoạt động trong <span id="usage-peak-unit">khung giờ</span></h3>
+                <span id="usage-peak-range">Chưa có dữ liệu thời gian</span>
+                <small>Đếm người dùng riêng biệt trong mỗi bucket, không phải số phiên đồng thời tuyệt đối.</small>
+            </div>
+            <div class="usage-analytics__event-count">
+                <span>Tổng hoạt động được đo</span>
+                <strong id="usage-event-count">0</strong>
+            </div>
+        </section>
+
+        <div class="usage-analytics__grid">
+            <section class="usage-panel usage-panel--chart" aria-labelledby="usage-concurrency-title">
+                <div class="usage-panel__header">
+                    <div>
+                        <p>NHỊP SỬ DỤNG</p>
+                        <h3 id="usage-concurrency-title">Người hoạt động theo thời gian</h3>
+                    </div>
+                    <span id="usage-chart-range">—</span>
+                </div>
+                <div class="usage-chart" id="usage-concurrency-chart" role="group" aria-label="Chưa có dữ liệu người hoạt động"></div>
+                <p class="usage-panel__empty" id="usage-chart-empty" hidden>Chưa có điểm dữ liệu online trong khoảng thời gian này.</p>
+            </section>
+
+            <section class="usage-panel usage-panel--features" aria-labelledby="usage-features-title">
+                <div class="usage-panel__header">
+                    <div>
+                        <p>MỨC ĐỘ QUAN TÂM</p>
+                        <h3 id="usage-features-title">Chức năng được dùng nhiều nhất</h3>
+                    </div>
+                    <i data-lucide="mouse-pointer-click" aria-hidden="true"></i>
+                </div>
+                <div class="usage-feature-list" id="usage-feature-list"></div>
+                <p class="usage-panel__empty" id="usage-feature-empty" hidden>Chưa ghi nhận lượt dùng chức năng trong khoảng thời gian này.</p>
+            </section>
+        </div>
+    </div>
+</section>

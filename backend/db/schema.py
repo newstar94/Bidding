@@ -416,6 +416,32 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]
     },
+    "product_usage_hourly": {
+        "columns": {
+            "window_started_at": "INTEGER NOT NULL CHECK(window_started_at > 0)",
+            "user_id": "TEXT NOT NULL CHECK(user_id != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL CHECK(owner_type IN ('organization', 'personal'))",
+            "metric_key": "TEXT NOT NULL CHECK(metric_key IN ('presence.heartbeat', 'feature.used', 'word_export.completed'))",
+            "feature_key": "TEXT NOT NULL DEFAULT '' CHECK(length(feature_key) <= 64)",
+            "event_count": "INTEGER NOT NULL DEFAULT 1 CHECK(event_count BETWEEN 1 AND 2147483647)",
+            "first_seen_at": "INTEGER NOT NULL CHECK(first_seen_at > 0)",
+            "last_seen_at": "INTEGER NOT NULL CHECK(last_seen_at >= first_seen_at)"
+        },
+        "primary_keys": [
+            "window_started_at",
+            "user_id",
+            "organization_id",
+            "metric_key",
+            "feature_key"
+        ],
+        "unique_constraints": [
+            "CHECK((metric_key = 'feature.used' AND feature_key != '') OR (metric_key != 'feature.used' AND feature_key = ''))"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
     "document_jobs": {
         "columns": {
             "id": "TEXT PRIMARY KEY",

@@ -32,6 +32,9 @@ test("joint-venture relogin readiness tolerates a detached auth overlay", async 
   assert.match(source, /function twoEnvelopeTechnicalEvaluationBarrier/);
   assert.match(source, /await waitForTwoEnvelopeTechnicalEvaluation\(page\);\s+await saveEvaluationAndWait\(page, httpErrors, pageErrors\)/);
   assert.match(source, /page\.locator\("#btn-danhgiahsdt-save:visible"\)\.click\(\)/);
-  assert.doesNotMatch(source, /readinessDeadline|activeButton\.click\(\)|waitForTimeout/);
+  assert.doesNotMatch(
+    source,
+    /readinessDeadline|activeButton\.click\(\)|waitForTimeout|requestAnimationFrame|networkidle/,
+  );
   assert.match(source, /automaticRanking\.filter\(\{ hasText: "Xếp hạng" \}\)/);
 });

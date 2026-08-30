@@ -27,6 +27,18 @@ function setDynamicFieldLabel(label, text, required = false) {
   label.appendChild(marker);
 }
 
+export function bindPaginatedTableSearch(model, { inputId, table, render }) {
+  const renderDebounced = debounce(render);
+  onById(inputId, "input", () => {
+    const search = document.getElementById(inputId)?.value || "";
+    if (paginatedSearchHasChanged(model, table, search)) {
+      model.currentPage[table] = 1;
+    }
+    renderDebounced();
+  });
+  return renderDebounced;
+}
+
 function setPackageLockedContainerState(container, locked) {
   if (!container) return;
   container.querySelectorAll("input, select, textarea, button").forEach((control) => {
@@ -195,13 +207,11 @@ export function setupFileUploads() {
 }
 export function setupActionListeners() {
   const bindTableSearch = (inputId, table, renderMethod) => {
-    onById(inputId, "input", debounce(() => {
-      const search = document.getElementById(inputId)?.value || "";
-      if (paginatedSearchHasChanged(this.model, table, search)) {
-        this.model.currentPage[table] = 1;
-      }
-      this.view[renderMethod]();
-    }));
+    bindPaginatedTableSearch(this.model, {
+      inputId,
+      table,
+      render: () => this.view[renderMethod](),
+    });
   };
   bindTableSearch("search-kehoach", "kehoach", "renderKeHoachTable");
   bindTableSearch("search-goithau", "goithau", "renderGoiThauTable");

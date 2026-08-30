@@ -528,6 +528,7 @@ export function setupAuth() {
       if (confirmed) {
         const logoutDecision = await prepareExplicitLogout(this);
         if (!logoutDecision.proceed) return;
+        this.usageAnalyticsTracker?.stop?.();
         beginExplicitLogout();
         try {
           await apiFetch("/api/auth/logout", {

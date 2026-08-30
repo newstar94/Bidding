@@ -73,6 +73,9 @@ from backend.documents.word_publication_team_policy import (
     validate_word_publication_teams,
 )
 from backend.documents.export_policy_registry import governed_export
+from backend.usage_analytics.service import (
+    record_word_export_success_best_effort,
+)
 import uuid
 
 LEGACY_MANAGED_TEMPLATES = {
@@ -1326,6 +1329,11 @@ def _commit_word_export_audit(
             },
             cursor=cursor,
             required=True,
+        )
+        record_word_export_success_best_effort(
+            cursor,
+            user_id=actor_user_id,
+            organization_id=organization_id,
         )
         connection.commit()
         return provenance
