@@ -13,6 +13,11 @@ const TERMINAL_POLL_ERROR_CODES = new Set([
   "DOCUMENT_JOB_NOT_FOUND",
   "DOCUMENT_JOB_EXPIRED",
 ]);
+const TEAM_WARNING_CODES = new Set([
+  "DOCUMENT_EXPORT_EXPERT_TEAM_REQUIRED",
+  "DOCUMENT_EXPORT_APPRAISAL_TEAM_REQUIRED",
+  "DOCUMENT_EXPORT_TEAMS_REQUIRED",
+]);
 
 function delay(milliseconds) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
@@ -45,9 +50,22 @@ function jobErrorMessage(code, fallback = "") {
     DOCUMENT_EXPORT_INPUT_INVALID: "Thông tin xuất Word không hợp lệ. Vui lòng chọn lại văn bản.",
     DOCUMENT_EXPORT_POLICY_INVALID: "Không thể xác minh yêu cầu xuất Word. Vui lòng xuất lại.",
     DOCUMENT_EXPORT_POLICY_TOO_LARGE: "Số lượng biểu mẫu trong lượt xuất này quá lớn. Vui lòng chia thành nhiều lượt.",
+    DOCUMENT_EXPORT_EXPERT_TEAM_REQUIRED: "Cảnh báo: Tổ chuyên gia phải có thành viên và đúng một Tổ trưởng vì biểu mẫu Word đã chọn đang sử dụng trường Tổ chuyên gia.",
+    DOCUMENT_EXPORT_APPRAISAL_TEAM_REQUIRED: "Cảnh báo: Tổ thẩm định phải có thành viên và đúng một Tổ trưởng vì biểu mẫu Word đã chọn đang sử dụng trường Tổ thẩm định.",
+    DOCUMENT_EXPORT_TEAMS_REQUIRED: "Cảnh báo: Tổ chuyên gia và Tổ thẩm định phải có thành viên và đúng một Tổ trưởng vì biểu mẫu Word đã chọn đang sử dụng các trường này.",
     AUTH_REQUIRED: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
   };
   return messages[code] || fallback || "Không thể hoàn tất yêu cầu xuất Word.";
+}
+
+function exportJobError(code, fallback = "") {
+  const error = new Error(jobErrorMessage(code, fallback));
+  error.code = code;
+  return error;
+}
+
+export function isWordPublicationTeamWarning(error) {
+  return TEAM_WARNING_CODES.has(jobErrorCode(error));
 }
 
 function normalizedStatus(payload) {
@@ -112,7 +130,7 @@ export async function runWordPublicationExportJob({
     });
   } catch (error) {
     const code = jobErrorCode(error);
-    throw new Error(jobErrorMessage(code, error instanceof Error ? error.message : String(error)));
+    throw exportJobError(code, error instanceof Error ? error.message : String(error));
   }
   assertJobResponse(created);
 

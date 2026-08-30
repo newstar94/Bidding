@@ -178,3 +178,76 @@ test("deleting an expert uses the authoritative refreshed row version", async ()
     expectedVersion: 1,
   }]);
 });
+
+function expertDeleteController(expert, packageRecord) {
+  const model = new BiddingModel();
+  model.workspaceScope = { key: "user:org", organizationId: "org" };
+  model.workspaceStorage = memoryStorage();
+  model.db = {
+    stores: ["chuyengia"],
+    async get() { return null; },
+    async set() {},
+  };
+  model.state.activerole = "manager";
+  model.state.chuyengia = [expert];
+  model.state.goithau = [packageRecord];
+  model.persistChanges = async () => {};
+  let alertTitle = null;
+  return {
+    model,
+    get alertTitle() { return alertTitle; },
+    view: {
+      customAlert: async (title) => { alertTitle = title; },
+      customConfirm: async () => true,
+      renderChuyenGiaTable: async () => {},
+    },
+    fetchRecordByLookup: async () => expert,
+    autoSync: async () => ({ ok: true }),
+  };
+}
+
+test("archived package history does not block deleting its former expert", async () => {
+  const expert = {
+    id: "expert-archived-reference",
+    rootId: "expert-archived-reference",
+    phienBan: "00",
+    isLatest: 1,
+    rowVersion: 3,
+    hoTen: "Expert formerly assigned to an archived package",
+  };
+  const controller = expertDeleteController(expert, {
+    id: "archived-package",
+    archivedAt: "2026-08-30T08:22:35Z",
+    toChuyenGia: [{ chuyenGiaId: expert.id }],
+  });
+
+  await deleteChuyenGia.call(controller, expert.id);
+
+  assert.equal(controller.alertTitle, null);
+  assert.deepEqual(controller.model.buildMutationSyncPayload()?.payload.deletions, [{
+    table: "chuyengia",
+    id: expert.id,
+    expectedVersion: 3,
+  }]);
+});
+
+test("non-archived package history still blocks deleting an assigned expert", async () => {
+  const expert = {
+    id: "expert-active-reference",
+    rootId: "expert-active-reference",
+    phienBan: "00",
+    isLatest: 1,
+    rowVersion: 4,
+    hoTen: "Expert assigned to an active package family",
+  };
+  const controller = expertDeleteController(expert, {
+    id: "active-package-history",
+    isLatest: 0,
+    toThamDinh: [{ chuyenGiaId: expert.id }],
+  });
+
+  await deleteChuyenGia.call(controller, expert.id);
+
+  assert.equal(controller.alertTitle, "Không thể xóa");
+  assert.equal(controller.model.buildMutationSyncPayload(), null);
+});

@@ -109,12 +109,18 @@ async function selectFirstAddress(page, provinceSelector, wardSelector) {
 async function confirmDeleteAll(page) {
   const dialog = page.locator("#modal-custom-dialog.active");
   await dialog.waitFor({ state: "visible", timeout: 10_000 });
-  if (await page.locator("#btn-dialog-opt2").count()) {
+  const details = {
+    title: await dialog.locator("#dialog-title").textContent().catch(() => ""),
+    message: await dialog.locator("#dialog-message").textContent().catch(() => ""),
+    hasDeleteAll: await page.locator("#btn-dialog-opt2").count() > 0,
+  };
+  if (details.hasDeleteAll) {
     await page.locator("#btn-dialog-opt2").click();
   } else {
     await page.locator("#btn-dialog-ok").click();
   }
   await dialog.waitFor({ state: "hidden", timeout: 15_000 });
+  return details;
 }
 
 async function savePlanBreakdown(page) {
@@ -134,10 +140,20 @@ async function deleteSearchedRow(page, tableSelector, expectedText) {
   const syncResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/sync" && response.request().method() === "POST";
-  }, { timeout: 20_000 });
+  }, { timeout: 20_000 }).then(
+    (response) => ({ response, error: null }),
+    (error) => ({ response: null, error }),
+  );
   await row.locator('[data-bf-action^="delete-"]').click();
-  await confirmDeleteAll(page);
-  const syncResponse = await syncResponsePromise;
+  const dialogDetails = await confirmDeleteAll(page);
+  const syncOutcome = await syncResponsePromise;
+  if (syncOutcome.error) {
+    throw new Error(
+      `Delete did not issue POST /api/sync after dialog ${JSON.stringify(dialogDetails)}`,
+      { cause: syncOutcome.error },
+    );
+  }
+  const syncResponse = syncOutcome.response;
   if (!syncResponse.ok()) {
     const body = await syncResponse.text().catch(() => "");
     throw new Error(`Delete sync returned ${syncResponse.status()}: ${body}`);

@@ -46,6 +46,42 @@ def test_plan_submission_numbers_and_dates_are_optional_for_both_approval_modes(
     assert not any("tờ trình" in error for error in combined_errors)
 
 
+def test_project_approval_fields_are_optional_when_saving_project_plan():
+    _item, errors, _ = validate_sync_item("ke_hoach_lcnt", {
+        "id": "plan-optional-project-approval",
+        "loaiHinhMuaSam": "Dự án",
+        "maDuan": "PRJ-001",
+        "soQdPheDuyetDuAn": "",
+        "ngayQdPheDuyetDuAn": "",
+        "coQuanPheDuyetDuAn": "",
+    })
+
+    optional_labels = (
+        "Số quyết định phê duyệt dự án",
+        "Ngày quyết định phê duyệt dự án",
+        "Cơ quan phê duyệt dự án",
+    )
+    assert not any(
+        label in str(error)
+        for error in errors
+        for label in optional_labels
+    )
+
+
+def test_package_save_does_not_require_expert_or_appraisal_team_leaders():
+    _item, errors, _ = validate_sync_item("goi_thau", {
+        "toChuyenGia": [{
+            "chuyenGiaId": "expert-1",
+            "chucVu": "Tổ viên",
+            "congViec": "Đánh giá hồ sơ",
+        }],
+        "toThamDinh": [],
+    })
+
+    assert not any("Tổ chuyên gia" in str(error) for error in errors)
+    assert not any("Tổ thẩm định" in str(error) for error in errors)
+
+
 def test_manual_unknown_to_invited_package_transition_remains_rejected():
     errors = validate_package_status_transition(
         "Chưa xác định",

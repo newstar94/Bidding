@@ -69,6 +69,9 @@ from backend.documents.word_publication_policy import (
     is_word_publication_document_applicable,
     public_word_publication_definitions,
 )
+from backend.documents.word_publication_team_policy import (
+    validate_word_publication_teams,
+)
 from backend.documents.export_policy_registry import governed_export
 import uuid
 
@@ -1158,6 +1161,7 @@ def _prepare_report_render(
             publication_type,
             requested_template_filenames,
         )
+        validate_word_publication_teams(template_path, context, mappings)
     else:
         active_template = custom_exporter.get_active_template(
             owner_id,

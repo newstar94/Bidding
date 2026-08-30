@@ -43,6 +43,12 @@ async function expectFilterDropdownToOpen(context, route, selectId) {
 test("authenticated cold load hydrates icons and navigation handlers", async ({ page }) => {
   const runtimeFailures = [];
   const appOrigin = new URL(String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000")).origin;
+
+  // Warm only the browser transport. Firefox/WebKit artifact capture can delay
+  // their first real network navigation on Windows; the liveness response has
+  // no application assets, so /tong-quan remains a true cold application load.
+  const browserReady = await page.goto("/health/live", { waitUntil: "domcontentloaded" });
+  expect(browserReady?.ok()).toBe(true);
   page.on("pageerror", (error) => runtimeFailures.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() !== "error") return;

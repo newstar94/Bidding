@@ -39,7 +39,15 @@ def template_root(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _template(owner_type, owner_id, filename, content=b"docx"):
+def _template(owner_type, owner_id, filename, content=None):
+    if content is None:
+        output = BytesIO()
+        with ZipFile(output, "w") as archive:
+            archive.writestr(
+                "word/document.xml",
+                '<w:document xmlns:w="urn:test"><w:p>Template</w:p></w:document>',
+            )
+        content = output.getvalue()
     scope = Path(custom_exporter.get_scope_template_dir(owner_type, owner_id))
     path = scope / filename
     path.write_bytes(content)

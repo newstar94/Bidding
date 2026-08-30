@@ -497,7 +497,7 @@ export function resolveContractPackageIds(
     .map((checkbox) => checkbox.value);
 }
 
-function resolveDatedContractPartnerBindings({
+export function resolveDatedContractPartnerBindings({
   investors,
   contractors,
   selectedInvestorId,
@@ -508,7 +508,7 @@ function resolveDatedContractPartnerBindings({
   emptyWithoutDate = false,
 }) {
   if (emptyWithoutDate && !businessDate) {
-    return { investorId: "", contractorId: "", unavailable: null };
+    return { investorId: "", contractorId: "" };
   }
   const investorResolution = preserveInvestor
     ? null
@@ -523,8 +523,6 @@ function resolveDatedContractPartnerBindings({
     contractorId: preserveContractor
       ? selectedContractorId
       : contractorResolution?.record?.id || selectedContractorId,
-    unavailable: [investorResolution, contractorResolution]
-      .find((resolution) => resolution?.status === "no_effective_version") || null,
   };
 }
 
@@ -553,14 +551,6 @@ export async function handleHopDongSubmit(e) {
     preserveInvestor: Boolean(preserveCdtBinding || cdtManualOverride),
     preserveContractor: Boolean(preserveNtBinding || ntManualOverride),
   });
-  if (signingBindings.unavailable) {
-    await this.view.customAlert(
-      "Không có phiên bản có hiệu lực",
-      `Ngày ký hợp đồng ${ngayKyYmd} trước ngày hiệu lực đầu tiên ${signingBindings.unavailable.firstEffectiveDate}. Vui lòng chọn rõ một phiên bản hoặc điều chỉnh ngày ký.`,
-      "alert-triangle",
-    );
-    return;
-  }
   const chuDauTuId = signingBindings.investorId;
   const nhaThauId = signingBindings.contractorId;
   const ngayThanhLyRaw = document.getElementById("hd-ngaythanhly").value;
@@ -573,14 +563,6 @@ export async function handleHopDongSubmit(e) {
     businessDate: ngayThanhLy,
     emptyWithoutDate: true,
   });
-  if (liquidationBindings.unavailable) {
-    await this.view.customAlert(
-      "Không có phiên bản có hiệu lực",
-      `Ngày thanh lý ${ngayThanhLy} trước ngày hiệu lực đầu tiên ${liquidationBindings.unavailable.firstEffectiveDate}. Vui lòng điều chỉnh ngày thanh lý.`,
-      "alert-triangle",
-    );
-    return;
-  }
   const keHoachId = document.getElementById("hd-kehoachid").value;
   const giaTri = this.model.parseVND(document.getElementById("hd-giatri").value);
   if (giaTri < 0) {

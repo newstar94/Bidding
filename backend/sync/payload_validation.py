@@ -325,17 +325,6 @@ def _derive_lotted_package_price(item):
     return total
 
 
-def _validate_single_team_leader(item, field_name, label, errors):
-    members = _as_list(item.get(field_name))
-    if members:
-        leader_count = sum(
-            1 for member in members
-            if isinstance(member, dict) and str(member.get("chucVu") or member.get("chuc_vu") or "").strip() == "Tổ trưởng"
-        )
-        if leader_count != 1:
-            errors.append(f"{label} phải có đúng một Tổ trưởng.")
-
-
 def validate_package_status_transition(
     previous_status,
     item,
@@ -1077,9 +1066,6 @@ def validate_sync_item(
         if str(item.get("tuyChonMuaThem") or "").strip() != "Có" and option_list:
             errors.append("Gói không có tùy chọn mua thêm không được chứa danh sách tùy chọn.")
 
-        _validate_single_team_leader(item, "toChuyenGia", "Tổ chuyên gia", errors)
-        _validate_single_team_leader(item, "toThamDinh", "Tổ thẩm định", errors)
-
         phuong_phap = item.get("phuongPhapDanhGia")
         is_combined_method = is_combined_evaluation_method(phuong_phap)
         if not is_combined_method:
@@ -1119,9 +1105,6 @@ def validate_sync_item(
         if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự án":
             _require_fields(item, (
                 ("maDuan", "Mã dự án"),
-                ("soQdPheDuyetDuAn", "Số quyết định phê duyệt dự án"),
-                ("ngayQdPheDuyetDuAn", "Ngày quyết định phê duyệt dự án"),
-                ("coQuanPheDuyetDuAn", "Cơ quan phê duyệt dự án"),
             ), errors)
         if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
             _require_fields(item, (

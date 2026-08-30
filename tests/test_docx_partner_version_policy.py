@@ -52,6 +52,16 @@ def test_select_effective_partner_version_uses_the_document_business_date(
     assert selected["id"] == expected_id
 
 
+def test_select_effective_partner_version_uses_first_version_before_first_date():
+    selected = select_effective_partner_version(
+        INVESTOR_VERSIONS,
+        "investor-v3",
+        "2026-01-01",
+    )
+
+    assert selected["id"] == "investor-v1"
+
+
 @pytest.mark.parametrize(
     ("document_type", "expected_date"),
     [

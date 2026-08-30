@@ -119,6 +119,14 @@ def _inspect_database(
             ).fetchone()
             checkpoint_leader = bool(leader_row and leader_row[0])
             connection.commit()
+        # READ COMMITTED gives every statement a new snapshot. An audit append
+        # committed between scanning audit_log and reading audit_chain_heads
+        # would then look like tampering even though both changes are atomic.
+        # Verify the immutable rows, materialized heads, and checkpoint anchors
+        # against one database snapshot.
+        connection.execute(
+            "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+        )
         cursor = connection.cursor()
         installation_row = cursor.execute(
             "SELECT installation_id FROM database_metadata WHERE id = 1"

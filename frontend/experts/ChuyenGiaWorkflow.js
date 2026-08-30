@@ -64,6 +64,10 @@ export async function deleteChuyenGia(id) {
   const family = getVersionFamily(this.model.state.chuyengia, target);
   const familyIds = new Set(family.map((item) => String(item.id)));
   const assignedPackages = this.model.state.goithau.filter((gt) => {
+    // Deleted package families remain hydrated as archived history so their
+    // audit relationships stay intact. Only live package history can block a
+    // new expert deletion.
+    if (gt.archivedAt) return false;
     const inChuyenGia = (gt.toChuyenGia || []).some((item) => familyIds.has(String(item.chuyenGiaId)));
     const inThamDinh = (gt.toThamDinh || []).some((item) => familyIds.has(String(item.chuyenGiaId)));
     return inChuyenGia || inThamDinh;

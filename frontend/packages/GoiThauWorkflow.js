@@ -45,6 +45,7 @@ import { snapshotPackageAggregate } from "./packageAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
 import { presentStatus } from "./LifecyclePolicy.js";
 import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
+import { packageTeamsAreEditable } from "./packageTeamPolicy.js";
 import {
   captureWorkspaceLease,
   isWorkspaceLeaseCurrent,
@@ -771,7 +772,8 @@ export async function editGoiThau(id, isReadOnly = false) {
       el.disabled = !!isOpenedOrLater;
     }
   });
-  if (isOpenedOrLater) {
+  const teamsAreEditable = packageTeamsAreEditable(gt?.trangThai, isReadOnly);
+  if (!teamsAreEditable) {
     document.querySelectorAll("#to-chuyengia-tbody input, #to-chuyengia-tbody select, #to-thamdinh-tbody input, #to-thamdinh-tbody select").forEach((el) => {
       el.disabled = true;
     });
@@ -785,7 +787,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       el.disabled = !(cb && cb.checked);
     });
   }
-  if (!isReadOnly && !isOpenedOrLater) {
+  if (teamsAreEditable) {
     this.enforceSingleLeader("to-chuyengia-tbody", "tochuyengia-chucvu");
     this.enforceSingleLeader("to-thamdinh-tbody", "tothamdinh-chucvu");
   }
@@ -1038,26 +1040,6 @@ export async function handleGoiThauSubmit(e) {
       });
     }
   });
-  const toChuyenGiaSection = document.getElementById("to-chuyengia-section");
-  const isChuyenGiaVisible = toChuyenGiaSection && getComputedStyle(toChuyenGiaSection).display !== "none";
-  if (isChuyenGiaVisible) {
-    const hasLeaderChuyenGia = toChuyenGia.some((cg) => cg.chucVu === "Tổ trưởng");
-    if (!hasLeaderChuyenGia) {
-      const target = document.querySelector('#to-chuyengia-tbody select[name="tochuyengia-chucvu"]') || toChuyenGiaSection;
-      await this.view.customAlert("Lỗi kiểm tra", "Tổ chuyên gia chấm thầu bắt buộc phải có 1 Tổ trưởng!", "x-circle", target);
-      return;
-    }
-  }
-  const toThamDinhSection = document.getElementById("to-thamdinh-section");
-  const isThamDinhVisible = toThamDinhSection && getComputedStyle(toThamDinhSection).display !== "none";
-  if (isThamDinhVisible) {
-    const hasLeaderThamDinh = toThamDinh.some((cg) => cg.chucVu === "Tổ trưởng");
-    if (!hasLeaderThamDinh) {
-      const target = document.querySelector('#to-thamdinh-tbody select[name="tothamdinh-chucvu"]') || toThamDinhSection;
-      await this.view.customAlert("Lỗi kiểm tra", "Tổ thẩm định bắt buộc phải có 1 Tổ trưởng!", "x-circle", target);
-      return;
-    }
-  }
   if (id) {
     const originalPackage = this.model.state.goithau.find((g) => g.id === id);
     if (originalPackage && originalPackage.trangThai && originalPackage.trangThai !== "Chuẩn bị") {

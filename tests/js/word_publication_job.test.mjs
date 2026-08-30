@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runWordPublicationExportJob } from "../../frontend/documents/WordPublicationJob.js";
+import {
+  isWordPublicationTeamWarning,
+  runWordPublicationExportJob,
+} from "../../frontend/documents/WordPublicationJob.js";
 
 test("Word publication job creates once, polls status and downloads the returned result URL", async () => {
   const requests = [];
@@ -155,4 +158,24 @@ test("Word publication job translates a server policy code into an actionable me
     }),
     /Dữ liệu nguồn đã thay đổi/u,
   );
+});
+
+test("Word publication job preserves template-aware team warnings for the UI", async () => {
+  let warning;
+  try {
+    await runWordPublicationExportJob({
+      createJobUrl: "/api/document-jobs/package-report/package-a",
+      filename: "bao-cao.docx",
+    }, {
+      request: async () => {
+        throw { data: { code: "DOCUMENT_EXPORT_EXPERT_TEAM_REQUIRED" } };
+      },
+    });
+  } catch (error) {
+    warning = error;
+  }
+
+  assert.equal(isWordPublicationTeamWarning(warning), true);
+  assert.equal(warning.code, "DOCUMENT_EXPORT_EXPERT_TEAM_REQUIRED");
+  assert.match(warning.message, /Tổ chuyên gia/u);
 });

@@ -4,6 +4,9 @@ import { spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const trialFullAccessEnabled = String(process.env.TRIAL_FULL_ACCESS_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
 const runId = String(Date.now());
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
 const changedPassword = `Bb!8${randomBytes(12).toString("hex")}`;
@@ -709,8 +712,10 @@ try {
     `Login did not fall back to the active personal workspace: ${JSON.stringify(auth.body)}`,
   );
   assert(
-    personalWorkspace?.entitlements?.word_export === false,
-    "Personal fallback unexpectedly inherited the suspended organization's Word entitlement",
+    personalWorkspace?.entitlements?.word_export === trialFullAccessEnabled,
+    trialFullAccessEnabled
+      ? "Trial mode did not grant Word export in the authorized personal fallback workspace"
+      : "Personal fallback unexpectedly inherited the suspended organization's Word entitlement",
   );
   response = await suspendedContext.request.get(`${baseURL}/api/get-all-data?since=0`, {
     headers: { "X-Active-Org": encodeURIComponent(suspendedOrganizationId) },

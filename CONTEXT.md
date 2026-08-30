@@ -200,6 +200,10 @@ _Avoid_: Danh sách luật mới nhất, kết quả tìm kiếm web
 Kết quả bất biến gắn một phiên bản kế hoạch hoặc gói thầu với đúng hồ sơ nguồn pháp lý, hoặc ghi rõ trạng thái chưa thể phân giải.
 _Avoid_: Luật áp dụng suy ra theo ngày hiện tại, fallback latest
 
+**Căn cứ lập kế hoạch**:
+Văn bản hoặc tài liệu được viện dẫn khi lập một phiên bản Kế hoạch LCNT, được ghi nhận bằng câu nguyên văn và thường gồm tên, số hoặc ký hiệu, ngày và đơn vị ban hành.
+_Avoid_: Ràng buộc pháp lý, kết luận tuân thủ, văn bản tự suy ra từ hồ sơ nguồn
+
 **Finding tuân thủ xác định**:
 Kết quả do bộ quy tắc đã được duyệt tạo ra từ snapshot và bằng chứng cụ thể; AI chỉ được giải thích finding chứ không tạo hoặc đổi trạng thái finding.
 _Avoid_: Kết luận do mô hình suy đoán, lời khuyên RAG chung

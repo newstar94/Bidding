@@ -69,11 +69,13 @@ export function resolvePartnerVersionForDate(records, partnerVersionId, business
     };
   }
   const dated = ranked.filter((entry) => entry.effectiveDate)
-    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate) || a.version - b.version);
+    .sort((a, b) => a.version - b.version || a.effectiveDate.localeCompare(b.effectiveDate));
   if (dated.length) {
     return {
-      status: "no_effective_version",
-      record: null,
+      // Before the first effective date, the first version is the historical
+      // baseline. This supports backdated contracts without rewriting dates.
+      status: "matched",
+      record: dated[0].item,
       firstEffectiveDate: dated[0].effectiveDate,
     };
   }

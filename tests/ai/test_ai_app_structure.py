@@ -56,7 +56,7 @@ def test_app_structure_search_includes_plan_modal_procurement_control():
     )
 
     plan = next(record for record in result.records if record["route"] == "/ke-hoach")
-    assert "Lấy từ MSC" in plan["actions"]
+    assert "Lấy dữ liệu tự động" in plan["actions"]
 
 
 def test_app_structure_search_filters_admin_routes_for_non_admin_users():

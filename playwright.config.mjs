@@ -18,9 +18,17 @@ export default defineConfig({
     baseURL,
     locale: "vi-VN",
     timezoneId: "Asia/Ho_Chi_Minh",
-    trace: "retain-on-failure",
+    // Keep action/network/source diagnostics without continuously capturing DOM
+    // and screencast frames. Full artifact capture can more than double long
+    // Firefox scenarios on Windows and make the recorder exceed the test budget.
+    trace: {
+      mode: "retain-on-failure",
+      screenshots: false,
+      snapshots: false,
+      sources: true,
+    },
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "off",
     actionTimeout: 10_000,
     navigationTimeout: 20_000,
   },

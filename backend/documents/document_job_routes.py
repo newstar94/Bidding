@@ -23,6 +23,9 @@ from backend.documents.routes_docx import (
     _validate_export_snapshot,
     _word_export_subscription_response,
 )
+from backend.documents.word_publication_team_policy import (
+    WordPublicationTeamWarning,
+)
 from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
     build_document_job_policy,
@@ -347,17 +350,24 @@ async def create_package_export_job_api(request):
     if snapshot_error is not None:
         return snapshot_error
 
-    context, manifest, template_path, sensitive_groups = await run_database_read(
-        _prepare_report_render,
-        package_id,
-        role.user_id,
-        organization_id,
-        role,
-        report_type,
-        publication_type or None,
-        requested_template_filenames,
-        timeout_seconds=30,
-    )
+    try:
+        context, manifest, template_path, sensitive_groups = await run_database_read(
+            _prepare_report_render,
+            package_id,
+            role.user_id,
+            organization_id,
+            role,
+            report_type,
+            publication_type or None,
+            requested_template_filenames,
+            timeout_seconds=30,
+        )
+    except WordPublicationTeamWarning as warning:
+        return JSONResponse({
+            "code": warning.code,
+            "error": str(warning),
+            "missingTeams": list(warning.missing_teams),
+        }, status_code=422)
     snapshot_error = await run_database_read(
         _ensure_export_snapshot_unchanged,
         organization_id,

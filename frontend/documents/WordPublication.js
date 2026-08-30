@@ -21,7 +21,10 @@ import {
   isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
 import { beginWordExportLoading } from "./WordExportLoading.js";
-import { runWordPublicationExportJob } from "./WordPublicationJob.js";
+import {
+  isWordPublicationTeamWarning,
+  runWordPublicationExportJob,
+} from "./WordPublicationJob.js";
 
 const WORD_PUBLICATION_STYLESHEET_URL = new URL(
   "./WordPublication.css?no-inline", import.meta.url,
@@ -524,10 +527,11 @@ async function exportWordPublicationDocument(
     );
     return true;
   } catch (error) {
+    const isTeamWarning = isWordPublicationTeamWarning(error);
     await controller.view?.customAlert?.(
-      "Không thể xuất Word",
+      isTeamWarning ? "Cảnh báo thiếu thông tin tổ" : "Không thể xuất Word",
       error instanceof Error ? error.message : String(error || "Lỗi xuất tài liệu"),
-      "x-circle",
+      isTeamWarning ? "alert-triangle" : "x-circle",
     );
     return false;
   } finally {
