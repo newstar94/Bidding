@@ -611,10 +611,23 @@ export function renderDictionary(group) {
       codeHTML = `<code class="bf-s-79f6019cdd">${safeCode}</code>`;
       actionHTML = `<div class="action-btn-group bf-s-207bd5e89c">${resetButton}</div>`;
     } else if (v.isList) {
+      const planBasisRecipes = v.sourceTable === "ke_hoach_can_cu" ? `
+        <div class="word-variable-code-stack">
+          <button type="button" class="word-derived-code-copy btn-copy-var" data-copy="{#${safeVariableName}}&#10;{noi_dung_goc}&#10;{/${safeVariableName}}" title="Sao chép công thức nguyên văn">
+            <span>Nguyên văn</span><code>{noi_dung_goc}</code><i data-lucide="copy" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="word-derived-code-copy btn-copy-var" data-copy="{#${safeVariableName}}&#10;Căn cứ {ten_van_ban}{cum_so_van_ban}{cum_ngay_ban_hanh}{cum_don_vi_ban_hanh}{cum_trich_yeu}&#10;{/${safeVariableName}}" title="Sao chép công thức cấu trúc">
+            <span>Cấu trúc</span><code>{ten_van_ban} + các cụm tùy chọn</code><i data-lucide="copy" aria-hidden="true"></i>
+          </button>
+          ${["stt", "noi_dung_goc", "ten_can_cu", "ten_van_ban", "so_van_ban", "ngay_ban_hanh", "S_ngay_ban_hanh", "don_vi_ban_hanh", "trich_yeu", "cum_so_van_ban", "cum_ngay_ban_hanh", "cum_don_vi_ban_hanh", "cum_trich_yeu", "parse_status"].map((field) => `
+            <button type="button" class="word-derived-code-copy btn-copy-var" data-copy="{${field}}" title="Sao chép {${field}}"><code>{${field}}</code><i data-lucide="copy" aria-hidden="true"></i></button>
+          `).join("")}
+        </div>` : "";
       codeHTML = `
                 <div class="bf-s-38029ccbb2">
                     <code class="bf-s-46e9ba44f5">{#${safeVariableName}}</code>
                     <code class="bf-s-3c2b7ba341">{/${safeVariableName}}</code>
+                    ${planBasisRecipes}
                 </div>
             `;
       actionHTML = `

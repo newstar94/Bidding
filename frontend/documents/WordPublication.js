@@ -303,12 +303,57 @@ function selectedTemplateFilenames(dialog) {
     .filter(Boolean);
 }
 
+function selectedPlanBasisIds(dialog) {
+  return [...dialog.querySelectorAll('[name="word-publication-plan-basis"]:checked')]
+    .map((checkbox) => String(checkbox.value || "").trim())
+    .filter(Boolean);
+}
+
+function renderPlanBasisSelection(dialog, plan, enabled) {
+  const section = dialog.querySelector("#word-publication-plan-bases");
+  const list = dialog.querySelector("#word-publication-plan-bases-list");
+  if (!section || !list) return;
+  section.hidden = !enabled;
+  if (!enabled) {
+    list.replaceChildren();
+    return;
+  }
+  const bases = Array.isArray(plan?.canCuLapKeHoachList) ? plan.canCuLapKeHoachList : [];
+  const rows = bases.map((basis, index) => {
+    const label = document.createElement("label");
+    label.className = "word-publication-plan-basis-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "word-publication-plan-basis";
+    checkbox.value = String(basis?.id || "");
+    checkbox.checked = true;
+    checkbox.disabled = !checkbox.value;
+    const content = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = `${index + 1}. ${basis?.tenCanCu || basis?.noiDungGoc || "Căn cứ chưa có nội dung"}`;
+    const detail = document.createElement("small");
+    detail.textContent = String(basis?.noiDungGoc || "");
+    content.append(title, detail);
+    label.append(checkbox, content);
+    return label;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "text-muted";
+    empty.textContent = "Kế hoạch chưa có căn cứ.";
+    rows.push(empty);
+  }
+  list.replaceChildren(...rows);
+}
+
 function updateWordPublicationSelectionDialog(dialog) {
   const checkboxes = [...dialog.querySelectorAll('[name="word-publication-template"]')];
   const selectedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
   const selectAll = dialog.querySelector("[data-word-publication-select-all]");
   const confirm = dialog.querySelector("[data-word-publication-confirm]");
   const status = dialog.querySelector("#word-publication-export-selection-status");
+  const basisCheckboxes = [...dialog.querySelectorAll('[name="word-publication-plan-basis"]')];
+  const basisStatus = dialog.querySelector("#word-publication-plan-bases-status");
   if (selectAll) {
     selectAll.checked = checkboxes.length > 0 && selectedCount === checkboxes.length;
     selectAll.indeterminate = selectedCount > 0 && selectedCount < checkboxes.length;
@@ -319,6 +364,9 @@ function updateWordPublicationSelectionDialog(dialog) {
     if (label) label.textContent = `Xuất ${selectedCount} file`;
   }
   if (status) status.textContent = `Đã chọn ${selectedCount}/${checkboxes.length} file`;
+  if (basisStatus && !dialog.querySelector("#word-publication-plan-bases")?.hidden) {
+    basisStatus.textContent = `Đã chọn ${basisCheckboxes.filter((item) => item.checked).length}/${basisCheckboxes.length} căn cứ.`;
+  }
 }
 
 async function openWordPublicationSelectionDialog(controller, root, documentId, trigger) {
@@ -395,6 +443,7 @@ async function openWordPublicationSelectionDialog(controller, root, documentId, 
     return row;
   });
   tableBody.replaceChildren(...rows);
+  renderPlanBasisSelection(dialog, plan, documentType.exportTarget?.scope === "plan");
   dialog.__bfWordPublicationSelection = { documentId, trigger };
   updateWordPublicationSelectionDialog(dialog);
   dialog.showModal();
@@ -408,6 +457,7 @@ async function exportWordPublicationDocument(
   root,
   documentId,
   requestedTemplateFilenames,
+  requestedPlanBasisIds,
 ) {
   const state = controller._wordPublicationState;
   if (state.pendingDocumentId) return false;
@@ -516,6 +566,9 @@ async function exportWordPublicationDocument(
     await runWordPublicationExportJob({
       createJobUrl: appendExportSnapshotVersion(request.createJobUrl, snapshotVersion),
       filename: request.filename,
+      createBody: documentType.exportTarget?.scope === "plan"
+        ? { selectedCanCuLapKeHoachIds: requestedPlanBasisIds || [] }
+        : undefined,
       onProgress: (stage, message) => loading.update(stage, message),
     });
     controller.view?.showToast?.(
@@ -574,6 +627,7 @@ function bindWordPublicationEvents(root) {
       root,
       selection.documentId,
       filenames,
+      selectedPlanBasisIds(dialog),
     );
   });
   dialog?.addEventListener("change", (event) => {
@@ -584,6 +638,7 @@ function bindWordPublicationEvents(root) {
     if (
       event.target.matches?.("[data-word-publication-select-all]")
       || event.target.matches?.('[name="word-publication-template"]')
+      || event.target.matches?.('[name="word-publication-plan-basis"]')
     ) {
       updateWordPublicationSelectionDialog(dialog);
     }
@@ -593,6 +648,18 @@ function bindWordPublicationEvents(root) {
     if (cancel) {
       event.preventDefault();
       dialog?.close("cancel");
+      return;
+    }
+    if (event.target.closest?.("[data-word-publication-bases-all]")) {
+      dialog?.querySelectorAll('[name="word-publication-plan-basis"]:not(:disabled)')
+        .forEach((checkbox) => { checkbox.checked = true; });
+      updateWordPublicationSelectionDialog(dialog);
+      return;
+    }
+    if (event.target.closest?.("[data-word-publication-bases-none]")) {
+      dialog?.querySelectorAll('[name="word-publication-plan-basis"]:not(:disabled)')
+        .forEach((checkbox) => { checkbox.checked = false; });
+      updateWordPublicationSelectionDialog(dialog);
       return;
     }
     const button = event.target.closest?.("[data-word-publication-export]");

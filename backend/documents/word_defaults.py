@@ -8,7 +8,7 @@ from backend.shared.workspace_scope import (
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 15
+WORD_DEFAULT_MAPPINGS_VERSION = 16
 
 
 WORD_SINGLE_SOURCES = {
@@ -384,6 +384,7 @@ WORD_SINGLE_NAME_OVERRIDES = {
 
 
 WORD_LIST_MAPPINGS = [
+    ("ds_can_cu_lap_ke_hoach", "ke_hoach_can_cu", "Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT"),
     ("ds_gt", "goi_thau_trong_ke_hoach", "Danh sách gói thầu của kế hoạch"),
     ("ds_phien_ban_gt", "goi_thau_versions", "Danh sách phiên bản của gói thầu"),
     ("ds_phien_ban_kh", "ke_hoach_versions", "Danh sách phiên bản của kế hoạch LCNT"),

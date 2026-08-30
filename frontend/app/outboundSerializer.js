@@ -26,7 +26,12 @@ const LOCAL_ONLY_FIELDS = new Set([
 const PROCUREMENT_AUTHORITY_TABLES = new Set(["ke_hoach_lcnt", "goi_thau"]);
 
 const CHILD_FIELDS_BY_TABLE = {
-  ke_hoach_lcnt: ["cvDaThucHienList", "cvKhongApDungList", "cvChuaDuDieuKienList"],
+  ke_hoach_lcnt: [
+    "cvDaThucHienList",
+    "cvKhongApDungList",
+    "cvChuaDuDieuKienList",
+    "canCuLapKeHoachList"
+  ],
   goi_thau: [
     "phanLoList",
     "awardedPhanLoList",
@@ -70,6 +75,16 @@ const VIRTUAL_FIELDS_BY_TABLE = {
 const BIGINT_SAFE_DECIMAL_FIELDS_BY_TABLE = {
   thong_tin_mo_thau: new Set(["giaXepHang", "giaDeNghiTrungThau"])
 };
+
+function serializePlanBases(value) {
+  if (!Array.isArray(value)) return value;
+  return value.map((basis) => {
+    const item = { noiDungGoc: String(basis?.noiDungGoc ?? "") };
+    const id = String(basis?.id || "").trim();
+    if (id) item.id = id;
+    return item;
+  });
+}
 
 function clonePayloadValue(value) {
   if (value === void 0) return void 0;
@@ -139,7 +154,14 @@ export function serializeOutboundRecord(record, type, normalizeRecord = (value) 
   allowedFields.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
     const cloned = clonePayloadValue(normalized[field]);
-    const value = normalizeBigintSafeDecimal(tableName, field, normalizeSystemVersion(field, cloned));
+    const childSafeValue = tableName === "ke_hoach_lcnt" && field === "canCuLapKeHoachList"
+      ? serializePlanBases(cloned)
+      : cloned;
+    const value = normalizeBigintSafeDecimal(
+      tableName,
+      field,
+      normalizeSystemVersion(field, childSafeValue),
+    );
     if (value !== void 0) serialized[field] = value;
   });
 

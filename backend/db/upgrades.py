@@ -3398,6 +3398,51 @@ def _upgrade_to_v82_add_product_usage_analytics(cursor, context):
         )
     context.assert_foreign_key_integrity(cursor)
 
+
+def _upgrade_to_v83_add_plan_bases(cursor, context):
+    """Add version-owned, parsed legal bases for procurement plans."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v83 requires the canonical table builder.")
+    create_sql = context.build_create_table_sql(
+        "ke_hoach_can_cu",
+        SCHEMA_DINH_NGHIA["ke_hoach_can_cu"],
+    )
+    if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+        create_sql = create_sql.replace(
+            "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+        )
+    cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor,
+            ("ke_hoach_can_cu",),
+            if_not_exists=True,
+        )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_can_cu_parent "
+        "ON ke_hoach_can_cu (organization_id, ke_hoach_id, sort_order, id)",
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_can_cu_lineage "
+        "ON ke_hoach_can_cu (organization_id, id_goc)",
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_can_cu_owner_type_owner "
+        "ON ke_hoach_can_cu (owner_type, organization_id)",
+    ):
+        cursor.execute(statement)
+    if callable(context.create_trigger_functions):
+        context.create_trigger_functions(cursor)
+        cursor.execute(
+            "DROP TRIGGER IF EXISTS trg_ke_hoach_can_cu_workspace_owner "
+            "ON ke_hoach_can_cu"
+        )
+        cursor.execute(
+            "CREATE TRIGGER trg_ke_hoach_can_cu_workspace_owner "
+            "BEFORE INSERT OR UPDATE ON ke_hoach_can_cu "
+            "FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()"
+        )
+    context.assert_foreign_key_integrity(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3800,6 +3845,11 @@ UPGRADES = (
         "add_product_usage_analytics",
         _upgrade_to_v82_add_product_usage_analytics,
     ),
+    DatabaseUpgrade(
+        83,
+        "add_plan_bases",
+        _upgrade_to_v83_add_plan_bases,
+    ),
 )
 
 
@@ -3809,7 +3859,8 @@ DB_SCHEMA_VERSION = (
 
 # V79 adds versioned commercial, billing and usage-credit persistence. V80 adds
 # the immutable process-local credential reference used by this runtime. V81
-# adds child-side indexes. V82 adds bounded product-usage rollups.
+# adds child-side indexes. V82 adds bounded product-usage rollups. V83 adds
+# version-owned procurement-plan bases and their deterministic parser projection.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

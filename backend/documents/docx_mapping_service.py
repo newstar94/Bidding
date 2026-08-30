@@ -49,7 +49,8 @@ def apply_custom_mappings(context, mappings_rows):
         'hop_dong_list': ['hop_dong_list'],
         'tai_khoan': ['user'],
         'to_chuc': ['to_chuc'],
-        'goi_dich_vu': ['goi_dich_vu']
+        'goi_dich_vu': ['goi_dich_vu'],
+        'ke_hoach_can_cu': ['ke_hoach_can_cu'],
     }
 
 
@@ -196,6 +197,7 @@ def apply_custom_mappings(context, mappings_rows):
                 'cv_khong_ap_dung_list': ['cv_khong_ap_dung'],
                 'cv_chua_du_dieu_kien': ['cv_chua_du_dieu_kien'],
                 'cv_chua_du_dieu_kien_list': ['cv_chua_du_dieu_kien'],
+                'ke_hoach_can_cu': ['ke_hoach_can_cu'],
                 'chu_dau_tu': ['chu_dau_tu'],
                 'hop_dong': ['hop_dong'],
                 'hop_dong_list': ['hop_dong_list'],

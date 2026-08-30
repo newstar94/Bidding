@@ -1,5 +1,6 @@
 from backend.db.db_helper import DatabaseError
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -73,6 +74,11 @@ from backend.documents.word_publication_team_policy import (
     validate_word_publication_teams,
 )
 from backend.documents.export_policy_registry import governed_export
+from backend.documents.plan_basis_context import (
+    PlanBasisSelectionError,
+    SELECTION_FIELD,
+    parse_selection_payload,
+)
 from backend.usage_analytics.service import (
     record_word_export_success_best_effort,
 )
@@ -1049,13 +1055,31 @@ def _prepare_plan_render(
     publication_type=None,
     requested_template_filenames=None,
     skip_template_resolution=False,
+    selected_plan_basis_ids=None,
+    include_plan_basis_mapping=True,
+    plan_basis_selection_mode_override=None,
 ):
     capabilities, mappings = _load_word_export_policy(
         role_str, user_id, organization_id, "plan"
     )
-    context, record_revision = docx_service.build_plan_context_snapshot(
-        plan_id, user_id, organization_id, capabilities
+    from backend.documents.plan_basis_context import (
+        resolve_plan_basis_rows,
+        selection_audit_metadata,
     )
+    connection = database.get_connection()
+    try:
+        selected_rows, selection_mode = resolve_plan_basis_rows(
+            connection.cursor(), organization_id, plan_id, selected_plan_basis_ids
+        )
+    finally:
+        connection.close()
+    exact_selected_ids = [str(row.get("id") or "") for row in selected_rows]
+    context, record_revision = docx_service.build_plan_context_snapshot(
+        plan_id, user_id, organization_id, capabilities, exact_selected_ids
+    )
+    if not include_plan_basis_mapping:
+        context.pop("ke_hoach_can_cu", None)
+        mappings = [row for row in mappings if str(row[1] or "") != "ke_hoach_can_cu"]
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
     apply_custom_mappings(context, mappings)
@@ -1069,6 +1093,11 @@ def _prepare_plan_render(
         organization_id=organization_id,
     )
     manifest["record_revision"] = record_revision
+    if include_plan_basis_mapping:
+        manifest.update(selection_audit_metadata(
+            selected_rows,
+            plan_basis_selection_mode_override or selection_mode,
+        ))
     sensitive_groups = sorted(sensitive_capability_groups_present(context))
     owner_type, owner_id = _word_template_scope(user_id, organization_id)
     if skip_template_resolution:
@@ -1273,7 +1302,7 @@ async def _render_word_selection(
 def _commit_word_export_audit(
     *, request, actor_user_id, organization_id, target_type, target_id,
     record_row_version, document_type, publication_type, template_count,
-    sensitive_groups, rendered_artifacts,
+    sensitive_groups, rendered_artifacts, extra_metadata=None,
 ):
     """Bind exact catalog provenance and the required export audit atomically."""
 
@@ -1326,6 +1355,7 @@ def _commit_word_export_audit(
                 "catalog_template_version_ids": [
                     item["templateVersionId"] for item in provenance
                 ],
+                **dict(extra_metadata or {}),
             },
             cursor=cursor,
             required=True,
@@ -1355,6 +1385,19 @@ async def export_plan_api(request):
         if 'templateFilename' in request.query_params
         else None
     )
+    selected_plan_basis_ids = None
+    if request.method == "POST":
+        try:
+            payload = await request.json()
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = {}
+        try:
+            selected_plan_basis_ids = parse_selection_payload(
+                payload,
+                field_present=isinstance(payload, dict) and SELECTION_FIELD in payload,
+            )
+        except PlanBasisSelectionError as error:
+            return JSONResponse({"code": str(error)}, status_code=400)
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -1383,12 +1426,16 @@ async def export_plan_api(request):
                 role_or_err,
                 publication_type or None,
                 requested_template_filenames,
+                False,
+                selected_plan_basis_ids,
                 timeout_seconds=30,
             )
         except BlockingIOBusyError:
             return _database_read_unavailable_response(request)
         except BlockingIOTimeoutError:
             return _database_read_unavailable_response(request, timed_out=True)
+        except PlanBasisSelectionError as error:
+            return JSONResponse({"code": str(error)}, status_code=400)
         fallback_filename = (
             f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         )
@@ -1422,6 +1469,12 @@ async def export_plan_api(request):
             template_count=template_count,
             sensitive_groups=sensitive_groups,
             rendered_artifacts=rendered_artifacts,
+            extra_metadata={
+                "plan_basis_selection_mode": context_manifest.get("plan_basis_selection_mode"),
+                "plan_basis_count": context_manifest.get("plan_basis_count", 0),
+                "plan_basis_ids": context_manifest.get("plan_basis_ids", []),
+                "plan_basis_ids_sha256": context_manifest.get("plan_basis_ids_sha256"),
+            },
         )
 
         return StreamingResponse(

@@ -12,6 +12,10 @@ from backend.documents.detailed_evaluation_context import (
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 from backend.shared.date_utils import vietnam_now
 from backend.versioning.relation_policy import load_contracts_for_package_lineage
+from backend.documents.plan_basis_context import (
+    materialize_plan_basis_items,
+    resolve_plan_basis_rows,
+)
 
 
 def _date_only(value):
@@ -329,7 +333,13 @@ def load_plan_versions(cursor, plan, organization_id):
     )
     return versions
 
-def _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
+def _build_plan_context_snapshot(
+    plan_id,
+    user_id,
+    org_name,
+    capabilities=None,
+    selected_plan_basis_ids=None,
+):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -342,6 +352,10 @@ def _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
     plan = parse_json_fields(dict(row_plan))
     attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
     plan_versions = load_plan_versions(cursor, plan, org_name)
+    selected_basis_rows, _selection_mode = resolve_plan_basis_rows(
+        cursor, org_name, plan_id, selected_plan_basis_ids
+    )
+    selected_plan_bases = materialize_plan_basis_items(selected_basis_rows)
 
     investor_name = '--'
     investor_address = ''
@@ -405,36 +419,45 @@ def _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
         'goi_dich_vu': gdv_data,
         'goi_thau': goi_thau_list,
         'goi_thau_trong_ke_hoach': goi_thau_list,
+        'ke_hoach_can_cu': selected_plan_bases,
         'investor_name': investor_name,
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    return (
-        project_docx_context(
+    projected_context = project_docx_context(
             "plan",
             unified_context,
             capabilities,
             organization_id=org_name,
-        ),
-        int(plan.get("row_version") or 1),
-    )
+        )
+    # Keep the selected-only source available until custom mappings create the
+    # template-visible alias. seal_docx_context removes this internal key.
+    projected_context["ke_hoach_can_cu"] = selected_plan_bases
+    return projected_context, int(plan.get("row_version") or 1)
 
 
-def build_plan_context(plan_id, user_id, org_name, capabilities=None):
+def build_plan_context(
+    plan_id, user_id, org_name, capabilities=None, selected_plan_basis_ids=None
+):
     context, _record_revision = _build_plan_context_snapshot(
         plan_id,
         user_id,
         org_name,
         capabilities,
+        selected_plan_basis_ids,
     )
     return context
 
 
-def build_plan_context_snapshot(plan_id, user_id, org_name, capabilities=None):
+def build_plan_context_snapshot(
+    plan_id, user_id, org_name, capabilities=None, selected_plan_basis_ids=None
+):
     """Return the projected plan DTO and its internal authoritative revision."""
-    return _build_plan_context_snapshot(plan_id, user_id, org_name, capabilities)
+    return _build_plan_context_snapshot(
+        plan_id, user_id, org_name, capabilities, selected_plan_basis_ids
+    )
 
 
 def _build_report_context_snapshot(

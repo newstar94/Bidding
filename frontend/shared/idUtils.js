@@ -16,6 +16,7 @@ const RECORD_ID_PREFIXES = {
   giahan: "gh-", goi_thau_gia_han: "gh-",
   lamro: "lr-", yeucaulamro: "lr-", traloilamro: "lr-", goi_thau_lam_ro: "lr-",
   ke_hoach_cong_viec: "khcv-",
+  canculapkehoach: "khcc-", can_cu_lap_ke_hoach: "khcc-", ke_hoach_can_cu: "khcc-",
   nha_thau_lien_danh_thanh_vien: "ntld-",
   thong_tin_mo_thau_lien_danh_thanh_vien: "mtld-",
   wordmapping: "wmp-", cau_hinh_bien_word: "wmp-",

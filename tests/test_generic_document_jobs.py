@@ -41,11 +41,11 @@ def _v2_policy(*, record_type="ke_hoach_lcnt", record_id="plan-1"):
     )
 
 
-def test_policy_v2_binds_generic_record_and_keeps_v1_package_adapter():
+def test_policy_v3_binds_generic_record_and_keeps_v1_package_adapter():
     policy, fingerprint = _v2_policy()
 
     assert policy == {
-        "version": 2,
+        "version": 3,
         "format": "docx",
         "platformRole": "user",
         "activeRole": "employee",
@@ -54,6 +54,8 @@ def test_policy_v2_binds_generic_record_and_keeps_v1_package_adapter():
         "recordType": "ke_hoach_lcnt",
         "recordId": "plan-1",
         "recordRevision": 7,
+        "planBasisSelectionMode": "all",
+        "selectedPlanBasisIds": [],
     }
     assert len(fingerprint) == 64
     legacy, _legacy_fingerprint = build_document_job_policy(
@@ -347,7 +349,7 @@ def test_enqueue_batch_persists_generic_identity_and_initial_progress(monkeypatc
     assert captured["kwargs"]["progress_phase"] == "queued"
     assert captured["kwargs"]["progress_completed_items"] == 0
     assert captured["kwargs"]["progress_total_items"] == 2
-    assert captured["kwargs"]["policy"]["version"] == 2
+    assert captured["kwargs"]["policy"]["version"] == 3
     assert json.loads(response.body)["totalItems"] == 2
 
 
@@ -515,9 +517,9 @@ def test_job_access_dispatches_package_and_plan_to_their_existing_scope(
 
 def test_current_schema_keeps_v76_generic_job_fields():
     columns = SCHEMA_DINH_NGHIA["document_jobs"]["columns"]
-    # Commercial schema migration v79 remains in the current v82 contract; the
+    # Commercial schema migration v79 remains in the current schema contract; the
     # generic document-job fields introduced in v76 remain present.
-    assert DB_SCHEMA_VERSION == 82
+    assert DB_SCHEMA_VERSION == 83
     assert {
         "record_type",
         "record_id",

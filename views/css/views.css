@@ -6553,3 +6553,192 @@ input.form-control.bidder-name--violator {
 .appraisal-report-row--last {
   border-bottom: 0;
 }
+.plan-basis-editor-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
+.plan-basis-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.plan-basis-editor-header > div {
+  min-width: 0;
+}
+
+.plan-basis-editor-header h3,
+.plan-basis-editor-header p {
+  margin: 0;
+}
+
+.plan-basis-editor-header h3 {
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+
+.plan-basis-editor-header p {
+  max-width: 68ch;
+  margin-top: var(--space-1);
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.plan-basis-editor-header .btn {
+  flex: 0 0 auto;
+}
+
+.plan-basis-editor-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  counter-reset: plan-basis;
+}
+
+.plan-basis-editor-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  counter-increment: plan-basis;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.plan-basis-editor-row:focus-within {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  box-shadow: var(--focus-ring-glow);
+}
+
+.plan-basis-editor-row::before {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  content: counter(plan-basis);
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-basis-editor-text.form-control {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 84px;
+  padding: 10px 12px;
+  resize: vertical;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.plan-basis-editor-actions {
+  grid-column: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plan-basis-editor-actions .action-btn:disabled {
+  color: var(--ink-subtle);
+  background: var(--surface-subtle);
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.plan-basis-editor-metadata {
+  grid-column: 2 / 4;
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--ink-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.plan-basis-editor-metadata::before {
+  width: 6px;
+  height: 6px;
+  margin-top: 0.48em;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--success);
+  content: "";
+}
+
+.plan-basis-editor-metadata.is-pending::before {
+  background: var(--ink-subtle);
+}
+
+.plan-basis-editor-metadata.is-warning {
+  color: var(--warning);
+}
+
+.plan-basis-editor-metadata.is-warning::before {
+  background: var(--warning);
+}
+
+.plan-basis-editor-empty {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  min-height: 76px;
+  align-content: center;
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink-muted);
+  background: var(--surface-subtle);
+}
+
+.plan-basis-editor-empty strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.plan-basis-editor-empty span {
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .plan-basis-editor-header {
+    display: grid;
+  }
+
+  .plan-basis-editor-header .btn {
+    justify-self: start;
+  }
+
+  .plan-basis-editor-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .plan-basis-editor-text.form-control,
+  .plan-basis-editor-metadata {
+    grid-column: 2;
+  }
+
+  .plan-basis-editor-actions {
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+}

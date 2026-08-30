@@ -72,6 +72,7 @@ def get_package_field_policy():
 SYNC_CHILD_FIELDS = {
     "ke_hoach_lcnt": {
         "cvDaThucHienList", "cvKhongApDungList", "cvChuaDuDieuKienList",
+        "canCuLapKeHoachList",
     },
     "goi_thau": {
         "phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList",
@@ -135,6 +136,57 @@ TIMELINE_ALLOWED_FIELDS = set(TIMELINE_TEXT_LIMITS) | {
     "isOptional", "sortOrder", "templateVersion",
 }
 TIMELINE_STATUSES = {"PENDING", "IN_PROGRESS", "DONE", "NOT_APPLICABLE"}
+
+
+def _validate_plan_basis_items(items, item_path, errors, *, trusted_server_projection=False):
+    seen_ids = set()
+    allowed = {"id", "noiDungGoc"}
+    if trusted_server_projection:
+        allowed |= {"rootId", "_serverProjection"}
+    for child_index, child in enumerate(items):
+        child_path = f"{item_path}.canCuLapKeHoachList[{child_index}]"
+        if not isinstance(child, dict):
+            errors.append(_field_error(
+                child_path, "TYPE_OBJECT_REQUIRED", "Căn cứ phải là object."
+            ))
+            continue
+        for field_name in sorted(set(child) - allowed):
+            errors.append(_field_error(
+                f"{child_path}.{field_name}",
+                "SERVER_MANAGED_FIELD",
+                "Trường phân tích căn cứ do máy chủ quản lý.",
+            ))
+        row_id = child.get("id")
+        if row_id is not None:
+            if not isinstance(row_id, str) or not row_id.strip() or len(row_id) > 160:
+                errors.append(_field_error(
+                    f"{child_path}.id", "INVALID_ID", "ID căn cứ không hợp lệ."
+                ))
+            elif row_id in seen_ids:
+                errors.append(_field_error(
+                    f"{child_path}.id", "DUPLICATE_ID", "ID căn cứ bị trùng."
+                ))
+            else:
+                seen_ids.add(row_id)
+        raw_text = child.get("noiDungGoc")
+        if not isinstance(raw_text, str):
+            errors.append(_field_error(
+                f"{child_path}.noiDungGoc",
+                "INVALID_STRING",
+                "Nội dung căn cứ phải là chuỗi.",
+            ))
+        elif not raw_text.strip():
+            errors.append(_field_error(
+                f"{child_path}.noiDungGoc",
+                "VALUE_REQUIRED",
+                "Nội dung căn cứ không được để trống.",
+            ))
+        elif len(raw_text) > MAX_SYNC_TEXT_LENGTH:
+            errors.append(_field_error(
+                f"{child_path}.noiDungGoc",
+                "STRING_TOO_LONG",
+                "Nội dung căn cứ vượt quá giới hạn cho phép.",
+            ))
 
 
 def _validate_timeline_items(items, item_path, errors):
@@ -422,7 +474,7 @@ def _validate_json_depth(value, depth=0):
     return not isinstance(value, str) or len(value) <= MAX_SYNC_TEXT_LENGTH
 
 
-def validate_sync_payload_shape(payload):
+def validate_sync_payload_shape(payload, *, trusted_server_projection=False):
     """Validate sync input without coercing invalid values or dropping unknown fields."""
     errors = []
     if not isinstance(payload, dict):
@@ -623,6 +675,13 @@ def validate_sync_payload_shape(payload):
                         _validate_timeline_items(child_value, item_path, errors)
                     elif key == "ehsmtAdjustments":
                         _validate_ehsmt_adjustments(child_value, item_path, errors)
+                    elif key == "canCuLapKeHoachList":
+                        _validate_plan_basis_items(
+                            child_value,
+                            item_path,
+                            errors,
+                            trusted_server_projection=trusted_server_projection,
+                        )
                     else:
                         for child_index, child in enumerate(child_value):
                             child_path = f"{item_path}.{key}[{child_index}]"

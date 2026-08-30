@@ -363,6 +363,23 @@ export async function renderPlanVersionDetails(versionId) {
             </div>
         `;
   }
+  const planBases = Array.isArray(kh.canCuLapKeHoachList) ? kh.canCuLapKeHoachList : [];
+  const planBasisSection = `
+    <div class="detail-sub-section">
+      <h5 class="detail-sub-title">Căn cứ lập kế hoạch (${planBases.length})</h5>
+      <div class="associated-list">
+        ${planBases.length ? planBases.map((basis, index) => `
+          <article class="associated-item plan-basis-detail-item">
+            <div>
+              <strong>${index + 1}. ${escapeHtml(basis.tenCanCu || "Chưa tách được tên căn cứ")}</strong>
+              <p>${escapeHtml(basis.noiDungGoc || "")}</p>
+              <small class="text-muted">Tên văn bản: ${escapeHtml(basis.tenVanBan || "--")} · Số: ${escapeHtml(basis.soVanBan || "--")} · Ngày: ${escapeHtml(basis.ngayBanHanh || "--")} · Đơn vị ban hành: ${escapeHtml(basis.donViBanHanh || "--")} · Trích yếu: ${escapeHtml(basis.trichYeu || "--")}</small>
+            </div>
+            <span class="badge ${basis.parseStatus === "PARSED" ? "badge-success" : "badge-warning"}">${escapeHtml(basis.parseStatus || "UNPARSED")}</span>
+          </article>
+        `).join("") : '<div class="text-muted"><small>Kế hoạch chưa có căn cứ.</small></div>'}
+      </div>
+    </div>`;
   const html = `
         <div class="detail-section">
             <div class="detail-header-block bf-s-08b722fa44">
@@ -432,6 +449,8 @@ export async function renderPlanVersionDetails(versionId) {
                     </div>
                 ` : '<div class="text-muted"><small>Không tìm thấy thông tin chủ đầu tư.</small></div>'}
             </div>
+
+            ${planBasisSection}
 
             ${breakdownSection1}
             ${breakdownSection2}

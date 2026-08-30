@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 
 from backend.shared.numeric_utils import money_json_value
 from backend.shared.text_utils import normalize_person_name
+from backend.domain.plan_basis_parser import derive_ten_can_cu
 
 
 def shape_child(
@@ -46,6 +47,59 @@ def format_plan_child(row: Mapping[str, object], naming: str) -> dict[str, objec
             ("van_ban_phe_duyet", "vanBanPheDuyet"),
         ],
     )
+
+
+def format_plan_basis_child(
+    row: Mapping[str, object],
+    naming: str,
+) -> dict[str, object]:
+    """Project nullable parser fields without turning missing values into authority."""
+
+    reasons = row.get("parse_reasons")
+    if isinstance(reasons, str):
+        try:
+            import json
+
+            parsed_reasons = json.loads(reasons)
+            reasons = parsed_reasons if isinstance(parsed_reasons, list) else []
+        except (TypeError, ValueError):
+            reasons = []
+    elif not isinstance(reasons, list):
+        reasons = []
+    values = {
+        "id": row.get("id"),
+        "id_goc": row.get("id_goc"),
+        "noi_dung_goc": row.get("noi_dung_goc") or "",
+        "ten_van_ban": row.get("ten_van_ban"),
+        "so_van_ban": row.get("so_van_ban"),
+        "ngay_ban_hanh": row.get("ngay_ban_hanh"),
+        "don_vi_ban_hanh": row.get("don_vi_ban_hanh"),
+        "trich_yeu": row.get("trich_yeu"),
+        "parse_status": row.get("parse_status") or "UNPARSED",
+        "parse_version": row.get("parse_version") or "",
+        "parse_reasons": reasons,
+        "sort_order": int(row.get("sort_order") or 0),
+    }
+    values["ten_can_cu"] = derive_ten_can_cu(
+        values["ten_van_ban"], values["trich_yeu"]
+    )
+    if naming == "snake":
+        return values
+    return {
+        "id": values["id"],
+        "rootId": values["id_goc"],
+        "noiDungGoc": values["noi_dung_goc"],
+        "tenVanBan": values["ten_van_ban"],
+        "soVanBan": values["so_van_ban"],
+        "ngayBanHanh": values["ngay_ban_hanh"],
+        "donViBanHanh": values["don_vi_ban_hanh"],
+        "trichYeu": values["trich_yeu"],
+        "tenCanCu": values["ten_can_cu"],
+        "parseStatus": values["parse_status"],
+        "parseVersion": values["parse_version"],
+        "parseReasons": values["parse_reasons"],
+        "sortOrder": values["sort_order"],
+    }
 
 
 def format_lot_child(row: Mapping[str, object], naming: str) -> dict[str, object]:

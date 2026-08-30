@@ -597,6 +597,22 @@ def _sample_preview_context(document_type):
         "goi_thau": [sample_package] if document_type == "plan" else sample_package,
         "goi_thau_trong_ke_hoach": [sample_package],
         "goi_thau_versions": [sample_package],
+        "ke_hoach_can_cu": [{
+            "stt": 1,
+            "noi_dung_goc": "Căn cứ Quyết định số 123/QĐ ngày 11/11/2025 của UBND xã ABC về việc phê duyệt dự toán",
+            "ten_can_cu": "Quyết định về việc phê duyệt dự toán",
+            "ten_van_ban": "Quyết định",
+            "so_van_ban": "123/QĐ",
+            "ngay_ban_hanh": "2025-11-11",
+            "S_ngay_ban_hanh": "11/11/2025",
+            "don_vi_ban_hanh": "UBND xã ABC",
+            "trich_yeu": "phê duyệt dự toán",
+            "cum_so_van_ban": " số 123/QĐ",
+            "cum_ngay_ban_hanh": " ngày 11/11/2025",
+            "cum_don_vi_ban_hanh": " của UBND xã ABC",
+            "cum_trich_yeu": " về việc phê duyệt dự toán",
+            "parse_status": "PARSED",
+        }],
         "user": {"ho_ten": "Người dùng mẫu"},
         "to_chuc": {"ten_to_chuc": "Đơn vị mẫu"},
         "chu_dau_tu": {"ten_chu_dau_tu": "Chủ đầu tư mẫu"},
@@ -674,9 +690,12 @@ def _prepare_catalog_preview(request, version_id, payload):
             capabilities, mappings = _load_word_export_policy(
                 role, role.user_id, organization_id, document_type
             )
+            from backend.documents.docx_mapping_service import apply_custom_mappings
+            sample_context = _sample_preview_context(document_type)
+            apply_custom_mappings(sample_context, mappings)
             context, manifest = seal_docx_context(
                 document_type,
-                _sample_preview_context(document_type),
+                sample_context,
                 mappings,
                 capabilities,
                 organization_id=organization_id,

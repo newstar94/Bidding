@@ -39,6 +39,7 @@ PROTECTED_DELETE_REFERENCES = {
         DeleteReferenceRule("goi_thau", "ke_hoach_id", "gói thầu"),
         DeleteReferenceRule("hop_dong", "ke_hoach_id", "hợp đồng"),
         DeleteReferenceRule("ke_hoach_cong_viec", "ke_hoach_id", "nội dung kế hoạch"),
+        DeleteReferenceRule("ke_hoach_can_cu", "ke_hoach_id", "căn cứ lập kế hoạch"),
     ),
     "goi_thau": (
         DeleteReferenceRule("hop_dong_goi_thau", "goi_thau_id", "hợp đồng"),
@@ -67,6 +68,7 @@ HIGH_IMPACT_DELETE_TABLES = frozenset({
 CASCADE_IMPACT_RULES = {
     "ke_hoach_lcnt": (
         DeleteReferenceRule("ke_hoach_cong_viec", "ke_hoach_id", "nội dung kế hoạch"),
+        DeleteReferenceRule("ke_hoach_can_cu", "ke_hoach_id", "căn cứ lập kế hoạch"),
     ),
     "goi_thau": (
         DeleteReferenceRule("goi_thau_phan_lo", "goi_thau_id", "phần lô"),

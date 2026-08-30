@@ -23,8 +23,10 @@ from backend.sync.child_projection import (
     format_member_child as _format_member_child,
     format_option_child as _format_option_child,
     format_plan_child as _format_plan_child,
+    format_plan_basis_child as _format_plan_basis_child,
     format_timeline_child as _format_timeline_child,
 )
+from backend.domain.plan_basis_parser import parse_plan_basis
 from backend.timeline.effective_timeline import CATALOG as TIMELINE_CATALOG
 from backend.shared.text_utils import (
     clean_id,
@@ -61,6 +63,7 @@ PLAN_CHILD_LISTS = {
     "cvKhongApDungList": ("khong_ap_dung", "cv_khong_ap_dung"),
     "cvChuaDuDieuKienList": ("chua_du_dieu_kien", "cv_chua_du_dieu_kien"),
 }
+PLAN_BASIS_CHILD_KEY = "canCuLapKeHoachList"
 
 CHILD_MEMBER_KEY = "thanhVienLienDanh"
 
@@ -198,6 +201,16 @@ def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sy
                 don_vi_thuc_hien, van_ban_phe_duyet, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
+    if _has_child_key(item, PLAN_BASIS_CHILD_KEY):
+        _save_plan_basis_children(
+            cursor,
+            parent_id,
+            item.get(PLAN_BASIS_CHILD_KEY),
+            organization_id,
+            owner_type,
+            sync_version,
+            updated_at,
+        )
 
 
 def _save_package_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
@@ -586,6 +599,123 @@ def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync
         )
 
 
+def _save_plan_basis_children(
+    cursor,
+    parent_id,
+    raw_rows,
+    organization_id,
+    owner_type,
+    sync_version,
+    updated_at,
+):
+    rows = _parse_child_list(raw_rows)
+    cursor.execute(
+        "SELECT * FROM ke_hoach_can_cu WHERE organization_id = ? AND ke_hoach_id = ?",
+        (organization_id, parent_id),
+    )
+    existing = {str(row["id"]): dict(row) for row in cursor.fetchall()}
+    supplied_ids = [clean_id(row.get("id")) for row in rows if row.get("id")]
+    if len(supplied_ids) != len(set(supplied_ids)):
+        raise ValueError("DUPLICATE_PLAN_BASIS_ID")
+    invalid_ids = [
+        clean_id(row.get("id"))
+        for row in rows
+        if row.get("id")
+        and clean_id(row.get("id")) not in existing
+        and not isinstance(row.get("_serverProjection"), dict)
+    ]
+    if invalid_ids:
+        raise ValueError("PLAN_BASIS_ID_OUT_OF_SCOPE")
+
+    prepared = []
+    for index, row in enumerate(rows):
+        raw_text = row.get("noiDungGoc")
+        if not isinstance(raw_text, str) or not raw_text.strip():
+            raise ValueError("PLAN_BASIS_TEXT_REQUIRED")
+        row_id = clean_id(row.get("id")) or generate_record_id("ke_hoach_can_cu")
+        previous = existing.get(row_id)
+        server_projection = row.get("_serverProjection")
+        if isinstance(server_projection, dict):
+            projection = {
+                "ten_van_ban": server_projection.get("tenVanBan"),
+                "so_van_ban": server_projection.get("soVanBan"),
+                "ngay_ban_hanh": server_projection.get("ngayBanHanh"),
+                "don_vi_ban_hanh": server_projection.get("donViBanHanh"),
+                "trich_yeu": server_projection.get("trichYeu"),
+                "parse_status": server_projection.get("parseStatus") or "UNPARSED",
+                "parse_version": server_projection.get("parseVersion") or "",
+                "parse_reasons": json.dumps(
+                    list(server_projection.get("parseReasons") or []),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            }
+            root_id = clean_id(row.get("rootId")) or row_id
+            created_at = updated_at
+        elif previous and previous.get("noi_dung_goc") == raw_text:
+            projection = {
+                "ten_van_ban": previous.get("ten_van_ban"),
+                "so_van_ban": previous.get("so_van_ban"),
+                "ngay_ban_hanh": previous.get("ngay_ban_hanh"),
+                "don_vi_ban_hanh": previous.get("don_vi_ban_hanh"),
+                "trich_yeu": previous.get("trich_yeu"),
+                "parse_status": previous.get("parse_status"),
+                "parse_version": previous.get("parse_version"),
+                "parse_reasons": previous.get("parse_reasons") or "[]",
+            }
+            root_id = previous.get("id_goc") or row_id
+            created_at = previous.get("created_at") or updated_at
+        else:
+            parsed = parse_plan_basis(raw_text)
+            projection = {
+                "ten_van_ban": parsed.ten_van_ban,
+                "so_van_ban": parsed.so_van_ban,
+                "ngay_ban_hanh": parsed.ngay_ban_hanh,
+                "don_vi_ban_hanh": parsed.don_vi_ban_hanh,
+                "trich_yeu": parsed.trich_yeu,
+                "parse_status": parsed.parse_status,
+                "parse_version": parsed.parse_version,
+                "parse_reasons": json.dumps(
+                    list(parsed.parse_reasons), ensure_ascii=False, separators=(",", ":")
+                ),
+            }
+            root_id = previous.get("id_goc") if previous else row_id
+            created_at = previous.get("created_at") if previous else updated_at
+        prepared.append((
+            row_id,
+            root_id or row_id,
+            organization_id,
+            owner_type,
+            parent_id,
+            raw_text,
+            projection["ten_van_ban"],
+            projection["so_van_ban"],
+            projection["ngay_ban_hanh"],
+            projection["don_vi_ban_hanh"],
+            projection["trich_yeu"],
+            projection["parse_status"],
+            projection["parse_version"],
+            projection["parse_reasons"],
+            index,
+            sync_version,
+            created_at or updated_at,
+            updated_at,
+        ))
+
+    cursor.execute(
+        "DELETE FROM ke_hoach_can_cu WHERE organization_id = ? AND ke_hoach_id = ?",
+        (organization_id, parent_id),
+    )
+    if prepared:
+        cursor.executemany(
+            """INSERT INTO ke_hoach_can_cu (
+                   id, id_goc, organization_id, owner_type, ke_hoach_id,
+                   noi_dung_goc, ten_van_ban, so_van_ban, ngay_ban_hanh,
+                   don_vi_ban_hanh, trich_yeu, parse_status, parse_version,
+                   parse_reasons, sort_order, sync_version, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            prepared,
+        )
 def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     mapping = [
         ("yeuCauLamRoList", "yeu_cau", "request", "thoiGianYeuCau", "noiDungYeuCau"),
@@ -850,6 +980,7 @@ def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
     )
     for item in by_id.values():
         item.update({key: [] for key in defaults})
+        item["canCuLapKeHoachList" if naming == "camel" else "can_cu_lap_ke_hoach_list"] = []
 
     kind_to_key = {
         kind: camel if naming == "camel" else snake
@@ -860,6 +991,18 @@ def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
         key = kind_to_key.get(row.get("loai"))
         if item and key:
             item[key].append(_format_plan_child(row, naming))
+    basis_key = "canCuLapKeHoachList" if naming == "camel" else "can_cu_lap_ke_hoach_list"
+    for row in _select_children(
+        cursor,
+        "ke_hoach_can_cu",
+        "ke_hoach_id",
+        parent_ids,
+        organization_id,
+        extra_order="sort_order, id",
+    ):
+        item = by_id.get(row.get("ke_hoach_id"))
+        if item:
+            item[basis_key].append(_format_plan_basis_child(row, naming))
 
 
 def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming):

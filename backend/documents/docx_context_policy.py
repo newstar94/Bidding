@@ -70,6 +70,14 @@ def _word_fields(table_name: str) -> set[str]:
 _PLAN_WORK_FIELDS = frozenset(
     {"id", "ten_cong_viec", "gia_tri", "don_vi_thuc_hien", "van_ban_phe_duyet"}
 )
+_PLAN_BASIS_FIELDS = frozenset(
+    {
+        "stt", "noi_dung_goc", "ten_can_cu", "ten_van_ban", "so_van_ban",
+        "ngay_ban_hanh", "S_ngay_ban_hanh", "don_vi_ban_hanh", "trich_yeu",
+        "cum_so_van_ban", "cum_ngay_ban_hanh", "cum_don_vi_ban_hanh",
+        "cum_trich_yeu", "parse_status",
+    }
+)
 _LOT_FIELDS = frozenset(
     {
         "id",
@@ -279,6 +287,7 @@ ENTITY_SPECS = {
     "organization": EntitySpec(frozenset(_word_fields("to_chuc"))),
     "service_package": EntitySpec(frozenset(_word_fields("goi_dich_vu"))),
     "plan_work": EntitySpec(_PLAN_WORK_FIELDS),
+    "plan_basis": EntitySpec(_PLAN_BASIS_FIELDS),
     "lot": EntitySpec(_LOT_FIELDS),
     "option": EntitySpec(_OPTION_FIELDS),
     "extension": EntitySpec(_EXTENSION_FIELDS),
@@ -460,6 +469,7 @@ _SOURCE_FIELDS = {
     "cv_khong_ap_dung_list": _PLAN_WORK_FIELDS,
     "cv_chua_du_dieu_kien": _PLAN_WORK_FIELDS,
     "cv_chua_du_dieu_kien_list": _PLAN_WORK_FIELDS,
+    "ke_hoach_can_cu": _PLAN_BASIS_FIELDS,
 }
 _LIST_ONLY_SOURCES = {
     "ke_hoach_versions",
@@ -479,6 +489,7 @@ _LIST_ONLY_SOURCES = {
     "ds_phan_lo_co_nha_thau_tham_du_khong_trung",
     "detailed_evaluation_reports",
     "hop_dong_list",
+    "ke_hoach_can_cu",
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
 _CONTEXT_SOURCE_FIELDS = _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS
@@ -497,6 +508,7 @@ _PLAN_MAPPING_SOURCES = {
     "cv_khong_ap_dung_list",
     "cv_chua_du_dieu_kien",
     "cv_chua_du_dieu_kien_list",
+    "ke_hoach_can_cu",
 }
 
 _MAPPING_LIST_ENTITY_BY_SOURCE = {
@@ -534,6 +546,7 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "cv_khong_ap_dung_list": "plan_work",
     "cv_chua_du_dieu_kien": "plan_work",
     "cv_chua_du_dieu_kien_list": "plan_work",
+    "ke_hoach_can_cu": "plan_basis",
     "detailed_evaluation_reports": "detailed_evaluation_report",
     **{
         key: "detailed_evaluation_row"

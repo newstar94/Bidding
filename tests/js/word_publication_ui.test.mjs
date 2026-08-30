@@ -10,7 +10,13 @@ import { chromium } from "playwright";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const plans = [
-  { id: "plan-a", maKeHoach: "KH-01", tenKeHoach: "Kế hoạch mua sắm năm 2026" },
+  {
+    id: "plan-a", maKeHoach: "KH-01", tenKeHoach: "Kế hoạch mua sắm năm 2026",
+    canCuLapKeHoachList: [
+      { id: "khcc-1", tenCanCu: "Quyết định về việc phê duyệt dự toán", noiDungGoc: "Căn cứ thứ nhất" },
+      { id: "khcc-2", tenCanCu: "Nghị quyết về việc bố trí vốn", noiDungGoc: "Căn cứ thứ hai" },
+    ],
+  },
   { id: "plan-b", maKeHoach: "KH-02", tenKeHoach: "Kế hoạch xây lắp năm 2026" },
 ];
 const packages = [
@@ -448,6 +454,55 @@ test("Word export can render one selected assigned file as DOCX", async () => {
         type: "success",
       },
     );
+  });
+});
+
+test("plan Word export defaults all bases and can send an explicit subset", async () => {
+  await withPublicationPage(async (page) => {
+    await choose(page, "Kế hoạch lựa chọn nhà thầu", "kh-01");
+    await choose(page, "Gói thầu", "truc tiep");
+    await page.locator('[data-word-publication-export="procurement_plan"]').click();
+    const dialog = page.getByRole("dialog", { name: "Chọn file cần xuất" });
+    const bases = dialog.locator('[name="word-publication-plan-basis"]');
+    assert.equal(await bases.count(), 2);
+    assert.deepEqual(await bases.evaluateAll((items) => items.map((item) => item.checked)), [true, true]);
+    await bases.nth(0).uncheck();
+    const requestPromise = page.waitForRequest((request) => (
+      new URL(request.url()).pathname === "/api/document-jobs/plan/plan-a"
+    ));
+    const downloadPromise = page.waitForEvent("download");
+    await dialog.locator('[data-word-publication-confirm]').click();
+    const request = await requestPromise;
+    assert.deepEqual(request.postDataJSON(), {
+      selectedCanCuLapKeHoachIds: ["khcc-2"],
+    });
+    await downloadPromise;
+  });
+});
+
+test("plan Word export supports an explicit zero-basis selection", async () => {
+  await withPublicationPage(async (page) => {
+    await choose(page, "Kế hoạch lựa chọn nhà thầu", "kh-01");
+    await choose(page, "Gói thầu", "truc tiep");
+    await page.locator('[data-word-publication-export="procurement_plan"]').click();
+    const dialog = page.getByRole("dialog", { name: "Chọn file cần xuất" });
+    await dialog.locator("[data-word-publication-bases-none]").click();
+    assert.match(
+      await dialog.locator("#word-publication-plan-bases-status").textContent(),
+      /Đã chọn 0\/2 căn cứ/u,
+    );
+    assert.equal(await dialog.locator("[data-word-publication-confirm]").isEnabled(), true);
+
+    const requestPromise = page.waitForRequest((request) => (
+      new URL(request.url()).pathname === "/api/document-jobs/plan/plan-a"
+    ));
+    const downloadPromise = page.waitForEvent("download");
+    await dialog.locator("[data-word-publication-confirm]").click();
+    const request = await requestPromise;
+    assert.deepEqual(request.postDataJSON(), {
+      selectedCanCuLapKeHoachIds: [],
+    });
+    await downloadPromise;
   });
 });
 

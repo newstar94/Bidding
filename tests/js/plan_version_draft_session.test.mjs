@@ -1346,6 +1346,7 @@ test("initial_plan_draft_storage_failure_does_not_leave_ephemeral_plan", async (
         dataset: {},
         getAttribute: () => "",
         closest: () => null,
+        querySelectorAll: () => [],
       });
     }
     return elements.get(id);
@@ -1419,6 +1420,7 @@ test("workspace_change_during_initial_plan_draft_save_cannot_restore_a_checkpoin
     if (!elements.has(id)) {
       elements.set(id, {
         value: "", dataset: {}, getAttribute: () => "", closest: () => null,
+        querySelectorAll: () => [],
       });
     }
     return elements.get(id);

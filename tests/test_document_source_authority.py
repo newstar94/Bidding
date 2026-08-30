@@ -6,6 +6,7 @@ from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
     build_document_job_policy,
     document_source_digest,
+    document_job_policy_hash,
     verify_document_job_policy,
 )
 from backend.documents.document_source_authority import (
@@ -125,3 +126,77 @@ def test_exact_source_policy_does_not_use_tenant_sync_revision(monkeypatch):
     )
 
     assert verify_document_job_policy(Cursor(), _job(policy, fingerprint)) is True
+
+
+def test_plan_policy_v3_rebuilds_the_same_exact_basis_selection(monkeypatch):
+    context = {"ke_hoach": {"id": "plan-1"}, "ds_can_cu_lap_ke_hoach": []}
+    manifest = {
+        "document_type": "plan",
+        "record_revision": 4,
+        "plan_basis_selection_mode": "explicit",
+        "plan_basis_ids": ["khcc-2"],
+    }
+    role = SimpleNamespace(
+        platform_role="user", active_role="employee",
+        active_role_organization_id="org-1",
+    )
+    policy, fingerprint = build_document_job_policy(
+        role,
+        record_type="ke_hoach_lcnt",
+        record_id="plan-1",
+        record_revision=4,
+        source_digest=document_source_digest(context, manifest),
+        source_document_type="plan",
+        plan_basis_selection_mode="explicit",
+        selected_plan_basis_ids=["khcc-2"],
+    )
+    captured = {}
+
+    def prepare(*_args, **kwargs):
+        captured.update(kwargs)
+        return context, manifest, None, []
+
+    monkeypatch.setattr("backend.documents.routes_docx._prepare_plan_render", prepare)
+    job = {
+        "organization_id": "org-1", "user_id": "user-1",
+        "record_type": "ke_hoach_lcnt", "record_id": "plan-1",
+        "policy_json": policy, "policy_hash": fingerprint,
+    }
+    assert verify_document_job_source_authority(job) is True
+    assert captured["selected_plan_basis_ids"] == ["khcc-2"]
+    assert captured["include_plan_basis_mapping"] is True
+    assert captured["plan_basis_selection_mode_override"] == "explicit"
+
+
+def test_legacy_plan_policy_v2_rebuild_does_not_add_the_new_basis_root(monkeypatch):
+    context = {"ke_hoach": {"id": "plan-1"}}
+    manifest = {"document_type": "plan", "record_revision": 4}
+    role = SimpleNamespace(
+        platform_role="user", active_role="employee",
+        active_role_organization_id="org-1",
+    )
+    policy, _fingerprint = build_document_job_policy(
+        role,
+        record_type="ke_hoach_lcnt", record_id="plan-1", record_revision=4,
+        source_digest=document_source_digest(context, manifest),
+        source_document_type="plan",
+    )
+    policy["version"] = 2
+    policy.pop("planBasisSelectionMode")
+    policy.pop("selectedPlanBasisIds")
+    fingerprint = document_job_policy_hash(policy)
+    captured = {}
+
+    def prepare(*_args, **kwargs):
+        captured.update(kwargs)
+        return context, manifest, None, []
+
+    monkeypatch.setattr("backend.documents.routes_docx._prepare_plan_render", prepare)
+    job = {
+        "organization_id": "org-1", "user_id": "user-1",
+        "record_type": "ke_hoach_lcnt", "record_id": "plan-1",
+        "policy_json": policy, "policy_hash": fingerprint,
+    }
+    assert verify_document_job_source_authority(job) is True
+    assert captured["include_plan_basis_mapping"] is False
+    assert captured["selected_plan_basis_ids"] is None

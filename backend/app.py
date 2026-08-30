@@ -1031,7 +1031,7 @@ routes = [
     *conflict_resolution_routes(Route),
     *word_template_catalog_routes(Route),
     *legal_versioning_routes(Route),
-    Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
+    Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
     Route("/api/templates/upload", upload_template_api, methods=["POST"]),

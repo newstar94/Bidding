@@ -45,6 +45,7 @@ RELATION_POLICIES = {
     "planCompletedWork": RelationPolicy("planCompletedWork", ()),
     "planNotApplicableWork": RelationPolicy("planNotApplicableWork", ()),
     "planPendingWork": RelationPolicy("planPendingWork", ()),
+    "planBases": RelationPolicy("planBases", (("rootId",),), ordered=True),
     "danhGiaHsdtMetadata.technical.criteria": RelationPolicy(
         "danhGiaHsdtMetadata.technical.criteria",
         (("maTieuChi",), ("code",)),

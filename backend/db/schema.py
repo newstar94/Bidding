@@ -602,6 +602,34 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT"
         ]
     },
+    "ke_hoach_can_cu": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "id_goc": "TEXT NOT NULL CHECK(trim(id_goc) != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "ke_hoach_id": "TEXT NOT NULL",
+            "noi_dung_goc": "TEXT NOT NULL CHECK(trim(noi_dung_goc) != '')",
+            "ten_van_ban": "TEXT",
+            "so_van_ban": "TEXT",
+            "ngay_ban_hanh": "TEXT CHECK(ngay_ban_hanh IS NULL OR date(ngay_ban_hanh) IS NOT NULL)",
+            "don_vi_ban_hanh": "TEXT",
+            "trich_yeu": "TEXT",
+            "parse_status": "TEXT NOT NULL CHECK(parse_status IN ('PARSED', 'PARTIAL', 'UNPARSED'))",
+            "parse_version": "TEXT NOT NULL CHECK(trim(parse_version) != '')",
+            "parse_reasons": "TEXT NOT NULL DEFAULT '[]'",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(sort_order >= 0)",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "UNIQUE(organization_id, ke_hoach_id, sort_order)"
+        ]
+    },
     "nha_thau": {
         "columns": {
             "id": "TEXT PRIMARY KEY",

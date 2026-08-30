@@ -83,3 +83,28 @@ test("procurement authority remains rejected for unrelated schemas", () => {
   assert.deepEqual(unknownOutboundFields(record, "chudautu"), ["sourceRevision"]);
   assert.deepEqual(serializeOutboundRecord(record, "chudautu"), { id: "investor-1" });
 });
+
+test("plan basis serialization strips server-owned parser projection", () => {
+  const serialized = serializeOutboundRecord({
+    id: "plan-00",
+    canCuLapKeHoachList: [{
+      id: "khcc-1",
+      rootId: "khcc-root",
+      noiDungGoc: "Căn cứ Quyết định số 123/QĐ ngày 11/11/2025 của UBND xã ABC",
+      tenVanBan: "Quyết định",
+      tenCanCu: "Quyết định",
+      parseStatus: "PARSED",
+      parseReasons: [],
+    }, {
+      noiDungGoc: "Căn cứ văn bản mới",
+      parseStatus: "UNPARSED",
+    }],
+  }, "kehoach");
+
+  assert.deepEqual(serialized.canCuLapKeHoachList, [{
+    id: "khcc-1",
+    noiDungGoc: "Căn cứ Quyết định số 123/QĐ ngày 11/11/2025 của UBND xã ABC",
+  }, {
+    noiDungGoc: "Căn cứ văn bản mới",
+  }]);
+});

@@ -516,6 +516,61 @@ def test_v82_upgrade_adds_usage_rollup_fk_indexes_and_owner_trigger():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_v83_upgrade_adds_plan_basis_catalog_and_owner_invariants():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor,
+            1,
+            context,
+            target_version=82,
+        ) == 82
+        assert cursor.execute(
+            "SELECT to_regclass('ke_hoach_can_cu')"
+        ).fetchone()[0] is None
+
+        assert apply_database_upgrades(cursor, 82, context) == DB_SCHEMA_VERSION
+
+        assert cursor.execute(
+            "SELECT to_regclass('ke_hoach_can_cu')"
+        ).fetchone()[0] == "ke_hoach_can_cu"
+        assert {
+            row[0]
+            for row in cursor.execute(
+                """SELECT indexname
+                     FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = 'ke_hoach_can_cu'"""
+            ).fetchall()
+        } >= {
+            "idx_ke_hoach_can_cu_parent",
+            "idx_ke_hoach_can_cu_lineage",
+            "idx_ke_hoach_can_cu_owner_type_owner",
+            "ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key",
+            "ke_hoach_can_cu_pkey",
+        }
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_constraint
+                WHERE connamespace = current_schema()::regnamespace
+                  AND conrelid = 'ke_hoach_can_cu'::regclass
+                  AND contype = 'f'
+                  AND convalidated"""
+        ).fetchone()[0] == 1
+        assert cursor.execute(
+            """SELECT COUNT(*)
+                 FROM pg_trigger
+                WHERE tgrelid = 'ke_hoach_can_cu'::regclass
+                  AND tgname = 'trg_ke_hoach_can_cu_workspace_owner'
+                  AND NOT tgisinternal"""
+        ).fetchone()[0] == 1
+        assert find_missing_foreign_key_indexes(connection)["missing"] == []
+        assert_schema_contract(cursor)
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_real_postgres_v35_checkpoint_reaches_latest_catalog():
     connection, cursor, schema_name = _open_fixture_connection()
     try:

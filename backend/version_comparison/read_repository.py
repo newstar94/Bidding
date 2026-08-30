@@ -17,6 +17,7 @@ _COUNT_CHUNK_SIZE = 500
 
 _PLAN_ATTACHMENT_TABLES = (
     ("ke_hoach_cong_viec", "ke_hoach_id", "", False),
+    ("ke_hoach_can_cu", "ke_hoach_id", "", False),
 )
 
 _PACKAGE_ATTACHMENT_TABLES = (
@@ -42,6 +43,7 @@ _RECORD_RELATIONS = {
     "cvDaThucHienList": "planCompletedWork",
     "cvKhongApDungList": "planNotApplicableWork",
     "cvChuaDuDieuKienList": "planPendingWork",
+    "canCuLapKeHoachList": "planBases",
     "phanLoList": "phanLoList",
     "awardedPhanLoList": "awardedPhanLoList",
     "tuyChonMuaThemList": "tuyChonMuaThemList",

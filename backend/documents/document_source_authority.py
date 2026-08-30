@@ -41,9 +41,20 @@ def verify_document_job_source_authority(job):
     )
 
     if record_type == "ke_hoach_lcnt":
+        policy_version = int(policy.get("version") or 1)
+        selected_basis_ids = (
+            list(policy.get("selectedPlanBasisIds") or [])
+            if policy_version >= 3 else None
+        )
         context, manifest, _templates, _groups = _prepare_plan_render(
             record_id, user_id, organization_id, role, publication_type, None,
             skip_template_resolution=True,
+            selected_plan_basis_ids=selected_basis_ids,
+            include_plan_basis_mapping=policy_version >= 3,
+            plan_basis_selection_mode_override=(
+                str(policy.get("planBasisSelectionMode") or "all")
+                if policy_version >= 3 else None
+            ),
         )
     elif record_type == "goi_thau":
         context, manifest, _templates, _groups = _prepare_report_render(

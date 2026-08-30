@@ -74,6 +74,27 @@ test("Word publication job creates once, polls status and downloads the returned
   });
 });
 
+test("plan publication sends the exact selected basis ids in the create body", async () => {
+  const requests = [];
+  await runWordPublicationExportJob({
+    createJobUrl: "/api/document-jobs/plan/plan-a",
+    filename: "ke-hoach.docx",
+    createBody: { selectedCanCuLapKeHoachIds: ["khcc-2"] },
+  }, {
+    request: async (url, options) => {
+      requests.push({ url, options });
+      return options.method === "POST"
+        ? { jobId: "job-basis", status: "completed", statusUrl: "/jobs/job-basis", downloadUrl: "/jobs/job-basis/download" }
+        : null;
+    },
+    download: async () => {},
+  });
+
+  assert.deepEqual(requests[0].options.body, {
+    selectedCanCuLapKeHoachIds: ["khcc-2"],
+  });
+});
+
 test("Word publication job surfaces a failed background job without downloading", async () => {
   let downloaded = false;
   const request = async (_url, options) => (

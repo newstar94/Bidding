@@ -782,7 +782,9 @@ def execute_sync_mutation(
                 for item in data.get("assignments", ())
                 if isinstance(item, dict) and item.get("id")
             }
-            shape_errors = validate_sync_payload_shape(data)
+            shape_errors = validate_sync_payload_shape(
+                data, trusted_server_projection=True
+            )
             if shape_errors:
                 conn.rollback()
                 return error_response(

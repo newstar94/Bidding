@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from urllib.parse import quote
@@ -35,6 +36,11 @@ from backend.documents.document_job_policy import (
 )
 from backend.documents.document_source_authority import (
     verify_document_job_source_authority,
+)
+from backend.documents.plan_basis_context import (
+    PlanBasisSelectionError,
+    SELECTION_FIELD,
+    parse_selection_payload,
 )
 from backend.documents.export_policy_registry import governed_export
 from backend.shared.access_policy import can_read_record
@@ -232,6 +238,8 @@ async def _enqueue_prepared_word_export(
             source_digest=document_source_digest(context, manifest),
             source_document_type=document_type,
             source_publication_type=publication_type,
+            plan_basis_selection_mode=manifest.get("plan_basis_selection_mode"),
+            selected_plan_basis_ids=manifest.get("plan_basis_ids"),
         )
     except ValueError as error:
         code = str(error)
@@ -270,6 +278,10 @@ async def _enqueue_prepared_word_export(
                 "document_type": document_type,
                 "template_count": prepared["template_count"],
                 "sensitive_capabilities_used": sensitive_groups,
+                "plan_basis_selection_mode": manifest.get("plan_basis_selection_mode"),
+                "plan_basis_count": manifest.get("plan_basis_count", 0),
+                "plan_basis_ids": manifest.get("plan_basis_ids", []),
+                "plan_basis_ids_sha256": manifest.get("plan_basis_ids_sha256"),
             },
         },
     )
@@ -404,6 +416,17 @@ async def create_plan_export_job_api(request):
     requested_template_filenames = _requested_template_filenames(request)
     if not plan_id:
         return _error("DOCUMENT_EXPORT_INPUT_INVALID", 400)
+    try:
+        payload = await request.json()
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = {}
+    try:
+        selected_plan_basis_ids = parse_selection_payload(
+            payload,
+            field_present=isinstance(payload, dict) and SELECTION_FIELD in payload,
+        )
+    except PlanBasisSelectionError as error:
+        return _error(str(error), 400)
 
     organization_id, access_error = _create_record_access(
         request, role, "ke_hoach_lcnt", plan_id
@@ -415,16 +438,21 @@ async def create_plan_export_job_api(request):
     )
     if snapshot_error is not None:
         return snapshot_error
-    context, manifest, template_path, sensitive_groups = await run_database_read(
-        _prepare_plan_render,
-        plan_id,
-        role.user_id,
-        organization_id,
-        role,
-        publication_type or None,
-        requested_template_filenames,
-        timeout_seconds=30,
-    )
+    try:
+        context, manifest, template_path, sensitive_groups = await run_database_read(
+            _prepare_plan_render,
+            plan_id,
+            role.user_id,
+            organization_id,
+            role,
+            publication_type or None,
+            requested_template_filenames,
+            False,
+            selected_plan_basis_ids,
+            timeout_seconds=30,
+        )
+    except PlanBasisSelectionError as error:
+        return _error(str(error), 400)
     snapshot_error = await run_database_read(
         _ensure_export_snapshot_unchanged,
         organization_id,

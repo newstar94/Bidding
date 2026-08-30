@@ -1382,6 +1382,7 @@ export const FIELD_METADATA_BY_TABLE = {
 };
 
 export const WORD_SOURCE_TABLE_LABELS = Object.freeze({
+  ke_hoach_can_cu: "Căn cứ được chọn khi xuất Kế hoạch LCNT",
   ke_hoach_versions: "Danh sách phiên bản của kế hoạch LCNT",
   goi_thau_trong_ke_hoach: "Danh sách gói thầu trong kế hoạch",
   goi_thau_versions: "Danh sách phiên bản của gói thầu",
@@ -2710,6 +2711,13 @@ export const DEFAULT_WORD_VARIABLES = [
     "name": "so_nt_khong_danh_gia",
     "sourceColumn": "so_nha_thau_khong_duoc_danh_gia",
     "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Danh sách mặc định từ schema hệ thống: Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT",
+    "name": "ds_can_cu_lap_ke_hoach",
+    "sourceColumn": "",
+    "sourceTable": "ke_hoach_can_cu"
   },
   {
     "format": "text",

@@ -111,6 +111,28 @@ def _id_factory(
     return create_id
 
 
+def _clone_plan_bases(bases, create_id):
+    cloned_bases = []
+    for basis in _rows(bases):
+        target_basis_id = create_id("can_cu_lap_ke_hoach")
+        cloned_bases.append({
+            "id": target_basis_id,
+            "rootId": basis.get("rootId") or basis.get("id") or target_basis_id,
+            "noiDungGoc": basis.get("noiDungGoc") or "",
+            "_serverProjection": {
+                "tenVanBan": basis.get("tenVanBan"),
+                "soVanBan": basis.get("soVanBan"),
+                "ngayBanHanh": basis.get("ngayBanHanh"),
+                "donViBanHanh": basis.get("donViBanHanh"),
+                "trichYeu": basis.get("trichYeu"),
+                "parseStatus": basis.get("parseStatus"),
+                "parseVersion": basis.get("parseVersion"),
+                "parseReasons": deepcopy(basis.get("parseReasons") or []),
+            },
+        })
+    return cloned_bases
+
+
 def _validate_command(command):
     if not isinstance(command, dict):
         raise ValueError("Version command must be an object.")
@@ -348,6 +370,9 @@ def build_aggregate_version_payload(
         "createdAt": source.get("createdAt") or timestamp,
         "updatedAt": timestamp,
     })
+    created_plan["canCuLapKeHoachList"] = _clone_plan_bases(
+        created_plan.get("canCuLapKeHoachList"), create_id
+    )
     aggregate = snapshot_plan_aggregate(
         state,
         source_plan_id=source_id,

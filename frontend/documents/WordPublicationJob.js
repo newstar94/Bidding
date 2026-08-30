@@ -108,6 +108,7 @@ function assertJobResponse(payload) {
 export async function runWordPublicationExportJob({
   createJobUrl,
   filename,
+  createBody,
   onProgress = async () => {},
 }, {
   request = requestJson,
@@ -125,6 +126,7 @@ export async function runWordPublicationExportJob({
   try {
     created = await request(createJobUrl, {
       method: "POST",
+      body: createBody,
       retries: 0,
       timeoutMs: 120_000,
     });

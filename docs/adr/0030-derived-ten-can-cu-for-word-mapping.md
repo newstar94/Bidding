@@ -49,10 +49,10 @@ tiện, đồng thời vẫn cho phép chọn riêng từng thành phần.
   không được dùng để dựng lại câu viện dẫn có số/ngày/đơn vị nằm ở giữa.
 - Template cũ và quyền/hiển thị dữ liệu hiện hữu không đổi. Word entitlement chỉ
   kiểm soát hành động xuất tài liệu.
-- Child table, parser projection, mapping/manifest và durable-job changes phải được
-  triển khai additive. Schema hiện được xác minh là v81 và mapping là v15; migration
-  dự kiến v82 và mapping dự kiến v16 chỉ được dùng sau khi kiểm tra lại lúc triển
-  khai. Plan cũ có zero child rows, không backfill bằng suy đoán. Rollback binary
+- Child table, parser projection, mapping/manifest và durable-job changes được triển
+  khai additive bằng migration schema v83 và mapping v16 (schema v82 đã được dùng
+  cho product-usage analytics trước thời điểm triển khai). Plan cũ có zero child
+  rows, không backfill bằng suy đoán. Rollback binary
   phải hiểu schema đã expand; không xóa table/dữ liệu để rollback thông thường.
 - Client cũ thiếu child field thì preserve, thiếu Word selection thì compat-all;
   queued job v1/v2 và template đã publish giữ nguyên hành vi/bytes.

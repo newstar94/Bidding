@@ -483,6 +483,8 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_package_documents_uploader ON tai_lieu_goi_thau (uploaded_by_id, uploaded_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_package_documents_batch_fk ON tai_lieu_goi_thau (organization_id, evaluation_batch_id) WHERE evaluation_batch_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)",
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_can_cu_parent ON ke_hoach_can_cu (organization_id, ke_hoach_id, sort_order, id)",
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_can_cu_lineage ON ke_hoach_can_cu (organization_id, id_goc)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_active_code ON goi_thau_phan_lo (organization_id, goi_thau_id, ma_phan_lo_normalized) WHERE archived_at IS NULL AND ma_phan_lo_normalized <> ''",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_hang_hoa_parent ON goi_thau_hang_hoa (organization_id, goi_thau_id, phan_lo_id, sort_order, id)",

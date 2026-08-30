@@ -13,7 +13,8 @@ from backend.shared.access_policy import (
 from backend.shared.subscription_policy import can_use_document_export
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
+PREVIOUS_POLICY_VERSION = 2
 LEGACY_POLICY_VERSION = 1
 MAX_POLICY_JSON_BYTES = 65_536
 
@@ -77,6 +78,8 @@ def build_document_job_policy(
     source_digest=None,
     source_document_type=None,
     source_publication_type=None,
+    plan_basis_selection_mode=None,
+    selected_plan_basis_ids=None,
 ):
     """Build a durable authorization snapshot.
 
@@ -151,6 +154,21 @@ def build_document_job_policy(
             policy["sourcePublicationType"] = str(
                 source_publication_type or ""
             ).strip()
+        if normalized_record_type == "ke_hoach_lcnt":
+            mode = str(plan_basis_selection_mode or "all").strip()
+            ids = selected_plan_basis_ids if selected_plan_basis_ids is not None else []
+            if mode not in {"all", "explicit"} or not isinstance(ids, list):
+                raise ValueError("DOCUMENT_EXPORT_RECORD_INVALID")
+            normalized_ids = []
+            seen_ids = set()
+            for value in ids:
+                basis_id = str(value or "").strip()
+                if not basis_id or basis_id in seen_ids:
+                    raise ValueError("DOCUMENT_EXPORT_RECORD_INVALID")
+                seen_ids.add(basis_id)
+                normalized_ids.append(basis_id)
+            policy["planBasisSelectionMode"] = mode
+            policy["selectedPlanBasisIds"] = normalized_ids
     else:
         policy["packageRevision"] = normalized_revision
     if artifact_provenance is not None:
@@ -188,7 +206,7 @@ def validate_document_job_policy_snapshot(policy, fingerprint):
     version = parsed.get("version") if parsed else None
     if (
         not parsed
-        or version not in {LEGACY_POLICY_VERSION, POLICY_VERSION}
+        or version not in {LEGACY_POLICY_VERSION, PREVIOUS_POLICY_VERSION, POLICY_VERSION}
         or str(fingerprint or "") != document_job_policy_hash(parsed)
     ):
         raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
@@ -248,7 +266,7 @@ def validate_document_job_policy_snapshot(policy, fingerprint):
     if parsed.get("sourceDigest") is not None:
         digest = str(parsed.get("sourceDigest") or "").strip().casefold()
         if (
-            version != POLICY_VERSION
+            version not in {PREVIOUS_POLICY_VERSION, POLICY_VERSION}
             or len(digest) != 64
             or any(char not in "0123456789abcdef" for char in digest)
             or not str(parsed.get("sourceDocumentType") or "").strip()
@@ -271,12 +289,22 @@ def validate_document_job_policy_snapshot(policy, fingerprint):
             and int(value["recordRowVersion"]) < 1
         )
         or (
-            version == POLICY_VERSION
+            version in {PREVIOUS_POLICY_VERSION, POLICY_VERSION}
             and int(value["recordRowVersion"]) != int(expected_revision)
         )
         for value in provenances
     ):
         raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
+    if version == POLICY_VERSION and expected_record_type == "ke_hoach_lcnt":
+        mode = parsed.get("planBasisSelectionMode")
+        ids = parsed.get("selectedPlanBasisIds")
+        if (
+            mode not in {"all", "explicit"}
+            or not isinstance(ids, list)
+            or any(not isinstance(value, str) or not value.strip() for value in ids)
+            or len(ids) != len(set(ids))
+        ):
+            raise DocumentJobAuthorizationError("DOCUMENT_EXPORT_POLICY_INVALID")
     return parsed
 
 

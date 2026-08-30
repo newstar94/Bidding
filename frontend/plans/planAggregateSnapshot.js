@@ -59,6 +59,14 @@ export function snapshotPlanAggregate(state, {
   return aggregate;
 }
 
+export function clonePlanBasesForVersion(sourcePlan, createId = generateRecordId) {
+  return (sourcePlan?.canCuLapKeHoachList || []).map((basis) => ({
+    ...structuredClone(basis),
+    id: createId("canCuLapKeHoach"),
+    rootId: basis.rootId || basis.id,
+  }));
+}
+
 export function applyPlanAggregateSnapshot(state, aggregate) {
   const sourceIds = new Set((aggregate.sourcePackageIds || []).map(String));
   (state.goithau || []).forEach((pkg) => {

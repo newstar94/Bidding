@@ -25,8 +25,17 @@ import {
 } from "../auth/serverCapabilities.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
-import { applyPlanAggregateSnapshot, snapshotPlanAggregate } from "./planAggregateSnapshot.js";
+import {
+  applyPlanAggregateSnapshot,
+  clonePlanBasesForVersion,
+  snapshotPlanAggregate,
+} from "./planAggregateSnapshot.js";
 import { createOfficialAggregateVersion } from "../shared/AggregateVersionClient.js";
+import {
+  bindPlanBasisEditor,
+  collectPlanBasisEditorRows,
+  renderPlanBasisEditor,
+} from "./PlanBasisEditor.js";
 import {
   captureWorkspaceLease,
   isWorkspaceLeaseCurrent,
@@ -74,6 +83,17 @@ function stalePlanFinalizeResult() {
     workspaceChanged: true,
     code: "WORKSPACE_CHANGED",
   };
+}
+
+function waitForModalPaint() {
+  return new Promise((resolve) => {
+    const schedule = globalThis.requestAnimationFrame;
+    if (typeof schedule === "function") {
+      schedule(() => schedule(resolve));
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
 }
 
 function stalePlanFlowError() {
@@ -314,6 +334,12 @@ export async function editKeHoach(id, {
   }
   assertEditCapabilityCurrent();
   const form = document.getElementById("form-kehoach");
+  const planBasisEditor = document.getElementById("plan-basis-editor-list");
+  bindPlanBasisEditor(
+    planBasisEditor,
+    document.getElementById("btn-add-plan-basis"),
+    lucide,
+  );
   const existingProcurementLookupCheckbox = document.getElementById(
     "procurement-lookup-plan-enabled",
   );
@@ -321,6 +347,19 @@ export async function editKeHoach(id, {
     checked: Boolean(existingProcurementLookupCheckbox?.checked),
     disabled: Boolean(existingProcurementLookupCheckbox?.disabled),
   };
+  if (!id) {
+    captureModalReturnState(
+      this.model.state.activetab || "kehoach",
+      this.model.state.activeaction || null,
+    );
+    this.switchTab("kehoach", "taomoi", true);
+    document.getElementById("modal-kehoach-title").textContent = "Thêm Kế hoạch LCNT mới";
+    form.reset();
+    renderPlanBasisEditor(planBasisEditor, [], lucide);
+    this.view.openModal("modal-kehoach");
+    await waitForModalPaint();
+    assertEditCapabilityCurrent();
+  }
   const procurementLookupEnabled = hasServerCapability(
     PROCUREMENT_LOOKUP_CAPABILITY,
   );
@@ -451,6 +490,7 @@ export async function editKeHoach(id, {
     this.switchTab("kehoach", "chinhsua", true);
     document.getElementById("modal-kehoach-title").textContent = "Cập nhật Kế hoạch LCNT";
     const kh = this.model.state.kehoach.find((k) => String(k.id) === String(id));
+    renderPlanBasisEditor(planBasisEditor, kh.canCuLapKeHoachList || [], lucide);
     const existingCode = this.model.getPlanBaseCode(kh.maKeHoach);
     document.getElementById("form-kehoach-id").value = kh.id;
     document.getElementById("kh-ma").value = existingCode;
@@ -499,10 +539,6 @@ export async function editKeHoach(id, {
     document.getElementById("kh-quyetdinh").value = kh.quyetDinhPheDuyet;
     document.getElementById("kh-thoigiandang").value = kh.thoiGianDangMa ? this.model.formatForDatetimeLocal(kh.thoiGianDangMa) : "";
   } else {
-    captureModalReturnState(this.model.state.activetab || "kehoach", this.model.state.activeaction || null);
-    this.switchTab("kehoach", "taomoi", true);
-    document.getElementById("modal-kehoach-title").textContent = "Thêm Kế hoạch LCNT mới";
-    form.reset();
     document.getElementById("form-kehoach-id").value = "";
     const tmInput = document.getElementById("kh-tongmuc");
     tmInput.value = "";
@@ -577,7 +613,7 @@ export async function editKeHoach(id, {
   });
   renderLucideIcons(document.getElementById("modal-kehoach"), lucide);
   assertEditCapabilityCurrent();
-  this.view.openModal("modal-kehoach");
+  if (id) this.view.openModal("modal-kehoach");
   const addWorkingDays = (startDateStr, days) => {
     if (!startDateStr) return "";
     const parts = startDateStr.split("/");
@@ -764,7 +800,10 @@ export async function handleKeHoachSubmit(e) {
     ngayTrinhDuToan: pheDuyet === "Kế hoạch" ? ngayTrinhDuToanYMD : "",
     soToTrinhDuToan: pheDuyet === "Kế hoạch" ? soToTrinhDuToan : "",
     ngayPheDuyetDuToan: pheDuyet === "Kế hoạch" ? ngayPheDuyetDuToanYMD : "",
-    soQdPheDuyetDuToan: pheDuyet === "Kế hoạch" ? soQdPheDuyetDuToan : ""
+    soQdPheDuyetDuToan: pheDuyet === "Kế hoạch" ? soQdPheDuyetDuToan : "",
+    canCuLapKeHoachList: collectPlanBasisEditorRows(
+      document.getElementById("plan-basis-editor-list"),
+    ),
   };
   if (id) {
     this.tempPlanAction = this.planBreakdownDraft?.action === "create" ? "create" : "edit";
@@ -1270,6 +1309,7 @@ export async function saveIntermediatePlanVersion() {
       currentPlan,
       { id: nextPlanId, timestamp },
     );
+    nextPlan.canCuLapKeHoachList = clonePlanBasesForVersion(currentPlan);
     nextPlan.createdAt = currentPlan.createdAt || timestamp;
     this.model.state.kehoach.push(nextPlan);
 
@@ -1403,6 +1443,7 @@ export async function savePlanBreakdown() {
           id: newId,
           timestamp
         });
+        nextPlan.canCuLapKeHoachList = clonePlanBasesForVersion(versionChanges);
         nextPlan.createdAt = oldKh.createdAt || timestamp;
         this.model.state.kehoach.push(nextPlan);
         const inheritedAggregate = snapshotPlanAggregate(this.model.state, {

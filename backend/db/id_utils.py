@@ -28,6 +28,8 @@ RECORD_ID_PREFIXES = {
     "ma_tran_phan_quyen": "perm-",
     "permissionmatrix": "perm-",
     "ke_hoach_cong_viec": "khcv-",
+    "ke_hoach_can_cu": "khcc-",
+    "can_cu_lap_ke_hoach": "khcc-",
     "goi_thau_phan_lo": "pl-",
     "lot": "pl-",
     "dot_xu_ly_phan_lo": "dxl-",

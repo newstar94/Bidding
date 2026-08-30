@@ -2094,6 +2094,27 @@
       "table": "hop_dong",
       "valid": true
     },
+    "idx_ke_hoach_can_cu_lineage": {
+      "definition": "CREATE INDEX idx_ke_hoach_can_cu_lineage ON $SCHEMA.ke_hoach_can_cu USING btree (organization_id, id_goc)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_can_cu",
+      "valid": true
+    },
+    "idx_ke_hoach_can_cu_owner_type_owner": {
+      "definition": "CREATE INDEX idx_ke_hoach_can_cu_owner_type_owner ON $SCHEMA.ke_hoach_can_cu USING btree (owner_type, organization_id)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_can_cu",
+      "valid": true
+    },
+    "idx_ke_hoach_can_cu_parent": {
+      "definition": "CREATE INDEX idx_ke_hoach_can_cu_parent ON $SCHEMA.ke_hoach_can_cu USING btree (organization_id, ke_hoach_id, sort_order, id)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_can_cu",
+      "valid": true
+    },
     "idx_ke_hoach_chu_dau_tu": {
       "definition": "CREATE INDEX idx_ke_hoach_chu_dau_tu ON $SCHEMA.ke_hoach_lcnt USING btree (organization_id, chu_dau_tu_id)",
       "live": true,
@@ -3368,6 +3389,20 @@
       "table": "word_template_version",
       "valid": true
     },
+    "ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key": {
+      "definition": "CREATE UNIQUE INDEX ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key ON $SCHEMA.ke_hoach_can_cu USING btree (organization_id, ke_hoach_id, sort_order)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_can_cu",
+      "valid": true
+    },
+    "ke_hoach_can_cu_pkey": {
+      "definition": "CREATE UNIQUE INDEX ke_hoach_can_cu_pkey ON $SCHEMA.ke_hoach_can_cu USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_can_cu",
+      "valid": true
+    },
     "ke_hoach_cong_viec_pkey": {
       "definition": "CREATE UNIQUE INDEX ke_hoach_cong_viec_pkey ON $SCHEMA.ke_hoach_cong_viec USING btree (organization_id, id)",
       "live": true,
@@ -4203,7 +4238,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 82,
+  "schemaVersion": 83,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -15844,6 +15879,231 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "ke_hoach_can_cu": {
+      "columns": {
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "don_vi_ban_hanh": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "id_goc": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "ke_hoach_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "ngay_ban_hanh": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "date"
+        },
+        "noi_dung_goc": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "owner_type": {
+          "default": "'organization'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "parse_reasons": {
+          "default": "'[]'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "parse_status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "parse_version": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "so_van_ban": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "sort_order": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "sync_version": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "ten_van_ban": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "trich_yeu": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "fk_ke_hoach_can_cu_1_424294db": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id, ke_hoach_id) REFERENCES ke_hoach_lcnt(organization_id, id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "ke_hoach_can_cu_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_type = 'personal'::text AND organization_id ~~ 'personal:%'::text OR owner_type = 'organization'::text AND organization_id !~~ 'personal:%'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_id_goc_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM id_goc) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_ngay_ban_hanh_check": {
+          "deferrable": false,
+          "definition": "CHECK (ngay_ban_hanh IS NULL OR ngay_ban_hanh IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_noi_dung_goc_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM noi_dung_goc) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key": {
+          "deferrable": false,
+          "definition": "UNIQUE (organization_id, ke_hoach_id, sort_order)",
+          "initiallyDeferred": false,
+          "kind": "u",
+          "validated": true
+        },
+        "ke_hoach_can_cu_owner_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_type = ANY (ARRAY['organization'::text, 'personal'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_parse_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (parse_status = ANY (ARRAY['PARSED'::text, 'PARTIAL'::text, 'UNPARSED'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_parse_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM parse_version) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "ke_hoach_can_cu_sort_order_check": {
+          "deferrable": false,
+          "definition": "CHECK (sort_order >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_can_cu_sync_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (sync_version >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "ke_hoach_cong_viec": {
       "columns": {
         "created_at": {
@@ -27122,6 +27382,11 @@
       "definition": "CREATE TRIGGER trg_hop_dong_goi_thau_workspace_owner BEFORE INSERT OR UPDATE ON hop_dong_goi_thau FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
       "enabled": "O",
       "table": "hop_dong_goi_thau"
+    },
+    "ke_hoach_can_cu.trg_ke_hoach_can_cu_workspace_owner": {
+      "definition": "CREATE TRIGGER trg_ke_hoach_can_cu_workspace_owner BEFORE INSERT OR UPDATE ON ke_hoach_can_cu FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
+      "enabled": "O",
+      "table": "ke_hoach_can_cu"
     },
     "ke_hoach_cong_viec.trg_ke_hoach_cong_viec_workspace_owner": {
       "definition": "CREATE TRIGGER trg_ke_hoach_cong_viec_workspace_owner BEFORE INSERT OR UPDATE ON ke_hoach_cong_viec FOR EACH ROW EXECUTE FUNCTION bf_validate_workspace_owner()",
