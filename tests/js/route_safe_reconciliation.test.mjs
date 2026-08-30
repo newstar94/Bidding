@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { renderChangedState } from "../../frontend/app/SyncRenderCoordinator.js";
 import { packageWorkspaceFor } from "../../frontend/packages/detail/PackageWorkspaceState.js";
-import { capturePackageDetailNavigationIntent } from "../../frontend/packages/GoiThauDetail.js";
+import {
+  capturePackageDetailNavigationIntent,
+  shouldAbortPackageDetailRefreshForNewDraft,
+} from "../../frontend/packages/GoiThauDetail.js";
 
 test("explicit package workflow navigation is captured before asynchronous hydration", () => {
   const view = {
@@ -14,6 +17,34 @@ test("explicit package workflow navigation is captured before asynchronous hydra
   assert.equal(capturePackageDetailNavigationIntent(view, "package-new", "result"), true);
   assert.equal(view._currentWorkflowPackageId, "package-new");
   assert.equal(view._currentWorkflowTab, "result");
+});
+
+test("in-flight package refresh aborts when the current form becomes dirty", () => {
+  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: false,
+    isDirty: true,
+    currentPackageId: "package-1",
+    targetPackageId: "package-1",
+  }), true);
+  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: false,
+    isDirty: true,
+    currentPackageId: "package-1",
+    targetPackageId: "package-2",
+  }), false);
+  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: true,
+    isDirty: true,
+    currentPackageId: "package-1",
+    targetPackageId: "package-1",
+  }), false);
+  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: true,
+    isDirty: true,
+    currentPackageId: "package-1",
+    targetPackageId: "package-1",
+    isBackground: true,
+  }), true);
 });
 
 test("a package delta renders only the active list and marks hidden projections dirty", async () => {

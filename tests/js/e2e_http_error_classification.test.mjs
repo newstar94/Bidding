@@ -36,6 +36,9 @@ test("E2E classification accepts only handled delta full-sync resets", () => {
     code: "FULL_SYNC_REQUIRED",
     requiresFullSync: true,
   }), true);
+  assert.equal(isExpectedSyncReset(deltaReset, ""), true);
+  assert.equal(isExpectedSyncReset(deltaReset, "   "), true);
+  assert.equal(isExpectedSyncReset(deltaReset, "not-json"), false);
   assert.equal(isExpectedSyncReset(deltaReset, {
     code: "CONFLICT",
     requiresFullSync: false,

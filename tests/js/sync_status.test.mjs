@@ -930,6 +930,63 @@ test("queued automatic sync does not retry an actionable transport failure", asy
   }
 });
 
+test("online reconnect retries a queued transport failure after the active request settles", async () => {
+  const previousFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const firstRequest = deferredResult();
+  let fetchCalls = 0;
+  console.error = () => {};
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/api/client-errors")) {
+      return new Response("{}", {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    fetchCalls += 1;
+    if (fetchCalls === 1) return firstRequest.promise;
+    return new Response(JSON.stringify({ status: "success" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {}, removeItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      repairPendingDuplicatePlanVersions: () => null,
+      buildMutationSyncPayload: () => ({
+        payload: { chuyengia: [{ id: "expert-1" }] },
+        snapshot: { id: `receipt-${fetchCalls + 1}` },
+      }),
+      clearCommittedMutationBatch() {},
+    },
+    autoSync,
+    getStartupReconciliationState: () => ({ phase: "RECONCILED" }),
+    updateSyncState() {},
+  };
+
+  try {
+    const first = autoSync.call(controller);
+    const reconnect = autoSync.call(controller, { retryAfterReconnect: true });
+    firstRequest.reject(new TypeError("offline request settled after reconnect"));
+
+    const [firstResult, reconnectResult] = await Promise.all([first, reconnect]);
+    assert.equal(firstResult.ok, false);
+    assert.equal(reconnectResult.ok, true);
+    assert.equal(fetchCalls, 2);
+    assert.equal(controller._autoSyncQueued, false);
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    console.error = originalConsoleError;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 test("late_transport_failure_from_workspace_a_cannot_update_workspace_b", async () => {
   const previousFetch = globalThis.fetch;
   const previousDocument = globalThis.document;

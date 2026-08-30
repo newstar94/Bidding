@@ -16,8 +16,9 @@ if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configure
 const runId = `E2E-${Date.now()}`;
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
-const pageErrors = [];
-const httpErrors = [];
+  const pageErrors = [];
+  const httpErrors = [];
+const recentApiTraffic = [];
 process.stdout.write(`[E2E] run ${runId}\n`);
 
 function loadSheetJs() {
@@ -102,17 +103,58 @@ const mark = (step, details = {}) => {
 };
 
 const waitForApp = async (page) => {
-  await page.waitForFunction(() => {
-    const loader = document.getElementById("system-init-loader");
-    return loader?.getAttribute("aria-busy") === "false"
-      && getComputedStyle(loader).visibility === "hidden";
-  }, null, { timeout: 20_000 });
+  try {
+    await page.waitForFunction(() => {
+      const loader = document.getElementById("system-init-loader");
+      return loader?.getAttribute("aria-busy") === "false"
+        && getComputedStyle(loader).visibility === "hidden";
+    }, null, { timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => {
+      const loader = document.getElementById("system-init-loader");
+      const sync = document.getElementById("btn-force-sync");
+      return {
+        url: location.href,
+        readyState: document.readyState,
+        loader: loader ? {
+          busy: loader.getAttribute("aria-busy"),
+          text: loader.textContent?.trim() || "",
+          display: getComputedStyle(loader).display,
+          visibility: getComputedStyle(loader).visibility,
+          opacity: getComputedStyle(loader).opacity,
+        } : null,
+        reconciliation: sync?.dataset.startupReconciliationPhase || "",
+        authVisible: Boolean(document.getElementById("auth-overlay")?.getClientRects().length),
+        bodyClasses: document.body.className,
+      };
+    }).catch(() => ({ url: page.url(), rendererUnresponsive: true }));
+    throw new Error(`Application loader did not settle: ${JSON.stringify({ diagnostics, pageErrors: pageErrors.slice(-8), httpErrors: httpErrors.slice(-8) })}`, { cause: error });
+  }
+};
+
+const debugAwardState = async (page, label) => {
+  if (process.env.E2E_DEBUG_DOM !== "true") return;
+  const state = await page.evaluate(() => ({
+    label: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
+    renderVersion: document.getElementById("detail-workflow-content-wrapper")?.dataset.renderedRenderVersion || "",
+    pendingRenderVersion: document.getElementById("detail-workflow-content-wrapper")?.dataset.pendingRenderVersion || "",
+    fields: ["award-so-bctd", "award-ngay-bctd", "award-decision-no", "award-decision-date"].map((id) => ({ id, value: document.getElementById(id)?.value || "" })),
+  }));
+  process.stdout.write(`[E2E-DOM] ${label} ${JSON.stringify(state)}\n`);
 };
 
 const waitForInitialReconciliation = async (page) => {
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
   ), null, { timeout: 20_000 });
+};
+
+const waitForRenderedWorkflowTab = async (page, tab) => {
+  await page.waitForFunction((expectedTab) => {
+    const wrapper = document.getElementById("detail-workflow-content-wrapper");
+    return wrapper?.dataset.renderedWorkflowTab === expectedTab
+      && wrapper.dataset.renderedRenderVersion === wrapper.dataset.pendingRenderVersion;
+  }, tab, { timeout: 20_000 });
 };
 
 const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
@@ -185,6 +227,40 @@ const submitModal = async (page, formSelector, modalSelector, { diagnostics = nu
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
 
+const waitForOpeningSaveCompletion = async (page) => {
+  await page.waitForFunction(() => (
+    document.getElementById("btn-mothau-save")?.dataset.openingSaveBusy === "1"
+  ), null, { timeout: 5_000 });
+  await page.waitForFunction(() => {
+    const button = document.getElementById("btn-mothau-save");
+    return !button || (button.dataset.openingSaveBusy !== "1" && !button.disabled);
+  }, null, { timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => {
+      const app = globalThis.app;
+      const button = document.getElementById("btn-mothau-save");
+      const owner = app?._autoSyncOwner;
+      return {
+        button: button ? {
+          busy: button.dataset.openingSaveBusy || "",
+          disabled: button.disabled,
+          text: button.textContent?.trim() || "",
+        } : null,
+        activeSync: owner ? {
+          workspaceToken: owner.workspaceToken || "",
+          queued: Boolean(owner.queued),
+          hasPromise: Boolean(owner.promise),
+        } : null,
+        autoSyncQueued: Boolean(app?._autoSyncQueued),
+        pendingMutations: Number(app?._pendingMutationCount || 0),
+        syncState: document.getElementById("btn-force-sync")?.dataset || null,
+        tabs: [...document.querySelectorAll("[data-workflow-tab]")]
+          .map((tab) => tab.getAttribute("data-workflow-tab")),
+      };
+    }).catch(() => ({ rendererUnresponsive: true }));
+    throw new Error(`Opening save did not settle: ${JSON.stringify({ state, recentApiTraffic: recentApiTraffic.slice(-20), httpErrors: httpErrors.slice(-8), pageErrors: pageErrors.slice(-8) })}`, { cause: error });
+  });
+};
+
   const confirmDialog = async (page) => {
     await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
     await page.locator("#btn-dialog-ok").click();
@@ -211,7 +287,24 @@ try {
   await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
   await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+  if (process.env.E2E_DEBUG_DOM === "true") {
+    page.on("console", (message) => {
+      if (message.type() === "debug" || message.text().startsWith("[E2E-DOM]")) {
+        process.stdout.write(`${message.text()}\n`);
+      }
+    });
+    await page.addInitScript(() => { globalThis.__BF_E2E_DEBUG = true; });
+  }
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/")) return;
+    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
+    if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+  });
   page.on("response", async (response) => {
+    if (response.url().includes("/api/")) {
+      recentApiTraffic.push(`<-${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
+      if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+    }
     if (response.status() >= 400 && response.url().includes("/api/")
       && !isExpectedTelemetryBackpressure(response)) {
       let body = "";
@@ -267,7 +360,9 @@ try {
     await page.locator("#cg-sochungchi").fill(`${runId}-CC-${ordinal}`);
     await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
     await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
-    await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
+    await submitModal(page, "#form-chuyengia", "#modal-chuyengia", {
+      diagnostics: `expert ${ordinal}`,
+    });
     await page.locator("#search-chuyengia").fill(`Chuyên gia ${ordinal} ${runId}`);
     await page.getByText(`Chuyên gia ${ordinal} ${runId}`, { exact: true }).waitFor({ state: "visible" });
   };
@@ -415,6 +510,7 @@ try {
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-add-bid").waitFor({ state: "visible", timeout: 15_000 });
+  await waitForRenderedWorkflowTab(page, "opening");
   mark("tender-opened");
 
   const openingRows = page.locator("#mothau-table-tbody tr");
@@ -429,6 +525,7 @@ try {
   await openingRow.locator(".mt-hieu-luc-bao-dam-ngay").fill("120");
   await openingRow.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
   await page.locator("#btn-mothau-save").click();
+  const openingSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
@@ -438,15 +535,29 @@ try {
     }));
     throw new Error(`Opening did not advance: ${JSON.stringify(state)}; ${error.message}`);
   });
+  await openingSaveCompletion;
+  await page.locator('button[data-workflow-tab="eval_tech"]').click();
+  await waitForRenderedWorkflowTab(page, "eval_tech");
+  // The tab click owns an asynchronous detail render.  Wait for the rendered
+  // evaluation seam before writing fields so a late render cannot replace the
+  // user's inputs with the initial empty projection.
+  await page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first().waitFor({ state: "visible", timeout: 15_000 });
+  await page.locator("#btn-danhgiahsdt-save").waitFor({ state: "visible", timeout: 15_000 });
   mark("opening-saved");
 
+  mark("evaluation-form-start");
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG`);
+  mark("evaluation-report-number-filled");
   await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-6));
+  mark("evaluation-report-date-filled");
   const evaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
-  await evaluationRow.waitFor({ state: "visible", timeout: 15_000 });
+  mark("evaluation-row-visible");
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
+  mark("evaluation-validity-selected");
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
+  mark("evaluation-capacity-selected");
   await evaluationRow.locator(".mt-dg-ky-thuat").fill("Đạt");
+  mark("evaluation-technical-filled");
   if (await evaluationRow.locator(".mt-gia-xep-hang").count()) {
     await evaluationRow.locator(".mt-gia-xep-hang").fill("772200000");
   }
@@ -454,6 +565,7 @@ try {
     await evaluationRow.locator(".mt-gia-de-nghi-trung-thau").fill("772200000");
   }
   await page.locator("#btn-danhgiahsdt-save").click();
+  mark("evaluation-save-clicked");
   await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
@@ -461,21 +573,52 @@ try {
       tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
       conclusion: document.querySelector("#danhgiahsdt-table-tbody .mt-ketluan-cell")?.textContent?.trim() || "",
       saveButton: (() => { const button = document.querySelector("#btn-danhgiahsdt-save"); return button ? { text: button.textContent.trim(), disabled: button.disabled, ariaBusy: button.getAttribute("aria-busy") } : null; })(),
+      startupReconciliation: (() => {
+        const app = globalThis.app;
+        const state = app?.getStartupReconciliationState?.();
+        return state ? { phase: state.phase, workspaceToken: state.workspaceToken, hasPromise: Boolean(state.promise) } : null;
+      })(),
+      activeSync: (() => { const owner = globalThis.app?._autoSyncOwner; return owner ? { workspaceToken: owner.workspaceToken || "", queued: Boolean(owner.queued), hasPromise: Boolean(owner.promise) } : null; })(),
+      evaluationControls: ["danhgiahsdt-goithau-select", "danhgiahsdt-so-baocao", "danhgiahsdt-ngay-baocao", "danhgiahsdt-table-tbody"].map((id) => ({
+        id,
+        count: document.querySelectorAll(`#${id}`).length,
+        value: document.querySelector(`#${id}`)?.value || "",
+        activePane: document.querySelector(`#${id}`)?.closest?.(".tab-pane")?.id || "",
+      })),
+      saveHandler: (() => {
+        const button = document.querySelector("#btn-danhgiahsdt-save");
+        return { onclickType: typeof button?.onclick, onclick: String(button?.onclick || "") };
+      })(),
     }));
-    throw new Error(`Evaluation did not advance: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+    throw new Error(`Evaluation did not advance: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
   });
+  await page.locator('button[data-workflow-tab="result"]').click();
+  await waitForRenderedWorkflowTab(page, "result");
   mark("evaluation-saved");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-KQ`);
+  await debugAwardState(page, "after-appraisal-number");
+  mark("award-appraisal-number-filled");
   await page.locator("#award-ngay-bctd").fill(testClock.date(-5));
+  await debugAwardState(page, "after-appraisal-date");
+  mark("award-appraisal-date-filled");
   await page.locator("#award-decision-no").fill(`${runId}/QD-KQ`);
+  await debugAwardState(page, "after-decision-number");
+  mark("award-decision-number-filled");
   await page.locator("#award-decision-date").fill(testClock.date(-4));
+  await debugAwardState(page, "after-decision-date");
+  mark("award-decision-date-filled");
   const awardRow = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
   await select(page, "#approve-bidders-tbody .row-status-select", "trung");
+  mark("award-status-selected");
   await awardRow.locator(".row-gia-trung").fill("772200000");
+  mark("award-price-filled");
   await awardRow.locator(".row-tg-goithau").fill("90 ngày");
+  mark("award-package-duration-filled");
   await awardRow.locator(".row-tg-hopdong").fill("90 ngày và nghĩa vụ bảo hành");
+  mark("award-contract-duration-filled");
   await page.locator("#btn-approve-award").click();
+  mark("award-approve-clicked");
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
@@ -512,12 +655,15 @@ try {
   }
   await persistedContractor.waitFor({ state: "visible", timeout: 15_000 });
   mark("award-persisted");
-
   await openCreateModal(page, "/hop-dong", "#btn-add-hopdong", "#modal-hopdong");
+  mark("contract-modal-opened");
   await page.locator("#hd-so").fill(`${runId}/HD`);
+  mark("contract-number-filled");
   await page.locator("#hd-ten").fill(`Hợp đồng ${runId}`);
   await page.locator("#hd-ngayky").fill(testClock.date(-3));
+  mark("contract-basics-filled");
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
+  mark("contract-owner-selected");
   await select(page, "#hd-nhathauid", { label: `Nhà thầu ${runId}` });
   await page.locator("#hd-giatri").fill("772200000");
   await select(page, "#hd-loai", { label: "Trọn gói" });
@@ -743,7 +889,22 @@ try {
   await page.locator("#btn-luu-thongtinmoithau").click();
   await invitationRoot.locator("#btn-them-giahan").waitFor({ state: "hidden", timeout: 15_000 });
   const savedExtensionReason = invitationRoot.locator("#gt-giahan-tbody .gh-reason-input").last();
-  await savedExtensionReason.waitFor({ state: "visible", timeout: 15_000 });
+  try {
+    await savedExtensionReason.waitFor({ state: "visible", timeout: 15_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      dialog: document.getElementById("modal-custom-dialog")?.innerText || "",
+      dialogActive: document.getElementById("modal-custom-dialog")?.classList.contains("active") === true,
+      packageStatus: globalThis.app?.view?._currentPackage?.trangThai || "",
+      workflowHtml: document.getElementById("detail-workflow-content-wrapper")?.innerHTML.slice(0, 2_000) || "",
+      extensionRows: document.querySelectorAll("#gt-giahan-tbody tr").length,
+      activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")?.getAttribute("data-workflow-tab") || "",
+      modelPackages: (globalThis.app?.model?.state?.goithau || [])
+        .filter((item) => String(item?.tenGoiThau || "").includes("hủy"))
+        .map((item) => ({ id: item.id, status: item.trangThai, extensionCount: item.giaHanList?.length || 0, rowVersion: item.rowVersion })),
+    }));
+    throw new Error(`Invitation extension was not rendered after save: ${JSON.stringify(diagnostics)}`, { cause: error });
+  }
   if (await savedExtensionReason.inputValue() !== "Gia hạn để nhà thầu hoàn thiện hồ sơ dự thầu") {
     throw new Error("Invitation extension reason was not persisted.");
   }
@@ -755,6 +916,7 @@ try {
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+  await waitForRenderedWorkflowTab(page, "opening");
   const cancelOpeningRow = page.locator("#mothau-table-tbody tr").first();
   await cancelOpeningRow.locator(".mt-ma-nha-thau").fill(`${runId}-NT`);
   await cancelOpeningRow.locator(".mt-ten-nha-thau").fill(`Nhà thầu ${runId}`);
@@ -765,6 +927,53 @@ try {
   await cancelOpeningRow.locator(".mt-hieu-luc-bao-dam-ngay").fill("120");
   await cancelOpeningRow.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
   await page.locator("#btn-mothau-save").click();
+  const cancelOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
+  try {
+    await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => {
+      const dialog = document.querySelector("#modal-custom-dialog.active");
+      const saveButton = document.getElementById("btn-mothau-save");
+      const selectedId = document.getElementById("mothau-goithau-select")?.value || "";
+      const model = globalThis.app?.model;
+      const packageRecord = model?.state?.goithau?.find?.(
+        (item) => String(item.id) === String(selectedId),
+      );
+      return {
+        dialog: dialog ? {
+          title: dialog.querySelector("#dialog-title")?.textContent?.trim() || "",
+          message: dialog.querySelector("#dialog-message")?.textContent?.trim() || "",
+        } : null,
+        toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+          .map((toast) => toast.textContent?.trim() || ""),
+        saveButton: saveButton ? {
+          text: saveButton.textContent?.trim() || "",
+          disabled: saveButton.disabled,
+          busy: saveButton.dataset.openingSaveBusy || "",
+        } : null,
+        selectedId,
+        packageRecord: packageRecord ? {
+          id: packageRecord.id,
+          status: packageRecord.trangThai,
+          rowVersion: packageRecord.rowVersion,
+          syncVersion: packageRecord.syncVersion,
+          openingTime: packageRecord.thoiGianMoThau,
+        } : null,
+        openingRows: (model?.state?.thongtinmothau || [])
+          .filter((item) => String(item.goiThauId) === String(selectedId))
+          .map((item) => ({ id: item.id, rowVersion: item.rowVersion, syncVersion: item.syncVersion })),
+        activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+          ?.getAttribute("data-workflow-tab") || "",
+      };
+    });
+    throw new Error(`Cancel-package opening save did not advance: ${JSON.stringify({
+      diagnostics,
+      recentApiTraffic,
+      recentHttpErrors: httpErrors.slice(-8),
+      recentPageErrors: pageErrors.slice(-8),
+    })}`, { cause: error });
+  }
+  await cancelOpeningSaveCompletion;
   await page.locator("#btn-workflow-cancel-package").waitFor({ state: "visible", timeout: 20_000 });
   await page.locator("#btn-workflow-cancel-package").click();
   await page.locator("#cancel-dec-no").fill(`${runId}/QD-HUY`);
@@ -813,6 +1022,7 @@ try {
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+  await waitForRenderedWorkflowTab(page, "opening_tech");
   const technicalOpeningRow = page.locator("#mothau-table-tbody tr").first();
   await technicalOpeningRow.locator(".mt-ma-nha-thau").fill(`${runId}-NT`);
   await technicalOpeningRow.locator(".mt-ten-nha-thau").fill(`Nhà thầu ${runId}`);
@@ -820,10 +1030,26 @@ try {
   await technicalOpeningRow.locator(".mt-hieu-luc-dam-bao").fill("120");
   await technicalOpeningRow.locator(".mt-hieu-luc-hsdxt").fill("90");
   await page.locator("#btn-mothau-save").click();
+  const technicalOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
+  await technicalOpeningSaveCompletion;
+  await page.locator('button[data-workflow-tab="eval_tech"]').click();
+  await waitForRenderedWorkflowTab(page, "eval_tech");
   mark("two-envelope-technical-opening-saved");
 
   const technicalEvaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
+  await technicalEvaluationRow.waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => ({
+      packageId: document.getElementById("danhgiahsdt-goithau-select")?.value || "",
+      openingRows: [...document.querySelectorAll("#mothau-table-tbody tr")].map((row) => ({
+        bidId: row.getAttribute("data-bid-id") || "",
+        contractor: row.querySelector(".mt-ma-nha-thau")?.value || "",
+      })),
+      evaluationRows: document.querySelectorAll("#danhgiahsdt-table-tbody tr").length,
+      content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 500) || "",
+    }));
+    throw new Error(`Technical evaluation row did not render: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
+  });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
   await technicalEvaluationRow.locator(".mt-dg-ky-thuat").fill("Đạt");
@@ -856,6 +1082,7 @@ try {
     }));
     throw new Error(`Technical evaluation did not expose qualified approval: ${JSON.stringify({ technicalEvaluationSubmission, state, pageErrors, httpErrors })}; ${error.message}`);
   });
+  await page.locator('button[data-workflow-tab="qualified"]').click();
   await page.locator("#qualified-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       selectedTab: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
@@ -916,6 +1143,8 @@ try {
     }
   }
   await page.locator("#btn-danhgiahsdt-save").click();
+  await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator('button[data-workflow-tab="result"]').click();
   await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-financial-evaluation-saved");
 
@@ -1001,6 +1230,7 @@ try {
   await page.waitForFunction(() => (
     document.getElementById("detail-workflow-status-badge")?.textContent?.includes("Đã mở thầu")
   ), null, { timeout: 15_000 });
+  await waitForRenderedWorkflowTab(page, "opening");
 
   while (await page.locator("#mothau-table-tbody tr").count() < 2) {
     await page.locator("#btn-mothau-add-bid").click();
@@ -1018,6 +1248,7 @@ try {
     await row.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
   }
   await page.locator("#btn-mothau-save").click();
+  const lotOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
@@ -1032,6 +1263,9 @@ try {
     }));
     throw new Error(`Lot opening did not advance: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
   });
+  await lotOpeningSaveCompletion;
+  await page.locator('button[data-workflow-tab="eval_tech"]').click();
+  await waitForRenderedWorkflowTab(page, "eval_tech");
   mark("lot-opening-saved", { lots: 2 });
 
   const evaluateCurrentLot = async ({ lotCode, reportSuffix, price }) => {
@@ -1083,7 +1317,7 @@ try {
         })(),
         scope: document.getElementById("danhgiahsdt-scope-feedback")?.textContent?.trim() || "",
         content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 1000) || "",
-      }), code);
+      }), lotCode);
       throw new Error(`Lot evaluation row stayed read-only: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
     });
     await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-${reportSuffix}`);
@@ -1105,6 +1339,8 @@ try {
       await lowPriceAcceptance.check();
     }
     await page.locator("#btn-danhgiahsdt-save").click();
+    await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
+    await page.locator('button[data-workflow-tab="result"]').click();
     await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
       const state = await page.evaluate(() => ({
         tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),

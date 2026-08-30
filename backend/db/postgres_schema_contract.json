@@ -393,11 +393,39 @@
       "table": "chuyen_gia",
       "valid": true
     },
+    "commercial_analytics_events_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_analytics_events_pkey ON $SCHEMA.commercial_analytics_events USING btree (event_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_analytics_events",
+      "valid": true
+    },
     "commercial_drafts_pkey": {
       "definition": "CREATE UNIQUE INDEX commercial_drafts_pkey ON $SCHEMA.commercial_drafts USING btree (id)",
       "live": true,
       "ready": true,
       "table": "commercial_drafts",
+      "valid": true
+    },
+    "commercial_feedback_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_feedback_pkey ON $SCHEMA.commercial_feedback USING btree (feedback_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_feedback",
+      "valid": true
+    },
+    "commercial_funnel_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_funnel_daily_pkey ON $SCHEMA.commercial_funnel_daily USING btree (usage_date, commercial_release_id, event_name, owner_kind, size_bucket, sku_code)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_daily",
+      "valid": true
+    },
+    "commercial_funnel_workspace_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX commercial_funnel_workspace_daily_pkey ON $SCHEMA.commercial_funnel_workspace_daily USING btree (usage_date, commercial_release_id, event_name, owner_kind, size_bucket, sku_code, analytics_workspace_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_workspace_daily",
       "valid": true
     },
     "commercial_outbox_pkey": {
@@ -468,6 +496,20 @@
       "live": true,
       "ready": true,
       "table": "contractor_violation_checks",
+      "valid": true
+    },
+    "cost_usage_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX cost_usage_daily_pkey ON $SCHEMA.cost_usage_daily USING btree (usage_date, owner_kind, analytics_workspace_id, plan_code, variant, cost_type, source)",
+      "live": true,
+      "ready": true,
+      "table": "cost_usage_daily",
+      "valid": true
+    },
+    "credit_pack_purchase_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX credit_pack_purchase_daily_pkey ON $SCHEMA.credit_pack_purchase_daily USING btree (purchase_date, analytics_workspace_id, commercial_release_id, sku_code, pack_size)",
+      "live": true,
+      "ready": true,
+      "table": "credit_pack_purchase_daily",
       "valid": true
     },
     "danh_muc_trang_thai_hop_dong_organization_id_name_key": {
@@ -902,6 +944,20 @@
       "live": true,
       "ready": true,
       "table": "ai_usage_daily",
+      "valid": true
+    },
+    "idx_analytics_events_occurred": {
+      "definition": "CREATE INDEX idx_analytics_events_occurred ON $SCHEMA.commercial_analytics_events USING btree (occurred_at DESC, event_name)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_analytics_events",
+      "valid": true
+    },
+    "idx_analytics_events_release": {
+      "definition": "CREATE INDEX idx_analytics_events_release ON $SCHEMA.commercial_analytics_events USING btree (commercial_release_id, occurred_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_analytics_events",
       "valid": true
     },
     "idx_api_idempotency_created": {
@@ -1352,6 +1408,20 @@
       "table": "commercial_drafts",
       "valid": true
     },
+    "idx_commercial_feedback_moment": {
+      "definition": "CREATE INDEX idx_commercial_feedback_moment ON $SCHEMA.commercial_feedback USING btree (occurred_at DESC, moment, reason)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_feedback",
+      "valid": true
+    },
+    "idx_commercial_feedback_release_fk": {
+      "definition": "CREATE INDEX idx_commercial_feedback_release_fk ON $SCHEMA.commercial_feedback USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_feedback",
+      "valid": true
+    },
     "idx_commercial_outbox_claim": {
       "definition": "CREATE INDEX idx_commercial_outbox_claim ON $SCHEMA.commercial_outbox USING btree (status, available_at)",
       "live": true,
@@ -1469,6 +1539,34 @@
       "live": true,
       "ready": true,
       "table": "contractor_violation_checks",
+      "valid": true
+    },
+    "idx_cost_usage_daily_date": {
+      "definition": "CREATE INDEX idx_cost_usage_daily_date ON $SCHEMA.cost_usage_daily USING btree (usage_date DESC, cost_type, commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "cost_usage_daily",
+      "valid": true
+    },
+    "idx_cost_usage_daily_release_fk": {
+      "definition": "CREATE INDEX idx_cost_usage_daily_release_fk ON $SCHEMA.cost_usage_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "cost_usage_daily",
+      "valid": true
+    },
+    "idx_credit_pack_purchase_date": {
+      "definition": "CREATE INDEX idx_credit_pack_purchase_date ON $SCHEMA.credit_pack_purchase_daily USING btree (purchase_date DESC, pack_size, owner_kind)",
+      "live": true,
+      "ready": true,
+      "table": "credit_pack_purchase_daily",
+      "valid": true
+    },
+    "idx_credit_pack_purchase_release_fk": {
+      "definition": "CREATE INDEX idx_credit_pack_purchase_release_fk ON $SCHEMA.credit_pack_purchase_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "credit_pack_purchase_daily",
       "valid": true
     },
     "idx_danh_muc_trang_thai_hop_dong_owner_sync_version": {
@@ -1623,6 +1721,48 @@
       "live": true,
       "ready": true,
       "table": "email_delivery_status",
+      "valid": true
+    },
+    "idx_feature_user_daily_feature": {
+      "definition": "CREATE INDEX idx_feature_user_daily_feature ON $SCHEMA.workspace_feature_user_daily USING btree (feature_key, usage_date DESC, analytics_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_feature_user_daily",
+      "valid": true
+    },
+    "idx_funnel_daily_date": {
+      "definition": "CREATE INDEX idx_funnel_daily_date ON $SCHEMA.commercial_funnel_daily USING btree (usage_date DESC, event_name, commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_daily",
+      "valid": true
+    },
+    "idx_funnel_daily_release_fk": {
+      "definition": "CREATE INDEX idx_funnel_daily_release_fk ON $SCHEMA.commercial_funnel_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_daily",
+      "valid": true
+    },
+    "idx_funnel_workspace_date_event": {
+      "definition": "CREATE INDEX idx_funnel_workspace_date_event ON $SCHEMA.commercial_funnel_workspace_daily USING btree (usage_date DESC, event_name, owner_kind, size_bucket)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_workspace_daily",
+      "valid": true
+    },
+    "idx_funnel_workspace_identity": {
+      "definition": "CREATE INDEX idx_funnel_workspace_identity ON $SCHEMA.commercial_funnel_workspace_daily USING btree (analytics_workspace_id, usage_date DESC)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_workspace_daily",
+      "valid": true
+    },
+    "idx_funnel_workspace_release_fk": {
+      "definition": "CREATE INDEX idx_funnel_workspace_release_fk ON $SCHEMA.commercial_funnel_workspace_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "commercial_funnel_workspace_daily",
       "valid": true
     },
     "idx_generated_document_creator": {
@@ -2801,6 +2941,20 @@
       "table": "phan_cong_nhan_su",
       "valid": true
     },
+    "idx_plan_fit_monthly_date": {
+      "definition": "CREATE INDEX idx_plan_fit_monthly_date ON $SCHEMA.plan_fit_monthly USING btree (snapshot_month DESC, classification, plan_code)",
+      "live": true,
+      "ready": true,
+      "table": "plan_fit_monthly",
+      "valid": true
+    },
+    "idx_plan_fit_monthly_release_fk": {
+      "definition": "CREATE INDEX idx_plan_fit_monthly_release_fk ON $SCHEMA.plan_fit_monthly USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "plan_fit_monthly",
+      "valid": true
+    },
     "idx_plan_legal_binding_creator": {
       "definition": "CREATE INDEX idx_plan_legal_binding_creator ON $SCHEMA.plan_legal_binding USING btree (created_by_id)",
       "live": true,
@@ -2976,11 +3130,46 @@
       "table": "record_edit_ownership",
       "valid": true
     },
+    "idx_retention_cohort_weekly_date": {
+      "definition": "CREATE INDEX idx_retention_cohort_weekly_date ON $SCHEMA.retention_cohort_weekly USING btree (cohort_week DESC, cohort_kind, week_number)",
+      "live": true,
+      "ready": true,
+      "table": "retention_cohort_weekly",
+      "valid": true
+    },
+    "idx_revenue_daily_date": {
+      "definition": "CREATE INDEX idx_revenue_daily_date ON $SCHEMA.revenue_daily USING btree (usage_date DESC, commercial_release_id, plan_code)",
+      "live": true,
+      "ready": true,
+      "table": "revenue_daily",
+      "valid": true
+    },
+    "idx_revenue_daily_release_fk": {
+      "definition": "CREATE INDEX idx_revenue_daily_release_fk ON $SCHEMA.revenue_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "revenue_daily",
+      "valid": true
+    },
     "idx_sensitive_record_read_capabilities_user": {
       "definition": "CREATE INDEX idx_sensitive_record_read_capabilities_user ON $SCHEMA.sensitive_record_read_capabilities USING btree (user_id, organization_id)",
       "live": true,
       "ready": true,
       "table": "sensitive_record_read_capabilities",
+      "valid": true
+    },
+    "idx_subscription_snapshot_daily_release_fk": {
+      "definition": "CREATE INDEX idx_subscription_snapshot_daily_release_fk ON $SCHEMA.subscription_snapshot_daily USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "subscription_snapshot_daily",
+      "valid": true
+    },
+    "idx_subscription_snapshot_daily_status": {
+      "definition": "CREATE INDEX idx_subscription_snapshot_daily_status ON $SCHEMA.subscription_snapshot_daily USING btree (snapshot_date DESC, status, owner_kind, variant)",
+      "live": true,
+      "ready": true,
+      "table": "subscription_snapshot_daily",
       "valid": true
     },
     "idx_sync_mutations_actor": {
@@ -3389,6 +3578,55 @@
       "table": "word_template_version",
       "valid": true
     },
+    "idx_workspace_activation_first_value": {
+      "definition": "CREATE INDEX idx_workspace_activation_first_value ON $SCHEMA.workspace_activation_facts USING btree (first_value_at) WHERE (first_value_at IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_activation_facts",
+      "valid": true
+    },
+    "idx_workspace_activation_release_fk": {
+      "definition": "CREATE INDEX idx_workspace_activation_release_fk ON $SCHEMA.workspace_activation_facts USING btree (commercial_release_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_activation_facts",
+      "valid": true
+    },
+    "idx_workspace_activation_signup": {
+      "definition": "CREATE INDEX idx_workspace_activation_signup ON $SCHEMA.workspace_activation_facts USING btree (signup_at, owner_kind, variant)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_activation_facts",
+      "valid": true
+    },
+    "idx_workspace_feature_daily_date": {
+      "definition": "CREATE INDEX idx_workspace_feature_daily_date ON $SCHEMA.workspace_feature_daily USING btree (usage_date DESC, feature_key)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_feature_daily",
+      "valid": true
+    },
+    "idx_workspace_seat_daily_user": {
+      "definition": "CREATE INDEX idx_workspace_seat_daily_user ON $SCHEMA.workspace_seat_daily USING btree (analytics_user_id, usage_date DESC)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_seat_daily",
+      "valid": true
+    },
+    "idx_workspace_usage_daily_date": {
+      "definition": "CREATE INDEX idx_workspace_usage_daily_date ON $SCHEMA.workspace_usage_daily USING btree (usage_date DESC, owner_kind, variant)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_usage_daily",
+      "valid": true
+    },
+    "idx_workspace_usage_daily_release": {
+      "definition": "CREATE INDEX idx_workspace_usage_daily_release ON $SCHEMA.workspace_usage_daily USING btree (commercial_release_id, usage_date DESC)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_usage_daily",
+      "valid": true
+    },
     "ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key": {
       "definition": "CREATE UNIQUE INDEX ke_hoach_can_cu_organization_id_ke_hoach_id_sort_order_key ON $SCHEMA.ke_hoach_can_cu USING btree (organization_id, ke_hoach_id, sort_order)",
       "live": true,
@@ -3788,6 +4026,13 @@
       "table": "phan_cong_nhan_su",
       "valid": true
     },
+    "plan_fit_monthly_pkey": {
+      "definition": "CREATE UNIQUE INDEX plan_fit_monthly_pkey ON $SCHEMA.plan_fit_monthly USING btree (snapshot_month, analytics_workspace_id)",
+      "live": true,
+      "ready": true,
+      "table": "plan_fit_monthly",
+      "valid": true
+    },
     "plan_legal_binding_head_organization_id_plan_id_key": {
       "definition": "CREATE UNIQUE INDEX plan_legal_binding_head_organization_id_plan_id_key ON $SCHEMA.plan_legal_binding_head USING btree (organization_id, plan_id)",
       "live": true,
@@ -3907,11 +4152,32 @@
       "table": "record_edit_ownership",
       "valid": true
     },
+    "retention_cohort_weekly_pkey": {
+      "definition": "CREATE UNIQUE INDEX retention_cohort_weekly_pkey ON $SCHEMA.retention_cohort_weekly USING btree (cohort_week, cohort_kind, segment_key, commercial_release_id, owner_kind, week_number)",
+      "live": true,
+      "ready": true,
+      "table": "retention_cohort_weekly",
+      "valid": true
+    },
+    "revenue_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX revenue_daily_pkey ON $SCHEMA.revenue_daily USING btree (usage_date, commercial_release_id, owner_kind, plan_code, variant, sku_code)",
+      "live": true,
+      "ready": true,
+      "table": "revenue_daily",
+      "valid": true
+    },
     "sensitive_record_read_capabilities_pkey": {
       "definition": "CREATE UNIQUE INDEX sensitive_record_read_capabilities_pkey ON $SCHEMA.sensitive_record_read_capabilities USING btree (organization_id, user_id)",
       "live": true,
       "ready": true,
       "table": "sensitive_record_read_capabilities",
+      "valid": true
+    },
+    "subscription_snapshot_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX subscription_snapshot_daily_pkey ON $SCHEMA.subscription_snapshot_daily USING btree (snapshot_date, analytics_workspace_id)",
+      "live": true,
+      "ready": true,
+      "table": "subscription_snapshot_daily",
       "valid": true
     },
     "sync_metadata_pkey": {
@@ -4235,10 +4501,45 @@
       "ready": true,
       "table": "word_template_version",
       "valid": true
+    },
+    "workspace_activation_facts_pkey": {
+      "definition": "CREATE UNIQUE INDEX workspace_activation_facts_pkey ON $SCHEMA.workspace_activation_facts USING btree (analytics_workspace_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_activation_facts",
+      "valid": true
+    },
+    "workspace_feature_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX workspace_feature_daily_pkey ON $SCHEMA.workspace_feature_daily USING btree (usage_date, analytics_workspace_id, feature_key)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_feature_daily",
+      "valid": true
+    },
+    "workspace_feature_user_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX workspace_feature_user_daily_pkey ON $SCHEMA.workspace_feature_user_daily USING btree (usage_date, analytics_workspace_id, feature_key, analytics_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_feature_user_daily",
+      "valid": true
+    },
+    "workspace_seat_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX workspace_seat_daily_pkey ON $SCHEMA.workspace_seat_daily USING btree (usage_date, analytics_workspace_id, analytics_user_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_seat_daily",
+      "valid": true
+    },
+    "workspace_usage_daily_pkey": {
+      "definition": "CREATE UNIQUE INDEX workspace_usage_daily_pkey ON $SCHEMA.workspace_usage_daily USING btree (usage_date, analytics_workspace_id)",
+      "live": true,
+      "ready": true,
+      "table": "workspace_usage_daily",
+      "valid": true
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 83,
+  "schemaVersion": 88,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -8909,6 +9210,175 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "commercial_analytics_events": {
+      "columns": {
+        "analytics_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_name": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "occurred_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "received_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "source": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_analytics_events_analytics_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_user_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_check": {
+          "deferrable": false,
+          "definition": "CHECK (received_at >= occurred_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_event_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM event_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_event_name_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_name = ANY (ARRAY['pricing.viewed'::text, 'pricing.size_selected'::text, 'pricing.variant_compared'::text, 'pricing.offer_selected'::text, 'upgrade.prompt_shown'::text, 'upgrade.prompt_clicked'::text, 'quota.warning_shown'::text, 'quota.topup_clicked'::text, 'checkout.started'::text, 'checkout.cancelled'::text, 'subscription.cancel_intent'::text, 'downgrade.started'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_occurred_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (occurred_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (event_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_analytics_events_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_sku_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (sku_code IS NULL OR length(sku_code) <= 200)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_analytics_events_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (source = ANY (ARRAY['pricing_page'::text, 'commercial_storefront'::text, 'upgrade_prompt'::text, 'quota_warning'::text, 'checkout'::text, 'subscription_settings'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_analytics_events_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "commercial_drafts": {
       "columns": {
         "base_release_id": {
@@ -9098,6 +9568,401 @@
         "fk_commercial_drafts_3_598e8ba8": {
           "deferrable": false,
           "definition": "FOREIGN KEY (updated_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_feedback": {
+      "columns": {
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "feedback_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "moment": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "occurred_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "reason": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "received_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "commercial_feedback_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_check": {
+          "deferrable": false,
+          "definition": "CHECK (received_at >= occurred_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_feedback_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM feedback_id) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_moment_check": {
+          "deferrable": false,
+          "definition": "CHECK (moment = ANY (ARRAY['checkout_abandoned'::text, 'second_topup'::text, 'upgrade_completed'::text, 'cancel_or_downgrade_intent'::text, 'paid_day_45_60'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_occurred_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (occurred_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_feedback_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (feedback_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_feedback_reason_check": {
+          "deferrable": false,
+          "definition": "CHECK (reason = ANY (ARRAY['too_expensive'::text, 'not_needed_yet'::text, 'benefits_unclear'::text, 'payment_method'::text, 'need_internal_approval'::text, 'technical_issue'::text, 'missing_feature'::text, 'usage_too_low'::text, 'other'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_feedback_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_funnel_daily": {
+      "columns": {
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "event_name": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "unique_workspaces": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_funnel_daily_event_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, commercial_release_id, event_name, owner_kind, size_bucket, sku_code)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_funnel_daily_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_daily_unique_workspaces_check": {
+          "deferrable": false,
+          "definition": "CHECK (unique_workspaces >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_funnel_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "commercial_funnel_workspace_daily": {
+      "columns": {
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "event_name": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "first_occurred_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "last_occurred_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "commercial_funnel_workspace_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_check": {
+          "deferrable": false,
+          "definition": "CHECK (first_occurred_at IS NULL AND last_occurred_at IS NULL OR first_occurred_at IS NOT NULL AND last_occurred_at >= first_occurred_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_event_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_event_name_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM event_name) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_first_occurred_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (first_occurred_at IS NULL OR first_occurred_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, commercial_release_id, event_name, owner_kind, size_bucket, sku_code, analytics_workspace_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "commercial_funnel_workspace_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_commercial_funnel_workspace_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
           "initiallyDeferred": false,
           "kind": "f",
           "validated": true
@@ -10316,6 +11181,337 @@
         "fk_contractor_violation_checks_6_e063bafc": {
           "deferrable": false,
           "definition": "FOREIGN KEY (created_by) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "cost_usage_daily": {
+      "columns": {
+        "analytics_workspace_id": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "cost_status": {
+          "default": "'available'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "cost_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "estimated_cost_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "quantity": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "source": {
+          "default": "'aggregate'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "cost_usage_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (analytics_workspace_id = ''::text OR length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_cost_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (cost_status = ANY (ARRAY['available'::text, 'not_configured'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_cost_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (cost_type = ANY (ARRAY['procurement_fetch'::text, 'ai'::text, 'document_worker'::text, 'storage'::text, 'bandwidth'::text, 'payment_fee'::text, 'email'::text, 'other_external_provider'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_estimated_cost_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (estimated_cost_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, owner_kind, analytics_workspace_id, plan_code, variant, cost_type, source)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "cost_usage_daily_quantity_check": {
+          "deferrable": false,
+          "definition": "CHECK (quantity >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM source) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "cost_usage_daily_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_cost_usage_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "credit_pack_purchase_daily": {
+      "columns": {
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "credits_purchased": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "gross_revenue_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "pack_size": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "purchase_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "purchase_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "sku_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "unused_credits": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        }
+      },
+      "constraints": {
+        "credit_pack_purchase_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_check": {
+          "deferrable": false,
+          "definition": "CHECK (unused_credits >= 0 AND unused_credits <= credits_purchased)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_credits_purchased_check": {
+          "deferrable": false,
+          "definition": "CHECK (credits_purchased >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_gross_revenue_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (gross_revenue_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_pack_size_check": {
+          "deferrable": false,
+          "definition": "CHECK (pack_size > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (purchase_date, analytics_workspace_id, commercial_release_id, sku_code, pack_size)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_purchase_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (purchase_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_purchase_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (purchase_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "credit_pack_purchase_daily_sku_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM sku_code) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_credit_pack_purchase_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
           "initiallyDeferred": false,
           "kind": "f",
           "validated": true
@@ -21098,6 +22294,385 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "plan_fit_monthly": {
+      "columns": {
+        "active_seats": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_intensity": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "classification": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "connected_feature_days": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "cost_status": {
+          "default": "'not_configured'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "days_to_break_even": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "estimated_cost_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "export_intensity": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "price_gap_to_connected_vnd": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "procurement_usage": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "quota_utilization": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "numeric(20,4)"
+        },
+        "repeat_topups": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "revenue_status": {
+          "default": "'not_available'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "revenue_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "rule_version": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "seat_utilization": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "numeric(20,4)"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "snapshot_month": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "topup_spend_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "workflow_depth": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "workflow_volume": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "fk_plan_fit_monthly_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "plan_fit_monthly_active_seats_check": {
+          "deferrable": false,
+          "definition": "CHECK (active_seats >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_ai_intensity_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_intensity >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_classification_check": {
+          "deferrable": false,
+          "definition": "CHECK (classification = ANY (ARRAY['UNDER_SIZED'::text, 'GOOD_FIT'::text, 'OVER_SIZED'::text, 'CONNECTED_CANDIDATE'::text, 'TOPUP_HEAVY'::text, 'ENTERPRISE_CANDIDATE'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_connected_feature_days_check": {
+          "deferrable": false,
+          "definition": "CHECK (connected_feature_days >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_cost_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (cost_status = ANY (ARRAY['available'::text, 'not_configured'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_days_to_break_even_check": {
+          "deferrable": false,
+          "definition": "CHECK (days_to_break_even IS NULL OR days_to_break_even >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_estimated_cost_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (estimated_cost_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_export_intensity_check": {
+          "deferrable": false,
+          "definition": "CHECK (export_intensity >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (snapshot_month, analytics_workspace_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "plan_fit_monthly_price_gap_to_connected_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (price_gap_to_connected_vnd IS NULL OR price_gap_to_connected_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_procurement_usage_check": {
+          "deferrable": false,
+          "definition": "CHECK (procurement_usage >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_quota_utilization_check": {
+          "deferrable": false,
+          "definition": "CHECK (quota_utilization >= 0::numeric)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_repeat_topups_check": {
+          "deferrable": false,
+          "definition": "CHECK (repeat_topups >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_revenue_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (revenue_status = ANY (ARRAY['available'::text, 'not_available'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_revenue_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (revenue_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_rule_version_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM rule_version) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_seat_utilization_check": {
+          "deferrable": false,
+          "definition": "CHECK (seat_utilization >= 0::numeric)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_snapshot_month_check": {
+          "deferrable": false,
+          "definition": "CHECK (snapshot_month::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_topup_spend_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (topup_spend_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_workflow_depth_check": {
+          "deferrable": false,
+          "definition": "CHECK (workflow_depth >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "plan_fit_monthly_workflow_volume_check": {
+          "deferrable": false,
+          "definition": "CHECK (workflow_volume >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "plan_legal_binding": {
       "columns": {
         "anchor_date": {
@@ -22907,6 +24482,288 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "retention_cohort_weekly": {
+      "columns": {
+        "cohort_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "cohort_week": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "retained_workspaces": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "segment_key": {
+          "default": "'all'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "week_number": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "workspace_count": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "retention_cohort_weekly_check": {
+          "deferrable": false,
+          "definition": "CHECK (retained_workspaces >= 0 AND retained_workspaces <= workspace_count)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "retention_cohort_weekly_cohort_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (cohort_kind = ANY (ARRAY['signup'::text, 'first_value'::text, 'paid_activation'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "retention_cohort_weekly_cohort_week_check": {
+          "deferrable": false,
+          "definition": "CHECK (cohort_week::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "retention_cohort_weekly_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "retention_cohort_weekly_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (cohort_week, cohort_kind, segment_key, commercial_release_id, owner_kind, week_number)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "retention_cohort_weekly_week_number_check": {
+          "deferrable": false,
+          "definition": "CHECK (week_number >= 0 AND week_number <= 12)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "retention_cohort_weekly_workspace_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (workspace_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "revenue_daily": {
+      "columns": {
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "gross_revenue_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "net_settled_revenue_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "paid_orders": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "payment_fee_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "refund_amount_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "sku_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_revenue_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "revenue_daily_gross_revenue_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (gross_revenue_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_net_settled_revenue_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (net_settled_revenue_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_paid_orders_check": {
+          "deferrable": false,
+          "definition": "CHECK (paid_orders >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_payment_fee_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (payment_fee_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, commercial_release_id, owner_kind, plan_code, variant, sku_code)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "revenue_daily_refund_amount_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (refund_amount_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "revenue_daily_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "sensitive_record_read_capabilities": {
       "columns": {
         "created_at": {
@@ -23005,6 +24862,147 @@
         "sensitive_record_read_capabilities_user_id_check": {
           "deferrable": false,
           "definition": "CHECK (user_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "subscription_snapshot_daily": {
+      "columns": {
+        "activated_today": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "smallint"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "member_quota": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "snapshot_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_subscription_snapshot_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "subscription_snapshot_daily_activated_today_check": {
+          "deferrable": false,
+          "definition": "CHECK (activated_today = ANY (ARRAY[0, 1]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_member_quota_check": {
+          "deferrable": false,
+          "definition": "CHECK (member_quota >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (snapshot_date, analytics_workspace_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "subscription_snapshot_daily_snapshot_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (snapshot_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['active'::text, 'suspended'::text, 'expired'::text, 'cancelled'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "subscription_snapshot_daily_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -23227,6 +25225,13 @@
           "notNull": true,
           "type": "text"
         },
+        "registration_verified_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
         "ten_dang_nhap": {
           "default": null,
           "generated": "",
@@ -23297,6 +25302,13 @@
           "definition": "PRIMARY KEY (id)",
           "initiallyDeferred": false,
           "kind": "p",
+          "validated": true
+        },
+        "tai_khoan_registration_verified_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (registration_verified_at IS NULL OR registration_verified_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "tai_khoan_trang_thai_check": {
@@ -27118,6 +29130,1033 @@
         "word_template_version_version_no_check": {
           "deferrable": false,
           "definition": "CHECK (version_no > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "workspace_activation_facts": {
+      "columns": {
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "first_feature_key": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "first_login_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "first_paid_value_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "first_plan_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "first_procurement_or_export_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "first_value_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "signup_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "subscription_activated_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "verification_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "verification_observation": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_workspace_activation_facts_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "workspace_activation_facts_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_check": {
+          "deferrable": false,
+          "definition": "CHECK (verification_at IS NULL OR verification_at >= signup_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_check1": {
+          "deferrable": false,
+          "definition": "CHECK (first_login_at IS NULL OR first_login_at >= signup_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_check2": {
+          "deferrable": false,
+          "definition": "CHECK (first_value_at IS NULL OR first_value_at >= signup_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_check3": {
+          "deferrable": false,
+          "definition": "CHECK (subscription_activated_at IS NULL OR subscription_activated_at >= signup_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_check4": {
+          "deferrable": false,
+          "definition": "CHECK (first_paid_value_at IS NULL OR subscription_activated_at IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (analytics_workspace_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "workspace_activation_facts_signup_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (signup_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_activation_facts_verification_observation_check": {
+          "deferrable": false,
+          "definition": "CHECK (verification_observation = ANY (ARRAY['observed'::text, 'not_verified'::text, 'historical_timestamp_unavailable'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "workspace_feature_daily": {
+      "columns": {
+        "active_users": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "feature_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "workspace_feature_daily_active_users_check": {
+          "deferrable": false,
+          "definition": "CHECK (active_users >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_daily_event_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_daily_feature_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM feature_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, analytics_workspace_id, feature_key)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "workspace_feature_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "workspace_feature_user_daily": {
+      "columns": {
+        "analytics_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "event_count": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "feature_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "workspace_feature_user_daily_analytics_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_user_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_user_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_user_daily_event_count_check": {
+          "deferrable": false,
+          "definition": "CHECK (event_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_user_daily_feature_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM feature_key) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_feature_user_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, analytics_workspace_id, feature_key, analytics_user_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "workspace_feature_user_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "workspace_seat_daily": {
+      "columns": {
+        "analytics_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "meaningful_actions": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "workspace_seat_daily_analytics_user_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_user_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_seat_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_seat_daily_meaningful_actions_check": {
+          "deferrable": false,
+          "definition": "CHECK (meaningful_actions >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_seat_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, analytics_workspace_id, analytics_user_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "workspace_seat_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "workspace_usage_daily": {
+      "columns": {
+        "active_seats": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_estimated_cost_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_feedback_down": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_feedback_incorrect_source": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_feedback_too_slow": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_feedback_up": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_input_tokens": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_output_tokens": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_requests": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "ai_tool_calls": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "analytics_workspace_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "cache_hits": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "commercial_release_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "credits_released": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "credits_reserved": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "expired_unused_credits": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "feature_uses": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "fetch_attempted": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "fetch_cancelled": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "fetch_failures": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "included_credits_consumed": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "included_credits_granted": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "meaningful_actions": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "owner_kind": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "plan_code": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "power_seats": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "procurement_actions": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "purchased_credits": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "purchased_credits_unused": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "registered_seats": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "size_bucket": {
+          "default": "'unknown'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "successful_fetches": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "topup_spend_vnd": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "updated_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "variant": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "word_exports": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "workflow_depth": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "workflow_volume": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        }
+      },
+      "constraints": {
+        "fk_workspace_usage_daily_1_2ea853e4": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "workspace_usage_daily_active_seats_check": {
+          "deferrable": false,
+          "definition": "CHECK (active_seats >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_estimated_cost_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_estimated_cost_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_feedback_down_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_feedback_down >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_feedback_incorrect_source_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_feedback_incorrect_source >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_feedback_too_slow_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_feedback_too_slow >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_feedback_up_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_feedback_up >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_input_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_input_tokens >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_output_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_output_tokens >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_requests_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_requests >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_ai_tool_calls_check": {
+          "deferrable": false,
+          "definition": "CHECK (ai_tool_calls >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_analytics_workspace_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(analytics_workspace_id) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_cache_hits_check": {
+          "deferrable": false,
+          "definition": "CHECK (cache_hits >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_credits_released_check": {
+          "deferrable": false,
+          "definition": "CHECK (credits_released >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_credits_reserved_check": {
+          "deferrable": false,
+          "definition": "CHECK (credits_reserved >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_expired_unused_credits_check": {
+          "deferrable": false,
+          "definition": "CHECK (expired_unused_credits >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_feature_uses_check": {
+          "deferrable": false,
+          "definition": "CHECK (feature_uses >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_fetch_attempted_check": {
+          "deferrable": false,
+          "definition": "CHECK (fetch_attempted >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_fetch_cancelled_check": {
+          "deferrable": false,
+          "definition": "CHECK (fetch_cancelled >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_fetch_failures_check": {
+          "deferrable": false,
+          "definition": "CHECK (fetch_failures >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_included_credits_consumed_check": {
+          "deferrable": false,
+          "definition": "CHECK (included_credits_consumed >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_included_credits_granted_check": {
+          "deferrable": false,
+          "definition": "CHECK (included_credits_granted >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_meaningful_actions_check": {
+          "deferrable": false,
+          "definition": "CHECK (meaningful_actions >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_owner_kind_check": {
+          "deferrable": false,
+          "definition": "CHECK (owner_kind = ANY (ARRAY['account'::text, 'organization'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (usage_date, analytics_workspace_id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "workspace_usage_daily_power_seats_check": {
+          "deferrable": false,
+          "definition": "CHECK (power_seats >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_procurement_actions_check": {
+          "deferrable": false,
+          "definition": "CHECK (procurement_actions >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_purchased_credits_check": {
+          "deferrable": false,
+          "definition": "CHECK (purchased_credits >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_purchased_credits_unused_check": {
+          "deferrable": false,
+          "definition": "CHECK (purchased_credits_unused >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_registered_seats_check": {
+          "deferrable": false,
+          "definition": "CHECK (registered_seats >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_size_bucket_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bucket = ANY (ARRAY['1'::text, '2_5'::text, '6_15'::text, '16_50'::text, 'over_50'::text, 'unknown'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_successful_fetches_check": {
+          "deferrable": false,
+          "definition": "CHECK (successful_fetches >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_topup_spend_vnd_check": {
+          "deferrable": false,
+          "definition": "CHECK (topup_spend_vnd >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_variant_check": {
+          "deferrable": false,
+          "definition": "CHECK (variant = ANY (ARRAY[''::text, 'internal'::text, 'connected'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_word_exports_check": {
+          "deferrable": false,
+          "definition": "CHECK (word_exports >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_workflow_depth_check": {
+          "deferrable": false,
+          "definition": "CHECK (workflow_depth >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "workspace_usage_daily_workflow_volume_check": {
+          "deferrable": false,
+          "definition": "CHECK (workflow_volume >= 0)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

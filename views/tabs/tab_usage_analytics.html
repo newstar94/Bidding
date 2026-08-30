@@ -148,4 +148,51 @@
             </section>
         </div>
     </div>
+
+    <section class="product-analytics" id="product-analytics-workspace" aria-labelledby="product-analytics-title">
+        <header class="product-analytics__header">
+            <div><p class="usage-analytics__eyebrow">COMMERCIAL INTELLIGENCE</p><h2 id="product-analytics-title">Analytics / Commercial Intelligence</h2><p>Aggregate facts cho quyết định sản phẩm và pricing. Không dùng dữ liệu này để tự đổi gói hoặc quyền.</p></div>
+            <span id="product-analytics-updated" aria-live="polite">Chưa tải dữ liệu</span>
+        </header>
+        <div class="product-analytics__presets" aria-label="Khoảng thời gian nhanh">
+            <button class="btn btn-outline" type="button" data-product-range="7">7D</button>
+            <button class="btn btn-outline" type="button" data-product-range="30">30D</button>
+            <button class="btn btn-outline" type="button" data-product-range="90">90D</button>
+            <button class="btn btn-outline" type="button" data-product-range="183">6M</button>
+            <button class="btn btn-outline" type="button" data-product-range="365">12M</button>
+        </div>
+        <form class="product-analytics__filters" id="product-analytics-filter-form">
+            <label>Từ ngày<input class="form-control" id="product-analytics-from" type="date" required></label>
+            <label>Đến ngày<input class="form-control" id="product-analytics-to" type="date" required></label>
+            <label>Owner<select class="form-control" id="product-analytics-owner"><option value="">Tất cả</option><option value="account">Account</option><option value="organization">Organization</option></select></label>
+            <label>Variant<select class="form-control" id="product-analytics-variant"><option value="">Tất cả</option><option value="internal">Internal</option><option value="connected">Connected</option></select></label>
+            <label>Release<input class="form-control" id="product-analytics-release" placeholder="release id"></label>
+            <label>Release mode<select class="form-control" id="product-analytics-release-mode"><option value="">Tất cả</option><option value="shadow">Shadow</option><option value="live">Live (pilot/production)</option></select></label>
+            <label>Plan<input class="form-control" id="product-analytics-plan" placeholder="plan code"></label>
+            <label>Quy mô<select class="form-control" id="product-analytics-size"><option value="">Tất cả</option><option value="1">1</option><option value="2_5">2–5</option><option value="6_15">6–15</option><option value="16_50">16–50</option><option value="over_50">&gt;50</option></select></label>
+            <label>Trạng thái<select class="form-control" id="product-analytics-paid"><option value="">Tất cả</option><option value="paid">Paid</option><option value="free">Free / chưa gán</option></select></label>
+            <label>Cohort<select class="form-control" id="product-analytics-cohort"><option value="">All cohorts</option><option value="signup">Signup</option><option value="first_value">First value</option><option value="paid_activation">Paid activation</option></select></label>
+            <label>Procurement intensity<select class="form-control" id="product-analytics-procurement-intensity"><option value="">All</option><option value="none">None</option><option value="low">Low</option><option value="high">High</option></select></label>
+            <label>Collaboration<select class="form-control" id="product-analytics-collaboration"><option value="">All</option><option value="none">None</option><option value="active">Active</option></select></label>
+            <label>AI adoption<select class="form-control" id="product-analytics-ai-adoption"><option value="">All</option><option value="not_adopted">Not adopted</option><option value="adopted">Adopted</option></select></label>
+            <button class="btn btn-primary" type="submit">Cập nhật</button>
+        </form>
+        <nav class="product-analytics__nav" aria-label="Analytics views">
+            <button type="button" class="is-active" data-product-view="overview">Overview</button><button type="button" data-product-view="activation">Activation</button><button type="button" data-product-view="features">Features</button><button type="button" data-product-view="seats">Seats</button><button type="button" data-product-view="procurement">Procurement</button><button type="button" data-product-view="credits">Credits</button><button type="button" data-product-view="funnel">Funnel</button><button type="button" data-product-view="retention">Retention</button><button type="button" data-product-view="economics">Economics</button><button type="button" data-product-view="plan-fit">Plan fit</button>
+        </nav>
+        <div class="product-analytics__state" id="product-analytics-loading" role="status" hidden>Đang tổng hợp dữ liệu…</div>
+        <div class="product-analytics__state product-analytics__state--error" id="product-analytics-error" role="alert" hidden><strong>Không thể tải analytics</strong><p id="product-analytics-error-message">Vui lòng thử lại.</p><button class="btn btn-outline" id="product-analytics-retry" type="button">Thử lại</button></div>
+        <div class="product-analytics__state" id="product-analytics-empty" role="status" hidden><strong>Chưa đủ dữ liệu trong khoảng thời gian này.</strong><p id="product-analytics-empty-message">Dữ liệu aggregate sẽ xuất hiện sau khi job refresh chạy.</p></div>
+        <div id="product-analytics-content" hidden>
+            <section class="product-analytics__kpis" id="product-analytics-kpis" aria-label="KPI analytics"></section>
+            <div class="product-analytics__grid"><section class="product-analytics__panel" aria-labelledby="product-trend-title"><h3 id="product-trend-title">Main trend</h3><p class="product-analytics__summary">Primary metric của view hiện tại theo ngày; chart có text label và bảng dữ liệu thay thế.</p><div id="product-analytics-trend" class="product-analytics__bars-wrap" role="group" aria-label="Primary analytics trend"></div><details class="product-analytics__fallback"><summary>Xem bảng dữ liệu</summary><table><thead><tr><th>Ngày</th><th>Giá trị</th></tr></thead><tbody id="product-analytics-trend-table-body"></tbody></table></details></section><section class="product-analytics__panel" aria-labelledby="product-segments-title"><h3 id="product-segments-title">Segment comparison</h3><div id="product-analytics-segments" class="product-analytics__segments"></div></section><section class="product-analytics__panel" aria-labelledby="product-funnel-title"><h3 id="product-funnel-title">Commercial funnel</h3><div id="product-analytics-funnel" class="product-analytics__funnel"></div></section><section class="product-analytics__panel" aria-labelledby="product-economics-title"><h3 id="product-economics-title">Economics</h3><div id="product-analytics-economics" class="product-analytics__economics"></div><small>Estimated cost được ghi rõ; correlation does not imply causation.</small></section><section class="product-analytics__panel" aria-labelledby="product-ai-title"><h3 id="product-ai-title">AI analytics</h3><p class="product-analytics__summary">Chỉ dùng usage, token, tool call, estimated cost và structured feedback; không đọc nội dung AI.</p><div id="product-analytics-ai" class="product-analytics__economics"></div></section></div>
+            <section class="product-analytics__panel product-analytics__panel--detail" aria-labelledby="product-analytics-detail-title">
+                <h3 id="product-analytics-detail-title">Detailed evidence</h3>
+                <p class="product-analytics__summary" id="product-analytics-detail-summary">Aggregate evidence for the selected decision view.</p>
+                <div class="product-analytics__detail-visual" id="product-analytics-detail-visual" role="group" aria-label="Dashboard-specific visual summary"></div>
+                <div class="product-analytics__table-scroll"><table class="product-analytics__detail-table" id="product-analytics-detail-table" hidden><thead><tr id="product-analytics-detail-table-head"></tr></thead><tbody id="product-analytics-detail-table-body"></tbody></table></div>
+                <nav class="product-analytics__pagination" id="product-analytics-pagination" aria-label="Phân trang bảng analytics" hidden><button class="btn btn-outline" id="product-analytics-previous" type="button">Trang trước</button><span id="product-analytics-page-status" aria-live="polite">Trang 1 / 1</span><button class="btn btn-outline" id="product-analytics-next" type="button">Trang sau</button></nav>
+            </section>
+        </div>
+    </section>
 </section>

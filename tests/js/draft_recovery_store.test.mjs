@@ -239,6 +239,38 @@ test("draft_recovery_timer_from_a_cannot_capture_report_fields_from_b", () => {
   );
 });
 
+test("pending_report_snapshot_survives_a_rerender_before_debounced_storage_flush", () => {
+  const storage = memoryStorage();
+  const fixture = recoveryController({ storage, reportNumber: "BC-01" });
+  const scheduled = [];
+  const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
+  recovery.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recovery.cancelTimer = () => {};
+  fixture.controls.set("danhgiahsdt-table-tbody", { __bfBidEvaluationRowRenderRevision: 1 });
+  bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [],
+    bids: [],
+  });
+  fixture.reportControl.emit();
+
+  const replacement = trackedControl("");
+  fixture.controls.set("danhgiahsdt-so-baocao", replacement);
+  fixture.controls.set("danhgiahsdt-table-tbody", { __bfBidEvaluationRowRenderRevision: 2 });
+  const rebound = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [],
+    bids: [],
+  });
+
+  assert.equal(rebound.restored, true);
+  assert.equal(replacement.value, "BC-01");
+  assert.equal(storage.values.size, 0, "rerender recovery must not force synchronous storage I/O");
+  assert.equal(scheduled.length, 1);
+});
+
 test("draft_recovery_timer_from_a_cannot_capture_bid_fields_from_b", () => {
   const storageA = memoryStorage();
   const fixture = recoveryController({ storage: storageA, reportNumber: "A-01" });

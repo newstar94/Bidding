@@ -313,7 +313,15 @@ async def verify_email_api(request):
             conn.close()
             return JSONResponse({"error": "Mã xác nhận đã hết hạn! Vui lòng yêu cầu mã mới."}, status_code=400)
 
-        cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1, ma_xac_minh = NULL, han_xac_minh = NULL WHERE id = ?", (user['id'],))
+        cursor.execute(
+            """UPDATE tai_khoan
+                  SET da_xac_minh = 1,
+                      registration_verified_at = COALESCE(registration_verified_at, ?),
+                      ma_xac_minh = NULL,
+                      han_xac_minh = NULL
+                WHERE id = ?""",
+            (current_time, user['id']),
+        )
         conn.commit()
         conn.close()
 

@@ -300,9 +300,10 @@ async def google_login_api(request):
             cursor.execute(
                 """INSERT INTO tai_khoan
                    (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
-                    email, email_norm, anh_dai_dien, da_xac_minh, username_da_dat)
-                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
-                (new_id, "!google-external-only!", name, email, email, picture),
+                    email, email_norm, anh_dai_dien, da_xac_minh,
+                    registration_verified_at, username_da_dat)
+                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, ?, 0)""",
+                (new_id, "!google-external-only!", name, email, email, picture, int(time.time())),
             )
             ensure_personal_word_workspace(cursor, new_id)
             cursor.execute(
@@ -353,7 +354,13 @@ async def google_login_api(request):
 
 
         if not user.get("da_xac_minh"):
-            cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
+            cursor.execute(
+                """UPDATE tai_khoan
+                      SET da_xac_minh = 1,
+                          registration_verified_at = COALESCE(registration_verified_at, ?)
+                    WHERE id = ?""",
+                (int(time.time()), user["id"]),
+            )
             user["da_xac_minh"] = 1
 
         session_token = str(uuid.uuid4())

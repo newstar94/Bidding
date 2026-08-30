@@ -188,7 +188,16 @@ export function bindBidEvaluationDraftTracking({
         parseMoney: (value) => controller.model.parseVND(value),
       }),
     });
-    recovery.schedule(recoveryKey, () => capturedSnapshot);
+    const workspaceToken = String(controller.model.getWorkspaceToken?.() || "");
+    controller._pendingBidEvaluationDraftSnapshots ||= new Map();
+    const pendingEntry = { snapshot: capturedSnapshot, workspaceToken };
+    controller._pendingBidEvaluationDraftSnapshots.set(recoveryKey, pendingEntry);
+    recovery.schedule(recoveryKey, () => {
+      if (controller._pendingBidEvaluationDraftSnapshots?.get(recoveryKey) === pendingEntry) {
+        controller._pendingBidEvaluationDraftSnapshots.delete(recoveryKey);
+      }
+      return capturedSnapshot;
+    });
     onChange();
   };
   Object.entries(REPORT_FIELDS).forEach(([id, field]) => {
@@ -217,18 +226,28 @@ export function bindBidEvaluationDraftTracking({
       scheduleRecovery();
     });
   });
-  controller._restoredBidEvaluationDrafts = controller._restoredBidEvaluationDrafts || new Set();
-  const renderRevision = controller.view.getActiveElement("danhgiahsdt-table-tbody")
-    ?.__bfBidEvaluationRowRenderRevision || 0;
-  const restoreToken = `${recoveryKey}:${renderRevision}`;
+  controller._restoredBidEvaluationDraftBodies ||= new Map();
+  const renderedBody = controller.view.getActiveElement("danhgiahsdt-table-tbody");
+  let restoredBodies = controller._restoredBidEvaluationDraftBodies.get(recoveryKey);
+  if (!restoredBodies) {
+    restoredBodies = new WeakSet();
+    controller._restoredBidEvaluationDraftBodies.set(recoveryKey, restoredBodies);
+  }
+  const shouldRestore = renderedBody && !restoredBodies.has(renderedBody);
   let restored = false;
-  if (!controller._restoredBidEvaluationDrafts.has(restoreToken)) {
-    controller._restoredBidEvaluationDrafts.add(restoreToken);
+  if (shouldRestore) {
+    restoredBodies.add(renderedBody);
+    const pendingEntry = controller._pendingBidEvaluationDraftSnapshots?.get(recoveryKey);
+    const currentWorkspaceToken = String(controller.model.getWorkspaceToken?.() || "");
+    const pendingRecovery = pendingEntry
+      && (!pendingEntry.workspaceToken || pendingEntry.workspaceToken === currentWorkspaceToken)
+      ? { draft: pendingEntry.snapshot }
+      : null;
     restored = applyRecoveredDraft({
       controller,
       rows,
       dirtyState,
-      recovered: recovery.restore(recoveryKey),
+      recovered: pendingRecovery || recovery.restore(recoveryKey),
     });
     if (restored) {
       controller._bidEvaluationSaveStatusByKey ||= new Map();

@@ -1,0 +1,1 @@
+import{i,r as l}from"./workspaceRenderCache-BIPtUnPy.js";var s=null,e=!1,t="lot-winners",y=()=>s||{},c=()=>s!==null,C=a=>{s=a||{}},d=()=>e,E=a=>{e=!!a},W=(a,r,n,o={})=>i(a,t,r,n,o),g=(a,r)=>l(a,t,r);export{E as a,c as i,y as n,C as o,g as r,W as s,d as t};

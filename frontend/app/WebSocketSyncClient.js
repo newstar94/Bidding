@@ -129,7 +129,7 @@ export class WebSocketSyncClient {
             && typeof controller.view?.showPackageDetails === "function"
             && shouldRefreshRouteAfterBackgroundSync(document, controller)
           ) {
-            void controller.view.showPackageDetails(packageId, true);
+            void controller.view.showPackageDetails(packageId, false, "", { isBackground: true });
           }
           controller.scheduleBackgroundSync(300);
         } else if (msg.event === "organization_member_changed") {

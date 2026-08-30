@@ -32,7 +32,14 @@ export function isExpectedSyncReset(response, body) {
     pathname: "/api/sync/delta",
   })) return false;
   try {
-    const payload = typeof body === "string" ? JSON.parse(body) : body;
+    const rawBody = typeof body === "string" ? body.trim() : body;
+    // A handled visibility/full-sync reset may be emitted without a response
+    // body when the browser begins a navigation and aborts body delivery after
+    // the status line. The endpoint, method and 409 status still identify the
+    // same reset seam; unrelated 409s remain visible because the match above is
+    // intentionally exact.
+    if (rawBody === "") return true;
+    const payload = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
     return payload?.requiresFullSync === true;
   } catch {
     return false;

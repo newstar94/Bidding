@@ -393,7 +393,12 @@ export function autoSync(options = {}) {
     activeSync.queued = true;
     this._autoSyncQueued = true;
     return activeSync.promise.then((result) => {
-      if (!activeSync.queued || result?.ok !== true) {
+      const retryRecoveredTransport = options.retryAfterReconnect === true
+        && result?.ok === false
+        && result?.error
+        && result?.status === undefined
+        && result?.data === undefined;
+      if (!activeSync.queued || (result?.ok !== true && !retryRecoveredTransport)) {
         activeSync.queued = false;
         if (this._autoSyncOwner === activeSync) this._autoSyncQueued = false;
         return result;

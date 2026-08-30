@@ -563,6 +563,8 @@ export async function mountUsageAnalytics(controller) {
   bindEvents(root);
   scheduleAutoRefresh(root, state);
   controller?.view?.createIconsScoped?.(root);
+  const { mountProductAnalytics } = await import("./ProductAnalyticsView.js");
+  mountProductAnalytics(root.querySelector("#product-analytics-workspace"), controller);
   if (state.summary && Date.now() - state.lastLoadedAt < USAGE_SUMMARY_FRESH_MS) {
     renderSummary(root, state.summary);
     return true;

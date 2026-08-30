@@ -1,0 +1,1 @@
+var i=Object.freeze({SAVE:"save",EDIT:"edit",HIDDEN:"hidden"});function n({isCompleted:e=!1,isEditing:r=!1,isNextStepSaved:f=!1,isFinal:t=!1}={}){return t||f?i.HIDDEN:e&&!r?i.EDIT:i.SAVE}function o(e,r){e&&(e.hidden=!r,e.disabled=!r)}export{n,o as r,i as t};

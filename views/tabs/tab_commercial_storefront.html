@@ -8,6 +8,15 @@
     <div class="commercial-storefront__balance" id="storefront-balance" aria-live="polite">Đang tải số dư…</div>
   </header>
   <div id="storefront-status" class="commercial-status" role="status" aria-live="polite"></div>
+  <section id="storefront-feedback" class="commercial-feedback" aria-labelledby="storefront-feedback-title" hidden>
+    <h3 id="storefront-feedback-title">Bạn có muốn cho biết lý do?</h3>
+    <p>Phản hồi là tùy chọn, chỉ dùng cho phân tích tổng hợp và không tự động thay đổi giá dành cho bạn.</p>
+    <form id="storefront-feedback-form">
+      <input id="storefront-feedback-moment" type="hidden">
+      <label>Lý do<select class="form-control" id="storefront-feedback-reason" required><option value="">Chọn lý do</option><option value="too_expensive">Giá chưa phù hợp</option><option value="not_needed_yet">Chưa cần lúc này</option><option value="benefits_unclear">Quyền lợi chưa rõ</option><option value="payment_method">Phương thức thanh toán</option><option value="need_internal_approval">Cần phê duyệt nội bộ</option><option value="technical_issue">Vấn đề kỹ thuật</option><option value="missing_feature">Thiếu tính năng</option><option value="usage_too_low">Nhu cầu sử dụng thấp</option><option value="other">Lý do khác</option></select></label>
+      <div><button class="btn btn-primary" type="submit">Gửi phản hồi</button><button class="btn btn-outline" id="storefront-feedback-dismiss" type="button">Bỏ qua</button></div>
+    </form>
+  </section>
   <section class="commercial-storefront__offers" id="storefront-offers" aria-label="Các gói đang bán"><div class="commercial-skeleton">Đang tải bảng giá…</div></section>
   <section class="commercial-storefront__history" aria-labelledby="storefront-history-title">
     <div class="commercial-storefront__section-heading"><h3 id="storefront-history-title">Lịch sử mua cá nhân</h3><button type="button" class="btn btn-outline" id="storefront-refresh">Làm mới</button></div>

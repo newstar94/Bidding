@@ -30,20 +30,33 @@ export class WorkspaceMutationCoordinator {
   afterCanonicalSync(key, callback) {
     if (typeof callback !== "function") return Promise.resolve();
     const normalizedKey = String(key || "workspace");
-    if (this.canonicalFlights.has(normalizedKey)) return this.canonicalFlights.get(normalizedKey);
-    const flight = Promise.resolve()
-      .then(callback)
-      .catch((error) => {
-        this.#reportPhaseFailure("canonical", error);
-        return { ok: false, error };
-      })
+    const activeFlight = this.canonicalFlights.get(normalizedKey);
+    if (activeFlight) {
+      // A callback reads the current canonical projection, so only the latest
+      // pending callback is needed. It must still run after the active paint;
+      // dropping it can leave a server-paginated table stale indefinitely.
+      activeFlight.pending = callback;
+      return activeFlight.completion;
+    }
+    const flight = { pending: callback, completion: null };
+    flight.completion = (async () => {
+      while (flight.pending) {
+        const next = flight.pending;
+        flight.pending = null;
+        try {
+          await Promise.resolve().then(next);
+        } catch (error) {
+          this.#reportPhaseFailure("canonical", error);
+        }
+      }
+    })()
       .finally(() => {
         if (this.canonicalFlights.get(normalizedKey) === flight) {
           this.canonicalFlights.delete(normalizedKey);
         }
       });
     this.canonicalFlights.set(normalizedKey, flight);
-    return flight;
+    return flight.completion;
   }
 
   #reportPhaseFailure(phase, error) {

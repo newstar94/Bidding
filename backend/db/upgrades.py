@@ -3443,6 +3443,277 @@ def _upgrade_to_v83_add_plan_bases(cursor, context):
         )
     context.assert_foreign_key_integrity(cursor)
 
+
+PRODUCT_ANALYTICS_V84_TABLES = (
+    "commercial_analytics_events",
+    "workspace_usage_daily",
+    "workspace_feature_daily",
+    "workspace_seat_daily",
+    "commercial_funnel_daily",
+    "subscription_snapshot_daily",
+    "revenue_daily",
+    "cost_usage_daily",
+    "retention_cohort_weekly",
+    "plan_fit_monthly",
+)
+
+
+PRODUCT_ANALYTICS_V84_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_analytics_events_occurred ON commercial_analytics_events (occurred_at DESC, event_name)",
+    "CREATE INDEX IF NOT EXISTS idx_analytics_events_release ON commercial_analytics_events (commercial_release_id, occurred_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_usage_daily_date ON workspace_usage_daily (usage_date DESC, owner_kind, variant)",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_usage_daily_release ON workspace_usage_daily (commercial_release_id, usage_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_feature_daily_date ON workspace_feature_daily (usage_date DESC, feature_key)",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_seat_daily_user ON workspace_seat_daily (analytics_user_id, usage_date DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_funnel_daily_date ON commercial_funnel_daily (usage_date DESC, event_name, commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_funnel_daily_release_fk ON commercial_funnel_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_subscription_snapshot_daily_status ON subscription_snapshot_daily (snapshot_date DESC, status, owner_kind, variant)",
+    "CREATE INDEX IF NOT EXISTS idx_subscription_snapshot_daily_release_fk ON subscription_snapshot_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_revenue_daily_date ON revenue_daily (usage_date DESC, commercial_release_id, plan_code)",
+    "CREATE INDEX IF NOT EXISTS idx_revenue_daily_release_fk ON revenue_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cost_usage_daily_date ON cost_usage_daily (usage_date DESC, cost_type, commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cost_usage_daily_release_fk ON cost_usage_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_retention_cohort_weekly_date ON retention_cohort_weekly (cohort_week DESC, cohort_kind, week_number)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_fit_monthly_date ON plan_fit_monthly (snapshot_month DESC, classification, plan_code)",
+    "CREATE INDEX IF NOT EXISTS idx_plan_fit_monthly_release_fk ON plan_fit_monthly (commercial_release_id)",
+)
+
+
+def _upgrade_to_v84_add_product_analytics(cursor, context):
+    """Add aggregate-only commercial analytics read models and UI event inbox."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    if not callable(context.build_create_table_sql):
+        raise RuntimeError("Database upgrade v84 requires the canonical table builder.")
+    for table_name in PRODUCT_ANALYTICS_V84_TABLES:
+        create_sql = context.build_create_table_sql(
+            table_name, SCHEMA_DINH_NGHIA[table_name]
+        )
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace(
+                "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1
+            )
+        cursor.execute(create_sql)
+    # Historical fixture upgrades can materialize a registry-backed table
+    # before the version that owns its final shape. Reconcile the columns that
+    # were added while v84 was still unreleased so both v83 upgrades and fresh
+    # installs converge on the same catalog.
+    for column_name in (
+        "ai_feedback_up",
+        "ai_feedback_down",
+        "ai_feedback_too_slow",
+        "ai_feedback_incorrect_source",
+    ):
+        cursor.execute(
+            f"ALTER TABLE workspace_usage_daily ADD COLUMN IF NOT EXISTS "
+            f"{column_name} INTEGER NOT NULL DEFAULT 0 CHECK({column_name} >= 0)"
+        )
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(
+            cursor, PRODUCT_ANALYTICS_V84_TABLES, if_not_exists=True
+        )
+    for statement in PRODUCT_ANALYTICS_V84_INDEXES:
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
+PRODUCT_ANALYTICS_V85_TABLES = (
+    "workspace_activation_facts",
+    "credit_pack_purchase_daily",
+    "workspace_feature_user_daily",
+    "commercial_feedback",
+)
+
+
+PRODUCT_ANALYTICS_V85_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_workspace_activation_signup ON workspace_activation_facts (signup_at, owner_kind, variant)",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_activation_first_value ON workspace_activation_facts (first_value_at) WHERE first_value_at IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_workspace_activation_release_fk ON workspace_activation_facts (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_credit_pack_purchase_date ON credit_pack_purchase_daily (purchase_date DESC, pack_size, owner_kind)",
+    "CREATE INDEX IF NOT EXISTS idx_credit_pack_purchase_release_fk ON credit_pack_purchase_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_feature_user_daily_feature ON workspace_feature_user_daily (feature_key, usage_date DESC, analytics_user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_feedback_moment ON commercial_feedback (occurred_at DESC, moment, reason)",
+    "CREATE INDEX IF NOT EXISTS idx_commercial_feedback_release_fk ON commercial_feedback (commercial_release_id)",
+)
+
+
+def _upgrade_to_v85_add_activation_and_credit_pack_facts(cursor, context):
+    """Add exact activation milestones and individual credit-pack aggregates."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    cursor.execute(
+        "ALTER TABLE tai_khoan ADD COLUMN IF NOT EXISTS registration_verified_at "
+        "INTEGER CHECK(registration_verified_at IS NULL OR registration_verified_at > 0)"
+    )
+    for column_name, definition in (
+        ("procurement_usage", "INTEGER NOT NULL DEFAULT 0 CHECK(procurement_usage >= 0)"),
+        ("repeat_topups", "INTEGER NOT NULL DEFAULT 0 CHECK(repeat_topups >= 0)"),
+        ("connected_feature_days", "INTEGER NOT NULL DEFAULT 0 CHECK(connected_feature_days >= 0)"),
+        ("workflow_depth", "INTEGER NOT NULL DEFAULT 0 CHECK(workflow_depth >= 0)"),
+        ("export_intensity", "INTEGER NOT NULL DEFAULT 0 CHECK(export_intensity >= 0)"),
+        ("ai_intensity", "INTEGER NOT NULL DEFAULT 0 CHECK(ai_intensity >= 0)"),
+        ("revenue_status", "TEXT NOT NULL DEFAULT 'not_available' CHECK(revenue_status IN ('available','not_available'))"),
+        ("price_gap_to_connected_vnd", "INTEGER CHECK(price_gap_to_connected_vnd IS NULL OR price_gap_to_connected_vnd >= 0)"),
+        ("days_to_break_even", "INTEGER CHECK(days_to_break_even IS NULL OR days_to_break_even >= 0)"),
+    ):
+        cursor.execute(f"ALTER TABLE plan_fit_monthly ADD COLUMN IF NOT EXISTS {column_name} {definition}")
+    for table_name in PRODUCT_ANALYTICS_V85_TABLES:
+        create_sql = context.build_create_table_sql(table_name, SCHEMA_DINH_NGHIA[table_name])
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+        cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, PRODUCT_ANALYTICS_V85_TABLES, if_not_exists=True)
+    for statement in PRODUCT_ANALYTICS_V85_INDEXES:
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
+PRODUCT_ANALYTICS_V86_TABLES = ("commercial_funnel_workspace_daily",)
+
+
+PRODUCT_ANALYTICS_V86_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_funnel_workspace_date_event ON commercial_funnel_workspace_daily (usage_date DESC, event_name, owner_kind, size_bucket)",
+    "CREATE INDEX IF NOT EXISTS idx_funnel_workspace_release_fk ON commercial_funnel_workspace_daily (commercial_release_id)",
+    "CREATE INDEX IF NOT EXISTS idx_funnel_workspace_identity ON commercial_funnel_workspace_daily (analytics_workspace_id, usage_date DESC)",
+)
+
+
+def _upgrade_to_v86_add_exact_funnel_workspace_facts(cursor, context):
+    """Add a pseudonymous aggregate fact for exact range funnel conversion."""
+
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    for table_name in PRODUCT_ANALYTICS_V86_TABLES:
+        create_sql = context.build_create_table_sql(table_name, SCHEMA_DINH_NGHIA[table_name])
+        if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
+            create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+        cursor.execute(create_sql)
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, PRODUCT_ANALYTICS_V86_TABLES, if_not_exists=True)
+    for statement in PRODUCT_ANALYTICS_V86_INDEXES:
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
+PRODUCT_ANALYTICS_V87_TABLES = ()
+
+
+PRODUCT_ANALYTICS_V87_INDEXES = ()
+
+
+def _upgrade_to_v87_complete_analytics_aggregate_evidence(cursor, context):
+    """Preserve aggregate timing, cost availability and expired-credit facts."""
+
+    cursor.execute(
+        "ALTER TABLE workspace_usage_daily ADD COLUMN IF NOT EXISTS "
+        "expired_unused_credits INTEGER NOT NULL DEFAULT 0 CHECK(expired_unused_credits >= 0)"
+    )
+    cursor.execute(
+        "ALTER TABLE commercial_funnel_workspace_daily ADD COLUMN IF NOT EXISTS "
+        "first_occurred_at INTEGER CHECK(first_occurred_at IS NULL OR first_occurred_at > 0)"
+    )
+    cursor.execute(
+        "ALTER TABLE commercial_funnel_workspace_daily ADD COLUMN IF NOT EXISTS "
+        "last_occurred_at INTEGER CHECK((first_occurred_at IS NULL AND "
+        "last_occurred_at IS NULL) OR (first_occurred_at IS NOT NULL AND "
+        "last_occurred_at >= first_occurred_at))"
+    )
+    cursor.execute(
+        "ALTER TABLE cost_usage_daily ADD COLUMN IF NOT EXISTS cost_status TEXT NOT NULL "
+        "DEFAULT 'available' CHECK(cost_status IN ('available', 'not_configured'))"
+    )
+    cursor.execute(
+        """UPDATE cost_usage_daily
+              SET cost_status='not_configured'
+            WHERE estimated_cost_vnd=0
+              AND cost_type IN ('ai','document_worker')"""
+    )
+    cursor.execute(
+        "ALTER TABLE plan_fit_monthly ADD COLUMN IF NOT EXISTS cost_status TEXT NOT NULL "
+        "DEFAULT 'not_configured' CHECK(cost_status IN ('available', 'not_configured'))"
+    )
+    cursor.execute(
+        """UPDATE plan_fit_monthly
+              SET cost_status=CASE
+                    WHEN estimated_cost_vnd>0 THEN 'available'
+                    ELSE 'not_configured'
+                  END"""
+    )
+    context.assert_foreign_key_integrity(cursor)
+
+
+def _upgrade_to_v88_reconcile_product_analytics_read_models(cursor, context):
+    """Converge databases created while the analytics schema was pre-release.
+
+    Versions 84-87 are immutable. Some development installations recorded v84
+    before every aggregate table/column in the final canonical contract was
+    present. Replaying the idempotent table upgrades and repairing the three
+    changed column contracts gives those databases an append-only path to the
+    same catalog as a fresh installation.
+    """
+
+    _upgrade_to_v84_add_product_analytics(cursor, context)
+    _upgrade_to_v85_add_activation_and_credit_pack_facts(cursor, context)
+    _upgrade_to_v86_add_exact_funnel_workspace_facts(cursor, context)
+    _upgrade_to_v87_complete_analytics_aggregate_evidence(cursor, context)
+
+    for column_name in (
+        "fetch_attempted",
+        "fetch_failures",
+        "fetch_cancelled",
+        "cache_hits",
+        "credits_reserved",
+        "credits_released",
+    ):
+        cursor.execute(
+            f"ALTER TABLE workspace_usage_daily ADD COLUMN IF NOT EXISTS "
+            f"{column_name} INTEGER NOT NULL DEFAULT 0 "
+            f"CHECK({column_name} >= 0)"
+        )
+
+    cursor.execute(
+        "UPDATE cost_usage_daily SET analytics_workspace_id='' "
+        "WHERE analytics_workspace_id IS NULL"
+    )
+    cursor.execute(
+        "ALTER TABLE cost_usage_daily DROP CONSTRAINT IF EXISTS "
+        "cost_usage_daily_analytics_workspace_id_check"
+    )
+    cursor.execute(
+        "ALTER TABLE cost_usage_daily ALTER COLUMN analytics_workspace_id "
+        "SET DEFAULT ''"
+    )
+    cursor.execute(
+        "ALTER TABLE cost_usage_daily ALTER COLUMN analytics_workspace_id "
+        "SET NOT NULL"
+    )
+    cursor.execute(
+        "ALTER TABLE cost_usage_daily ADD CONSTRAINT "
+        "cost_usage_daily_analytics_workspace_id_check "
+        "CHECK(analytics_workspace_id='' OR length(analytics_workspace_id)=64)"
+    )
+
+    cursor.execute(
+        "UPDATE retention_cohort_weekly SET commercial_release_id='' "
+        "WHERE commercial_release_id IS NULL"
+    )
+    cursor.execute(
+        "ALTER TABLE retention_cohort_weekly DROP CONSTRAINT IF EXISTS "
+        "fk_retention_cohort_weekly_1_2ea853e4"
+    )
+    cursor.execute(
+        "ALTER TABLE retention_cohort_weekly ALTER COLUMN "
+        "commercial_release_id SET DEFAULT ''"
+    )
+    cursor.execute(
+        "ALTER TABLE retention_cohort_weekly ALTER COLUMN "
+        "commercial_release_id SET NOT NULL"
+    )
+    context.assert_foreign_key_integrity(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -3850,6 +4121,31 @@ UPGRADES = (
         "add_plan_bases",
         _upgrade_to_v83_add_plan_bases,
     ),
+    DatabaseUpgrade(
+        84,
+        "add_product_analytics_read_models",
+        _upgrade_to_v84_add_product_analytics,
+    ),
+    DatabaseUpgrade(
+        85,
+        "add_activation_and_credit_pack_facts",
+        _upgrade_to_v85_add_activation_and_credit_pack_facts,
+    ),
+    DatabaseUpgrade(
+        86,
+        "add_exact_funnel_workspace_facts",
+        _upgrade_to_v86_add_exact_funnel_workspace_facts,
+    ),
+    DatabaseUpgrade(
+        87,
+        "complete_analytics_aggregate_evidence",
+        _upgrade_to_v87_complete_analytics_aggregate_evidence,
+    ),
+    DatabaseUpgrade(
+        88,
+        "reconcile_product_analytics_read_models",
+        _upgrade_to_v88_reconcile_product_analytics_read_models,
+    ),
 )
 
 
@@ -3861,6 +4157,11 @@ DB_SCHEMA_VERSION = (
 # the immutable process-local credential reference used by this runtime. V81
 # adds child-side indexes. V82 adds bounded product-usage rollups. V83 adds
 # version-owned procurement-plan bases and their deterministic parser projection.
+# V84 adds aggregate-only Product Analytics read models and a strict commercial
+# UI event inbox. V85 adds activation milestone and credit-pack purchase facts.
+# V86 adds pseudonymous workspace/day funnel facts for exact range conversion.
+# V87 preserves funnel timing, cost-availability and expired-credit evidence.
+# V88 gives pre-release v84-v87 installations an append-only convergence path.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

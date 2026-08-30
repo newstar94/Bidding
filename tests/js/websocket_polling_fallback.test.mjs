@@ -252,6 +252,33 @@ test("malformed socket hints are contained and polling remains authoritative", a
 });
 
 
+test("package realtime hints request a background refresh without version-switch semantics", () => {
+  const harness = installRealtimeHarness();
+  const controller = realtimeController("org-1", "tab-package");
+  const refreshCalls = [];
+  controller.view = {
+    _currentWorkflowPackageId: "package-1",
+    showPackageDetails(...args) { refreshCalls.push(args); },
+  };
+  let client;
+  try {
+    controller.model.state = { activetab: "goithau-detail", activeaction: "package-1" };
+    client = new WebSocketSyncClient(controller);
+    client.connect();
+    const socket = harness.sockets[0];
+    socket.readyState = WebSocket.OPEN;
+    socket.onmessage({
+      data: JSON.stringify({ event: "package_documents_changed", packageId: "package-1" }),
+    });
+
+    assert.deepEqual(refreshCalls, [["package-1", false, "", { isBackground: true }]]);
+  } finally {
+    client?.disconnect(false);
+    harness.restore();
+  }
+});
+
+
 test("logout stops polling while workspace switch transfers fallback ownership", () => {
   const harness = installRealtimeHarness();
   const controller = realtimeController("personal:user-1", "tab-a");

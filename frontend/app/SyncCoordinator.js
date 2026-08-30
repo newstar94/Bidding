@@ -219,7 +219,9 @@ export function setupSyncUx() {
       void this.reconcileInitialRouteData?.();
       return;
     }
-    if (online && this._pendingMutationCount > 0) void this.autoSync();
+    if (online && this._pendingMutationCount > 0) {
+      void this.autoSync({ retryAfterReconnect: true });
+    }
   };
   window.addEventListener("online", updateOnline);
   window.addEventListener("offline", updateOnline);

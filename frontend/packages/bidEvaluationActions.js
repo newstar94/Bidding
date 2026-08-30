@@ -430,6 +430,72 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
     }
   }
 }
+const EVALUATION_REPORT_FIELD_IDS = Object.freeze([
+  "danhgiahsdt-so-baocao",
+  "danhgiahsdt-ngay-baocao",
+  "danhgiahsdt-ngay-moi-doichieu",
+  "danhgiahsdt-ngay-doichieu",
+]);
+
+const EVALUATION_ROW_CONTROL_SELECTORS = Object.freeze([
+  ".mt-dg-hop-le",
+  ".mt-dg-nang-luc",
+  ".mt-dg-ky-thuat",
+  ".mt-dg-ketluan",
+  ".mt-gia-du-thau",
+  ".mt-ty-le-giam-gia",
+  ".mt-gia-sau-giam-gia",
+  ".mt-gia-xep-hang",
+  ".mt-gia-de-nghi-trung-thau",
+  ".mt-low-price-acceptance",
+]);
+
+function evaluationControlSnapshot(control) {
+  return control ? { value: control.value ?? "", checked: Boolean(control.checked) } : null;
+}
+
+function captureEvaluationFormSnapshot(view) {
+  const reportControls = new Map(
+    EVALUATION_REPORT_FIELD_IDS.map((id) => [id, evaluationControlSnapshot(view.getActiveElement(id))]),
+  );
+  const rows = new Map();
+  const body = view.getActiveElement("danhgiahsdt-table-tbody");
+  Array.from(body?.querySelectorAll?.("tr[data-bid-id]") || []).forEach((row) => {
+    const bidId = String(row.getAttribute("data-bid-id") || "");
+    if (!bidId) return;
+    const controls = new Map();
+    EVALUATION_ROW_CONTROL_SELECTORS.forEach((selector) => {
+      const snapshot = evaluationControlSnapshot(row.querySelector(selector));
+      if (snapshot) controls.set(selector, snapshot);
+    });
+    rows.set(bidId, controls);
+  });
+  return { reportControls, rows };
+}
+
+function restoreEvaluationFormSnapshot(view, snapshot) {
+  snapshot.reportControls.forEach((controlSnapshot, id) => {
+    const control = view.getActiveElement(id);
+    if (!control || !controlSnapshot) return;
+    control.value = controlSnapshot.value;
+    if ("checked" in control) control.checked = controlSnapshot.checked;
+  });
+  const body = view.getActiveElement("danhgiahsdt-table-tbody");
+  Array.from(body?.querySelectorAll?.("tr[data-bid-id]") || []).forEach((row) => {
+    const controls = snapshot.rows.get(String(row.getAttribute("data-bid-id") || ""));
+    if (!controls) return;
+    controls.forEach((controlSnapshot, selector) => {
+      const control = row.querySelector(selector);
+      if (!control) return;
+      if (control.type === "radio" || control.type === "checkbox") {
+        control.checked = controlSnapshot.checked;
+      } else {
+        control.value = controlSnapshot.value;
+      }
+    });
+  });
+}
+
 export async function saveDanhGiaHsdt(options = {}) {
   const mode = normalizeBidEvaluationSaveMode(options);
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
@@ -446,6 +512,22 @@ export async function saveDanhGiaHsdt(options = {}) {
   const completionWorkspaceToken = this.model.getWorkspaceToken?.() || "";
   const completionBoundaryChecked = mode === "complete"
     && typeof this.awaitAuthoritativeMutationBoundary === "function";
+  if (!completionBoundaryChecked) {
+    const currentStatus = resolvePackageResultStatus(gt);
+    if (isLockedEvaluationStatus(currentStatus)) {
+      await this.view.customAlert(
+        "Báo cáo đánh giá đã được khóa",
+        `Không thể chỉnh sửa báo cáo đánh giá vì gói thầu đang ở trạng thái "${currentStatus}".`,
+        "lock",
+      );
+      return;
+    }
+  }
+  // The authoritative boundary can refresh the detail panel while this
+  // handler is awaiting it. Capture the user's in-progress form values first
+  // and restore them onto the current projection before validation/persist so
+  // a late render cannot silently discard an entered report number or score.
+  const capturedEvaluationForm = captureEvaluationFormSnapshot(this.view);
   if (completionBoundaryChecked) {
     await this.awaitAuthoritativeMutationBoundary();
     if (completionWorkspaceToken
@@ -456,7 +538,9 @@ export async function saveDanhGiaHsdt(options = {}) {
     gt = resolveLatestPackage(this.model, refreshedPackage || gtId);
     if (!gt) return false;
     gtId = gt.id;
+    restoreEvaluationFormSnapshot(this.view, capturedEvaluationForm);
   }
+  if (!completionBoundaryChecked) restoreEvaluationFormSnapshot(this.view, capturedEvaluationForm);
   const effectiveStatus = resolvePackageResultStatus(gt);
   if (isLockedEvaluationStatus(effectiveStatus)) {
     await this.view.customAlert(

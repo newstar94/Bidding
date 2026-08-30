@@ -108,14 +108,14 @@ function bindInvitationActions(view, contentWrapper, pkg, appController) {
       return;
     }
 
-    await savePackageInvitationInfo(appController || view, pkg, {
+    const savedPackage = await savePackageInvitationInfo(appController || view, pkg, {
       extensions: extensionRows,
       clarificationRequests,
       clarificationResponses,
       convertDateTime: (value) => view.model.convertDMYHMSToYMDHMS(value),
     });
     view._biddingInfoEditMode = false;
-    view.showPackageDetails(pkg.id);
+    await view.showPackageDetails(savedPackage.id);
     await view.customAlert("Thành công", "Lưu thông tin mời thầu thành công!", "check-circle");
   };
 }

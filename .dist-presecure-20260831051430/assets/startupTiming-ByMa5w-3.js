@@ -1,0 +1,1 @@
+var a=Object.freeze({primaryTabWarm:0,referenceData:750,remainingStorageHydration:0,holidayData:7e3,notificationCenter:16e3,primaryModalPreload:18e3,assistant:2e4}),e=a.primaryTabWarm+5e3;export{a as t};

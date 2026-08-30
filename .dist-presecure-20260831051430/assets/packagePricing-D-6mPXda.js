@@ -1,0 +1,1 @@
+import{c as e,l as o}from"./formatters-BTdVYNR8.js";import{n as c}from"./lotJsonParser-NcMWQnCj.js";function p({phanLo:r,giaGoiThau:a=0,phanLoList:t=[]}={}){return r!=="Có"?e(a)??0:o(c(t,{context:"package_pricing_command"}).map(i=>i?.giaTriPhanLo??0))}export{p as t};

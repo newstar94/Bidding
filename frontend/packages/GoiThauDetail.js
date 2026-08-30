@@ -22,6 +22,36 @@ export function capturePackageDetailNavigationIntent(view, packageId, requestedT
   return true;
 }
 
+export function shouldAbortPackageDetailRefreshForNewDraft({
+  wasDirty = false,
+  isDirty = false,
+  currentPackageId = "",
+  targetPackageId = "",
+  isBackground = false,
+} = {}) {
+  const samePackage = String(currentPackageId || "") === String(targetPackageId || "");
+  return samePackage && isDirty && (isBackground || !wasDirty);
+}
+
+function shouldAbortBackgroundPackageRefresh(view, packageWorkspace, packageId, isBackground) {
+  if (!isBackground || !packageWorkspace.isDirty()) return false;
+  return String(view?._currentWorkflowPackageId || "") === String(packageId || "");
+}
+
+async function hydratePackageDetailDependencies(appController, model, requestedPackage) {
+  if (!requestedPackage) return;
+  await hydrateVersionFamily(appController, "goithau", requestedPackage);
+  const linkedPlanIds = linkedPlanIdsForPackage(model, requestedPackage);
+  const loadedPlanIds = new Set(
+    (model?.state?.kehoach || []).map((plan) => String(plan?.id || "")),
+  );
+  await Promise.all(
+    linkedPlanIds
+      .filter((planId) => !loadedPlanIds.has(String(planId)))
+      .map((planId) => appController.fetchRecordByLookup("kehoach", planId)),
+  );
+}
+
 export function resetDetailedEvaluationNavigationForPackageChange(
   appController,
   currentPackageId,
@@ -38,11 +68,22 @@ export function resetDetailedEvaluationNavigationForPackageChange(
   return true;
 }
 
-export async function showPackageDetails(id, isSwitchingVersion = false, requestedWorkflowTab = "") {
+export async function showPackageDetails(
+  id,
+  isSwitchingVersion = false,
+  requestedWorkflowTab = "",
+  options,
+) {
+  const isBackground = options?.isBackground === true;
   const appController = getAppController();
+  const packageWorkspace = packageWorkspaceFor(this);
+  const workspaceWasDirty = packageWorkspace.isDirty();
+  if (shouldAbortBackgroundPackageRefresh(this, packageWorkspace, id, isBackground)) return;
   const requestedTab = String(requestedWorkflowTab || "").trim();
   const renderVersion = Number(this._packageDetailRenderVersion || 0) + 1;
   this._packageDetailRenderVersion = renderVersion;
+  const existingContent = document.getElementById("detail-workflow-content-wrapper");
+  if (existingContent) existingContent.dataset.pendingRenderVersion = String(renderVersion);
   const isCurrentRender = () => this._packageDetailRenderVersion === renderVersion;
   capturePackageDetailNavigationIntent(this, id, requestedTab);
   const requestedSnapshotId = String(this._requestedPackageSnapshotId || "");
@@ -95,19 +136,19 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
     (pkg) => String(pkg?.id || "") === String(id || ""),
   );
   if (requestedPackage) {
-    await hydrateVersionFamily(appController, "goithau", requestedPackage);
-    if (!isCurrentRender()) return;
-    const linkedPlanIds = linkedPlanIdsForPackage(this.model, requestedPackage);
-    const loadedPlanIds = new Set(
-      (this.model?.state?.kehoach || []).map((plan) => String(plan?.id || "")),
-    );
-    await Promise.all(
-      linkedPlanIds
-        .filter((planId) => !loadedPlanIds.has(String(planId)))
-        .map((planId) => appController.fetchRecordByLookup("kehoach", planId)),
-    );
+    await hydratePackageDetailDependencies(appController, this.model, requestedPackage);
     if (!isCurrentRender()) return;
   }
+  // A background refresh may start while the detail is clean, then finish
+  // after the user has begun editing. Do not let that in-flight projection
+  // replace the live form and discard unsaved values.
+  if (shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: workspaceWasDirty,
+    isDirty: packageWorkspace.isDirty(),
+    currentPackageId: this._currentWorkflowPackageId,
+    targetPackageId: id,
+    isBackground,
+  })) return;
   // The explicit intent is captured before asynchronous hydration above, so a
   // concurrent refresh resolves the same target instead of the default panel.
   const detail = buildPackageDetailViewModel({
@@ -310,5 +351,14 @@ export async function showPackageDetails(id, isSwitchingVersion = false, request
   });
   if (typeof appController?.unifyTableInputsHeight === "function") {
     appController.unifyTableInputsHeight(document);
+  }
+  // Expose a semantic readiness signal for route-owned consumers and E2E
+  // synchronization.  It is written only after the requested panel and its
+  // bindings have finished rendering, so callers cannot race a late render.
+  const renderedDetail = document.getElementById("detail-workflow-content-wrapper");
+  if (renderedDetail) {
+    renderedDetail.dataset.renderedWorkflowTab = String(this._currentWorkflowTab || "");
+    renderedDetail.dataset.renderedPackageId = String(this._currentWorkflowPackageId || "");
+    renderedDetail.dataset.renderedRenderVersion = String(renderVersion);
   }
 }

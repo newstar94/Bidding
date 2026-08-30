@@ -83,6 +83,7 @@ SCHEMA_DINH_NGHIA = {
             "email_norm": "TEXT NOT NULL UNIQUE CHECK(email_norm != '')",
             "anh_dai_dien": "TEXT",
             "da_xac_minh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(da_xac_minh) = 'integer' AND da_xac_minh IN (0,1))",
+            "registration_verified_at": "INTEGER CHECK(registration_verified_at IS NULL OR registration_verified_at > 0)",
             "ma_xac_minh": "TEXT",
             "han_xac_minh": "INTEGER",
             "username_da_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(username_da_dat) = 'integer' AND username_da_dat IN (0,1))",
@@ -441,6 +442,314 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]
+    },
+    "commercial_analytics_events": {
+        "columns": {
+            "event_id": "TEXT PRIMARY KEY CHECK(trim(event_id) != '')",
+            "event_name": "TEXT NOT NULL CHECK(event_name IN ('pricing.viewed', 'pricing.size_selected', 'pricing.variant_compared', 'pricing.offer_selected', 'upgrade.prompt_shown', 'upgrade.prompt_clicked', 'quota.warning_shown', 'quota.topup_clicked', 'checkout.started', 'checkout.cancelled', 'subscription.cancel_intent', 'downgrade.started'))",
+            "analytics_user_id": "TEXT NOT NULL CHECK(length(analytics_user_id) = 64)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "sku_code": "TEXT CHECK(sku_code IS NULL OR length(sku_code) <= 200)",
+            "commercial_release_id": "TEXT NOT NULL",
+            "source": "TEXT NOT NULL CHECK(source IN ('pricing_page', 'commercial_storefront', 'upgrade_prompt', 'quota_warning', 'checkout', 'subscription_settings'))",
+            "occurred_at": "INTEGER NOT NULL CHECK(occurred_at > 0)",
+            "received_at": "INTEGER NOT NULL CHECK(received_at >= occurred_at)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_feedback": {
+        "columns": {
+            "feedback_id": "TEXT PRIMARY KEY CHECK(trim(feedback_id) != '')",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "moment": "TEXT NOT NULL CHECK(moment IN ('checkout_abandoned', 'second_topup', 'upgrade_completed', 'cancel_or_downgrade_intent', 'paid_day_45_60'))",
+            "reason": "TEXT NOT NULL CHECK(reason IN ('too_expensive', 'not_needed_yet', 'benefits_unclear', 'payment_method', 'need_internal_approval', 'technical_issue', 'missing_feature', 'usage_too_low', 'other'))",
+            "commercial_release_id": "TEXT NOT NULL",
+            "occurred_at": "INTEGER NOT NULL CHECK(occurred_at > 0)",
+            "received_at": "INTEGER NOT NULL CHECK(received_at >= occurred_at)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "workspace_usage_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "commercial_release_id": "TEXT",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "registered_seats": "INTEGER NOT NULL DEFAULT 0 CHECK(registered_seats >= 0)",
+            "active_seats": "INTEGER NOT NULL DEFAULT 0 CHECK(active_seats >= 0)",
+            "power_seats": "INTEGER NOT NULL DEFAULT 0 CHECK(power_seats >= 0)",
+            "meaningful_actions": "INTEGER NOT NULL DEFAULT 0 CHECK(meaningful_actions >= 0)",
+            "procurement_actions": "INTEGER NOT NULL DEFAULT 0 CHECK(procurement_actions >= 0)",
+            "fetch_attempted": "INTEGER NOT NULL DEFAULT 0 CHECK(fetch_attempted >= 0)",
+            "fetch_failures": "INTEGER NOT NULL DEFAULT 0 CHECK(fetch_failures >= 0)",
+            "fetch_cancelled": "INTEGER NOT NULL DEFAULT 0 CHECK(fetch_cancelled >= 0)",
+            "cache_hits": "INTEGER NOT NULL DEFAULT 0 CHECK(cache_hits >= 0)",
+            "credits_reserved": "INTEGER NOT NULL DEFAULT 0 CHECK(credits_reserved >= 0)",
+            "credits_released": "INTEGER NOT NULL DEFAULT 0 CHECK(credits_released >= 0)",
+            "successful_fetches": "INTEGER NOT NULL DEFAULT 0 CHECK(successful_fetches >= 0)",
+            "feature_uses": "INTEGER NOT NULL DEFAULT 0 CHECK(feature_uses >= 0)",
+            "word_exports": "INTEGER NOT NULL DEFAULT 0 CHECK(word_exports >= 0)",
+            "included_credits_granted": "INTEGER NOT NULL DEFAULT 0 CHECK(included_credits_granted >= 0)",
+            "included_credits_consumed": "INTEGER NOT NULL DEFAULT 0 CHECK(included_credits_consumed >= 0)",
+            "purchased_credits": "INTEGER NOT NULL DEFAULT 0 CHECK(purchased_credits >= 0)",
+            "purchased_credits_unused": "INTEGER NOT NULL DEFAULT 0 CHECK(purchased_credits_unused >= 0)",
+            "expired_unused_credits": "INTEGER NOT NULL DEFAULT 0 CHECK(expired_unused_credits >= 0)",
+            "topup_spend_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(topup_spend_vnd >= 0)",
+            "workflow_volume": "INTEGER NOT NULL DEFAULT 0 CHECK(workflow_volume >= 0)",
+            "workflow_depth": "INTEGER NOT NULL DEFAULT 0 CHECK(workflow_depth >= 0)",
+            "ai_requests": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_requests >= 0)",
+            "ai_input_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_input_tokens >= 0)",
+            "ai_output_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_output_tokens >= 0)",
+            "ai_tool_calls": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_tool_calls >= 0)",
+            "ai_feedback_up": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_feedback_up >= 0)",
+            "ai_feedback_down": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_feedback_down >= 0)",
+            "ai_feedback_too_slow": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_feedback_too_slow >= 0)",
+            "ai_feedback_incorrect_source": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_feedback_incorrect_source >= 0)",
+            "ai_estimated_cost_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_estimated_cost_vnd >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "analytics_workspace_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "workspace_feature_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "feature_key": "TEXT NOT NULL CHECK(trim(feature_key) != '')",
+            "active_users": "INTEGER NOT NULL DEFAULT 0 CHECK(active_users >= 0)",
+            "event_count": "INTEGER NOT NULL DEFAULT 0 CHECK(event_count >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "analytics_workspace_id", "feature_key"]
+    },
+    "workspace_seat_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "analytics_user_id": "TEXT NOT NULL CHECK(length(analytics_user_id) = 64)",
+            "meaningful_actions": "INTEGER NOT NULL DEFAULT 0 CHECK(meaningful_actions >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "analytics_workspace_id", "analytics_user_id"]
+    },
+    "commercial_funnel_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "commercial_release_id": "TEXT NOT NULL",
+            "event_name": "TEXT NOT NULL",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "sku_code": "TEXT NOT NULL DEFAULT ''",
+            "event_count": "INTEGER NOT NULL DEFAULT 0 CHECK(event_count >= 0)",
+            "unique_workspaces": "INTEGER NOT NULL DEFAULT 0 CHECK(unique_workspaces >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "commercial_release_id", "event_name", "owner_kind", "size_bucket", "sku_code"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "commercial_funnel_workspace_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "commercial_release_id": "TEXT NOT NULL",
+            "event_name": "TEXT NOT NULL CHECK(trim(event_name) != '')",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "sku_code": "TEXT NOT NULL DEFAULT ''",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "event_count": "INTEGER NOT NULL DEFAULT 0 CHECK(event_count >= 0)",
+            "first_occurred_at": "INTEGER CHECK(first_occurred_at IS NULL OR first_occurred_at > 0)",
+            "last_occurred_at": "INTEGER CHECK((first_occurred_at IS NULL AND last_occurred_at IS NULL) OR (first_occurred_at IS NOT NULL AND last_occurred_at >= first_occurred_at))"
+        },
+        "primary_keys": [
+            "usage_date", "commercial_release_id", "event_name", "owner_kind",
+            "size_bucket", "sku_code", "analytics_workspace_id"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "subscription_snapshot_daily": {
+        "columns": {
+            "snapshot_date": "TEXT NOT NULL CHECK(date(snapshot_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "commercial_release_id": "TEXT",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "member_quota": "INTEGER NOT NULL DEFAULT 0 CHECK(member_quota >= 0)",
+            "status": "TEXT NOT NULL CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
+            "activated_today": "INTEGER NOT NULL DEFAULT 0 CHECK(activated_today IN (0,1))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["snapshot_date", "analytics_workspace_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "revenue_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "commercial_release_id": "TEXT NOT NULL",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "sku_code": "TEXT NOT NULL DEFAULT ''",
+            "gross_revenue_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(gross_revenue_vnd >= 0)",
+            "net_settled_revenue_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(net_settled_revenue_vnd >= 0)",
+            "refund_amount_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(refund_amount_vnd >= 0)",
+            "payment_fee_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(payment_fee_vnd >= 0)",
+            "paid_orders": "INTEGER NOT NULL DEFAULT 0 CHECK(paid_orders >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "commercial_release_id", "owner_kind", "plan_code", "variant", "sku_code"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "cost_usage_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "commercial_release_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "analytics_workspace_id": "TEXT NOT NULL DEFAULT '' CHECK(analytics_workspace_id = '' OR length(analytics_workspace_id) = 64)",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "cost_type": "TEXT NOT NULL CHECK(cost_type IN ('procurement_fetch', 'ai', 'document_worker', 'storage', 'bandwidth', 'payment_fee', 'email', 'other_external_provider'))",
+            "quantity": "INTEGER NOT NULL DEFAULT 0 CHECK(quantity >= 0)",
+            "estimated_cost_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(estimated_cost_vnd >= 0)",
+            "cost_status": "TEXT NOT NULL DEFAULT 'available' CHECK(cost_status IN ('available', 'not_configured'))",
+            "source": "TEXT NOT NULL DEFAULT 'aggregate' CHECK(trim(source) != '')",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "owner_kind", "analytics_workspace_id", "plan_code", "variant", "cost_type", "source"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "retention_cohort_weekly": {
+        "columns": {
+            "cohort_week": "TEXT NOT NULL CHECK(date(cohort_week) IS NOT NULL)",
+            "cohort_kind": "TEXT NOT NULL CHECK(cohort_kind IN ('signup', 'first_value', 'paid_activation'))",
+            "segment_key": "TEXT NOT NULL DEFAULT 'all'",
+            "commercial_release_id": "TEXT NOT NULL DEFAULT ''",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "workspace_count": "INTEGER NOT NULL CHECK(workspace_count >= 0)",
+            "week_number": "INTEGER NOT NULL CHECK(week_number BETWEEN 0 AND 12)",
+            "retained_workspaces": "INTEGER NOT NULL CHECK(retained_workspaces >= 0 AND retained_workspaces <= workspace_count)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["cohort_week", "cohort_kind", "segment_key", "commercial_release_id", "owner_kind", "week_number"],
+        "foreign_keys": []
+    },
+    "plan_fit_monthly": {
+        "columns": {
+            "snapshot_month": "TEXT NOT NULL CHECK(date(snapshot_month) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "commercial_release_id": "TEXT",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "active_seats": "INTEGER NOT NULL DEFAULT 0 CHECK(active_seats >= 0)",
+            "seat_utilization": "REAL NOT NULL DEFAULT 0 CHECK(seat_utilization >= 0)",
+            "procurement_usage": "INTEGER NOT NULL DEFAULT 0 CHECK(procurement_usage >= 0)",
+            "quota_utilization": "REAL NOT NULL DEFAULT 0 CHECK(quota_utilization >= 0)",
+            "topup_spend_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(topup_spend_vnd >= 0)",
+            "repeat_topups": "INTEGER NOT NULL DEFAULT 0 CHECK(repeat_topups >= 0)",
+            "connected_feature_days": "INTEGER NOT NULL DEFAULT 0 CHECK(connected_feature_days >= 0)",
+            "workflow_volume": "INTEGER NOT NULL DEFAULT 0 CHECK(workflow_volume >= 0)",
+            "workflow_depth": "INTEGER NOT NULL DEFAULT 0 CHECK(workflow_depth >= 0)",
+            "export_intensity": "INTEGER NOT NULL DEFAULT 0 CHECK(export_intensity >= 0)",
+            "ai_intensity": "INTEGER NOT NULL DEFAULT 0 CHECK(ai_intensity >= 0)",
+            "estimated_cost_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(estimated_cost_vnd >= 0)",
+            "cost_status": "TEXT NOT NULL DEFAULT 'not_configured' CHECK(cost_status IN ('available', 'not_configured'))",
+            "revenue_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(revenue_vnd >= 0)",
+            "revenue_status": "TEXT NOT NULL DEFAULT 'not_available' CHECK(revenue_status IN ('available', 'not_available'))",
+            "price_gap_to_connected_vnd": "INTEGER CHECK(price_gap_to_connected_vnd IS NULL OR price_gap_to_connected_vnd >= 0)",
+            "days_to_break_even": "INTEGER CHECK(days_to_break_even IS NULL OR days_to_break_even >= 0)",
+            "classification": "TEXT NOT NULL CHECK(classification IN ('UNDER_SIZED', 'GOOD_FIT', 'OVER_SIZED', 'CONNECTED_CANDIDATE', 'TOPUP_HEAVY', 'ENTERPRISE_CANDIDATE'))",
+            "rule_version": "TEXT NOT NULL CHECK(trim(rule_version) != '')",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["snapshot_month", "analytics_workspace_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "workspace_activation_facts": {
+        "columns": {
+            "analytics_workspace_id": "TEXT PRIMARY KEY CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "signup_at": "INTEGER NOT NULL CHECK(signup_at > 0)",
+            "verification_at": "INTEGER",
+            "verification_observation": "TEXT NOT NULL CHECK(verification_observation IN ('observed', 'not_verified', 'historical_timestamp_unavailable'))",
+            "first_login_at": "INTEGER",
+            "first_value_at": "INTEGER",
+            "first_feature_key": "TEXT NOT NULL DEFAULT ''",
+            "first_plan_at": "INTEGER",
+            "first_procurement_or_export_at": "INTEGER",
+            "subscription_activated_at": "INTEGER",
+            "first_paid_value_at": "INTEGER",
+            "commercial_release_id": "TEXT",
+            "plan_code": "TEXT NOT NULL DEFAULT ''",
+            "variant": "TEXT NOT NULL DEFAULT '' CHECK(variant IN ('', 'internal', 'connected'))",
+            "size_bucket": "TEXT NOT NULL DEFAULT 'unknown' CHECK(size_bucket IN ('1', '2_5', '6_15', '16_50', 'over_50', 'unknown'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ],
+        "unique_constraints": [
+            "CHECK(verification_at IS NULL OR verification_at >= signup_at)",
+            "CHECK(first_login_at IS NULL OR first_login_at >= signup_at)",
+            "CHECK(first_value_at IS NULL OR first_value_at >= signup_at)",
+            "CHECK(subscription_activated_at IS NULL OR subscription_activated_at >= signup_at)",
+            "CHECK(first_paid_value_at IS NULL OR subscription_activated_at IS NOT NULL)"
+        ]
+    },
+    "credit_pack_purchase_daily": {
+        "columns": {
+            "purchase_date": "TEXT NOT NULL CHECK(date(purchase_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "owner_kind": "TEXT NOT NULL CHECK(owner_kind IN ('account', 'organization'))",
+            "commercial_release_id": "TEXT NOT NULL",
+            "sku_code": "TEXT NOT NULL CHECK(trim(sku_code) != '')",
+            "pack_size": "INTEGER NOT NULL CHECK(pack_size > 0)",
+            "purchase_count": "INTEGER NOT NULL DEFAULT 0 CHECK(purchase_count >= 0)",
+            "credits_purchased": "INTEGER NOT NULL DEFAULT 0 CHECK(credits_purchased >= 0)",
+            "gross_revenue_vnd": "INTEGER NOT NULL DEFAULT 0 CHECK(gross_revenue_vnd >= 0)",
+            "unused_credits": "INTEGER NOT NULL DEFAULT 0 CHECK(unused_credits >= 0 AND unused_credits <= credits_purchased)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["purchase_date", "analytics_workspace_id", "commercial_release_id", "sku_code", "pack_size"],
+        "foreign_keys": [
+            "FOREIGN KEY (commercial_release_id) REFERENCES commercial_releases(id) ON DELETE RESTRICT"
+        ]
+    },
+    "workspace_feature_user_daily": {
+        "columns": {
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "analytics_workspace_id": "TEXT NOT NULL CHECK(length(analytics_workspace_id) = 64)",
+            "feature_key": "TEXT NOT NULL CHECK(trim(feature_key) != '')",
+            "analytics_user_id": "TEXT NOT NULL CHECK(length(analytics_user_id) = 64)",
+            "event_count": "INTEGER NOT NULL DEFAULT 0 CHECK(event_count >= 0)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["usage_date", "analytics_workspace_id", "feature_key", "analytics_user_id"]
     },
     "document_jobs": {
         "columns": {

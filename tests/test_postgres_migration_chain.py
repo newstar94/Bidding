@@ -526,6 +526,11 @@ def test_v83_upgrade_adds_plan_basis_catalog_and_owner_invariants():
             context,
             target_version=82,
         ) == 82
+        # The v1-chain fixture replays v46's released catalog reconciliation
+        # against today's registry, so it can materialize tables introduced by
+        # later binaries.  A deployed v82 database never had this v83 table;
+        # remove that fixture artifact to rehearse the real adjacent upgrade.
+        cursor.execute("DROP TABLE IF EXISTS ke_hoach_can_cu")
         assert cursor.execute(
             "SELECT to_regclass('ke_hoach_can_cu')"
         ).fetchone()[0] is None

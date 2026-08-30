@@ -1,0 +1,1 @@
+function r(n,o){const t=String(o??"").trim();if(!/^\d+$/.test(t))throw new Error("Không xác định được phiên bản dữ liệu để xuất tệp.");return`${n}${String(n).includes("?")?"&":"?"}snapshotVersion=${encodeURIComponent(t)}`}export{r as t};

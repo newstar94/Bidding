@@ -107,6 +107,7 @@ function completionScenario() {
   return {
     authority,
     bid,
+    controls,
     controller,
     model,
     persisted,
@@ -135,6 +136,24 @@ test("complete_evaluation_waits_for_authority_before_mutation", async () => {
 
   scenario.authority.resolve({ authoritative: true, offline: false });
   await saving;
+});
+
+test("complete_evaluation_preserves_report_input_when_authoritative_refresh_replaces_controls", async () => {
+  const scenario = completionScenario();
+  const saving = saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const replacement = {
+    ...scenario.controls.get("danhgiahsdt-so-baocao"),
+    value: "",
+  };
+  scenario.controls.set("danhgiahsdt-so-baocao", replacement);
+  scenario.authority.resolve({ authoritative: true, offline: false });
+
+  await saving;
+  assert.equal(replacement.value, "01/BC-DG");
+  assert.equal(scenario.pkg.danhGiaHsdtMetadata.includes('"saved":true'), true);
+  assert.equal(scenario.syncCalls.length, 1);
 });
 
 test("complete_evaluation_uses_refreshed_bid_row_versions", async () => {

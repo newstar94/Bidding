@@ -27,6 +27,10 @@ from backend.db.upgrades import (
     drop_retired_procurement_center_schema,
     ensure_commercial_v79_indexes,
     ensure_commercial_v81_fk_indexes,
+    PRODUCT_ANALYTICS_V84_INDEXES,
+    PRODUCT_ANALYTICS_V85_INDEXES,
+    PRODUCT_ANALYTICS_V86_INDEXES,
+    PRODUCT_ANALYTICS_V87_INDEXES,
     read_database_version,
     record_database_version,
     seed_live_payos_v80_profile,
@@ -321,8 +325,11 @@ def _create_foreign_keys(
 
 
 def _create_extensions(cursor) -> None:
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
+    # Search paths used by migration rehearsals are intentionally isolated.
+    # Pin shared extension objects to public because bf_unaccent and the GIN
+    # operator class are schema-qualified below.
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public")
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public")
     cursor.execute(
         """CREATE OR REPLACE FUNCTION bf_unaccent(value TEXT)
            RETURNS TEXT LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $$
@@ -346,7 +353,7 @@ def _create_search_indexes(cursor) -> None:
         )
         cursor.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{table_name}_search_trgm "
-            f"ON {table_name} USING GIN ((bf_unaccent(lower({expression}))) gin_trgm_ops)"
+            f"ON {table_name} USING GIN ((bf_unaccent(lower({expression}))) public.gin_trgm_ops)"
         )
 
 
@@ -673,6 +680,10 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
             "CREATE INDEX IF NOT EXISTS idx_product_usage_metric_window ON product_usage_hourly (metric_key, window_started_at, user_id) INCLUDE (event_count)",
             "CREATE INDEX IF NOT EXISTS idx_product_usage_user_fk ON product_usage_hourly (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_activity_product_usage ON nhat_ky_thuc_hien (occurred_at, actor_user_id) WHERE actor_user_id IS NOT NULL",
+            *PRODUCT_ANALYTICS_V84_INDEXES,
+            *PRODUCT_ANALYTICS_V85_INDEXES,
+            *PRODUCT_ANALYTICS_V86_INDEXES,
+            *PRODUCT_ANALYTICS_V87_INDEXES,
         )
     for statement in statements:
         if any(table_name in statement for table_name in RETIRED_PROCUREMENT_CENTER_TABLES):
@@ -1314,6 +1325,10 @@ def _historical_v46_catalog(latest_catalog):
     """
 
     catalog = deepcopy(latest_catalog)
+    catalog["tables"]["tai_khoan"]["columns"].pop("registration_verified_at", None)
+    catalog["tables"]["tai_khoan"]["constraints"].pop(
+        "tai_khoan_registration_verified_at_check", None
+    )
     # These subscription columns were introduced by the v79 commercial
     # backfill.  The replayed v1-v45 chain must reconcile against the
     # immutable pre-commercial v46 catalog; v79 adds them later.
@@ -1418,6 +1433,23 @@ def _historical_v46_catalog(latest_catalog):
         "calendar_connection",
         "calendar_event_binding",
         "calendar_delivery_outbox",
+        # Product Analytics read models are introduced by v84.
+        "commercial_analytics_events",
+        "workspace_usage_daily",
+        "workspace_feature_daily",
+        "workspace_seat_daily",
+        "commercial_funnel_daily",
+        "subscription_snapshot_daily",
+        "revenue_daily",
+        "cost_usage_daily",
+        "retention_cohort_weekly",
+        "plan_fit_monthly",
+        # Product Analytics activation/pack/funnel facts are introduced by v85/v86.
+        "workspace_activation_facts",
+        "credit_pack_purchase_daily",
+        "workspace_feature_user_daily",
+        "commercial_feedback",
+        "commercial_funnel_workspace_daily",
     }
     for table_name in post_v46_tables:
         catalog["tables"].pop(table_name, None)

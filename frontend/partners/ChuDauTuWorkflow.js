@@ -161,10 +161,8 @@ export async function handleChuDauTuSubmit(e) {
   // before autoSync builds its payload.
   await mutatePersistAndSync(this, { upserts: { chudautu: upsertRecords } }, {
     backgroundSync: true,
-    afterPersist: async () => {
-      await this.closeModal("modal-chudautu");
-      this.view.renderChuDauTuTable();
-    }
+    afterLocalDurable: () => this.closeModal("modal-chudautu"),
+    afterCanonicalSync: () => this.view.renderChuDauTuTable(),
   });
   const planModal = document.getElementById("modal-kehoach");
   if (planModal && planModal.classList.contains("active")) {

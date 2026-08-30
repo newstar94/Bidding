@@ -298,10 +298,8 @@ export async function handleNhaThauSubmit(e) {
   // before autoSync builds its payload.
   await mutatePersistAndSync(this, { upserts: { nhathau: upsertRecords } }, {
     backgroundSync: true,
-    afterPersist: async () => {
-      await this.closeModal("modal-nhathau");
-      this.view.renderNhaThauTable();
-    }
+    afterLocalDurable: () => this.closeModal("modal-nhathau"),
+    afterCanonicalSync: () => this.view.renderNhaThauTable(),
   });
   const contractModal = document.getElementById("modal-hopdong");
   if (contractModal && contractModal.classList.contains("active")) {

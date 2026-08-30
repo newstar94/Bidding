@@ -717,10 +717,8 @@ export async function persistContractFormChanges(controller, changedContracts) {
   return persistAndSync(controller, "hopdong", {
     backgroundSync: true,
     changes: { upserts: { hopdong: changedContracts } },
-    afterCanonicalSync: async () => {
-      await controller.closeModal("modal-hopdong");
-      await controller.view.renderHopDongTable();
-    },
+    afterLocalDurable: () => controller.closeModal("modal-hopdong"),
+    afterCanonicalSync: () => controller.view.renderHopDongTable(),
   });
 }
 import { generateRecordId } from "../shared/idUtils.js";

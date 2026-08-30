@@ -7,7 +7,7 @@ const TERMINAL_ACTIVATIONS = new Set(["applied", "review_required", "reversed"])
 const state = {
   availability: "available",
   offers: [], creditPacks: [], quotaWarnings: [70, 90, 100],
-  balance: null, orders: [], loading: false, polling: null,
+  balance: null, orders: [], loading: false, polling: null, commercialReleaseId: "",
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const money = (value) => `${new Intl.NumberFormat("vi-VN").format(Number(value || 0))} ₫`;
@@ -16,6 +16,27 @@ const request = async (path, options = {}) => {
   let payload = {}; try { payload = await response.json(); } catch { /* closed empty response */ }
   if (!response.ok) { const error = new Error(payload.error || "Không thể tải dữ liệu thương mại."); error.code = payload.code || "COMMERCIAL_REQUEST_FAILED"; error.status = response.status; throw error; }
   return payload;
+};
+const sendCommercialEvent = (event, extra = {}) => {
+  if (!state.commercialReleaseId) return;
+  const payload = { event, commercialReleaseId: state.commercialReleaseId, source: "commercial_storefront", ...extra };
+  void fetch("/api/commercial-analytics/events", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+};
+export const sendCommercialFeedback = async (moment, reason) => {
+  if (!state.commercialReleaseId || !moment || !reason) return false;
+  try {
+    const response = await fetch("/api/commercial-analytics/feedback", {
+      method: "POST", credentials: "same-origin", keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moment, reason, commercialReleaseId: state.commercialReleaseId }),
+    });
+    return response.ok;
+  } catch { return false; }
+};
+const showOptionalFeedback = (moment) => {
+  const panel = document.getElementById("storefront-feedback");
+  const input = document.getElementById("storefront-feedback-moment");
+  if (panel && input) { input.value = moment; panel.hidden = false; panel.scrollIntoView({ block: "nearest" }); }
 };
 const status = (message, tone = "neutral") => { const node = document.getElementById("storefront-status"); if (node) { node.dataset.tone = tone; node.textContent = message; } };
 
@@ -26,7 +47,10 @@ function renderOffers(controller) {
     ? `<div class="commercial-empty"><strong>Cửa hàng chưa mở bán.</strong><p>Bảng giá mới sẽ xuất hiện tại đây sau khi chính sách thương mại được phê duyệt và phát hành.</p></div>`
     : `<div class="commercial-empty"><strong>Chưa có offer sellable.</strong><p>Super Admin cần publish release trước khi mở bán.</p></div>`;
   root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${state.offers.map((offer) => `<article class="commercial-storefront__card ${offer.variant === "connected" ? "is-featured" : ""}"><div class="commercial-storefront__card-top"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span><span>${escapeHtml(offer.display?.name || offer.tier)}</span></div><h3>${escapeHtml(offer.display?.name || offer.code)}</h3><p class="commercial-storefront__price">${money(offer.price?.total)} <small>/ năm</small></p><ul><li>${Number(offer.memberQuota || 0).toLocaleString("vi-VN")} thành viên</li><li>${Number(offer.includedProcurementQuota || 0).toLocaleString("vi-VN")} lượt tra cứu kèm theo</li><li>${offer.variant === "connected" ? "Có kiểm tra vi phạm Nhà thầu" : "Dùng tra cứu đối tác chung"}</li></ul><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(offer.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(offer.code)}">Chọn gói</button></article>`).join("")}</div><div class="commercial-storefront__packs"><h3>Mua thêm lượt tra cứu</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>` : emptyState);
-  root.querySelectorAll(".storefront-buy").forEach((button) => button.addEventListener("click", () => startCheckout(button.dataset.sku, controller, button.dataset.operation, button)));
+  root.querySelectorAll(".storefront-buy").forEach((button) => button.addEventListener("click", () => {
+    sendCommercialEvent("pricing.offer_selected", { skuCode: button.dataset.sku });
+    void startCheckout(button.dataset.sku, controller, button.dataset.operation, button);
+  }));
 }
 
 function renderBalance() {
@@ -84,6 +108,7 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
   const checkoutWindow = window.open("about:blank", "_blank");
   if (checkoutWindow) checkoutWindow.opener = null;
   try {
+    sendCommercialEvent("checkout.started", { skuCode });
     const actor = controller?.model?.state?.activeuser || {};
     const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
@@ -106,10 +131,12 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
     );
     await pollOrder(order.order.publicId, controller);
   } catch (error) {
+    sendCommercialEvent("checkout.cancelled", { skuCode });
     const message = `${error.code}: ${error.message}`;
     if (checkoutWindow && !checkoutWindow.closed) checkoutWindow.close();
     if (errorNode) errorNode.textContent = message;
     status(message, error.code === "BLOCKED_DECISION" ? "warning" : "danger");
+    showOptionalFeedback("checkout_abandoned");
   } finally { if (button) { button.disabled = false; button.removeAttribute("aria-busy"); } }
 }
 
@@ -119,6 +146,7 @@ async function refresh(controller) {
   try {
     const catalog = await request("/api/public/commercial/offers");
     state.availability = catalog.availability || "available";
+    state.commercialReleaseId = String(catalog.releaseId || catalog.commercialReleaseId || "");
     const actor = controller?.model?.state?.activeuser || {};
     const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
@@ -126,6 +154,7 @@ async function refresh(controller) {
     state.creditPacks = catalog.creditPacks || [];
     state.quotaWarnings = catalog.quotaWarnings || [70, 90, 100];
     renderOffers(controller);
+    sendCommercialEvent("pricing.viewed");
     if (state.availability === "off") {
       state.balance = null;
       state.orders = [];
@@ -155,5 +184,15 @@ async function refresh(controller) {
 export async function mountCommercialStorefront(controller) {
   await loadStyleOnce(STYLE_URL);
   document.getElementById("storefront-refresh")?.addEventListener("click", () => refresh(controller));
+  document.getElementById("storefront-feedback-dismiss")?.addEventListener("click", () => { document.getElementById("storefront-feedback").hidden = true; });
+  document.getElementById("storefront-feedback-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const moment = document.getElementById("storefront-feedback-moment")?.value;
+    const reason = document.getElementById("storefront-feedback-reason")?.value;
+    if (!reason) return;
+    const recorded = await sendCommercialFeedback(moment, reason);
+    status(recorded ? "Cảm ơn bạn đã gửi phản hồi." : "Không thể ghi nhận phản hồi lúc này; giao dịch của bạn không bị ảnh hưởng.", recorded ? "success" : "warning");
+    document.getElementById("storefront-feedback").hidden = true;
+  });
   await refresh(controller);
 }

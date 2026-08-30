@@ -356,3 +356,37 @@ test("local durable result does not wait for a delayed paginated renderer", asyn
   releaseRender();
   await result.syncPromise;
 });
+
+test("background mutation separates local modal feedback from canonical table rendering", async () => {
+  let releaseSync;
+  const remoteSync = new Promise((resolve) => { releaseSync = resolve; });
+  const calls = [];
+  const lease = { outbox: { async flush() { calls.push("flush"); } } };
+  const model = {
+    state: { hopdong: [{ id: "contract-fast" }] },
+    useServerSidePagination: true,
+    beginWorkspaceMutation() { return lease; },
+    assertWorkspaceMutation() {},
+    finishWorkspaceMutation() { calls.push("finish"); },
+    workspaceMutationUsesCurrentResources() { return true; },
+    async persistChanges() { calls.push("persist"); },
+  };
+  const controller = {
+    model,
+    autoSync() { calls.push("sync-start"); return remoteSync; },
+  };
+
+  const result = await persistAndSync(controller, "hopdong", {
+    backgroundSync: true,
+    changes: { upserts: { hopdong: [{ id: "contract-fast" }] } },
+    afterLocalDurable: () => { calls.push("modal-closed"); },
+    afterCanonicalSync: () => { calls.push("table-rendered"); },
+  });
+
+  assert.equal(result.local, true);
+  assert.ok(calls.includes("modal-closed"));
+  assert.ok(!calls.includes("table-rendered"));
+  releaseSync({ ok: true });
+  await result.syncPromise;
+  assert.ok(calls.indexOf("modal-closed") < calls.indexOf("table-rendered"));
+});

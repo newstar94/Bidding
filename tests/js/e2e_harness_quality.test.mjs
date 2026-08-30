@@ -158,6 +158,28 @@ test("lifecycle E2E fills only editable visible package-lot rows", () => {
   assert.doesNotMatch(source, /#phanlo-tbody tr:not\(\[hidden\]\)/u);
 });
 
+test("lifecycle E2E waits for the two-envelope evaluation row before editing", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const technicalEvaluationRow[\s\S]*technicalEvaluationRow\.waitFor\(\{ state: "visible", timeout: 20_000 \}\)[\s\S]*#danhgiahsdt-table-tbody \.mt-dg-hop-le/u,
+  );
+});
+
+test("lifecycle E2E waits for opening acknowledgement before package cancellation", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const cancelOpeningRow[\s\S]*#btn-mothau-save[\s\S]*data-workflow-tab="eval_tech"[\s\S]*#btn-workflow-cancel-package/u,
+  );
+});
+
 test("production E2E harnesses do not import development source modules", () => {
   const harnesses = [
     "verify_bidder_goods_e2e.cjs",
