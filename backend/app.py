@@ -109,6 +109,22 @@ LEGAL_VERSIONING_ENABLED = os.environ.get(
 ).lower() == "true"
 
 
+def _frontend_bundle_enabled():
+    """Resolve asset mode from the current runtime flags.
+
+    ``APP_DEBUG`` and ``IS_PRODUCTION`` are patched by startup/tests after
+    module import, so relying only on the import-time constant can select the
+    wrong transport.  Keep the constant as an explicit compatibility override
+    while deriving the normal mode from the current flags.
+    """
+    return bool(
+        IS_PRODUCTION
+        or not APP_DEBUG
+        or FRONTEND_ASSET_MODE == "bundle"
+        or USE_FRONTEND_BUNDLE
+    )
+
+
 def _split_env_list(value):
     return [item.strip().rstrip("/") for item in str(value or "").split(",") if item.strip()]
 
@@ -195,14 +211,14 @@ def compile_html(file_path):
     """
     global _compiled_html_cache, _compiled_html_cache_signature
 
-    if USE_FRONTEND_BUNDLE and _compiled_html_cache:
+    if _frontend_bundle_enabled() and _compiled_html_cache:
         if IS_PRODUCTION:
             return _compiled_html_cache
         signature = _html_cache_signature()
         if _compiled_html_cache_signature == signature:
             return _compiled_html_cache
     else:
-        signature = None if not USE_FRONTEND_BUNDLE or IS_PRODUCTION else _html_cache_signature()
+        signature = None if not _frontend_bundle_enabled() or IS_PRODUCTION else _html_cache_signature()
 
     def replace_include(match):
         include_path = match.group(1).strip()
@@ -228,7 +244,7 @@ def compile_html(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         compiled = compile_content(f.read())
 
-    if USE_FRONTEND_BUNDLE:
+    if _frontend_bundle_enabled():
         compiled = re.sub(
             r'\s*<link\s+rel="modulepreload"\s+href="/(?:frontend|views)/[^"]+">\s*',
             '\n',
@@ -333,7 +349,7 @@ def _build_index_response_payload():
 
 def _prewarm_frontend_assets():
     """Read the small critical graph once so the first user does not pay cold file I/O."""
-    if not USE_FRONTEND_BUNDLE:
+    if not _frontend_bundle_enabled():
         return 0, 0
     roots = (
         APP_ENTRY,
@@ -402,7 +418,7 @@ def _prewarm_frontend_assets():
 
 def _workspace_preload_tag(session_bootstrap):
     """Preload the app entry first, then the authenticated workspace graph."""
-    if not USE_FRONTEND_BUNDLE:
+    if not _frontend_bundle_enabled():
         if not session_bootstrap.get("valid"):
             return ""
         workspace_src = "/frontend/app/workspaceBootstrap.js"

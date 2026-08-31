@@ -155,10 +155,8 @@ const waitForApp = async (page) => {
 };
 
 async function openBrowserSession(storageState = undefined) {
-  if (!browser) {
-    browserServer = await chromium.launchServer(launchOptions);
-    browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
-  }
+  browserServer = await chromium.launchServer(launchOptions);
+  browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
   context = await browser.newContext({
     locale: "vi-VN",
     timezoneId: "Asia/Ho_Chi_Minh",
@@ -198,24 +196,18 @@ async function openBrowserSession(storageState = undefined) {
 
 async function renewBrowserSession() {
   const storageState = await context.storageState({ indexedDB: true });
-  const previousContext = context;
-  context = null;
-  page = null;
-  await previousContext.close();
-  await openBrowserSession(storageState);
-  mark("browser-session-renewed");
-}
-
-async function restartBrowserSession() {
-  const storageState = await context.storageState({ indexedDB: true });
   const previousServer = browserServer;
   context = null;
   page = null;
   browser = null;
   browserServer = null;
-  previousServer.process().kill();
+  await previousServer.close();
   await openBrowserSession(storageState);
-  mark("browser-session-restarted");
+  mark("browser-session-renewed");
+}
+
+async function restartBrowserSession() {
+  await renewBrowserSession();
 }
 
 const waitForInitialReconciliation = async (page) => {
@@ -772,25 +764,15 @@ try {
   mark("contract-basics-filled");
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
   mark("contract-owner-selected");
-  process.stdout.write("[DEBUG-contract-create] contractor\n");
   await select(page, "#hd-nhathauid", { label: `Nhà thầu ${runId}` });
-  process.stdout.write("[DEBUG-contract-create] value\n");
   await page.locator("#hd-giatri").fill("772200000");
-  process.stdout.write("[DEBUG-contract-create] type\n");
   await select(page, "#hd-loai", { label: "Trọn gói" });
-  process.stdout.write("[DEBUG-contract-create] classification\n");
   await select(page, "#hd-phanloai", { label: "Khác" });
-  process.stdout.write("[DEBUG-contract-create] duration\n");
   await page.locator("#hd-songay").fill("90 ngày");
-  process.stdout.write("[DEBUG-contract-create] plan\n");
   await select(page, "#hd-kehoachid", { label: `Kế hoạch ${runId}` });
-  process.stdout.write("[DEBUG-contract-create] package\n");
   await page.locator('input[name="hd-goithau-checkbox"]').check();
-  process.stdout.write("[DEBUG-contract-create] assignee\n");
   await select(page, "#hd-nhanvienphutrach", { index: 1 });
-  process.stdout.write("[DEBUG-contract-create] status\n");
   await select(page, "#hd-trangthai-hopdong", { label: "Đang thực hiện" });
-  process.stdout.write("[DEBUG-contract-create] submit\n");
   await submitModal(page, "#form-hopdong", "#modal-hopdong", {
     diagnostics: "contract create",
   });
@@ -801,25 +783,17 @@ try {
   mark("contract-created");
 
   const advanceContractStatus = async (status, liquidationDate = "") => {
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:search\n`);
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:row\n`);
     await contractRow().waitFor({ state: "visible", timeout: 15_000 });
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:edit\n`);
     await contractRow().locator('[data-bf-action="edit-contract"]').click();
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:modal\n`);
     await page.locator("#modal-hopdong.active").waitFor({ state: "visible", timeout: 10_000 });
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:select\n`);
     await select(page, "#hd-trangthai-hopdong", { label: status });
     if (liquidationDate) await page.locator("#hd-ngaythanhly").fill(liquidationDate);
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:submit\n`);
     await page.locator("#form-hopdong button[type='submit']").click({
       force: true,
       noWaitAfter: true,
     });
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:confirm\n`);
     await confirmDialog(page);
-    process.stdout.write(`[DEBUG-contract-stage] ${status}:close\n`);
     try {
       await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
     } catch (error) {
@@ -972,6 +946,7 @@ try {
       price: 10_000_000,
     })),
   });
+  await restartBrowserSession();
   await createAdditionalPackage({
     suffix: "GT-EXCEL-MI",
     title: manyItemsLotsExcelPackage,
@@ -1098,9 +1073,7 @@ try {
   }
   mark("invitation-extended");
   await renewBrowserSession();
-  process.stdout.write("[DEBUG-cancel-opening] open-persisted-extension\n");
   await openPackageWorkflow(cancellablePackage, "opening");
-  process.stdout.write("[DEBUG-cancel-opening] persisted-extension-opened\n");
   const savedExtensionReason = page.locator("#gt-giahan-tbody .gh-reason-input").last();
   try {
     await savedExtensionReason.waitFor({ state: "visible", timeout: 15_000 });
@@ -1122,7 +1095,6 @@ try {
     throw new Error("Invitation extension reason was not persisted.");
   }
   await waitForRenderedWorkflowTab(page, "opening");
-  process.stdout.write("[DEBUG-cancel-opening] request-opening\n");
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#modal-custom-dialog.active #dialog-prompt-input").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-5, "10:00"));
@@ -1133,13 +1105,9 @@ try {
   ), { timeout: 20_000 });
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-  process.stdout.write("[DEBUG-cancel-opening] opening-dialog-closed\n");
   await cancelOpeningSync;
-  process.stdout.write("[DEBUG-cancel-opening] opening-sync-complete\n");
-  await renewBrowserSession();
-  process.stdout.write("[DEBUG-cancel-opening] reopen-after-opening\n");
+  await restartBrowserSession();
   await openPackageWorkflow(cancellablePackage, "opening");
-  process.stdout.write("[DEBUG-cancel-opening] reopened-after-opening\n");
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 }).catch(async (error) => {
     const state = await page.evaluate((title) => ({
       package: (globalThis.app?.model?.state?.goithau || [])
@@ -1709,7 +1677,7 @@ try {
   await renewBrowserSession();
   await openPackageWorkflow(lotPackage, "eval_tech");
   await page.locator("#btn-continue-lot-evaluation").waitFor({ state: "visible", timeout: 15_000 });
-  await page.locator("#btn-continue-lot-evaluation").click();
+  await page.locator("#btn-continue-lot-evaluation").click({ force: true, noWaitAfter: true });
   await page.locator("#danhgiahsdt-so-baocao").waitFor({ state: "visible", timeout: 15_000 });
   await evaluateCurrentLot({ lotCode: "PP02", reportSuffix: "LOT-2", price: "230000000" });
   await approveCurrentLot({ sequence: 2, price: "230000000" });

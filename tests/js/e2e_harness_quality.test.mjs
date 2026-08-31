@@ -170,7 +170,7 @@ test("lifecycle E2E does not inherit an intercepting host proxy", () => {
   assert.match(source, /"--no-proxy-server"/u);
 });
 
-test("lifecycle E2E renews contexts and restarts Chromium before its longest late phase", () => {
+test("lifecycle E2E renews Chromium cleanly between persisted workflow phases", () => {
   const source = fs.readFileSync(
     path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
     "utf8",
@@ -179,12 +179,9 @@ test("lifecycle E2E renews contexts and restarts Chromium before its longest lat
   assert.match(source, /async function renewBrowserSession\(/u);
   assert.match(
     source,
-    /async function renewBrowserSession[\s\S]*previousContext\.close\(\)[\s\S]*openBrowserSession\(storageState\)/u,
+    /async function renewBrowserSession[\s\S]*const previousServer = browserServer[\s\S]*await previousServer\.close\(\)[\s\S]*openBrowserSession\(storageState\)/u,
   );
-  assert.match(
-    source,
-    /async function restartBrowserSession[\s\S]*previousServer\.process\(\)\.kill\(\)[\s\S]*openBrowserSession\(storageState\)/u,
-  );
+  assert.match(source, /async function restartBrowserSession[\s\S]*await renewBrowserSession\(\)/u);
   assert.match(
     source,
     /mark\("supplied-excel-goods-imported"[\s\S]*await restartBrowserSession\(\)/u,
@@ -204,6 +201,10 @@ test("lifecycle E2E renews contexts and restarts Chromium before its longest lat
   assert.match(
     source,
     /suffix: "GT-CANCEL"[\s\S]*await restartBrowserSession\(\);[\s\S]*suffix: "GT-EXCEL-1I"/u,
+  );
+  assert.match(
+    source,
+    /suffix: "GT-EXCEL-1I"[\s\S]*?await restartBrowserSession\(\);[\s\S]*?suffix: "GT-EXCEL-MI"/u,
   );
   assert.match(source, /serviceWorkers: "block"/u);
   assert.match(source, /page\.setDefaultNavigationTimeout\(20_000\)/u);
@@ -236,6 +237,10 @@ test("lifecycle E2E waits for visible-content enhancement before rerendering inv
   assert.match(
     source,
     /#btn-them-giahan"\)\.press\("Enter", \{ noWaitAfter: true \}\)/u,
+  );
+  assert.match(
+    source,
+    /#btn-continue-lot-evaluation"\)\.click\(\{ force: true, noWaitAfter: true \}\)/u,
   );
   assert.doesNotMatch(source, /LifecycleDiagnosticMutationObserver/u);
   assert.match(
@@ -292,6 +297,10 @@ test("lifecycle E2E waits for opening acknowledgement before package cancellatio
   assert.match(
     source,
     /#btn-save-cancel-details"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*dialogTitle === "Thành công"[\s\S]*#cancel-dec-no\[disabled\]/u,
+  );
+  assert.match(
+    source,
+    /await cancelOpeningSync;[\s\S]*?await restartBrowserSession\(\);[\s\S]*?openPackageWorkflow\(cancellablePackage, "opening"\)/u,
   );
 });
 
