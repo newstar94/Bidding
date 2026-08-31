@@ -38,9 +38,40 @@ from backend.procurement_import.draft_mapping import (
     map_package_canonical_to_draft,
 )
 from backend.procurement_import.source import ProcurementSourceError
+from backend.procurement_lookup.domain import ProcurementLookupError
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "muasamcong"
+
+
+def test_unified_source_honors_the_server_owned_browser_mode(monkeypatch):
+    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "research-stealth")
+    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+        "muasamcong.mpi.gov.vn",
+    )
+
+    source = MuaSamCongProcurementSource.from_environ()
+
+    assert source.runtime.configuration["browserMode"] == "research-stealth"
+    assert source.runtime.configuration["targetHost"] == "muasamcong.mpi.gov.vn"
+    assert source.runtime.configuration["chromiumArgs"] == []
+
+
+def test_unified_source_rejects_ungated_research_mode(monkeypatch):
+    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "research-stealth")
+    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")
+    monkeypatch.setenv(
+        "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+        "muasamcong.mpi.gov.vn",
+    )
+
+    with pytest.raises(
+        ProcurementLookupError,
+        match="PROCUREMENT_ADAPTER_UNSUPPORTED",
+    ):
+        MuaSamCongProcurementSource.from_environ()
 
 
 def fixture(*parts):

@@ -227,3 +227,32 @@ test("background_render_scheduled_in_workspace_a_does_not_render_after_switch_to
     else globalThis.requestAnimationFrame = previousAnimationFrame;
   }
 });
+
+test("background detail reconciliation preserves background semantics through tab renderer", async () => {
+  const previousDocument = globalThis.document;
+  const previousAnimationFrame = globalThis.requestAnimationFrame;
+  let animationFrame = null;
+  globalThis.document = {
+    getElementById() { return null; },
+    querySelector() { return null; },
+  };
+  globalThis.requestAnimationFrame = (callback) => { animationFrame = callback; return 1; };
+  const calls = [];
+  const controller = {
+    model: { state: { activetab: "goithau-detail", activeaction: "package-1" } },
+    view: { showPackageDetails(...args) { calls.push(args); } },
+    renderTabData(tab, action, options) {
+      return this.view.showPackageDetails(action, false, "", options);
+    },
+  };
+  try {
+    await renderChangedState(controller, new Set(["goithau"]), { isBackground: true });
+    animationFrame();
+    assert.deepEqual(calls, [["package-1", false, "", { isBackground: true }]]);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = previousAnimationFrame;
+  }
+});

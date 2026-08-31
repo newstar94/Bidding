@@ -8,6 +8,16 @@ Type=exec
 User=biddingflow
 Group=biddingflow
 WorkingDirectory=/opt/biddingflow/current
+# Process defaults live with the process manager so web.env only needs an
+# override after capacity testing. EnvironmentFile values take precedence.
+Environment=UVICORN_WORKERS=4
+Environment=UVICORN_LIMIT_CONCURRENCY=256
+Environment=UVICORN_BACKLOG=512
+Environment=UVICORN_TIMEOUT_KEEP_ALIVE=5
+Environment=UVICORN_MAX_REQUESTS=10000
+Environment=UVICORN_MAX_REQUESTS_JITTER=1000
+Environment=UVICORN_WS_MAX_SIZE=65536
+Environment=UVICORN_WS_MAX_QUEUE=16
 EnvironmentFile=/etc/biddingflow/web.env
 RuntimeDirectory=biddingflow-metrics
 RuntimeDirectoryMode=0750

@@ -20,8 +20,51 @@ import {
   evaluationMethodUsesTechnicalScore,
 } from "../evaluationMethodRules.js";
 import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
+import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
 
 const qualifiedApprovalCacheOwner = (pkg) => `qualified-approval:${pkg?.id || "unknown"}`;
+
+function qualifiedApprovalDraftKey(pkg, activeScope) {
+  const scopeId = activeScope?.batch?.id || activeScope?.batch?.batchId || "package";
+  return `${String(pkg?.id || "unknown")}:${String(scopeId)}`;
+}
+
+function qualifiedApprovalDraft(view, key) {
+  return view?._qualifiedApprovalDraft?.key === key
+    ? view._qualifiedApprovalDraft.values || {}
+    : {};
+}
+
+export function rememberQualifiedApprovalDraft(view, key, values = {}) {
+  if (!view || !key) return {};
+  const previous = qualifiedApprovalDraft(view, key);
+  view._qualifiedApprovalDraft = {
+    key,
+    values: { ...previous, ...values },
+  };
+  return view._qualifiedApprovalDraft.values;
+}
+
+export function clearQualifiedApprovalDraft(view, key) {
+  if (view?._qualifiedApprovalDraft?.key !== key) return false;
+  delete view._qualifiedApprovalDraft;
+  return true;
+}
+
+export function qualifiedApprovalFieldValue(state, field) {
+  if (Object.prototype.hasOwnProperty.call(state?.draft || {}, field)) {
+    return state.draft[field] || "";
+  }
+  return state?.target?.[field] || "";
+}
+
+function qualifiedApprovalDateValue(view, state, field) {
+  if (Object.prototype.hasOwnProperty.call(state?.draft || {}, field)) {
+    return state.draft[field] || "";
+  }
+  const persisted = state?.target?.[field] || "";
+  return persisted ? view.model.formatForDateInput(persisted) : "";
+}
 
 function parseMetadata(pkg) {
   const parsed = parseEvaluationMetadataForDisplay(
@@ -56,6 +99,7 @@ export function buildQualifiedApprovalState({
     .filter((bid) => !activeScope || isBidWithinEvaluationLotDetails(bid, activeScope));
   const qualifiedBids = bids.filter((bid) => checkBidQualified(bid, pkg));
   const target = activeScope?.batch || metadata.technical;
+  const draftKey = qualifiedApprovalDraftKey(pkg, activeScope);
   const isCompleted = target.qualifiedSaved === true;
   const isEditing = Boolean(view?._editingState?.qualified);
   const isFinal = effectiveStatus === "Đã có kết quả" || effectiveStatus === "Hủy thầu";
@@ -77,6 +121,8 @@ export function buildQualifiedApprovalState({
     metadata,
     activeScope,
     target,
+    draftKey,
+    draft: qualifiedApprovalDraft(view, draftKey),
     qualifiedBids,
     hasTechnicalScore: hasTechnicalScore(pkg, qualifiedBids),
     isTechEvalSaved,
@@ -121,16 +167,16 @@ function renderPackageFacts(view, state) {
 }
 
 function renderDecisionForm(view, state) {
-  const { pkg, target, isReadOnly } = state;
+  const { pkg, isReadOnly } = state;
   const appraisalFields = isCompetitiveQuotationPackage(pkg) ? "" : `
     <div class="form-group bf-s-4bbf3df076">
       <label class="bf-s-997cdefbc9">Số BCTĐ kỹ thuật <span class="text-danger">*</span></label>
-      <input type="text" id="qualified-so-bctd" class="form-control bf-s-20e5983dc7" value="${escapeHtml(target.soBctdKt || "")}" placeholder="Nhập số báo cáo thẩm định..." ${isReadOnly ? "readonly" : ""}>
+      <input type="text" id="qualified-so-bctd" class="form-control bf-s-20e5983dc7" value="${escapeHtml(qualifiedApprovalFieldValue(state, "soBctdKt"))}" placeholder="Nhập số báo cáo thẩm định..." ${isReadOnly ? "readonly" : ""}>
       <span class="error-text bf-s-35a8ff27ff">Vui lòng nhập Số BCTĐ kỹ thuật!</span>
     </div>
     <div class="form-group bf-s-4bbf3df076">
       <label class="bf-s-997cdefbc9">Ngày BCTĐ kỹ thuật <span class="text-danger">*</span></label>
-      <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${escapeHtml(target.ngayBctdKt ? view.model.formatForDateInput(target.ngayBctdKt) : "")}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
+      <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${escapeHtml(qualifiedApprovalDateValue(view, state, "ngayBctdKt"))}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
       <span class="error-text bf-s-35a8ff27ff">Vui lòng chọn Ngày BCTĐ kỹ thuật!</span>
     </div>`;
   return `
@@ -140,12 +186,12 @@ function renderDecisionForm(view, state) {
         ${appraisalFields}
         <div class="form-group bf-s-4bbf3df076">
           <label class="bf-s-997cdefbc9">Số QĐ phê duyệt nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
-          <input type="text" id="qualified-so-qd" class="form-control bf-s-20e5983dc7" value="${escapeHtml(target.soQdPheDuyetKt || "")}" placeholder="Ví dụ: 120/QĐ-CDT" ${isReadOnly ? "readonly" : ""}>
+          <input type="text" id="qualified-so-qd" class="form-control bf-s-20e5983dc7" value="${escapeHtml(qualifiedApprovalFieldValue(state, "soQdPheDuyetKt"))}" placeholder="Ví dụ: 120/QĐ-CDT" ${isReadOnly ? "readonly" : ""}>
           <span class="error-text bf-s-35a8ff27ff">Vui lòng nhập Số QĐ phê duyệt!</span>
         </div>
         <div class="form-group bf-s-4bbf3df076">
           <label class="bf-s-997cdefbc9">Ngày QĐ phê duyệt <span class="text-danger">*</span></label>
-          <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${escapeHtml(target.ngayQdPheDuyetKt ? view.model.formatForDateInput(target.ngayQdPheDuyetKt) : "")}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
+          <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${escapeHtml(qualifiedApprovalDateValue(view, state, "ngayQdPheDuyetKt"))}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
           <span class="error-text bf-s-35a8ff27ff">Vui lòng chọn Ngày QĐ phê duyệt!</span>
         </div>
       </div>
@@ -212,6 +258,25 @@ function bindPanel(view, contentWrapper, state, appController) {
 
   const saveButton = contentWrapper.querySelector("#btn-save-qualified-decision");
   if (!saveButton) return;
+  const draftControls = {
+    soQdPheDuyetKt: contentWrapper.querySelector("#qualified-so-qd"),
+    ngayQdPheDuyetKt: contentWrapper.querySelector("#qualified-ngay-qd"),
+    soBctdKt: contentWrapper.querySelector("#qualified-so-bctd"),
+    ngayBctdKt: contentWrapper.querySelector("#qualified-ngay-bctd"),
+  };
+  const captureDraft = () => rememberQualifiedApprovalDraft(
+    view,
+    state.draftKey,
+    Object.fromEntries(
+      Object.entries(draftControls)
+        .filter(([, control]) => Boolean(control))
+        .map(([field, control]) => [field, control.value]),
+    ),
+  );
+  Object.values(draftControls).filter(Boolean).forEach((control) => {
+    control.addEventListener("input", captureDraft);
+    control.addEventListener("change", captureDraft);
+  });
   saveButton.onclick = async () => {
     const decisionNumber = contentWrapper.querySelector("#qualified-so-qd");
     const decisionDate = contentWrapper.querySelector("#qualified-ngay-qd");
@@ -222,6 +287,7 @@ function bindPanel(view, contentWrapper, state, appController) {
       .filter(Boolean)
       .forEach((input) => validateRequiredInput(input, invalidInputs));
     if (invalidInputs.length) {
+      captureDraft();
       view.focusInvalidControl(invalidInputs[0]);
       return;
     }
@@ -236,6 +302,8 @@ function bindPanel(view, contentWrapper, state, appController) {
     }
     state.target.qualifiedSaved = true;
     await saveQualifiedApproval(appController || view, state.pkg, state.metadata);
+    clearQualifiedApprovalDraft(view, state.draftKey);
+    packageWorkspaceFor(view).transition({ type: "SET_DIRTY", dirty: false });
     if (view._editingState) view._editingState.qualified = false;
     await view.customAlert("Thành công", "Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!", "check-circle");
     view._currentWorkflowTab = state.qualifiedBids.length ? "opening_fin" : "result";

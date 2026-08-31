@@ -34,6 +34,7 @@ from backend.integrations.muasamcong_browser.classifier import (
     classify_upstream_error,
 )
 from backend.integrations.muasamcong_browser.launchers import (
+    OFFICIAL_HOST,
     RestartableBrowserRuntime,
 )
 from backend.integrations.muasamcong_browser.diagnostics import DiagnosticRecorder
@@ -136,10 +137,30 @@ class MuaSamCongProcurementSource:
 
     @classmethod
     def from_environ(cls, *, observer=None):
+        browser_mode = str(
+            os.environ.get("PROCUREMENT_BROWSER_MODE", "standard")
+        ).strip().casefold()
+        research_enabled = _boolean("RESEARCH_STEALTH_ENABLED", "false")
+        allowed_research_hosts = {
+            host.strip().casefold()
+            for host in os.environ.get(
+                "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+                OFFICIAL_HOST,
+            ).split(",")
+            if host.strip()
+        }
+        if browser_mode not in {"standard", "research-stealth"}:
+            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+        if browser_mode == "research-stealth" and (
+            not research_enabled
+            or allowed_research_hosts != {OFFICIAL_HOST}
+        ):
+            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+
         configuration = {
             "headless": _boolean("MUASAMCONG_BROWSER_HEADLESS", "true"),
-            "browserMode": "standard",
-            "targetHost": "muasamcong.mpi.gov.vn",
+            "browserMode": browser_mode,
+            "targetHost": OFFICIAL_HOST,
             "chromiumArgs": [],
             "drivers": {
                 "vue2": _boolean("MUASAMCONG_DRIVER_VUE2", "true"),

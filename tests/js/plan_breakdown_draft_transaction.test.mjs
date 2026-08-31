@@ -49,6 +49,8 @@ import {
 } from "../../frontend/plans/PlanVersionDraftSession.js";
 import { persistExpertFormChanges } from "../../frontend/experts/ChuyenGiaWorkflow.js";
 import { persistContractFormChanges } from "../../frontend/contracts/HopDongWorkflow.js";
+import { persistInvestorFormChanges } from "../../frontend/partners/ChuDauTuWorkflow.js";
+import { persistContractorFormChanges } from "../../frontend/partners/NhaThauWorkflow.js";
 import {
   completeProcurementPlanImportRevision,
   originatePlanImportFlow,
@@ -1386,6 +1388,43 @@ test("saving a contract keeps its form open until remote synchronization succeed
     "persist", "flush", "sync-start", "finish", "closeModal", "render",
   ]);
 });
+
+for (const [label, persist, table, modal, renderMethod] of [
+  ["investor", persistInvestorFormChanges, "chudautu", "modal-chudautu", "renderChuDauTuTable"],
+  ["contractor", persistContractorFormChanges, "nhathau", "modal-nhathau", "renderNhaThauTable"],
+]) {
+  test(`saving a ${label} keeps its form open until remote synchronization succeeds`, async () => {
+    const calls = [];
+    let finishSync;
+    const remoteSync = new Promise((resolve) => { finishSync = resolve; });
+    const lease = { outbox: { async flush() { calls.push("flush"); } } };
+    const controller = {
+      model: {
+        state: { [table]: [] },
+        beginWorkspaceMutation() { return lease; },
+        assertWorkspaceMutation() {},
+        finishWorkspaceMutation() { calls.push("finish"); },
+        workspaceMutationUsesCurrentResources() { return true; },
+        async persistChanges() { calls.push("persist"); },
+      },
+      autoSync() { calls.push("sync-start"); return remoteSync; },
+      async closeModal(modalId) {
+        assert.equal(modalId, modal);
+        calls.push("closeModal");
+      },
+      view: { async [renderMethod]() { calls.push("render"); } },
+    };
+
+    const result = await persist(controller, [{ id: `${label}-pending` }]);
+
+    assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+    finishSync({ ok: true });
+    await result.syncPromise;
+    assert.deepEqual(calls, [
+      "persist", "flush", "sync-start", "finish", "closeModal", "render",
+    ]);
+  });
+}
 
 test("draft assignments are changed in memory without calling model persistence methods", () => {
   const state = {

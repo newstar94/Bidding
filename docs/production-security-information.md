@@ -17,7 +17,8 @@ mật khẩu hoặc OTP vào repository; dùng secret manager và ghi lại tên
 - Tunnel UUID:
 - APP_INSTANCE_COUNT:
 - Reverse proxy, health check và phương án rollback:
-- Giới hạn Uvicorn/HTTP được xác nhận theo `.env.example`.
+- Giới hạn Uvicorn/HTTP được xác nhận theo
+  `deploy/environment-variables.reference` (chỉ override khi cần).
 
 ## PostgreSQL
 

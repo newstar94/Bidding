@@ -14,6 +14,7 @@ import {
   mutatePersistAndSync,
   persistAndSync,
   refreshRecordBeforeDelete,
+  refreshRecordBeforeMutation,
 } from "../shared/MutationService.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
@@ -333,6 +334,18 @@ export async function editKeHoach(id, {
     await this.ensureLazyModal?.("modal-kehoach");
   }
   assertEditCapabilityCurrent();
+  const editablePlan = id
+    ? await refreshRecordBeforeMutation(this, "kehoach", id)
+    : null;
+  assertEditCapabilityCurrent();
+  if (id && !editablePlan) {
+    this.view.showToast?.(
+      "Không thể mở kế hoạch",
+      "Dữ liệu trên danh sách đã thay đổi. Vui lòng tải lại danh sách rồi thử lại.",
+      "warning",
+    );
+    return null;
+  }
   const form = document.getElementById("form-kehoach");
   const planBasisEditor = document.getElementById("plan-basis-editor-list");
   bindPlanBasisEditor(
@@ -489,7 +502,7 @@ export async function editKeHoach(id, {
     captureModalReturnState(this.model.state.activetab || "kehoach", this.model.state.activeaction || null);
     this.switchTab("kehoach", "chinhsua", true);
     document.getElementById("modal-kehoach-title").textContent = "Cập nhật Kế hoạch LCNT";
-    const kh = this.model.state.kehoach.find((k) => String(k.id) === String(id));
+    const kh = editablePlan;
     renderPlanBasisEditor(planBasisEditor, kh.canCuLapKeHoachList || [], lucide);
     const existingCode = this.model.getPlanBaseCode(kh.maKeHoach);
     document.getElementById("form-kehoach-id").value = kh.id;

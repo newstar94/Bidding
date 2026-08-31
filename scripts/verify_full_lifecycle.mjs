@@ -132,17 +132,6 @@ const waitForApp = async (page) => {
   }
 };
 
-const debugAwardState = async (page, label) => {
-  if (process.env.E2E_DEBUG_DOM !== "true") return;
-  const state = await page.evaluate(() => ({
-    label: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
-    renderVersion: document.getElementById("detail-workflow-content-wrapper")?.dataset.renderedRenderVersion || "",
-    pendingRenderVersion: document.getElementById("detail-workflow-content-wrapper")?.dataset.pendingRenderVersion || "",
-    fields: ["award-so-bctd", "award-ngay-bctd", "award-decision-no", "award-decision-date"].map((id) => ({ id, value: document.getElementById(id)?.value || "" })),
-  }));
-  process.stdout.write(`[E2E-DOM] ${label} ${JSON.stringify(state)}\n`);
-};
-
 const waitForInitialReconciliation = async (page) => {
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
@@ -287,14 +276,6 @@ try {
   await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
   await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
-  if (process.env.E2E_DEBUG_DOM === "true") {
-    page.on("console", (message) => {
-      if (message.type() === "debug" || message.text().startsWith("[E2E-DOM]")) {
-        process.stdout.write(`${message.text()}\n`);
-      }
-    });
-    await page.addInitScript(() => { globalThis.__BF_E2E_DEBUG = true; });
-  }
   page.on("request", (request) => {
     if (!request.url().includes("/api/")) return;
     recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
@@ -332,7 +313,9 @@ try {
   await page.locator("#cdt-chucvudaidien").fill("Giám đốc");
   await selectFirstAddress(page, "#cdt-tinh", "#cdt-xa");
   await page.locator("#cdt-diachichitiet").fill("01 Đường Kiểm thử E2E");
-  await submitModal(page, "#form-chudautu", "#modal-chudautu");
+  await submitModal(page, "#form-chudautu", "#modal-chudautu", {
+    diagnostics: "investor",
+  });
   await page.locator("#search-chudautu").fill(`Chủ đầu tư ${runId}`);
   await page.getByText(`Chủ đầu tư ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("owner-created");
@@ -346,7 +329,9 @@ try {
   await page.locator("#nt-chucvudaidien").fill("Giám đốc");
   await selectFirstAddress(page, "#nt-tinh", "#nt-xa");
   await page.locator("#nt-diachichitiet").fill("02 Đường Kiểm thử E2E");
-  await submitModal(page, "#form-nhathau", "#modal-nhathau");
+  await submitModal(page, "#form-nhathau", "#modal-nhathau", {
+    diagnostics: "contractor",
+  });
   await page.locator("#search-nhathau").fill(`Nhà thầu ${runId}`);
   await page.getByText(`Nhà thầu ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("contractor-created");
@@ -597,16 +582,12 @@ try {
   mark("evaluation-saved");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-KQ`);
-  await debugAwardState(page, "after-appraisal-number");
   mark("award-appraisal-number-filled");
   await page.locator("#award-ngay-bctd").fill(testClock.date(-5));
-  await debugAwardState(page, "after-appraisal-date");
   mark("award-appraisal-date-filled");
   await page.locator("#award-decision-no").fill(`${runId}/QD-KQ`);
-  await debugAwardState(page, "after-decision-number");
   mark("award-decision-number-filled");
   await page.locator("#award-decision-date").fill(testClock.date(-4));
-  await debugAwardState(page, "after-decision-date");
   mark("award-decision-date-filled");
   const awardRow = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
   await select(page, "#approve-bidders-tbody .row-status-select", "trung");

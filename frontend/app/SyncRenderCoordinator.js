@@ -112,7 +112,11 @@ export function renderChangedState(controller, changedKeys, { isBackground = fal
       ]);
       const currentActiveTab = controller.model?.state?.activetab;
       if (!detailTabs.has(currentActiveTab)) return;
-      controller.renderTabData?.(currentActiveTab, controller.model?.state?.activeaction || null);
+      controller.renderTabData?.(
+        currentActiveTab,
+        controller.model?.state?.activeaction || null,
+        { isBackground: true },
+      );
     });
   }
   return Promise.all(renderPromises);

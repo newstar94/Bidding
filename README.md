@@ -38,6 +38,15 @@ Không dùng secret mẫu ở production. Điền `APP_PUBLIC_URL`, `ALLOWED_HOS
 
 Tạo Super Admin bằng cơ chế bootstrap do `scripts/manage_database.py` thực hiện từ `ADMIN_PASSWORD`; không commit `.env` hoặc in password ra log.
 
+## Environment configuration
+
+`.env.example` là profile local gọn, nhưng vẫn hiển thị các quyết định về
+trial/thương mại, PayOS, AI, CAPTCHA, Mua Sắm Công, session, OTP và các feature
+switch nghiệp vụ. Timeout, queue, pool, cache và tuning dùng default trong code;
+`setup_local_postgres.py` tạo URL database local và key cần thiết trong `.env`
+đã được Git ignore. Production bắt đầu từ `deploy/production.env.example`; danh
+mục override đầy đủ nằm tại `deploy/environment-variables.reference`.
+
 ## PostgreSQL và migration
 
 Fresh install tạo schema chuẩn mới nhất trực tiếp. Hệ thống đang nâng cấp dùng registry bất biến trong `backend/db/upgrades.py`; không sửa migration đã phát hành.

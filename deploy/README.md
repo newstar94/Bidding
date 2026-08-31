@@ -52,7 +52,8 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
    mở các cổng loopback `8000`/`8080` ra Internet.
 8. Nếu bật Mua Sắm Công browser lookup, chạy `npm ci --omit=dev`, cài đúng Chromium
    bằng `npx playwright install chromium`, xác minh service account không đặc quyền,
-   hostname allowlist và các flag trong `.env.example`. Challenge phải trả
+   hostname allowlist và các flag trong `deploy/production.env.example` hoặc
+   `deploy/environment-variables.reference`. Challenge phải trả
    `PROCUREMENT_INTERACTION_REQUIRED`; không triển khai solver/token replay/bypass.
    Kiểm tra TLS bằng chính service account/process chạy Uvicorn; Edge extension tải
    được trang không phải bằng chứng worker có cùng egress. Network policy phải cho
@@ -95,8 +96,9 @@ Ba environment overlay được tách riêng tại `deploy/turnstile/`:
 - `production.env.example`: domain production, cùng origin cho HTTP/WebSocket,
   trusted proxy loopback và placeholder key lưu bằng secret manager.
 
-Các file này là phần bổ sung cho environment đầy đủ, không thay thế
-`.env.example`. Khi điền production, thay mọi
+Các file này là overlay cho `deploy/production.env.example`, không thay thế
+profile local gọn `.env.example` vốn vẫn giữ các control nghiệp vụ và bảo mật.
+Khi điền production, thay mọi
 `REPLACE_WITH_PRODUCTION_DOMAIN` bằng cùng một hostname chính xác; không thêm
 scheme vào `ALLOWED_HOSTS`/`TURNSTILE_ALLOWED_HOSTNAMES` và không ghi key thật
 vào bản copy nằm trong repository.

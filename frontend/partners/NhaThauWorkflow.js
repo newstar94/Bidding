@@ -296,11 +296,7 @@ export async function handleNhaThauSubmit(e) {
   rememberSelectedVersion(this.model.state, "selectedNhaThauVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await mutatePersistAndSync(this, { upserts: { nhathau: upsertRecords } }, {
-    backgroundSync: true,
-    afterLocalDurable: () => this.closeModal("modal-nhathau"),
-    afterCanonicalSync: () => this.view.renderNhaThauTable(),
-  });
+  await persistContractorFormChanges(this, upsertRecords);
   const contractModal = document.getElementById("modal-hopdong");
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
@@ -310,4 +306,16 @@ export async function handleNhaThauSubmit(e) {
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
+}
+
+export function persistContractorFormChanges(controller, changedContractors) {
+  return mutatePersistAndSync(controller, {
+    upserts: { nhathau: changedContractors },
+  }, {
+    backgroundSync: true,
+    afterCanonicalSync: async () => {
+      await controller.closeModal("modal-nhathau");
+      await controller.view.renderNhaThauTable();
+    },
+  });
 }

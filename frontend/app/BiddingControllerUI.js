@@ -779,7 +779,7 @@ export function setupProfileDropdownEvents() {
     }
   });
 }
-export function renderTabData(tabName, action = null) {
+export function renderTabData(tabName, action = null, options = {}) {
   let renderTask;
   switch (tabName) {
     case "dashboard":
@@ -852,7 +852,7 @@ export function renderTabData(tabName, action = null) {
     case "goithau-detail":
       const activeId = action || (history.state ? history.state.action : null);
       if (activeId) {
-        return this.view.showPackageDetails(activeId);
+        return this.view.showPackageDetails(activeId, false, "", options);
       } else {
         return this.switchTab("goithau");
       }

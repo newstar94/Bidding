@@ -306,7 +306,6 @@ export async function mutatePersistAndSync(controller, mutation, options = {}) {
       ...options,
       authoritativeBoundaryChecked: true,
       changes: mutation,
-      releaseBeforeRemoteSync: ownsMutation,
       workspaceMutation,
     });
   } finally {

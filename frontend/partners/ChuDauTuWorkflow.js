@@ -159,11 +159,7 @@ export async function handleChuDauTuSubmit(e) {
   rememberSelectedVersion(this.model.state, "selectedChuDauTuVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await mutatePersistAndSync(this, { upserts: { chudautu: upsertRecords } }, {
-    backgroundSync: true,
-    afterLocalDurable: () => this.closeModal("modal-chudautu"),
-    afterCanonicalSync: () => this.view.renderChuDauTuTable(),
-  });
+  await persistInvestorFormChanges(this, upsertRecords);
   const planModal = document.getElementById("modal-kehoach");
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");
@@ -181,5 +177,17 @@ export async function handleChuDauTuSubmit(e) {
       cdtSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
+}
+
+export function persistInvestorFormChanges(controller, changedInvestors) {
+  return mutatePersistAndSync(controller, {
+    upserts: { chudautu: changedInvestors },
+  }, {
+    backgroundSync: true,
+    afterCanonicalSync: async () => {
+      await controller.closeModal("modal-chudautu");
+      await controller.view.renderChuDauTuTable();
+    },
+  });
 }
 import { generateRecordId } from "../shared/idUtils.js";

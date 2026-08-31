@@ -5,6 +5,39 @@ import {
   commitPackageAwardDependencies,
   saveQualifiedApproval,
 } from "../../frontend/packages/packageEvaluationProgress.js";
+import {
+  buildQualifiedApprovalState,
+  clearQualifiedApprovalDraft,
+  qualifiedApprovalFieldValue,
+  rememberQualifiedApprovalDraft,
+} from "../../frontend/packages/detail/QualifiedApprovalPanel.js";
+
+test("qualified approval draft survives a package-detail rerender", () => {
+  const pkg = {
+    id: "pkg-1",
+    danhGiaHsdtMetadata: JSON.stringify({
+      is1G2T: true,
+      technical: { saved: true, qualifiedSaved: false },
+      financial: { saved: false },
+    }),
+  };
+  const view = { model: { state: { thongtinmothau: [] } } };
+  const initial = buildQualifiedApprovalState({ view, pkg, isTechEvalSaved: true });
+
+  rememberQualifiedApprovalDraft(view, initial.draftKey, {
+    soBctdKt: "01/BC-TD",
+    ngayBctdKt: "30/08/2026",
+  });
+  const rerendered = buildQualifiedApprovalState({ view, pkg, isTechEvalSaved: true });
+
+  assert.equal(qualifiedApprovalFieldValue(rerendered, "soBctdKt"), "01/BC-TD");
+  assert.equal(qualifiedApprovalFieldValue(rerendered, "ngayBctdKt"), "30/08/2026");
+  assert.equal(clearQualifiedApprovalDraft(view, rerendered.draftKey), true);
+  assert.equal(qualifiedApprovalFieldValue(
+    buildQualifiedApprovalState({ view, pkg, isTechEvalSaved: true }),
+    "soBctdKt",
+  ), "");
+});
 
 test("qualified approval stages a detached package before persisting and syncing", async () => {
   const canonicalPackage = {

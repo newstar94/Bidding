@@ -15,7 +15,7 @@ function contentType(pathname) {
   return "application/octet-stream";
 }
 
-test("new plan modal paints before expensive investor select initialization", async () => {
+test("plan modal paints early and refreshes a paginated record before editing", async () => {
   const modalMarkup = await readFile(
     join(projectRoot, "views/modals/modal_kehoach.html"),
     "utf8",
@@ -116,6 +116,69 @@ test("new plan modal paints before expensive investor select initialization", as
     await page.locator("#btn-add-plan-basis").click();
     assert.equal(await page.locator(".plan-basis-editor-row").count(), 1);
     assert.equal(await page.locator(".plan-basis-editor-empty").count(), 0);
+
+    const editResult = await page.evaluate(async () => {
+      const { editKeHoach } = await import("/frontend/plans/KeHoachWorkflow.js");
+      const modal = document.getElementById("modal-kehoach");
+      modal.classList.remove("active");
+      const state = { activetab: "kehoach", activeaction: null, kehoach: [] };
+      const authoritativePlan = {
+        id: "plan-from-page",
+        maKeHoach: "KH-2026",
+        tenKeHoach: "Kế hoạch từ trang phân trang",
+        canCuLapKeHoachList: [{ id: "basis-1", noiDungGoc: "Căn cứ thử nghiệm" }],
+      };
+      let lookupCalls = 0;
+      let lookupTable = null;
+      let lookupId = null;
+      const controller = {
+        model: {
+          state,
+          db: {},
+          workspaceStorage: {},
+          workspaceScope: { key: "user:org-a" },
+          entityIndexes: { invalidate() {} },
+          getWorkspaceToken: () => "user:org-a@1",
+          getLatestChuDauTu: () => [],
+          getPlanBaseCode: (value) => value,
+          formatVND: (value) => String(value || ""),
+          formatForDateInput: (value) => value || "",
+          formatForDatetimeLocal: (value) => value || "",
+        },
+        procurementPlanImport: null,
+        async fetchRecordByLookup(table, id) {
+          lookupCalls += 1;
+          lookupTable = table;
+          lookupId = id;
+          return authoritativePlan;
+        },
+        switchTab() {},
+        makeSearchableSelect() {},
+        view: {
+          openModal(id) {
+            document.getElementById(id).classList.add("active");
+          },
+        },
+      };
+
+      await editKeHoach.call(controller, authoritativePlan.id);
+      return {
+        lookupCalls,
+        lookupTable,
+        lookupId,
+        storedPlanId: state.kehoach[0]?.id || null,
+        modalActive: modal.classList.contains("active"),
+        renderedBases: document.querySelectorAll(".plan-basis-editor-row").length,
+      };
+    });
+    assert.deepEqual(editResult, {
+      lookupCalls: 1,
+      lookupTable: "kehoach",
+      lookupId: "plan-from-page",
+      storedPlanId: "plan-from-page",
+      modalActive: true,
+      renderedBases: 1,
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     const bounds = await page.locator(".plan-basis-editor-row").boundingBox();

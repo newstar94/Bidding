@@ -333,7 +333,9 @@ secret trên Cloudflare và xử lý lịch sử Git theo quy trình phản ứn
 ## 16. Các file liên quan
 
 - `.env`: cấu hình local hiện tại.
-- `.env.example`: danh sách biến và placeholder dùng chung.
+- `.env.example`: profile local gọn, vẫn giữ các control nghiệp vụ/bảo mật.
+- `deploy/production.env.example`: profile web production gọn theo cùng nguyên tắc.
+- `deploy/environment-variables.reference`: catalog đầy đủ biến và default.
 - `deploy/turnstile/local.env.example`: cấu hình test local.
 - `deploy/turnstile/staging.env.example`: overlay staging.
 - `deploy/turnstile/production.env.example`: overlay production.
