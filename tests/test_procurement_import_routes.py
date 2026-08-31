@@ -663,19 +663,16 @@ def test_procurement_import_routes_are_registered():
     ]
 
 
-def test_provider_is_disabled_by_default(monkeypatch):
+def test_provider_defaults_to_enabled_muasamcong(monkeypatch):
     monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
     monkeypatch.delenv("PROCUREMENT_LOOKUP_ENABLED", raising=False)
     monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
     monkeypatch.delenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", raising=False)
     monkeypatch.delenv("VNEPS_PROCUREMENT_PROVIDER", raising=False)
-    try:
-        build_procurement_source()
-    except ProcurementRouteError as error:
-        assert error.code == "PROCUREMENT_LOOKUP_DISABLED"
-        assert error.status_code == 503
-    else:
-        raise AssertionError("provider must fail closed")
+    expected = SimpleNamespace(name="MUASAMCONG")
+    monkeypatch.setattr(routes_module, "get_muasamcong_source", lambda: expected)
+
+    assert build_procurement_source() is expected
 
 
 def test_fixture_provider_is_rejected_by_local_development_runtime(

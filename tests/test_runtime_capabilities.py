@@ -13,8 +13,25 @@ class _AnonymousRequest:
     cookies = {}
 
 
+def test_procurement_capabilities_are_advertised_by_default(monkeypatch):
+    for name in (
+        "PROCUREMENT_LOOKUP_ENABLED",
+        "PROCUREMENT_IMPORT_ENABLED",
+        "PROCUREMENT_PROVIDER",
+        "VNEPS_PROCUREMENT_IMPORT_ENABLED",
+        "VNEPS_PROCUREMENT_PROVIDER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    capabilities = with_server_capabilities({"valid": True})["serverCapabilities"]
+
+    assert PROCUREMENT_LOOKUP_V1 in capabilities
+    assert PROCUREMENT_IMPORT_V2 in capabilities
+
+
 def test_session_bootstrap_advertises_bounded_server_capabilities(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_LOOKUP_ENABLED", "false")
+    monkeypatch.setenv("PROCUREMENT_IMPORT_ENABLED", "false")
     payload = build_session_bootstrap(_AnonymousRequest())
 
     assert payload == {
@@ -27,6 +44,7 @@ def test_session_bootstrap_advertises_bounded_server_capabilities(monkeypatch):
 
 def test_capability_projection_does_not_mutate_source_payload(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_LOOKUP_ENABLED", "false")
+    monkeypatch.setenv("PROCUREMENT_IMPORT_ENABLED", "false")
     source = {"valid": True}
 
     projected = with_server_capabilities(source)

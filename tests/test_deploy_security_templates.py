@@ -35,9 +35,6 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "TURNSTILE_ALLOWED_HOSTNAMES",
     "TURNSTILE_LOGIN_AFTER_ATTEMPTS",
     "TURNSTILE_VERIFY_AFTER_ATTEMPTS",
-    "PROCUREMENT_LOOKUP_ENABLED",
-    "PROCUREMENT_PROVIDER",
-    "PROCUREMENT_IMPORT_ENABLED",
     "PROCUREMENT_BROWSER_MODE",
     "RESEARCH_STEALTH_ENABLED",
     "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
@@ -79,6 +76,9 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "WORD_TEMPLATE_CATALOG_MODE",
 }
 ADVANCED_REFERENCE_KEYS = {
+    "PROCUREMENT_LOOKUP_ENABLED",
+    "PROCUREMENT_IMPORT_ENABLED",
+    "PROCUREMENT_PROVIDER",
     "AUDIT_CHECKPOINT_DIR",
     "DATABASE_MIGRATOR_ROLE",
     "RESTORE_DRILL_DATABASE_URL",
@@ -164,6 +164,9 @@ def _assert_required_feature_profile(environment):
     assert not missing, f"environment template is missing {sorted(missing)}"
 
     assert environment["TRIAL_FULL_ACCESS_ENABLED"] == "false"
+    assert "PROCUREMENT_LOOKUP_ENABLED" not in environment
+    assert "PROCUREMENT_IMPORT_ENABLED" not in environment
+    assert "PROCUREMENT_PROVIDER" not in environment
     assert environment["PROCUREMENT_BROWSER_MODE"] == "research-stealth"
     assert environment["RESEARCH_STEALTH_ENABLED"] == "true"
     assert environment["PAYOS_CREDENTIAL_REFERENCE"] == "env://payos/default"

@@ -79,7 +79,9 @@ def _live_artifact(code, kind):
         raise RuntimeError("Live research CLI is disabled in production.")
     config = ProcurementLookupSettings.from_environ()
     if not config.enabled:
-        raise RuntimeError("Set PROCUREMENT_LOOKUP_ENABLED=true for live research.")
+        raise RuntimeError(
+            "Remove PROCUREMENT_LOOKUP_ENABLED=false or set it to true for live research."
+        )
     launcher = BrowserLauncherFactory.create(
         config.mode,
         **config.launcher_options,

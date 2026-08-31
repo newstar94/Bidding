@@ -83,9 +83,11 @@ npm ci --omit=dev
 npx playwright install chromium
 ```
 
-Browser binary nên được bake vào image bất biến và chạy bằng service account không đặc quyền. Chỉ đặt
-`PROCUREMENT_LOOKUP_ENABLED=true` sau khi xác minh binary, allowlist hostname, live probe và benchmark.
-Nếu không bật lookup, không cần cài Chromium. Không thêm `--no-sandbox`, `--disable-web-security`,
+Browser binary phải được bake vào image bất biến và chạy bằng service account không đặc quyền vì
+lookup/import mặc định bật mà không cần environment flag. Xác minh binary, exact-host allowlist,
+live probe và benchmark trước khi phát hành. Rollback khẩn cấp bằng
+`PROCUREMENT_LOOKUP_ENABLED=false` và `PROCUREMENT_IMPORT_ENABLED=false`.
+Không thêm `--no-sandbox`, `--disable-web-security`,
 cookie/token tĩnh hoặc cơ chế giải/né challenge vào image.
 
 ## 5. Cấu hình database smoke cô lập

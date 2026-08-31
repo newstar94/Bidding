@@ -516,7 +516,8 @@ def main(argv=None):
         config = ProcurementLookupSettings.from_environ()
         if not config.enabled:
             raise RuntimeError(
-                "Set PROCUREMENT_LOOKUP_ENABLED=true for live benchmark."
+                "Remove PROCUREMENT_LOOKUP_ENABLED=false or set it to true "
+                "for live benchmark."
             )
         stack_factory = lambda: _LiveStack(config)
     else:

@@ -27,6 +27,7 @@ from backend.procurement_lookup.config import (
     ProcurementLookupConfigurationError,
     ProcurementLookupSettings,
 )
+from backend.procurement_import.runtime import procurement_provider_name
 from backend.db.schema import SCHEMA_DINH_NGHIA
 
 
@@ -127,7 +128,7 @@ def validate_procurement_lookup_configuration(environ=None):
 
     environ = os.environ if environ is None else environ
     if str(environ.get(
-        "PROCUREMENT_LOOKUP_ENABLED", "false"
+        "PROCUREMENT_LOOKUP_ENABLED", "true"
     )).strip().casefold() == "false":
         return
     try:
@@ -561,12 +562,7 @@ def validate_startup_configuration(database, environ=None):
             f"Invalid commercial/payment configuration: {exc}"
         ) from exc
     validate_procurement_lookup_configuration(environ)
-    procurement_provider = str(
-        environ.get(
-            "PROCUREMENT_PROVIDER",
-            environ.get("VNEPS_PROCUREMENT_PROVIDER", "disabled"),
-        )
-    ).strip().casefold()
+    procurement_provider = procurement_provider_name(environ)
     procurement_fixture = str(
         environ.get("VNEPS_PROCUREMENT_FIXTURE_PATH", "")
     ).strip()

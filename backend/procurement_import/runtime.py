@@ -27,14 +27,19 @@ def procurement_provider_name(environ=None):
     explicit = str(environment.get("PROCUREMENT_PROVIDER") or "").strip()
     if explicit:
         return explicit.casefold()
+    legacy = str(
+        environment.get("VNEPS_PROCUREMENT_PROVIDER") or ""
+    ).strip()
+    if "PROCUREMENT_LOOKUP_ENABLED" not in environment and legacy:
+        return legacy.casefold()
     lookup_enabled = str(
-        environment.get("PROCUREMENT_LOOKUP_ENABLED") or ""
+        environment.get("PROCUREMENT_LOOKUP_ENABLED", "true")
     ).strip().casefold() == "true"
     if lookup_enabled:
         return "muasamcong"
-    return str(
-        environment.get("VNEPS_PROCUREMENT_PROVIDER", "disabled")
-    ).strip().casefold()
+    if legacy:
+        return legacy.casefold()
+    return "muasamcong"
 
 
 def procurement_import_enabled(environ=None):
@@ -43,12 +48,12 @@ def procurement_import_enabled(environ=None):
     environment = os.environ if environ is None else environ
     import_enabled = str(environment.get(
         "PROCUREMENT_IMPORT_ENABLED",
-        environment.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "false"),
+        environment.get("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true"),
     )).strip().casefold() == "true"
     if import_enabled:
         return True
     lookup_enabled = str(
-        environment.get("PROCUREMENT_LOOKUP_ENABLED", "false")
+        environment.get("PROCUREMENT_LOOKUP_ENABLED", "true")
     ).strip().casefold() == "true"
     return lookup_enabled and procurement_provider_name(environment) in {
         "muasamcong", "web_dau_thau",

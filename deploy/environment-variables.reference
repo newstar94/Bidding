@@ -343,7 +343,8 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 
 # Unified Mua Sắm Công lookup/import worker. Token and cookie stay in memory
 # inside the server-owned JSONL worker and are never returned to the browser.
-PROCUREMENT_LOOKUP_ENABLED=false
+# Lookup is enabled by default. Uncomment only for an emergency rollback.
+# PROCUREMENT_LOOKUP_ENABLED=false
 PROCUREMENT_BROWSER_MODE=research-stealth
 # Default isolated compatibility profile for the exact official host. It does
 # not solve CAPTCHA, replay tokens/cookies, forge challenges or weaken Chromium
@@ -484,14 +485,14 @@ VNEPS_VIOLATION_CACHE_SECONDS=21600
 # It is rejected when APP_ENV=production.
 VNEPS_VIOLATION_FIXTURE_PATH=
 
-# Nhập KHLCNT/TBMT/mở thầu. Dùng provider muasamcong cho production; fixture
-# chỉ dùng development/test và vẫn bị cấm trong production.
-PROCUREMENT_IMPORT_ENABLED=false
-PROCUREMENT_PROVIDER=muasamcong
+# Nhập KHLCNT/TBMT/mở thầu mặc định bật với provider muasamcong. Hai override
+# dưới đây chỉ dùng cho rollback/provider migration; fixture chỉ dùng test.
+# PROCUREMENT_IMPORT_ENABLED=false
+# PROCUREMENT_PROVIDER=muasamcong
 PROCUREMENT_IMPORT_PREVIEW_TTL_SECONDS=300
 # Legacy aliases remain accepted during rollout:
-VNEPS_PROCUREMENT_IMPORT_ENABLED=false
-VNEPS_PROCUREMENT_PROVIDER=disabled
+# VNEPS_PROCUREMENT_IMPORT_ENABLED=false
+# VNEPS_PROCUREMENT_PROVIDER=disabled
 VNEPS_PROCUREMENT_FIXTURE_PATH=
 VNEPS_PROCUREMENT_API_AUTHORIZATION_CONFIRMED=false
 VNEPS_PROCUREMENT_TIMEOUT_SECONDS=8

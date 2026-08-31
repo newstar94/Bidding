@@ -102,7 +102,7 @@ def _start_optional_services(delay_seconds, enable_image_cache_prewarm):
 def _procurement_source_initialization_enabled(environ=None):
     environment = os.environ if environ is None else environ
     return str(
-        environment.get("PROCUREMENT_LOOKUP_ENABLED", "false")
+        environment.get("PROCUREMENT_LOOKUP_ENABLED", "true")
     ).strip().casefold() == "true"
 
 

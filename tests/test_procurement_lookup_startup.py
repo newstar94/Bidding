@@ -8,6 +8,7 @@ from backend.startup import (
 
 
 def test_procurement_source_initializes_only_when_lookup_is_enabled():
+    assert _procurement_source_initialization_enabled({}) is True
     assert _procurement_source_initialization_enabled({
         "PROCUREMENT_LOOKUP_ENABLED": "true",
     }) is True
@@ -25,6 +26,7 @@ def test_research_stealth_mode_and_gate_default_enabled():
 
     settings = ProcurementLookupSettings.from_environ({})
 
+    assert settings.enabled is True
     assert settings.mode == "research-stealth"
     assert settings.research_enabled is True
 

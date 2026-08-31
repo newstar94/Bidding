@@ -73,7 +73,7 @@ class ProcurementLookupSettings:
     def from_environ(cls, environ: Mapping[str, object] | None = None):
         environ = os.environ if environ is None else environ
         enabled = _boolean(
-            environ, "PROCUREMENT_LOOKUP_ENABLED", "false"
+            environ, "PROCUREMENT_LOOKUP_ENABLED", "true"
         )
         mode = str(
             environ.get("PROCUREMENT_BROWSER_MODE", "research-stealth")
