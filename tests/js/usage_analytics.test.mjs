@@ -181,12 +181,17 @@ test("Super Admin usage analytics route is lazy, guarded, and discoverable", asy
   assert.match(template, /id="usage-online-now"/u);
   assert.match(template, /id="usage-feature-list"/u);
   assert.match(template, /Asia\/Ho_Chi_Minh/u);
+  assert.match(template, /data-analytics-section="usage"/u);
+  assert.match(template, /data-analytics-section="commercial"/u);
+  assert.match(template, /data-analytics-panel="commercial"[^>]*hidden/u);
 });
 
 test("usage analytics view loads the 30-day daily summary and renders responsive evidence", async () => {
   const template = await readFile(join(root, "views/tabs/tab_usage_analytics.html"), "utf8");
   let requestedQuery = "";
   let activeOrganizationHeader = "";
+  let usageAnalyticsRequests = 0;
+  let productAnalyticsRequests = 0;
   const summary = {
     generatedAt: "2026-08-30T10:00:00Z",
     range: { from: "2026-08-01", to: "2026-08-30", bucket: "day" },
@@ -231,10 +236,17 @@ test("usage analytics view loads the 30-day daily summary and renders responsive
         return;
       }
       if (url.pathname === "/api/admin/usage-analytics/summary") {
+        usageAnalyticsRequests += 1;
         requestedQuery = url.search;
         activeOrganizationHeader = String(request.headers["x-active-org"] || "");
         response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(url.searchParams.get("from") === "2026-07-01" ? emptySummary : summary));
+        return;
+      }
+      if (url.pathname === "/api/admin/product-analytics/dashboard") {
+        productAnalyticsRequests += 1;
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ dashboard: { hasData: false } }));
         return;
       }
       const payload = await readFile(join(root, url.pathname.replace(/^\//u, "")));
@@ -270,6 +282,21 @@ test("usage analytics view loads the 30-day daily summary and renders responsive
     assert.match(await page.locator("#usage-analytics-coverage-text").textContent(), /Dữ liệu được ghi nhận từ/u);
     assert.equal(await page.locator("#usage-analytics-coverage").getAttribute("hidden"), null);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.equal(productAnalyticsRequests, 0, "commercial analytics must stay lazy until selected");
+    assert.equal(await page.locator("[data-analytics-panel='usage']").isVisible(), true);
+    assert.equal(await page.locator("[data-analytics-panel='commercial']").isVisible(), false);
+
+    const productAnalyticsResponse = page.waitForResponse((candidate) => (
+      new URL(candidate.url()).pathname === "/api/admin/product-analytics/dashboard"
+    ));
+    await page.locator("[data-analytics-section='usage']").press("ArrowRight");
+    await productAnalyticsResponse;
+    await page.waitForFunction(() => document.querySelector("#product-analytics-workspace")?.dataset.productAnalyticsBound === "true");
+    assert.equal(productAnalyticsRequests, 1);
+    assert.equal(await page.locator("[data-analytics-panel='usage']").isVisible(), false);
+    assert.equal(await page.locator("[data-analytics-panel='commercial']").isVisible(), true);
+    assert.equal(await page.locator("[data-analytics-section='commercial']").getAttribute("aria-selected"), "true");
+    await page.locator("[data-analytics-section='usage']").click();
 
     await page.locator("#usage-analytics-from").fill("2026-07-01");
     await page.locator("#usage-analytics-to").fill("2026-07-31");
@@ -280,6 +307,21 @@ test("usage analytics view loads the 30-day daily summary and renders responsive
     assert.equal(await page.locator("#usage-analytics-empty").isVisible(), true);
     assert.notEqual(await page.locator("#usage-analytics-coverage").getAttribute("hidden"), null);
     assert.equal(await page.locator("#usage-concurrency-chart").isVisible(), false);
+
+    const requestsBeforeDeniedMount = usageAnalyticsRequests;
+    const employeePage = await browser.newPage();
+    await employeePage.goto(`http://127.0.0.1:${server.address().port}/`);
+    const employeeMounted = await employeePage.evaluate(async () => {
+      const module = await import("/frontend/admin/UsageAnalyticsView.js");
+      return module.mountUsageAnalytics({
+        model: { state: { activerole: "employee" } },
+        view: { createIconsScoped() {} },
+      });
+    });
+    assert.equal(employeeMounted, false);
+    assert.equal(await employeePage.locator("#tab-usage-analytics").isVisible(), false);
+    assert.equal(usageAnalyticsRequests, requestsBeforeDeniedMount);
+    await employeePage.close();
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

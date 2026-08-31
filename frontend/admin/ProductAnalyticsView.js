@@ -445,7 +445,9 @@ export async function loadProductAnalytics(root, options = {}) {
 }
 
 export function mountProductAnalytics(root, controller) {
-  if (!root || root.dataset.productAnalyticsBound === "true") return;
+  if (!root) return;
+  root.hidden = false;
+  if (root.dataset.productAnalyticsBound === "true") return;
   root.dataset.productAnalyticsBound = "true";
   const search = new URLSearchParams(globalThis.location?.search || "");
   root.dataset.productAnalyticsPage = String(Math.max(1, Number(search.get("analytics_page") || 1) || 1));

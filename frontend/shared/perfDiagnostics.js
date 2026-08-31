@@ -1,7 +1,4 @@
-import { APP_DEBUG } from "../app/appConfig.js";
-
 export function perfDebugEnabled() {
-  if (APP_DEBUG) return true;
   if (typeof localStorage !== "undefined" && localStorage.getItem("bf_perf_debug") === "true") return true;
   if (typeof window !== "undefined") {
     return new URLSearchParams(window.location.search).get("bf_perf_debug") === "true";

@@ -12,6 +12,10 @@
   padding-bottom: var(--space-8);
 }
 
+.usage-analytics[hidden] {
+  display: none;
+}
+
 .usage-analytics__hero,
 .usage-analytics__filters,
 .usage-analytics__peak,
@@ -21,6 +25,61 @@
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
+}
+
+.usage-analytics__sections {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 4px;
+  max-width: 100%;
+  margin: 20px 0;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-card) 88%, var(--bg-app));
+}
+
+.usage-analytics__section-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.usage-analytics__section-tab:hover {
+  color: var(--text-main);
+  background: var(--bg-card);
+}
+
+.usage-analytics__section-tab.is-active {
+  color: var(--primary);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.usage-analytics__section-tab:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus-ring) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.usage-analytics__section-tab svg {
+  width: 18px;
+  height: 18px;
+}
+
+.usage-analytics__section[hidden],
+.product-analytics[data-analytics-panel][hidden] {
+  display: none;
 }
 
 .usage-analytics__hero {
@@ -757,6 +816,10 @@
   margin-top: var(--space-3);
   padding-top: var(--space-8);
   border-top: 1px solid var(--line);
+}
+
+.product-analytics[data-analytics-panel] {
+  margin-top: 0;
 }
 
 .product-analytics__header {

@@ -15,6 +15,8 @@ Chủ sản phẩm cần biết số người đang online, khung giờ sử d�
 3. Telemetry là best-effort. Lỗi ghi, timeout hoặc backpressure không được làm thay đổi kết quả điều hướng, lưu nghiệp vụ hay xuất tài liệu. Telemetry không thay thế security audit và không được dùng làm căn cứ cấp quyền hoặc trừ quota.
 4. Bảng điều khiển dùng control plane Super Admin hiện hữu; không tạo role, capability, module permission hoặc entitlement mới. API tổng hợp phải xác minh phiên và vai trò `super_admin` phía máy chủ. Các API đọc bản ghi và toàn bộ tenant/module/assignment/record scope hiện hữu không thay đổi.
 5. Dữ liệu thời gian được lưu theo UTC. Bộ lọc ngày và nhãn khung giờ trên dashboard dùng múi giờ sản phẩm `Asia/Ho_Chi_Minh`, đồng thời response công bố rõ timezone và thời điểm sinh báo cáo.
+6. Điểm vào giao diện nằm trong nhóm điều hướng Super Admin, tại route `phan-tich-su-dung`. Màn hình tách “Mức độ sử dụng” và “Sản phẩm & thương mại” thành hai chế độ xem loại trừ nhau; chỉ tải báo cáo thương mại khi Super Admin chủ động mở chế độ xem đó. Không đưa analytics vào dashboard nghiệp vụ của Manager/Employee.
+7. Log chẩn đoán hiệu năng phía client là công cụ kỹ thuật bật riêng bằng `bf_perf_debug=true`; `APP_DEBUG` không tự động bật log này để tránh làm ngập console trong quá trình phát triển thông thường.
 
 ## Contract chỉ số
 
@@ -38,6 +40,7 @@ Response trả cả tử số, mẫu số và giá trị trung bình để dashb
 - Không thay đổi masking, redaction, dữ liệu người dùng được phép xem, role, permission, assignment scope, record scope hoặc entitlement. Đặc biệt, entitlement Word vẫn chỉ kiểm soát hành động tạo/tải Word; event analytics không mở hoặc che dữ liệu.
 - Heartbeat tạo thêm một request nhẹ theo chu kỳ khi ứng dụng đang hiển thị. Ghi nhận được rate-limit/dedupe và thất bại âm thầm để không ảnh hưởng thao tác chính.
 - Báo cáo toàn hệ thống chỉ trả số liệu tổng hợp và feature code/label đã đăng ký, không trả danh sách user, tenant hoặc record.
+- Việc tách hai chế độ xem chỉ thay đổi bố cục và thời điểm tải dữ liệu; URL Super Admin, định nghĩa chỉ số và response API giữ nguyên. Không cần migration dữ liệu hay đổi quyền.
 
 ## Migration và rollout
 
@@ -45,6 +48,7 @@ Response trả cả tử số, mẫu số và giá trị trung bình để dashb
 2. Triển khai writer và endpoint tổng hợp trước, sau đó bật tracker client. Dữ liệu trước thời điểm rollout được hiển thị là không có dữ liệu, không diễn giải thành 0 sử dụng lịch sử.
 3. Theo dõi dung lượng, tỷ lệ event bị drop và chi phí truy vấn. Việc thêm retention/rollup hoặc export dữ liệu là thay đổi tiếp theo, cần nêu rõ thời hạn lưu và đường migration trước khi bật.
 4. Rollback có thể dừng tracker và bỏ route dashboard mà không ảnh hưởng bảng nghiệp vụ. Không dùng việc rollback telemetry để xóa audit hoặc lịch sử nghiệp vụ.
+5. Bố cục hai chế độ xem triển khai tương thích tại cùng route; không có schema migration. Khi rollback UI, API và dữ liệu aggregate vẫn tương thích vì endpoint không đổi.
 
 ## Regression seams
 
@@ -54,4 +58,6 @@ Response trả cả tử số, mẫu số và giá trị trung bình để dashb
 - coverage: khoảng hoàn toàn trước rollout trả trạng thái chưa có dữ liệu, khoảng cắt qua rollout đánh dấu một phần và không đọc activity trước lúc bắt đầu đo;
 - frontend lifecycle: heartbeat chỉ khi authenticated + visible, dừng khi logout/ẩn tab và lỗi telemetry không làm hỏng điều hướng;
 - dashboard: trạng thái loading/empty/error, bộ lọc ngày, timezone/định nghĩa chỉ số và response không chứa user/tenant/record detail;
+- dashboard placement: menu/route/component chỉ hoạt động trong persona `super_admin`, hai panel không hiển thị đồng thời và product analytics không gọi API trước khi được chọn;
+- diagnostics: `APP_DEBUG` không phát `[bf-perf]`; chỉ cờ `bf_perf_debug=true` hoặc query tương ứng mới bật log;
 - regression quyền: API đọc bản ghi và Word action entitlement hiện hữu giữ nguyên hành vi.

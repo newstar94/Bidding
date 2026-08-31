@@ -17,6 +17,21 @@
         </div>
     </header>
 
+    <nav class="usage-analytics__sections" aria-label="Nhóm báo cáo quản trị" role="tablist">
+        <button class="usage-analytics__section-tab is-active" id="usage-analytics-section-usage" type="button"
+            role="tab" aria-selected="true" aria-controls="usage-analytics-usage-panel" data-analytics-section="usage">
+            <i data-lucide="activity" aria-hidden="true"></i>
+            <span>Mức độ sử dụng</span>
+        </button>
+        <button class="usage-analytics__section-tab" id="usage-analytics-section-commercial" type="button"
+            role="tab" aria-selected="false" aria-controls="product-analytics-workspace" data-analytics-section="commercial">
+            <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
+            <span>Sản phẩm &amp; thương mại</span>
+        </button>
+    </nav>
+
+    <section class="usage-analytics__section" id="usage-analytics-usage-panel" role="tabpanel"
+        aria-labelledby="usage-analytics-section-usage" data-analytics-panel="usage">
     <form class="usage-analytics__filters" id="usage-analytics-filter-form">
         <div class="usage-analytics__filter-fields">
             <label for="usage-analytics-from">
@@ -148,8 +163,10 @@
             </section>
         </div>
     </div>
+    </section>
 
-    <section class="product-analytics" id="product-analytics-workspace" aria-labelledby="product-analytics-title">
+    <section class="product-analytics" id="product-analytics-workspace" role="tabpanel"
+        aria-labelledby="usage-analytics-section-commercial" data-analytics-panel="commercial" hidden>
         <header class="product-analytics__header">
             <div><p class="usage-analytics__eyebrow">COMMERCIAL INTELLIGENCE</p><h2 id="product-analytics-title">Analytics / Commercial Intelligence</h2><p>Aggregate facts cho quyết định sản phẩm và pricing. Không dùng dữ liệu này để tự đổi gói hoặc quyền.</p></div>
             <span id="product-analytics-updated" aria-live="polite">Chưa tải dữ liệu</span>

@@ -496,9 +496,56 @@ function setDateControlValue(control, value) {
   else control.value = value;
 }
 
-function bindEvents(root) {
+async function mountCommercialAnalytics(root, state) {
+  if (state.productAnalyticsMounted) return state.productAnalyticsMounted;
+  state.productAnalyticsMounted = import("./ProductAnalyticsView.js")
+    .then(({ mountProductAnalytics }) => {
+      mountProductAnalytics(root.querySelector("#product-analytics-workspace"), state.controller);
+      return true;
+    })
+    .catch((error) => {
+      state.productAnalyticsMounted = null;
+      throw error;
+    });
+  return state.productAnalyticsMounted;
+}
+
+function selectAnalyticsSection(root, state, requestedSection) {
+  const section = requestedSection === "commercial" ? "commercial" : "usage";
+  root.querySelectorAll("[data-analytics-section]").forEach((button) => {
+    const selected = button.dataset.analyticsSection === section;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  root.querySelectorAll("[data-analytics-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.analyticsPanel !== section;
+  });
+  if (section === "commercial") void mountCommercialAnalytics(root, state);
+}
+
+function bindEvents(root, state) {
   if (root.dataset.usageAnalyticsBound === "true") return;
   root.dataset.usageAnalyticsBound = "true";
+  const sectionTabs = [...root.querySelectorAll("[data-analytics-section]")];
+  sectionTabs.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      selectAnalyticsSection(root, state, button.dataset.analyticsSection);
+    });
+    button.addEventListener("keydown", (event) => {
+      const lastIndex = sectionTabs.length - 1;
+      const nextIndex = {
+        ArrowLeft: index === 0 ? lastIndex : index - 1,
+        ArrowRight: index === lastIndex ? 0 : index + 1,
+        Home: 0,
+        End: lastIndex,
+      }[event.key];
+      if (nextIndex === undefined) return;
+      event.preventDefault();
+      sectionTabs[nextIndex].click();
+      sectionTabs[nextIndex].focus();
+    });
+  });
   root.querySelector("#usage-analytics-filter-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     void reloadUsageAnalytics(root);
@@ -545,6 +592,12 @@ export async function mountUsageAnalytics(controller) {
   await loadStyleOnce(STYLE_URL);
   const root = document.getElementById("tab-usage-analytics");
   if (!root) return false;
+  const activeRole = String(controller?.model?.state?.activerole || "").trim().toLowerCase();
+  if (activeRole && activeRole !== "super_admin") {
+    root.hidden = true;
+    return false;
+  }
+  root.hidden = false;
 
   let state = VIEW_STATES.get(root);
   if (!state) {
@@ -555,6 +608,7 @@ export async function mountUsageAnalytics(controller) {
       refreshInterval: null,
       request: null,
       summary: null,
+      productAnalyticsMounted: null,
     };
     VIEW_STATES.set(root, state);
   } else {
@@ -569,11 +623,13 @@ export async function mountUsageAnalytics(controller) {
     bucket.value = "day";
     bucket.dataset.usageDefaultSet = "true";
   }
-  bindEvents(root);
+  bindEvents(root, state);
+  const initialSection = new URLSearchParams(globalThis.location?.search || "").has("analytics_view")
+    ? "commercial"
+    : "usage";
+  selectAnalyticsSection(root, state, initialSection);
   scheduleAutoRefresh(root, state);
   controller?.view?.createIconsScoped?.(root);
-  const { mountProductAnalytics } = await import("./ProductAnalyticsView.js");
-  mountProductAnalytics(root.querySelector("#product-analytics-workspace"), controller);
   if (state.summary && Date.now() - state.lastLoadedAt < USAGE_SUMMARY_FRESH_MS) {
     renderSummary(root, state.summary);
     return true;

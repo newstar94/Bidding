@@ -364,6 +364,9 @@
 .dashboard-table-body {
   padding: 0;
 }
+.dashboard-operations .dashboard-card .dashboard-table-body {
+  padding-block: 0;
+}
 .dashboard-operations .data-table th {
   padding: 11px 14px;
   font-size: 0.66rem;
