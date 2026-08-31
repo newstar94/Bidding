@@ -1,1 +1,0 @@
-var a=2e3,r=new Map,n=0;function A(e=[]){const s=Array.isArray(e)?[...e]:[e];n=(n+1)%Number.MAX_SAFE_INTEGER;const t=`bf${n.toString(36)}`;for(r.set(t,s);r.size>a;){const o=r.keys().next().value;r.delete(o)}return t}function m(e){return!e||!r.has(e)?[]:[...r.get(e)]}export{m as n,A as t};

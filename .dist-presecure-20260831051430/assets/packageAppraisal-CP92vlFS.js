@@ -1,1 +1,0 @@
-function n(t){return String(t?.hinhThucLuaChon||"").trim().toLowerCase()==="chào hàng cạnh tranh"}function a(t){return!t||!n(t)||(t.yeuCauThamDinhHsmt="Không",t.yeuCauThamDinhHsmtCode="NOT_REQUIRED"),t}export{n,a as t};

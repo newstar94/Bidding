@@ -26,7 +26,7 @@ APP_ENV=production
 # Immutable release tag or full source revision included in backend logs and frontend diagnostics.
 APP_RELEASE_ID=replace-with-release-id
 APP_DEBUG=False
-FRONTEND_ASSET_MODE=bundle
+FRONTEND_ASSET_MODE=source
 APP_SECURE_COOKIES=True
 # REQUIRED: canonical production origin used for browser and one-time links.
 # Replace the placeholder everywhere; do not include a trailing path.

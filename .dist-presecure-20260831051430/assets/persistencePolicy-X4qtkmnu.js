@@ -1,1 +1,0 @@
-var a=Object.freeze(["assignments","chudautu","chuyengia","customcontractstatuses","goithau","goithauhanghoa","hanghoaduthaunhathau","hopdong","kehoach","nhathau","permissionmatrix","thongtinmothau"]),h=new Set(a);function n(t){return h.has(String(t||""))}export{n as t};

@@ -1,1 +1,0 @@
-var t={tab:null,action:null};function u(n,a){t.tab||(t={tab:n||null,action:a||null})}function l(n){return n?t.tab===n:!!t.tab}function o(n){t={...t,action:n||null}}function e(n){const a={tab:t.tab||n||null,action:t.action||null};return t={tab:null,action:null},a}export{o as i,e as n,l as r,u as t};

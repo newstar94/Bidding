@@ -72,7 +72,7 @@ while ($true) {
     # a second Python process, the reloader intentionally restarts the server
     # whenever files change and looks like an application crash to remote clients.
     $env:APP_DEBUG = 'False'
-    $env:FRONTEND_ASSET_MODE = 'bundle'
+    $env:FRONTEND_ASSET_MODE = 'source'
     $env:APP_RELEASE_ID = $releaseId
 
     $process = Start-Process `
