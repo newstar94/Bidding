@@ -233,11 +233,18 @@ export function bindBidEvaluationDraftTracking({
     restoredBodies = new WeakSet();
     controller._restoredBidEvaluationDraftBodies.set(recoveryKey, restoredBodies);
   }
-  const shouldRestore = renderedBody && !restoredBodies.has(renderedBody);
+  const pendingEntry = controller._pendingBidEvaluationDraftSnapshots?.get(recoveryKey);
+  // The evaluation renderer reuses the same tbody element while replacing
+  // its controls. A pending in-memory draft must therefore be reapplied even
+  // when this body was seen before; the WeakSet only suppresses repeated
+  // restoration of an older durable draft.
+  const shouldRestore = renderedBody
+    && (!restoredBodies.has(renderedBody)
+      || Boolean(pendingEntry)
+      || dirtyState.hasChanges());
   let restored = false;
   if (shouldRestore) {
     restoredBodies.add(renderedBody);
-    const pendingEntry = controller._pendingBidEvaluationDraftSnapshots?.get(recoveryKey);
     const currentWorkspaceToken = String(controller.model.getWorkspaceToken?.() || "");
     const pendingRecovery = pendingEntry
       && (!pendingEntry.workspaceToken || pendingEntry.workspaceToken === currentWorkspaceToken)

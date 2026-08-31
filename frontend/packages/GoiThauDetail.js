@@ -23,14 +23,13 @@ export function capturePackageDetailNavigationIntent(view, packageId, requestedT
 }
 
 export function shouldAbortPackageDetailRefreshForNewDraft({
-  wasDirty = false,
   isDirty = false,
   currentPackageId = "",
   targetPackageId = "",
-  isBackground = false,
+  hasExplicitNavigation = false,
 } = {}) {
   const samePackage = String(currentPackageId || "") === String(targetPackageId || "");
-  return samePackage && isDirty && (isBackground || !wasDirty);
+  return samePackage && isDirty && !hasExplicitNavigation;
 }
 
 function shouldAbortBackgroundPackageRefresh(view, packageWorkspace, packageId, isBackground) {
@@ -91,7 +90,6 @@ export async function showPackageDetails(
   const isBackground = options?.isBackground === true;
   const appController = getAppController();
   const packageWorkspace = packageWorkspaceFor(this);
-  const workspaceWasDirty = packageWorkspace.isDirty();
   if (shouldAbortBackgroundPackageRefresh(this, packageWorkspace, id, isBackground)) return;
   const requestedTab = String(requestedWorkflowTab || "").trim();
   const renderVersion = Number(this._packageDetailRenderVersion || 0) + 1;
@@ -157,11 +155,10 @@ export async function showPackageDetails(
   // after the user has begun editing. Do not let that in-flight projection
   // replace the live form and discard unsaved values.
   if (shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: workspaceWasDirty,
     isDirty: packageWorkspace.isDirty(),
     currentPackageId: this._currentWorkflowPackageId,
     targetPackageId: id,
-    isBackground,
+    hasExplicitNavigation: Boolean(requestedTab),
   })) return;
   // The explicit intent is captured before asynchronous hydration above, so a
   // concurrent refresh resolves the same target instead of the default panel.
@@ -227,11 +224,10 @@ export async function showPackageDetails(
   // replacing the live panel so a draft started during that yield is never
   // discarded by an in-flight projection.
   if (!contentWrapper || shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: workspaceWasDirty,
     isDirty: packageWorkspace.isDirty(),
     currentPackageId: this._currentWorkflowPackageId,
     targetPackageId: id,
-    isBackground,
+    hasExplicitNavigation: Boolean(requestedTab),
   })) return;
   contentWrapper.innerHTML = trustedHTML("");
   switch (this._currentWorkflowTab) {

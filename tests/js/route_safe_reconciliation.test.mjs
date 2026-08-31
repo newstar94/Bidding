@@ -21,32 +21,28 @@ test("explicit package workflow navigation is captured before asynchronous hydra
   assert.equal(view._currentWorkflowTab, "result");
 });
 
-test("in-flight package refresh aborts when the current form becomes dirty", () => {
+test("package refresh preserves a dirty form unless navigation is explicit", () => {
   assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: false,
     isDirty: true,
     currentPackageId: "package-1",
     targetPackageId: "package-1",
   }), true);
   assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: false,
     isDirty: true,
     currentPackageId: "package-1",
     targetPackageId: "package-2",
   }), false);
   assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: true,
     isDirty: true,
     currentPackageId: "package-1",
     targetPackageId: "package-1",
-  }), false);
-  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
-    wasDirty: true,
-    isDirty: true,
-    currentPackageId: "package-1",
-    targetPackageId: "package-1",
-    isBackground: true,
   }), true);
+  assert.equal(shouldAbortPackageDetailRefreshForNewDraft({
+    isDirty: true,
+    currentPackageId: "package-1",
+    targetPackageId: "package-1",
+    hasExplicitNavigation: true,
+  }), false);
 });
 
 test("package detail checks draft state before clearing the live panel", () => {

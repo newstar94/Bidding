@@ -271,6 +271,67 @@ test("pending_report_snapshot_survives_a_rerender_before_debounced_storage_flush
   assert.equal(scheduled.length, 1);
 });
 
+test("pending_report_snapshot_survives_controls_replaced_inside_same_table_body", () => {
+  const storage = memoryStorage();
+  const fixture = recoveryController({ storage, reportNumber: "BC-02" });
+  const scheduled = [];
+  const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
+  recovery.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recovery.cancelTimer = () => {};
+  const tableBody = { __bfBidEvaluationRowRenderRevision: 1 };
+  fixture.controls.set("danhgiahsdt-table-tbody", tableBody);
+  bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [],
+    bids: [],
+  });
+  fixture.reportControl.emit();
+
+  const replacement = trackedControl("");
+  fixture.controls.set("danhgiahsdt-so-baocao", replacement);
+  tableBody.__bfBidEvaluationRowRenderRevision = 2;
+  const rebound = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+    rows: [],
+    bids: [],
+  });
+
+  assert.equal(rebound.restored, true);
+  assert.equal(replacement.value, "BC-02");
+  assert.equal(storage.values.size, 0);
+});
+
+test("persisted_report_snapshot_survives_a_later_same_body_rerender", () => {
+  const storage = memoryStorage();
+  const fixture = recoveryController({ storage, reportNumber: "BC-03" });
+  const scheduled = [];
+  const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
+  recovery.scheduleTimer = (callback) => { scheduled.push(callback); return scheduled.length; };
+  recovery.cancelTimer = () => {};
+  const tableBody = { __bfBidEvaluationRowRenderRevision: 1 };
+  fixture.controls.set("danhgiahsdt-table-tbody", tableBody);
+  const binding = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+  });
+  fixture.reportControl.emit();
+  scheduled[0]();
+
+  const replacement = trackedControl("");
+  fixture.controls.set("danhgiahsdt-so-baocao", replacement);
+  tableBody.__bfBidEvaluationRowRenderRevision = 2;
+  const rebound = bindBidEvaluationDraftTracking({
+    controller: fixture.controller,
+    pkg: { id: "pkg-1" },
+  });
+
+  assert.equal(rebound.restored, true);
+  assert.equal(replacement.value, "BC-03");
+  assert.ok(binding.dirtyState.hasChanges());
+});
+
 test("draft_recovery_timer_from_a_cannot_capture_bid_fields_from_b", () => {
   const storageA = memoryStorage();
   const fixture = recoveryController({ storage: storageA, reportNumber: "A-01" });
