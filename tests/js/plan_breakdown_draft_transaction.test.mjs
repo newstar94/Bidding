@@ -1356,7 +1356,7 @@ test("saving an expert keeps its form open until remote synchronization succeeds
   ]);
 });
 
-test("saving a contract keeps its form open until remote synchronization succeeds", async () => {
+test("saving a contract closes its form after local durability and refreshes after remote sync", async () => {
   const calls = [];
   let finishSync;
   const remoteSync = new Promise((resolve) => { finishSync = resolve; });
@@ -1381,11 +1381,11 @@ test("saving a contract keeps its form open until remote synchronization succeed
     id: "contract-pending", rootId: "contract-pending", isLatest: 1,
   }]);
 
-  assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+  assert.deepEqual(calls, ["persist", "flush", "closeModal", "sync-start", "finish"]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "sync-start", "finish", "closeModal", "render",
+    "persist", "flush", "closeModal", "sync-start", "finish", "render",
   ]);
 });
 

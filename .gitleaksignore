@@ -30,3 +30,7 @@ b2ebe0b1753b372eb92b6a35559191063c6bde5d:backend/integrations/muasamcong_browser
 # Reviewed false positive: deterministic OTP HMAC material installed only via
 # monkeypatch in a historical test; production reads its key from the runtime.
 4258f3038e33b10f5891d225329a6554c6bfe283:tests/test_auth_security_hardening.py:generic-api-key:53
+
+# Reviewed false positive: analytics KPI label "P90 TTFV" in historical
+# product analytics code; it is a display label, not a credential.
+639d201f27b9f952e779c88691e4ac35da39e0e1:backend/product_analytics/query_service.py:generic-api-key:1935

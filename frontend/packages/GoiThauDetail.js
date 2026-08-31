@@ -6,7 +6,10 @@ import { apiFetch } from "../shared/apiClient.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { PackageDetailModule } from "./detail/PackageDetailModule.js";
-import { packageWorkspaceFor } from "./detail/PackageWorkspaceState.js";
+import {
+  completePackageWorkspaceEdit,
+  packageWorkspaceFor,
+} from "./detail/PackageWorkspaceState.js";
 import * as lifecyclePolicy from "./LifecyclePolicy.js";
 import { buildPackageDetailViewModel } from "./detail/PackageDetailViewModel.js";
 import { restoreDetailedEvaluationNavigation } from "./detailedEvaluationNavigation.js";
@@ -324,8 +327,9 @@ export async function showPackageDetails(
             reason
           });
           if (!result?.ok) return;
+          completePackageWorkspaceEdit(this);
           await this.customAlert("Thành công", "Đã lưu quyết định hủy thầu và cập nhật trạng thái gói thầu.", "check-circle");
-          this.showPackageDetails(gt.id);
+          await this.showPackageDetails(gt.id);
         }
       });
       break;

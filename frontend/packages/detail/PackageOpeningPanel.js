@@ -7,6 +7,7 @@ import { registerCommandArgs } from "../../shared/commandArgs.js";
 import { renderInvitationPanel } from "./InvitationPanel.js";
 import { renderOpeningPanel } from "./OpeningPanel.js";
 import { renderPackageSummary } from "./PackageSummary.js";
+import { completePackageWorkspaceEdit } from "./PackageWorkspaceState.js";
 
 function isDirectOrSpecialPackage(pkg) {
   return pkg?.hinhThucLuaChon === "Chỉ định thầu rút gọn"
@@ -62,6 +63,11 @@ function setInvitationReadOnly(contentWrapper) {
     .forEach((cell) => setRuntimeStyle(cell, "display", "none"));
 }
 
+export function completePackageInvitationEdit(view) {
+  view._biddingInfoEditMode = false;
+  completePackageWorkspaceEdit(view);
+}
+
 function bindInvitationActions(view, contentWrapper, pkg, appController) {
   const addActions = [
     ["#btn-them-giahan", "addGiaHanRow"],
@@ -114,7 +120,7 @@ function bindInvitationActions(view, contentWrapper, pkg, appController) {
       clarificationResponses,
       convertDateTime: (value) => view.model.convertDMYHMSToYMDHMS(value),
     });
-    view._biddingInfoEditMode = false;
+    completePackageInvitationEdit(view);
     await view.showPackageDetails(savedPackage.id);
     await view.customAlert("Thành công", "Lưu thông tin mời thầu thành công!", "check-circle");
   };

@@ -26,6 +26,7 @@ import {
   hasServerCapability,
   PROCUREMENT_IMPORT_CAPABILITY,
 } from "../../auth/serverCapabilities.js";
+import { completePackageWorkspaceEdit } from "./PackageWorkspaceState.js";
 
 const financialOpeningCacheOwner = (pkg) => `financial-opening:${pkg?.id || "unknown"}`;
 
@@ -356,9 +357,10 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
           { openingTime },
         );
         if (view._editingState) view._editingState.opening_fin = false;
+        completePackageWorkspaceEdit(view);
         await view.customAlert("Thành công", "Đã lưu Biên bản mở thầu E-HSĐXTC thành công!", "check-circle");
         view._currentWorkflowTab = "eval_fin";
-        view.showPackageDetails(state.pkg.id);
+        await view.showPackageDetails(state.pkg.id);
       };
     }
   }

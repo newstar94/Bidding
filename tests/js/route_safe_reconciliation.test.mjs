@@ -4,11 +4,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { renderChangedState } from "../../frontend/app/SyncRenderCoordinator.js";
-import { packageWorkspaceFor } from "../../frontend/packages/detail/PackageWorkspaceState.js";
+import {
+  completePackageWorkspaceEdit,
+  packageWorkspaceFor,
+} from "../../frontend/packages/detail/PackageWorkspaceState.js";
 import {
   capturePackageDetailNavigationIntent,
   shouldAbortPackageDetailRefreshForNewDraft,
 } from "../../frontend/packages/GoiThauDetail.js";
+import { completePackageInvitationEdit } from "../../frontend/packages/detail/PackageOpeningPanel.js";
 
 test("explicit package workflow navigation is captured before asynchronous hydration", () => {
   const view = {
@@ -43,6 +47,27 @@ test("package refresh preserves a dirty form unless navigation is explicit", () 
     targetPackageId: "package-1",
     hasExplicitNavigation: true,
   }), false);
+});
+
+test("successful invitation save releases the dirty refresh guard", () => {
+  const view = { _biddingInfoEditMode: true };
+  const workspace = packageWorkspaceFor(view);
+  workspace.transition({ type: "SET_DIRTY", dirty: true });
+
+  completePackageInvitationEdit(view);
+
+  assert.equal(view._biddingInfoEditMode, false);
+  assert.equal(workspace.isDirty(), false);
+});
+
+test("successful package detail mutations release the dirty refresh guard", () => {
+  const view = {};
+  const workspace = packageWorkspaceFor(view);
+  workspace.transition({ type: "SET_DIRTY", dirty: true });
+
+  completePackageWorkspaceEdit(view);
+
+  assert.equal(workspace.isDirty(), false);
 });
 
 test("package detail checks draft state before clearing the live panel", () => {

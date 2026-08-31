@@ -664,6 +664,8 @@ try {
   mark("contract-created");
 
   const advanceContractStatus = async (status, liquidationDate = "") => {
+    await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
+    await contractRow.waitFor({ state: "visible", timeout: 15_000 });
     await contractRow.locator('[data-bf-action="edit-contract"]').click();
     await page.locator("#modal-hopdong.active").waitFor({ state: "visible", timeout: 10_000 });
     await select(page, "#hd-trangthai-hopdong", { label: status });
@@ -671,6 +673,7 @@ try {
     await page.locator("#form-hopdong button[type='submit']").click();
     await confirmDialog(page);
     await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
+    await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
     await contractRow.getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   };
   await advanceContractStatus("Đã hoàn thành");

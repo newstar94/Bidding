@@ -117,3 +117,7 @@ export function packageWorkspaceFor(owner) {
   }
   return workspace;
 }
+
+export function completePackageWorkspaceEdit(owner) {
+  packageWorkspaceFor(owner).transition({ type: "SET_DIRTY", dirty: false });
+}
