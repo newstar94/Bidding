@@ -616,12 +616,12 @@ test("browser initialization records cold startup time once", async () => {
 
   const initialized = await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     chromiumArgs: [],
   });
 
   assert.deepEqual(initialized, { ready: true, browserStartupMs: 25 });
+  assert.equal(runtime.configuration.browserMode, "research-stealth");
   await runtime.close();
 });
 

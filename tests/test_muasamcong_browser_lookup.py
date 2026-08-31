@@ -271,6 +271,25 @@ def test_browser_launcher_factory_keeps_warm_runtime_and_isolates_research_mode(
         )
 
 
+def test_browser_launcher_factory_defaults_to_research_stealth():
+    created = []
+
+    class Runtime:
+        def is_healthy(self):
+            return True
+
+    launcher = BrowserLauncherFactory.create(
+        runtime_factory=lambda configuration: (
+            created.append(configuration) or Runtime()
+        )
+    )
+
+    assert isinstance(launcher, ResearchBrowserLauncher)
+    launcher.get_runtime()
+    assert created[0]["browserMode"] == "research-stealth"
+    assert created[0]["targetHost"] == "muasamcong.mpi.gov.vn"
+
+
 def test_launcher_restarts_runtime_after_idle_ttl():
     now = [100.0]
     created = []

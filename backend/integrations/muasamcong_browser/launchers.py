@@ -75,7 +75,7 @@ class NodeBrowserRuntime:
                 "requestId": request_id,
                 "operation": operation,
                 "browserMode": self.configuration.get(
-                    "browserMode", "standard"
+                    "browserMode", "research-stealth"
                 ),
                 **payload,
             }
@@ -401,10 +401,10 @@ class ResearchBrowserLauncher(StandardBrowserLauncher):
 class BrowserLauncherFactory:
     @staticmethod
     def create(
-        mode,
+        mode=None,
         *,
         runtime_factory=NodeBrowserRuntime,
-        research_enabled=False,
+        research_enabled=True,
         allowed_research_hosts=None,
         target_host=OFFICIAL_HOST,
         driver_flags=None,
@@ -416,7 +416,7 @@ class BrowserLauncherFactory:
         action_timeout_ms=15_000,
         worker_queue_timeout_ms=250,
     ):
-        normalized = str(mode or "standard").strip().casefold()
+        normalized = str(mode or "research-stealth").strip().casefold()
         if normalized == "standard":
             return StandardBrowserLauncher(
                 runtime_factory=runtime_factory,
@@ -432,9 +432,14 @@ class BrowserLauncherFactory:
             )
         if normalized != "research-stealth" or not research_enabled:
             raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+        configured_hosts = (
+            {OFFICIAL_HOST}
+            if allowed_research_hosts is None
+            else allowed_research_hosts
+        )
         allowed = {
             str(host).strip().casefold()
-            for host in (allowed_research_hosts or set())
+            for host in configured_hosts
             if str(host).strip()
         }
         if target_host.casefold() != OFFICIAL_HOST or allowed != {OFFICIAL_HOST}:

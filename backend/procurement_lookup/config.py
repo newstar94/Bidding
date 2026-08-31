@@ -76,10 +76,10 @@ class ProcurementLookupSettings:
             environ, "PROCUREMENT_LOOKUP_ENABLED", "false"
         )
         mode = str(
-            environ.get("PROCUREMENT_BROWSER_MODE", "standard")
+            environ.get("PROCUREMENT_BROWSER_MODE", "research-stealth")
         ).strip().casefold()
         research_enabled = _boolean(
-            environ, "RESEARCH_STEALTH_ENABLED", "false"
+            environ, "RESEARCH_STEALTH_ENABLED", "true"
         )
         allowed_hosts = frozenset(
             host.strip().casefold()

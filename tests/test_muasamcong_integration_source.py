@@ -59,6 +59,16 @@ def test_unified_source_honors_the_server_owned_browser_mode(monkeypatch):
     assert source.runtime.configuration["chromiumArgs"] == []
 
 
+def test_unified_source_defaults_to_research_stealth(monkeypatch):
+    monkeypatch.delenv("PROCUREMENT_BROWSER_MODE", raising=False)
+    monkeypatch.delenv("RESEARCH_STEALTH_ENABLED", raising=False)
+    monkeypatch.delenv("RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS", raising=False)
+
+    source = MuaSamCongProcurementSource.from_environ()
+
+    assert source.runtime.configuration["browserMode"] == "research-stealth"
+
+
 def test_unified_source_rejects_ungated_research_mode(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "research-stealth")
     monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")

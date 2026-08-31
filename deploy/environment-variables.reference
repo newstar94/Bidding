@@ -344,10 +344,11 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 # Unified Mua Sắm Công lookup/import worker. Token and cookie stay in memory
 # inside the server-owned JSONL worker and are never returned to the browser.
 PROCUREMENT_LOOKUP_ENABLED=false
-PROCUREMENT_BROWSER_MODE=standard
-# Optional isolated compatibility profile. It does not solve CAPTCHA, replay
-# tokens/cookies, forge challenges or weaken Chromium security boundaries.
-RESEARCH_STEALTH_ENABLED=false
+PROCUREMENT_BROWSER_MODE=research-stealth
+# Default isolated compatibility profile for the exact official host. It does
+# not solve CAPTCHA, replay tokens/cookies, forge challenges or weaken Chromium
+# security boundaries. Set PROCUREMENT_BROWSER_MODE=standard for rollback.
+RESEARCH_STEALTH_ENABLED=true
 RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS=muasamcong.mpi.gov.vn
 MUASAMCONG_DRIVER_VUE2=true
 MUASAMCONG_DRIVER_GENERIC=true
@@ -507,11 +508,14 @@ VNEPS_PROCUREMENT_CIRCUIT_SECONDS=30
 # ANTHROPIC_VERSION=2023-06-01
 # GEMINI_API_KEY=
 # GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+# GOOGLE_API_KEY=
+# GEMINI_API_REVISION=
 # OLLAMA_BASE_URL=http://127.0.0.1:11434
 # OLLAMA_API_KEY=
 # AZURE_OPENAI_ENDPOINT=https://REPLACE.openai.azure.com
 # AZURE_OPENAI_API_KEY=
 # AZURE_OPENAI_API_VERSION=v1
+# AZURE_OPENAI_AUTH_TYPE=api_key
 
 # Runtime logs default to BIDDING_DATA_DIR/logs and rotate automatically.
 LOG_MAX_BYTES=5242880
@@ -624,6 +628,7 @@ ANALYTICS_AI_COST_VND_MULTIPLIER=
 # Optional runtime path overrides. When absent, each path derives from
 # BIDDING_DATA_DIR; keep production paths absolute when overriding.
 # BIDDING_BACKUP_DIR=
+# AUDIT_CHECKPOINT_DIR=
 # BIDDING_LOG_DIR=
 # BIDDING_UPLOAD_DIR=
 # BIDDING_WORD_TEMPLATE_DIR=
@@ -632,8 +637,11 @@ ANALYTICS_AI_COST_VND_MULTIPLIER=
 # credentials in the production web-process environment.
 # DATABASE_ADMIN_URL=
 # DATABASE_RUNTIME_PASSWORD=
+# DATABASE_MIGRATOR_ROLE=biddingflow_migrator
 # DATABASE_MIGRATOR_PASSWORD=
 # MIGRATOR_DATABASE_URL=
+# RESTORE_DRILL_DATABASE_URL=
+# POSTGRES_LOCAL_ADMIN_PASSWORD=
 # TEST_DATABASE_URL=
 # API_TEST_DATABASE_URL=
 # PACKAGE_SMOKE_DATABASE_URL=
@@ -643,6 +651,7 @@ ANALYTICS_AI_COST_VND_MULTIPLIER=
 # document-worker parent. They are listed for discoverability, not for web.env.
 # BIDDING_METRICS_MULTIPROCESS_DIR=/run/biddingflow-metrics
 # BIDDING_METRICS_INSTANCE_ID=
+# INVOCATION_ID=
 # DOCUMENT_WORKER_SERVICE_USER=biddingflow-document-worker
 # DOCUMENT_WORKER_SERVICE_GROUP=biddingflow-documents
 # DOCUMENT_WORKER_UID=

@@ -77,7 +77,7 @@ export class BrowserLookupRuntime {
     const startupStarted = this.clock();
     const safe = {
       headless: configuration?.headless !== false,
-      browserMode: String(configuration?.browserMode || "standard"),
+      browserMode: String(configuration?.browserMode || "research-stealth"),
       targetHost: String(configuration?.targetHost || ""),
       chromiumArgs: Array.isArray(configuration?.chromiumArgs)
         ? configuration.chromiumArgs

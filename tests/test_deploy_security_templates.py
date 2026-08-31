@@ -79,6 +79,13 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "WORD_TEMPLATE_CATALOG_MODE",
 }
 ADVANCED_REFERENCE_KEYS = {
+    "AUDIT_CHECKPOINT_DIR",
+    "DATABASE_MIGRATOR_ROLE",
+    "RESTORE_DRILL_DATABASE_URL",
+    "POSTGRES_LOCAL_ADMIN_PASSWORD",
+    "GOOGLE_API_KEY",
+    "GEMINI_API_REVISION",
+    "AZURE_OPENAI_AUTH_TYPE",
     "SYNC_CURSOR_SIGNING_KEY",
     "AWARD_RESULT_EXCEL_TOKEN_KEY",
     "CSRF_TRUSTED_ORIGINS",
@@ -156,7 +163,9 @@ def _assert_required_feature_profile(environment):
     missing = REQUIRED_FEATURE_PROFILE_KEYS - environment.keys()
     assert not missing, f"environment template is missing {sorted(missing)}"
 
-    assert environment["TRIAL_FULL_ACCESS_ENABLED"] == ""
+    assert environment["TRIAL_FULL_ACCESS_ENABLED"] == "false"
+    assert environment["PROCUREMENT_BROWSER_MODE"] == "research-stealth"
+    assert environment["RESEARCH_STEALTH_ENABLED"] == "true"
     assert environment["PAYOS_CREDENTIAL_REFERENCE"] == "env://payos/default"
     assert environment["COMMERCIAL_POLICY_ENABLED"] == "false"
     assert environment["COMMERCIAL_POLICY_MODE"] == "off"

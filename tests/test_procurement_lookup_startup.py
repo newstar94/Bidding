@@ -20,6 +20,15 @@ def test_disabled_procurement_lookup_does_not_require_browser_runtime():
     validate_procurement_lookup_configuration({"PROCUREMENT_LOOKUP_ENABLED": "false"})
 
 
+def test_research_stealth_mode_and_gate_default_enabled():
+    from backend.procurement_lookup.config import ProcurementLookupSettings
+
+    settings = ProcurementLookupSettings.from_environ({})
+
+    assert settings.mode == "research-stealth"
+    assert settings.research_enabled is True
+
+
 def test_research_launcher_requires_exact_gate_and_official_host():
     base = {
         "PROCUREMENT_LOOKUP_ENABLED": "true",

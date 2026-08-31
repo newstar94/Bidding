@@ -1031,7 +1031,40 @@ try {
     }));
     throw new Error(`Technical evaluation row did not render: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
   });
-  await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" });
+  await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" }).catch(async (error) => {
+    const state = await page.evaluate(() => {
+      const wrapper = document.getElementById("detail-workflow-content-wrapper");
+      const controls = [...document.querySelectorAll("#danhgiahsdt-table-tbody .mt-dg-hop-le")];
+      return {
+        packageId: document.getElementById("danhgiahsdt-goithau-select")?.value || "",
+        activeWorkflowTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+          ?.getAttribute("data-workflow-tab") || "",
+        controls: controls.map((control) => ({
+          connected: control.isConnected,
+          disabled: control.disabled,
+          hidden: control.hidden,
+          value: control.value,
+          options: [...control.options].map((option) => ({
+            label: option.label,
+            value: option.value,
+            disabled: option.disabled,
+            selected: option.selected,
+          })),
+        })),
+        wrapper: wrapper ? {
+          pendingRenderVersion: wrapper.dataset.pendingRenderVersion || "",
+          renderedRenderVersion: wrapper.dataset.renderedRenderVersion || "",
+          renderedWorkflowTab: wrapper.dataset.renderedWorkflowTab || "",
+        } : null,
+      };
+    });
+    throw new Error(`Technical evaluation validity selector was not editable: ${JSON.stringify({
+      state,
+      pageErrors: pageErrors.slice(-8),
+      httpErrors: httpErrors.slice(-8),
+      recentApiTraffic,
+    })}; ${error.message}`, { cause: error });
+  });
   await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
   await technicalEvaluationRow.locator(".mt-dg-ky-thuat").fill("Đạt");
   await page.waitForFunction(() => {

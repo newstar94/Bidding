@@ -87,6 +87,8 @@ def test_procurement_import_capability_is_not_advertised_for_unusable_vneps(
 def test_procurement_import_capability_is_advertised_for_test_fixture(
     monkeypatch,
 ):
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
     monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "fixture")
@@ -103,6 +105,8 @@ def test_procurement_import_capability_is_advertised_for_test_fixture(
 
 
 def test_procurement_import_capability_is_advertised_for_muasamcong(monkeypatch):
+    monkeypatch.delenv("PROCUREMENT_IMPORT_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_PROVIDER", raising=False)
     monkeypatch.setenv("VNEPS_PROCUREMENT_IMPORT_ENABLED", "true")
     monkeypatch.setenv("VNEPS_PROCUREMENT_PROVIDER", "muasamcong")
 

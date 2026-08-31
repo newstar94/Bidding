@@ -138,9 +138,9 @@ class MuaSamCongProcurementSource:
     @classmethod
     def from_environ(cls, *, observer=None):
         browser_mode = str(
-            os.environ.get("PROCUREMENT_BROWSER_MODE", "standard")
+            os.environ.get("PROCUREMENT_BROWSER_MODE", "research-stealth")
         ).strip().casefold()
-        research_enabled = _boolean("RESEARCH_STEALTH_ENABLED", "false")
+        research_enabled = _boolean("RESEARCH_STEALTH_ENABLED", "true")
         allowed_research_hosts = {
             host.strip().casefold()
             for host in os.environ.get(
