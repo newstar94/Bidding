@@ -58,11 +58,19 @@ async function waitForApp(page) {
   }, null, { timeout: 20_000 });
 }
 
+async function gotoReady(page, url) {
+  if (page.url() !== "about:blank") {
+    await page.goto("about:blank", { waitUntil: "commit", timeout: 20_000 });
+  }
+  const response = await page.goto(url, { waitUntil: "commit", timeout: 20_000 });
+  assert(response?.ok(), `${url} returned HTTP ${response?.status() || "unknown"}`);
+  await waitForApp(page);
+}
+
 const select = (page, selector, label) => page.locator(selector).selectOption({ label }, { force: true });
 
 async function createPackage(page, testCase, httpErrors) {
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/goi-thau`);
   await page.locator("#btn-add-goithau").click();
   const modal = page.locator("#modal-goithau.active");
   await modal.waitFor({ state: "visible", timeout: 10_000 });
@@ -153,8 +161,7 @@ try {
       httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
     }
   });
-  await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/dang-nhap`);
   await page.locator("#login-username").fill(account.username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
@@ -165,8 +172,7 @@ try {
     process.stdout.write(`[PAIRWISE] PKG-${testCase.id}\n`);
   }
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, page.url());
   const database = fixture("verify");
   assert(database.count === cases.length, `Expected ${cases.length} packages, got ${database.count}`);
   for (const testCase of cases) {

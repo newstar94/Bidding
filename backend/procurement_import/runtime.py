@@ -68,7 +68,7 @@ def procurement_source_timeout_seconds(environ=None):
     if provider in {"muasamcong", "web_dau_thau"}:
         return max(
             20.0,
-            min(float(environment.get("MUASAMCONG_REQUEST_TIMEOUT_SECONDS", "60")), 120.0),
+            min(float(environment.get("MUASAMCONG_REQUEST_TIMEOUT_SECONDS", "90")), 120.0),
         )
     return max(
         1.0,

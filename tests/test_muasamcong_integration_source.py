@@ -67,6 +67,8 @@ def test_unified_source_defaults_to_research_stealth(monkeypatch):
     source = MuaSamCongProcurementSource.from_environ()
 
     assert source.runtime.configuration["browserMode"] == "research-stealth"
+    assert source.runtime.configuration["apiMaxConcurrency"] == 12
+    assert source.runtime.configuration["collectionConcurrency"] == 12
 
 
 def test_unified_source_rejects_ungated_research_mode(monkeypatch):
@@ -2856,6 +2858,50 @@ def test_protected_lookup_recovers_after_two_transient_session_bootstrap_failure
 
     assert runtime.search_calls == 3
     assert result["data"]["planName"] == "Kế hoạch sau khi làm mới phiên"
+
+
+def test_interactive_retry_primes_one_runtime_probe_before_source_work():
+    class RetryAwareRuntime(FakeRuntime):
+        def __init__(self):
+            self.calls = []
+
+        def begin_user_retry(self):
+            self.calls.append(("begin-user-retry",))
+            return {"ready": True}
+
+        def search(self, code, kind):
+            self.calls.append(("search", code, kind))
+            return {
+                "record": {
+                    "planNo": code,
+                    "name": "Kế hoạch thử lại",
+                    "planType": "DTPT",
+                },
+                "metadata": {},
+            }
+
+    runtime = RetryAwareRuntime()
+    source = MuaSamCongProcurementSource(runtime)
+
+    with source.interactive_retry_context():
+        source.lookup_with_options(
+            "PL2600000001",
+            "PLAN",
+            detail_level="SUMMARY",
+            revision_mode="LATEST",
+        )
+    source.lookup_with_options(
+        "PL2600000001",
+        "PLAN",
+        detail_level="SUMMARY",
+        revision_mode="LATEST",
+    )
+
+    assert runtime.calls == [
+        ("begin-user-retry",),
+        ("search", "PL2600000001", "PLAN"),
+        ("search", "PL2600000001", "PLAN"),
+    ]
 
 
 def test_import_source_observer_emits_complete_secret_free_dimensions():

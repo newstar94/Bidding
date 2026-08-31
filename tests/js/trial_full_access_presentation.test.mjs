@@ -11,8 +11,18 @@ import {
 
 function trialDocument(enabled = true) {
   const commercialNodes = [
-    { hidden: false, setAttribute(name, value) { this[name] = value; } },
-    { hidden: false, setAttribute(name, value) { this[name] = value; } },
+    {
+      hidden: false,
+      inert: false,
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
+    },
+    {
+      hidden: false,
+      inert: false,
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
+    },
   ];
   return {
     commercialNodes,
@@ -33,7 +43,9 @@ test("trial presentation hides every marked commercial surface", () => {
   assert.equal(applyTrialCommercialPresentation(documentRef), 2);
   documentRef.commercialNodes.forEach((node) => {
     assert.equal(node.hidden, true);
-    assert.equal(node["aria-hidden"], "true");
+    assert.equal(node.inert, true);
+    assert.equal(node.attributes["aria-hidden"], "true");
+    assert.equal(node.attributes.inert, "");
   });
 });
 
@@ -68,7 +80,14 @@ test("application templates mark every primary paid surface for trial hiding", (
   assert.match(index, /data-trial-full-access="__TRIAL_FULL_ACCESS_ENABLED__"/);
   assert.match(landing, /href="#bang-gia" data-commercial-only/);
   assert.match(landing, /id="bang-gia"[^>]*data-commercial-only/);
-  assert.match(sidebar, /data-commercial-only>[\s\S]*?data-tab="commercial-admin"/);
+  assert.match(
+    sidebar,
+    /<li[^>]*data-commercial-only[^>]*>\s*<button[^>]*data-tab="commercial-admin"/u,
+  );
+  assert.doesNotMatch(
+    sidebar,
+    /<li[^>]*data-commercial-only[^>]*>\s*<button[^>]*data-tab="superadmin"/u,
+  );
   assert.match(profile, /profile-purchase-history" data-commercial-only/);
   assert.match(manager, /bf-s-6acd22af4f" data-commercial-only/);
   assert.match(superAdmin, /id="sa-stat-revenue"[\s\S]*?data-commercial-only/);

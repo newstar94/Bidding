@@ -3714,6 +3714,29 @@ def _upgrade_to_v88_reconcile_product_analytics_read_models(cursor, context):
     )
     context.assert_foreign_key_integrity(cursor)
 
+
+def _upgrade_to_v89_expand_procurement_revision_snapshot(cursor, _context):
+    """Preserve complete multi-package source revisions as provenance."""
+
+    cursor.execute(
+        """ALTER TABLE procurement_source_revision
+           DROP CONSTRAINT IF EXISTS
+           procurement_source_revision_canonical_snapshot_json_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE procurement_source_revision
+           ADD CONSTRAINT
+           procurement_source_revision_canonical_snapshot_json_check
+           CHECK (length(canonical_snapshot_json) BETWEEN 2 AND 16777216)
+           NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE procurement_source_revision
+           VALIDATE CONSTRAINT
+           procurement_source_revision_canonical_snapshot_json_check"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4146,6 +4169,11 @@ UPGRADES = (
         "reconcile_product_analytics_read_models",
         _upgrade_to_v88_reconcile_product_analytics_read_models,
     ),
+    DatabaseUpgrade(
+        89,
+        "expand_procurement_revision_snapshot",
+        _upgrade_to_v89_expand_procurement_revision_snapshot,
+    ),
 )
 
 
@@ -4162,6 +4190,8 @@ DB_SCHEMA_VERSION = (
 # V86 adds pseudonymous workspace/day funnel facts for exact range conversion.
 # V87 preserves funnel timing, cost-availability and expired-credit evidence.
 # V88 gives pre-release v84-v87 installations an append-only convergence path.
+# V89 preserves complete canonical procurement revisions up to the same 16 MiB
+# envelope already accepted by persistent procurement import sessions.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

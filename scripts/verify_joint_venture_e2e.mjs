@@ -143,6 +143,20 @@ async function waitForApp(page) {
   }, null, { timeout: 20_000 });
 }
 
+async function gotoReady(page, url) {
+  const response = await page.goto(url, { waitUntil: "commit" });
+  if (!response?.ok()) throw new Error(`${url} returned HTTP ${response?.status() || "unknown"}`);
+  await waitForApp(page);
+  return response;
+}
+
+async function reloadReady(page) {
+  const currentUrl = page.url();
+  await page.goto("about:blank", { waitUntil: "commit" });
+  await page.goto(currentUrl, { waitUntil: "commit" });
+  await waitForApp(page);
+}
+
 const workflowTabReadySelectors = {
   opening: ["#btn-mothau-save"],
   opening_tech: ["#btn-mothau-save"],
@@ -184,9 +198,7 @@ async function activateWorkflowTab(page, tabId, { activate = true } = {}) {
 }
 
 async function openCreateModal(page, route, buttonSelector, modalSelector) {
-  const response = await page.goto(`${baseURL}${route}`, { waitUntil: "domcontentloaded" });
-  if (!response?.ok()) throw new Error(`${route} returned HTTP ${response?.status() || "unknown"}`);
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}${route}`);
   await page.locator(buttonSelector).click();
   await page.locator(`${modalSelector}.active`).waitFor({ state: "visible", timeout: 10_000 });
 }
@@ -216,8 +228,7 @@ async function submitModal(page, formSelector, modalSelector) {
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
 
 async function loginAndSelectWorkspace(page) {
-  await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/dang-nhap`);
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
@@ -252,8 +263,7 @@ async function loginAndSelectWorkspace(page) {
     return { ok: response.ok, status: response.status, body: await response.text() };
   }, organizationId);
   if (!activation.ok) throw new Error(`Cannot select JV workspace: ${JSON.stringify(activation)}`);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await reloadReady(page);
   const activeOrganization = await page.evaluate(() => sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org"));
   if (activeOrganization !== organizationId) {
     throw new Error(`Active workspace mismatch: expected ${organizationId}, got ${activeOrganization}`);
@@ -262,8 +272,7 @@ async function loginAndSelectWorkspace(page) {
 }
 
 async function openPackage(page, tabId, targetPackage = packageData) {
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/goi-thau`);
   await page.locator("#search-goithau").fill(targetPackage.code);
   const link = page.getByRole("link", { name: targetPackage.code, exact: true });
   try {
@@ -575,8 +584,7 @@ try {
   await loginAndSelectWorkspace(page);
 
   if (!multiLotOnly) {
-  await page.goto(`${baseURL}/bieu-mau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/bieu-mau`);
   await page.waitForFunction(() => {
     const input = document.getElementById("word-file-input");
     return input?.dataset.wordUploadBound === "true" && !input.disabled;
@@ -800,8 +808,7 @@ try {
   const rejectedEvaluation = fixture("verify_evaluation", { expectedLowPriceDecision: false });
   mark("low-price-joint-venture-rejected", rejectedEvaluation);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await reloadReady(page);
   await activateWorkflowTab(page, "eval_tech");
   const reloadedRejectedRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: "Liên danh" });
   const rejectedRadio = reloadedRejectedRow.locator('.mt-low-price-acceptance[value="false"]');
@@ -816,8 +823,7 @@ try {
   const acceptedEvaluation = fixture("verify_evaluation", { expectedLowPriceDecision: true });
   mark("low-price-rejection-changed-to-acceptance", acceptedEvaluation);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await reloadReady(page);
   await activateWorkflowTab(page, "eval_tech");
   const reloadedAcceptedRadio = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]")
     .filter({ hasText: "Liên danh" })
@@ -871,8 +877,7 @@ try {
   const exactHalfEvidence = fixture("verify_evaluation", { expectedLowPriceDecision: null });
   mark("low-price-exact-half-persisted", exactHalfEvidence);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await reloadReady(page);
   await activateWorkflowTab(page, "eval_tech");
   boundaryRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: "Liên danh" });
   if (!await boundaryRow.locator(".evaluation-low-price-decision").isHidden()) {
@@ -1030,8 +1035,7 @@ try {
   }
   mark("legacy-award-word-export-absent");
 
-  await page.goto(`${baseURL}/xuat-ban-word`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/xuat-ban-word`);
   await page.locator("#tab-xuatban-word.active").waitFor({ state: "visible", timeout: 20_000 });
   await select(page, "#word-publication-plan-select", { value: `${runId}-plan` });
   await page.locator(
@@ -1096,8 +1100,7 @@ try {
   await page.locator("#search-hopdong").fill(`Hợp đồng liên danh ${runId}`);
   const contractRow = page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng liên danh ${runId}` });
   await contractRow.waitFor({ state: "visible", timeout: 15_000 });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await reloadReady(page);
   await page.locator("#search-hopdong").fill(`Hợp đồng liên danh ${runId}`);
   await contractRow.waitFor({ state: "visible", timeout: 15_000 });
   const contractEvidence = fixture("verify_contract");

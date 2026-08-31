@@ -150,6 +150,10 @@ async function handle(request) {
         ),
       };
     }
+    case "beginUserRetry": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return { requestId, ok: true, result: integration.beginUserRetry() };
+    }
     case "getResultBundle": {
       if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
       return {

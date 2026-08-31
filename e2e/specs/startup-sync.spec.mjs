@@ -180,6 +180,8 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
   expect(Number.isInteger(createdVersion)).toBe(true);
   const createdSyncVersion = createResult.syncVersion;
   expect(Number.isInteger(createdSyncVersion)).toBe(true);
+  await expect(page.locator("#modal-chuyengia.active")).toBeHidden();
+  await expect(page).toHaveURL(/\/chuyen-gia$/u);
 
   await setupServerReadGate(page, { includePagination: true });
 

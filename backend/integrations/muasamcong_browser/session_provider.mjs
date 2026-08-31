@@ -226,7 +226,12 @@ export class MscSessionProvider {
       }).catch(() => null);
       await page.evaluate(() => window.stop()).catch(() => null);
 
-      if (!foundToken) {
+      const requireToken = async (candidate) => {
+        const token = String(await candidate || "");
+        if (!token) throw new Error("PROCUREMENT_SESSION_FAILED");
+        return token;
+      };
+      const portalCapture = (async () => {
         try {
           await page.waitForSelector("button, .btn-search, [type='submit']", {
             timeout: 1_000,
@@ -243,11 +248,15 @@ export class MscSessionProvider {
         } catch {
           await waitForCapturedToken(3_000);
         }
-      }
-
-      if (!foundToken) {
-        try {
-          if (!this.recaptchaSiteKey) throw new Error("Missing reCAPTCHA site key");
+        return foundToken;
+      })();
+      const tokenCandidates = [];
+      if (this.recaptchaSiteKey) {
+        tokenCandidates.push(requireToken(
+          capturedToken.then(() => foundToken),
+        ));
+        void portalCapture.catch(() => null);
+        const recaptchaCapture = (async () => {
           const hasRecaptcha = await page.evaluate(
             () => typeof window.grecaptcha !== "undefined",
           );
@@ -260,20 +269,53 @@ export class MscSessionProvider {
             () => window.grecaptcha && typeof window.grecaptcha.execute === "function",
             { timeout: 20_000 },
           );
-          foundToken = await timeout(
-            page.evaluate((siteKey) => new Promise((resolve, reject) => {
+          await timeout(
+            page.evaluate((siteKey) => {
+              window.__biddingflowRecaptchaResult = {
+                token: "",
+                failed: false,
+              };
               window.grecaptcha.ready(() => {
                 window.grecaptcha.execute(siteKey, { action: "submit" })
-                  .then(resolve)
-                  .catch(reject);
+                  .then((token) => {
+                    window.__biddingflowRecaptchaResult.token = String(token || "");
+                  })
+                  .catch(() => {
+                    window.__biddingflowRecaptchaResult.failed = true;
+                  });
               });
-            }), this.recaptchaSiteKey),
+              return true;
+            }, this.recaptchaSiteKey),
+            5_000,
+            "PROCUREMENT_SESSION_FAILED",
+          );
+          await page.waitForFunction(
+            () => Boolean(
+              window.__biddingflowRecaptchaResult?.token
+              || window.__biddingflowRecaptchaResult?.failed
+            ),
+            { timeout: 20_000 },
+          );
+          return timeout(
+            page.evaluate(() => {
+              const token = String(
+                window.__biddingflowRecaptchaResult?.token || "",
+              );
+              delete window.__biddingflowRecaptchaResult;
+              return token;
+            }),
             20_000,
             "PROCUREMENT_SESSION_FAILED",
           );
-        } catch {
-          // The normalized error below keeps secrets and upstream HTML private.
-        }
+        })();
+        tokenCandidates.push(requireToken(recaptchaCapture));
+      } else {
+        tokenCandidates.push(requireToken(portalCapture));
+      }
+      try {
+        foundToken = await Promise.any(tokenCandidates);
+      } catch {
+        // The normalized error below keeps secrets and upstream HTML private.
       }
 
       const cookies = await page.cookies();

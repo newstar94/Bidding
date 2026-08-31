@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from copy import deepcopy
 from hashlib import sha256
 import json
@@ -141,6 +142,11 @@ def _build_import_preparer(source):
     )
 
 
+def _interactive_source_context(source):
+    context = getattr(source, "interactive_retry_context", None)
+    return context() if callable(context) else nullcontext()
+
+
 def _request_context(request, workspace_lease):
     valid, session = verify_session(request)
     if not valid:
@@ -211,20 +217,21 @@ def _prepare_blocking(request, payload):
         bool(include_linked_notices)
         and str(source.name).upper() == "MUASAMCONG"
     )
-    preview = _build_import_preparer(source).prepare_plan(
-        code=payload.get("code"),
-        revision_mode=payload.get("revisionMode") or "LATEST",
-        selected_revision=payload.get("selectedRevision"),
-        # Plan/package fields are sufficient for the first response.  Linked
-        # TBMT details are refreshed by the bounded background operation below.
-        include_linked_notices=(
-            False if quick_enrichment else bool(include_linked_notices)
-        ),
-        organization_id=organization_id,
-        user_id=session.user_id,
-        workspace_lease=lease,
-        local_state=local_state,
-    )
+    with _interactive_source_context(source):
+        preview = _build_import_preparer(source).prepare_plan(
+            code=payload.get("code"),
+            revision_mode=payload.get("revisionMode") or "LATEST",
+            selected_revision=payload.get("selectedRevision"),
+            # Plan/package fields are sufficient for the first response.  Linked
+            # TBMT details are refreshed by the bounded background operation below.
+            include_linked_notices=(
+                False if quick_enrichment else bool(include_linked_notices)
+            ),
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+            local_state=local_state,
+        )
     stored = PREVIEW_STORE.get(
         preview["previewId"], organization_id=organization_id,
         user_id=session.user_id, workspace_lease=lease,
@@ -690,16 +697,17 @@ def _prepare_notice_blocking(request, payload):
             connection.rollback()
             connection.close()
 
-    preview = _build_import_preparer(source).prepare_notice(
-        code=payload.get("code"),
-        revision_mode=payload.get("revisionMode") or "LATEST",
-        selected_revision=payload.get("selectedRevision"),
-        target_package_root_id=payload.get("targetPackageRootId"),
-        organization_id=organization_id,
-        user_id=session.user_id,
-        workspace_lease=lease,
-        resolve_local_target=resolve_local_target,
-    )
+    with _interactive_source_context(source):
+        preview = _build_import_preparer(source).prepare_notice(
+            code=payload.get("code"),
+            revision_mode=payload.get("revisionMode") or "LATEST",
+            selected_revision=payload.get("selectedRevision"),
+            target_package_root_id=payload.get("targetPackageRootId"),
+            organization_id=organization_id,
+            user_id=session.user_id,
+            workspace_lease=lease,
+            resolve_local_target=resolve_local_target,
+        )
     stored = PREVIEW_STORE.get(
         preview["previewId"], organization_id=organization_id,
         user_id=session.user_id, workspace_lease=lease,

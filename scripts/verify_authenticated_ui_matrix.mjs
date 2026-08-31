@@ -30,9 +30,10 @@ async function login(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => (
-    getComputedStyle(document.getElementById("auth-overlay")).display === "none"
-  ), null, { timeout: 20_000 });
+  await page.waitForFunction(() => {
+    const overlay = document.getElementById("auth-overlay");
+    return !overlay || getComputedStyle(overlay).display === "none";
+  }, null, { timeout: 20_000 });
 }
 
 async function auditScreen(page, name) {

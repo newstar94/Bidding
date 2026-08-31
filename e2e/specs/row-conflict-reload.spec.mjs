@@ -56,7 +56,22 @@ async function gotoReady(page, route) {
     await waitForInitialReconciliation(page);
     return;
   }
-  await page.goto(route, { waitUntil: "domcontentloaded" });
+  // Tear down the previous application document before the cold navigation.
+  // Firefox can otherwise let a late route/module callback from that document
+  // abort the next top-level request. The blank document keeps this context's
+  // cookies and IndexedDB while removing those stale callbacks deterministically.
+  await page.goto("about:blank", { waitUntil: "commit" });
+  // Host-injected scripts can delay DOMContentLoaded independently of the app.
+  // The two readiness checks below are the authoritative synchronization seam.
+  await page.goto(route, { waitUntil: "commit" });
+  await waitForApp(page);
+  await waitForInitialReconciliation(page);
+}
+
+async function reloadReady(page) {
+  const currentUrl = page.url();
+  await page.goto("about:blank", { waitUntil: "commit" });
+  await page.goto(currentUrl, { waitUntil: "commit" });
   await waitForApp(page);
   await waitForInitialReconciliation(page);
 }
@@ -142,14 +157,24 @@ async function selectVisibleVersion(page, packageRow, label) {
   await expect(option).toHaveCount(1);
   const selectedId = await option.getAttribute("value");
   expect(selectedId).toBeTruthy();
-  const combobox = packageRow.getByRole("combobox", {
-    name: /Chọn phiên bản gói thầu/i,
-  });
   // Exercise the same accessible control as a user. The native select is a
   // hidden implementation detail and can be transiently disabled while its
-  // replacement row is mounted, especially in WebKit.
-  await combobox.click();
-  await page.getByRole("option", { name: label, exact: true }).click();
+  // replacement row is mounted, especially in WebKit. If a pending table
+  // response replaces the row during Playwright's actionability checks, the
+  // detached listbox receives no change event; re-resolve the current control
+  // once based on the observed native value instead of waiting or forcing it.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const combobox = packageRow.getByRole("combobox", {
+      name: /Chọn phiên bản gói thầu/i,
+    });
+    await combobox.click();
+    const listboxId = await combobox.getAttribute("aria-controls");
+    expect(listboxId).toBeTruthy();
+    await page.locator(`[id="${listboxId}"]`)
+      .getByRole("option", { name: label, exact: true })
+      .click();
+    if (await nativeSelect.inputValue() === selectedId) break;
+  }
   await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
     .toHaveValue(selectedId);
   await expect(packageRow.getByRole("combobox", {
@@ -608,7 +633,7 @@ async function cleanupCreatedEntities(page, targets) {
     for (const target of targets) {
       try {
         if (targetPage.url() === "about:blank") {
-          await targetPage.goto("/health/ready", { waitUntil: "domcontentloaded" });
+          await targetPage.goto("/health/ready", { waitUntil: "commit" });
         }
         await deleteSearchedEntity(targetPage, target);
       } catch (error) {
@@ -829,9 +854,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
 
-    await pageA.reload({ waitUntil: "domcontentloaded" });
-    await waitForApp(pageA);
-    await waitForInitialReconciliation(pageA);
+    await reloadReady(pageA);
     packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow.locator('select[data-bf-change="change-package-version"]')).toHaveValue(latestPackage.id);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
@@ -897,9 +920,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(pageA.locator(".bf-toast").filter({ hasText: "Nhấn F5" }).last()).toBeVisible();
 
     await pageA.unroute("**/api/sync/delta**");
-    await pageA.reload({ waitUntil: "domcontentloaded" });
-    await waitForApp(pageA);
-    await waitForInitialReconciliation(pageA);
+    await reloadReady(pageA);
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
     packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow).toContainText(packageNameB);

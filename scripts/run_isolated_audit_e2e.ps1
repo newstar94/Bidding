@@ -80,10 +80,14 @@ $commands = if ($Suite -eq "smoke") {
     $uiCommands + $domainCommands
 }
 
+$serverStdout = Join-Path ([System.IO.Path]::GetTempPath()) "biddingflow-e2e-server-$Port.stdout.log"
+$serverStderr = Join-Path ([System.IO.Path]::GetTempPath()) "biddingflow-e2e-server-$Port.stderr.log"
 $server = Start-Process -FilePath "python" `
     -ArgumentList @("-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "$Port") `
     -WorkingDirectory $root `
     -WindowStyle Hidden `
+    -RedirectStandardOutput $serverStdout `
+    -RedirectStandardError $serverStderr `
     -PassThru
 
 try {
@@ -101,6 +105,12 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) {
+        if (Test-Path -LiteralPath $serverStderr) {
+            Get-Content -LiteralPath $serverStderr -Tail 80
+        }
+        if (Test-Path -LiteralPath $serverStdout) {
+            Get-Content -LiteralPath $serverStdout -Tail 80
+        }
         throw "Isolated test server did not become ready."
     }
     foreach ($command in $commands) {
@@ -113,4 +123,5 @@ try {
     if ($server -and -not $server.HasExited) {
         Stop-Process -Id $server.Id -Force
     }
+    Remove-Item -LiteralPath $serverStdout, $serverStderr -Force -ErrorAction SilentlyContinue
 }

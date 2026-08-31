@@ -163,6 +163,9 @@ class NodeBrowserRuntime:
     def search(self, code, kind):
         return self._exchange("search", code=str(code), kind=str(kind))
 
+    def begin_user_retry(self):
+        return self._exchange("beginUserRetry")
+
     def list_notice_revisions(self, notice_no):
         return self._exchange("listNoticeRevisions", noticeNo=str(notice_no))
 

@@ -251,6 +251,7 @@ class SecurityHeadersMiddleware:
 class BodySizeLimitMiddleware:
     BODY_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
     DOCUMENT_PATHS = {"/api/templates/upload", "/api/import-excel"}
+    SYNC_PATHS = {"/api/sync", "/api/plans/finalize-draft"}
 
     def __init__(self, app):
         self.app = app
@@ -265,7 +266,7 @@ class BodySizeLimitMiddleware:
 
     @classmethod
     def _limit_for_path(cls, path):
-        if path == "/api/sync":
+        if path in cls.SYNC_PATHS:
             return cls._configured_limit("REQUEST_MAX_SYNC_BYTES", 10 * 1024 * 1024)
         if (
             path.startswith("/api/packages/")

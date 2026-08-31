@@ -1888,6 +1888,7 @@ def test_employee_with_plan_view_access_may_prepare_muasamcong_plan(monkeypatch)
 def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkeypatch):
     calls = []
     session_bundles = []
+    retry_context = []
 
     class Connection:
         def cursor(self):
@@ -1934,6 +1935,19 @@ def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkey
             session_bundles.append(_bundle)
             return {"sessionId": "session-quick"}
 
+    class Source:
+        name = "MUASAMCONG"
+
+        def interactive_retry_context(self):
+            class Context:
+                def __enter__(self):
+                    retry_context.append("enter")
+
+                def __exit__(self, *_args):
+                    retry_context.append("exit")
+
+            return Context()
+
     monkeypatch.setattr(
         routes_module,
         "_request_context",
@@ -1942,7 +1956,7 @@ def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkey
     monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
     monkeypatch.setattr(
         routes_module, "build_procurement_source",
-        lambda: SimpleNamespace(name="MUASAMCONG"),
+        Source,
     )
     monkeypatch.setattr(routes_module, "has_module_permission", lambda *_args: True)
     monkeypatch.setattr(routes_module.database, "get_connection", Connection)
@@ -1958,6 +1972,7 @@ def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkey
     )
 
     assert calls == [False]
+    assert retry_context == ["enter", "exit"]
     assert result["previewMode"] == "QUICK"
     assert result["enrichmentStatus"] == "PENDING"
     assert result["_enrichmentContext"]["linkedNoticeCount"] == 1

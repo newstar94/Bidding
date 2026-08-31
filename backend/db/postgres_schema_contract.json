@@ -4539,7 +4539,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 88,
+  "schemaVersion": 89,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -24106,7 +24106,7 @@
         },
         "procurement_source_revision_canonical_snapshot_json_check": {
           "deferrable": false,
-          "definition": "CHECK (length(canonical_snapshot_json) >= 2 AND length(canonical_snapshot_json) <= 262144)",
+          "definition": "CHECK (length(canonical_snapshot_json) >= 2 AND length(canonical_snapshot_json) <= 16777216)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

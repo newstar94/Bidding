@@ -1169,6 +1169,7 @@ test("inline plan lookup prepares all revisions and opens editable revision 00 w
   assert.equal(result.revisionNumber, "00");
   assert.equal(calls[0][0], "prepare");
   assert.equal(calls[0][1].revisionMode, "ALL");
+  assert.equal(calls[0][1].includeLinkedNotices, true);
   assert.equal(calls[1][0], "start");
   assert.equal(calls[1][1].currentDraft.revisionNumber, "00");
   assert.deepEqual(

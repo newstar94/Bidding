@@ -145,6 +145,15 @@ test("lifecycle E2E creates portable Excel fixtures when paths are not configure
   assert.doesNotMatch(source, /OneDrive/u);
 });
 
+test("lifecycle E2E does not accumulate Windows headless GPU state", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /args: \["--disable-gpu", "--disable-software-rasterizer"\]/u);
+});
+
 test("lifecycle E2E fills only editable visible package-lot rows", () => {
   const source = fs.readFileSync(
     path.join(scriptsRoot, "verify_full_lifecycle.mjs"),

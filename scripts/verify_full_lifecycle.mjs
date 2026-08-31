@@ -93,7 +93,15 @@ const excelFixtures = Object.fromEntries(Object.entries(configuredExcelFixtures)
 if (generatedExcelFixtures) {
   process.stdout.write(`[E2E] Generated CI Excel fixtures in ${generatedExcelFixtures.directory}\n`);
 }
-const launchOptions = { headless: true };
+// The lifecycle suite exercises every major workflow in one browser session.
+// Chromium's Windows headless SwiftShader process can retain several gigabytes
+// across that sequence and eventually stop servicing the renderer even though
+// the application and HTTP server remain healthy. This suite does not test GPU
+// compositing, so keep its long-lived browser on the software-free DOM path.
+const launchOptions = {
+  headless: true,
+  args: ["--disable-gpu", "--disable-software-rasterizer"],
+};
 if (process.env.STARTUP_BROWSER_CHANNEL) launchOptions.channel = process.env.STARTUP_BROWSER_CHANNEL;
 const browser = await chromium.launch(launchOptions);
 
@@ -672,7 +680,40 @@ try {
     if (liquidationDate) await page.locator("#hd-ngaythanhly").fill(liquidationDate);
     await page.locator("#form-hopdong button[type='submit']").click();
     await confirmDialog(page);
-    await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
+    try {
+      await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
+    } catch (error) {
+      const diagnostics = await page.evaluate(() => {
+        const modal = document.getElementById("modal-hopdong");
+        const formId = document.getElementById("form-hopdong-id")?.value || "";
+        const model = globalThis.app?.model;
+        return {
+          modalActive: modal?.classList.contains("active") === true,
+          formId,
+          selectedStatus: document.getElementById("hd-trangthai-hopdong")?.value || "",
+          liquidationDate: document.getElementById("hd-ngaythanhly")?.value || "",
+          dialog: document.querySelector("#modal-custom-dialog.active")?.innerText || "",
+          toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+            .map((toast) => toast.textContent?.trim() || ""),
+          contracts: (model?.state?.hopdong || [])
+            .filter((contract) => String(contract?.tenHopDong || "").includes("Hợp đồng E2E-"))
+            .map((contract) => ({
+              id: contract.id,
+              rootId: contract.rootId,
+              version: contract.phienBan,
+              isLatest: contract.isLatest,
+              status: contract.trangThaiHopDong,
+              rowVersion: contract.rowVersion,
+            })),
+          pendingMutations: Number(globalThis.app?._pendingMutationCount || 0),
+          autoSyncOwner: globalThis.app?._autoSyncOwner ? {
+            queued: Boolean(globalThis.app._autoSyncOwner.queued),
+            hasPromise: Boolean(globalThis.app._autoSyncOwner.promise),
+          } : null,
+        };
+      }).catch(() => ({ rendererUnresponsive: true }));
+      throw new Error(`Contract status modal did not close: ${JSON.stringify({ diagnostics, recentApiTraffic: recentApiTraffic.slice(-20), httpErrors: httpErrors.slice(-8), pageErrors: pageErrors.slice(-8) })}`, { cause: error });
+    }
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
     await contractRow.getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   };

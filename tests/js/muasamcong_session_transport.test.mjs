@@ -31,6 +31,7 @@ function browserHarness({
 } = {}) {
   let requestHandler = null;
   let closeCount = 0;
+  let recaptchaRequested = false;
   const selectorTimeouts = [];
   const page = {
     on(event, callback) {
@@ -47,6 +48,13 @@ function browserHarness({
       }
     },
     evaluate: async (fn, argument) => {
+      if (String(fn).includes("__biddingflowRecaptchaResult")) {
+        if (argument) {
+          recaptchaRequested = true;
+          return true;
+        }
+        return recaptchaRequested ? fallbackToken : "";
+      }
       if (argument) return fallbackToken;
       if (String(fn).includes("typeof window.grecaptcha")) return false;
       if (searchToken && String(fn).includes("querySelectorAll")) {
@@ -81,6 +89,7 @@ function browserHarness({
     },
     closeCount: () => closeCount,
     selectorTimeouts: () => selectorTimeouts,
+    page,
   };
 }
 
@@ -154,6 +163,36 @@ test("session provider stops waiting as soon as the search action captures a tok
   assert.equal(session.token, "search-token-value-1234567890");
   assert.deepEqual(sleeps, []);
   assert.deepEqual(harness.selectorTimeouts(), [1_000]);
+});
+
+
+test("session provider starts token fallback while the portal capture is still pending", async () => {
+  const harness = browserHarness({ networkToken: "" });
+  const events = [];
+  let releasePortalWait;
+  harness.page.addScriptTag = async () => {
+    events.push("recaptcha-load");
+    return { loaded: true };
+  };
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+    recaptchaSiteKey: "test-recaptcha-site-key",
+    sleep: async () => new Promise((resolve) => {
+      events.push("portal-wait");
+      releasePortalWait = resolve;
+    }),
+  });
+
+  const pending = provider.acquire();
+  await new Promise((resolve) => setImmediate(resolve));
+  try {
+    assert.deepEqual(events, ["portal-wait", "recaptcha-load"]);
+  } finally {
+    releasePortalWait?.();
+  }
+  const session = await pending;
+  assert.match(session.token, /^fallback-token/);
 });
 
 
@@ -245,6 +284,29 @@ test("session provider keeps the source fallback when portal UI cannot emit a to
     networkToken: "",
     navigationError: new Error("frontend failed to load"),
   });
+  const provider = new MscSessionProvider({
+    puppeteer: harness.puppeteer,
+    fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
+    sleep: async () => undefined,
+    recaptchaSiteKey: "test-recaptcha-site-key",
+  });
+
+  const session = await provider.acquire();
+
+  assert.match(session.token, /^fallback-token/);
+  assert.equal(harness.closeCount(), 1);
+});
+
+
+test("session provider does not await the reCAPTCHA promise across Puppeteer", async () => {
+  const harness = browserHarness({ networkToken: "" });
+  const evaluate = harness.page.evaluate;
+  harness.page.evaluate = async (fn, argument) => {
+    if (String(fn).includes("new Promise")) {
+      throw new Error("Protocol error (Runtime.callFunctionOn): Promise was collected");
+    }
+    return evaluate(fn, argument);
+  };
   const provider = new MscSessionProvider({
     puppeteer: harness.puppeteer,
     fetchImpl: async () => ({ body: { cancel: async () => undefined } }),
@@ -366,6 +428,74 @@ test("API circuit breaker stops repeated upstream failures until its bounded coo
   now = 1_001;
   await assert.rejects(client.request("PLAN_DETAIL", { id: "after-cooldown" }));
   assert.equal(fetches, 3);
+});
+
+
+test("an explicit user retry probes upstream while the API circuit is open", async () => {
+  let fetches = 0;
+  let upstreamAvailable = false;
+  const client = new MscApiClient({
+    sessionProvider: {
+      acquire: async () => ({ token: "token-value", cookie: "cookie-value" }),
+    },
+    retries: 0,
+    circuitMs: 30_000,
+    circuitFailureThreshold: 2,
+    clock: () => 0,
+    fetchImpl: async () => {
+      fetches += 1;
+      return upstreamAvailable
+        ? response(200, { versionList: [{ id: "revision-after-retry" }] })
+        : response(500, {});
+    },
+  });
+
+  await assert.rejects(client.request("PLAN_DETAIL", { id: "one" }));
+  await assert.rejects(client.request("PLAN_DETAIL", { id: "two" }));
+  await assert.rejects(client.request("PLAN_DETAIL", { id: "blocked" }));
+  assert.equal(fetches, 2, "ordinary requests remain protected by the open circuit");
+
+  upstreamAvailable = true;
+  client.beginUserRetry();
+  const retried = await client.request("PLAN_DETAIL", { id: "manual-retry" });
+
+  assert.equal(fetches, 3, "the user retry must make a fresh upstream attempt");
+  assert.deepEqual(retried.data, {
+    versionList: [{ id: "revision-after-retry" }],
+  });
+  assert.equal(client.health().circuitOpen, false);
+});
+
+
+test("a failed session bootstrap does not poison the next user attempt", async () => {
+  let sessionAttempts = 0;
+  let fetches = 0;
+  const client = new MscApiClient({
+    sessionProvider: {
+      async acquire() {
+        sessionAttempts += 1;
+        if (sessionAttempts === 1) throw new Error("PROCUREMENT_SESSION_FAILED");
+        return { token: "token-value", cookie: "cookie-value" };
+      },
+    },
+    retries: 0,
+    circuitFailureThreshold: 1,
+    fetchImpl: async () => {
+      fetches += 1;
+      return response(200, { versionList: [{ id: "revision-after-session" }] });
+    },
+  });
+
+  await assert.rejects(
+    client.request("PLAN_DETAIL", { id: "first" }),
+    /PROCUREMENT_SESSION_FAILED/,
+  );
+  assert.equal(client.health().circuitOpen, false);
+
+  const retry = await client.request("PLAN_DETAIL", { id: "second" });
+  assert.equal(sessionAttempts, 2);
+  assert.equal(fetches, 1);
+  assert.deepEqual(retry.data.versionList, [{ id: "revision-after-session" }]);
 });
 
 

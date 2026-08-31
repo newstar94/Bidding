@@ -73,12 +73,30 @@ export class MscApiClient {
     this.activeRequests = 0;
     this.waiters = [];
     this.inFlight = new Map();
+    this.userRetryProbes = 0;
   }
 
-  async request(operation, payload, { forceRefresh = false } = {}) {
-    const key = requestKey(this.profileId, operation, payload, forceRefresh);
+  beginUserRetry() {
+    this.userRetryProbes = 1;
+  }
+
+  async request(operation, payload, {
+    forceRefresh = false,
+    userRetry = false,
+  } = {}) {
+    const interactiveRetry = userRetry || this.userRetryProbes > 0;
+    if (!userRetry && interactiveRetry) this.userRetryProbes -= 1;
+    const key = requestKey(
+      this.profileId,
+      operation,
+      payload,
+      forceRefresh || interactiveRetry,
+    );
     if (this.inFlight.has(key)) return this.inFlight.get(key);
-    const pending = this._requestWithPolicy(operation, payload, { forceRefresh });
+    const pending = this._requestWithPolicy(operation, payload, {
+      forceRefresh,
+      userRetry: interactiveRetry,
+    });
     this.inFlight.set(key, pending);
     try {
       return await pending;
@@ -87,8 +105,11 @@ export class MscApiClient {
     }
   }
 
-  async _requestWithPolicy(operation, payload, { forceRefresh = false } = {}) {
-    if (this.clock() < this.openedUntil) {
+  async _requestWithPolicy(operation, payload, {
+    forceRefresh = false,
+    userRetry = false,
+  } = {}) {
+    if (this.clock() < this.openedUntil && !userRetry) {
       this.lastFailure = "PROCUREMENT_UPSTREAM_UNAVAILABLE";
       throw new Error(this.lastFailure);
     }
@@ -102,7 +123,6 @@ export class MscApiClient {
     } catch (error) {
       this.lastFailure = String(error?.message || "PROCUREMENT_UPSTREAM_UNAVAILABLE");
       if ([
-        "PROCUREMENT_SESSION_FAILED",
         "PROCUREMENT_UPSTREAM_UNAVAILABLE",
         "PROCUREMENT_TIMEOUT",
       ].includes(this.lastFailure)) {

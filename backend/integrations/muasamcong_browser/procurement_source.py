@@ -135,6 +135,15 @@ class MuaSamCongProcurementSource:
         finally:
             self._lookup_request_id.reset(token)
 
+    @contextmanager
+    def interactive_retry_context(self):
+        """Allow one top-level user request to probe an open API circuit."""
+
+        begin = getattr(self.runtime, "begin_user_retry", None)
+        if callable(begin):
+            self._call(begin)
+        yield
+
     @classmethod
     def from_environ(cls, *, observer=None):
         browser_mode = str(
@@ -200,7 +209,10 @@ class MuaSamCongProcurementSource:
             )
             * 1000,
             "apiMaxConcurrency": _bounded_int(
-                "MUASAMCONG_MAX_CONCURRENCY", 6, 1, 16
+                "MUASAMCONG_MAX_CONCURRENCY", 12, 1, 16
+            ),
+            "collectionConcurrency": _bounded_int(
+                "MUASAMCONG_MAX_CONCURRENCY", 12, 1, 16
             ),
             "apiQueueTimeoutMs": _bounded_int(
                 "MUASAMCONG_API_QUEUE_TIMEOUT_MS", 5000, 100, 30000

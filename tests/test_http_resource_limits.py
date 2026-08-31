@@ -70,6 +70,54 @@ def test_body_limit_middleware_allows_disconnect_after_stream_response_started()
     assert messages == [{"type": "http.response.start", "status": 200, "headers": []}]
 
 
+def test_plan_draft_finalize_uses_sync_body_budget(monkeypatch):
+    monkeypatch.delenv("REQUEST_MAX_JSON_BYTES", raising=False)
+    monkeypatch.delenv("REQUEST_MAX_SYNC_BYTES", raising=False)
+    assert BodySizeLimitMiddleware._limit_for_path(
+        "/api/plans/finalize-draft"
+    ) == 10 * 1024 * 1024
+    assert BodySizeLimitMiddleware._limit_for_path(
+        "/api/procurement/imports/plan/prepare"
+    ) == 1024 * 1024
+    payload = b"x" * (2 * 1024 * 1024)
+    messages = []
+
+    async def finalize_app(_scope, receive, send):
+        request = await receive()
+        assert request["body"] == payload
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    delivered = False
+
+    async def receive():
+        nonlocal delivered
+        if delivered:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        delivered = True
+        return {"type": "http.request", "body": payload, "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/plans/finalize-draft",
+        "raw_path": b"/api/plans/finalize-draft",
+        "query_string": b"",
+        "headers": [(b"content-length", str(len(payload)).encode("ascii"))],
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 8000),
+    }
+
+    asyncio.run(BodySizeLimitMiddleware(finalize_app)(scope, receive, send))
+
+    assert messages[0]["status"] == 200
+
+
 def _security_headers(monkeypatch, mode, *, configured=True):
     monkeypatch.setenv("TURNSTILE_ENABLED", mode)
     values = {

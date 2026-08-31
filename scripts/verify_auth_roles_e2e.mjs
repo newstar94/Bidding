@@ -165,14 +165,28 @@ async function waitForApp(page) {
   }, null, { timeout: 20_000 });
 }
 
+async function gotoReady(page, url) {
+  // Host-level browser extensions can keep DOMContentLoaded open after the
+  // application is already committed. App readiness is the synchronization
+  // seam this suite actually needs.
+  await page.goto(url, { waitUntil: "commit" });
+  await waitForApp(page);
+}
+
+async function reloadReady(page) {
+  const currentUrl = page.url();
+  await page.goto("about:blank", { waitUntil: "commit" });
+  await page.goto(currentUrl, { waitUntil: "commit" });
+  await waitForApp(page);
+}
+
 async function uiLogin(browser, accountData, expectedRole, contextOptions = {}) {
   // Authentication and authorization are the subject of this suite. Keep the
   // service-worker lifecycle in its dedicated smoke tests so a worker install
   // or cache shutdown cannot retain a multi-tab auth context indefinitely.
   const context = await browser.newContext({ locale: "vi-VN", ...contextOptions });
   const page = await context.newPage();
-  await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/dang-nhap`);
   await page.locator("#login-username").fill(accountData.username);
   await page.locator("#login-password").fill(password);
   const loginResponsePromise = page.waitForResponse(
@@ -211,8 +225,7 @@ try {
   const protectedResponse = await unauthenticated.request.get(`${baseURL}/api/get-all-data?since=0`);
   assert([401, 403].includes(protectedResponse.status()), `Protected API returned ${protectedResponse.status()} without a session`);
   const protectedPage = await unauthenticated.newPage();
-  await protectedPage.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(protectedPage);
+  await gotoReady(protectedPage, `${baseURL}/goi-thau`);
   assert(await protectedPage.locator("#auth-overlay").isVisible(), "Protected route did not show the auth overlay");
   await unauthenticated.close();
   mark("protected-route-and-api-denied");
@@ -251,17 +264,17 @@ try {
     }, { timeout: 10_000 });
     assert(await page.locator(`#${allowedId}`).isVisible() === allowedVisible, `${role}: wrong allowed-menu visibility`);
     assert(await page.locator(`#${deniedId}`).isVisible() === deniedVisible, `${role}: wrong denied-menu visibility`);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await waitForApp(page);
+    await reloadReady(page);
     await page.locator("#auth-overlay").waitFor({ state: "hidden" });
     const secondTab = await context.newPage();
-    await secondTab.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
-    await waitForApp(secondTab);
+    await gotoReady(secondTab, `${baseURL}/goi-thau`);
     assert(!await secondTab.locator("#auth-overlay").isVisible(), `${role}: session did not work in a second tab`);
-    await secondTab.goto(`${baseURL}/hop-dong`, { waitUntil: "domcontentloaded" });
-    await secondTab.goBack({ waitUntil: "domcontentloaded" });
+    await gotoReady(secondTab, `${baseURL}/hop-dong`);
+    await secondTab.goBack({ waitUntil: "commit" });
+    await waitForApp(secondTab);
     assert(new URL(secondTab.url()).pathname === "/goi-thau", `${role}: Back did not restore route`);
-    await secondTab.goForward({ waitUntil: "domcontentloaded" });
+    await secondTab.goForward({ waitUntil: "commit" });
+    await waitForApp(secondTab);
     assert(new URL(secondTab.url()).pathname === "/hop-dong", `${role}: Forward did not restore route`);
     if (key === "superadmin") {
       let releaseRoleSync;
@@ -319,8 +332,7 @@ try {
   mark("role-menus-reload-back-forward-multitab");
 
   const adminUi = await uiLogin(browser, accounts.manager, "manager");
-  await adminUi.page.goto(`${baseURL}/nhan-su`, { waitUntil: "domcontentloaded" });
-  await waitForApp(adminUi.page);
+  await gotoReady(adminUi.page, `${baseURL}/nhan-su`);
   await adminUi.page.locator("#manager-employees-tbody tr").filter({ hasText: accounts.employee.email })
     .waitFor({ state: "visible", timeout: 20_000 });
   let managedEmployeeRow = adminUi.page.locator("#manager-employees-tbody tr").filter({ hasText: accounts.left.email });
@@ -448,8 +460,7 @@ try {
     requestHeaders: candidate.request().headers(),
     body: await candidate.json().catch(() => ({})),
   })).catch(() => null);
-  await workspaceUi.page.reload({ waitUntil: "domcontentloaded" });
-  await waitForApp(workspaceUi.page);
+  await reloadReady(workspaceUi.page);
   await workspaceUi.page.locator("#auth-overlay").waitFor({ state: "hidden" });
   const workspaceRefreshEvidence = await workspaceRefreshRequest;
   const workspaceClientState = await workspaceUi.page.evaluate(() => ({
@@ -570,8 +581,7 @@ try {
     const url = new URL(candidate.url());
     return url.pathname === "/api/paginate" && url.searchParams.get("table") === "chuyengia" && candidate.ok();
   }, { timeout: 20_000 });
-  await xssPage.goto(`${baseURL}/chuyen-gia`, { waitUntil: "domcontentloaded" });
-  await waitForApp(xssPage);
+  await gotoReady(xssPage, `${baseURL}/chuyen-gia`);
   await xssPage.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
   await initialExpertPage;
   const searchedExpertPage = xssPage.waitForResponse((candidate) => {
@@ -823,8 +833,7 @@ try {
   assert(forgotKnown.response.ok() && forgotUnknown.response.ok(), "Forgot-password response failed");
   assert(forgotKnown.body.message === forgotUnknown.body.message, "Forgot password leaked account existence");
   const registerPage = await publicContext.newPage();
-  await registerPage.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
-  await waitForApp(registerPage);
+  await gotoReady(registerPage, `${baseURL}/dang-nhap`);
   await registerPage.locator("#btn-auth-brand-register").click();
   assert(await registerPage.locator("#form-auth-register .auth-legal-consent").isVisible(), "Registration did not show legal consent");
   await publicContext.close();

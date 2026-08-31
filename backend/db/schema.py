@@ -2753,7 +2753,7 @@ SCHEMA_DINH_NGHIA = {
             "parent_plan_revision_uuid": "TEXT",
             "id_detail": "TEXT",
             "aliases_json": "TEXT NOT NULL DEFAULT '{}' CHECK(length(aliases_json) <= 32768)",
-            "canonical_snapshot_json": "TEXT NOT NULL CHECK(length(canonical_snapshot_json) BETWEEN 2 AND 262144)",
+            "canonical_snapshot_json": "TEXT NOT NULL CHECK(length(canonical_snapshot_json) BETWEEN 2 AND 16777216)",
             "digest": "TEXT NOT NULL CHECK(length(digest) = 71 AND digest LIKE 'sha256:%')",
             "schema_version": "TEXT NOT NULL CHECK(trim(schema_version) != '')",
             "disposition": "TEXT NOT NULL CHECK(disposition IN ('APPLIED', 'OBSERVED_NOT_APPLIED', 'NOOP'))",

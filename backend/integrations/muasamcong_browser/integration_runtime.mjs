@@ -40,12 +40,12 @@ export class MscIntegrationRuntime {
       retries: Number(configuration.apiRetries) || 1,
       profileId: this.profileId,
       circuitMs: Number(configuration.apiCircuitMs) || 30_000,
-      maxConcurrency: Number(configuration.apiMaxConcurrency) || 6,
+      maxConcurrency: Number(configuration.apiMaxConcurrency) || 12,
       queueTimeoutMs: Number(configuration.apiQueueTimeoutMs) || 5_000,
     });
     this.collectors = new MscCollectors({
       client: this.client,
-      collectionConcurrency: Number(configuration.collectionConcurrency) || 4,
+      collectionConcurrency: Number(configuration.collectionConcurrency) || 12,
     });
     return { ready: true, profile: this.profileId, sessionProvider: "BrowserSessionV1" };
   }
@@ -92,6 +92,12 @@ export class MscIntegrationRuntime {
   async search(code, kind) {
     this._ready();
     return this.collectors.search(code, kind);
+  }
+
+  beginUserRetry() {
+    this._ready();
+    this.client.beginUserRetry();
+    return { ready: true };
   }
 
   async refreshSession() {

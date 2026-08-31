@@ -12,7 +12,9 @@ export function applyTrialCommercialPresentation(documentRef = document) {
   const nodes = [...documentRef.querySelectorAll("[data-commercial-only]")];
   nodes.forEach((node) => {
     node.hidden = true;
+    node.inert = true;
     node.setAttribute("aria-hidden", "true");
+    node.setAttribute("inert", "");
   });
   return nodes.length;
 }

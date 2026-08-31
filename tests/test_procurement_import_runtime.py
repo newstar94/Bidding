@@ -43,6 +43,18 @@ def test_runtime_resolves_shared_lookup_connector_and_timeout_from_one_seam():
     assert _build(environment) == "muasamcong"
 
 
+def test_default_request_timeout_covers_the_connectors_declared_cold_retry_budget():
+    environment = {}
+    session_timeout = 55
+    api_timeout = 15
+    api_attempts = 2
+    response_margin = 5
+
+    assert procurement_source_timeout_seconds(environment) >= (
+        session_timeout + api_timeout * api_attempts + response_margin
+    )
+
+
 def test_runtime_preserves_fixture_and_disabled_provider_error_contracts():
     fixture_environment = {
         "PROCUREMENT_IMPORT_ENABLED": "true",

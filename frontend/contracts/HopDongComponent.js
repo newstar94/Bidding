@@ -17,6 +17,13 @@ import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
+
+export function canMutateDisplayedContractVersion(displayed, authoritative) {
+  if (!displayed) return false;
+  if (Number(displayed.isLatest) === 1) return true;
+  return displayed.isLatest == null
+    && String(displayed.id || "") === String(authoritative?.id || "");
+}
 export async function renderHopDongTable() {
   const tablePerf = beginTablePerf("hopdong", "hopdong");
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
@@ -119,7 +126,9 @@ export async function renderHopDongTable() {
         deleteCommand: "delete-contract",
         allowDelete: this.model.state.activerole !== "employee"
       }));
-      const actionHtml = renderEntityActions(contractActions, { visible: displayedHd.id === h.id });
+      const actionHtml = renderEntityActions(contractActions, {
+        visible: canMutateDisplayedContractVersion(displayedHd, h),
+      });
       const assigneeLabels = assigneeLabelsForTarget(this.model, displayedHd.id, "hopdong");
       return `
                 <tr>

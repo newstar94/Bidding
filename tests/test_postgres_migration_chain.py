@@ -371,6 +371,60 @@ def test_real_postgres_v1_chain_reaches_latest_catalog_and_preserves_data():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_latest_schema_preserves_large_procurement_revision_snapshot():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        assert apply_database_upgrades(
+            cursor, 1, _upgrade_context()
+        ) == DB_SCHEMA_VERSION
+        snapshot = json.dumps(
+            {
+                "revisionNumber": "02",
+                "packages": [
+                    {
+                        "symbol": "BP-LARGE",
+                        "goodsItems": [
+                            {
+                                "name": f"Hàng hóa {index}",
+                                "description": "x" * 2048,
+                            }
+                            for index in range(300)
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+        assert len(snapshot) > 262_144
+
+        cursor.execute(
+            """INSERT INTO procurement_source_revision (
+                   id, organization_id, provider, entity_kind, family_key,
+                   revision_uuid, revision_no, canonical_snapshot_json, digest,
+                   schema_version, disposition, local_entity_type,
+                   local_root_id, local_snapshot_id, idempotency_key)
+               VALUES (?, 'fixture-org', 'MUASAMCONG', 'PLAN', 'PL-LARGE',
+                       'revision-large', '02', ?, ?,
+                       'biddingflow-procurement-canonical-v1', 'APPLIED',
+                       'kehoach', 'fixture-plan', 'fixture-plan', ?)""",
+            (
+                "large-procurement-revision",
+                snapshot,
+                f"sha256:{sha256(snapshot.encode('utf-8')).hexdigest()}",
+                "large-procurement-revision-idempotency",
+            ),
+        )
+
+        stored_length = cursor.execute(
+            """SELECT length(canonical_snapshot_json)
+                 FROM procurement_source_revision
+                WHERE id = 'large-procurement-revision'"""
+        ).fetchone()[0]
+        assert stored_length == len(snapshot)
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_fresh_catalog_keeps_only_constraint_backed_audit_successor_index(
     monkeypatch,
 ):
