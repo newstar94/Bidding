@@ -154,8 +154,10 @@ test("lifecycle E2E does not accumulate Windows headless GPU state", () => {
 
   assert.match(
     source,
-    /args: \[[\s\S]*"--disable-gpu"[\s\S]*"--disable-gpu-compositing"[\s\S]*"--disable-software-rasterizer"[\s\S]*\]/u,
+    /args: \[[\s\S]*"--disable-gpu"[\s\S]*"--no-proxy-server"[\s\S]*\]/u,
   );
+  assert.doesNotMatch(source, /"--disable-software-rasterizer"/u);
+  assert.doesNotMatch(source, /"--disable-gpu-compositing"/u);
   assert.doesNotMatch(source, /"--in-process-gpu"/u);
 });
 
@@ -168,7 +170,7 @@ test("lifecycle E2E does not inherit an intercepting host proxy", () => {
   assert.match(source, /"--no-proxy-server"/u);
 });
 
-test("lifecycle E2E renews its long-lived browser between persisted workflow phases", () => {
+test("lifecycle E2E renews contexts and restarts Chromium before its longest late phase", () => {
   const source = fs.readFileSync(
     path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
     "utf8",
@@ -177,9 +179,34 @@ test("lifecycle E2E renews its long-lived browser between persisted workflow pha
   assert.match(source, /async function renewBrowserSession\(/u);
   assert.match(
     source,
-    /mark\("supplied-excel-goods-imported"[\s\S]*await renewBrowserSession\(\)/u,
+    /async function renewBrowserSession[\s\S]*previousContext\.close\(\)[\s\S]*openBrowserSession\(storageState\)/u,
+  );
+  assert.match(
+    source,
+    /async function restartBrowserSession[\s\S]*previousServer\.process\(\)\.kill\(\)[\s\S]*openBrowserSession\(storageState\)/u,
+  );
+  assert.match(
+    source,
+    /mark\("supplied-excel-goods-imported"[\s\S]*await restartBrowserSession\(\)/u,
+  );
+  for (const boundary of [
+    "award-persisted",
+    "contract-persisted",
+    "two-envelope-technical-evaluation-saved",
+    "two-envelope-award-approved",
+    "lot-second-batch-approved",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(`mark\\("${boundary}"[\\s\\S]*?await restartBrowserSession\\(\\)`, "u"),
+    );
+  }
+  assert.match(
+    source,
+    /suffix: "GT-CANCEL"[\s\S]*await restartBrowserSession\(\);[\s\S]*suffix: "GT-EXCEL-1I"/u,
   );
   assert.match(source, /serviceWorkers: "block"/u);
+  assert.match(source, /page\.setDefaultNavigationTimeout\(20_000\)/u);
 });
 
 test("lifecycle E2E waits for visible-content enhancement before rerendering invitation", () => {
@@ -193,6 +220,11 @@ test("lifecycle E2E waits for visible-content enhancement before rerendering inv
     source,
     /page\.waitForFunction\(predicate, argument, \{ polling: 100, \.\.\.options \}\)/u,
   );
+  assert.match(source, /const waitForVisibleRowText = async/u);
+  assert.match(
+    source,
+    /#chuyengia-table tbody tr", `Chuyên gia \$\{ordinal\} \$\{runId\}`/u,
+  );
   assert.match(
     source,
     /mark\("cancellable-opening-action-visible"\);[\s\S]*await waitForVisibleContentEnhancements\(page\);[\s\S]*#btn-luu-thongtinmoithau/u,
@@ -200,6 +232,10 @@ test("lifecycle E2E waits for visible-content enhancement before rerendering inv
   assert.match(
     source,
     /#btn-luu-thongtinmoithau"\)\.click\(\{ force: true, noWaitAfter: true \}\)/u,
+  );
+  assert.match(
+    source,
+    /#btn-them-giahan"\)\.press\("Enter", \{ noWaitAfter: true \}\)/u,
   );
   assert.doesNotMatch(source, /LifecycleDiagnosticMutationObserver/u);
   assert.match(
@@ -251,11 +287,11 @@ test("lifecycle E2E waits for opening acknowledgement before package cancellatio
   );
   assert.match(
     source,
-    /#btn-luu-thongtinmoithau"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*savedExtensionReason\.waitFor/u,
+    /#btn-luu-thongtinmoithau"\)\.press\("Enter", \{ noWaitAfter: true \}\)[\s\S]*savedExtensionReason\.waitFor/u,
   );
   assert.match(
     source,
-    /#btn-save-cancel-details"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*hasText: "Thành công"[\s\S]*#cancel-dec-no\[disabled\]/u,
+    /#btn-save-cancel-details"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*dialogTitle === "Thành công"[\s\S]*#cancel-dec-no\[disabled\]/u,
   );
 });
 

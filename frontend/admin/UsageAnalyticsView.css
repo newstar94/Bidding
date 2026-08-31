@@ -4,12 +4,15 @@
   --usage-accent-soft: var(--active-role-soft, var(--primary-soft));
   --usage-live: var(--success);
   --usage-peak: var(--usage-accent);
-  display: grid;
   width: 100%;
   max-width: 1440px;
   gap: var(--space-5);
   margin-inline: auto;
   padding-bottom: var(--space-8);
+}
+
+.usage-analytics.active {
+  display: grid;
 }
 
 .usage-analytics[hidden] {

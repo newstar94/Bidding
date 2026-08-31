@@ -327,3 +327,45 @@ test("usage analytics view loads the 30-day daily summary and renders responsive
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("usage analytics pane becomes hidden after navigating to another outer tab", async () => {
+  const [tabCss, analyticsCss] = await Promise.all([
+    readFile(join(root, "views/css/components.css"), "utf8"),
+    readFile(join(root, "frontend/admin/UsageAnalyticsView.css"), "utf8"),
+  ]);
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setContent(`
+      <main>
+        <section id="tab-usage-analytics" class="tab-pane usage-analytics active"></section>
+        <section id="tab-superadmin" class="tab-pane"></section>
+      </main>
+    `);
+    await page.addStyleTag({ content: tabCss });
+    await page.addStyleTag({ content: analyticsCss });
+
+    const result = await page.evaluate(() => {
+      const analyticsPane = document.getElementById("tab-usage-analytics");
+      const targetPane = document.getElementById("tab-superadmin");
+      analyticsPane.classList.remove("active");
+      targetPane.classList.add("active");
+      return {
+        analyticsActive: analyticsPane.classList.contains("active"),
+        analyticsDisplay: getComputedStyle(analyticsPane).display,
+        targetActive: targetPane.classList.contains("active"),
+        targetDisplay: getComputedStyle(targetPane).display,
+      };
+    });
+
+    assert.deepEqual(result, {
+      analyticsActive: false,
+      analyticsDisplay: "none",
+      targetActive: true,
+      targetDisplay: "block",
+    });
+  } finally {
+    await browser?.close();
+  }
+});
