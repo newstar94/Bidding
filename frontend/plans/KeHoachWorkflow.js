@@ -413,16 +413,24 @@ export async function editKeHoach(id, {
     setSectionAvailability(projectFields, isProject);
     if (projectCodeGroup) setRuntimeStyle(projectCodeGroup, "display", isProject ? "flex" : "none");
     document.getElementById("kh-maduan").disabled = !isProject;
-    document.getElementById("kh-maduan").required = isProject;
+    document.getElementById("kh-maduan").required = false;
     projectIdentityFields?.classList.toggle("is-budget", !isProject);
     if (projectNameLabel) {
-      projectNameLabel.firstChild.textContent = isProject
+      const fieldName = isProject
         ? "Tên dự án "
         : loaiHinhSelect.value === "Dự toán mua sắm"
           ? "Tên dự toán "
           : "Tên dự án/dự toán ";
+      projectNameLabel.textContent = fieldName;
+      if (isBudget) {
+        const marker = document.createElement("span");
+        marker.className = "required";
+        marker.textContent = "*";
+        projectNameLabel.append(marker);
+      }
     }
     if (projectNameInput) {
+      projectNameInput.required = isBudget;
       projectNameInput.placeholder = isProject
         ? "Ví dụ: Dự án Tăng cường Năng lực CNTT ngành Y tế"
         : "Ví dụ: Dự toán mua sắm thiết bị CNTT";

@@ -68,6 +68,39 @@ def test_project_approval_fields_are_optional_when_saving_project_plan():
     )
 
 
+def test_project_code_and_name_are_optional_when_saving_plan():
+    _item, errors, _ = validate_sync_item("ke_hoach_lcnt", {
+        "id": "plan-optional-project-identity",
+        "tenKeHoach": "Kế hoạch không gắn dự án",
+        "loaiHinhMuaSam": "Dự án",
+        "maDuan": "",
+        "tenDuAnDuToan": "",
+        "chuDauTuId": "investor-1",
+        "ngayPheDuyet": "2026-08-31",
+        "quyetDinhPheDuyet": "01/QĐ-KH",
+    })
+
+    assert not any(
+        label in str(error)
+        for error in errors
+        for label in ("Mã dự án", "Tên dự án/dự toán")
+    )
+
+
+def test_budget_name_remains_required_when_saving_budget_plan():
+    _item, errors, _ = validate_sync_item("ke_hoach_lcnt", {
+        "id": "plan-required-budget-name",
+        "tenKeHoach": "Kế hoạch dự toán",
+        "loaiHinhMuaSam": "Dự toán mua sắm",
+        "tenDuAnDuToan": "",
+        "chuDauTuId": "investor-1",
+        "ngayPheDuyet": "2026-08-31",
+        "quyetDinhPheDuyet": "01/QĐ-KH",
+    })
+
+    assert "Tên dự toán không được để trống." in errors
+
+
 def test_package_save_does_not_require_expert_or_appraisal_team_leaders():
     _item, errors, _ = validate_sync_item("goi_thau", {
         "toChuyenGia": [{

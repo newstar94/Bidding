@@ -1,18 +1,22 @@
 param(
-    [ValidateSet("smoke", "ui-quality", "performance", "auth-roles", "offline", "offline-soak", "websocket-missed-hint", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "first-tab-performance", "auth-roles", "offline", "offline-soak", "websocket-missed-hint", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
     [int]$Port = 8010
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$testLine = Get-Content (Join-Path $root ".env") |
-    Where-Object { $_ -match '^TEST_DATABASE_URL=' } |
-    Select-Object -First 1
-if (-not $testLine) {
-    throw "TEST_DATABASE_URL is required."
+$testUrl = [string]$env:TEST_DATABASE_URL
+if ([string]::IsNullOrWhiteSpace($testUrl)) {
+    $testLine = Get-Content (Join-Path $root ".env") |
+        Where-Object { $_ -match '^TEST_DATABASE_URL=' } |
+        Select-Object -First 1
+    if (-not $testLine) {
+        throw "TEST_DATABASE_URL is required."
+    }
+    $testUrl = ($testLine -replace '^TEST_DATABASE_URL=', '').Trim().Trim('"').Trim("'")
 }
-$testUrl = ($testLine -replace '^TEST_DATABASE_URL=', '').Trim().Trim('"').Trim("'")
+$testUrl = $testUrl.Trim()
 $baseUrl = "http://127.0.0.1:$Port"
 $env:DATABASE_URL = $testUrl
 $env:MIGRATOR_DATABASE_URL = $testUrl
@@ -52,6 +56,8 @@ $commands = if ($Suite -eq "smoke") {
     @("test:ui-quality-e2e")
 } elseif ($Suite -eq "performance") {
     @("test:performance")
+} elseif ($Suite -eq "first-tab-performance") {
+    @("test:first-tab-performance")
 } elseif ($Suite -eq "auth-roles") {
     @("test:auth-roles-e2e")
 } elseif ($Suite -eq "offline") {

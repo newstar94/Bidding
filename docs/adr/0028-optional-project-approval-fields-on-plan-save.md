@@ -17,7 +17,7 @@ mới hoặc lưu kế hoạch lựa chọn nhà thầu.
    bắt buộc khi tạo hoặc lưu kế hoạch loại Dự án.
 2. Form không hiển thị dấu bắt buộc và không dùng thuộc tính HTML `required` cho ba trường.
 3. Backend không sinh lỗi thiếu trường đối với ba trường này. Các validation không liên quan
-   và yêu cầu đối với Mã dự án vẫn giữ nguyên.
+   giữ nguyên. Yêu cầu cũ đối với Mã dự án sau đó được ADR 0035 thay thế.
 4. Nếu người dùng nhập giá trị, frontend vẫn gửi và backend vẫn lưu như trước; dữ liệu tiếp tục
    được hiển thị và cung cấp cho luồng xuất tài liệu hiện hữu.
 5. Không thay đổi role, module permission, assignment scope, record scope, entitlement,

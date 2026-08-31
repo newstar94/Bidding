@@ -425,6 +425,45 @@ def test_latest_schema_preserves_large_procurement_revision_snapshot():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
+def test_latest_schema_allows_plan_without_project_code_or_name():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(
+            cursor, 1, context, target_version=89,
+        ) == 89
+
+        assert apply_database_upgrades(cursor, 89, context) == DB_SCHEMA_VERSION
+
+        cursor.execute(
+            """INSERT INTO ke_hoach_lcnt (
+                   id, organization_id, ten_ke_hoach, ma_du_an,
+                   ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id,
+                   ngay_phe_duyet, quyet_dinh_phe_duyet)
+               VALUES ('fixture-optional-project', 'fixture-org',
+                       'Kế hoạch không gắn dự án', NULL, NULL, 'Dự án',
+                       'fixture-owner', '2026-08-31', '01/QĐ-KH')"""
+        )
+        assert tuple(cursor.execute(
+            """SELECT ma_du_an, ten_du_an_du_toan
+                 FROM ke_hoach_lcnt
+                WHERE id = 'fixture-optional-project'"""
+        ).fetchone()) == (None, None)
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            cursor.execute(
+                """INSERT INTO ke_hoach_lcnt (
+                       id, organization_id, ten_ke_hoach,
+                       ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id,
+                       ngay_phe_duyet, quyet_dinh_phe_duyet)
+                   VALUES ('fixture-budget-without-name', 'fixture-org',
+                           'Kế hoạch dự toán', NULL, 'Dự toán mua sắm',
+                           'fixture-owner', '2026-08-31', '02/QĐ-KH')"""
+            )
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
 def test_fresh_catalog_keeps_only_constraint_backed_audit_successor_index(
     monkeypatch,
 ):

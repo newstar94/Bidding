@@ -3737,6 +3737,35 @@ def _upgrade_to_v89_expand_procurement_revision_snapshot(cursor, _context):
     )
 
 
+def _upgrade_to_v90_make_plan_project_identity_optional(cursor, _context):
+    """Allow plans that are not yet linked to a project identity."""
+
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           DROP CONSTRAINT IF EXISTS
+           ke_hoach_lcnt_ten_du_an_du_toan_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           ALTER COLUMN ten_du_an_du_toan DROP NOT NULL"""
+    )
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           DROP CONSTRAINT IF EXISTS ke_hoach_lcnt_budget_name_check"""
+    )
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           ADD CONSTRAINT ke_hoach_lcnt_budget_name_check
+           CHECK (loai_hinh_mua_sam != 'Dự toán mua sắm'
+                  OR trim(COALESCE(ten_du_an_du_toan, '')) != '')
+           NOT VALID"""
+    )
+    cursor.execute(
+        """ALTER TABLE ke_hoach_lcnt
+           VALIDATE CONSTRAINT ke_hoach_lcnt_budget_name_check"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4174,6 +4203,11 @@ UPGRADES = (
         "expand_procurement_revision_snapshot",
         _upgrade_to_v89_expand_procurement_revision_snapshot,
     ),
+    DatabaseUpgrade(
+        90,
+        "make_plan_project_identity_optional",
+        _upgrade_to_v90_make_plan_project_identity_optional,
+    ),
 )
 
 
@@ -4192,6 +4226,8 @@ DB_SCHEMA_VERSION = (
 # V88 gives pre-release v84-v87 installations an append-only convergence path.
 # V89 preserves complete canonical procurement revisions up to the same 16 MiB
 # envelope already accepted by persistent procurement import sessions.
+# V90 makes plan project code and project/budget name optional without rewriting
+# any existing value.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

@@ -93,26 +93,41 @@ const excelFixtures = Object.fromEntries(Object.entries(configuredExcelFixtures)
 if (generatedExcelFixtures) {
   process.stdout.write(`[E2E] Generated CI Excel fixtures in ${generatedExcelFixtures.directory}\n`);
 }
-// The lifecycle suite exercises every major workflow in one browser session.
-// Chromium's Windows headless SwiftShader process can retain several gigabytes
-// across that sequence and eventually stop servicing the renderer even though
-// the application and HTTP server remain healthy. This suite does not test GPU
-// compositing, so keep its long-lived browser on the software-free DOM path.
+// The lifecycle suite exercises every major workflow through a small number of
+// browser sessions. Chromium's Windows headless renderer can retain several
+// gigabytes across the full sequence and eventually stop servicing Playwright
+// even though the application and HTTP server remain healthy. This suite does
+// not test GPU compositing, so keep it on the software-free DOM path and renew
+// the browser only at server-persisted workflow boundaries.
 const launchOptions = {
   headless: true,
-  args: ["--disable-gpu", "--disable-software-rasterizer"],
+  args: [
+    "--disable-gpu",
+    "--disable-gpu-compositing",
+    "--disable-software-rasterizer",
+    "--no-proxy-server",
+  ],
 };
-if (process.env.STARTUP_BROWSER_CHANNEL) launchOptions.channel = process.env.STARTUP_BROWSER_CHANNEL;
-const browser = await chromium.launch(launchOptions);
+if (process.env.E2E_BROWSER_CHANNEL || process.env.STARTUP_BROWSER_CHANNEL) {
+  launchOptions.channel = process.env.E2E_BROWSER_CHANNEL || process.env.STARTUP_BROWSER_CHANNEL;
+}
+let browser = null;
+let browserServer = null;
+let context = null;
+let page = null;
 
 const mark = (step, details = {}) => {
   result.steps.push({ step, ...details });
   process.stdout.write(`[E2E] ${step}\n`);
 };
 
+const waitForPageCondition = (page, predicate, argument = null, options = {}) => (
+  page.waitForFunction(predicate, argument, { polling: 100, ...options })
+);
+
 const waitForApp = async (page) => {
   try {
-    await page.waitForFunction(() => {
+    await waitForPageCondition(page, () => {
       const loader = document.getElementById("system-init-loader");
       return loader?.getAttribute("aria-busy") === "false"
         && getComputedStyle(loader).visibility === "hidden";
@@ -140,18 +155,120 @@ const waitForApp = async (page) => {
   }
 };
 
+async function openBrowserSession(storageState = undefined) {
+  browserServer = await chromium.launchServer(launchOptions);
+  browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
+  context = await browser.newContext({
+    locale: "vi-VN",
+    timezoneId: "Asia/Ho_Chi_Minh",
+    serviceWorkers: "block",
+    storageState,
+  });
+  page = await context.newPage();
+  page.setDefaultTimeout(20_000);
+  const blockInjectedScript = (route) => route.abort("blockedbyclient");
+  await page.route(
+    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
+    blockInjectedScript,
+  );
+  await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
+  await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
+  page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/")) return;
+    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
+    if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+  });
+  page.on("response", async (response) => {
+    if (response.url().includes("/api/")) {
+      recentApiTraffic.push(`<-${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
+      if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+    }
+    if (response.status() >= 400 && response.url().includes("/api/")
+      && !isExpectedTelemetryBackpressure(response)) {
+      let body = "";
+      try { body = await response.text(); } catch {}
+      if (isExpectedSyncReset(response, body)) return;
+      httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
+    }
+  });
+}
+
+async function renewBrowserSession() {
+  const storageState = await context.storageState({ indexedDB: true });
+  const oldServer = browserServer;
+  browser = null;
+  browserServer = null;
+  oldServer.process().kill();
+  await openBrowserSession(storageState);
+  mark("browser-session-renewed");
+}
+
 const waitForInitialReconciliation = async (page) => {
-  await page.waitForFunction(() => (
+  await waitForPageCondition(page, () => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
   ), null, { timeout: 20_000 });
 };
 
 const waitForRenderedWorkflowTab = async (page, tab) => {
-  await page.waitForFunction((expectedTab) => {
+  await waitForPageCondition(page, (expectedTab) => {
     const wrapper = document.getElementById("detail-workflow-content-wrapper");
     return wrapper?.dataset.renderedWorkflowTab === expectedTab
       && wrapper.dataset.renderedRenderVersion === wrapper.dataset.pendingRenderVersion;
   }, tab, { timeout: 20_000 });
+};
+
+const waitForVisibleContentEnhancements = async (page) => {
+  await waitForPageCondition(page, () => {
+    const wrapper = document.getElementById("detail-workflow-content-wrapper");
+    if (!wrapper) return false;
+    const paginatedTables = [...wrapper.querySelectorAll('table[data-row-pagination="true"]')];
+    return paginatedTables.length === 3
+      && paginatedTables.every((table) => table.__bfRowPaginationContainer?.isConnected);
+  }, null, { timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => {
+      const wrapper = document.getElementById("detail-workflow-content-wrapper");
+      return {
+        enhanceFramePending: Boolean(globalThis.app?.view?._enhanceFrame),
+        renderedTab: wrapper?.dataset.renderedWorkflowTab || "",
+        tables: [...(wrapper?.querySelectorAll('table[data-row-pagination="true"]') || [])]
+          .map((table) => ({
+            id: table.id,
+            rowCount: table.tBodies?.[0]?.rows?.length || 0,
+            paginationConnected: Boolean(table.__bfRowPaginationContainer?.isConnected),
+          })),
+      };
+    }).catch(() => ({ rendererUnresponsive: true }));
+    throw new Error(`Visible content enhancements did not settle: ${JSON.stringify({ state, pageErrors: pageErrors.slice(-8) })}`, { cause: error });
+  });
+};
+
+const gotoReady = async (page, url) => {
+  if (page.url() !== "about:blank") {
+    await page.goto("about:blank", { waitUntil: "commit" });
+  }
+  const response = await page.goto(url, { waitUntil: "commit" });
+  if (!response?.ok()) {
+    throw new Error(`${url} returned HTTP ${response?.status() || "unknown"}`);
+  }
+  await waitForApp(page);
+  return response;
+};
+
+const reloadReady = async (page) => {
+  const currentUrl = page.url();
+  await gotoReady(page, currentUrl);
+};
+
+const openPackageWorkflow = async (title, tab = null) => {
+  await gotoReady(page, `${baseURL}/goi-thau`);
+  await waitForApp(page);
+  await page.locator("#search-goithau").fill(title);
+  await page.getByText(title, { exact: true }).click();
+  if (tab) {
+    await page.locator(`button[data-workflow-tab="${tab}"]`).click();
+    await waitForRenderedWorkflowTab(page, tab);
+  }
 };
 
 const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
@@ -160,9 +277,7 @@ const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
   if (currentPath === targetPath) {
     await waitForApp(page);
   } else {
-    const response = await page.goto(`${baseURL}${route}`, { waitUntil: "domcontentloaded" });
-    if (!response?.ok()) throw new Error(`${route} returned HTTP ${response?.status() || "unknown"}`);
-    await waitForApp(page);
+    await gotoReady(page, `${baseURL}${route}`);
   }
   await waitForInitialReconciliation(page);
   await page.locator(buttonSelector).click();
@@ -170,7 +285,10 @@ const openCreateModal = async (page, route, buttonSelector, modalSelector) => {
 };
 
 const submitModal = async (page, formSelector, modalSelector, { diagnostics = null } = {}) => {
-  await page.locator(`${formSelector} button[type='submit']`).click();
+  await page.locator(`${formSelector} button[type='submit']`).click({
+    force: true,
+    noWaitAfter: true,
+  });
   try {
     await page.locator(`${modalSelector}.active`).waitFor({ state: "hidden", timeout: 15_000 });
   } catch (error) {
@@ -224,11 +342,14 @@ const submitModal = async (page, formSelector, modalSelector, { diagnostics = nu
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
 
+const ensureSelectedValue = async (page, selector, value) => {
+  const control = page.locator(selector);
+  if (await control.inputValue() === value) return;
+  await control.selectOption({ value }, { force: true });
+};
+
 const waitForOpeningSaveCompletion = async (page) => {
-  await page.waitForFunction(() => (
-    document.getElementById("btn-mothau-save")?.dataset.openingSaveBusy === "1"
-  ), null, { timeout: 5_000 });
-  await page.waitForFunction(() => {
+  await waitForPageCondition(page, () => {
     const button = document.getElementById("btn-mothau-save");
     return !button || (button.dataset.openingSaveBusy !== "1" && !button.disabled);
   }, null, { timeout: 20_000 }).catch(async (error) => {
@@ -266,7 +387,7 @@ const waitForOpeningSaveCompletion = async (page) => {
 
   const selectFirstAddress = async (page, provinceSelector, wardSelector) => {
   await select(page, provinceSelector, { index: 1 });
-  await page.waitForFunction((selector) => {
+  await waitForPageCondition(page, (selector) => {
     const ward = document.querySelector(selector);
     return ward && !ward.disabled && ward.options.length > 1;
   }, wardSelector, { timeout: 10_000 });
@@ -274,37 +395,9 @@ const waitForOpeningSaveCompletion = async (page) => {
 };
 
 try {
-  const page = await browser.newPage({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
-  page.setDefaultTimeout(20_000);
-  const blockInjectedScript = (route) => route.abort("blockedbyclient");
-  await page.route(
-    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
-    blockInjectedScript,
-  );
-  await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
-  await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
-  page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
-  page.on("request", (request) => {
-    if (!request.url().includes("/api/")) return;
-    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
-    if (recentApiTraffic.length > 30) recentApiTraffic.shift();
-  });
-  page.on("response", async (response) => {
-    if (response.url().includes("/api/")) {
-      recentApiTraffic.push(`<-${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
-      if (recentApiTraffic.length > 30) recentApiTraffic.shift();
-    }
-    if (response.status() >= 400 && response.url().includes("/api/")
-      && !isExpectedTelemetryBackpressure(response)) {
-      let body = "";
-      try { body = await response.text(); } catch {}
-      if (isExpectedSyncReset(response, body)) return;
-      httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
-    }
-  });
+  await openBrowserSession();
 
-  await page.goto(`${baseURL}/dang-nhap`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
+  await gotoReady(page, `${baseURL}/dang-nhap`);
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
@@ -327,6 +420,7 @@ try {
   await page.locator("#search-chudautu").fill(`Chủ đầu tư ${runId}`);
   await page.getByText(`Chủ đầu tư ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("owner-created");
+  await renewBrowserSession();
 
   await openCreateModal(page, "/nha-thau", "#btn-add-nhathau", "#modal-nhathau");
   await page.locator("#nt-ma").fill(`${runId}-NT`);
@@ -343,6 +437,7 @@ try {
   await page.locator("#search-nhathau").fill(`Nhà thầu ${runId}`);
   await page.getByText(`Nhà thầu ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("contractor-created");
+  await renewBrowserSession();
 
   const createExpert = async (ordinal) => {
     await openCreateModal(page, "/chuyen-gia", "#btn-add-chuyengia", "#modal-chuyengia");
@@ -362,6 +457,7 @@ try {
   await createExpert(1);
   await createExpert(2);
   mark("experts-created", { count: 2 });
+  await renewBrowserSession();
 
   await openCreateModal(page, "/ke-hoach", "#btn-add-kehoach", "#modal-kehoach");
   await page.locator("#kh-ma").fill(`${runId}-KH`);
@@ -383,6 +479,7 @@ try {
   await page.locator("#search-kehoach").fill(`Kế hoạch ${runId}`);
   await page.getByText(`Kế hoạch ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("plan-created");
+  await renewBrowserSession();
 
   await openCreateModal(page, "/goi-thau", "#btn-add-goithau", "#modal-goithau");
   await page.locator("#gt-ma").fill(`${runId}-GT`);
@@ -405,10 +502,8 @@ try {
   await page.locator("#search-goithau").fill(`Gói hàng hóa ${runId}`);
   await page.getByText(`Gói hàng hóa ${runId}`, { exact: true }).waitFor({ state: "visible" });
   mark("package-created");
-
-  await page.getByText(`Gói hàng hóa ${runId}`, { exact: true }).click();
-  await page.locator('button[data-workflow-tab="goods"]').waitFor({ state: "visible", timeout: 10_000 });
-  await page.locator('button[data-workflow-tab="goods"]').click();
+  await renewBrowserSession();
+  await openPackageWorkflow(`Gói hàng hóa ${runId}`, "goods");
   await page.locator("#btn-package-goods-add").click();
   const goodsRow = page.locator("[data-inline-create-row]");
   await goodsRow.waitFor({ state: "visible", timeout: 10_000 });
@@ -419,13 +514,13 @@ try {
   await page.getByText(`Hàng hóa kiểm thử ${runId}`, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("goods-created");
 
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await reloadReady(page);
   await waitForApp(page);
   await page.locator('button[data-workflow-tab="goods"]').click();
   await page.getByText(`Hàng hóa kiểm thử ${runId}`, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("goods-persisted");
-
-  await page.locator('button[data-workflow-tab="preparation_action"]').click();
+  await renewBrowserSession();
+  await openPackageWorkflow(`Gói hàng hóa ${runId}`, "preparation_action");
   await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click({ timeout: 10_000 });
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 }).catch(async (error) => {
     const browserState = await page.evaluate(() => ({
@@ -496,7 +591,8 @@ try {
     })}; ${error.message}`);
   });
   mark("tender-published");
-
+  await renewBrowserSession();
+  await openPackageWorkflow(`Gói hàng hóa ${runId}`, "opening");
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#modal-custom-dialog.active #dialog-prompt-input").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-7, "10:00"));
@@ -529,8 +625,8 @@ try {
     throw new Error(`Opening did not advance: ${JSON.stringify(state)}; ${error.message}`);
   });
   await openingSaveCompletion;
-  await page.locator('button[data-workflow-tab="eval_tech"]').click();
-  await waitForRenderedWorkflowTab(page, "eval_tech");
+  await renewBrowserSession();
+  await openPackageWorkflow(`Gói hàng hóa ${runId}`, "eval_tech");
   // The tab click owns an asynchronous detail render.  Wait for the rendered
   // evaluation seam before writing fields so a late render cannot replace the
   // user's inputs with the initial empty projection.
@@ -585,9 +681,9 @@ try {
     }));
     throw new Error(`Evaluation did not advance: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
   });
-  await page.locator('button[data-workflow-tab="result"]').click();
-  await waitForRenderedWorkflowTab(page, "result");
   mark("evaluation-saved");
+  await renewBrowserSession();
+  await openPackageWorkflow(`Gói hàng hóa ${runId}`, "result");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-KQ`);
   mark("award-appraisal-number-filled");
@@ -633,7 +729,7 @@ try {
   });
   mark("award-approved");
 
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await reloadReady(page);
   await waitForApp(page);
   await page.locator('button[data-workflow-tab="result"]').click();
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 15_000 });
@@ -653,33 +749,54 @@ try {
   mark("contract-basics-filled");
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
   mark("contract-owner-selected");
+  process.stdout.write("[DEBUG-contract-create] contractor\n");
   await select(page, "#hd-nhathauid", { label: `Nhà thầu ${runId}` });
+  process.stdout.write("[DEBUG-contract-create] value\n");
   await page.locator("#hd-giatri").fill("772200000");
+  process.stdout.write("[DEBUG-contract-create] type\n");
   await select(page, "#hd-loai", { label: "Trọn gói" });
+  process.stdout.write("[DEBUG-contract-create] classification\n");
   await select(page, "#hd-phanloai", { label: "Khác" });
+  process.stdout.write("[DEBUG-contract-create] duration\n");
   await page.locator("#hd-songay").fill("90 ngày");
+  process.stdout.write("[DEBUG-contract-create] plan\n");
   await select(page, "#hd-kehoachid", { label: `Kế hoạch ${runId}` });
+  process.stdout.write("[DEBUG-contract-create] package\n");
   await page.locator('input[name="hd-goithau-checkbox"]').check();
+  process.stdout.write("[DEBUG-contract-create] assignee\n");
   await select(page, "#hd-nhanvienphutrach", { index: 1 });
+  process.stdout.write("[DEBUG-contract-create] status\n");
   await select(page, "#hd-trangthai-hopdong", { label: "Đang thực hiện" });
+  process.stdout.write("[DEBUG-contract-create] submit\n");
   await submitModal(page, "#form-hopdong", "#modal-hopdong", {
     diagnostics: "contract create",
   });
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-  const contractRow = page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng ${runId}` });
-  await contractRow.waitFor({ state: "visible", timeout: 15_000 });
-  await contractRow.getByText("Đang thực hiện", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+  const contractRow = () => page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng ${runId}` });
+  await contractRow().waitFor({ state: "visible", timeout: 15_000 });
+  await contractRow().getByText("Đang thực hiện", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("contract-created");
 
   const advanceContractStatus = async (status, liquidationDate = "") => {
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:search\n`);
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-    await contractRow.waitFor({ state: "visible", timeout: 15_000 });
-    await contractRow.locator('[data-bf-action="edit-contract"]').click();
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:row\n`);
+    await contractRow().waitFor({ state: "visible", timeout: 15_000 });
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:edit\n`);
+    await contractRow().locator('[data-bf-action="edit-contract"]').click();
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:modal\n`);
     await page.locator("#modal-hopdong.active").waitFor({ state: "visible", timeout: 10_000 });
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:select\n`);
     await select(page, "#hd-trangthai-hopdong", { label: status });
     if (liquidationDate) await page.locator("#hd-ngaythanhly").fill(liquidationDate);
-    await page.locator("#form-hopdong button[type='submit']").click();
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:submit\n`);
+    await page.locator("#form-hopdong button[type='submit']").click({
+      force: true,
+      noWaitAfter: true,
+    });
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:confirm\n`);
     await confirmDialog(page);
+    process.stdout.write(`[DEBUG-contract-stage] ${status}:close\n`);
     try {
       await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
     } catch (error) {
@@ -715,19 +832,22 @@ try {
       throw new Error(`Contract status modal did not close: ${JSON.stringify({ diagnostics, recentApiTraffic: recentApiTraffic.slice(-20), httpErrors: httpErrors.slice(-8), pageErrors: pageErrors.slice(-8) })}`, { cause: error });
     }
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-    await contractRow.getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+    await contractRow().getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   };
   await advanceContractStatus("Đã hoàn thành");
   mark("contract-completed");
+  await renewBrowserSession();
+  await gotoReady(page, `${baseURL}/hop-dong`);
   await advanceContractStatus("Đã thanh lý", testClock.date(6));
   mark("contract-liquidated");
 
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await reloadReady(page);
   await waitForApp(page);
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-  await contractRow.waitFor({ state: "visible", timeout: 15_000 });
-  await contractRow.getByText("Đã thanh lý", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+  await contractRow().waitFor({ state: "visible", timeout: 15_000 });
+  await contractRow().getByText("Đã thanh lý", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("contract-persisted");
+  await renewBrowserSession();
 
   const createAdditionalPackage = async ({ suffix, title, method, lots = [] }) => {
     await openCreateModal(page, "/goi-thau", "#btn-add-goithau", "#modal-goithau");
@@ -751,7 +871,7 @@ try {
         // Re-check each row's rendered visibility instead of trusting a locator
         // snapshot captured while the pagination update is still in flight.
         const editableRows = page.locator("#phanlo-tbody tr:has(.pl-code-input)");
-        await page.waitForFunction(() => [...document.querySelectorAll("#phanlo-tbody tr")]
+        await waitForPageCondition(page, () => [...document.querySelectorAll("#phanlo-tbody tr")]
           .some((row) => !row.hidden && Boolean(row.querySelector(".pl-code-input"))), null, { timeout: 10_000 });
         const editableRowCount = await editableRows.count();
         let filledOnCurrentPage = 0;
@@ -780,7 +900,7 @@ try {
           throw new Error(`Package-lot pagination ended after ${lotIndex} of ${lots.length} lots.`);
         }
         await nextPage.click();
-        await page.waitForFunction(({ tableId: expectedTableId, currentPage: expectedCurrentPage }) => {
+        await waitForPageCondition(page, ({ tableId: expectedTableId, currentPage: expectedCurrentPage }) => {
           const paginationNav = [...document.querySelectorAll("nav[data-table-pagination-for]")]
             .find((nav) => nav.dataset.tablePaginationFor === expectedTableId);
           return paginationNav?.querySelector("[aria-current='page']")?.getAttribute("data-table-page") !== expectedCurrentPage;
@@ -835,9 +955,10 @@ try {
     lots: [{ code: "PL1", name: "Lô 1", price: 250_000_000 }],
   });
   mark("advanced-packages-created", { count: 5 });
+  await renewBrowserSession();
 
   const importPackageGoods = async (packageTitle, filePath) => {
-    await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+    await gotoReady(page, `${baseURL}/goi-thau`);
     await waitForApp(page);
     await page.locator("#search-goithau").fill(packageTitle);
     await page.getByText(packageTitle, { exact: true }).click();
@@ -860,12 +981,12 @@ try {
       throw new Error(`Invalid goods preview for ${filePath}: ${JSON.stringify({ previewCount: preview.length, invalid })}`);
     }
     await page.locator("#btn-package-goods-import-save").click();
-    await page.waitForFunction((before) => {
+    await waitForPageCondition(page, (before) => {
       const text = document.querySelector(".package-goods-summary")?.textContent || "";
       return Number.parseInt(text.replace(/\D/g, ""), 10) > before;
     }, previousCount, { timeout: 20_000 });
     const savedCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10);
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await reloadReady(page);
     await waitForApp(page);
     await page.locator('button[data-workflow-tab="goods"]').click();
     const persistedCount = Number.parseInt((await page.locator(".package-goods-summary").innerText()).replace(/\D/g, ""), 10);
@@ -874,21 +995,27 @@ try {
   };
 
   const noLotImported = await importPackageGoods(twoEnvelopePackage, excelFixtures.noLot);
+  await renewBrowserSession();
   const oneLotOneItemImported = await importPackageGoods(oneItemLotsExcelPackage, excelFixtures.oneLotOneItem);
+  await renewBrowserSession();
   const oneLotManyItemsImported = await importPackageGoods(manyItemsLotsExcelPackage, excelFixtures.oneLotManyItems);
   mark("supplied-excel-goods-imported", {
     noLotImported,
     oneLotOneItemImported,
     oneLotManyItemsImported,
   });
+  await renewBrowserSession();
 
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+  await gotoReady(page, `${baseURL}/goi-thau`);
+  mark("cancellable-list-ready");
   await waitForApp(page);
   await page.locator("#search-goithau").fill(cancellablePackage);
   await page.getByText(cancellablePackage, { exact: true }).click();
+  mark("cancellable-package-opened");
   await page.locator('button[data-workflow-tab="preparation_action"]').click();
   await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click();
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
+  mark("cancellable-publication-modal-opened");
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT-CANCEL`);
   await page.locator("#phathanh-sototrinh").fill(`${runId}/TTR-HUY`);
   await page.locator("#phathanh-ngaytrinh").fill(testClock.date(-11));
@@ -900,20 +1027,39 @@ try {
   await page.locator("#phathanh-giatribaomothau").fill("5000000");
   await page.locator("#phathanh-hieuluchsdt").fill("90");
   await page.locator("#btn-confirm-phathanh").click();
+  mark("cancellable-publication-confirm-opened");
   await confirmDialog(page);
+  mark("cancellable-publication-confirmed");
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "hidden", timeout: 15_000 });
+  mark("cancellable-publication-modal-closed");
   await page.locator('button[data-fn="moThauGoiThau"]').waitFor({ state: "visible", timeout: 15_000 });
+  mark("cancellable-opening-action-visible");
+  await waitForVisibleContentEnhancements(page);
+  mark("cancellable-invitation-enhanced");
 
   const invitationRoot = page.locator("#detail-workflow-content-wrapper");
-  await page.locator("#btn-luu-thongtinmoithau").click();
+  await page.locator("#btn-luu-thongtinmoithau").click({ force: true, noWaitAfter: true });
+  mark("cancellable-invitation-edit-requested");
   await invitationRoot.locator("#btn-them-giahan").waitFor({ state: "visible", timeout: 10_000 });
+  mark("cancellable-invitation-edit-ready");
   await invitationRoot.locator("#btn-them-giahan").click();
   const extensionRow = invitationRoot.locator("#gt-giahan-tbody tr").last();
   await extensionRow.locator(".gh-time-input").fill(testClock.dateTime(-5, "09:00"));
-  await extensionRow.locator(".gh-reason-input").fill("Gia hạn để nhà thầu hoàn thiện hồ sơ dự thầu");
-  await page.locator("#btn-luu-thongtinmoithau").click();
-  await invitationRoot.locator("#btn-them-giahan").waitFor({ state: "hidden", timeout: 15_000 });
-  const savedExtensionReason = invitationRoot.locator("#gt-giahan-tbody .gh-reason-input").last();
+  const extensionReason = "Gia hạn để nhà thầu hoàn thiện hồ sơ dự thầu";
+  await extensionRow.locator(".gh-reason-input").fill(extensionReason);
+  await page.locator("#btn-luu-thongtinmoithau").click({ force: true, noWaitAfter: true });
+  await page.locator("#btn-luu-thongtinmoithau")
+    .filter({ hasText: "Chỉnh sửa" })
+    .waitFor({ state: "visible", timeout: 20_000 });
+  const renderedExtensionReason = page.locator("#gt-giahan-tbody .gh-reason-input").last();
+  await renderedExtensionReason.waitFor({ state: "visible", timeout: 20_000 });
+  if (await renderedExtensionReason.inputValue() !== extensionReason) {
+    throw new Error("Invitation extension reason was not rendered after save.");
+  }
+  mark("invitation-extended");
+  await renewBrowserSession();
+  await openPackageWorkflow(cancellablePackage, "opening");
+  const savedExtensionReason = page.locator("#gt-giahan-tbody .gh-reason-input").last();
   try {
     await savedExtensionReason.waitFor({ state: "visible", timeout: 15_000 });
   } catch (error) {
@@ -930,17 +1076,34 @@ try {
     }));
     throw new Error(`Invitation extension was not rendered after save: ${JSON.stringify(diagnostics)}`, { cause: error });
   }
-  if (await savedExtensionReason.inputValue() !== "Gia hạn để nhà thầu hoàn thiện hồ sơ dự thầu") {
+  if (await savedExtensionReason.inputValue() !== extensionReason) {
     throw new Error("Invitation extension reason was not persisted.");
   }
-  mark("invitation-extended");
-
+  await waitForRenderedWorkflowTab(page, "opening");
   await page.locator('button[data-fn="moThauGoiThau"]').click();
   await page.locator("#modal-custom-dialog.active #dialog-prompt-input").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-5, "10:00"));
+  const cancelOpeningSync = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/sync"
+      && response.ok()
+  ), { timeout: 20_000 });
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-  await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+  await cancelOpeningSync;
+  await renewBrowserSession();
+  await openPackageWorkflow(cancellablePackage, "opening");
+  await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 }).catch(async (error) => {
+    const state = await page.evaluate((title) => ({
+      package: (globalThis.app?.model?.state?.goithau || [])
+        .filter((item) => item.tenGoiThau === title)
+        .map((item) => ({ id: item.id, status: item.trangThai, openingTime: item.thoiGianMoThau, closingTime: item.thoiGianDongThau, rowVersion: item.rowVersion })),
+      activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")?.getAttribute("data-workflow-tab") || "",
+      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
+      content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 800) || "",
+    }), cancellablePackage);
+    throw new Error(`Cancelled-package opening panel did not render: ${JSON.stringify(state)}`, { cause: error });
+  });
   await waitForRenderedWorkflowTab(page, "opening");
   const cancelOpeningRow = page.locator("#mothau-table-tbody tr").first();
   await cancelOpeningRow.locator(".mt-ma-nha-thau").fill(`${runId}-NT`);
@@ -1004,11 +1167,17 @@ try {
   await page.locator("#cancel-dec-no").fill(`${runId}/QD-HUY`);
   await page.locator("#cancel-dec-date").fill(testClock.date(-4));
   await page.locator("#cancel-reason").fill("Thay đổi nhu cầu mua sắm theo quyết định của chủ đầu tư");
-  await page.locator("#btn-save-cancel-details").click();
+  await page.locator("#btn-save-cancel-details").click({ force: true, noWaitAfter: true });
+  await page.locator("#modal-custom-dialog.active #dialog-title", { hasText: "Thành công" })
+    .waitFor({ state: "visible", timeout: 20_000 });
+  await confirmDialog(page);
+  await page.locator("#cancel-dec-no[disabled]").waitFor({ state: "visible", timeout: 20_000 });
+  await renewBrowserSession();
+  await openPackageWorkflow(cancellablePackage, "cancel");
   await page.locator("#cancel-dec-no[disabled]").waitFor({ state: "visible", timeout: 20_000 });
   mark("package-cancelled");
 
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+  await gotoReady(page, `${baseURL}/goi-thau`);
   await waitForApp(page);
   await page.locator("#btn-add-goithau").click();
   await page.locator("#modal-goithau.active").waitFor({ state: "visible", timeout: 10_000 });
@@ -1061,6 +1230,8 @@ try {
   await page.locator('button[data-workflow-tab="eval_tech"]').click();
   await waitForRenderedWorkflowTab(page, "eval_tech");
   mark("two-envelope-technical-opening-saved");
+  await renewBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "eval_tech");
 
   const technicalEvaluationRow = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").first();
   await technicalEvaluationRow.waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
@@ -1075,7 +1246,7 @@ try {
     }));
     throw new Error(`Technical evaluation row did not render: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
   });
-  await select(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", { label: "Đạt" }).catch(async (error) => {
+  await ensureSelectedValue(page, "#danhgiahsdt-table-tbody .mt-dg-hop-le", "Đạt").catch(async (error) => {
     const state = await page.evaluate(() => {
       const wrapper = document.getElementById("detail-workflow-content-wrapper");
       const controls = [...document.querySelectorAll("#danhgiahsdt-table-tbody .mt-dg-hop-le")];
@@ -1109,9 +1280,9 @@ try {
       recentApiTraffic,
     })}; ${error.message}`, { cause: error });
   });
-  await select(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", { label: "Đạt" });
+  await ensureSelectedValue(page, "#danhgiahsdt-table-tbody .mt-dg-nang-luc", "Đạt");
   await technicalEvaluationRow.locator(".mt-dg-ky-thuat").fill("Đạt");
-  await page.waitForFunction(() => {
+  await waitForPageCondition(page, () => {
     const row = document.querySelector("#danhgiahsdt-table-tbody tr[data-bid-id]");
     return row?.querySelector(".mt-dg-ky-thuat")?.value === "Đạt"
       && row.querySelector(".mt-ketluan-cell")?.textContent?.trim() === "Đạt";
@@ -1141,6 +1312,7 @@ try {
     throw new Error(`Technical evaluation did not expose qualified approval: ${JSON.stringify({ technicalEvaluationSubmission, state, pageErrors, httpErrors })}; ${error.message}`);
   });
   await page.locator('button[data-workflow-tab="qualified"]').click();
+  await waitForRenderedWorkflowTab(page, "qualified");
   await page.locator("#qualified-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       selectedTab: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
@@ -1154,11 +1326,28 @@ try {
     throw new Error(`Qualified approval panel did not become active: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
   });
   mark("two-envelope-technical-evaluation-saved");
+  await renewBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "qualified");
 
-  await page.locator("#qualified-so-bctd").fill(`${runId}/BC-TD-KT`);
   await page.locator("#qualified-ngay-bctd").fill(testClock.date(-1));
-  await page.locator("#qualified-so-qd").fill(`${runId}/QD-KT`);
   await page.locator("#qualified-ngay-qd").fill(testClock.date(0));
+  await page.locator("#qualified-so-bctd").fill(`${runId}/BC-TD-KT`);
+  await page.locator("#qualified-so-qd").fill(`${runId}/QD-KT`);
+  await waitForPageCondition(page, ({ reportNumber, reportDate, decisionNumber, decisionDate }) => (
+    document.getElementById("qualified-so-bctd")?.value === reportNumber
+      && document.getElementById("qualified-ngay-bctd")?.value === reportDate
+      && document.getElementById("qualified-so-qd")?.value === decisionNumber
+      && document.getElementById("qualified-ngay-qd")?.value === decisionDate
+  ), {
+    reportNumber: `${runId}/BC-TD-KT`,
+    reportDate: testClock.date(-1),
+    decisionNumber: `${runId}/QD-KT`,
+    decisionDate: testClock.date(0),
+  }, { timeout: 10_000 }).catch(async (error) => {
+    const values = await page.evaluate(() => ["qualified-so-bctd", "qualified-ngay-bctd", "qualified-so-qd", "qualified-ngay-qd"]
+      .map((id) => ({ id, value: document.getElementById(id)?.value || "", storageValue: document.getElementById(id)?._flatpickr?.input?.value || "" })));
+    throw new Error(`Qualified approval fields were not stable: ${JSON.stringify(values)}`, { cause: error });
+  });
   await page.locator("#btn-save-qualified-decision").click();
   await page.locator("#op-fin-thoigianmothau").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
@@ -1170,6 +1359,8 @@ try {
     throw new Error(`Qualified approval did not advance: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
   });
   mark("two-envelope-qualified-approved");
+  await renewBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "opening_fin");
 
   await page.locator("#op-fin-thoigianmothau").fill(testClock.dateTime(1, "10:00"));
   const financialOpeningRow = page.locator("#opening-fin-table tbody tr").first();
@@ -1178,6 +1369,8 @@ try {
   await page.locator("#btn-save-opening-fin").click();
   await page.locator("#danhgiahsdt-table-tbody .mt-gia-xep-hang").waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-financial-opening-saved");
+  await renewBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "eval_fin");
 
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-TC`);
   await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(2));
@@ -1191,7 +1384,8 @@ try {
       throw new Error("Automatic ranking must be display-only");
     }
     const rankingElement = await automaticRanking.elementHandle();
-    await page.waitForFunction(
+    await waitForPageCondition(
+      page,
       (element) => String(element?.textContent || "").includes("Xếp hạng"),
       rankingElement,
       { timeout: 5_000 },
@@ -1205,6 +1399,8 @@ try {
   await page.locator('button[data-workflow-tab="result"]').click();
   await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-financial-evaluation-saved");
+  await renewBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "result");
 
   await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-2T-KQ`);
   await page.locator("#award-ngay-bctd").fill(testClock.date(3));
@@ -1219,10 +1415,8 @@ try {
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
   mark("two-envelope-award-approved");
 
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await page.locator("#search-goithau").fill(lotPackage);
-  await page.getByText(lotPackage, { exact: true }).click();
+  await renewBrowserSession();
+  await openPackageWorkflow(lotPackage, "preparation_action");
   await page.locator('button[data-workflow-tab="preparation_action"]').click();
   await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click();
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
@@ -1285,7 +1479,7 @@ try {
       pageErrors: pageErrors.slice(-8),
     })}; ${error.message}`);
   });
-  await page.waitForFunction(() => (
+  await waitForPageCondition(page, () => (
     document.getElementById("detail-workflow-status-badge")?.textContent?.includes("Đã mở thầu")
   ), null, { timeout: 15_000 });
   await waitForRenderedWorkflowTab(page, "opening");
@@ -1322,8 +1516,8 @@ try {
     throw new Error(`Lot opening did not advance: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
   });
   await lotOpeningSaveCompletion;
-  await page.locator('button[data-workflow-tab="eval_tech"]').click();
-  await waitForRenderedWorkflowTab(page, "eval_tech");
+  await renewBrowserSession();
+  await openPackageWorkflow(lotPackage, "eval_tech");
   mark("lot-opening-saved", { lots: 2 });
 
   const evaluateCurrentLot = async ({ lotCode, reportSuffix, price }) => {
@@ -1343,7 +1537,7 @@ try {
       if (!await lotChoice.isChecked()) await lotChoice.check();
     }
     const row = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lotCode }).first();
-    await page.waitForFunction((code) => {
+    await waitForPageCondition(page, (code) => {
       const selectedLotInputs = [...document.querySelectorAll("#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked")];
       const selectedCurrentLot = selectedLotInputs.length === 1
         && selectedLotInputs[0].closest("label")?.textContent?.includes(code);
@@ -1358,13 +1552,20 @@ try {
     }, lotCode, { timeout: 15_000 }).catch(async (error) => {
       const state = await page.evaluate((code) => ({
         tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
-        selectedLot: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
+          selectedLot: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
           .filter((item) => item.textContent?.includes(code))
           .map((item) => ({
             disabled: item.querySelector(".mt-dg-hop-le")?.disabled ?? null,
+            validityDisabled: item.querySelector(".mt-dg-hop-le")?.disabled ?? null,
+            capacityDisabled: item.querySelector(".mt-dg-nang-luc")?.disabled ?? null,
+            technicalDisabled: item.querySelector(".mt-dg-ky-thuat")?.disabled ?? null,
             validity: item.querySelector(".mt-dg-hop-le")?.value || "",
+            capacity: item.querySelector(".mt-dg-nang-luc")?.value || "",
+            technical: item.querySelector(".mt-dg-ky-thuat")?.value || "",
             conclusion: item.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
           })),
+        selectedLots: [...document.querySelectorAll("#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked")]
+          .map((item) => ({ id: item.getAttribute("data-evaluation-lot-id"), label: item.closest("label")?.textContent?.trim() || "" })),
         save: (() => {
           const item = document.getElementById("btn-danhgiahsdt-save");
           return item ? { text: item.textContent?.trim() || "", hidden: item.hidden, disabled: item.disabled } : null;
@@ -1384,7 +1585,7 @@ try {
     // those enhanced controls can race their progressive enablement; entering
     // the technical result is the user action that completes this row.
     await row.locator(".mt-dg-ky-thuat").fill("Đạt");
-    await page.waitForFunction((code) => {
+    await waitForPageCondition(page, (code) => {
       const candidate = [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
         .find((item) => item.textContent?.includes(code));
       return candidate?.querySelector(".mt-dg-ky-thuat")?.value === "Đạt"
@@ -1435,19 +1636,53 @@ try {
   await page.getByText("Còn 1 phần lô chưa có kết quả", { exact: false }).waitFor({ state: "visible", timeout: 20_000 });
   mark("lot-first-batch-approved");
 
-  await page.locator('button[data-workflow-tab="eval_tech"]').click();
+  await renewBrowserSession();
+  await openPackageWorkflow(lotPackage, "eval_tech");
   await page.locator("#btn-continue-lot-evaluation").waitFor({ state: "visible", timeout: 15_000 });
   await page.locator("#btn-continue-lot-evaluation").click();
   await page.locator("#danhgiahsdt-so-baocao").waitFor({ state: "visible", timeout: 15_000 });
   await evaluateCurrentLot({ lotCode: "PP02", reportSuffix: "LOT-2", price: "230000000" });
   await approveCurrentLot({ sequence: 2, price: "230000000" });
-  await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
+  if (await page.locator('button[data-workflow-tab="result"]').getAttribute("aria-selected") !== "true") {
+    await page.locator('button[data-workflow-tab="result"]').click();
+  }
+  await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const state = await page.evaluate(() => ({
+      url: location.href,
+      statusBadge: document.getElementById("detail-workflow-status-badge")?.textContent?.trim() || "",
+      activeTab: document.querySelector("[data-workflow-tab][aria-selected='true']")
+        ?.getAttribute("data-workflow-tab") || "",
+      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((tab) => ({
+        name: tab.getAttribute("data-workflow-tab"),
+        visible: Boolean(tab.getClientRects().length),
+      })),
+      rounds: [...document.querySelectorAll(".evaluation-round-card")]
+        .map((card) => card.textContent?.trim().replace(/\s+/g, " ").slice(0, 500) || ""),
+      resultCards: document.querySelectorAll(".award-result-card").length,
+      content: document.getElementById("detail-workflow-content-wrapper")
+        ?.textContent?.trim().replace(/\s+/g, " ").slice(0, 2_000) || "",
+      package: (() => {
+        const packageId = globalThis.app?.view?._currentWorkflowPackageId || "";
+        const record = globalThis.app?.model?.state?.goithau?.find?.(
+          (item) => String(item.id) === String(packageId),
+        );
+        return record ? {
+          id: record.id,
+          status: record.trangThai,
+          rowVersion: record.rowVersion,
+          result: record.ketQuaLuaChonNhaThau || record.ketQua || null,
+        } : null;
+      })(),
+    })).catch(() => ({ rendererUnresponsive: true }));
+    throw new Error(`Final lot result was not rendered: ${JSON.stringify({ state, recentApiTraffic: recentApiTraffic.slice(-25), httpErrors: httpErrors.slice(-8), pageErrors: pageErrors.slice(-8) })}`, { cause: error });
+  });
   const finalLotStatus = (await page.locator("#detail-workflow-status-badge").innerText()).trim();
   if (!finalLotStatus.includes("Đã có kết quả")) throw new Error(`Unexpected final lot status: ${finalLotStatus}`);
   if (await page.locator(".evaluation-round-card").count() !== 2) throw new Error("Expected two official lot result rounds.");
   mark("lot-second-batch-approved", { finalStatus: finalLotStatus, rounds: 2 });
 
-  await page.goto(`${baseURL}/ke-hoach`, { waitUntil: "domcontentloaded" });
+  await gotoReady(page, `${baseURL}/ke-hoach`);
   await waitForApp(page);
   await page.locator("#search-kehoach").fill(`Kế hoạch ${runId}`);
   const historicalPlanRow = page.locator("#kehoach-table tbody tr").filter({ hasText: `Kế hoạch ${runId}` });
@@ -1476,7 +1711,7 @@ try {
     await planSaveDialog.waitFor({ state: "hidden", timeout: 10_000 });
   }
 
-  await page.goto(`${baseURL}/ke-hoach`, { waitUntil: "domcontentloaded" });
+  await gotoReady(page, `${baseURL}/ke-hoach`);
   await waitForApp(page);
   await page.locator("#search-kehoach").fill(`Kế hoạch ${runId}`);
   const latestPlanRow = page.locator("#kehoach-table tbody tr").filter({ hasText: `Kế hoạch ${runId}` });
@@ -1572,7 +1807,7 @@ try {
 
   const rebidOldName = `Gói đấu thầu lại ${runId}`;
   const rebidNewName = `Gói đấu thầu lại đã sửa ${runId}`;
-  await page.goto(`${baseURL}/goi-thau`, { waitUntil: "domcontentloaded" });
+  await gotoReady(page, `${baseURL}/goi-thau`);
   await waitForApp(page);
   await page.locator("#search-goithau").fill(rebidOldName);
   const rebidRow = page.locator("#goithau-table tbody tr").filter({ hasText: rebidOldName });
@@ -1608,7 +1843,7 @@ try {
   if (httpErrors.length) throw new Error(`HTTP errors: ${httpErrors.join(" | ")}`);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
-  await browser.close();
+  if (browserServer) browserServer.process().kill();
   if (generatedExcelFixtures) {
     rmSync(generatedExcelFixtures.directory, { recursive: true, force: true });
   }

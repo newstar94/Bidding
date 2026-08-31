@@ -773,7 +773,6 @@ def validate_sync_item(
     elif table_name == "ke_hoach_lcnt":
         _require_fields(item, (
             ("tenKeHoach", "Tên kế hoạch LCNT"),
-            ("tenDuAnDuToan", "Tên dự án/dự toán"),
             ("loaiHinhMuaSam", "Loại hình mua sắm"),
             ("chuDauTuId", "Chủ đầu tư"),
             ("ngayPheDuyet", "Ngày phê duyệt kế hoạch"),
@@ -1161,9 +1160,9 @@ def validate_sync_item(
             if tm_val is None:
                 errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
 
-        if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự án":
+        if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự toán mua sắm":
             _require_fields(item, (
-                ("maDuan", "Mã dự án"),
+                ("tenDuAnDuToan", "Tên dự toán"),
             ), errors)
         if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
             _require_fields(item, (

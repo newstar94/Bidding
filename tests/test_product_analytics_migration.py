@@ -40,7 +40,7 @@ def test_v84_adjacent_upgrade_builds_product_analytics_contract():
         for table in reversed(PRODUCT_ANALYTICS_V84_TABLES):
             cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
 
-        assert apply_database_upgrades(cursor, 83, context) == DB_SCHEMA_VERSION == 88
+        assert apply_database_upgrades(cursor, 83, context) == DB_SCHEMA_VERSION == 90
         for table in PRODUCT_ANALYTICS_V84_TABLES:
             assert cursor.execute("SELECT to_regclass(?)", (table,)).fetchone()[0] == table
         for table in PRODUCT_ANALYTICS_V85_TABLES:
@@ -124,7 +124,7 @@ def test_v88_converges_a_partial_deployed_v84_analytics_catalog():
             "REFERENCES commercial_releases(id) ON DELETE RESTRICT"
         )
 
-        assert apply_database_upgrades(cursor, 84, context) == DB_SCHEMA_VERSION == 88
+        assert apply_database_upgrades(cursor, 84, context) == DB_SCHEMA_VERSION == 90
         assert_schema_contract(cursor)
     finally:
         _close_fixture_connection(connection, cursor, schema_name)

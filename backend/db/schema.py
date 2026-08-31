@@ -846,7 +846,7 @@ SCHEMA_DINH_NGHIA = {
             "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
             "archived_at": "TEXT",
             "ten_ke_hoach": "TEXT NOT NULL",
-            "ten_du_an_du_toan": "TEXT NOT NULL CHECK(trim(ten_du_an_du_toan) != '')",
+            "ten_du_an_du_toan": "TEXT",
             "loai_hinh_mua_sam": "TEXT NOT NULL CHECK(trim(loai_hinh_mua_sam) != '')",
             "chu_dau_tu_id": "TEXT NOT NULL CHECK(trim(chu_dau_tu_id) != '')",
             "don_vi_trinh_cdt": "TEXT",
@@ -876,6 +876,11 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },
         "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT"],
+        "unique_constraints": [
+            "CONSTRAINT ke_hoach_lcnt_budget_name_check "
+            "CHECK(loai_hinh_mua_sam != 'Dự toán mua sắm' OR "
+            "trim(COALESCE(ten_du_an_du_toan, '')) != '')"
+        ],
         "field_map": {
             "ma_du_an": "maDuan",
             "thoi_gian_dang_tai": "thoiGianDangMa",

@@ -100,6 +100,7 @@ test("isolated E2E runs scope browser origins to their selected local port", () 
   assert.match(source, /\$env:CSRF_TRUSTED_ORIGINS\s*=\s*\$baseUrl/u);
   assert.match(source, /\$env:CORS_ORIGINS\s*=\s*\$baseUrl/u);
   assert.match(source, /\$env:ALLOWED_WS_ORIGINS\s*=\s*\$baseUrl/u);
+  assert.match(source, /\$testUrl\s*=\s*\[string\]\$env:TEST_DATABASE_URL/u);
 });
 
 test("isolated browser E2E exercises the secure production asset path", () => {
@@ -151,7 +152,60 @@ test("lifecycle E2E does not accumulate Windows headless GPU state", () => {
     "utf8",
   );
 
-  assert.match(source, /args: \["--disable-gpu", "--disable-software-rasterizer"\]/u);
+  assert.match(
+    source,
+    /args: \[[\s\S]*"--disable-gpu"[\s\S]*"--disable-gpu-compositing"[\s\S]*"--disable-software-rasterizer"[\s\S]*\]/u,
+  );
+  assert.doesNotMatch(source, /"--in-process-gpu"/u);
+});
+
+test("lifecycle E2E does not inherit an intercepting host proxy", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /"--no-proxy-server"/u);
+});
+
+test("lifecycle E2E renews its long-lived browser between persisted workflow phases", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /async function renewBrowserSession\(/u);
+  assert.match(
+    source,
+    /mark\("supplied-excel-goods-imported"[\s\S]*await renewBrowserSession\(\)/u,
+  );
+  assert.match(source, /serviceWorkers: "block"/u);
+});
+
+test("lifecycle E2E waits for visible-content enhancement before rerendering invitation", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_full_lifecycle.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /const waitForVisibleContentEnhancements = async/u);
+  assert.match(
+    source,
+    /page\.waitForFunction\(predicate, argument, \{ polling: 100, \.\.\.options \}\)/u,
+  );
+  assert.match(
+    source,
+    /mark\("cancellable-opening-action-visible"\);[\s\S]*await waitForVisibleContentEnhancements\(page\);[\s\S]*#btn-luu-thongtinmoithau/u,
+  );
+  assert.match(
+    source,
+    /#btn-luu-thongtinmoithau"\)\.click\(\{ force: true, noWaitAfter: true \}\)/u,
+  );
+  assert.doesNotMatch(source, /LifecycleDiagnosticMutationObserver/u);
+  assert.match(
+    source,
+    /const submitModal = async[\s\S]*button\[type='submit'\][\s\S]*force: true,[\s\S]*noWaitAfter: true/u,
+  );
 });
 
 test("lifecycle E2E fills only editable visible package-lot rows", () => {
@@ -176,6 +230,14 @@ test("lifecycle E2E waits for the two-envelope evaluation row before editing", (
     source,
     /const technicalEvaluationRow[\s\S]*technicalEvaluationRow\.waitFor\(\{ state: "visible", timeout: 20_000 \}\)[\s\S]*#danhgiahsdt-table-tbody \.mt-dg-hop-le/u,
   );
+  assert.match(
+    source,
+    /ensureSelectedValue\(page, "#danhgiahsdt-table-tbody \.mt-dg-hop-le", "Đạt"\)/u,
+  );
+  assert.match(
+    source,
+    /data-workflow-tab="qualified"[\s\S]*waitForRenderedWorkflowTab\(page, "qualified"\)[\s\S]*qualified-so-bctd/u,
+  );
 });
 
 test("lifecycle E2E waits for opening acknowledgement before package cancellation", () => {
@@ -186,6 +248,14 @@ test("lifecycle E2E waits for opening acknowledgement before package cancellatio
   assert.match(
     source,
     /const cancelOpeningRow[\s\S]*#btn-mothau-save[\s\S]*data-workflow-tab="eval_tech"[\s\S]*#btn-workflow-cancel-package/u,
+  );
+  assert.match(
+    source,
+    /#btn-luu-thongtinmoithau"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*savedExtensionReason\.waitFor/u,
+  );
+  assert.match(
+    source,
+    /#btn-save-cancel-details"\)\.click\(\{ force: true, noWaitAfter: true \}\)[\s\S]*hasText: "Thành công"[\s\S]*#cancel-dec-no\[disabled\]/u,
   );
 });
 

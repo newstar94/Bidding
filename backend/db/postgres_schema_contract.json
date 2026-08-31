@@ -4539,7 +4539,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 89,
+  "schemaVersion": 90,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -17678,7 +17678,7 @@
           "default": null,
           "generated": "",
           "identity": "",
-          "notNull": true,
+          "notNull": false,
           "type": "text"
         },
         "ten_ke_hoach": {
@@ -17737,6 +17737,13 @@
           "definition": "FOREIGN KEY (organization_id, chu_dau_tu_id) REFERENCES chu_dau_tu(organization_id, id) ON DELETE RESTRICT",
           "initiallyDeferred": false,
           "kind": "f",
+          "validated": true
+        },
+        "ke_hoach_lcnt_budget_name_check": {
+          "deferrable": false,
+          "definition": "CHECK (loai_hinh_mua_sam <> 'Dự toán mua sắm'::text OR TRIM(BOTH FROM COALESCE(ten_du_an_du_toan, ''::text)) <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "ke_hoach_lcnt_check": {
@@ -17819,13 +17826,6 @@
         "ke_hoach_lcnt_sync_version_check": {
           "deferrable": false,
           "definition": "CHECK (sync_version >= 0)",
-          "initiallyDeferred": false,
-          "kind": "c",
-          "validated": true
-        },
-        "ke_hoach_lcnt_ten_du_an_du_toan_check": {
-          "deferrable": false,
-          "definition": "CHECK (TRIM(BOTH FROM ten_du_an_du_toan) <> ''::text)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
