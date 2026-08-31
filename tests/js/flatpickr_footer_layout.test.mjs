@@ -15,52 +15,57 @@ function contentType(pathname) {
   return "text/html; charset=utf-8";
 }
 
-const stylesheetPaths = [
-  "../../views/css/tokens.css",
-  "../../views/css/variables.css",
-  "../../views/css/base.css",
-  "../../views/css/components.css",
-  "../../views/css/views.css",
-  "../../views/css/generated-static-styles.css",
-  "../../views/css/ui-redesign.css",
-  "../../views/css/runtime-styles.css",
-].map((path) => fileURLToPath(new URL(path, import.meta.url)));
-
-test("datepicker cancel and confirm actions share the footer evenly", async () => {
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(`
-      <div class="flatpickr-calendar open">
-        <div class="flatpickr-footer">
-          <button type="button" class="btn btn-outline">Hủy</button>
-          <button type="button" class="btn btn-primary"><svg aria-hidden="true"></svg>Xác nhận</button>
-        </div>
-      </div>
-    `);
-    for (const path of stylesheetPaths) await page.addStyleTag({ path });
-
-    for (const width of [534, 320]) {
-      await page.locator(".flatpickr-calendar").evaluate((calendar, nextWidth) => {
-        calendar.style.width = `${nextWidth}px`;
-      }, width);
-      const metrics = await page.locator(".flatpickr-footer").evaluate((footer) => {
-        const [cancel, confirm] = [...footer.querySelectorAll("button")].map((button) => button.getBoundingClientRect());
-        return {
-          cancelWidth: cancel.width,
-          confirmWidth: confirm.width,
-          cancelHeight: cancel.height,
-          confirmHeight: confirm.height,
-          gap: confirm.left - cancel.right,
-        };
-      });
-      assert.ok(Math.abs(metrics.cancelWidth - metrics.confirmWidth) <= 0.5, `button widths differ at ${width}px`);
-      assert.equal(metrics.cancelHeight, metrics.confirmHeight);
-      assert.ok(metrics.cancelHeight >= 44);
-      assert.ok(metrics.gap >= 8);
+test("date selection applies immediately without a confirmation footer", async () => {
+  const server = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      if (pathname === "/") {
+        response.writeHead(200, { "content-type": contentType(".html") });
+        response.end(`<!doctype html><html><head><meta charset="utf-8">
+          <link rel="stylesheet" href="/views/vendor/flatpickr/flatpickr.min.css">
+          <link rel="stylesheet" href="/views/css/tokens.css">
+          <link rel="stylesheet" href="/views/css/variables.css">
+          <link rel="stylesheet" href="/views/css/base.css">
+          <link rel="stylesheet" href="/views/css/components.css">
+          <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
+        </head><body><input id="meeting-date" class="flatpickr-date"></body></html>`);
+        return;
+      }
+      const filePath = join(projectRoot, pathname.replace(/^\//, ""));
+      const payload = await readFile(filePath);
+      response.writeHead(200, { "content-type": contentType(pathname) });
+      response.end(payload);
+    } catch {
+      if (!response.headersSent) response.writeHead(404);
+      if (!response.writableEnded) response.end("Not Found");
     }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${address.port}/`);
+    await page.evaluate(() => import("/frontend/shared/trustedTypes.js"));
+    await page.addScriptTag({ url: `http://127.0.0.1:${address.port}/views/vendor/flatpickr/flatpickr.min.js` });
+    await page.addScriptTag({ url: `http://127.0.0.1:${address.port}/views/vendor/flatpickr/l10n/vn.js` });
+    await page.evaluate(async () => {
+      const { BiddingView } = await import("/frontend/app/BiddingView.js");
+      new BiddingView({}).initFlatpickr(document);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    await page.locator("#meeting-date").click();
+    const calendar = page.locator(".flatpickr-calendar.open");
+    assert.equal(await calendar.locator(".flatpickr-footer").count(), 0);
+    await calendar.locator(".flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay)").nth(10).click();
+
+    await page.waitForFunction(() => !document.querySelector(".flatpickr-calendar.open"));
+    assert.match(await page.locator("#meeting-date").inputValue(), /^\d{2}\/\d{2}\/\d{4}$/u);
   } finally {
-    await browser.close();
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
   }
 });
 
@@ -109,6 +114,7 @@ test("month selection replaces the date grid and restores it after choosing a mo
     await page.locator("#meeting-date").click();
     await page.waitForTimeout(150);
     const calendar = page.locator(".flatpickr-calendar.open");
+    assert.equal(await calendar.locator(".flatpickr-footer").count(), 0);
     const dateGrid = calendar.locator(".flatpickr-innerContainer");
     const timeGrid = calendar.locator(".flatpickr-time");
     const dateGridTop = await dateGrid.evaluate((element) => element.getBoundingClientRect().top);

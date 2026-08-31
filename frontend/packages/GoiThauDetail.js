@@ -52,6 +52,20 @@ async function hydratePackageDetailDependencies(appController, model, requestedP
   );
 }
 
+function publishEvaluationTab(appController, tab) {
+  if (!appController) return;
+  appController.currentDanhGiaTab = tab;
+  appController.renderDanhGiaHsdtPanel?.();
+}
+
+function markRenderedDetail(view, renderVersion) {
+  const renderedDetail = document.getElementById("detail-workflow-content-wrapper");
+  if (!renderedDetail) return;
+  renderedDetail.dataset.renderedWorkflowTab = String(view._currentWorkflowTab || "");
+  renderedDetail.dataset.renderedPackageId = String(view._currentWorkflowPackageId || "");
+  renderedDetail.dataset.renderedRenderVersion = String(renderVersion);
+}
+
 export function resetDetailedEvaluationNavigationForPackageChange(
   appController,
   currentPackageId,
@@ -208,7 +222,17 @@ export async function showPackageDetails(
     onSave: (command) => command?.execute?.(),
   });
   const contentWrapper = document.getElementById("detail-workflow-content-wrapper");
-  if (!contentWrapper) return;
+  // A refresh can pass the initial clean-workspace guard, then yield while a
+  // lazy workflow panel is being resolved. Re-check immediately before
+  // replacing the live panel so a draft started during that yield is never
+  // discarded by an in-flight projection.
+  if (!contentWrapper || shouldAbortPackageDetailRefreshForNewDraft({
+    wasDirty: workspaceWasDirty,
+    isDirty: packageWorkspace.isDirty(),
+    currentPackageId: this._currentWorkflowPackageId,
+    targetPackageId: id,
+    isBackground,
+  })) return;
   contentWrapper.innerHTML = trustedHTML("");
   switch (this._currentWorkflowTab) {
     case "preparation": {
@@ -240,20 +264,14 @@ export async function showPackageDetails(
       const { renderTechnicalEvaluationPanel } = await import("./detail/TechnicalEvaluationPanel.js");
       if (!isCurrentRender()) return;
       renderTechnicalEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
-      if (appController) {
-        appController.currentDanhGiaTab = "technical";
-        appController.renderDanhGiaHsdtPanel?.();
-      }
+      publishEvaluationTab(appController, "technical");
       break;
     }
     case "eval_fin": {
       const { renderFinancialEvaluationPanel } = await import("./detail/FinancialEvaluationPanel.js");
       if (!isCurrentRender()) return;
       renderFinancialEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
-      if (appController) {
-        appController.currentDanhGiaTab = "financial";
-        appController.renderDanhGiaHsdtPanel?.();
-      }
+      publishEvaluationTab(appController, "financial");
       break;
     }
     case "qualified": {
@@ -340,25 +358,16 @@ export async function showPackageDetails(
     }
   }
   this.createIconsScoped?.(contentWrapper);
-  if (appController?.setupExcelImportEvents) {
-    appController.setupExcelImportEvents();
-  }
+  appController?.setupExcelImportEvents?.();
   ["mothau-goithau-select", "danhgiahsdt-goithau-select", "result-goithau-select"].forEach((selectId) => {
     const wrapper = document.querySelector(`.custom-select-wrapper[data-select-id="${selectId}"]`);
     if (wrapper) wrapper.remove();
     const container = document.querySelector(`.custom-select-container[data-target="${selectId}"]`);
     if (container) container.remove();
   });
-  if (typeof appController?.unifyTableInputsHeight === "function") {
-    appController.unifyTableInputsHeight(document);
-  }
+  appController?.unifyTableInputsHeight?.(document);
   // Expose a semantic readiness signal for route-owned consumers and E2E
   // synchronization.  It is written only after the requested panel and its
   // bindings have finished rendering, so callers cannot race a late render.
-  const renderedDetail = document.getElementById("detail-workflow-content-wrapper");
-  if (renderedDetail) {
-    renderedDetail.dataset.renderedWorkflowTab = String(this._currentWorkflowTab || "");
-    renderedDetail.dataset.renderedPackageId = String(this._currentWorkflowPackageId || "");
-    renderedDetail.dataset.renderedRenderVersion = String(renderVersion);
-  }
+  markRenderedDetail(this, renderVersion);
 }

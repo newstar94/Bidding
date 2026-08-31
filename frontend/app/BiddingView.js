@@ -531,32 +531,6 @@ export class BiddingView {
       return;
     }
     const setupPlugins = (instance) => {
-      const footer = document.createElement("div");
-      footer.className = "flatpickr-footer";
-      setRuntimeStyle(footer, "display", "grid");
-      setRuntimeStyle(footer, "gridTemplateColumns", "repeat(2,minmax(0,1fr))");
-      setRuntimeStyle(footer, "gap", "12px");
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.className = "btn btn-outline";
-      cancelBtn.textContent = "Hủy";
-      setRuntimeStyle(cancelBtn, "borderRadius", "var(--radius-sm)");
-      cancelBtn.onclick = (e) => {
-        e.stopPropagation();
-        instance.close();
-      };
-      const confirmBtn = document.createElement("button");
-      confirmBtn.type = "button";
-      confirmBtn.className = "btn btn-primary";
-      confirmBtn.textContent = "Xác nhận";
-      setRuntimeStyle(confirmBtn, "borderRadius", "var(--radius-sm)");
-      confirmBtn.onclick = (e) => {
-        e.stopPropagation();
-        instance.close();
-      };
-      footer.appendChild(cancelBtn);
-      footer.appendChild(confirmBtn);
-      instance.calendarContainer.appendChild(footer);
       const container2 = instance.calendarContainer;
       let gridOverlay = container2.querySelector(".flatpickr-grid-overlay");
       if (!gridOverlay) {
@@ -564,11 +538,8 @@ export class BiddingView {
         gridOverlay.className = "flatpickr-grid-overlay";
         setRuntimeStyle(gridOverlay, "display", "none");
         const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        const footerEl = container2.querySelector(".flatpickr-footer");
         if (innerContainer) {
           container2.insertBefore(gridOverlay, innerContainer);
-        } else if (footerEl) {
-          container2.insertBefore(gridOverlay, footerEl);
         } else {
           container2.appendChild(gridOverlay);
         }
@@ -715,13 +686,24 @@ export class BiddingView {
       container.querySelectorAll("input.flatpickr-date").forEach((el) => {
         el.setAttribute("autocomplete", "off");
         if (el._flatpickr) return;
+        const storageFormat = el.dataset.flatpickrStorageFormat || "d/m/Y";
+        const displayFormat = el.dataset.flatpickrDisplayFormat || storageFormat;
+        const altInputClass = [...el.classList]
+          .filter((name) => !["flatpickr-date", "flatpickr-datetime"].includes(name))
+          .concat("flatpickr-input")
+          .join(" ");
         flatpickr(el, {
-          dateFormat: "d/m/Y",
+          dateFormat: storageFormat,
+          altInput: displayFormat !== storageFormat,
+          altFormat: displayFormat,
+          altInputClass,
           allowInput: true,
           monthSelectorType: "static",
           locale: "vn",
           time_24hr: true,
           onReady: function(selectedDates, dateStr, instance) {
+            const theme = el.dataset.flatpickrTheme;
+            if (theme) instance.calendarContainer.classList.add(`flatpickr-calendar--${theme}`);
             setupPlugins(instance);
           }
         });

@@ -21,6 +21,12 @@ function dateValue(daysAgo) {
   return value.toISOString().slice(0, 10);
 }
 
+function setDateControlValue(control, value) {
+  if (!control) return;
+  if (control._flatpickr?.setDate) control._flatpickr.setDate(value, false);
+  else control.value = value;
+}
+
 export function buildProductAnalyticsUrl(filters = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -443,8 +449,8 @@ export function mountProductAnalytics(root, controller) {
   root.dataset.productAnalyticsBound = "true";
   const search = new URLSearchParams(globalThis.location?.search || "");
   root.dataset.productAnalyticsPage = String(Math.max(1, Number(search.get("analytics_page") || 1) || 1));
-  const from = root.querySelector("#product-analytics-from"); if (from && !from.value) from.value = search.get("analytics_from") || dateValue(29);
-  const to = root.querySelector("#product-analytics-to"); if (to && !to.value) to.value = search.get("analytics_to") || dateValue(0);
+  const from = root.querySelector("#product-analytics-from"); if (from && !from.value) setDateControlValue(from, search.get("analytics_from") || dateValue(29));
+  const to = root.querySelector("#product-analytics-to"); if (to && !to.value) setDateControlValue(to, search.get("analytics_to") || dateValue(0));
   for (const [id, key] of [["owner", "ownerKind"], ["variant", "variant"], ["release", "releaseId"], ["release-mode", "releaseMode"], ["size", "sizeBucket"], ["plan", "plan"], ["paid", "paidState"], ["cohort", "cohortKind"], ["procurement-intensity", "procurementIntensity"], ["collaboration", "collaborationIntensity"], ["ai-adoption", "aiAdoption"]]) {
     const element = root.querySelector(`#product-analytics-${id}`);
     const value = search.get(`analytics_${key}`);
@@ -462,8 +468,8 @@ export function mountProductAnalytics(root, controller) {
   root.querySelector("#product-analytics-filter-form")?.addEventListener("submit", (event) => { event.preventDefault(); root.dataset.productAnalyticsPage = "1"; void loadProductAnalytics(root, controller); });
   root.querySelectorAll("[data-product-range]").forEach((button) => button.addEventListener("click", () => {
     const days = Number(button.dataset.productRange || 30);
-    if (from) from.value = dateValue(days - 1);
-    if (to) to.value = dateValue(0);
+    setDateControlValue(from, dateValue(days - 1));
+    setDateControlValue(to, dateValue(0));
     root.dataset.productAnalyticsPage = "1";
     void loadProductAnalytics(root, controller);
   }));

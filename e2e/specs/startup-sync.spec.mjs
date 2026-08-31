@@ -83,8 +83,10 @@ function installBrowserReadGate({ includePagination }) {
 }
 
 async function setupServerReadGate(page, { includePagination = false } = {}) {
+  // This gate targets the next document's startup reads. Installing it in the
+  // current document can capture a late background read immediately before
+  // reload, which makes Firefox abort the competing navigation.
   await page.addInitScript(installBrowserReadGate, { includePagination });
-  await page.evaluate(installBrowserReadGate, { includePagination });
   page.__releaseStartupSyncReads = async () => {
     await page.evaluate(() => globalThis.__bfStartupSyncReadGate?.release());
   };

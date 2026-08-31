@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { renderChangedState } from "../../frontend/app/SyncRenderCoordinator.js";
 import { packageWorkspaceFor } from "../../frontend/packages/detail/PackageWorkspaceState.js";
@@ -45,6 +47,23 @@ test("in-flight package refresh aborts when the current form becomes dirty", () 
     targetPackageId: "package-1",
     isBackground: true,
   }), true);
+});
+
+test("package detail checks draft state before clearing the live panel", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../../frontend/packages/GoiThauDetail.js", import.meta.url)),
+    "utf8",
+  );
+  const contentStart = source.indexOf(
+    'const contentWrapper = document.getElementById("detail-workflow-content-wrapper");',
+  );
+  const clearPanel = source.indexOf('contentWrapper.innerHTML = trustedHTML("");', contentStart);
+  const draftGuard = source.indexOf(
+    "shouldAbortPackageDetailRefreshForNewDraft({",
+    contentStart,
+  );
+  assert.ok(contentStart >= 0);
+  assert.ok(draftGuard >= 0 && draftGuard < clearPanel);
 });
 
 test("a package delta renders only the active list and marks hidden projections dirty", async () => {

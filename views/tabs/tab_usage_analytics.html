@@ -21,15 +21,15 @@
         <div class="usage-analytics__filter-fields">
             <label for="usage-analytics-from">
                 <span>Từ ngày</span>
-                <input class="form-control" id="usage-analytics-from" name="from" type="date" required>
+                <input class="form-control flatpickr-date" id="usage-analytics-from" name="from" type="text" required placeholder="dd/mm/yyyy" data-flatpickr-storage-format="Y-m-d" data-flatpickr-display-format="d/m/Y" data-flatpickr-theme="analytics">
             </label>
             <label for="usage-analytics-to">
                 <span>Đến ngày</span>
-                <input class="form-control" id="usage-analytics-to" name="to" type="date" required>
+                <input class="form-control flatpickr-date" id="usage-analytics-to" name="to" type="text" required placeholder="dd/mm/yyyy" data-flatpickr-storage-format="Y-m-d" data-flatpickr-display-format="d/m/Y" data-flatpickr-theme="analytics">
             </label>
             <label for="usage-analytics-bucket">
                 <span>Độ phân giải</span>
-                <select class="form-control" id="usage-analytics-bucket" name="bucket" data-no-custom="true">
+                <select class="form-control" id="usage-analytics-bucket" name="bucket">
                     <option value="hour">Theo giờ</option>
                     <option value="day">Theo ngày</option>
                 </select>
@@ -162,8 +162,8 @@
             <button class="btn btn-outline" type="button" data-product-range="365">12M</button>
         </div>
         <form class="product-analytics__filters" id="product-analytics-filter-form">
-            <label>Từ ngày<input class="form-control" id="product-analytics-from" type="date" required></label>
-            <label>Đến ngày<input class="form-control" id="product-analytics-to" type="date" required></label>
+            <label>Từ ngày<input class="form-control flatpickr-date" id="product-analytics-from" type="text" required placeholder="dd/mm/yyyy" data-flatpickr-storage-format="Y-m-d" data-flatpickr-display-format="d/m/Y" data-flatpickr-theme="analytics"></label>
+            <label>Đến ngày<input class="form-control flatpickr-date" id="product-analytics-to" type="text" required placeholder="dd/mm/yyyy" data-flatpickr-storage-format="Y-m-d" data-flatpickr-display-format="d/m/Y" data-flatpickr-theme="analytics"></label>
             <label>Owner<select class="form-control" id="product-analytics-owner"><option value="">Tất cả</option><option value="account">Account</option><option value="organization">Organization</option></select></label>
             <label>Variant<select class="form-control" id="product-analytics-variant"><option value="">Tất cả</option><option value="internal">Internal</option><option value="connected">Connected</option></select></label>
             <label>Release<input class="form-control" id="product-analytics-release" placeholder="release id"></label>

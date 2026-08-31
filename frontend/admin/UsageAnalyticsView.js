@@ -481,10 +481,19 @@ export async function reloadUsageAnalytics(root) {
 function applyRangePreset(root, days) {
   const from = root.querySelector("#usage-analytics-from");
   const to = root.querySelector("#usage-analytics-to");
-  if (from) from.value = dateDaysAgo(days);
-  if (to) to.value = localIsoDate(new Date());
+  setDateControlValue(from, dateDaysAgo(days));
+  setDateControlValue(to, localIsoDate(new Date()));
   const bucket = root.querySelector("#usage-analytics-bucket");
-  if (bucket) bucket.value = Number(days) > 7 ? "day" : "hour";
+  if (bucket) {
+    bucket.value = Number(days) > 7 ? "day" : "hour";
+    bucket.__bfAccessibleCombobox?.refresh?.();
+  }
+}
+
+function setDateControlValue(control, value) {
+  if (!control) return;
+  if (control._flatpickr?.setDate) control._flatpickr.setDate(value, false);
+  else control.value = value;
 }
 
 function bindEvents(root) {
@@ -553,8 +562,8 @@ export async function mountUsageAnalytics(controller) {
   }
   const from = root.querySelector("#usage-analytics-from");
   const to = root.querySelector("#usage-analytics-to");
-  if (from && !from.value) from.value = dateDaysAgo(30);
-  if (to && !to.value) to.value = localIsoDate(new Date());
+  if (from && !from.value) setDateControlValue(from, dateDaysAgo(30));
+  if (to && !to.value) setDateControlValue(to, localIsoDate(new Date()));
   const bucket = root.querySelector("#usage-analytics-bucket");
   if (bucket && !bucket.dataset.usageDefaultSet) {
     bucket.value = "day";
