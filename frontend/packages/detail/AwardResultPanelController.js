@@ -366,48 +366,76 @@ function appendApprovalBidderRow(view, root, pkg) {
   initializeAwardResultBidderRow(view, tr);
 }
 
+export function beginAwardApprovalOperation(ownerDocument) {
+  const element = ownerDocument?.documentElement;
+  if (!element) return null;
+  const previous = Number.parseInt(element.dataset.awardApprovalGeneration || "0", 10);
+  const generation = Number.isFinite(previous) ? previous + 1 : 1;
+  element.dataset.awardApprovalGeneration = String(generation);
+  element.dataset.awardApprovalState = "pending";
+  delete element.dataset.awardApprovalKind;
+  return { element, generation };
+}
+
+export function settleAwardApprovalOperation(operation, result) {
+  const { element, generation } = operation || {};
+  if (!element || element.dataset.awardApprovalGeneration !== String(generation)) return false;
+  element.dataset.awardApprovalState = result?.ok ? "succeeded" : "failed";
+  element.dataset.awardApprovalKind = String(result?.kind || "unknown");
+  return true;
+}
+
 function bindApprovalSubmit({ view, root, pkg, appController, viewModel, approvalPanel }) {
   const approve = root.querySelector("#btn-approve-award");
   if (!approve) return;
   approve.onclick = async () => {
-    if (approvalPanel.isDirectOrSpecial) {
-      await executeAppCommand("saveKetQuaChiDinhThau", pkg.id);
-      return;
-    }
-    const command = prepareAwardApprovalCommand({
-      root,
-      pkg,
-      model: view.model,
-      isDirectOrSpecial: approvalPanel.isDirectOrSpecial,
-    });
-    command.errors.forEach((error) => {
-      const input = error.element;
-      if (!input) return;
-      if (error.kind === "field") {
-        setFieldFeedback(input, {
-          state: "invalid",
-          message: input.closest(".form-group")?.querySelector(".error-text")?.textContent || "",
-        });
-        const clear = () => setFieldFeedback(input);
-        input.addEventListener("input", clear);
-        input.addEventListener("change", clear);
-      } else {
-        setRuntimeStyle(input, "border", "1px solid var(--danger)");
-        input.addEventListener("input", () => setRuntimeStyle(input, "border", ""));
+    const operation = beginAwardApprovalOperation(approve.ownerDocument);
+    try {
+      if (approvalPanel.isDirectOrSpecial) {
+        await executeAppCommand("saveKetQuaChiDinhThau", pkg.id);
+        settleAwardApprovalOperation(operation, { ok: true, kind: "legacy_awarded" });
+        return;
       }
-    });
-    if (!command.ok) {
-      const first = command.errors.find((error) => error.element)?.element;
-      if (first) view.focusInvalidControl(first);
-      return;
+      const command = prepareAwardApprovalCommand({
+        root,
+        pkg,
+        model: view.model,
+        isDirectOrSpecial: approvalPanel.isDirectOrSpecial,
+      });
+      command.errors.forEach((error) => {
+        const input = error.element;
+        if (!input) return;
+        if (error.kind === "field") {
+          setFieldFeedback(input, {
+            state: "invalid",
+            message: input.closest(".form-group")?.querySelector(".error-text")?.textContent || "",
+          });
+          const clear = () => setFieldFeedback(input);
+          input.addEventListener("input", clear);
+          input.addEventListener("change", clear);
+        } else {
+          setRuntimeStyle(input, "border", "1px solid var(--danger)");
+          input.addEventListener("input", () => setRuntimeStyle(input, "border", ""));
+        }
+      });
+      if (!command.ok) {
+        const first = command.errors.find((error) => error.element)?.element;
+        if (first) view.focusInvalidControl(first);
+        settleAwardApprovalOperation(operation, { ok: false, kind: "validation_failed" });
+        return;
+      }
+      const result = await awardResultApprovalWorkflow.execute({
+        view,
+        pkg,
+        command,
+        appController,
+        viewModel,
+      });
+      settleAwardApprovalOperation(operation, result);
+    } catch (error) {
+      settleAwardApprovalOperation(operation, { ok: false, kind: "unexpected_error" });
+      throw error;
     }
-    await awardResultApprovalWorkflow.execute({
-      view,
-      pkg,
-      command,
-      appController,
-      viewModel,
-    });
   };
 }
 

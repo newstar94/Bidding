@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   finalizeLotAndWaitForRender,
+  hasSettledAwardApproval,
   hasRenderedLotFinalization,
   isLotFinalizeResponse,
 } from "../../scripts/lib/lotLifecycleSynchronization.mjs";
@@ -20,10 +21,10 @@ function response({
   };
 }
 
-test("lot finalization matcher accepts only the authoritative package transition", () => {
+test("lot finalization matcher accepts the authoritative endpoint regardless of outcome status", () => {
   assert.equal(isLotFinalizeResponse(response(), "package-1"), true);
   assert.equal(isLotFinalizeResponse(response({ method: "GET" }), "package-1"), false);
-  assert.equal(isLotFinalizeResponse(response({ status: 201 }), "package-1"), false);
+  assert.equal(isLotFinalizeResponse(response({ status: 409 }), "package-1"), true);
   assert.equal(isLotFinalizeResponse(response({
     path: "/api/packages/package-2/lot-batches/batch-1/finalize",
   }), "package-1"), false);
@@ -34,9 +35,10 @@ test("lot approval arms the response wait before clicking and waits for rendered
   let responsePredicate;
   let renderedWait;
   const page = {
-    waitForResponse(predicate) {
+    waitForResponse(predicate, options) {
       events.push("response-armed");
       responsePredicate = predicate;
+      assert.deepEqual(options, { timeout: 0 });
       return Promise.resolve(response());
     },
   };
@@ -64,6 +66,74 @@ test("lot approval arms the response wait before clicking and waits for rendered
   });
   assert.deepEqual(renderedWait[3], { timeout: 20_000 });
   assert.equal(result.packageRowVersion, 9);
+});
+
+test("lot approval reports a failed finalize response instead of timing out", async () => {
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      waitForResponse: (predicate, options) => {
+        assert.deepEqual(options, { timeout: 0 });
+        const failedResponse = response({
+          status: 409,
+          body: { detail: "LOT_BATCH_ALREADY_FINALIZED" },
+        });
+        assert.equal(predicate(failedResponse), true);
+        return Promise.resolve(failedResponse);
+      },
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => {},
+  }), /Lot finalize failed: HTTP 409.*LOT_BATCH_ALREADY_FINALIZED/u);
+});
+
+test("lot approval reports a pre-finalize workflow failure without waiting for a response", async () => {
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      evaluate: async () => 4,
+      waitForResponse: () => new Promise(() => {}),
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async (_page, predicate, argument, options) => {
+      assert.equal(predicate, hasSettledAwardApproval);
+      assert.deepEqual(argument, { afterGeneration: 4 });
+      assert.deepEqual(options, { timeout: 0 });
+      return { jsonValue: async () => ({ state: "failed", kind: "sync_failed" }) };
+    },
+  }), /Lot approval failed before finalize: sync_failed/u);
+});
+
+test("pending lot approval exposes its failure dialog as a settled operation", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    documentElement: {
+      dataset: {
+        awardApprovalGeneration: "5",
+        awardApprovalState: "pending",
+      },
+    },
+    getElementById: () => ({
+      classList: { contains: (name) => name === "active" },
+      querySelector: () => ({ textContent: "Không thể phê duyệt kết quả đợt" }),
+    }),
+  };
+  try {
+    assert.deepEqual(hasSettledAwardApproval({ afterGeneration: 4 }), {
+      generation: 5,
+      state: "failed",
+      kind: "Không thể phê duyệt kết quả đợt",
+    });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test("lot approval rejects the wrong lifecycle status before waiting for render", async () => {

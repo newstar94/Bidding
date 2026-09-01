@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createAwardResultApprovalWorkflow } from "../../frontend/packages/detail/AwardResultApprovalWorkflow.js";
+import {
+  beginAwardApprovalOperation,
+  settleAwardApprovalOperation,
+} from "../../frontend/packages/detail/AwardResultPanelController.js";
 
 const panelControllerPath = new URL(
   "../../frontend/packages/detail/AwardResultPanelController.js",
@@ -23,8 +27,26 @@ test("direct or special approval remains routed to its legacy application comman
   const source = await readFile(panelControllerPath, "utf8");
   assert.match(
     source,
-    /if \(approvalPanel\.isDirectOrSpecial\) \{\s*await executeAppCommand\("saveKetQuaChiDinhThau", pkg\.id\);\s*return;\s*\}/u,
+    /if \(approvalPanel\.isDirectOrSpecial\) \{\s*await executeAppCommand\("saveKetQuaChiDinhThau", pkg\.id\);/u,
   );
+});
+
+test("award approval operation state settles only its current generation", () => {
+  const ownerDocument = { documentElement: { dataset: {} } };
+  const first = beginAwardApprovalOperation(ownerDocument);
+  assert.deepEqual(ownerDocument.documentElement.dataset, {
+    awardApprovalGeneration: "1",
+    awardApprovalState: "pending",
+  });
+
+  const second = beginAwardApprovalOperation(ownerDocument);
+  assert.equal(settleAwardApprovalOperation(first, { ok: false, kind: "stale" }), false);
+  assert.equal(settleAwardApprovalOperation(second, { ok: false, kind: "sync_failed" }), true);
+  assert.deepEqual(ownerDocument.documentElement.dataset, {
+    awardApprovalGeneration: "2",
+    awardApprovalState: "failed",
+    awardApprovalKind: "sync_failed",
+  });
 });
 
 test("shared award workflow rejects the legacy direct or special command path", async () => {
