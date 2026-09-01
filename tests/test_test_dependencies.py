@@ -154,6 +154,13 @@ def test_ci_enforces_reviewed_python_and_javascript_coverage_gates():
     assert "python -m pytest -q" in python_runs
     assert "--cov-fail-under=45" in python_runs
     assert "python scripts/check_critical_coverage.py coverage.json" in python_runs
+    assert '-m "not browser_e2e"' in python_runs
+    e2e_runs = _job_runs(workflow, "e2e")
+    assert (
+        "python -m pytest -q -m browser_e2e "
+        "tests/test_product_analytics_e2e.py"
+    ) in e2e_runs
+    assert workflow["jobs"]["e2e"]["steps"][2]["with"]["node-version"] == "24"
     assert "--junitxml=pytest-junit.xml" in str(workflow["jobs"]["unit-python"])
     assert "--cov-report=xml:coverage.xml" in str(workflow["jobs"]["unit-python"])
     js_coverage_step = next(

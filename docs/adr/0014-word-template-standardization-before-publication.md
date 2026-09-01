@@ -1,6 +1,6 @@
 # ADR 0014 — Chuẩn hóa thể thức Word tự động khi xuất bản
 
-- Trạng thái: Chấp nhận
+- Trạng thái: Bị thay thế một phần bởi ADR 0033
 - Ngày: 2026-08-24
 - Phạm vi: `render_docx`, Word standardizer, `WordTemplateCatalog` và mọi luồng xuất DOCX
 

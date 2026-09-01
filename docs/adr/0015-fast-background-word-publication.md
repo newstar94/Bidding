@@ -1,6 +1,6 @@
 # ADR 0015 — Xuất bản Word nhanh theo lô và xử lý nền
 
-- Trạng thái: Chấp nhận
+- Trạng thái: Bị thay thế một phần bởi ADR 0033 đối với cache chuẩn hóa tự động
 - Ngày: 2026-08-24
 - Phạm vi: mọi luồng tạo/tải DOCX, document job, media Word và giao diện tác vụ dài
 - Liên quan: ADR 0010, ADR 0014

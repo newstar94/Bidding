@@ -31,7 +31,10 @@ test("joint-venture relogin readiness tolerates a detached auth overlay", async 
   assert.match(source, /await waitForInitialJointVentureEvaluation\(page\);\s+await page\.locator\("#btn-danhgiahsdt-save"\)\.click\(\)/);
   assert.match(source, /function twoEnvelopeTechnicalEvaluationBarrier/);
   assert.match(source, /await waitForTwoEnvelopeTechnicalEvaluation\(page\);\s+await saveEvaluationAndWait\(page, httpErrors, pageErrors\)/);
-  assert.match(source, /page\.locator\("#btn-danhgiahsdt-save:visible"\)\.click\(\)/);
+  assert.match(
+    source,
+    /await saveEvaluationAndWait\(page, httpErrors, pageErrors\);[\s\S]*?renderedWorkflowTab === "result"[\s\S]*?renderedRenderVersion === wrapper\.dataset\.pendingRenderVersion/,
+  );
   assert.doesNotMatch(
     source,
     /readinessDeadline|activeButton\.click\(\)|waitForTimeout|requestAnimationFrame|networkidle/,

@@ -60,11 +60,13 @@ function publishEvaluationTab(appController, tab) {
   appController.renderDanhGiaHsdtPanel?.();
 }
 
-function markRenderedDetail(view, renderVersion) {
+export function markRenderedDetail(view, pkg, renderVersion) {
   const renderedDetail = document.getElementById("detail-workflow-content-wrapper");
   if (!renderedDetail) return;
   renderedDetail.dataset.renderedWorkflowTab = String(view._currentWorkflowTab || "");
   renderedDetail.dataset.renderedPackageId = String(view._currentWorkflowPackageId || "");
+  renderedDetail.dataset.renderedPackageStatus = String(pkg?.trangThai || "");
+  renderedDetail.dataset.renderedPackageRowVersion = String(pkg?.rowVersion || "");
   renderedDetail.dataset.renderedRenderVersion = String(renderVersion);
 }
 
@@ -369,5 +371,5 @@ export async function showPackageDetails(
   // Expose a semantic readiness signal for route-owned consumers and E2E
   // synchronization.  It is written only after the requested panel and its
   // bindings have finished rendering, so callers cannot race a late render.
-  markRenderedDetail(this, renderVersion);
+  markRenderedDetail(this, gt, renderVersion);
 }

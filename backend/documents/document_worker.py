@@ -26,7 +26,6 @@ from backend.documents.document_ipc import (
     read_job_manifest,
     read_result,
     write_job_manifest,
-    write_render_cache_overlay,
 )
 from backend.documents.document_sandbox import (
     sandbox_worker_command,
@@ -234,7 +233,6 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
         "SYSTEMROOT",
         "TZ",
         "WINDIR",
-        "WORD_EXPORT_STANDARDIZATION_MODE",
     }
     environment = {
         name: value
@@ -424,149 +422,6 @@ def _start_worker_process(
     return subprocess.Popen(command, **popen_kwargs)
 
 
-def _prepare_render_payload_cache(
-    operation: str,
-    payload: dict[str, Any],
-    *,
-    organization_scope: str | None = None,
-) -> tuple[dict[str, Any], list[tuple[int, Any]], list[tuple[int, bytes]]]:
-    """Stage cache hits and lease misses without starting another worker."""
-
-    if operation not in {"render_docx", "render_docx_batch"}:
-        return payload, [], []
-    from backend.documents.word_export_cache import (
-        acquire_standardized_template_cache,
-    )
-
-    context_manifest = payload.get("context_manifest")
-    if not isinstance(context_manifest, dict):
-        return payload, [], []
-    cache_scope = str(
-        organization_scope
-        or context_manifest.get("media_organization_id")
-        or "unscoped"
-    )
-    document_type_hint = context_manifest.get("document_type")
-    mode = os.environ.get("WORD_EXPORT_STANDARDIZATION_MODE")
-
-    def source_target(raw_target: dict[str, Any]) -> tuple[dict[str, Any], bytes | None]:
-        target = dict(raw_target)
-        if target.get("template_prestandardized") is True:
-            return target, None
-        if isinstance(target.get("template_content"), bytes):
-            source = bytes(target["template_content"])
-        elif target.get("template_path"):
-            source = Path(str(target["template_path"])).read_bytes()
-        else:
-            raise DocumentWorkerInputError("Tác vụ Word thiếu nguồn biểu mẫu.")
-        return target, source
-
-    prepared_payload = dict(payload)
-    if operation == "render_docx":
-        raw_targets = [{
-            key: prepared_payload.pop(key)
-            for key in ("template_path", "template_content", "template_prestandardized")
-            if key in prepared_payload
-        }]
-    else:
-        templates = prepared_payload.get("templates")
-        if not isinstance(templates, list) or not all(
-            isinstance(target, dict) for target in templates
-        ):
-            raise DocumentWorkerInputError("Biểu mẫu Word theo lô không hợp lệ.")
-        raw_targets = templates
-
-    staged = [source_target(target) for target in raw_targets]
-    groups: dict[str, list[int]] = {}
-    sources: dict[str, bytes] = {}
-    for index, (_target, source) in enumerate(staged):
-        if source is None:
-            continue
-        digest = hashlib.sha256(source).hexdigest()
-        groups.setdefault(digest, []).append(index)
-        sources[digest] = source
-
-    leases: list[tuple[int, Any]] = []
-    overrides: list[tuple[int, bytes]] = []
-    try:
-        # Stable ordering prevents inverse batches from holding each other's locks.
-        for digest in sorted(groups):
-            cached, lease = acquire_standardized_template_cache(
-                sources[digest],
-                organization_scope=cache_scope,
-                document_type_hint=document_type_hint,
-                mode=mode,
-            )
-            if cached is not None:
-                for index in groups[digest]:
-                    target, _source = staged[index]
-                    target.pop("template_path", None)
-                    target["template_content"] = cached
-                    target["template_prestandardized"] = True
-                    target["standardization_cache_hit"] = True
-                    overrides.append((index, cached))
-            elif lease is not None:
-                # One sidecar can populate the cache for duplicate source bytes.
-                leases.append((groups[digest][0], lease))
-    except Exception:
-        _release_render_cache_leases(leases)
-        raise
-
-    targets = [target for target, _source in staged]
-    if operation == "render_docx":
-        prepared_payload.update(targets[0])
-    else:
-        prepared_payload["templates"] = targets
-    return prepared_payload, leases, overrides
-
-
-def _release_render_cache_leases(leases: list[tuple[int, Any]]) -> None:
-    from backend.documents.word_export_cache import release_standardized_template_cache
-
-    for _index, lease in leases:
-        release_standardized_template_cache(lease)
-
-
-def _publish_render_cache_sidecars(
-    job_dir: Path, leases: list[tuple[int, Any]],
-) -> None:
-    """Publish only regular, bounded DOCX sidecars attested by the sandbox."""
-
-    from backend.documents.archive_validation import validate_ooxml_archive
-    from backend.documents.template_security import validate_docx_template_statements
-    from backend.documents.word_export_cache import (
-        publish_standardized_template_cache,
-        release_standardized_template_cache,
-    )
-
-    resolved_job_dir = job_dir.resolve()
-    for index, lease in leases:
-        candidate = job_dir / f"prepared-template-{index:04d}.docx"
-        try:
-            candidate_stat = candidate.lstat()
-            resolved = candidate.resolve(strict=True)
-            if (
-                resolved.parent != resolved_job_dir
-                or candidate.is_symlink()
-                or not stat.S_ISREG(candidate_stat.st_mode)
-                or not 0 < candidate_stat.st_size <= 64 * 1024 * 1024
-            ):
-                continue
-            content = resolved.read_bytes()
-            if len(content) != candidate_stat.st_size:
-                continue
-            validate_ooxml_archive(content, "docx")
-            validate_docx_template_statements(content)
-            publish_standardized_template_cache(
-                lease, content, preservation_attested=True,
-            )
-        except (OSError, ValueError):
-            # Cache publication is optional and cannot invalidate a valid render.
-            pass
-        finally:
-            release_standardized_template_cache(lease)
-
-
 def run_document_job(
     operation: str,
     payload: dict[str, Any],
@@ -602,11 +457,7 @@ def run_document_job(
             job_dir = Path(raw_job_dir).resolve()
             input_path = job_dir / "input.json"
             result_path = job_dir / "result.json"
-            cache_leases: list[tuple[int, Any]] = []
             try:
-                payload, cache_leases, _cache_overrides = _prepare_render_payload_cache(
-                    operation, payload,
-                )
                 write_job_manifest(
                     input_path,
                     operation,
@@ -614,7 +465,6 @@ def run_document_job(
                     image_root=Path(image_root or IMAGE_DIR).resolve(),
                 )
             except (DocumentIpcError, OSError) as exc:
-                _release_render_cache_leases(cache_leases)
                 raise DocumentWorkerInputError(str(exc)) from exc
             _prepare_privilege_drop(job_dir)
 
@@ -665,18 +515,13 @@ def run_document_job(
                 raise DocumentWorkerError(
                     "Tiến trình xử lý tài liệu đã dừng bất thường."
                 )
-            try:
-                result = _read_result(result_path, job_dir)
-                _publish_render_cache_sidecars(job_dir, cache_leases)
-                outcome = "completed"
-                return result
-            finally:
-                _release_render_cache_leases(cache_leases)
+            result = _read_result(result_path, job_dir)
+            outcome = "completed"
+            return result
     except DocumentWorkerTimeoutError:
         outcome = "timed_out"
         raise
     finally:
-        _release_render_cache_leases(locals().get("cache_leases", []))
         document_worker_finished(outcome, time.perf_counter() - job_started)
         semaphore.release()
         try:
@@ -1486,23 +1331,8 @@ def _update_document_job_progress(
         connection.close()
 
 
-def _remove_prepared_document_sidecars(job_dir: Path) -> None:
-    for candidate in (
-        job_dir / "prepared-input.json",
-        *job_dir.glob("input-prepared-*.bin"),
-        *job_dir.glob("input-cache-*.bin"),
-        *job_dir.glob("prepared-template-*.docx"),
-        *job_dir.glob("prepared-template-*.tmp"),
-    ):
-        try:
-            candidate.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-
 def _process_claimed_document_job(database, claimed) -> None:
     job_dir = _document_job_dir(claimed["id"])
-    cache_leases: list[tuple[int, Any]] = []
     try:
         owner_values = tuple(
             str(claimed.get(field) or "").strip()
@@ -1530,22 +1360,6 @@ def _process_claimed_document_job(database, claimed) -> None:
             database, claimed, "preparing", total_items=total_items
         )
         input_path = job_dir / "input.json"
-        if operation in {"render_docx", "render_docx_batch"}:
-            _remove_prepared_document_sidecars(job_dir)
-            _prepared_payload, cache_leases, cache_overrides = _prepare_render_payload_cache(
-                operation,
-                payload,
-                organization_scope=str(claimed.get("organization_id") or ""),
-            )
-            if cache_overrides:
-                input_path = job_dir / "prepared-input.json"
-                write_render_cache_overlay(
-                    input_path,
-                    job_dir / "input.json",
-                    operation,
-                    cache_overrides,
-                )
-                _prepare_external_job_permissions(job_dir)
         result_path = job_dir / "result.json"
         for result_file in (result_path, job_dir / "result.bin"):
             result_file.unlink(missing_ok=True)
@@ -1553,7 +1367,6 @@ def _process_claimed_document_job(database, claimed) -> None:
             database, claimed, "rendering", total_items=total_items
         )
         result = _run_staged_document_job(job_dir, input_path, result_path)
-        _publish_render_cache_sidecars(job_dir, cache_leases)
         _update_document_job_progress(
             database,
             claimed,
@@ -1570,7 +1383,6 @@ def _process_claimed_document_job(database, claimed) -> None:
             verify_document_job_source_authority(claimed)
         _prepare_external_job_permissions(job_dir)
         _finish_durable_document_job(database, claimed, result=result)
-        _remove_prepared_document_sidecars(job_dir)
     except Exception as error:
         for result_file in (job_dir / "result.json", job_dir / "result.bin"):
             try:
@@ -1578,11 +1390,8 @@ def _process_claimed_document_job(database, claimed) -> None:
             except OSError:
                 pass
         _finish_durable_document_job(database, claimed, error)
-        _remove_prepared_document_sidecars(job_dir)
         # Keep the immutable input and failed metadata for operator inspection
         # and an explicit retry. The retention sweep is the only deletion path.
-    finally:
-        _release_render_cache_leases(cache_leases)
 
 
 def process_next_durable_document_job(database=None, *, job_id=None) -> bool:

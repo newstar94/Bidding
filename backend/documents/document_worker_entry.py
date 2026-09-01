@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import socket
 import sys
@@ -13,9 +12,7 @@ from typing import Any
 from zipfile import ZIP_STORED, ZipFile
 
 from backend.documents.document_ipc import (
-    WORKER_EVENT_PREFIX,
     read_job_manifest,
-    read_render_cache_overlay,
     write_result,
 )
 from backend.documents.seccomp_policy import apply_document_seccomp
@@ -23,44 +20,6 @@ from backend.documents.seccomp_policy import apply_document_seccomp
 
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_INPUT_CONTENT_BYTES = 64 * 1024 * 1024
-
-
-def _emit_word_standardization_event(metadata: dict) -> None:
-    """Emit bounded, content-free status for parent-process observability."""
-
-    allowlisted = {
-        key: metadata.get(key)
-        for key in (
-            "mode",
-            "status",
-            "effectiveProfile",
-            "detectedDocumentType",
-            "documentTypeConfidence",
-            "documentTypeConflictCount",
-            "plannedRuleCount",
-            "plannedTargetCount",
-            "storyPartCount",
-            "storyXmlBytes",
-            "stylesXmlBytes",
-            "paragraphCount",
-            "runCount",
-            "styleCount",
-            "preservation",
-            "engineVersion",
-            "policyVersion",
-        )
-        if metadata.get(key) is not None
-    }
-    event = {"event": "document.word_standardization", "fields": allowlisted}
-    print(
-        WORKER_EVENT_PREFIX + json.dumps(
-            event,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
-        flush=True,
-    )
 
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -143,7 +102,7 @@ def _validate_job_paths(input_path: Path, result_path: Path) -> None:
     if input_path.resolve().parent != job_dir or result_path.resolve().parent != job_dir:
         raise ValueError("Đường dẫn tác vụ tài liệu không hợp lệ.")
     if (
-        input_path.name not in {"input.json", "prepared-input.json"}
+        input_path.name != "input.json"
         or result_path.name != "result.json"
     ):
         raise ValueError("Tên tệp tác vụ tài liệu không hợp lệ.")
@@ -156,38 +115,6 @@ def _payload_content(payload):
     return content
 
 
-def _prepare_template_for_render(
-    template_bytes: bytes, payload: dict[str, Any], index: int,
-):
-    from backend.documents.word_standardizer import standardize_template_for_export
-
-    if payload.get("template_prestandardized") is True:
-        return template_bytes
-    automatic = standardize_template_for_export(
-        template_bytes,
-        document_type_hint=(payload.get("context_manifest") or {}).get(
-            "document_type"
-        ),
-        mode=payload.get("standardization_mode"),
-    )
-    _emit_word_standardization_event(automatic.metadata)
-    if automatic.metadata.get("preservation") == "PASS":
-        _write_prepared_template(index, automatic.content)
-    return automatic.content
-
-
-def _write_prepared_template(index: int, content: bytes) -> None:
-    job_dir = Path(os.environ["DOCUMENT_WORKER_JOB_DIR"]).resolve()
-    destination = job_dir / f"prepared-template-{index:04d}.docx"
-    temporary = job_dir / f"prepared-template-{index:04d}.tmp"
-    if len(content) > MAX_OUTPUT_BYTES:
-        raise ValueError("Biểu mẫu Word chuẩn hóa vượt quá giới hạn.")
-    with temporary.open("xb") as handle:
-        handle.write(content)
-    temporary.chmod(0o600)
-    os.replace(temporary, destination)
-
-
 def _render_docx_target(
     payload: dict[str, Any], target: dict[str, Any], index: int,
 ) -> bytes:
@@ -197,22 +124,10 @@ def _render_docx_target(
     template_bytes = template_path.read_bytes()
     if len(template_bytes) > MAX_INPUT_CONTENT_BYTES:
         raise ValueError("Biểu mẫu Word vượt quá giới hạn kích thước.")
-    prepared_payload = {
-        **payload,
-        "template_prestandardized": target.get(
-            "template_prestandardized",
-            payload.get("template_prestandardized"),
-        ),
-    }
-    prepared = _prepare_template_for_render(template_bytes, prepared_payload, index)
-    render_options = (
-        {"template_content": prepared} if prepared != template_bytes else {}
-    )
     stream = generate_report_from_custom_template(
         template_path,
         copy.deepcopy(payload["context"]),
         payload["context_manifest"],
-        **render_options,
     )
     result = stream.getvalue()
     if len(result) > MAX_OUTPUT_BYTES:
@@ -448,14 +363,9 @@ def main() -> int:
         apply_document_seccomp(
             required=os.environ.get("APP_ENV", "").lower() in {"prod", "production"}
         )
-        if input_path.name == "prepared-input.json":
-            operation, payload = read_render_cache_overlay(
-                input_path, input_path.parent.resolve()
-            )
-        else:
-            operation, payload = read_job_manifest(
-                input_path, input_path.parent.resolve()
-            )
+        operation, payload = read_job_manifest(
+            input_path, input_path.parent.resolve()
+        )
         result = _run_operation(operation, payload)
         write_result(result_path, result=result)
     except Exception as exc:

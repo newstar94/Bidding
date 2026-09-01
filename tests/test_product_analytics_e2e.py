@@ -9,6 +9,7 @@ from starlette.applications import Starlette
 from starlette.responses import FileResponse, HTMLResponse
 from starlette.routing import Route
 import uvicorn
+import pytest
 
 from backend.db.upgrades import DB_SCHEMA_VERSION, apply_database_upgrades
 from backend.product_analytics.aggregation import refresh_product_analytics
@@ -20,6 +21,7 @@ from tests.test_postgres_migration_chain import (
 )
 
 
+@pytest.mark.browser_e2e
 def test_real_backend_browser_analytics_journey(monkeypatch):
     connection, cursor, schema_name = _open_fixture_connection()
     server = None

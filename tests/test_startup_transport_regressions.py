@@ -309,7 +309,7 @@ def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(app_module, "APP_DEBUG", True)
-    monkeypatch.setattr(app_module, "USE_FRONTEND_BUNDLE", True, raising=False)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "bundle")
     monkeypatch.setattr(app_module, "project_root", str(tmp_path))
     monkeypatch.setattr(app_module, "_compiled_html_cache", None)
     monkeypatch.setattr(app_module, "_compiled_html_cache_signature", None)
@@ -320,6 +320,37 @@ def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
     assert '/dist/assets/app-debug-12345678.css' in compiled
     assert '<meta name="bf-app-debug" content="false">' in compiled
     assert '/frontend/app/app.js' not in compiled
+
+
+def test_runtime_asset_mode_switch_invalidates_the_transport_choice(monkeypatch, tmp_path):
+    views_directory = tmp_path / "views"
+    manifest_directory = tmp_path / "dist" / ".vite"
+    views_directory.mkdir(parents=True)
+    manifest_directory.mkdir(parents=True)
+    index_path = views_directory / "index.html"
+    index_path.write_text(
+        '<html><head><link rel="stylesheet" href="/css/base.css"></head>'
+        '<body><script type="module" src="/frontend/app/app.js"></script></body></html>',
+        encoding="utf-8",
+    )
+    (manifest_directory / "manifest.json").write_text(json.dumps({
+        "frontend/app/app.js": {"file": "assets/app-debug-12345678.js"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "source")
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+    monkeypatch.setattr(app_module, "_compiled_html_cache", None)
+    monkeypatch.setattr(app_module, "_compiled_html_cache_signature", None)
+
+    source = app_module.compile_html(str(index_path))
+    assert "/frontend/app/app.js" in source
+    assert "/dist/assets/app-debug-12345678.js" not in source
+
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "bundle")
+    bundled = app_module.compile_html(str(index_path))
+    assert "/dist/assets/app-debug-12345678.js" in bundled
+    assert "/frontend/app/app.js" not in bundled
 
 
 def test_frontend_prewarm_reads_only_manifest_assets_inside_dist(monkeypatch, tmp_path):

@@ -5,7 +5,9 @@ import { join, resolve } from "node:path";
 import vm from "node:vm";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
+import { createBrowserSessionManager } from "./lib/browserSessionManager.mjs";
 import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
+import { finalizeLotAndWaitForRender } from "./lib/lotLifecycleSynchronization.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -115,6 +117,55 @@ let browserServer = null;
 let context = null;
 let page = null;
 
+const configureLifecyclePage = async (nextPage) => {
+  nextPage.setDefaultTimeout(20_000);
+  nextPage.setDefaultNavigationTimeout(20_000);
+  const blockInjectedScript = (route) => route.abort("blockedbyclient");
+  await nextPage.route(
+    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
+    blockInjectedScript,
+  );
+  await nextPage.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
+  await nextPage.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
+  nextPage.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+  nextPage.on("request", (request) => {
+    if (!request.url().includes("/api/")) return;
+    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
+    if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+  });
+  nextPage.on("response", async (response) => {
+    if (response.url().includes("/api/")) {
+      recentApiTraffic.push(`<-${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
+      if (recentApiTraffic.length > 30) recentApiTraffic.shift();
+    }
+    if (response.status() >= 400 && response.url().includes("/api/")
+      && !isExpectedTelemetryBackpressure(response)) {
+      let body = "";
+      try { body = await response.text(); } catch {}
+      if (isExpectedSyncReset(response, body)) return;
+      httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
+    }
+  });
+};
+
+const browserSessions = createBrowserSessionManager({
+  launchServer: () => chromium.launchServer(launchOptions),
+  connect: (server) => chromium.connect({ wsEndpoint: server.wsEndpoint() }),
+  contextOptions: {
+    locale: "vi-VN",
+    timezoneId: "Asia/Ho_Chi_Minh",
+    serviceWorkers: "block",
+  },
+  configurePage: configureLifecyclePage,
+});
+
+const useBrowserSession = (nextSession) => {
+  browserServer = nextSession.server;
+  browser = nextSession.browser;
+  context = nextSession.context;
+  page = nextSession.page;
+};
+
 const mark = (step, details = {}) => {
   result.steps.push({ step, ...details });
   process.stdout.write(`[E2E] ${step}\n`);
@@ -155,54 +206,11 @@ const waitForApp = async (page) => {
 };
 
 async function openBrowserSession(storageState = undefined) {
-  browserServer = await chromium.launchServer(launchOptions);
-  browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
-  context = await browser.newContext({
-    locale: "vi-VN",
-    timezoneId: "Asia/Ho_Chi_Minh",
-    serviceWorkers: "block",
-    storageState,
-  });
-  page = await context.newPage();
-  page.setDefaultTimeout(20_000);
-  page.setDefaultNavigationTimeout(20_000);
-  const blockInjectedScript = (route) => route.abort("blockedbyclient");
-  await page.route(
-    /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
-    blockInjectedScript,
-  );
-  await page.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
-  await page.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
-  page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
-  page.on("request", (request) => {
-    if (!request.url().includes("/api/")) return;
-    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
-    if (recentApiTraffic.length > 30) recentApiTraffic.shift();
-  });
-  page.on("response", async (response) => {
-    if (response.url().includes("/api/")) {
-      recentApiTraffic.push(`<-${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`);
-      if (recentApiTraffic.length > 30) recentApiTraffic.shift();
-    }
-    if (response.status() >= 400 && response.url().includes("/api/")
-      && !isExpectedTelemetryBackpressure(response)) {
-      let body = "";
-      try { body = await response.text(); } catch {}
-      if (isExpectedSyncReset(response, body)) return;
-      httpErrors.push(`${response.status()} ${response.request().method()} ${response.url()} ${body}`);
-    }
-  });
+  useBrowserSession(await browserSessions.open({ storageState }));
 }
 
 async function renewBrowserSession() {
-  const storageState = await context.storageState({ indexedDB: true });
-  const previousServer = browserServer;
-  context = null;
-  page = null;
-  browser = null;
-  browserServer = null;
-  await previousServer.close();
-  await openBrowserSession(storageState);
+  useBrowserSession(await browserSessions.restartPreservingStorage());
   mark("browser-session-renewed");
 }
 
@@ -1655,7 +1663,7 @@ try {
     });
   };
 
-  const approveCurrentLot = async ({ sequence, price }) => {
+  const approveCurrentLot = async ({ sequence, price, expectedPackageStatus }) => {
     await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-LOT-${sequence}`);
     await page.locator("#award-ngay-bctd").fill(sequence === 1 ? testClock.date(7) : testClock.date(10));
     await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
@@ -1665,26 +1673,49 @@ try {
     await row.locator(".row-gia-trung").fill(price);
     await row.locator(".row-tg-goithau").fill("90 ngày");
     await row.locator(".row-tg-hopdong").fill("90 ngày và nghĩa vụ bảo hành");
-    await page.locator("#btn-approve-award").click();
-    await page.locator(".evaluation-round-card").waitFor({ state: "visible", timeout: 20_000 });
+    const roundsBefore = await page.locator(".evaluation-round-card").count();
+    return finalizeLotAndWaitForRender({
+      page,
+      packageId: lotPackage.id,
+      roundsBefore,
+      expectedPackageStatus,
+      expectedRenderedStatus: expectedPackageStatus === "COMPLETED"
+        ? "Đã có kết quả"
+        : "Đã có kết quả một phần",
+      approve: () => page.locator("#btn-approve-award").click(),
+      waitForPageCondition,
+    });
   };
 
   await evaluateCurrentLot({ lotCode: "PP01", reportSuffix: "LOT-1", price: "240000000" });
-  await approveCurrentLot({ sequence: 1, price: "240000000" });
+  await approveCurrentLot({
+    sequence: 1,
+    price: "240000000",
+    expectedPackageStatus: "PARTIALLY_COMPLETED",
+  });
   await page.getByText("Còn 1 phần lô chưa có kết quả", { exact: false }).waitFor({ state: "visible", timeout: 20_000 });
   mark("lot-first-batch-approved");
 
   await renewBrowserSession();
   await openPackageWorkflow(lotPackage, "eval_tech");
-  await page.locator("#btn-continue-lot-evaluation").waitFor({ state: "visible", timeout: 15_000 });
-  await page.locator("#btn-continue-lot-evaluation").click({ force: true, noWaitAfter: true });
+  const continueLotEvaluation = page.locator("#btn-continue-lot-evaluation");
+  await continueLotEvaluation.waitFor({ state: "visible", timeout: 15_000 });
+  if (!await continueLotEvaluation.isEnabled()) {
+    throw new Error("Continue lot evaluation button is not enabled.");
+  }
+  await continueLotEvaluation.click();
   await page.locator("#danhgiahsdt-so-baocao").waitFor({ state: "visible", timeout: 15_000 });
   await evaluateCurrentLot({ lotCode: "PP02", reportSuffix: "LOT-2", price: "230000000" });
-  await approveCurrentLot({ sequence: 2, price: "230000000" });
+  await approveCurrentLot({
+    sequence: 2,
+    price: "230000000",
+    expectedPackageStatus: "COMPLETED",
+  });
   await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
   if (await page.locator('button[data-workflow-tab="result"]').getAttribute("aria-selected") !== "true") {
     await page.locator('button[data-workflow-tab="result"]').click();
   }
+  await waitForRenderedWorkflowTab(page, "result");
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       url: location.href,
@@ -1882,7 +1913,7 @@ try {
   if (httpErrors.length) throw new Error(`HTTP errors: ${httpErrors.join(" | ")}`);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
-  if (browserServer) browserServer.process().kill();
+  await browserSessions.close().catch(() => {});
   if (generatedExcelFixtures) {
     rmSync(generatedExcelFixtures.directory, { recursive: true, force: true });
   }

@@ -19,7 +19,6 @@ _RUNTIME_PATH_DEFAULTS = {
     "BIDDING_UPLOAD_DIR": Path("templates") / "images",
     "BIDDING_WORD_TEMPLATE_DIR": Path("templates") / "words",
     "BIDDING_WORD_TEMPLATE_CATALOG_DIR": Path("templates") / "word-catalog",
-    "BIDDING_WORD_EXPORT_CACHE_DIR": Path("word-export-cache"),
     "DOCUMENT_WORKER_TEMP_DIR": Path("document-worker-temp"),
 }
 
@@ -49,4 +48,3 @@ WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
 WORD_TEMPLATE_CATALOG_DIR = resolve_runtime_path(
     "BIDDING_WORD_TEMPLATE_CATALOG_DIR"
 )
-WORD_EXPORT_CACHE_DIR = resolve_runtime_path("BIDDING_WORD_EXPORT_CACHE_DIR")

@@ -112,16 +112,14 @@ LEGAL_VERSIONING_ENABLED = os.environ.get(
 def _frontend_bundle_enabled():
     """Resolve asset mode from the current runtime flags.
 
-    ``APP_DEBUG`` and ``IS_PRODUCTION`` are patched by startup/tests after
-    module import, so relying only on the import-time constant can select the
-    wrong transport.  Keep the constant as an explicit compatibility override
-    while deriving the normal mode from the current flags.
+    ``APP_DEBUG``, ``IS_PRODUCTION`` and ``FRONTEND_ASSET_MODE`` are runtime
+    flags.  Resolve them at the call site so tests and controlled development
+    switches cannot be pinned to the import-time ``USE_FRONTEND_BUNDLE`` value.
     """
     return bool(
         IS_PRODUCTION
         or not APP_DEBUG
         or FRONTEND_ASSET_MODE == "bundle"
-        or USE_FRONTEND_BUNDLE
     )
 
 

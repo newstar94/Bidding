@@ -78,7 +78,7 @@ def test_document_ipc_copies_current_tenant_media_with_namespace(tmp_path):
     assert copied.read_bytes() == source_path.read_bytes()
 
 
-def test_prepared_worker_manifest_reuses_staged_images_without_second_copy(tmp_path):
+def test_replayed_worker_manifest_reuses_staged_images_without_second_copy(tmp_path):
     image_root = tmp_path / "source-images"
     managed_path, source_path = _tenant_image(image_root, "org-a")
     template_path = tmp_path / "template.docx"
@@ -96,14 +96,13 @@ def test_prepared_worker_manifest_reuses_staged_images_without_second_copy(tmp_p
     copied = job_dir / "assets" / "images" / source_path.relative_to(image_root)
     before = copied.stat().st_mtime_ns
     _operation, materialized = read_job_manifest(job_dir / "input.json", job_dir)
-    materialized["template_prestandardized"] = True
     write_job_manifest(
-        job_dir / "prepared-input.json",
+        job_dir / "retry-input.json",
         "render_docx",
         materialized,
         image_root=job_dir / "assets" / "images",
         copy_images=False,
-        sidecar_prefix="input-prepared",
+        sidecar_prefix="input-retry",
     )
 
     assert copied.read_bytes() == source_path.read_bytes()

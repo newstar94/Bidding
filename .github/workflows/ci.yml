@@ -111,7 +111,7 @@ jobs:
             --cov-report=xml:coverage.xml
         run: |
           set -o pipefail
-          python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45 2>&1 | tee python-tests.log
+          python -m pytest -q -m "not browser_e2e" --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45 2>&1 | tee python-tests.log
           python scripts/check_critical_coverage.py coverage.json
       - name: Upload Python test diagnostics
         if: always()
@@ -353,6 +353,8 @@ jobs:
           npm run test:package-pairwise-e2e
           npm run test:lifecycle
           npm run test:ui-quality-e2e
+      - name: Product analytics browser journey
+        run: python -m pytest -q -m browser_e2e tests/test_product_analytics_e2e.py
       - name: Stop E2E application
         if: always()
         run: |

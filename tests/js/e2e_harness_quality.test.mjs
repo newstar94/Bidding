@@ -179,7 +179,7 @@ test("lifecycle E2E renews Chromium cleanly between persisted workflow phases", 
   assert.match(source, /async function renewBrowserSession\(/u);
   assert.match(
     source,
-    /async function renewBrowserSession[\s\S]*const previousServer = browserServer[\s\S]*await previousServer\.close\(\)[\s\S]*openBrowserSession\(storageState\)/u,
+    /createBrowserSessionManager[\s\S]*restartPreservingStorage/u,
   );
   assert.match(source, /async function restartBrowserSession[\s\S]*await renewBrowserSession\(\)/u);
   assert.match(
@@ -207,7 +207,24 @@ test("lifecycle E2E renews Chromium cleanly between persisted workflow phases", 
     /suffix: "GT-EXCEL-1I"[\s\S]*?await restartBrowserSession\(\);[\s\S]*?suffix: "GT-EXCEL-MI"/u,
   );
   assert.match(source, /serviceWorkers: "block"/u);
-  assert.match(source, /page\.setDefaultNavigationTimeout\(20_000\)/u);
+  assert.match(source, /nextPage\.setDefaultNavigationTimeout\(20_000\)/u);
+});
+
+test("lifecycle lot approval waits for the persisted finalization and rendered state", () => {
+  for (const name of [
+    "verify_full_lifecycle.mjs",
+    "verify_joint_venture_e2e.mjs",
+  ]) {
+    const source = fs.readFileSync(path.join(scriptsRoot, name), "utf8");
+    assert.match(
+      source,
+      /const roundsBefore = await page\.locator\("\.evaluation-round-card"\)\.count\(\)/u,
+      name,
+    );
+    assert.match(source, /finalizeLotAndWaitForRender\(\{/u, name);
+    assert.match(source, /expectedPackageStatus: "PARTIALLY_COMPLETED"/u, name);
+    assert.match(source, /expectedPackageStatus: "COMPLETED"/u, name);
+  }
 });
 
 test("lifecycle E2E waits for visible-content enhancement before rerendering invitation", () => {
@@ -238,7 +255,7 @@ test("lifecycle E2E waits for visible-content enhancement before rerendering inv
     source,
     /#btn-them-giahan"\)\.press\("Enter", \{ noWaitAfter: true \}\)/u,
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
     /#btn-continue-lot-evaluation"\)\.click\(\{ force: true, noWaitAfter: true \}\)/u,
   );

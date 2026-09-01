@@ -154,10 +154,6 @@ OPERATIONAL_ARTIFACT_VERIFY_INTERVAL_SECONDS=900
 # BIDDING_DATA_DIR/templates/images, templates/words, templates/word-catalog
 # and document-worker-temp.
 BIDDING_WORD_TEMPLATE_CATALOG_DIR=
-BIDDING_WORD_EXPORT_CACHE_DIR=
-WORD_EXPORT_CACHE_ENABLED=true
-WORD_EXPORT_CACHE_MAX_MB=512
-WORD_EXPORT_CACHE_MAX_ENTRIES=1024
 
 # Production web workers only enqueue and consume results. The dedicated
 # systemd document-worker service claims jobs and launches each parser inside
@@ -555,11 +551,6 @@ PAYOS_CLIENT_ID=
 PAYOS_API_KEY=
 PAYOS_CHECKSUM_KEY=
 
-# Content-aware formatting of exact Word template bytes before record data is
-# merged. apply_safe is automatic; shadow analyzes without changing output; off
-# is the immediate rollback switch. This setting is not an entitlement.
-WORD_EXPORT_STANDARDIZATION_MODE=apply_safe
-
 # Immutable Word-template lifecycle. Keep shadow mode until legacy parity and
 # projection-outbox reconciliation have completed.
 WORD_TEMPLATE_CATALOG_ENABLED=false
@@ -622,9 +613,8 @@ ANALYTICS_AI_COST_VND_MULTIPLIER=
 # PARTNER_JOB_STALE_SECONDS=300
 # PARTNER_ENRICHMENT_MAX_ATTEMPTS=5
 
-# Observability and Word export cache tuning.
+# Observability tuning.
 # METRICS_OPERATIONAL_SNAPSHOT_TTL_SECONDS=30
-# WORD_EXPORT_CACHE_LOCK_SECONDS=30
 
 # Optional runtime path overrides. When absent, each path derives from
 # BIDDING_DATA_DIR; keep production paths absolute when overriding.

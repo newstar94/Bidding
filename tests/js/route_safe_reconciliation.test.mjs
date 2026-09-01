@@ -10,6 +10,7 @@ import {
 } from "../../frontend/packages/detail/PackageWorkspaceState.js";
 import {
   capturePackageDetailNavigationIntent,
+  markRenderedDetail,
   shouldAbortPackageDetailRefreshForNewDraft,
 } from "../../frontend/packages/GoiThauDetail.js";
 import { completePackageInvitationEdit } from "../../frontend/packages/detail/PackageOpeningPanel.js";
@@ -23,6 +24,34 @@ test("explicit package workflow navigation is captured before asynchronous hydra
   assert.equal(capturePackageDetailNavigationIntent(view, "package-new", "result"), true);
   assert.equal(view._currentWorkflowPackageId, "package-new");
   assert.equal(view._currentWorkflowTab, "result");
+});
+
+test("completed package renders expose authoritative status and row version", () => {
+  const previousDocument = globalThis.document;
+  const dataset = { pendingRenderVersion: "7" };
+  globalThis.document = {
+    getElementById: () => ({ dataset }),
+  };
+  try {
+    markRenderedDetail({
+      _currentWorkflowPackageId: "package-1",
+      _currentWorkflowTab: "result",
+    }, {
+      trangThai: "Đã có kết quả",
+      rowVersion: 14,
+    }, 7);
+    assert.deepEqual(dataset, {
+      pendingRenderVersion: "7",
+      renderedWorkflowTab: "result",
+      renderedPackageId: "package-1",
+      renderedPackageStatus: "Đã có kết quả",
+      renderedPackageRowVersion: "14",
+      renderedRenderVersion: "7",
+    });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test("package refresh preserves a dirty form unless navigation is explicit", () => {

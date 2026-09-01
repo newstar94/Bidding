@@ -22,7 +22,6 @@ from backend.shared.media_helper import (
 IPC_VERSION = 1
 JOB_FORMAT = "biddingflow-document-job"
 RESULT_FORMAT = "biddingflow-document-result"
-RENDER_OVERLAY_FORMAT = "biddingflow-render-cache-overlay"
 WORKER_EVENT_PREFIX = "BIDDINGFLOW_DOCUMENT_EVENT_V1:"
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_SIDECAR_BYTES = 64 * 1024 * 1024
@@ -370,127 +369,6 @@ def read_job_manifest(path: Path, job_dir: Path) -> tuple[str, dict[str, Any]]:
     if not isinstance(payload, dict):
         raise DocumentIpcError("Payload tác vụ không hợp lệ.")
     return manifest["operation"], payload
-
-
-def write_render_cache_overlay(
-    path: Path,
-    base_input_path: Path,
-    operation: str,
-    overrides: list[tuple[int, bytes]],
-) -> None:
-    """Write a small template-only overlay over one immutable durable input."""
-
-    if operation not in {"render_docx", "render_docx_batch"}:
-        raise DocumentIpcError("Overlay cache Word không hỗ trợ tác vụ này.")
-    job_dir = path.parent.resolve()
-    base = base_input_path.resolve(strict=True)
-    if base.parent != job_dir or base.name != "input.json" or base.is_symlink():
-        raise DocumentIpcError("Manifest gốc của overlay Word không hợp lệ.")
-    seen = set()
-    values = []
-    total_bytes = 0
-    for position, (index, content) in enumerate(overrides):
-        if (
-            not isinstance(index, int)
-            or isinstance(index, bool)
-            or index < 0
-            or index in seen
-            or not isinstance(content, bytes)
-        ):
-            raise DocumentIpcError("Override biểu mẫu Word không hợp lệ.")
-        seen.add(index)
-        sidecar = job_dir / f"input-cache-{position:04d}.bin"
-        _write_bytes(sidecar, content)
-        total_bytes += len(content)
-        values.append({"index": index, "template": _file_metadata(sidecar, "path")})
-    if total_bytes > MAX_TOTAL_BYTES:
-        raise DocumentIpcError("Tổng cache biểu mẫu Word vượt quá giới hạn.")
-    envelope = {
-        "format": RENDER_OVERLAY_FORMAT,
-        "version": IPC_VERSION,
-        "operation": operation,
-        "baseInput": {
-            "name": base.name,
-            "size": base.stat().st_size,
-            "sha256": _sha256_file(base),
-        },
-        "overrides": values,
-    }
-    encoded = json.dumps(
-        envelope,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    if len(encoded) > MAX_MANIFEST_BYTES:
-        raise DocumentIpcError("Overlay cache Word vượt quá giới hạn.")
-    with path.open("xb") as handle:
-        handle.write(encoded)
-    path.chmod(0o600)
-
-
-def read_render_cache_overlay(path: Path, job_dir: Path) -> tuple[str, dict[str, Any]]:
-    """Verify and apply a template-only overlay without copying record context."""
-
-    overlay = _read_json(path)
-    if set(overlay) != {
-        "format", "version", "operation", "baseInput", "overrides",
-    }:
-        raise DocumentIpcError("Schema overlay cache Word không hợp lệ.")
-    operation = overlay["operation"]
-    if (
-        overlay["format"] != RENDER_OVERLAY_FORMAT
-        or overlay["version"] != IPC_VERSION
-        or operation not in {"render_docx", "render_docx_batch"}
-    ):
-        raise DocumentIpcError("Phiên bản overlay cache Word không hợp lệ.")
-    base_metadata = overlay["baseInput"]
-    if not isinstance(base_metadata, dict) or set(base_metadata) != {
-        "name", "size", "sha256",
-    } or base_metadata["name"] != "input.json":
-        raise DocumentIpcError("Manifest gốc của overlay Word không hợp lệ.")
-    base_path = (job_dir / "input.json").resolve(strict=True)
-    if (
-        base_path.parent != job_dir.resolve()
-        or base_path.is_symlink()
-        or base_path.stat().st_size != base_metadata["size"]
-        or _sha256_file(base_path) != base_metadata["sha256"]
-    ):
-        raise DocumentIpcError("Hash manifest gốc của overlay Word không hợp lệ.")
-    base_operation, payload = read_job_manifest(base_path, job_dir)
-    if base_operation != operation:
-        raise DocumentIpcError("Tác vụ overlay Word không khớp manifest gốc.")
-    raw_overrides = overlay["overrides"]
-    if not isinstance(raw_overrides, list) or len(raw_overrides) > 50:
-        raise DocumentIpcError("Danh sách override Word không hợp lệ.")
-    targets = payload.get("templates") if operation == "render_docx_batch" else [payload]
-    if not isinstance(targets, list):
-        raise DocumentIpcError("Danh sách biểu mẫu Word không hợp lệ.")
-    seen = set()
-    for raw_override in raw_overrides:
-        if not isinstance(raw_override, dict) or set(raw_override) != {"index", "template"}:
-            raise DocumentIpcError("Override biểu mẫu Word không hợp lệ.")
-        index = raw_override["index"]
-        if (
-            not isinstance(index, int)
-            or isinstance(index, bool)
-            or not 0 <= index < len(targets)
-            or index in seen
-        ):
-            raise DocumentIpcError("Vị trí override biểu mẫu Word không hợp lệ.")
-        seen.add(index)
-        template_path = _materialize(raw_override["template"], job_dir)
-        target = dict(targets[index])
-        target.pop("template_content", None)
-        target["template_path"] = template_path
-        target["template_prestandardized"] = True
-        if operation == "render_docx_batch":
-            targets[index] = target
-        else:
-            payload = target
-    if operation == "render_docx_batch":
-        payload["templates"] = targets
-    return operation, payload
 
 
 def write_result(path: Path, *, result: Any = None, error_type: str | None = None, message: str | None = None) -> None:

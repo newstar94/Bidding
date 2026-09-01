@@ -24,10 +24,7 @@ test("Word template manager uses an add button without seeded default rows", asy
   assert.match(html, /Cài đặt biểu mẫu theo chức năng/u);
   assert.match(html, /id="word-template-standardization-profile"/u);
   assert.match(html, /value="sector_template" selected/u);
-  assert.match(
-    html,
-    /ứng dụng tự nhận diện cấu trúc và áp dụng định dạng an toàn, không cần người dùng/u,
-  );
+  assert.match(html, /giữ nguyên định dạng của phiên bản template/u);
   assert.doesNotMatch(html, /id="word-derived-variable-guide"/);
   assert.match(html, /id="dictionary-search"/);
   assert.match(html, /Tìm theo mã biến, ý nghĩa hoặc nguồn ánh xạ/u);

@@ -9,6 +9,7 @@ import {
   isExpectedTelemetryAuthFailure,
   isExpectedTelemetryBackpressure,
 } from "./lib/e2eHttpErrors.mjs";
+import { finalizeLotAndWaitForRender } from "./lib/lotLifecycleSynchronization.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -77,6 +78,10 @@ const mark = (step, details = {}) => {
   result.steps.push({ step, ...details });
   process.stdout.write(`[JV-E2E] ${step}\n`);
 };
+
+const waitForPageCondition = (page, predicate, argument = null, options = {}) => (
+  page.waitForFunction(predicate, argument, { polling: 100, ...options })
+);
 
 function fixture(action, extra = {}) {
   const execution = spawnSync(
@@ -1211,9 +1216,14 @@ try {
         { cause: error },
       );
     }
-    await page.locator("#btn-danhgiahsdt-save:visible").click();
+    await saveEvaluationAndWait(page, httpErrors, pageErrors);
     try {
       await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
+      await waitForPageCondition(page, () => {
+        const wrapper = document.getElementById("detail-workflow-content-wrapper");
+        return wrapper?.dataset.renderedWorkflowTab === "result"
+          && wrapper.dataset.renderedRenderVersion === wrapper.dataset.pendingRenderVersion;
+      }, null, { timeout: 20_000 });
     } catch (error) {
       const diagnostics = await page.evaluate(() => {
         return {
@@ -1263,7 +1273,13 @@ try {
     }
   };
 
-  const approveLot = async ({ lot, sequence, winnerName, price }) => {
+  const approveLot = async ({
+    lot,
+    sequence,
+    winnerName,
+    price,
+    expectedPackageStatus,
+  }) => {
     const rows = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]");
     const rowDiagnostics = await rows.evaluateAll((items) => items.map((row) => ({
       bidId: row.dataset.approveBidId || "",
@@ -1311,13 +1327,40 @@ try {
     await page.locator("#award-ngay-bctd").fill(sequence === 1 ? testClock.date(-9) : testClock.date(-6));
     await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
     await page.locator("#award-decision-date").fill(sequence === 1 ? testClock.date(-8) : testClock.date(-5));
-    await page.locator("#btn-approve-award").click();
+    const roundsBefore = await page.locator(".evaluation-round-card").count();
     try {
-      await page.locator(".evaluation-round-card").waitFor({ state: "visible", timeout: 20_000 });
+      await finalizeLotAndWaitForRender({
+        page,
+        packageId: lotPackageData.id,
+        roundsBefore,
+        expectedPackageStatus,
+        expectedRenderedStatus: expectedPackageStatus === "COMPLETED"
+          ? "Đã có kết quả"
+          : "Đã có kết quả một phần",
+        approve: () => page.locator("#btn-approve-award").click(),
+        waitForPageCondition,
+      });
     } catch (error) {
       const diagnostics = await page.evaluate(() => ({
         dialog: document.querySelector("#modal-custom-dialog.active")?.textContent?.trim() || "",
         toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.textContent?.trim()),
+        rounds: document.querySelectorAll(".evaluation-round-card").length,
+        renderedWorkflow: (() => {
+          const wrapper = document.getElementById("detail-workflow-content-wrapper");
+          return {
+            tab: wrapper?.dataset.renderedWorkflowTab || "",
+            renderedVersion: wrapper?.dataset.renderedRenderVersion || "",
+            pendingVersion: wrapper?.dataset.pendingRenderVersion || "",
+          };
+        })(),
+        package: (() => {
+          const wrapper = document.getElementById("detail-workflow-content-wrapper");
+          return {
+            id: wrapper?.dataset.renderedPackageId || "",
+            status: wrapper?.dataset.renderedPackageStatus || "",
+            rowVersion: wrapper?.dataset.renderedPackageRowVersion || "",
+          };
+        })(),
         invalidFields: [...document.querySelectorAll("#detail-workflow-content-wrapper :invalid, #detail-workflow-content-wrapper [aria-invalid='true'], #detail-workflow-content-wrapper .form-group.invalid input")]
           .map((item) => ({ id: item.id || "", value: item.value || "", disabled: Boolean(item.disabled) })),
         decisionFields: [
@@ -1353,7 +1396,13 @@ try {
   };
 
   await evaluateLot({ lot: lotPackageData.lots[0], sequence: 1, jointPrice: 400_000 });
-  await approveLot({ lot: lotPackageData.lots[0], sequence: 1, winnerName: contractors[0].name, price: 400_000 });
+  await approveLot({
+    lot: lotPackageData.lots[0],
+    sequence: 1,
+    winnerName: contractors[0].name,
+    price: 400_000,
+    expectedPackageStatus: "PARTIALLY_COMPLETED",
+  });
   await page.getByText("Còn 1 phần lô chưa có kết quả", { exact: false }).waitFor({ state: "visible", timeout: 20_000 });
   mark("joint-venture-won-first-lot");
 
@@ -1361,7 +1410,13 @@ try {
     lot: lotPackageData.lots[1], sequence: 2,
     jointPrice: 200_000, independentPrice: 300_000, rejectJoint: true,
   });
-  await approveLot({ lot: lotPackageData.lots[1], sequence: 2, winnerName: contractors[3].name, price: 300_000 });
+  await approveLot({
+    lot: lotPackageData.lots[1],
+    sequence: 2,
+    winnerName: contractors[3].name,
+    price: 300_000,
+    expectedPackageStatus: "COMPLETED",
+  });
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
   const multiLotEvidence = fixture("verify_lot_outcomes");
   mark("joint-venture-multi-lot-outcomes-verified", multiLotEvidence);

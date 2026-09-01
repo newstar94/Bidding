@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 
 const [baseUrl, releaseId] = process.argv.slice(2);
 const browser = await chromium.launch({ headless: true });
