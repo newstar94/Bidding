@@ -1243,6 +1243,20 @@ test("package save refreshes a reference-only plan before capturing its mutation
   assert.equal(baseState.kehoach[0].referenceOnly, false);
 });
 
+test("package save exposes completion of the visible table refresh", async () => {
+  let finishRender;
+  const painting = new Promise(resolve => { finishRender = resolve; });
+  const rendered = renderPackageSaveTables({ renderGoiThauTable: () => painting });
+  assert.equal(typeof rendered?.then, "function");
+  let settled = false;
+  const completion = rendered.then(() => { settled = true; });
+  await Promise.resolve();
+  assert.equal(settled, false);
+  finishRender();
+  await completion;
+  assert.equal(settled, true);
+});
+
 test("package save renders only view projections installed for the active route", () => {
   let packageRenders = 0;
   assert.doesNotThrow(() => renderPackageSaveTables({

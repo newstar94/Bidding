@@ -119,7 +119,7 @@ export function mapOpeningBidder(bidder) {
 
 
 export function financialOpeningTimestamp(opening) {
-  return opening?.financialOpeningAt ?? opening?.openingAt ?? null;
+  return opening?.financialOpeningAt ?? null;
 }
 
 

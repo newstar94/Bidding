@@ -13,6 +13,7 @@ function fixture() {
   const formAttributes = new Map();
   const buttonAttributes = new Map();
   const button = {
+    textContent: "Lưu",
     disabled: false,
     setAttribute(name, value) { buttonAttributes.set(name, String(value)); },
     removeAttribute(name) { buttonAttributes.delete(name); },
@@ -39,6 +40,7 @@ test("modal form submission exposes saving state and blocks a duplicate submit",
   assert.equal(subject.form.dataset.submitState, "saving");
   assert.equal(subject.formAttributes.get("aria-busy"), "true");
   assert.equal(subject.button.disabled, true);
+  assert.equal(subject.button.textContent, "Đang lưu…");
   assert.equal(subject.buttonAttributes.get("aria-busy"), "true");
 
   assert.equal(
@@ -52,6 +54,7 @@ test("modal form submission exposes saving state and blocks a duplicate submit",
   assert.equal(subject.form.dataset.submitState, "ready");
   assert.equal(subject.formAttributes.has("aria-busy"), false);
   assert.equal(subject.button.disabled, false);
+  assert.equal(subject.button.textContent, "Lưu");
   assert.equal(subject.buttonAttributes.has("aria-busy"), false);
 });
 

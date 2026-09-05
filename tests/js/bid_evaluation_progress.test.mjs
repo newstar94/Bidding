@@ -70,6 +70,23 @@ test("scope and 1G2T rounds derive independently without mutating source records
   assert.deepEqual(bids, before);
 });
 
+test("editable binary defaults are included in progress before the user reselects them", () => {
+  const progress = deriveBidEvaluationProgress({
+    round: "technical",
+    bids: [{ id: "new-bid", danhGiaHopLe: "", danhGiaNangLuc: "", danhGiaKyThuat: "" }],
+    defaultEmptyBinaryResultsToPass: true,
+  });
+
+  assert.deepEqual(progress.stages.map(({ key, completed, applicable }) => ({
+    key, completed, applicable,
+  })), [
+    { key: "validity", completed: 1, applicable: 1 },
+    { key: "capacity", completed: 1, applicable: 1 },
+    { key: "technical", completed: 0, applicable: 1 },
+  ]);
+  assert.equal(progress.percent, 67);
+});
+
 test("a financially rejected bidder resolves ranking as not applicable", () => {
   const progress = deriveBidEvaluationProgress({
     round: "financial",

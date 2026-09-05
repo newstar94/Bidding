@@ -2568,6 +2568,15 @@ input#edit-pkg-price {
 .package-table-frame.has-bottom-space { margin-bottom: 24px; }
 .table-full-width { min-width: 100%; }
 .table-card-bg { background: var(--bg-card); }
+.bid-evaluation-conclusion-column,
+.bid-evaluation-conclusion-cell {
+  width: 10rem;
+  min-width: 10rem;
+}
+.bid-evaluation-conclusion-select {
+  width: 100%;
+  min-width: 8rem;
+}
 .compact-action { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 0.82rem; font-weight: 600; }
 .compact-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 #mothau-bid-container .mothau-opening-actions {

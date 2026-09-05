@@ -1598,7 +1598,7 @@ test("opening mapper fills the lot name paired with the imported lot code", () =
 });
 
 
-test("financial opening import prefers the financial phase timestamp", () => {
+test("financial opening import uses only the financial phase timestamp", () => {
   assert.equal(
     financialOpeningTimestamp({
       openingAt: "2026-08-01T08:00:00",
@@ -1608,7 +1608,7 @@ test("financial opening import prefers the financial phase timestamp", () => {
   );
   assert.equal(
     financialOpeningTimestamp({ openingAt: "2026-08-01T08:00:00" }),
-    "2026-08-01T08:00:00",
+    null,
   );
 });
 

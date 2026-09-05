@@ -177,6 +177,7 @@ export function openMoThauJVManager(tr) {
       return;
     }
     const apiInfo = await lookupInfoByTaxCode(leadCode, leadNameInput);
+    if (!modal.isConnected) return;
     tr._leadMemberViolationStatus = apiInfo?.violationStatus || VIOLATION_LOOKUP_FAILED;
     applyViolationNameClass(leadNameInput, tr._leadMemberViolationStatus);
     updateOpeningViolationPresentation(tr);
@@ -258,6 +259,7 @@ export function openMoThauJVManager(tr) {
         };
         if (allowOnlineLookup) {
           const riskInfo = await lookupInfoByTaxCode(code, mstInput, member.id || null);
+          if (!modal.isConnected || mstInput.value.trim() !== code) return;
           rowDiv._lookupData = { ...rowDiv._lookupData, ...riskInfo || {} };
           applyViolationNameClass(tenInput, rowDiv._lookupData.violationStatus);
         }
@@ -265,6 +267,7 @@ export function openMoThauJVManager(tr) {
       }
       if (allowOnlineLookup) {
         const apiInfo = await lookupInfoByTaxCode(code, mstInput);
+        if (!modal.isConnected || mstInput.value.trim() !== code) return;
         tenInput.value = resolveJvMemberNameAfterLookup(tenInput.value, apiInfo);
         if (tenInput.value) setValidationError(tenInput, "");
         tenInput.dataset.autofilled = "1";
@@ -285,7 +288,6 @@ export function openMoThauJVManager(tr) {
     mstInput.addEventListener("input", () => fillMemberNameFromCode(false));
     mstInput.addEventListener("change", () => fillMemberNameFromCode(true));
     mstInput.addEventListener("blur", () => fillMemberNameFromCode(true));
-    rowDiv._resolveLookup = () => fillMemberNameFromCode(true);
     listContainer.appendChild(rowDiv);
     fillMemberNameFromCode(false);
     lucide.createIcons({ root: rowDiv });
@@ -301,8 +303,8 @@ export function openMoThauJVManager(tr) {
   document.getElementById("btn-close-mothau-jv").onclick = closeModal;
   document.getElementById("btn-cancel-mothau-jv").onclick = closeModal;
   document.getElementById("btn-save-mothau-jv").onclick = async () => {
-    await fillLeadNameFromCode();
-    await Promise.all(Array.from(listContainer.querySelectorAll(".mothau-jv-member-row")).map((row) => row._resolveLookup?.()));
+    // This confirms the local opening draft, not a server save or a risk
+    // decision. The opening-save pipeline still enriches/validates the bids.
     const rows = listContainer.querySelectorAll(".mothau-jv-member-row");
     const rowInputs = Array.from(rows).flatMap((row) => [
       row.querySelector(".jv-input-mst"),
@@ -367,6 +369,11 @@ export function openMoThauJVManager(tr) {
       labelSpan.textContent = `Thành viên liên danh (${updatedMembers.length})`;
     }
     closeModal();
+    controller?.view?.showToast?.(
+      "Đã cập nhật thành viên liên danh",
+      "Bấm Lưu thông tin mở thầu để lưu danh sách này vào biên bản.",
+      "info",
+    );
   };
   lucide.createIcons({ root: modal });
 }

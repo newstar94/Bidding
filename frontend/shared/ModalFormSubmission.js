@@ -1,3 +1,13 @@
+export function beginSaveButtonFeedback(button, label = "Đang lưu…") {
+  if (!button) return () => {};
+  const children = button.childNodes ? [...button.childNodes] : null;
+  const previousText = button.textContent;
+  button.textContent = label;
+  return () => {
+    if (children && button.replaceChildren) button.replaceChildren(...children);
+    else button.textContent = previousText;
+  };
+}
 /**
  * Shared lifecycle for modal CRUD forms. It makes the save operation visible,
  * prevents accidental duplicate submissions, and always restores the controls
@@ -12,6 +22,7 @@ export async function runModalFormSubmission(event, submit) {
 
   const submitButton = form.querySelector?.('button[type="submit"]');
   const wasDisabled = Boolean(submitButton?.disabled);
+  const restoreLabel = beginSaveButtonFeedback(submitButton);
   form.dataset.submitState = "saving";
   form.setAttribute?.("aria-busy", "true");
   if (submitButton) {
@@ -23,6 +34,7 @@ export async function runModalFormSubmission(event, submit) {
     await submit();
     return true;
   } finally {
+    restoreLabel();
     form.dataset.submitState = "ready";
     form.removeAttribute?.("aria-busy");
     if (submitButton) {

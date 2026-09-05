@@ -95,3 +95,41 @@ test("bid evaluation summary keeps long identity values inside their own cells",
     await browser.close();
   }
 });
+
+test("conclusion column has enough width to show pass and fail choices in full", async () => {
+  const presentation = buildBidEvaluationTablePresentation({
+    pkg: {
+      linhVuc: "Tư vấn",
+      phanLo: "Không",
+      quyTrinhApDung: "1 giai đoạn 2 túi hồ sơ",
+    },
+    isTwoEnvelope: true,
+    currentTab: "technical",
+  });
+  assert.match(presentation.headerHtml, /<th class="bid-evaluation-conclusion-column">Kết luận<\/th>/u);
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 768, height: 500 } });
+    await page.setContent(`
+      <div class="package-table-frame">
+        <table class="data-table" id="danhgiahsdt-table">
+          <tbody><tr><td class="mt-ketluan-cell bid-evaluation-conclusion-cell">
+            <select class="form-control mt-dg-ketluan bid-evaluation-conclusion-select">
+              <option>Đạt</option><option selected>Không đạt</option>
+            </select>
+          </td></tr></tbody>
+        </table>
+      </div>
+    `);
+    for (const path of stylesheetPaths) await page.addStyleTag({ path });
+    const metrics = await page.locator(".mt-dg-ketluan").evaluate((select) => ({
+      cellWidth: select.closest("td").getBoundingClientRect().width,
+      selectWidth: select.getBoundingClientRect().width,
+    }));
+    assert.ok(metrics.cellWidth >= 160, `conclusion cell was only ${metrics.cellWidth}px wide`);
+    assert.ok(metrics.selectWidth >= 128, `conclusion select was only ${metrics.selectWidth}px wide`);
+  } finally {
+    await browser.close();
+  }
+});

@@ -245,6 +245,7 @@ export function renderDanhGiaHsdtPanel() {
           round,
           dirtyState: draftBinding?.dirtyState,
           statusText: status,
+          defaultEmptyBinaryResultsToPass: !isReadOnly,
         });
       };
       scheduleProgress = () => {

@@ -32,7 +32,7 @@ function buildHeader(caseType, {
       cell("Đánh giá kỹ thuật", "bf-s-8523765ec6"),
       cell("Làm rõ kỹ thuật", "bf-s-8523765ec6"),
       ...combinedScore,
-      cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Kết luận", "bid-evaluation-conclusion-column"),
     ],
     "1G2T_NO_LOT": [
       cell("Loại nhà thầu", "bf-s-8523765ec6"),
@@ -47,7 +47,7 @@ function buildHeader(caseType, {
       cell("Làm rõ năng lực kinh nghiệm", "bf-s-8523765ec6"),
       cell("Đánh giá kỹ thuật", "bf-s-8523765ec6"),
       cell("Làm rõ kỹ thuật", "bf-s-8523765ec6"),
-      cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Kết luận", "bid-evaluation-conclusion-column"),
     ],
     "1G2T_WITH_LOT": [
       cell("Mã phần lô", "bf-s-aed34ad439"),
@@ -64,7 +64,7 @@ function buildHeader(caseType, {
       cell("Làm rõ năng lực", "bf-s-b258c3e162"),
       cell("Đánh giá kỹ thuật", "bf-s-b258c3e162"),
       cell("Làm rõ kỹ thuật", "bf-s-b258c3e162"),
-      cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Kết luận", "bid-evaluation-conclusion-column"),
     ],
     "1G2T_TC_NO_LOT": [
       cell("Loại nhà thầu", "bf-s-8523765ec6"),
@@ -117,7 +117,7 @@ function buildHeader(caseType, {
       cell("Làm rõ kỹ thuật", "bf-s-415b5d64b8"),
       cell("Làm rõ tài chính", "bf-s-415b5d64b8"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
-      cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Kết luận", "bid-evaluation-conclusion-column"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
     "1G1T_WITH_LOT": [
@@ -143,7 +143,7 @@ function buildHeader(caseType, {
       cell("Làm rõ kỹ thuật", "bf-s-aed34ad439"),
       cell("Làm rõ tài chính", "bf-s-aed34ad439"),
       ...(isCombinedMethod ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")] : []),
-      cell("Kết luận", "bf-s-8523765ec6"),
+      cell("Kết luận", "bid-evaluation-conclusion-column"),
       cell("Xếp hạng", "bf-s-415b5d64b8"),
     ],
   };

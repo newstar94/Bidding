@@ -182,7 +182,7 @@ function readOnlyEvaluationCells({ bid, presentation }) {
     <td><span>${escapeHtml(bid.lamRoKyThuat || "--")}</span></td>
     ${technicalLayout ? "" : `<td><span>${escapeHtml(bid.lamRoTaiChinh || "--")}</span></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
-    <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    <td class="mt-ketluan-cell bid-evaluation-conclusion-cell bf-s-0c5104285b"></td>
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }
@@ -222,7 +222,7 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
     <td><input type="text" class="form-control mt-lam-ro-ky-thuat"${disabled} value="${escapeHtml(bid.lamRoKyThuat || "")}" placeholder="${waiting || "Nhập làm rõ kỹ thuật..."}"></td>
     ${technicalLayout ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh"${disabled} value="${escapeHtml(bid.lamRoTaiChinh || "")}" placeholder="${waiting || "Nhập làm rõ tài chính..."}"></td>`}
     ${presentation.showCombinedScore ? '<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>' : ""}
-    <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+    <td class="mt-ketluan-cell bid-evaluation-conclusion-cell bf-s-0c5104285b"></td>
     ${technicalLayout ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
   `;
 }

@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { beginSaveButtonFeedback } from "../shared/ModalFormSubmission.js";
 
 export function setPackageEditorState(modal, state) {
   if (!modal) return;
@@ -16,6 +17,7 @@ export async function runPackageFormSubmission(controller, event) {
   if (!form || form.dataset.submitState === "saving") return false;
   const submitButton = form.querySelector?.('button[type="submit"]');
   const modal = form.closest?.(".modal-overlay");
+  const restoreLabel = beginSaveButtonFeedback(submitButton);
   form.dataset.submitState = "saving";
   form.setAttribute?.("aria-busy", "true");
   if (submitButton) {
@@ -27,6 +29,7 @@ export async function runPackageFormSubmission(controller, event) {
     await controller.handleGoiThauSubmit(event);
     return true;
   } finally {
+    restoreLabel();
     const editorStillActive = Boolean(modal?.classList?.contains("active"));
     form.dataset.submitState = editorStillActive ? "ready" : "saved";
     form.removeAttribute?.("aria-busy");

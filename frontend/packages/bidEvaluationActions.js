@@ -316,6 +316,20 @@ function isLockedEvaluationStatus(status) {
   return status === "Đã có kết quả" || status === "Hủy thầu";
 }
 
+function normalizeEditableConclusion(value) {
+  return String(value || "").trim() === "Không đạt" ? "Không đạt" : "Đạt";
+}
+
+export function buildEditableBidEvaluationConclusionSelect(value = "") {
+  const conclusion = normalizeEditableConclusion(value);
+  return `
+    <select class="form-control mt-dg-ketluan bid-evaluation-conclusion-select bf-s-9bdb7b6b47">
+      <option value="Đạt"${conclusion === "Đạt" ? " selected" : ""}>Đạt</option>
+      <option value="Không đạt"${conclusion === "Không đạt" ? " selected" : ""}>Không đạt</option>
+    </select>
+  `;
+}
+
 export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false) {
   const cell = tr.querySelector(".mt-ketluan-cell");
   if (!cell) return;
@@ -409,19 +423,14 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
         cell.innerHTML = trustedHTML(`<span class="badge badge-danger bf-s-18dd987272">${escapeHtml(conclusion)}</span>`);
       }
     } else if (status === "user_select") {
+      const selectedConclusion = normalizeEditableConclusion(conclusion);
       const existingSelect = cell.querySelector(".mt-dg-ketluan");
       if (existingSelect) {
-        if (existingSelect.value !== conclusion) {
-          existingSelect.value = conclusion;
+        if (existingSelect.value !== selectedConclusion) {
+          existingSelect.value = selectedConclusion;
         }
       } else {
-        cell.innerHTML = trustedHTML(`
-                    <select class="form-control mt-dg-ketluan bf-s-9bdb7b6b47">
-                        <option value="">-- Chọn --</option>
-                        <option value="Đạt" ${conclusion === "Đạt" ? "selected" : ""}>Đạt</option>
-                        <option value="Không đạt" ${conclusion === "Không đạt" ? "selected" : ""}>Không đạt</option>
-                    </select>
-                `);
+        cell.innerHTML = trustedHTML(buildEditableBidEvaluationConclusionSelect(selectedConclusion));
       }
     } else {
       if (cell.textContent.trim() !== "Chờ đánh giá") {

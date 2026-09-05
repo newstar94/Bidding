@@ -8,6 +8,7 @@ import { createE2ETestClock } from "./e2e_test_clock.mjs";
 import { createBrowserSessionManager } from "./lib/browserSessionManager.mjs";
 import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
 import { finalizeLotAndWaitForRender } from "./lib/lotLifecycleSynchronization.mjs";
+import { reportOpeningFailure } from "./lib/openingFailureDiagnostics.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
@@ -1261,8 +1262,12 @@ try {
   await page.locator("#dialog-prompt-input").fill(testClock.dateTime(-3, "10:00"));
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-  await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
-  await waitForRenderedWorkflowTab(page, "opening_tech");
+  try {
+    await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 });
+    await waitForRenderedWorkflowTab(page, "opening_tech");
+  } catch (error) {
+    await reportOpeningFailure({ page, packageName: twoEnvelopePackage, runId, error, pageErrors, recentApiTraffic });
+  }
   const technicalOpeningRow = page.locator("#mothau-table-tbody tr").first();
   await technicalOpeningRow.locator(".mt-ma-nha-thau").fill(`${runId}-NT`);
   await technicalOpeningRow.locator(".mt-ten-nha-thau").fill(`Nhà thầu ${runId}`);

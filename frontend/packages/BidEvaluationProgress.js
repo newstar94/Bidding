@@ -26,11 +26,17 @@ function validTechnical(value, requiresScore) {
   return Number.isFinite(number) && number >= 0;
 }
 
-function technicalBidStatus(bid, requiresScore) {
-  const validityComplete = hasEvaluationResult(bid.danhGiaHopLe);
-  const validityFailed = validityComplete && fail(bid.danhGiaHopLe);
-  const capacityComplete = hasEvaluationResult(bid.danhGiaNangLuc);
-  const capacityFailed = capacityComplete && fail(bid.danhGiaNangLuc);
+function technicalBidStatus(bid, requiresScore, defaultEmptyBinaryResultsToPass) {
+  const validity = defaultEmptyBinaryResultsToPass && !normalized(bid.danhGiaHopLe)
+    ? "Đạt"
+    : bid.danhGiaHopLe;
+  const capacity = defaultEmptyBinaryResultsToPass && !normalized(bid.danhGiaNangLuc)
+    ? "Đạt"
+    : bid.danhGiaNangLuc;
+  const validityComplete = hasEvaluationResult(validity);
+  const validityFailed = validityComplete && fail(validity);
+  const capacityComplete = hasEvaluationResult(capacity);
+  const capacityFailed = capacityComplete && fail(capacity);
   return {
     validity: validityComplete ? STEP_STATUS.COMPLETED : STEP_STATUS.NOT_STARTED,
     capacity: validityFailed
@@ -76,6 +82,7 @@ export function deriveBidEvaluationProgress({
   bids = [],
   round = "technical",
   requiresTechnicalScore = false,
+  defaultEmptyBinaryResultsToPass = false,
 } = {}) {
   const definitions = roundDefinitions(round);
   const byBid = {};
@@ -83,7 +90,7 @@ export function deriveBidEvaluationProgress({
     const id = String(bid?.id || `bid-${index}`);
     byBid[id] = round === "financial"
       ? financialBidStatus(bid)
-      : technicalBidStatus(bid, requiresTechnicalScore);
+      : technicalBidStatus(bid, requiresTechnicalScore, defaultEmptyBinaryResultsToPass);
   });
   const statuses = Object.values(byBid);
   const stages = definitions.map(([key, label]) => ({

@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { beginSaveButtonFeedback } from "../shared/ModalFormSubmission.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
@@ -945,11 +946,13 @@ export async function openPlanBreakdownModal(planId) {
       if (btnSave.disabled) return;
       btnSave.disabled = true;
       btnSave.setAttribute("aria-busy", "true");
+      const restoreLabel = beginSaveButtonFeedback(btnSave);
       try {
         await this.savePlanBreakdown();
       } finally {
         btnSave.disabled = false;
         btnSave.removeAttribute("aria-busy");
+        restoreLabel();
       }
     }
     : null;
@@ -1555,7 +1558,7 @@ export async function savePlanBreakdown() {
   const finalDraftSession = findPlanVersionDraftSession(this.model, finalPlanId);
   let syncResult;
   let canonicalRefreshIsCurrent = null;
-  let modalClosedAfterDurableDraft = false;
+  let localTableRefresh;
   if (finalDraftSession) {
     const finalizeLease = captureWorkspaceLease(this.model);
     const finalizeStorage = this.model.workspaceStorage;
@@ -1599,18 +1602,8 @@ export async function savePlanBreakdown() {
     }
 
     if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
-    this.backupKeHoachState = null;
-    this.backupGoiThauState = null;
-    this.tempPlanData = null;
-    this.tempPlanAction = null;
-    this.planBreakdownDraft = null;
-    await this.closeModal("modal-plan-breakdown", {
-      restoreRoute: false,
-      preserveProcurementImport: true,
-      deferPlanTableRender: true,
-    });
-    modalClosedAfterDurableDraft = true;
-
+    // A durable draft is not a committed plan. Keep the editor and its saving
+    // feedback visible until the authoritative finalization completes.
     const completedFinalizeOutcome = earlyFinalizeOutcome || await finalizeOutcome;
     if (!completedFinalizeOutcome.ok) {
       if (finalizeIsCurrent()) {
@@ -1629,6 +1622,8 @@ export async function savePlanBreakdown() {
       return stalePlanFinalizeResult();
     }
     canonicalRefreshIsCurrent = finalizeIsCurrent;
+    await renderVersionTables();
+    if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
     syncResult = { ok: true };
   } else {
     syncResult = officialVersionCommitted
@@ -1641,11 +1636,15 @@ export async function savePlanBreakdown() {
             ...Object.keys(explicitChanges.deletions),
           ]),
         ],
-        afterPersist: renderVersionTables,
+        afterPersist: () => {
+          localTableRefresh = renderVersionTables();
+          return localTableRefresh;
+        },
       });
   }
   if (!syncResult?.ok) return;
-  if (!modalClosedAfterDurableDraft) {
+  await localTableRefresh;
+  {
     this.backupKeHoachState = null;
     this.backupGoiThauState = null;
     this.tempPlanData = null;

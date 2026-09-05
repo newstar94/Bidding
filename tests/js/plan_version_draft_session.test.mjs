@@ -772,7 +772,7 @@ test("final plan action sends the whole draft chain only to the finalize endpoin
   }
 });
 
-test("durable local plan draft closes immediately while final commit continues in the background", async () => {
+test("plan draft stays open until final commit is confirmed so saving feedback remains visible", async () => {
   const previousDocument = globalThis.document;
   const model = workspaceModel();
   const session = createPlanVersionDraftSession(model.state, "plan-00");
@@ -826,7 +826,7 @@ test("durable local plan draft closes immediately while final commit continues i
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(settled, false);
     assert.deepEqual(effects, {
-      closes: 1,
+      closes: 0,
       alerts: 0,
       toasts: 0,
       renders: 0,
@@ -846,7 +846,7 @@ test("durable local plan draft closes immediately while final commit continues i
       closes: 1,
       alerts: 0,
       toasts: 1,
-      renders: 0,
+      renders: 2,
       scheduled: 1,
       pulls: [[true, true, true]],
     });
@@ -860,7 +860,7 @@ test("durable local plan draft closes immediately while final commit continues i
   }
 });
 
-test("failed background final commit keeps the durable draft and reports that it is not synchronized", async () => {
+test("failed final commit keeps the editor and durable draft and reports that it is not synchronized", async () => {
   const previousDocument = globalThis.document;
   const model = workspaceModel();
   const session = createPlanVersionDraftSession(model.state, "plan-00");
@@ -900,7 +900,7 @@ test("failed background final commit keeps the durable draft and reports that it
   try {
     const pending = savePlanBreakdown.call(controller);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(effects.closes, 1);
+    assert.equal(effects.closes, 0);
     assert.equal(model.planVersionDraftSessions.length, 1);
     assert.deepEqual(effects.toasts, []);
 
@@ -1264,7 +1264,7 @@ test("late_finalize_success_from_a_cannot_show_success_pull_or_clear_workspace_b
 
     const result = await pending;
     assert.equal(result.code, "WORKSPACE_CHANGED");
-    assert.deepEqual(effects, { alerts: 0, closes: 1, pulls: 0, renders: 0 });
+    assert.deepEqual(effects, { alerts: 0, closes: 0, pulls: 0, renders: 0 });
     assert.equal(controller.tempPlanAction, "edit-b");
     assert.deepEqual(controller.tempPlanData, { id: "plan-b" });
     assert.equal(controller.planBreakdownDraft.planId, "plan-b");

@@ -203,8 +203,10 @@ export function packageSyncRequiresReload(syncResult) {
 }
 
 export function renderPackageSaveTables(view) {
-  view?.renderGoiThauTable?.();
-  view?.renderKeHoachTable?.();
+  return Promise.all([
+    view?.renderGoiThauTable?.(),
+    view?.renderKeHoachTable?.(),
+  ]);
 }
 
 export function restorePackageEditorAfterSyncConflict(form, modal) {
@@ -1393,11 +1395,13 @@ export async function handleGoiThauSubmit(e) {
   explicitUpserts.kehoach = this.model.state.kehoach.filter(
     (item) => affectedPlanIds.has(String(item.id)),
   );
+  let localTableRefresh;
   const syncResult = await persistPackageFormChanges(this, explicitUpserts, {
     draft: draftPackageSave,
     baseUpserts: packageSaveBaseUpserts(packageSaveBaseState, explicitUpserts),
     afterPersist: () => {
-      renderPackageSaveTables(this.view);
+      localTableRefresh = renderPackageSaveTables(this.view);
+      return localTableRefresh;
     },
   });
   if (packageSyncRequiresReload(syncResult)) {
@@ -1419,6 +1423,9 @@ export async function handleGoiThauSubmit(e) {
     );
     return;
   }
+  // Keep visible saving feedback until the list has painted. The durable save
+  // and remote synchronization are still separate; do not close onto stale rows.
+  await localTableRefresh;
   const packageModal = document.getElementById("modal-goithau");
   setPackageEditorState(packageModal, "closing");
   await this.closeModal("modal-goithau", {

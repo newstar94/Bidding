@@ -60,6 +60,7 @@ export function renderCurrentBidEvaluationProgress({
   round = "technical",
   dirtyState = null,
   statusText = "",
+  defaultEmptyBinaryResultsToPass = false,
 } = {}) {
   const projection = structuredClone(bids || []);
   if (dirtyState) {
@@ -74,6 +75,7 @@ export function renderCurrentBidEvaluationProgress({
     bids: projection,
     round,
     requiresTechnicalScore: requiresTechnicalScoreInput(pkg),
+    defaultEmptyBinaryResultsToPass,
   });
   renderEvaluationProgressComponent(
     controller.view.getActiveElement("danhgiahsdt-progress"),
