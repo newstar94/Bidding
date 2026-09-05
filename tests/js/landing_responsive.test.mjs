@@ -5,11 +5,14 @@ import { extname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const template = await readFile(join(root, "views/components/landing_page.html"), "utf8");
+const bundled = process.env.UI_QA_BUNDLE === '1';
+const manifest = bundled ? JSON.parse(await readFile(join(root, 'dist/.vite/manifest.json'), 'utf8')) : null;
+const landingModuleURL = bundled ? `/dist/${manifest['frontend/landing/LandingPage.js'].file}` : '/frontend/landing/LandingPage.js';
 const widths = [320, 360, 375, 390, 412, 768, 1024, 1280, 1366, 1440, 1920, 2560];
 let browser;
 let server;
@@ -19,6 +22,8 @@ function contentType(pathname) {
   if (extname(pathname) === ".css") return "text/css; charset=utf-8";
   if (extname(pathname) === ".webp") return "image/webp";
   if (extname(pathname) === ".svg") return "image/svg+xml";
+  if (extname(pathname) === ".png") return "image/png";
+  if (extname(pathname) === ".woff2") return "font/woff2";
   return "application/octet-stream";
 }
 
@@ -48,13 +53,16 @@ function offer(index) {
 }
 
 before(async () => {
-  browser = await chromium.launch({ headless: true });
+  browser = await ({ chromium, firefox, webkit }[process.env.UI_QA_BROWSER || 'chromium']).launch({ headless: true });
   server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, "http://127.0.0.1").pathname;
       if (pathname === "/") {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        response.end(`<!doctype html><html lang="vi" data-bf-shell="landing"><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="bf-app-debug" content="true"><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/variables.css"><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/landing.css"><link rel="stylesheet" href="/css/ui-redesign.css"><title>Landing QA</title></head><body>${template}</body></html>`);
+        const styles = bundled
+          ? `<link rel="stylesheet" data-runtime-styles data-bf-shell-styles="landing" href="/dist/${manifest['views/css/landing-shell.css'].file}">`
+          : '<link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/variables.css"><link rel="stylesheet" href="/css/base.css"><link rel="stylesheet" href="/css/landing.css"><link rel="stylesheet" href="/css/ui-redesign.css">';
+        response.end(`<!doctype html><html lang="vi" data-bf-shell="landing"><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="bf-app-debug" content="${!bundled}">${styles}<title>Landing QA</title></head><body>${template}</body></html>`);
         return;
       }
       if (pathname === "/api/public/commercial/offers") {
@@ -71,6 +79,7 @@ before(async () => {
       let relativePath = pathname.replace(/^\//u, "");
       if (pathname.startsWith("/css/")) relativePath = join("views", relativePath);
       if (pathname.startsWith("/assets/")) relativePath = join("views", relativePath);
+      if (pathname.startsWith("/vendor/")) relativePath = join("views", relativePath);
       const payload = await readFile(join(root, relativePath));
       response.writeHead(200, { "content-type": contentType(pathname) });
       response.end(payload);
@@ -93,10 +102,15 @@ async function loadLanding(width, height = 900, session = { valid: false }) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
-  await page.evaluate(async (sessionState) => {
-    const module = await import("/frontend/landing/LandingPage.js");
+  await page.evaluate(async ({ sessionState, moduleURL }) => {
+    const bootstrap = document.createElement('script');
+    bootstrap.id = 'bf-session-bootstrap';
+    bootstrap.type = 'application/json';
+    bootstrap.textContent = JSON.stringify(sessionState);
+    document.head.append(bootstrap);
+    const module = await import(moduleURL);
     await module.bootstrapLandingPage(sessionState);
-  }, session);
+  }, { sessionState: session, moduleURL: landingModuleURL });
   await page.waitForFunction(() => !document.getElementById("landing-pricing-grid")?.hasAttribute("aria-busy"));
   return { context, page, errors };
 }
@@ -164,6 +178,38 @@ test("old mobile header keeps a usable primary action", async () => {
   } finally {
     await context.close();
   }
+});
+
+test('landing icons render strokes and mobile navigation closes without a scroll lock', async () => {
+  const { context, page } = await loadLanding(390, 844);
+  try {
+    const icons = await page.locator('.landing-icon').evaluateAll(nodes => nodes.map(node => ({
+      stroke: getComputedStyle(node).stroke, fill: getComputedStyle(node).fill,
+      width: node.getBBox().width, height: node.getBBox().height,
+    })));
+    assert.ok(icons.length > 10);
+    for (const icon of icons) {
+      assert.equal(icon.fill, 'none');
+      assert.notEqual(icon.stroke, 'none');
+    }
+    const visibleIcons = await page.locator('.landing-work-preview .landing-icon').evaluateAll(nodes => nodes.map(node => node.getBBox().width));
+    assert.ok(visibleIcons.every(width => width > 0));
+    await page.locator('[data-landing-menu-toggle]').click();
+    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'true');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'false');
+    await page.locator('[data-landing-menu-toggle]').click();
+    await page.locator('.landing-nav a[href="#faq"]').click();
+    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'false');
+    assert.notEqual(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'hidden');
+    await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, 0); });
+    await page.mouse.move(150, 600);
+    await page.mouse.wheel(0, 600);
+    await page.waitForFunction(() => window.scrollY > 0);
+    await page.evaluate(() => { window.scrollTo(0, 0); document.activeElement?.blur(); });
+    await page.keyboard.press('PageDown');
+    await page.waitForFunction(() => window.scrollY > 0);
+  } finally { await context.close(); }
 });
 
 test("authenticated landing CTA goes directly to the workspace", async () => {

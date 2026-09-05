@@ -3,7 +3,7 @@
         <div>
             <p class="commercial-control__eyebrow">Vận hành thương mại</p>
             <h2 id="commercial-control-title">Thương mại &amp; Thanh toán</h2>
-            <p>Quản lý danh mục bất biến, điều kiện sẵn sàng, giao dịch và phát hành theo từng phiên bản.</p>
+            <p>Chọn gói để chỉnh giá, quyền lợi và hiển thị công khai. Lưu bản nháp trước khi kiểm tra và xuất bản.</p>
         </div>
         <div class="commercial-control__actions">
             <button type="button" class="btn btn-outline" id="commercial-refresh"><i data-lucide="refresh-cw"></i>Làm mới</button>
@@ -17,25 +17,31 @@
     </div>
 
     <nav class="commercial-section-nav" aria-label="Các khu vực quản trị thương mại">
-        <a href="#commercial-release"><span>01</span>Phát hành</a>
-        <a href="#commercial-offers"><span>02</span>Gói &amp; giá</a>
-        <a href="#commercial-policies"><span>03</span>Chính sách</a>
-        <a href="#commercial-providers"><span>04</span>Cổng thanh toán</a>
-        <a href="#commercial-orders"><span>05</span>Đơn hàng &amp; kích hoạt</a>
-        <a href="#commercial-history"><span>06</span>Lịch sử</a>
+        <button type="button" data-commercial-section="commercial-offers" aria-pressed="true">Gói dịch vụ</button>
+        <button type="button" data-commercial-section="commercial-credits" aria-pressed="false">Lượt mua thêm</button>
+        <button type="button" data-commercial-section="commercial-policies" aria-pressed="false">Chính sách</button>
+        <button type="button" data-commercial-section="commercial-providers" aria-pressed="false">Cổng thanh toán</button>
+        <button type="button" data-commercial-section="commercial-orders" aria-pressed="false">Đơn hàng</button>
+        <button type="button" data-commercial-section="commercial-history" aria-pressed="false">Lịch sử</button>
     </nav>
-
+    <p id="commercial-draft-notice" class="commercial-draft-notice" role="status"></p>
+    <p id="commercial-validation-note" class="commercial-field-error" role="alert" hidden></p>
+    <details id="commercial-change-review" class="commercial-change-review"><summary>Thay đổi trong bản nháp</summary></details>
     <div class="commercial-grid">
         <section class="commercial-panel commercial-panel--wide" id="commercial-release">
-            <header><div><span class="commercial-panel__index">01</span><h3>Phát hành &amp; điều kiện sẵn sàng</h3></div><span id="commercial-runtime-badge" class="commercial-badge">—</span></header>
+            <header><div><span class="commercial-panel__index">01</span><h3>Cấu hình đang áp dụng & bản nháp</h3></div><span id="commercial-runtime-badge" class="commercial-badge">—</span></header>
             <div id="commercial-release-content" class="commercial-panel__body commercial-skeleton" aria-busy="true">Đang đọc bản phát hành…</div>
         </section>
 
         <section class="commercial-panel commercial-panel--wide" id="commercial-offers">
-            <header><div><span class="commercial-panel__index">02</span><h3>Offer &amp; bảng giá</h3></div><span class="commercial-panel__hint">8 offer năm · 4 SKU lượt</span></header>
+            <header><div><span class="commercial-panel__index">02</span><h3>Gói dịch vụ</h3></div><span class="commercial-panel__hint" id="commercial-offer-count"></span></header>
             <div id="commercial-offers-content" class="commercial-panel__body commercial-empty">Chọn một bản nháp để xem và chỉnh sửa.</div>
         </section>
 
+        <section class="commercial-panel commercial-panel--wide" id="commercial-credits" hidden>
+            <header><h3>Lượt mua thêm</h3></header>
+            <div id="commercial-credit-content" class="commercial-panel__body"></div>
+        </section>
         <section class="commercial-panel" id="commercial-policies">
             <header><div><span class="commercial-panel__index">03</span><h3>Chính sách &amp; quyết định</h3></div></header>
             <div id="commercial-policy-content" class="commercial-panel__body commercial-empty">Chưa có policy được tải.</div>

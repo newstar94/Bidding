@@ -978,6 +978,7 @@ def _is_production_view_asset_allowed(path):
         or normalized == "assets/app-brand-icon.webp"
         or normalized == "assets/biddingflow-social-preview.png"
         or normalized == "assets/landing-icons.svg"
+        or normalized == "assets/landing-product-worklist.png"
         or (normalized.startswith("css/") and normalized.endswith(".css"))
         or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
         or (normalized.startswith("tabs/") and normalized.endswith(".html"))

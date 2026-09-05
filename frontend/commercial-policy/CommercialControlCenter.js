@@ -1,9 +1,11 @@
 import { apiFetch } from "../shared/apiClient.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
+import { offerEditor, offerPreview, describeOfferChanges } from "./CommercialOfferEditor.js";
+import { classifyPublicCommercialResponse } from "./PublicCommercialCatalog.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
 const STYLE_URL = new URL("./CommercialControlCenter.css", import.meta.url).pathname;
-const state = { overview: null, draft: null, validation: null, loading: false, controller: null };
+const state = { overview: null, draft: null, validation: null, loading: false, controller: null, savedDocument: "", effectiveAt: "", selectedOffer: "", section: "commercial-offers", busy: false };
 
 // Backend values remain stable English identifiers; these labels are only for
 // the Vietnamese administration UI.
@@ -119,6 +121,7 @@ function setStatus(message, tone = "neutral") {
 }
 
 function renderOverview() {
+  document.getElementById("commercial-action-bar")?.remove();
   const overview = state.overview || {};
   const runtime = overview.runtime || {};
   const release = overview.currentRelease;
@@ -141,53 +144,52 @@ function renderOverview() {
           ${(overview.drafts || []).map((draft) => `<option value="${escapeHtml(draft.id)}" ${draft.id === state.draft?.id ? "selected" : ""}>${escapeHtml(draft.id)} · lần sửa ${draft.revision} · ${humanize(draft.status, { draft: "Bản nháp", open: "Đang mở", published: "Đã phát hành" })}</option>`).join("") || '<option value="">Chưa có bản nháp</option>'}
         </select>
       </label>
-      <label>Hiệu lực từ <input id="commercial-effective-at" class="form-control" type="datetime-local"></label>
+      <label>Hiệu lực từ <input id="commercial-effective-at" class="form-control" type="datetime-local" value="${escapeHtml(state.effectiveAt)}"></label>
       <div class="commercial-toolbar-buttons">
-        <button type="button" class="btn btn-outline" id="commercial-save" ${state.draft ? "" : "disabled"}>Lưu r${state.draft?.revision || "—"}</button>
-        <button type="button" class="btn btn-outline" id="commercial-validate" ${state.draft ? "" : "disabled"}>Kiểm tra</button>
-        <button type="button" class="btn btn-primary" id="commercial-publish" ${state.validation?.errors?.length === 0 ? "" : "disabled"}>Xuất bản</button>
+        <button type="button" class="btn btn-outline" id="commercial-save" ${state.draft ? "" : "disabled"}>Lưu bản nháp</button>
+        <button type="button" class="btn btn-outline" id="commercial-validate" ${state.draft ? "" : "disabled"}>Kiểm tra bản đã lưu</button>
+        <button type="button" class="btn btn-primary" id="commercial-publish" ${state.validation?.errors?.length === 0 ? "" : "disabled"}>Xuất bản…</button>
       </div>
     </div>
     <p class="commercial-callout">Bản nháp là phiên bản cấu hình đang được chuẩn bị. Bạn có thể lưu và kiểm tra nhiều lần; chỉ khi kiểm tra đạt và bấm “Xuất bản” thì cấu hình mới trở thành bản phát hành áp dụng.</p>
     ${(overview.readinessWarnings || []).map((warning) => `<p class="commercial-callout commercial-callout--warning"><strong>Điều kiện sẵn sàng:</strong> ${escapeHtml(warning)}</p>`).join("")}
+    <p class="commercial-callout">${escapeHtml(state.publicStatus || "Catalog công khai: chưa xác minh.")} <a href="/" target="_blank" rel="noopener">Mở landing ↗</a></p>
   `);
 }
 
 function renderOffers() {
   const policyDocument = state.draft?.document;
-  if (!policyDocument) return;
-  const savings = new Map((state.validation?.simulation?.connectedSavings || []).map((item) => [item.tier, item]));
-  const validationErrors = new Map((state.validation?.errors || []).map((error) => [error.path, error]));
-  const fieldError = (path) => {
-    const error = validationErrors.get(path);
-    return error ? `<small class="commercial-field-error" role="alert">${escapeHtml(error.message)}</small>` : "";
-  };
+  if (!policyDocument) {
+    html(document.getElementById("commercial-offers-content"), '<p class="commercial-empty">Chưa có bản nháp. Bấm “Tạo bản nháp” để bắt đầu; cấu hình đang áp dụng chưa thay đổi.</p>');
+    return;
+  }
   html(document.getElementById("commercial-offers-content"), `
-    <div class="commercial-table-wrap"><table class="data-table commercial-offer-table" data-mobile-layout="cards">
-      <thead><tr><th>Quy mô</th><th>Biến thể</th><th>Đối tượng sở hữu</th><th>Số thành viên</th><th>Giá gói</th><th>Lượt tra cứu kèm theo</th><th>Trạng thái bán</th></tr></thead>
-      <tbody>${policyDocument.offers.map((offer, index) => `<tr data-commercial-offer-row="${escapeHtml(offer.code)}">
-        <td data-label="Quy mô"><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${escapeHtml(offer.code)}</small><div class="commercial-offer-order"><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="up" ${index === 0 ? "disabled" : ""} aria-label="Đưa ${escapeHtml(offer.display?.name || offer.code)} lên">↑</button><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="down" ${index === policyDocument.offers.length - 1 ? "disabled" : ""} aria-label="Đưa ${escapeHtml(offer.display?.name || offer.code)} xuống">↓</button></div></td>
-        <td data-label="Biến thể"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span>${offer.variant === "connected" && savings.get(offer.tier) ? `<small>Tiết kiệm ${(savings.get(offer.tier).savingBasisPoints / 100).toFixed(1)}%</small>` : ""}</td>
-        <td data-label="Đối tượng sở hữu">${humanize(offer.ownerKind, { organization: "Tổ chức", account: "Tài khoản cá nhân" })}</td>
-        <td data-label="Nhân sự"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="memberQuota" value="${integerInput(offer.memberQuota)}"></td>
-        <td data-label="Giá gói"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="price.total" value="${integerInput(offer.price.total)}"></td>
-        <td data-label="Lượt lấy hồ sơ Mua Sắm Công kèm theo"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="includedProcurementQuota" value="${integerInput(offer.includedProcurementQuota)}"></td>
-        <td data-label="Trạng thái bán"><select class="form-control" data-offer-code="${escapeHtml(offer.code)}" data-field="salesState"><option value="sellable" ${offer.salesState === "sellable" ? "selected" : ""}>Đang bán</option><option value="stopped" ${offer.salesState === "stopped" ? "selected" : ""}>Đã dừng bán</option><option value="non_sellable" ${offer.salesState === "non_sellable" ? "selected" : ""}>Không bán</option></select></td>
-      </tr><tr class="commercial-offer-presentation"><td colspan="7"><fieldset><legend>Hiển thị công khai · ${escapeHtml(offer.code)}</legend><div class="commercial-offer-presentation-grid">
-        <label>Tên hiển thị<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.name" value="${escapeHtml(offer.display?.name || "")}">${fieldError(`offers[${index}].display.name`)}</label>
-        <label>Thứ tự<input class="form-control" type="number" min="0" step="1" data-offer-code="${escapeHtml(offer.code)}" data-field="display.order" value="${Number(offer.display?.order ?? index)}">${fieldError(`offers[${index}].display.order`)}</label>
-        <label>Nhãn tùy chọn<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.badge" value="${escapeHtml(offer.display?.badge || "")}">${fieldError(`offers[${index}].display.badge`)}</label>
-        <label>Nhãn phương án<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.variantLabel" value="${escapeHtml(offer.display?.variantLabel || "")}">${fieldError(`offers[${index}].display.variantLabel`)}</label>
-        <label>Nhãn chu kỳ<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.periodLabel" value="${escapeHtml(offer.display?.periodLabel || "")}">${fieldError(`offers[${index}].display.periodLabel`)}</label>
-        <label>Hiển thị<select class="form-control" data-offer-code="${escapeHtml(offer.code)}" data-field="display.visibility"><option value="public" ${offer.display?.visibility !== "hidden" ? "selected" : ""}>Công khai</option><option value="hidden" ${offer.display?.visibility === "hidden" ? "selected" : ""}>Ẩn khỏi catalog</option></select>${fieldError(`offers[${index}].display.visibility`)}</label>
-        <label class="commercial-check"><input type="checkbox" data-offer-code="${escapeHtml(offer.code)}" data-field="display.recommended" ${offer.display?.recommended === true ? "checked" : ""}> Đánh dấu đề xuất</label>
-        <label class="commercial-offer-presentation-wide">Mô tả<textarea class="form-control" rows="2" data-offer-code="${escapeHtml(offer.code)}" data-field="display.description">${escapeHtml(offer.display?.description || "")}</textarea>${fieldError(`offers[${index}].display.description`)}</label>
-        <label class="commercial-offer-presentation-wide">Lợi ích, mỗi dòng một mục<textarea class="form-control" rows="3" data-offer-code="${escapeHtml(offer.code)}" data-field="display.benefits">${escapeHtml((offer.display?.benefits || []).join("\n"))}</textarea>${fieldError(`offers[${index}].display.benefits`)}</label>
-      </div></fieldset></td></tr>`).join("")}</tbody>
-    </table></div>
-    <p class="commercial-callout commercial-callout--warning"><strong>PRODUCT_GATE:</strong> Thêm, xóa hoặc đổi định danh offer cần quyết định sản phẩm; giao diện này chỉ sửa metadata hiển thị, trạng thái bán và thứ tự của offer hiện có.</p>
-    <div class="commercial-credit-packs">${policyDocument.creditPacks.map((pack, index) => `<label><span>${Number(pack.quantity).toLocaleString("vi-VN")} lượt</span><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-pack-index="${index}" value="${integerInput(pack.price)}"><small>${escapeHtml(pack.code)}</small></label>`).join("")}</div>
+    <p class="commercial-editor-intro"><strong>1. Chọn gói → 2. Chỉnh sửa → 3. Lưu, kiểm tra và xuất bản</strong><br>Mọi thay đổi ở đây thuộc bản nháp, chưa ảnh hưởng khách hàng.</p>
+    <label class="commercial-search-label">Tìm gói<input id="commercial-offer-search" type="search" class="form-control" placeholder="Tên gói hoặc mã gói"></label>
+    <div class="commercial-filter-row">
+      <label>Đối tượng<select id="commercial-owner-filter" class="form-control" data-no-custom="true"><option value="">Tất cả</option><option value="account">Cá nhân</option><option value="organization">Tổ chức</option></select></label>
+      <label>Biến thể<select id="commercial-variant-filter" class="form-control" data-no-custom="true"><option value="">Tất cả</option><option value="internal">Nội bộ</option><option value="connected">Kết nối</option></select></label>
+      <label>Hiển thị dự kiến<select id="commercial-visibility-filter" class="form-control" data-no-custom="true"><option value="">Tất cả</option><option value="public">Công khai</option><option value="hidden">Ẩn khỏi catalog</option></select></label>
+    </div>
+    <details class="commercial-public-preview"><summary>Gói trong catalog công khai đã xác minh</summary><p>Đây là dữ liệu đọc từ API public, không phải các thay đổi trong bản nháp.</p><div class="commercial-public-grid">${(state.publicOffers || []).map(offer => `<div>${offerPreview(offer, { publicCatalog: true })}</div>`).join('') || '<p>Chưa có gói công khai được xác minh. Xem trạng thái catalog ở trên.</p>'}</div></details>
+    <div class="commercial-offer-list">${policyDocument.offers.map((offer, index) => `
+      <details class="commercial-offer-item" data-commercial-offer-row="${escapeHtml(offer.code)}" ${state.selectedOffer === offer.code ? "open" : ""}>
+        <summary><span><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${offer.variant === "connected" ? "Kết nối" : "Nội bộ"} · ${humanize(offer.ownerKind, { account: "Cá nhân", organization: "Tổ chức" })}</small></span>
+        <span class="commercial-offer-price">${money(offer.price.total)}<small>${escapeHtml(offer.display?.periodLabel || offer.price.period || "")}</small></span>
+        <span class="commercial-badge">${humanize(offer.salesState, { sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Không bán" })}</span>
+        <span class="commercial-badge" data-tone="${offer.salesState === "sellable" && offer.display?.visibility !== "hidden" ? "success" : "neutral"}">${offer.display?.visibility === "hidden" ? "Dự kiến ẩn" : offer.salesState === "sellable" ? "Dự kiến công khai" : "Chưa hiển thị"}</span>
+        <span class="commercial-edit-label">Chỉnh sửa</span></summary>
+        <div class="commercial-offer-body">${offerEditor(offer, index, state.validation?.errors)}
+        <div class="commercial-offer-order"><span>Thứ tự toàn danh mục</span><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="up" ${index === 0 ? "disabled" : ""}>Đưa lên</button><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="down" ${index === policyDocument.offers.length - 1 ? "disabled" : ""}>Đưa xuống</button></div></div>
+      </details>`).join("")}</div>
+    <p id="commercial-search-empty" hidden>Không có gói khớp tìm kiếm.</p>
+    <p class="commercial-callout">Thêm, xóa hoặc đổi định danh offer cần quyết định sản phẩm; các trường của gói hiện có được giữ nguyên.</p>
   `);
+  html(document.getElementById("commercial-credit-content"), `
+    <div class="commercial-credit-packs">${policyDocument.creditPacks.map((pack, index) => `<label><span>${Number(pack.quantity).toLocaleString("vi-VN")} lượt</span><input class="form-control" type="text" inputmode="numeric" data-pack-index="${index}" value="${integerInput(pack.price)}"><small>${escapeHtml(pack.code)}</small></label>`).join("")}</div>
+  `);
+  const hint = document.getElementById("commercial-offer-count");
+  if (hint) hint.textContent = `${policyDocument.offers.length} gói · ${policyDocument.creditPacks.length} gói lượt mua thêm`;
 }
 
 function renderPolicies() {
@@ -243,7 +245,7 @@ function renderOrdersAndHistory() {
   const releases = [state.overview?.currentRelease, state.overview?.scheduledRelease].filter(Boolean);
   html(document.getElementById("commercial-history-content"), `
     <ol class="commercial-history-list">${releases.map((release) => `<li><span></span><div><strong>${escapeHtml(release.versionLabel)}</strong><small>${dateTime(release.effectiveFrom)} · ${escapeHtml(humanize(release.mode, MODE_LABELS))}</small><code>${escapeHtml(release.checksum || "")}</code></div></li>`).join("") || '<li class="commercial-empty">Chưa có bản phát hành đang bán.</li>'}</ol>
-    ${state.overview?.currentRelease ? '<button type="button" class="btn btn-outline" id="commercial-clone-release">Tạo bản nháp từ bản đang hiệu lực</button> <button type="button" class="btn btn-danger" id="commercial-stop-sales">Dừng bán</button>' : ""}
+    ${state.overview?.currentRelease ? '<button type="button" class="btn btn-outline" id="commercial-clone-release">Tạo bản nháp từ bản đang hiệu lực</button> <button type="button" class="btn btn-danger" id="commercial-stop-sales">Dừng bán toàn bản phát hành</button>' : ""}
   `);
 }
 
@@ -268,6 +270,7 @@ function bindDraftInputs() {
       return;
     }
     input.setCustomValidity("");
+    if (numericField) input.value = integerInput(value);
     if (field === "price.total") {
       offer.price.total = value;
       offer.price.subtotal = value;
@@ -282,7 +285,7 @@ function bindDraftInputs() {
       offer.display[displayField] = value;
     } else offer[field] = value;
     state.validation = null;
-    renderAll(state.controller);
+    markDraftChanged();
   }));
   root?.querySelectorAll("[data-offer-code][data-offer-move]").forEach((button) => button.addEventListener("click", () => {
     const offers = state.draft.document.offers;
@@ -296,6 +299,7 @@ function bindDraftInputs() {
     });
     state.validation = null;
     renderAll(state.controller);
+    markDraftChanged();
   }));
   root?.querySelectorAll("[data-pack-index]").forEach((input) => input.addEventListener("change", () => {
     const pack = state.draft.document.creditPacks[Number(input.dataset.packIndex)];
@@ -308,8 +312,9 @@ function bindDraftInputs() {
     }
     input.setCustomValidity("");
     pack.price = value;
+    input.value = integerInput(value);
     state.validation = null;
-    renderAll(state.controller);
+    markDraftChanged();
   }));
   root?.querySelectorAll("[data-policy-field]").forEach((input) => input.addEventListener("change", () => {
     const policies = state.draft.document.policies;
@@ -330,8 +335,132 @@ function bindDraftInputs() {
       target[parts[0]] = input.type === "number" ? Number(input.value) : input.value;
     }
     state.validation = null;
-    renderAll(state.controller);
+    markDraftChanged();
   }));
+}
+
+function isDirty() {
+  return Boolean(state.draft && JSON.stringify(state.draft.document) !== state.savedDocument);
+}
+
+function validationReady() {
+  return Boolean(state.validation?.validationDigest && state.validation.errors?.length === 0
+    && (!state.validation.readinessExpiresAt || state.validation.readinessExpiresAt >= Date.now() / 1000));
+}
+
+function updateActions() {
+  const dirty = isDirty();
+  const disabled = state.busy || state.loading;
+  const save = document.getElementById("commercial-save");
+  const validate = document.getElementById("commercial-validate");
+  const publish = document.getElementById("commercial-publish");
+  if (save) save.disabled = disabled || !state.draft;
+  if (validate) validate.disabled = disabled || !state.draft || dirty;
+  if (publish) publish.disabled = disabled || dirty || !validationReady();
+  document.querySelectorAll("#commercial-refresh, #commercial-create-draft, #commercial-clone-release, #commercial-stop-sales").forEach(button => { button.disabled = disabled; });
+  const filtered = ["commercial-offer-search", "commercial-owner-filter", "commercial-variant-filter", "commercial-visibility-filter"].some(id => document.getElementById(id)?.value);
+  document.querySelectorAll("[data-offer-move]").forEach(button => {
+    const offers = state.draft?.document.offers || [];
+    const index = offers.findIndex(offer => offer.code === button.dataset.offerCode);
+    button.disabled = disabled || filtered || (button.dataset.offerMove === "up" ? index <= 0 : index >= offers.length - 1);
+  });
+  document.querySelectorAll("#tab-commercial-admin input, #tab-commercial-admin select, #tab-commercial-admin textarea").forEach(input => { input.disabled = disabled; });
+  const notice = document.getElementById("commercial-draft-notice");
+  if (notice) notice.textContent = dirty ? "Chưa lưu · Lưu bản nháp trước khi kiểm tra. Landing chưa thay đổi." : state.draft ? "Đang xem bản nháp đã lưu · Chỉ xuất bản mới áp dụng cho khách hàng." : "Chưa có bản nháp · Tạo bản nháp để bắt đầu.";
+  const validationNote = document.getElementById("commercial-validation-note");
+  if (validationNote) {
+    const errors = state.validation?.errors || [];
+    validationNote.hidden = !errors.length;
+    validationNote.textContent = errors.length ? `${errors.length} lỗi cần xử lý. Mở “Chính sách” để xem chi tiết; lỗi thông tin gói nằm dưới trường tương ứng.` : "";
+  }
+  const review = document.getElementById("commercial-change-review");
+  if (review && state.draft) {
+    const changes = describeOfferChanges(JSON.parse(state.reviewBase || state.savedDocument), state.draft.document);
+    html(review, `<summary>Thay đổi so với lúc mở bản nháp (${changes.length})</summary><ul>${changes.map(change => `<li>${escapeHtml(change)}</li>`).join("") || '<li>Chưa có thay đổi trong lần chỉnh sửa này. Xuất bản sẽ áp dụng toàn bộ bản nháp đã lưu.</li>'}</ul>`);
+  }
+}
+
+function markDraftChanged() {
+  updateActions();
+  state.draft?.document.offers.forEach(offer => {
+    const item = [...document.querySelectorAll("[data-commercial-offer-row]")].find(node => node.dataset.commercialOfferRow === offer.code);
+    if (!item) return;
+    const preview = item.querySelector("[data-commercial-preview]");
+    html(preview, offerPreview(offer));
+    const heading = item.querySelector("summary strong");
+    if (heading) heading.textContent = offer.display?.name || offer.tier;
+    const badges = item.querySelectorAll("summary .commercial-badge");
+    badges[0].textContent = humanize(offer.salesState, { sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Không bán" });
+    badges[1].textContent = offer.display?.visibility === "hidden" ? "Dự kiến ẩn" : offer.salesState === "sellable" ? "Dự kiến công khai" : "Chưa hiển thị";
+    badges[1].dataset.tone = offer.salesState === "sellable" && offer.display?.visibility !== "hidden" ? "success" : "neutral";
+    const price = item.querySelector(".commercial-offer-price");
+    if (price) html(price, `${money(offer.price.total)}<small>${escapeHtml(offer.display?.periodLabel || offer.price.period || "")}</small>`);
+  });
+}
+
+function showSection(section) {
+  state.section = section;
+  document.querySelectorAll("[data-commercial-section]").forEach(button => {
+    const active = button.dataset.commercialSection === section;
+    button.setAttribute("aria-pressed", String(active));
+  });
+  document.querySelectorAll(".commercial-panel").forEach(panel => {
+    panel.hidden = !["commercial-release", section].includes(panel.id);
+  });
+}
+
+async function confirmDiscard(controller) {
+  return !isDirty() || Boolean(await controller.view.customConfirm("Bỏ thay đổi chưa lưu?", "Bản nháp trên máy chủ được giữ nguyên. Chỉ phần bạn chưa lưu sẽ bị bỏ.", "alert-triangle"));
+}
+
+function bindEditorNavigation() {
+  document.querySelectorAll("[data-commercial-section]").forEach(button => {
+    button.onclick = () => showSection(button.dataset.commercialSection);
+  });
+  document.querySelectorAll(".commercial-offer-item").forEach(item => {
+    item.addEventListener("toggle", () => {
+      if (!item.isConnected) return;
+      if (!item.open) {
+        if (state.selectedOffer === item.dataset.commercialOfferRow) state.selectedOffer = "";
+        return;
+      }
+      state.selectedOffer = item.dataset.commercialOfferRow;
+      document.querySelectorAll(".commercial-offer-item").forEach(other => {
+        if (other !== item) other.open = false;
+      });
+    });
+  });
+  const search = document.getElementById("commercial-offer-search");
+  const applyFilters = () => {
+    const query = search.value.trim().toLocaleLowerCase("vi");
+    const owner = document.getElementById("commercial-owner-filter").value;
+    const variant = document.getElementById("commercial-variant-filter").value;
+    const visibility = document.getElementById("commercial-visibility-filter").value;
+    let visible = 0;
+    document.querySelectorAll(".commercial-offer-item").forEach(item => {
+      const offer = state.draft.document.offers.find(value => value.code === item.dataset.commercialOfferRow);
+      const matches = (item.querySelector("summary").textContent.toLocaleLowerCase("vi").includes(query)
+        || item.dataset.commercialOfferRow.toLocaleLowerCase("vi").includes(query))
+        && (!owner || offer.ownerKind === owner) && (!variant || offer.variant === variant)
+        && (!visibility || (offer.display?.visibility || "public") === visibility);
+      item.hidden = !matches;
+      if (matches) visible++;
+    });
+    document.getElementById("commercial-search-empty").hidden = visible > 0;
+    document.querySelectorAll("[data-offer-move]").forEach(button => {
+      const index = state.draft.document.offers.findIndex(offer => offer.code === button.dataset.offerCode);
+      button.disabled = Boolean(query || owner || variant || visibility) || (button.dataset.offerMove === "up" ? index === 0 : index === state.draft.document.offers.length - 1);
+    });
+  };
+  if (search) search.oninput = applyFilters;
+  for (const id of ["commercial-owner-filter", "commercial-variant-filter", "commercial-visibility-filter"]) {
+    const input = document.getElementById(id);
+    if (input) input.onchange = applyFilters;
+  }
+  const effective = document.getElementById("commercial-effective-at");
+  if (effective) effective.oninput = () => { state.effectiveAt = effective.value; };
+  showSection(state.section);
+  updateActions();
 }
 
 function renderAll(controller) {
@@ -340,13 +469,20 @@ function renderAll(controller) {
   renderPolicies();
   renderProviders();
   renderOrdersAndHistory();
+  const toolbar = document.querySelector(".commercial-release-toolbar");
+  if (toolbar) {
+    toolbar.id = "commercial-action-bar";
+    document.getElementById("tab-commercial-admin").append(toolbar);
+  }
   controller?.view?.createIconsScoped(document.getElementById("tab-commercial-admin"));
   bindEvents(controller);
   bindDraftInputs();
+  bindEditorNavigation();
   document.querySelectorAll(".commercial-order-action").forEach((button) => button.addEventListener("click", () => runOrderAction(button.dataset.action, button.dataset.order, controller)));
 }
 
 async function runOrderAction(action, publicId, controller) {
+  if (state.busy || !await confirmDiscard(controller)) return;
   const reason = action === "refund" ? window.prompt("Lý do hoàn tiền thủ công (bắt buộc):", "") : "Đối soát bởi quản trị viên";
   if (action === "refund" && !reason?.trim()) return;
   const amount = action === "refund" ? Number(window.prompt("Số tiền hoàn tiền (VND):", "0")) : null;
@@ -358,18 +494,33 @@ async function runOrderAction(action, publicId, controller) {
 }
 
 async function loadDraft(id) {
-  state.draft = id ? await jsonRequest(`/api/commercial/drafts/${encodeURIComponent(id)}`) : null;
+  const nextDraft = id ? await jsonRequest(`/api/commercial/drafts/${encodeURIComponent(id)}`) : null;
+  if (state.draft?.id !== nextDraft?.id) {
+    state.selectedOffer = "";
+    state.effectiveAt = "";
+    state.reviewBase = nextDraft ? JSON.stringify(nextDraft.document) : "";
+  }
+  state.draft = nextDraft;
+  state.savedDocument = state.draft ? JSON.stringify(state.draft.document) : "";
   state.validation = state.draft?.validation
-    ? { ...state.draft.validation, validationDigest: state.draft.validationDigest }
+    ? { ...state.draft.validation, validationDigest: state.draft.validationDigest, readinessExpiresAt: state.draft.readinessExpiresAt }
     : null;
 }
 
 async function refresh(controller, preferredDraftId = "") {
   if (state.loading) return;
   state.loading = true;
+  updateActions();
     setStatus("Đang đồng bộ trung tâm quản trị thương mại…");
   try {
     state.overview = await jsonRequest("/api/commercial/admin/overview");
+    try {
+      const response = classifyPublicCommercialResponse(await jsonRequest("/api/public/commercial/offers"));
+      state.publicOffers = response.catalog?.offers || [];
+      state.publicStatus = response.state === "off" ? "Catalog công khai đang tắt (kiểm tra cấu hình runtime/trial)."
+        : response.catalog ? `Catalog công khai: ${response.catalog.offers.length} gói · bản ${response.catalog.releaseId}. Hiển thị không đồng nghĩa thanh toán đã sẵn sàng.`
+          : "Catalog công khai: chưa xác minh được phản hồi.";
+    } catch { state.publicOffers = []; state.publicStatus = "Catalog công khai: chưa xác minh được. Bản nháp vẫn có thể chỉnh sửa."; }
     const openDraftIds = new Set((state.overview.drafts || []).map((draft) => draft.id));
     const requestedDraftId = preferredDraftId || state.draft?.id || "";
     const draftId = openDraftIds.has(requestedDraftId)
@@ -382,59 +533,103 @@ async function refresh(controller, preferredDraftId = "") {
     setStatus(`${error.code}: ${error.message}`, "danger");
   } finally {
     state.loading = false;
+    updateActions();
   }
 }
 
 async function mutate(controller, operation, successMessage) {
+  if (state.busy) return;
+  state.busy = true;
+  updateActions();
   try {
     const result = await operation();
-    setStatus(successMessage, "success");
     await refresh(controller, result?.id || result?.draftId || state.draft?.id);
+    setStatus(successMessage, "success");
   } catch (error) {
     setStatus(`${error.code}: ${error.message}`, "danger");
-    if (error.status === 409 && error.code === "COMMERCIAL_POLICY_STALE") await refresh(controller);
+    // Preserve local edits on a revision conflict; never silently refresh them away.
+  } finally {
+    state.busy = false;
+    updateActions();
   }
 }
 
 function bindEvents(controller) {
   const byId = (id) => document.getElementById(id);
-  byId("commercial-refresh")?.addEventListener("click", () => refresh(controller), { once: true });
-  byId("commercial-create-draft")?.addEventListener("click", () => mutate(controller,
+  state.events?.abort();
+  state.events = new AbortController();
+  const eventOptions = { signal: state.events.signal };
+  byId("commercial-refresh")?.addEventListener("click", async () => { if (await confirmDiscard(controller)) await refresh(controller); }, eventOptions);
+  byId("commercial-create-draft")?.addEventListener("click", async () => { if (!await confirmDiscard(controller)) return; await mutate(controller,
     () => jsonRequest("/api/commercial/drafts", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
     "Đã tạo bản nháp mới."
-  ), { once: true });
-  byId("commercial-draft-select")?.addEventListener("change", (event) => refresh(controller, event.target.value), { once: true });
+  ); }, eventOptions);
+  byId("commercial-draft-select")?.addEventListener("change", async (event) => { if (await confirmDiscard(controller)) await refresh(controller, event.target.value); else event.target.value = state.draft?.id || ""; }, eventOptions);
   byId("commercial-save")?.addEventListener("click", () => mutate(controller,
     () => jsonRequest(`/api/commercial/drafts/${encodeURIComponent(state.draft.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": `"${state.draft.revision}"` }, body: JSON.stringify({ expectedRevision: state.draft.revision, document: state.draft.document }) }),
     "Đã lưu bản nháp; validation cũ đã hết hiệu lực."
-  ), { once: true });
+  ), eventOptions);
   byId("commercial-validate")?.addEventListener("click", async () => {
+    if (state.busy || isDirty()) return;
+    state.busy = true;
+    updateActions();
     try {
       state.validation = await jsonRequest(`/api/commercial/drafts/${encodeURIComponent(state.draft.id)}/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision: state.draft.revision }) });
+      const firstOfferError = state.validation.errors?.find(error => /^offers\[\d+\]/u.test(error.path || ""));
+      if (firstOfferError) {
+        const index = Number(firstOfferError.path.match(/^offers\[(\d+)\]/u)[1]);
+        state.selectedOffer = state.draft.document.offers[index]?.code || "";
+        state.section = "commercial-offers";
+      } else if (state.validation.errors?.length) state.section = "commercial-policies";
       renderAll(controller);
       setStatus(state.validation.errors.length ? "Kiểm tra còn lỗi cần xử lý." : "Kiểm tra đạt; có thể xuất bản khi đủ điều kiện.", state.validation.errors.length ? "danger" : "success");
     } catch (error) { setStatus(`${error.code}: ${error.message}`, "danger"); }
-  }, { once: true });
+    finally { state.busy = false; updateActions(); }
+  }, eventOptions);
   byId("commercial-publish")?.addEventListener("click", async () => {
-    const reason = await controller.view.customPrompt("Xuất bản bản phát hành thương mại", "Nhập lý do thay đổi. Thao tác yêu cầu xác thực lại và tạo nhật ký bất biến.", "", "Lý do xuất bản");
-    if (!reason) return;
-    const local = byId("commercial-effective-at")?.value;
-    const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);
-    await mutate(controller, () => jsonRequest(`/api/commercial/drafts/${encodeURIComponent(state.draft.id)}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision: state.draft.revision, validationDigest: state.validation.validationDigest, effectiveAt, reason }) }), "Đã tạo bản phát hành bất biến.");
-  }, { once: true });
-  byId("commercial-clone-release")?.addEventListener("click", () => mutate(controller,
+    if (isDirty() || state.busy || !validationReady()) { updateActions(); setStatus("Lưu và kiểm tra lại bản nháp trước khi xuất bản.", "warning"); return; }
+    const draftId = state.draft.id;
+    const revision = state.draft.revision;
+    const digest = state.validation.validationDigest;
+    const local = state.effectiveAt;
+    const configuredAt = local ? Math.floor(new Date(local).getTime() / 1000) : null;
+    if (local && !Number.isFinite(configuredAt)) { setStatus("Thời điểm hiệu lực không hợp lệ.", "danger"); return; }
+    state.busy = true;
+    updateActions();
+    try {
+      const summary = state.draft.document.offers.map(offer => `${offer.display?.name || offer.code}: ${money(offer.price.total)} · ${offer.salesState === "sellable" ? "Đang bán" : "Không mở bán"} · ${offer.display?.visibility === "hidden" ? "Ẩn khỏi catalog" : "Công khai"}`).join("\n");
+      const reason = await controller.view.customPrompt("Kiểm tra cấu hình trước khi xuất bản", `${summary}\n\nHiệu lực: ${configuredAt ? dateTime(configuredAt) : "Ngay sau khi xác nhận"}. Xuất bản toàn bộ bản nháp, gồm chính sách và quyền lợi. Nhập lý do; hệ thống vẫn yêu cầu xác thực lại theo quy định.`, "", "Lý do xuất bản");
+      if (!reason) return;
+      await jsonRequest(`/api/commercial/drafts/${encodeURIComponent(draftId)}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision: revision, validationDigest: digest, effectiveAt: configuredAt ?? Math.floor(Date.now() / 1000), reason }) });
+      await refresh(controller);
+      setStatus(configuredAt && configuredAt > Date.now() / 1000 ? "Đã lên lịch. Landing chỉ thay đổi khi bản phát hành có hiệu lực." : "Đã xuất bản. Kiểm tra catalog công khai và landing để xác nhận hiển thị.", "success");
+    } catch (error) { setStatus(`${error.code}: ${error.message}`, "danger"); }
+    finally { state.busy = false; updateActions(); }
+  }, eventOptions);
+  byId("commercial-clone-release")?.addEventListener("click", async () => { if (!await confirmDiscard(controller)) return; await mutate(controller,
     () => jsonRequest(`/api/commercial/releases/${encodeURIComponent(state.overview.currentRelease.id)}/clone`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
     "Đã tạo bản nháp mới từ bản đang hiệu lực."
-  ), { once: true });
+  ); }, eventOptions);
   byId("commercial-stop-sales")?.addEventListener("click", async () => {
+    if (!await confirmDiscard(controller)) return;
     const reason = await controller.view.customPrompt("Dừng bán bản phát hành", "Quyền lợi đã áp dụng không thay đổi. Nhập lý do dừng các giao dịch mới.", "", "Lý do dừng bán");
     if (!reason) return;
     await mutate(controller, () => jsonRequest(`/api/commercial/releases/${encodeURIComponent(state.overview.currentRelease.id)}/stop-sales`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason, scope: { kind: "global" } }) }), "Đã ghi sự kiện dừng bán.");
-  }, { once: true });
+  }, eventOptions);
 }
 
 export async function mountCommercialControlCenter(controller) {
+  const sameController = state.controller === controller;
   state.controller = controller;
   await loadStyleOnce(STYLE_URL);
+  if (!state.unloadGuardInstalled) {
+    window.addEventListener("beforeunload", event => {
+      if (!isDirty()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+    state.unloadGuardInstalled = true;
+  }
+  if (sameController && isDirty()) { renderAll(controller); return; }
   await refresh(controller);
 }

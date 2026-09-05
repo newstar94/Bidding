@@ -10,7 +10,7 @@
     "generate:schema-runtime": "python scripts/generate_schema_runtime.py",
     "check:schema-runtime": "python scripts/generate_schema_runtime.py --check",
     "generate:bootstrap-assets": "python scripts/generate_bootstrap_asset_urls.py",
-    "check:bootstrap-assets": "python scripts/generate_bootstrap_asset_urls.py --check",
+    "check:bootstrap-assets": "python scripts/generate_bootstrap_asset_urls.py --check && node scripts/generate_landing_icons.mjs --check",
     "check:route-css": "node scripts/check_route_css_split.mjs",
     "check:e2e-discovery": "node scripts/check_playwright_discovery.mjs",
     "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
