@@ -84,6 +84,9 @@ if os.path.exists(env_path):
                 else:
                     os.environ.setdefault(key, value)
 
+from backend.shared.database_profile import load_profile
+load_profile(project_root)
+
 from backend.shared.paths import IMAGE_DIR
 from backend.security.turnstile import public_turnstile_config
 from backend.commercial_policy.config import trial_full_access_enabled

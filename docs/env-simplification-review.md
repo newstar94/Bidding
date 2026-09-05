@@ -1,5 +1,9 @@
 # Rà soát khả năng tinh giản cấu hình môi trường BiddingFlow
 
+> Đã triển khai đợt PostgreSQL cục bộ: `.env` còn 77 biến, 18 biến chuyển vào
+> profile riêng tư và 9 URL sinh từ kết nối chính. Xem `docs/database-profile.md`.
+> Tài khoản/mật khẩu và database không gộp; chưa thay các cặp ENABLED/MODE thương mại/Word.
+
 > Cập nhật theo ADR 0036: trình duyệt không còn lựa chọn mode hoặc cờ bật riêng.
 > Các đề xuất về hai công tắc chế độ bên dưới là lịch sử nghiên cứu, đã được thay
 > bằng launcher thống nhất. Allowlist hiện dùng `PROCUREMENT_ALLOWED_TARGET_HOSTS`.

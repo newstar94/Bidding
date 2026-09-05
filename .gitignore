@@ -5,6 +5,8 @@ __pycache__/
 
 # Cấu hình môi trường chứa thông tin nhạy cảm
 .env
+.env.database.json
+.env.database.json.backup
 
 # Database SQLite (Bỏ qua file DB thay đổi cục bộ)
 data/bidding.db

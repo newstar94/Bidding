@@ -80,6 +80,7 @@ class BatchWriteAuthorizationContext:
     package_status_by_id: dict[str, str] = field(default_factory=dict)
     snapshot_package_ids: set[str] = field(default_factory=set)
     server_inherited_assignment_ids: set[str] = field(default_factory=set)
+    new_plan_draft_records: set[tuple[str, str]] = field(default_factory=set)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -951,10 +952,13 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     module_name = TABLE_TO_MODULE.get(table_name)
     if table_name in SHARED_REFERENCE_TABLES and not context.active_membership:
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
+    new_plan_draft = (table_name, clean_id(item.get("id"))) in context.new_plan_draft_records
     if not _context_has_module_permission(
-        context, module_name, "edit"
+        context, module_name, "view" if new_plan_draft else "edit"
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
+    if new_plan_draft:
+        return AccessDecision(True)
     if table_name == "thong_tin_mo_thau":
         parent_id = child_parent_id
         if ("goithau", parent_id) not in context.assigned_targets:

@@ -733,6 +733,22 @@ def _prepare_notice_blocking(request, payload):
     return {**preview, "importSession": import_session}
 
 
+def _import_session_permission(cursor, session, organization_id, stored):
+    """A new plan draft needs module view; existing plans still require edit."""
+    module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
+    action = "edit"
+    family_no = str(stored.get("familyNo") or "").strip().upper()
+    if stored["kind"] == "PLAN" and family_no:
+        existing = cursor.execute(
+            """SELECT id FROM ke_hoach_lcnt
+               WHERE organization_id = ? AND upper(ma_ke_hoach) = ? LIMIT 1""",
+            (organization_id, family_no),
+        ).fetchone()
+        if existing is None:
+            action = "view"
+    return has_module_permission(cursor, session, session.user_id, organization_id, module, action)
+
+
 def _get_import_session_blocking(request, session_id, revision_number=None):
     session, organization_id, lease = _request_context(
         request, request.query_params.get("workspaceLease")
@@ -748,10 +764,7 @@ def _get_import_session_blocking(request, session_id, revision_number=None):
         )
         if stored is None:
             raise LookupError("PROCUREMENT_SESSION_EXPIRED")
-        module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
-        if not has_module_permission(
-            cursor, session, session.user_id, organization_id, module, "edit"
-        ):
+        if not _import_session_permission(cursor, session, organization_id, stored):
             raise ProcurementRouteError(
                 "ORGANIZATION_ACCESS_DENIED",
                 "Không có quyền tiếp tục phiên nhập trong workspace hiện tại.",
@@ -796,9 +809,7 @@ def _bind_import_session_decisions_blocking(request, session_id, payload):
         )
         if stored is None:
             raise LookupError("PROCUREMENT_SESSION_EXPIRED")
-        if stored["kind"] != "PLAN" or not has_module_permission(
-            cursor, session, session.user_id, organization_id, "kehoach", "edit"
-        ):
+        if stored["kind"] != "PLAN" or not _import_session_permission(cursor, session, organization_id, stored):
             raise ProcurementRouteError(
                 "ORGANIZATION_ACCESS_DENIED",
                 "Không có quyền xác nhận phiên nhập trong workspace hiện tại.",
@@ -847,10 +858,7 @@ def _cancel_import_session_blocking(request, session_id):
         )
         if stored is None:
             raise LookupError("PROCUREMENT_SESSION_EXPIRED")
-        module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
-        if not has_module_permission(
-            cursor, session, session.user_id, organization_id, module, "edit"
-        ):
+        if not _import_session_permission(cursor, session, organization_id, stored):
             raise ProcurementRouteError(
                 "ORGANIZATION_ACCESS_DENIED",
                 "Không có quyền kết thúc phiên nhập trong workspace hiện tại.",

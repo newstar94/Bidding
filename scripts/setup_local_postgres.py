@@ -80,6 +80,12 @@ def _read_env() -> tuple[list[str], dict[str, str]]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
+    from backend.shared.database_profile import read_profile
+    profile_values = read_profile(ROOT, values)
+    for key, value in profile_values.items():
+        if key not in values:
+            lines.append(f'{key}={value}')
+            values[key] = value
     return lines, values
 
 
@@ -732,6 +738,8 @@ def main() -> None:
             Fernet.generate_key().decode("ascii"),
         )
     print("Updating ignored .env configuration...", flush=True)
+    from backend.shared.database_profile import save_profile_environment
+    lines = save_profile_environment(ROOT, lines)
     ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # Bootstrap least-privilege roles before schema creation, initialize with
     # the migrator identity, then reapply ownership/default grants. This makes

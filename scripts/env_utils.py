@@ -18,3 +18,5 @@ def load_env(project_root: Path) -> None:
             key.strip(),
             value.strip().strip('"').strip("'"),
         )
+    from backend.shared.database_profile import load_profile
+    load_profile(project_root)
