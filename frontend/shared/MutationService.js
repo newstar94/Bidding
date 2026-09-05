@@ -108,7 +108,7 @@ export async function persistAndSync(controller, tableKeys, {
   if (usesServerPagination && typeof afterPersist === "function" && !backgroundSync) {
     controller._deferPostCommitRender = true;
   }
-  if (!usesServerPagination && typeof afterPersist === "function") {
+  if (!backgroundSync && !usesServerPagination && typeof afterPersist === "function") {
     await afterPersist();
   }
   if (mutation?.outbox) await mutation.outbox.flush();

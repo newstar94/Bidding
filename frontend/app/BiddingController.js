@@ -132,7 +132,6 @@ export class BiddingController {
       "modal-hopdong": "/modals/modal_hopdong.html",
       "modal-manager-employee": "/modals/modal_manager_employee.html",
       "modal-manager-employee-detail": "/modals/modal_employee_detail.html",
-      "modal-edit-package": "/modals/modal_edit_package.html",
       "modal-detail-system-user": "/modals/modal_detail_system_user.html"
     };
     this._lazyPartialPromises = /* @__PURE__ */ new Map();
@@ -171,7 +170,7 @@ export class BiddingController {
           if (["modal-chuyengia", "modal-nhathau"].includes(id)) {
             this.setupFileUploads?.();
           }
-          if (["modal-manager-employee", "modal-detail-system-user", "modal-edit-package"].includes(id)) {
+          if (["modal-manager-employee", "modal-detail-system-user"].includes(id)) {
             this.setupRBACEvents?.();
           }
         }
@@ -1205,9 +1204,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const switchTab = (tab, action = null, updateState = true) => this.switchTab(tab, action, updateState);
     const toggleOrgLock = (id) => this.toggleOrgLock(id);
     const renewOrgSubscription = (id) => this.renewOrgSubscription(id);
-    const editPackageQuota = (pkgId, defaultQuota) => this.editPackageQuota(pkgId, defaultQuota);
-    const editSystemPackage = (pkgId) => this.editSystemPackage(pkgId);
-    const togglePackageLock = (id) => this.togglePackageLock(id);
     const editEmployee = (id) => this.editEmployee(id);
     const viewEmployee = (id) => this.viewEmployee(id);
     const deleteEmployee = (id) => this.deleteEmployee(id);
@@ -1325,9 +1321,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       switchTab,
       toggleOrgLock,
       renewOrgSubscription,
-      editPackageQuota,
-      editSystemPackage,
-      togglePackageLock,
       editEmployee,
       viewEmployee,
       deleteEmployee,

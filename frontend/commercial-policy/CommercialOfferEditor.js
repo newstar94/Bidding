@@ -64,7 +64,7 @@ export function offerEditor(offer, index, errors = []) {
     ${field('price.total', 'Giá gói (₫)', offer.price.total, 'integer')}
     ${field('memberQuota', 'Số thành viên', offer.memberQuota, 'integer')}
     ${field('includedProcurementQuota', 'Lượt lấy hồ sơ Mua Sắm Công kèm theo', offer.includedProcurementQuota, 'integer')}
-    ${field('salesState', 'Trạng thái bán', offer.salesState, 'select', [['sellable','Đang bán'],['stopped','Đã dừng bán'],['non_sellable','Không bán']])}
+    ${field('salesState', 'Tình trạng', offer.salesState, 'select', [['sellable','Hoạt động'],['stopped','Không hoạt động — Đã dừng bán'],['non_sellable','Không hoạt động — Không bán']])}
     </div></fieldset>
     <fieldset><legend>Nội dung công khai</legend><div class="commercial-offer-presentation-grid">
     ${field('display.name','Tên hiển thị',display.name)}

@@ -204,48 +204,6 @@ export function populateNhanVienPhuTrachDropdowns() {
   }
 }
 export function renderSuperAdminPanel() {
-  const pricingGrid = document.getElementById("sa-pricing-grid");
-  if (pricingGrid && this.model.state.systempackages) {
-    pricingGrid.innerHTML = trustedHTML(this.model.state.systempackages.map((pkg) => {
-      const badgeLabel = pkg.id === "silver" ? "Silver" : pkg.id === "gold" ? "Bán chạy" : "Diamond";
-      const badgeClass = pkg.id === "gold" ? "badge-popular" : "";
-      const cardClass = pkg.id === "silver" ? "silver-card" : pkg.id === "gold" ? "gold-card popular" : "diamond-card";
-      const formattedPrice = this.model.formatCurrency(pkg.price);
-      const quotaText = pkg.quota >= 999 ? "Không giới hạn" : `Tối đa ${pkg.quota} Nhân sự`;
-      const isLocked = pkg.isLocked || false;
-      const lockBtnText = isLocked ? "Đã khóa" : "Hoạt động";
-      const lockBtnClass = isLocked ? "btn-danger" : "btn-emerald";
-      const lockBtnIcon = isLocked ? "lock" : "circle-check";
-      const lockBtnTitle = isLocked ? "Mở khóa gói" : "Khóa gói";
-      const editArgsKey = registerCommandArgs([String(pkg.id || "")]);
-      const lockArgsKey = registerCommandArgs([String(pkg.id || "")]);
-      return `
-                <div class="pricing-card ${cardClass}">
-                    <div class="pricing-badge ${badgeClass}">${badgeLabel}</div>
-                    <h4 class="package-name">${escapeHTML(pkg.name)}</h4>
-                    <div class="package-price">${escapeHTML(formattedPrice)}<span>/năm</span></div>
-                    <p class="package-desc">${escapeHTML(pkg.description || "")}</p>
-                    <ul class="package-features">
-                        <li><i data-lucide="check"></i> Hạn mức nhân sự: <strong>${escapeHTML(quotaText)}</strong></li>
-                        <li><i data-lucide="check"></i> Lập ma trận phân quyền</li>
-                        <li><i data-lucide="check"></i> Đồng bộ dữ liệu PostgreSQL tự động</li>
-                        <li><i data-lucide="check"></i> Nhập dữ liệu thầu từ Excel</li>
-                    </ul>
-                    <div class="package-action-btn-group">
-                        <button class="btn btn-outline"
-                            data-bf-action="call" data-fn="editSystemPackage" data-arg-key="${editArgsKey}">
-                            <i data-lucide="pencil" aria-hidden="true"></i>Chỉnh sửa Gói
-                        </button>
-                        <button class="btn ${lockBtnClass}" id="btn-lock-${safeAttr(pkg.id)}"
-                            title="${lockBtnTitle}" aria-label="${lockBtnTitle}: ${escapeHTML(pkg.name)}"
-                            data-bf-action="call" data-fn="togglePackageLock" data-arg-key="${lockArgsKey}">
-                            <i data-lucide="${lockBtnIcon}" aria-hidden="true"></i>${lockBtnText}
-                        </button>
-                    </div>
-                </div>
-            `;
-    }).join(""));
-  }
   apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const orgMap = {};
     users.forEach((u) => {
@@ -328,7 +286,6 @@ export function renderSuperAdminPanel() {
                     `;
       }).join(""));
     }
-    renderLucideIcons(document.getElementById("sa-pricing-grid"), lucide);
     renderLucideIcons(tbody, lucide);
   });
 }

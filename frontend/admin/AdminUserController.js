@@ -1,7 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
-import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -767,52 +766,6 @@ export function setupRBACEvents() {
       }
     });
   }
-  const editPkgPriceInput = document.getElementById("edit-pkg-price");
-  if (editPkgPriceInput) {
-    bindCurrencyElement(editPkgPriceInput, (value) => this.model.formatVND(value));
-  }
-  const formEditPkg = document.getElementById("form-edit-package");
-  if (formEditPkg) {
-    bindAdminEvent(formEditPkg, "submit", "save-system-package", async (e) => {
-      e.preventDefault();
-      if (!this.view.validateForm(formEditPkg)) return;
-      const id = document.getElementById("edit-pkg-id").value;
-      const name = document.getElementById("edit-pkg-name").value.trim();
-      const price = this.model.parseVND(document.getElementById("edit-pkg-price").value);
-      const quota = parseInt(document.getElementById("edit-pkg-quota").value, 10) || 0;
-      const description = document.getElementById("edit-pkg-desc").value.trim();
-      try {
-        const res = await apiFetch("/api/system-packages/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id,
-            name,
-            price,
-            quota,
-            description,
-            status: this.model.state.systempackages.find((item) => item.id === id)?.status || "active"
-          })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          const localPkg = this.model.state.systempackages.find((p) => p.id === id);
-          if (localPkg) {
-            Object.assign(localPkg, { name, price, quota, description });
-          }
-          this.model.persistData("systempackages");
-          this.view.closeModal("modal-edit-package");
-          this.view.renderSuperAdminPanel();
-          await this.view.customAlert("Thành công", "Đã cập nhật thông tin gói cước thành công!", "check-circle");
-          this.autoSync();
-        } else {
-          await this.view.customAlert("Thất bại", data.error || "Không thể cập nhật gói cước.", "alert-triangle");
-        }
-      } catch (err) {
-        await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
-      }
-    });
-  }
   this.tempProfileAvatarBase64 = "";
   const profileAvatarInput = document.getElementById("profile-avatar-input");
   const profileAvatarPreview = document.getElementById("profile-avatar-preview");
@@ -1397,19 +1350,6 @@ export async function deleteHoSoGiayStatus(id) {
     return;
   }
 }
-export async function editSystemPackage(pkgId) {
-  const pkg = this.model.state.systempackages.find((p) => p.id === pkgId);
-  if (!pkg) return;
-  if (!document.getElementById("modal-edit-package")) {
-    await this.ensureLazyModal?.("modal-edit-package");
-  }
-  document.getElementById("edit-pkg-id").value = pkg.id;
-  document.getElementById("edit-pkg-name").value = pkg.name;
-  document.getElementById("edit-pkg-price").value = this.model.formatVND(pkg.price);
-  document.getElementById("edit-pkg-quota").value = pkg.quota;
-  document.getElementById("edit-pkg-desc").value = pkg.description || "";
-  this.view.openModal("modal-edit-package");
-}
 export async function toggleOrgLock(organizationId) {
   const organization = this.model.state.organizations.find((item) => String(item.id) === String(organizationId));
   if (!organization) return;
@@ -1444,41 +1384,6 @@ export async function renewOrgSubscription(organizationId) {
     await this.view.customAlert("Thành công", "Đã gia hạn gói dịch vụ theo chính sách tương thích hiện hành.", "check-circle");
   } catch (error) {
     await this.view.customAlert("Thất bại", error.message, "alert-triangle");
-  }
-}
-export async function togglePackageLock(pkgId) {
-  const pkg = this.model.state.systempackages.find((p) => p.id === pkgId);
-  if (!pkg) return;
-  const isCurrentlyLocked = Boolean(pkg.isLocked);
-  const actionText = isCurrentlyLocked ? "kích hoạt lại" : "tạm khóa";
-  const confirmed = await this.view.customConfirm(
-    "Xác nhận thay đổi",
-    `Bạn có chắc chắn muốn ${actionText} gói dịch vụ "${pkg.name}"?`,
-    isCurrentlyLocked ? "unlock" : "lock"
-  );
-  if (confirmed) {
-    try {
-      const response = await apiFetch("/api/system-packages/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: pkg.id,
-          name: pkg.name,
-          price: pkg.price,
-          quota: pkg.quota,
-          description: pkg.description || "",
-          status: isCurrentlyLocked ? "active" : "inactive"
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không thể cập nhật trạng thái gói.");
-      pkg.status = isCurrentlyLocked ? "active" : "inactive";
-      pkg.isLocked = !isCurrentlyLocked;
-      this.view.renderSuperAdminPanel();
-      await this.view.customAlert("Thành công", `Đã ${actionText} gói dịch vụ thành công!`, "check-circle");
-    } catch (error) {
-      await this.view.customAlert("Thất bại", error.message, "alert-triangle");
-    }
   }
 }
 export { renderWorkspaceSwitcher } from "../auth/WorkspaceSwitcherController.js";

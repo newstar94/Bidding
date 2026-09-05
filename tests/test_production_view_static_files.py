@@ -17,7 +17,9 @@ def test_production_view_allows_public_landing_assets():
         "assets/biddingflow-social-preview.png"
     )
     assert app_module._is_production_view_asset_allowed("assets/landing-icons.svg")
-    assert app_module._is_production_view_asset_allowed("assets/landing-product-worklist.png")
+    assert not app_module._is_production_view_asset_allowed(
+        "assets/landing-product-worklist.png"
+    )
 
 
 def test_production_view_does_not_broaden_asset_access():

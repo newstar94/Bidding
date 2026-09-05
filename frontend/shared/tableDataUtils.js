@@ -146,7 +146,7 @@ export function getCachedPaginatedRecords(model, table, params = {}, capturedLea
   const lease = capturedLease || capturePaginatedLease(model);
   const entry = paginatedProjectionStore(model).read(table, params, lease);
   if (!entry) return null;
-  return {
+  return overlayPendingPaginatedMutations(model, table, {
     items: entry.items,
     totalItems: entry.totalItems,
     nextCursor: entry.nextCursor,
@@ -154,7 +154,7 @@ export function getCachedPaginatedRecords(model, table, params = {}, capturedLea
     cacheHit: true,
     prefetched: Boolean(entry.prefetched),
     stale: !cacheEntryIsFresh(entry),
-  };
+  }, params);
 }
 
 export function timelinePackagePageQuery(planId, search = "") {
@@ -200,6 +200,168 @@ function currentMutationBatch(model) {
   } catch {
     return null;
   }
+}
+
+const PAGINATION_CONTROL_PARAMS = new Set([
+  "page", "pageSize", "pagination", "cursor", "sortBy", "sortOrder", "search",
+]);
+const PAGINATED_SEARCH_FIELDS = Object.freeze({
+  kehoach: ["maKeHoach", "tenKeHoach", "tenDuAnDuToan"],
+  goithau: ["maGoiThau", "tenGoiThau"],
+  chudautu: ["maChuDauTu", "tenChuDauTu", "tenVietTat", "maSoThue"],
+  nhathau: ["maNhaThau", "tenNhaThau", "tenVietTat", "maSoThue"],
+  chuyengia: ["hoTen", "soChungChi"],
+  hopdong: ["soHopDong", "tenHopDong"],
+});
+const PAGINATED_DATE_FIELDS = Object.freeze({
+  kehoach: "ngayPheDuyet",
+  goithau: "ngayQuyetDinh",
+  hopdong: "ngayKy",
+});
+
+function normalizedSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLocaleLowerCase("vi");
+}
+
+function recordMatchesPendingQuery(record, table, params = {}) {
+  const search = normalizedSearchText(params.search).trim();
+  if (search) {
+    const fields = PAGINATED_SEARCH_FIELDS[table] || [];
+    const haystack = normalizedSearchText(fields.map((field) => record?.[field]).join(" "));
+    if (!haystack.includes(search)) return false;
+  }
+  for (const [key, rawValue] of Object.entries(params || {})) {
+    if (PAGINATION_CONTROL_PARAMS.has(key)) continue;
+    const expected = String(rawValue ?? "").trim();
+    if (!expected) continue;
+    if (key === "nam" || key === "thang") {
+      const dateField = PAGINATED_DATE_FIELDS[table];
+      const dateParts = parseYearMonth(dateField ? record?.[dateField] : "");
+      if (String(dateParts[key === "nam" ? "year" : "month"] || "") !== expected) {
+        return false;
+      }
+      continue;
+    }
+    if (String(record?.[key] ?? "") !== expected) return false;
+  }
+  return true;
+}
+
+function pendingRecordRoot(record) {
+  return String(record?.rootId || record?.id || "");
+}
+
+function newerPendingVersion(left, right) {
+  const leftLatest = Number(left?.isLatest ?? left?.is_latest ?? 0);
+  const rightLatest = Number(right?.isLatest ?? right?.is_latest ?? 0);
+  if (leftLatest !== rightLatest) return rightLatest > leftLatest ? right : left;
+  const leftVersion = Number.parseInt(left?.phienBan ?? left?.phien_ban ?? 0, 10) || 0;
+  const rightVersion = Number.parseInt(right?.phienBan ?? right?.phien_ban ?? 0, 10) || 0;
+  return rightVersion >= leftVersion ? right : left;
+}
+
+function latestPendingUpserts(records, normalize) {
+  const byRoot = new Map();
+  for (const rawRecord of records) {
+    const record = normalize(rawRecord);
+    const root = pendingRecordRoot(record);
+    if (!root) continue;
+    byRoot.set(root, byRoot.has(root)
+      ? newerPendingVersion(byRoot.get(root), record)
+      : record);
+  }
+  return [...byRoot.values()];
+}
+
+/**
+ * The server page is the canonical projection, but a just-saved record remains
+ * in the durable outbox until the remote acknowledgement arrives. Overlay that
+ * narrow, workspace-scoped mutation window so the table never goes blank or
+ * shows the previous value immediately after a successful local save.
+ */
+export function overlayPendingPaginatedMutations(model, table, pageResult, params = {}) {
+  const source = pageResult && typeof pageResult === "object" ? pageResult : {};
+  const mutationBatch = currentMutationBatch(model);
+  const pendingUpserts = Object.values(mutationBatch?.upserts?.[table] || {});
+  const pendingPatches = Object.values(mutationBatch?.patches?.[table] || {});
+  const pendingDeletes = new Set(
+    (mutationBatch?.deletes || [])
+      .filter((deletion) => String(deletion?.table || "") === String(table || ""))
+      .map((deletion) => String(deletion?.id || ""))
+      .filter(Boolean),
+  );
+  if (!pendingUpserts.length && !pendingPatches.length && !pendingDeletes.size) {
+    return source;
+  }
+
+  const normalize = (record) => (
+    typeof model?.normalizeRecordKeys === "function"
+      ? model.normalizeRecordKeys(record, table)
+      : record
+  );
+  const originalItems = Array.isArray(source.items) ? source.items : [];
+  const byId = new Map(originalItems
+    .map((record) => normalize(record))
+    .filter((record) => record?.id !== undefined && record?.id !== null)
+    .map((record) => [String(record.id), record]));
+  const originalIds = new Set(byId.keys());
+  let addedCount = 0;
+  let removedCount = 0;
+
+  for (const id of pendingDeletes) {
+    if (byId.delete(id)) removedCount += 1;
+  }
+  for (const patch of pendingPatches) {
+    const normalized = normalize(patch);
+    const id = String(normalized?.id || "");
+    const existing = byId.get(id);
+    if (!id || !existing) continue;
+    const merged = { ...existing, ...normalized };
+    if (recordMatchesPendingQuery(merged, table, params)) byId.set(id, merged);
+    else if (byId.delete(id)) removedCount += 1;
+  }
+
+  const isFirstPage = !String(params?.cursor || "").trim()
+    && Math.max(1, Number(params?.page) || 1) === 1;
+  for (const record of latestPendingUpserts(pendingUpserts, normalize)) {
+    const id = String(record?.id || "");
+    if (!id || pendingDeletes.has(id)) continue;
+    const root = pendingRecordRoot(record);
+    const lineageEntries = [...byId.entries()].filter(([, candidate]) => (
+      pendingRecordRoot(candidate) === root
+    ));
+    const existedOnPage = byId.has(id) || originalIds.has(id) || lineageEntries.length > 0;
+    for (const [candidateId] of lineageEntries) {
+      if (candidateId !== id) byId.delete(candidateId);
+    }
+    if (!recordMatchesPendingQuery(record, table, params)) {
+      byId.delete(id);
+      if (existedOnPage) removedCount += 1;
+      continue;
+    }
+    if (existedOnPage || isFirstPage) {
+      byId.set(id, { ...(byId.get(id) || {}), ...record });
+      if (!existedOnPage) addedCount += 1;
+    }
+  }
+
+  const items = [...byId.values()];
+  sortRecords(items, params?.sortBy, params?.sortOrder);
+  const pageSize = Number(params?.pageSize);
+  const visibleItems = Number.isFinite(pageSize) && pageSize > 0
+    ? items.slice(0, pageSize)
+    : items;
+  return {
+    ...source,
+    items: visibleItems,
+    totalItems: Math.max(0, Number(source.totalItems || 0) + addedCount - removedCount),
+    pendingLocal: true,
+  };
 }
 
 export function timelinePackageIsPendingLocal(model, recordId) {
@@ -580,7 +742,7 @@ export async function loadPaginatedRecords(
         model._lastPaginatedQueries.set(table, { ...params });
       }
       reportPerf({ phase: "paginated-data", tabName: model?.state?.activetab || null, query: table, cold: true, duration: Math.round(perfNow() - startedAt), cacheHit: false, prefetched: prefetch });
-      return result;
+      return overlayPendingPaginatedMutations(model, table, result, params);
     } catch (error) {
       const canUseStaleCache = cached?.stale
         && error?.name !== "AbortError"

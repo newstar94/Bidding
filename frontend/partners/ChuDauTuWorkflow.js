@@ -184,8 +184,13 @@ export function persistInvestorFormChanges(controller, changedInvestors) {
     upserts: { chudautu: changedInvestors },
   }, {
     backgroundSync: true,
+    afterLocalDurable: () => {
+      const render = controller.view.renderChuDauTuTable();
+      const close = controller.closeModal("modal-chudautu");
+      controller.view.showToast?.("Đã lưu chủ đầu tư", "Thông tin chủ đầu tư đã được lưu.", "success");
+      return Promise.all([render, close]);
+    },
     afterCanonicalSync: async () => {
-      await controller.closeModal("modal-chudautu");
       await controller.view.renderChuDauTuTable();
     },
   });

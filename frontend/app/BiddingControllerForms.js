@@ -15,6 +15,7 @@ import {
 import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 import { trackPackageInheritance } from "../packages/packageRebidWorkflow.js";
 import { runPackageFormSubmission } from "../packages/packageFormState.js";
+import { runModalFormSubmission } from "../shared/ModalFormSubmission.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -301,7 +302,10 @@ export function setupActionListeners() {
     const modalId = btn.getAttribute("data-close");
     this.closeModal(modalId);
   });
-  onById("form-kehoach", "submit", (e) => this.handleKeHoachSubmit(e));
+  onById("form-kehoach", "submit", (e) => runModalFormSubmission(
+    e,
+    () => this.handleKeHoachSubmit(e),
+  ));
   onById("form-goithau", "submit", (event) => (
     runPackageFormSubmission(this, event)
   ));
@@ -683,12 +687,12 @@ export function setupActionListeners() {
     gtQuaMangSelect.addEventListener("change", handleQuaMangChange);
     this.handleQuaMangChange = handleQuaMangChange;
   }
-  onById("form-chudautu", "submit", (e) => this.handleChuDauTuSubmit(e));
-  onById("form-nhathau", "submit", (e) => this.handleNhaThauSubmit(e));
-  onById("form-chuyengia", "submit", (e) => this.handleChuyenGiaSubmit(e));
+  onById("form-chudautu", "submit", (e) => runModalFormSubmission(e, () => this.handleChuDauTuSubmit(e)));
+  onById("form-nhathau", "submit", (e) => runModalFormSubmission(e, () => this.handleNhaThauSubmit(e)));
+  onById("form-chuyengia", "submit", (e) => runModalFormSubmission(e, () => this.handleChuyenGiaSubmit(e)));
   const formHopDong = document.getElementById("form-hopdong");
   if (formHopDong) {
-    formHopDong.addEventListener("submit", (e) => this.handleHopDongSubmit(e));
+    formHopDong.addEventListener("submit", (e) => runModalFormSubmission(e, () => this.handleHopDongSubmit(e)));
   }
   document.querySelectorAll(".btn-import-excel").forEach((btn) => {
     if (btn._hasExcelListener) return;

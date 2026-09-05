@@ -44,9 +44,14 @@ export async function persistExpertFormChanges(controller, changedExperts, {
   return persistAndSync(controller, "chuyengia", {
     backgroundSync: true,
     changes: { upserts: { chuyengia: changedExperts } },
+    afterLocalDurable: () => {
+      const render = controller.view.renderChuyenGiaTable();
+      const close = controller.closeModal("modal-chuyengia");
+      controller.view.showToast?.("Đã lưu chuyên gia", "Thông tin chuyên gia đã được lưu.", "success");
+      return Promise.all([render, close]);
+    },
     afterCanonicalSync: async () => {
-      await controller.closeModal("modal-chuyengia");
-      controller.view.renderChuyenGiaTable();
+      await controller.view.renderChuyenGiaTable();
     },
   });
 }

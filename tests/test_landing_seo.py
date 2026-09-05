@@ -62,7 +62,7 @@ def test_landing_marketing_copy_is_present_in_initial_html():
         / "landing_page.html"
     ).read_text(encoding="utf-8")
     assert markup.count("<h1") == 1
-    assert "Quản lý toàn bộ quy trình đấu thầu trên một nền tảng duy nhất" in markup
+    assert "Biến nghiệp vụ đấu thầu phức tạp thành một dòng chảy rõ ràng." in markup
     assert '<main id="landing-main">' in markup
     assert 'id="giai-phap"' in markup
     assert 'id="quy-trinh"' in markup

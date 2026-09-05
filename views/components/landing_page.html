@@ -13,17 +13,16 @@
                 </span>
             </a>
 
-            <button class="landing-menu-toggle" type="button" data-landing-menu-toggle aria-expanded="false" aria-controls="landing-navigation" aria-label="Mở menu điều hướng"><i data-lucide="menu"></i></button>
-            <nav id="landing-navigation" data-landing-nav class="landing-nav" aria-label="Điều hướng trang giới thiệu">
-                <a href="#giai-phap">Sản phẩm</a>
+            <nav class="landing-nav" aria-label="Điều hướng trang giới thiệu">
+                <a href="#giai-phap">Giải pháp</a>
                 <a href="#quy-trinh">Quy trình</a>
-                <a href="#faq">FAQ</a>
+                <a href="#vai-tro">Vai trò</a>
                 <a href="#bang-gia" data-commercial-only>Bảng giá</a>
             </nav>
 
             <div class="landing-header-actions">
                 <a class="landing-login-link" data-landing-auth-link href="/dang-nhap"><span data-landing-auth-label>Đăng nhập</span></a>
-                <a class="landing-button landing-button-primary landing-header-cta" data-landing-app-link data-cta-location="header" href="/dang-nhap">
+                <a class="landing-button landing-button-primary landing-header-cta" data-landing-app-link href="/dang-nhap">
                     <span data-landing-app-label>Bắt đầu sử dụng</span>
                     <i data-lucide="arrow-up-right" aria-hidden="true"></i>
                 </a>
@@ -37,13 +36,19 @@
                 <div class="landing-hero-copy" data-landing-reveal>
                     <div class="landing-eyebrow">
                         <span class="landing-eyebrow-dot" aria-hidden="true"></span>
-                        Nền tảng quản lý nghiệp vụ đấu thầu
+                        Không để một gói thầu trôi khỏi tầm kiểm soát
                     </div>
-                    <h1 id="landing-hero-title">Quản lý toàn bộ quy trình đấu thầu trên một nền tảng duy nhất</h1>
-                    <p>Tập trung kế hoạch LCNT, gói thầu, hồ sơ và hợp đồng. Theo dõi thời hạn và trạng thái xử lý trong cùng một hệ thống.</p>
+                    <h1 id="landing-hero-title">Biến nghiệp vụ đấu thầu phức tạp thành một dòng chảy rõ ràng.</h1>
+                    <p>Khi deadline nằm ở lịch cá nhân, hồ sơ rải trong nhiều file và trạng thái chỉ tồn tại trong trí nhớ, rủi ro sẽ tăng theo từng gói thầu. BiddingFlow đưa mọi thứ về một không gian làm việc có thể nhìn thấy, bàn giao và tiếp tục.</p>
                     <div class="landing-hero-actions">
-                        <a class="landing-button landing-button-primary landing-button-large" data-landing-app-link data-cta-location="hero" href="/dang-nhap"><span data-landing-app-label>Bắt đầu sử dụng</span><i data-lucide="arrow-right"></i></a>
-                        <a class="landing-button landing-button-secondary" href="#giai-phap">Xem sản phẩm</a>
+                        <a class="landing-button landing-button-primary landing-button-large" href="#bang-gia" data-commercial-only>
+                            Xem gói dịch vụ
+                            <i data-lucide="arrow-right" aria-hidden="true"></i>
+                        </a>
+                        <a class="landing-button landing-button-secondary landing-button-large" data-landing-app-link href="/dang-nhap">
+                            <span data-landing-app-label>Vào không gian làm việc</span>
+                            <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+                        </a>
                     </div>
                     <ul class="landing-hero-points" aria-label="Giá trị vận hành chính">
                         <li><i data-lucide="bell-ring" aria-hidden="true"></i> Thấy việc cần xử lý</li>
@@ -52,25 +57,114 @@
                     </ul>
                 </div>
 
-                <figure class="landing-product-stage" role="img" aria-label="Minh họa dashboard BiddingFlow: thời hạn và công việc cần xử lý, dữ liệu minh họa">
-                    <figcaption>Góc nhìn công việc <span>Dữ liệu minh họa</span></figcaption>
-                    <div class="landing-work-preview">
-                        <div class="landing-preview-heading"><i data-lucide="layout-dashboard"></i><strong>Cần xử lý hôm nay</strong><span>3 việc</span></div>
-                        <div class="landing-preview-task"><span class="landing-task-icon"><i data-lucide="calendar-clock"></i></span><div><strong>Đóng thầu</strong><small>MT-2026-018 · Gói mua sắm thiết bị</small></div><b>Hôm nay 14:00</b></div>
-                        <div class="landing-preview-task"><span class="landing-task-icon"><i data-lucide="file-signature"></i></span><div><strong>Theo dõi hợp đồng</strong><small>HD-2026-012 · Tiến độ thực hiện</small></div><b>Cần kiểm tra</b></div>
-                        <div class="landing-preview-task"><span class="landing-task-icon"><i data-lucide="clipboard-list"></i></span><div><strong>Đăng tải kế hoạch</strong><small>KH-2026-006 · Kế hoạch LCNT</small></div><b>Cần xử lý</b></div>
-                        <div class="landing-preview-flow"><span>Kế hoạch</span><i data-lucide="arrow-right"></i><span>Gói thầu</span><i data-lucide="arrow-right"></i><span>Hợp đồng</span></div>
+                <div class="landing-product-stage" data-landing-reveal role="img" aria-label="Minh họa dashboard BiddingFlow với cảnh báo thời hạn, công việc cần xử lý và thống kê nghiệp vụ">
+                    <div class="landing-stage-glow" aria-hidden="true"></div>
+                    <div class="landing-stage-caption" aria-hidden="true">
+                        <span><i></i> Không gian vận hành trực tiếp</span>
+                        <b>TỔNG QUAN NGHIỆP VỤ</b>
                     </div>
-                    <p class="landing-product-caption">Thời hạn, hồ sơ và trạng thái trong cùng một ngữ cảnh.</p>
-                </figure>
+                    <div class="landing-product-window" aria-hidden="true">
+                        <div class="landing-app-preview">
+                            <aside class="landing-preview-sidebar">
+                                <div class="landing-preview-brand">
+                                    <span class="landing-preview-logo">
+                                        <img class="app-brand-image" src="/assets/app-brand-icon.webp?v=d308bf4310b5dbba1d17fa6bbd0c1d51eedbcefcc6c3f7034ee223447b9a06f6" alt="" width="48" height="48">
+                                    </span>
+                                    <strong>BiddingFlow</strong>
+                                </div>
+                                <nav class="landing-preview-nav">
+                                    <span class="is-active"><i data-lucide="layout-dashboard"></i><b>Tổng quan</b></span>
+                                    <small>Nghiệp vụ chính</small>
+                                    <span><i data-lucide="file-spreadsheet"></i><b>Kế hoạch LCNT</b></span>
+                                    <span><i data-lucide="package"></i><b>Gói thầu</b></span>
+                                    <span><i data-lucide="file-check-2"></i><b>Hợp đồng</b></span>
+                                    <small>Đối tác &amp; nhân sự</small>
+                                    <span><i data-lucide="building-2"></i><b>Chủ đầu tư</b></span>
+                                    <span><i data-lucide="shield-check"></i><b>Nhà thầu</b></span>
+                                    <span><i data-lucide="users"></i><b>Chuyên gia</b></span>
+                                </nav>
+                            </aside>
+                            <header class="landing-preview-app-header">
+                                <strong>Tổng quan hệ thống</strong>
+                                <div>
+                                    <span><i data-lucide="calendar-days"></i> Thứ Sáu, 17/7/2026</span>
+                                    <span><i data-lucide="building-2"></i> An Phú</span>
+                                    <span class="landing-preview-profile"><b>MA</b> Minh Anh</span>
+                                </div>
+                            </header>
+                            <div class="landing-preview-main">
+                                <div class="landing-preview-section-heading">
+                                    <div><small>Theo dõi thời hạn</small><strong>Cảnh báo cần chú ý</strong></div>
+                                    <p>Báo cáo đánh giá được cảnh báo khi quá 7 ngày sau mở thầu.</p>
+                                </div>
+                                <div class="landing-preview-alert-grid">
+                                    <article class="is-blue"><span><i data-lucide="calendar-clock"></i></span><div><small>Đóng thầu hôm nay</small><strong>3</strong><em>Chưa chuyển sang đã mở thầu</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-amber"><span><i data-lucide="clock-3"></i></span><div><small>Sắp đóng thầu</small><strong>8</strong><em>Trong 7 ngày tới</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-red"><span><i data-lucide="circle-alert"></i></span><div><small>Quá hạn mở thầu</small><strong>2</strong><em>Đã qua ngày đóng thầu</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-violet"><span><i data-lucide="file-warning"></i></span><div><small>Chậm báo cáo đánh giá</small><strong>4</strong><em>Đã mở thầu, chưa có báo cáo</em></div><i data-lucide="chevron-right"></i></article>
+                                </div>
+                                <div class="landing-preview-work-grid">
+                                    <article class="landing-preview-table-card">
+                                        <div class="landing-preview-card-title"><strong>Cần xử lý hôm nay</strong><span>3 việc</span></div>
+                                        <div class="landing-preview-table-head"><span>Đối tượng</span><span>Nội dung cần xử lý</span><span>Hạn/mốc</span></div>
+                                        <div class="landing-preview-table-row"><span><b>MT-2026-018</b><small>Gói thầu · Thiết bị y tế</small></span><span>Đóng thầu</span><em class="is-blue">Hôm nay 14:00</em></div>
+                                        <div class="landing-preview-table-row"><span><b>HĐ-2026-012</b><small>Hợp đồng · Cung cấp thiết bị</small></span><span>Xuất hóa đơn · Thanh lý</span><em class="is-amber">Còn 8 ngày</em></div>
+                                        <div class="landing-preview-table-row"><span><b>KH-2026-006</b><small>Kế hoạch · Mua sắm tập trung</small></span><span>Đăng tải kế hoạch</span><em class="is-red">Quá hạn</em></div>
+                                    </article>
+                                    <article class="landing-preview-table-card landing-preview-recent-card">
+                                        <div class="landing-preview-card-title"><strong>Gói thầu mới cập nhật</strong><span>Xem tất cả</span></div>
+                                        <div class="landing-preview-table-head"><span>Mã gói thầu</span><span>Giá gói thầu</span><span>Trạng thái</span></div>
+                                        <div class="landing-preview-table-row"><span><b>CT-2026-028</b><small>Xây lắp nhà làm việc</small></span><span>4,8 tỷ</span><em class="is-violet">Đang đánh giá</em></div>
+                                        <div class="landing-preview-table-row"><span><b>MS-2026-027</b><small>Mua sắm máy chủ</small></span><span>2,1 tỷ</span><em class="is-blue">Chuẩn bị HSMT</em></div>
+                                    </article>
+                                </div>
+                                <div class="landing-preview-section-heading landing-preview-overview-heading">
+                                    <div><small>Tổng quan dữ liệu</small><strong>Quy mô và trạng thái nghiệp vụ</strong></div>
+                                </div>
+                                <div class="landing-preview-overview-grid">
+                                    <article class="landing-preview-metric-card">
+                                        <div class="landing-preview-metric-head"><span><i data-lucide="file-spreadsheet"></i></span><div><small>Kế hoạch LCNT</small><strong>24</strong></div></div>
+                                        <ul><li><i></i>Chưa triển khai <b>4</b></li><li><i></i>Đang thực hiện <b>16</b></li><li><i></i>Hoàn thành <b>4</b></li></ul>
+                                        <p><i data-lucide="megaphone"></i> 2 cần đăng tải · 1 quá hạn</p>
+                                    </article>
+                                    <article class="landing-preview-metric-card is-contract">
+                                        <div class="landing-preview-metric-head"><span><i data-lucide="file-check-2"></i></span><div><small>Hợp đồng</small><strong>31</strong></div><div><small>Tổng giá trị</small><strong>31 tỷ</strong></div></div>
+                                        <ul><li><i></i>Đang thực hiện <b>18</b></li><li><i></i>Đã hoàn thành <b>9</b></li><li><i></i>Đã thanh lý <b>4</b></li></ul>
+                                    </article>
+                                    <article class="landing-preview-status-card">
+                                        <div class="landing-preview-card-title"><strong>Cơ cấu trạng thái gói thầu</strong><i data-lucide="pie-chart"></i></div>
+                                        <div class="landing-preview-status-summary">
+                                            <div class="landing-preview-donut"><span><b>68</b><small>Gói thầu</small></span></div>
+                                            <ul><li><i class="is-blue"></i><span>Đang mời thầu</span><b>12</b></li><li><i class="is-amber"></i><span>Đã mở thầu</span><b>13</b></li><li><i class="is-violet"></i><span>Đang chấm thầu</span><b>8</b></li><li><i class="is-teal"></i><span>Đã có kết quả</span><b>31</b></li></ul>
+                                        </div>
+                                    </article>
+                                </div>
+                                <div class="landing-preview-resource-strip">
+                                    <span><i data-lucide="building-2"></i><small>Chủ đầu tư</small><b>16</b></span>
+                                    <span><i data-lucide="shield-check"></i><small>Nhà thầu</small><b>42</b></span>
+                                    <span><i data-lucide="users"></i><small>Chuyên gia</small><b>9</b></span>
+                                    <span><i data-lucide="briefcase-business"></i><small>Hợp đồng phụ trách</small><b>7</b></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="landing-stage-signal landing-stage-signal-deadline" aria-hidden="true">
+                        <span><i data-lucide="alarm-clock"></i></span>
+                        <p><small>ƯU TIÊN HÔM NAY</small><strong>3 mốc cần xử lý</strong></p>
+                    </div>
+                    <div class="landing-stage-signal landing-stage-signal-flow" aria-hidden="true">
+                        <span><i data-lucide="circle-check-big"></i></span>
+                        <p><small>DÒNG DỮ LIỆU</small><strong>Kế hoạch đến hợp đồng</strong></p>
+                    </div>
+                </div>
             </div>
         </section>
 
         <section class="landing-proof" aria-labelledby="landing-proof-title">
             <div class="landing-container landing-proof-layout">
                 <div class="landing-proof-intro" data-landing-reveal>
-
-                    <h2 id="landing-proof-title">Biết việc nào cần xử lý. Không phải tìm lại từng file.</h2>
+                    <span class="landing-kicker">GIÁ TRỊ KHÔNG NẰM Ở THÊM MỘT CÔNG CỤ</span>
+                    <h2 id="landing-proof-title">Thứ bạn mua là khả năng nhìn thấy rủi ro sớm hơn.</h2>
                     <p>BiddingFlow biến dữ liệu rời rạc thành một nhịp vận hành có thể theo dõi, bàn giao và tiếp tục — để đội ngũ dành thời gian cho quyết định thay vì truy tìm thông tin.</p>
                     <div class="landing-proof-promise">
                         <i data-lucide="scan-search" aria-hidden="true"></i>
@@ -105,22 +199,16 @@
         <section class="landing-section landing-solutions" id="giai-phap" aria-labelledby="landing-solutions-title">
             <div class="landing-container">
                 <div class="landing-section-heading" data-landing-reveal>
-
-                    <h2 id="landing-solutions-title">Một nơi để theo dõi hồ sơ từ đầu đến cuối</h2>
+                    <span class="landing-kicker">KIỂM SOÁT VẬN HÀNH</span>
+                    <h2 id="landing-solutions-title">Không chỉ lưu hồ sơ.<br>Biết chính xác hồ sơ đang đi đến đâu.</h2>
                     <p>BiddingFlow kết nối dữ liệu, trách nhiệm và mốc thời gian thành một bức tranh vận hành mà cả chuyên viên lẫn quản lý đều có thể hành động ngay.</p>
                 </div>
-                <figure class="landing-product-evidence">
-                    <a href="/assets/landing-product-worklist.png" target="_blank" rel="noopener" aria-label="Mở ảnh giao diện công việc ở kích thước đầy đủ">
-                        <img src="/assets/landing-product-worklist.png" alt="Dashboard BiddingFlow: danh sách việc cần điều phối, hạn đóng thầu, hợp đồng sắp hết hạn và đăng tải kế hoạch, với dữ liệu minh họa" width="1000" height="388" loading="lazy">
-                    </a>
-                    <figcaption>Ảnh chụp giao diện BiddingFlow · dữ liệu minh họa. Chọn ảnh để xem kích thước đầy đủ.</figcaption>
-                </figure>
                 <div class="landing-feature-grid">
                     <article class="landing-feature landing-feature-wide" data-landing-reveal>
                         <div class="landing-feature-icon"><i data-lucide="database-zap"></i></div>
                         <div class="landing-feature-copy">
-
-                            <h3>Kế hoạch, gói thầu và hợp đồng được kết nối</h3>
+                            <span>01 · NGUỒN DỮ LIỆU CHUNG</span>
+                            <h3>Mọi thông tin quan trọng cùng nằm trên một bản đồ nghiệp vụ</h3>
                             <p>Kết nối kế hoạch LCNT, gói thầu, chủ đầu tư, nhà thầu, chuyên gia và hợp đồng để đội ngũ không phải đi tìm sự thật trong nhiều file rời rạc.</p>
                         </div>
                         <div class="landing-data-map" aria-hidden="true">
@@ -133,7 +221,7 @@
                     </article>
                     <article class="landing-feature" data-landing-reveal>
                         <div class="landing-feature-icon"><i data-lucide="route"></i></div>
-
+                        <span>02 · NHỊP VẬN HÀNH</span>
                         <h3>Việc tiếp theo luôn có tên và có người phụ trách</h3>
                         <p>Từ chuẩn bị, mở thầu, đánh giá E-HSDT đến phê duyệt kết quả và ký hợp đồng, mỗi bước đều hiện rõ trạng thái.</p>
                         <ul>
@@ -143,7 +231,7 @@
                     </article>
                     <article class="landing-feature" data-landing-reveal>
                         <div class="landing-feature-icon"><i data-lucide="files"></i></div>
-
+                        <span>03 · HỒ SƠ LÀM VIỆC</span>
                         <h3>Word và Excel trở thành một phần của quy trình</h3>
                         <p>Nhập dữ liệu hàng loạt, quản lý biến ánh xạ và tạo tài liệu từ dữ liệu đã có, ngay tại nơi đội ngũ đang xử lý hồ sơ.</p>
                         <div class="landing-file-chips" aria-hidden="true"><b>W</b><span>Biểu mẫu Word</span><b class="is-excel">X</b><span>Nhập từ Excel</span></div>
@@ -151,7 +239,7 @@
                     <article class="landing-feature landing-feature-wide landing-feature-dark" data-landing-reveal>
                         <div class="landing-feature-icon"><i data-lucide="shield-check"></i></div>
                         <div class="landing-feature-copy">
-
+                            <span>04 · TRÁCH NHIỆM RÕ RÀNG</span>
                             <h3>Quản trị đủ chặt để phối hợp, đủ rõ để tiếp tục công việc</h3>
                             <p>Dữ liệu gắn với tổ chức hoặc cá nhân, quyền sửa theo người tạo hay phân công; các thay đổi hợp lệ được tiếp tục đồng bộ khi kết nối trở lại.</p>
                         </div>
@@ -167,8 +255,8 @@
         <section class="landing-section landing-process" id="quy-trinh" aria-labelledby="landing-process-title">
             <div class="landing-container">
                 <div class="landing-section-heading landing-section-heading-centered" data-landing-reveal>
-
-                    <h2 id="landing-process-title">Theo dõi từng bước của quy trình đấu thầu</h2>
+                    <span class="landing-kicker">MỘT HÀNH TRÌNH, MỘT NGỮ CẢNH</span>
+                    <h2 id="landing-process-title">Mỗi bước hoàn thành làm bước tiếp theo nhẹ hơn.</h2>
                     <p>Dữ liệu được kế thừa qua từng giai đoạn, giúp đội ngũ không bắt đầu lại từ đầu mỗi khi hồ sơ chuyển trạng thái.</p>
                 </div>
                 <ol class="landing-process-list" data-landing-reveal>
@@ -184,7 +272,7 @@
         <section class="landing-section landing-roles" id="vai-tro" aria-labelledby="landing-roles-title">
             <div class="landing-container landing-roles-layout">
                 <div class="landing-roles-copy" data-landing-reveal>
-
+                    <span class="landing-kicker">CÙNG MỘT HỆ THỐNG, ĐÚNG TRỌNG TÂM</span>
                     <h2 id="landing-roles-title">Chuyên viên có nhịp làm việc. Quản lý có tầm nhìn điều phối.</h2>
                     <p>Mỗi vai trò tập trung vào phần việc đã được phân công, trong khi toàn đội vẫn làm việc trên cùng một dòng dữ liệu.</p>
                     <a class="landing-text-link" data-landing-app-link href="/dang-nhap"><span data-landing-app-label>Vào không gian làm việc</span><i data-lucide="arrow-right"></i></a>
@@ -199,42 +287,33 @@
         <section class="landing-section landing-pricing" id="bang-gia" aria-labelledby="landing-pricing-title" data-commercial-only>
             <div class="landing-container">
                 <div class="landing-section-heading landing-section-heading-centered" data-landing-reveal>
-
-                    <h2 id="landing-pricing-title">Chọn gói phù hợp với cách bạn làm việc</h2>
+                    <span class="landing-kicker">GIÁ CỦA VIỆC KIỂM SOÁT</span>
+                    <h2 id="landing-pricing-title">Trả cho năng lực đội ngũ thực sự dùng. Mở rộng khi vận hành cần thêm.</h2>
                     <p>Bắt đầu ở quy mô phù hợp, giữ nguyên một nền tảng khi đội ngũ lớn lên. Giá, hạn mức và lựa chọn kết nối luôn lấy trực tiếp từ catalog đang có hiệu lực.</p>
                 </div>
                 <div class="landing-pricing-context" data-landing-reveal>
-                    <div><i data-lucide="layers-3"></i><p><strong>Cấu hình đang phát hành</strong><small>Thông tin giá và quyền lợi theo bảng giá được công bố.</small></p></div>
-                    <div><i data-lucide="radio-tower"></i><p><strong>Mở rộng theo nhu cầu</strong><small>So sánh số thành viên, quyền lợi và phương án kết nối.</small></p></div>
+                    <div><i data-lucide="layers-3"></i><p><strong>Nền tảng Nội bộ</strong><small>Tổ chức công việc, dữ liệu và biểu mẫu trên một không gian chung.</small></p></div>
+                    <div><i data-lucide="radio-tower"></i><p><strong>Gói Kết nối</strong><small>Bổ sung quota lấy dữ liệu tự động và kiểm tra vi phạm nhà thầu.</small></p></div>
                 </div>
                 <div class="landing-pricing-grid" id="landing-pricing-grid" aria-live="polite" aria-busy="true">
                     <div class="landing-pricing-loading" aria-hidden="true">
                         <span></span><span></span><span></span>
                     </div>
                 </div>
-                <p class="landing-pricing-note"><i data-lucide="info"></i>Tên, giá, chu kỳ, thứ tự và nhãn đề xuất chỉ hiển thị theo bản phát hành thương mại đang có hiệu lực.</p>
+                <p class="landing-pricing-note"><i data-lucide="info"></i>Đơn giá được tính theo năm. Catalog mới chỉ hiển thị khi được Super Admin xuất bản và cấu hình thương mại cho phép bán.</p>
                 <p class="landing-pricing-note" data-landing-pricing-notice hidden role="status"></p>
             </div>
         </section>
 
-        <section class="landing-section landing-faq" id="faq" aria-labelledby="landing-faq-title"><div class="landing-container landing-faq-layout">
-            <div><h2 id="landing-faq-title">Bạn muốn biết thêm?</h2><p>Thông tin để bắt đầu với BiddingFlow.</p></div>
-            <div>
-                <details><summary>BiddingFlow quản lý những thông tin nào?</summary><p>Kế hoạch lựa chọn nhà thầu, gói thầu, hồ sơ, chủ đầu tư, nhà thầu, chuyên gia và hợp đồng trong cùng hệ thống.</p></details>
-                <details><summary>Có thể dùng thử không?</summary><p data-landing-trial-answer>Khả năng dùng thử được thể hiện ở nút bắt đầu trên trang. Xem bảng giá đang công bố để chọn gói phù hợp.</p></details>
-                <details><summary>Gói dịch vụ bao gồm những gì?</summary><p>Tên gói, giá, kỳ thanh toán và quyền lợi được trình bày trong bảng giá. Mỗi phương án có giới hạn và quyền lợi riêng; hãy xem thông tin của gói trước khi chọn.</p></details>
-                <details><summary>Xem điều khoản và chính sách ở đâu?</summary><p>Bạn có thể đọc <a href="/legal">điều khoản và chính sách</a> trước khi bắt đầu sử dụng.</p></details>
-            </div>
-        </div></section>
         <section class="landing-final-cta" aria-labelledby="landing-cta-title">
             <div class="landing-container" data-landing-reveal>
                 <div class="landing-cta-content">
-
-                    <h2 id="landing-cta-title">Đưa toàn bộ quy trình đấu thầu về một nơi dễ kiểm soát.</h2>
+                    <span class="landing-kicker">BẮT ĐẦU TỪ SỰ RÕ RÀNG</span>
+                    <h2 id="landing-cta-title">Đừng để gói thầu tiếp theo tiếp tục được quản lý bằng trí nhớ.</h2>
                     <p>Đưa deadline, hồ sơ và trách nhiệm về cùng một nơi để đội ngũ có thể hành động với sự tự tin.</p>
                     <div class="landing-cta-actions">
                         <a class="landing-button landing-button-light landing-button-large" href="#bang-gia" data-commercial-only>Chọn gói dịch vụ<i data-lucide="arrow-right"></i></a>
-                        <a class="landing-button landing-button-primary" data-landing-app-link data-cta-location="final" href="/dang-nhap"><span data-landing-app-label>Đăng nhập để bắt đầu</span><i data-lucide="arrow-up-right"></i></a>
+                        <a class="landing-cta-login" data-landing-app-link href="/dang-nhap"><span data-landing-app-label>Đăng nhập để bắt đầu</span><i data-lucide="arrow-up-right"></i></a>
                     </div>
                 </div>
                 <div class="landing-cta-visual" aria-hidden="true">

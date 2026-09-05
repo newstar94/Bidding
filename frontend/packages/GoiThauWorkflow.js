@@ -134,8 +134,11 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
     "kehoach",
     "thongtinmothau",
   ], {
+    backgroundSync: !controller?.procurementPackageImport?.controller,
     changes: { upserts: aggregateUpserts },
+    afterLocalDurable: afterPersist,
     afterPersist,
+    afterCanonicalSync: afterPersist,
   });
 }
 

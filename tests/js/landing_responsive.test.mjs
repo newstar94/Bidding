@@ -134,7 +134,16 @@ test("landing stays within every required viewport and renders all primary regio
             opacity: style?.opacity || "",
           };
         }),
-        productLabel: document.querySelector(".landing-product-stage")?.getAttribute("aria-label") || "",
+        overviewTitle: document.querySelector(".landing-stage-caption b")?.textContent || "",
+        priorityTitle: document.querySelector(".landing-preview-table-card:first-child .landing-preview-card-title strong")?.textContent || "",
+        priorityRows: document.querySelectorAll(".landing-preview-table-card:first-child .landing-preview-table-row").length,
+        alertCards: document.querySelectorAll(".landing-preview-alert-grid > article").length,
+        workCards: document.querySelectorAll(".landing-preview-work-grid > .landing-preview-table-card").length,
+        metricCards: document.querySelectorAll(".landing-preview-overview-grid > article").length,
+        partnerCards: document.querySelectorAll(".landing-preview-resource-strip > span").length,
+        solutionPreviewCount: document.querySelectorAll("#giai-phap .landing-dashboard-card, #giai-phap .landing-product-evidence").length,
+        productScreenshotCount: document.querySelectorAll('.landing-product-evidence img').length,
+        productBrandImageCount: document.querySelectorAll('.landing-product-stage .app-brand-image').length,
       }));
       assert.ok(metrics.scrollWidth <= metrics.clientWidth + 1, `horizontal overflow at ${width}px: ${metrics.scrollWidth}/${metrics.clientWidth}`);
       assert.equal(metrics.cardCount, 5, `commercial card count at ${width}px`);
@@ -145,7 +154,16 @@ test("landing stays within every required viewport and renders all primary regio
         assert.notEqual(region.visibility, "hidden");
         assert.notEqual(region.opacity, "0");
       }
-      assert.match(metrics.productLabel, /Minh họa dashboard BiddingFlow/u);
+      assert.equal(metrics.overviewTitle.trim(), "TỔNG QUAN NGHIỆP VỤ");
+      assert.equal(metrics.priorityTitle.trim(), "Cần xử lý hôm nay");
+      assert.equal(metrics.priorityRows, 3);
+      assert.equal(metrics.alertCards, 4);
+      assert.equal(metrics.workCards, 2);
+      assert.equal(metrics.metricCards, 3);
+      assert.equal(metrics.partnerCards, 4);
+      assert.equal(metrics.solutionPreviewCount, 0, "solution section should explain product value without another dashboard preview");
+      assert.equal(metrics.productScreenshotCount, 0, "historical product preview must stay HTML/CSS instead of using a screenshot");
+      assert.equal(metrics.productBrandImageCount, 1, "historical dashboard frame keeps the BiddingFlow brand mark");
       assert.deepEqual(errors, [], `page errors at ${width}px`);
       if (process.env.LANDING_QA_CAPTURE_DIR && [390, 1440].includes(width)) {
         const outputDirectory = join(root, process.env.LANDING_QA_CAPTURE_DIR);
@@ -171,7 +189,7 @@ test("landing stays within every required viewport and renders all primary regio
 test("old mobile header keeps a usable primary action", async () => {
   const { context, page } = await loadLanding(375, 812);
   try {
-    const cta = page.locator('[data-cta-location="header"]');
+    const cta = page.locator('.landing-header-cta');
     const box = await cta.boundingBox();
     assert.ok(box && box.width >= 44 && box.height >= 44, `small mobile CTA: ${JSON.stringify(box)}`);
     assert.equal(await cta.getAttribute("href"), "/dang-nhap");
@@ -180,7 +198,7 @@ test("old mobile header keeps a usable primary action", async () => {
   }
 });
 
-test('landing icons render strokes and mobile navigation closes without a scroll lock', async () => {
+test('historical landing icons render strokes and native scrolling remains available', async () => {
   const { context, page } = await loadLanding(390, 844);
   try {
     const icons = await page.locator('.landing-icon').evaluateAll(nodes => nodes.map(node => ({
@@ -192,15 +210,11 @@ test('landing icons render strokes and mobile navigation closes without a scroll
       assert.equal(icon.fill, 'none');
       assert.notEqual(icon.stroke, 'none');
     }
-    const visibleIcons = await page.locator('.landing-work-preview .landing-icon').evaluateAll(nodes => nodes.map(node => node.getBBox().width));
+    const visibleIcons = await page.locator('.landing-product-stage .landing-icon').evaluateAll(nodes => nodes
+      .filter(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden')
+      .map(node => node.getBBox().width));
+    assert.ok(visibleIcons.length >= 7);
     assert.ok(visibleIcons.every(width => width > 0));
-    await page.locator('[data-landing-menu-toggle]').click();
-    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'true');
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'false');
-    await page.locator('[data-landing-menu-toggle]').click();
-    await page.locator('.landing-nav a[href="#faq"]').click();
-    assert.equal(await page.locator('[data-landing-menu-toggle]').getAttribute('aria-expanded'), 'false');
     assert.notEqual(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'hidden');
     await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, 0); });
     await page.mouse.move(150, 600);
@@ -215,8 +229,9 @@ test('landing icons render strokes and mobile navigation closes without a scroll
 test("authenticated landing CTA goes directly to the workspace", async () => {
   const { context, page } = await loadLanding(1280, 800, { valid: true });
   try {
-    assert.equal(await page.locator('[data-cta-location="hero"]').getAttribute("href"), "/tong-quan");
-    assert.match(await page.locator('[data-cta-location="hero"]').textContent(), /Mở không gian làm việc/u);
+    const heroAppCta = page.locator('.landing-hero-actions [data-landing-app-link]');
+    assert.equal(await heroAppCta.getAttribute("href"), "/tong-quan");
+    assert.match(await heroAppCta.textContent(), /Mở không gian làm việc/u);
     assert.equal(await page.locator("[data-landing-auth-link]").first().getAttribute("href"), "/tong-quan");
   } finally {
     await context.close();

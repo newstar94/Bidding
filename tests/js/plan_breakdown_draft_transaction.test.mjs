@@ -1136,7 +1136,7 @@ test("legacy row conflict toast keeps the actionable Vietnamese reload message",
   ]]);
 });
 
-test("package form waits for the authoritative conflict result before deciding to close", async () => {
+test("package form returns after local durability and reports an authoritative conflict in the background", async () => {
   let releaseSync;
   const remoteSync = new Promise((resolve) => { releaseSync = resolve; });
   const state = {
@@ -1166,14 +1166,14 @@ test("package form waits for the authoritative conflict result before deciding t
     thongtinmothau: [],
     assignments: [],
   });
-  let settled = false;
-  void resultPromise.then(() => { settled = true; });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(settled, false, "the editor must not close while conflict status is unknown");
+  const localResult = await resultPromise;
+  assert.equal(localResult.ok, true);
+  assert.equal(localResult.local, true);
+  assert.equal(localResult.queued, true);
 
   const conflict = { ok: false, conflictQuarantined: true };
   releaseSync(conflict);
-  assert.deepEqual(await resultPromise, conflict);
+  assert.deepEqual(await localResult.syncPromise, conflict);
 });
 
 test("package save captures pre-edit base snapshots for every staged aggregate row", () => {
@@ -1316,7 +1316,10 @@ test("saving an expert inside an edit breakdown session remains memory-only", as
     },
     autoSync: async () => { calls.push("autoSync"); return { ok: true }; },
     async closeModal() { calls.push("closeModal"); },
-    view: { renderChuyenGiaTable() { calls.push("render"); } },
+    view: {
+      renderChuyenGiaTable() { calls.push("render"); },
+      showToast() { calls.push("toast"); },
+    },
   };
 
   const result = await persistExpertFormChanges(controller, [{
@@ -1327,7 +1330,7 @@ test("saving an expert inside an edit breakdown session remains memory-only", as
   assert.deepEqual(calls, ["closeModal", "render"]);
 });
 
-test("saving an expert keeps its form open until remote synchronization succeeds", async () => {
+test("saving an expert closes and paints local data before remote synchronization succeeds", async () => {
   const calls = [];
   let finishSync;
   const remoteSync = new Promise((resolve) => { finishSync = resolve; });
@@ -1345,22 +1348,27 @@ test("saving an expert keeps its form open until remote synchronization succeeds
     },
     autoSync() { calls.push("sync-start"); return remoteSync; },
     async closeModal() { calls.push("closeModal"); },
-    view: { renderChuyenGiaTable() { calls.push("render"); } },
+    view: {
+      renderChuyenGiaTable() { calls.push("render"); },
+      showToast() { calls.push("toast"); },
+    },
   };
 
   const result = await persistExpertFormChanges(controller, [{
     id: "expert-pending", rootId: "expert-pending", isLatest: 1,
   }], { draft: false });
 
-  assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+  assert.deepEqual(calls, [
+    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+  ]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "sync-start", "finish", "closeModal", "render",
+    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
   ]);
 });
 
-test("saving a contract closes its form after local durability and refreshes after remote sync", async () => {
+test("saving a contract closes and paints local data before remote synchronization succeeds", async () => {
   const calls = [];
   let finishSync;
   const remoteSync = new Promise((resolve) => { finishSync = resolve; });
@@ -1378,18 +1386,23 @@ test("saving a contract closes its form after local durability and refreshes aft
     },
     autoSync() { calls.push("sync-start"); return remoteSync; },
     async closeModal() { calls.push("closeModal"); },
-    view: { async renderHopDongTable() { calls.push("render"); } },
+    view: {
+      async renderHopDongTable() { calls.push("render"); },
+      showToast() { calls.push("toast"); },
+    },
   };
 
   const result = await persistContractFormChanges(controller, [{
     id: "contract-pending", rootId: "contract-pending", isLatest: 1,
   }]);
 
-  assert.deepEqual(calls, ["persist", "flush", "closeModal", "sync-start", "finish"]);
+  assert.deepEqual(calls, [
+    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+  ]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "closeModal", "sync-start", "finish", "render",
+    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
   ]);
 });
 
@@ -1397,7 +1410,7 @@ for (const [label, persist, table, modal, renderMethod] of [
   ["investor", persistInvestorFormChanges, "chudautu", "modal-chudautu", "renderChuDauTuTable"],
   ["contractor", persistContractorFormChanges, "nhathau", "modal-nhathau", "renderNhaThauTable"],
 ]) {
-  test(`saving a ${label} keeps its form open until remote synchronization succeeds`, async () => {
+  test(`saving a ${label} closes and paints local data before remote synchronization succeeds`, async () => {
     const calls = [];
     let finishSync;
     const remoteSync = new Promise((resolve) => { finishSync = resolve; });
@@ -1416,19 +1429,61 @@ for (const [label, persist, table, modal, renderMethod] of [
         assert.equal(modalId, modal);
         calls.push("closeModal");
       },
-      view: { async [renderMethod]() { calls.push("render"); } },
+      view: {
+        async [renderMethod]() { calls.push("render"); },
+        showToast() { calls.push("toast"); },
+      },
     };
 
     const result = await persist(controller, [{ id: `${label}-pending` }]);
 
-    assert.deepEqual(calls, ["persist", "flush", "sync-start", "finish"]);
+    assert.deepEqual(calls, [
+      "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+    ]);
     finishSync({ ok: true });
     await result.syncPromise;
     assert.deepEqual(calls, [
-      "persist", "flush", "sync-start", "finish", "closeModal", "render",
+      "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
     ]);
   });
 }
+
+test("saving a package paints local data without awaiting remote synchronization", async () => {
+  const calls = [];
+  let finishSync;
+  const remoteSync = new Promise((resolve) => { finishSync = resolve; });
+  const lease = { outbox: { async flush() { calls.push("flush"); } } };
+  const packageRecord = { id: "package-pending", keHoachId: "plan-01", isLatest: 1 };
+  const controller = {
+    model: {
+      state: { goithau: [packageRecord] },
+      beginWorkspaceMutation() { return lease; },
+      assertWorkspaceMutation() {},
+      finishWorkspaceMutation() { calls.push("finish"); },
+      workspaceMutationUsesCurrentResources() { return true; },
+      commitLocalMutation() { calls.push("stage"); },
+      async persistChanges(_table, changes) {
+        if (changes.upserts.length) calls.push("persist");
+      },
+    },
+    autoSync() { calls.push("sync-start"); return remoteSync; },
+  };
+
+  const result = await persistPackageFormChanges(controller, {
+    goithau: [packageRecord],
+    goithauhanghoa: [],
+    hanghoaduthaunhathau: [],
+    kehoach: [],
+    thongtinmothau: [],
+  }, {
+    afterPersist: () => { calls.push("render"); },
+  });
+
+  assert.equal(result.local, true);
+  assert.deepEqual(calls, ["stage", "persist", "flush", "render", "sync-start", "finish"]);
+  finishSync({ ok: true });
+  await result.syncPromise;
+});
 
 test("draft assignments are changed in memory without calling model persistence methods", () => {
   const state = {

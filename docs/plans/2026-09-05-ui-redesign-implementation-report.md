@@ -8,7 +8,7 @@ Ngày: 05/09/2026.
 
 - Sửa root cause SVG: các symbol thiếu và SVG không có `fill=none`, `stroke=currentColor`. Sprite được sinh từ Lucide đã pin trong repository, có allowlist, fallback và version SHA-256; secure build kiểm tra đồng bộ.
 - Thay headline theo phương án đã duyệt, primary CTA theo session/trial, thêm menu mobile có focus/Escape và FAQ.
-- Giảm card lồng nhau, bỏ dashboard thu nhỏ có chữ 4–8px. Hero trình bày phần công việc minh họa dễ đọc; walkthrough có ảnh chụp renderer DashboardView thật với fixture demo, không lấy dữ liệu người dùng.
+- Giảm card lồng nhau, bỏ dashboard thu nhỏ có chữ 4–8px. Hero mô phỏng đầy đủ các vùng của DashboardView bằng HTML/CSS: cảnh báo, hai bảng, quy mô/trạng thái và dải nguồn lực. Section giải pháp chuyển sang giải thích luồng và giá trị, không lặp lại dashboard; không dùng ảnh sản phẩm và không lấy dữ liệu người dùng.
 - Refactor stylesheet landing, bỏ override landing cũ trong ui-redesign.css. Không đổi global design tokens, framework hoặc role/permission.
 - Giữ API commercial public và mọi state off/error/empty; không phục hồi gói mặc định.
 
@@ -45,7 +45,7 @@ Một lỗi chỉ xảy ra trong fixture bundle đã được sửa ở fixture:
 ## Asset/performance
 
 - CSS route landing build trước khoảng 84.9 KB raw; sau khoảng 19.2 KB raw (gzip khoảng 3.8 KB ở lượt build đo). Đây là kích thước asset, không phải số đo LCP/INP.
-- Ảnh công việc: khoảng 26 KB PNG, chụp từ DashboardView; nằm dưới fold và lazy-load, có width/height.
+- Không còn tải PNG minh họa sản phẩm. Một khối Tổng quan đầy đủ được render bằng HTML/CSS semantic; bảng chuyển thành card và các grid chuyển thành một cột theo breakpoint mobile.
 - Không thêm thư viện frontend, font network, animation engine hoặc service worker.
 - Chưa chạy Lighthouse/CWV đầy đủ; không khẳng định đạt các điểm Lighthouse hay toàn bộ performance gate.
 
@@ -54,8 +54,10 @@ Một lỗi chỉ xảy ra trong fixture bundle đã được sửa ở fixture:
 - Baseline landing: `data/e2e-artifacts/redesign-before/landing-1440.png`, `landing-390.png`.
 - Sau sửa/source: `data/e2e-artifacts/redesign-after/landing-1440.png`, `landing-390.png`, `commercial-1440.png`, `commercial-390.png`.
 - Bundle/final: thư mục `data/e2e-artifacts/redesign-final/` (landing desktop/mobile, các section pricing/solutions/roles/workflow và commercial desktop/mobile).
+- Bản HTML/CSS không dùng ảnh sản phẩm: `data/e2e-artifacts/no-image-dashboard-preview/` (desktop 1440px, mobile 390px và viewport section).
+- Bản Tổng quan đầy đủ và section giải pháp không dùng minh họa: `data/e2e-artifacts/full-dashboard-preview/`.
 - Live guest hero: `data/e2e-artifacts/redesign-final/landing-live-1440.png`.
-- Product asset: `views/assets/landing-product-worklist.png`; tái tạo bằng `node scripts/capture_landing_product.mjs` với fixture synthetic.
+- Không còn product screenshot asset hoặc script tạo ảnh; screenshot QA chỉ dùng để kiểm tra trực quan, không được tải trên landing.
 
 ## Giới hạn và phần còn lại
 

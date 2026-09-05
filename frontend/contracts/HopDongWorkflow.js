@@ -717,7 +717,12 @@ export async function persistContractFormChanges(controller, changedContracts) {
   return persistAndSync(controller, "hopdong", {
     backgroundSync: true,
     changes: { upserts: { hopdong: changedContracts } },
-    afterLocalDurable: () => controller.closeModal("modal-hopdong"),
+    afterLocalDurable: () => {
+      const render = controller.view.renderHopDongTable();
+      const close = controller.closeModal("modal-hopdong");
+      controller.view.showToast?.("Đã lưu hợp đồng", "Thông tin hợp đồng đã được lưu.", "success");
+      return Promise.all([render, close]);
+    },
     afterCanonicalSync: async () => {
       await controller.view.renderHopDongTable();
     },

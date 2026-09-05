@@ -313,8 +313,13 @@ export function persistContractorFormChanges(controller, changedContractors) {
     upserts: { nhathau: changedContractors },
   }, {
     backgroundSync: true,
+    afterLocalDurable: () => {
+      const render = controller.view.renderNhaThauTable();
+      const close = controller.closeModal("modal-nhathau");
+      controller.view.showToast?.("Đã lưu nhà thầu", "Thông tin nhà thầu đã được lưu.", "success");
+      return Promise.all([render, close]);
+    },
     afterCanonicalSync: async () => {
-      await controller.closeModal("modal-nhathau");
       await controller.view.renderNhaThauTable();
     },
   });

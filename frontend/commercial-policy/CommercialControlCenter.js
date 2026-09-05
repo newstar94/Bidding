@@ -5,7 +5,7 @@ import { classifyPublicCommercialResponse } from "./PublicCommercialCatalog.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
 const STYLE_URL = new URL("./CommercialControlCenter.css", import.meta.url).pathname;
-const state = { overview: null, draft: null, validation: null, loading: false, controller: null, savedDocument: "", effectiveAt: "", selectedOffer: "", section: "commercial-offers", busy: false };
+const state = { overview: null, draft: null, validation: null, loading: false, controller: null, savedDocument: "", effectiveAt: "", selectedOffer: "", section: "commercial-offers", busy: false, publicCatalogState: "unavailable" };
 
 // Backend values remain stable English identifiers; these labels are only for
 // the Vietnamese administration UI.
@@ -97,6 +97,43 @@ const escapeHtml = (value) => String(value ?? "")
   .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const html = (node, markup) => { if (node) node.innerHTML = trustedHTML(markup); };
 
+function salesStatusPresentation(offer) {
+  const active = offer.salesState === "sellable";
+  return {
+    label: active ? "Hoạt động" : "Không hoạt động",
+    detail: active ? "Đang mở bán" : humanize(offer.salesState, { stopped: "Đã dừng bán", non_sellable: "Không bán" }),
+    tone: active ? "success" : "neutral",
+  };
+}
+
+function landingStatusPresentation(offer) {
+  const publicOffer = (state.publicOffers || []).some((item) => item.code === offer.code);
+  const intendedPublic = offer.salesState === "sellable" && offer.display?.visibility !== "hidden";
+  if (publicOffer && intendedPublic) return { label: "Đang hiển thị", detail: "Có trong catalog công khai", tone: "success" };
+  if (publicOffer) return { label: "Đang hiển thị", detail: "Sẽ ẩn sau khi xuất bản", tone: "warning" };
+  if (!intendedPublic) {
+    return {
+      label: "Không hiển thị",
+      detail: offer.display?.visibility === "hidden" ? "Đang đặt là Ẩn" : "Gói không hoạt động",
+      tone: "neutral",
+    };
+  }
+  if (state.publicCatalogState === "off") return { label: "Không hiển thị", detail: "Thương mại đang tắt", tone: "warning" };
+  return {
+    label: "Chờ xuất bản",
+    detail: state.publicCatalogState === "unavailable" ? "Chưa xác minh được landing" : "Sẽ hiển thị khi bản phát hành có hiệu lực",
+    tone: "warning",
+  };
+}
+
+function offerStatusContent(presentation) {
+  return `<span class="commercial-badge" data-tone="${presentation.tone}">${escapeHtml(presentation.label)}</span><small>${escapeHtml(presentation.detail)}</small>`;
+}
+
+function offerStatusMarkup(presentation, dataAttribute) {
+  return `<div ${dataAttribute}>${offerStatusContent(presentation)}</div>`;
+}
+
 async function jsonRequest(path, options = {}) {
   // Keep the shared HTTP recovery hook enabled so sensitive mutations can
   // trigger the application's password step-up dialog and retry once.
@@ -163,8 +200,35 @@ function renderOffers() {
     html(document.getElementById("commercial-offers-content"), '<p class="commercial-empty">Chưa có bản nháp. Bấm “Tạo bản nháp” để bắt đầu; cấu hình đang áp dụng chưa thay đổi.</p>');
     return;
   }
+  const offerRows = policyDocument.offers.map((offer, index) => {
+    const salesStatus = salesStatusPresentation(offer);
+    const landingStatus = landingStatusPresentation(offer);
+    const editorId = `commercial-offer-editor-${index}`;
+    const offerName = offer.display?.name || offer.tier;
+    const period = offer.display?.periodLabel || humanize(offer.price?.period, { yearly: "/ năm", monthly: "/ tháng", one_time: "Một lần" });
+    return `
+      <tr data-commercial-offer-row="${escapeHtml(offer.code)}">
+        <td data-label="Thứ tự"><strong class="commercial-order-index">${index + 1}</strong></td>
+        <td data-label="Tên gói"><strong data-offer-name>${escapeHtml(offerName)}</strong><small>${escapeHtml(offer.code)}</small></td>
+        <td data-label="Giá" class="commercial-offer-price" data-offer-price>${money(offer.price.total)}</td>
+        <td data-label="Thời gian" data-offer-period>${escapeHtml(period)}</td>
+        <td data-label="Đối tượng"><span>${humanize(offer.ownerKind, { account: "Cá nhân", organization: "Tổ chức" })}</span><small>${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</small></td>
+        <td data-label="Tình trạng">${offerStatusMarkup(salesStatus, "data-offer-status")}</td>
+        <td data-label="Hiển thị landing">${offerStatusMarkup(landingStatus, "data-offer-landing")}</td>
+        <td data-label="Đề xuất"><span data-offer-recommended>${offer.display?.recommended ? "Có" : "Không"}</span></td>
+        <td data-label="Chỉnh sửa" class="commercial-offer-action"><button type="button" class="btn btn-outline" data-commercial-offer-edit="${escapeHtml(offer.code)}" aria-expanded="${state.selectedOffer === offer.code}" aria-controls="${editorId}"><i data-lucide="pencil" aria-hidden="true"></i><span>Chỉnh sửa</span></button></td>
+      </tr>
+      <tr id="${editorId}" class="commercial-offer-editor-row" data-commercial-offer-editor-row="${escapeHtml(offer.code)}" ${state.selectedOffer === offer.code ? "" : "hidden"}>
+        <td colspan="9"><div class="commercial-offer-body">${offerEditor(offer, index, state.validation?.errors)}
+        <div class="commercial-offer-order"><span>Thứ tự toàn danh mục</span><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="up" ${index === 0 ? "disabled" : ""}>Đưa lên</button><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="down" ${index === policyDocument.offers.length - 1 ? "disabled" : ""}>Đưa xuống</button></div></div></td>
+      </tr>`;
+  }).join("");
   html(document.getElementById("commercial-offers-content"), `
-    <p class="commercial-editor-intro"><strong>1. Chọn gói → 2. Chỉnh sửa → 3. Lưu, kiểm tra và xuất bản</strong><br>Mọi thay đổi ở đây thuộc bản nháp, chưa ảnh hưởng khách hàng.</p>
+    <div class="commercial-landing-guide" aria-labelledby="commercial-landing-guide-title">
+      <strong id="commercial-landing-guide-title">Để gói xuất hiện trên landing</strong>
+      <ol><li>Đặt <b>Tình trạng</b> thành “Hoạt động”.</li><li>Đặt <b>Hiển thị</b> thành “Công khai”.</li><li>Bấm <b>Lưu bản nháp</b>, <b>Kiểm tra bản đã lưu</b>, rồi <b>Xuất bản</b>.</li></ol>
+      <p>Chỉnh bản nháp chưa làm landing thay đổi. Bảng dưới đây phân biệt cấu hình đang sửa với catalog công khai hiện tại.</p>
+    </div>
     <label class="commercial-search-label">Tìm gói<input id="commercial-offer-search" type="search" class="form-control" placeholder="Tên gói hoặc mã gói"></label>
     <div class="commercial-filter-row">
       <label>Đối tượng<select id="commercial-owner-filter" class="form-control" data-no-custom="true"><option value="">Tất cả</option><option value="account">Cá nhân</option><option value="organization">Tổ chức</option></select></label>
@@ -172,16 +236,7 @@ function renderOffers() {
       <label>Hiển thị dự kiến<select id="commercial-visibility-filter" class="form-control" data-no-custom="true"><option value="">Tất cả</option><option value="public">Công khai</option><option value="hidden">Ẩn khỏi catalog</option></select></label>
     </div>
     <details class="commercial-public-preview"><summary>Gói trong catalog công khai đã xác minh</summary><p>Đây là dữ liệu đọc từ API public, không phải các thay đổi trong bản nháp.</p><div class="commercial-public-grid">${(state.publicOffers || []).map(offer => `<div>${offerPreview(offer, { publicCatalog: true })}</div>`).join('') || '<p>Chưa có gói công khai được xác minh. Xem trạng thái catalog ở trên.</p>'}</div></details>
-    <div class="commercial-offer-list">${policyDocument.offers.map((offer, index) => `
-      <details class="commercial-offer-item" data-commercial-offer-row="${escapeHtml(offer.code)}" ${state.selectedOffer === offer.code ? "open" : ""}>
-        <summary><span><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${offer.variant === "connected" ? "Kết nối" : "Nội bộ"} · ${humanize(offer.ownerKind, { account: "Cá nhân", organization: "Tổ chức" })}</small></span>
-        <span class="commercial-offer-price">${money(offer.price.total)}<small>${escapeHtml(offer.display?.periodLabel || offer.price.period || "")}</small></span>
-        <span class="commercial-badge">${humanize(offer.salesState, { sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Không bán" })}</span>
-        <span class="commercial-badge" data-tone="${offer.salesState === "sellable" && offer.display?.visibility !== "hidden" ? "success" : "neutral"}">${offer.display?.visibility === "hidden" ? "Dự kiến ẩn" : offer.salesState === "sellable" ? "Dự kiến công khai" : "Chưa hiển thị"}</span>
-        <span class="commercial-edit-label">Chỉnh sửa</span></summary>
-        <div class="commercial-offer-body">${offerEditor(offer, index, state.validation?.errors)}
-        <div class="commercial-offer-order"><span>Thứ tự toàn danh mục</span><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="up" ${index === 0 ? "disabled" : ""}>Đưa lên</button><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="down" ${index === policyDocument.offers.length - 1 ? "disabled" : ""}>Đưa xuống</button></div></div>
-      </details>`).join("")}</div>
+    <div class="commercial-table-wrap"><table class="data-table commercial-offer-table"><caption class="sr-only">Danh sách gói dịch vụ trong bản nháp thương mại</caption><thead><tr><th>Thứ tự</th><th>Tên gói</th><th>Giá</th><th>Thời gian</th><th>Đối tượng</th><th>Tình trạng</th><th>Hiển thị landing</th><th>Đề xuất</th><th>Chỉnh sửa</th></tr></thead><tbody>${offerRows}</tbody></table></div>
     <p id="commercial-search-empty" hidden>Không có gói khớp tìm kiếm.</p>
     <p class="commercial-callout">Thêm, xóa hoặc đổi định danh offer cần quyết định sản phẩm; các trường của gói hiện có được giữ nguyên.</p>
   `);
@@ -385,16 +440,19 @@ function markDraftChanged() {
   state.draft?.document.offers.forEach(offer => {
     const item = [...document.querySelectorAll("[data-commercial-offer-row]")].find(node => node.dataset.commercialOfferRow === offer.code);
     if (!item) return;
-    const preview = item.querySelector("[data-commercial-preview]");
+    const editorRow = [...document.querySelectorAll("[data-commercial-offer-editor-row]")].find(node => node.dataset.commercialOfferEditorRow === offer.code);
+    const preview = editorRow?.querySelector("[data-commercial-preview]");
     html(preview, offerPreview(offer));
-    const heading = item.querySelector("summary strong");
+    const heading = item.querySelector("[data-offer-name]");
     if (heading) heading.textContent = offer.display?.name || offer.tier;
-    const badges = item.querySelectorAll("summary .commercial-badge");
-    badges[0].textContent = humanize(offer.salesState, { sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Không bán" });
-    badges[1].textContent = offer.display?.visibility === "hidden" ? "Dự kiến ẩn" : offer.salesState === "sellable" ? "Dự kiến công khai" : "Chưa hiển thị";
-    badges[1].dataset.tone = offer.salesState === "sellable" && offer.display?.visibility !== "hidden" ? "success" : "neutral";
-    const price = item.querySelector(".commercial-offer-price");
-    if (price) html(price, `${money(offer.price.total)}<small>${escapeHtml(offer.display?.periodLabel || offer.price.period || "")}</small>`);
+    const price = item.querySelector("[data-offer-price]");
+    if (price) price.textContent = money(offer.price.total);
+    const period = item.querySelector("[data-offer-period]");
+    if (period) period.textContent = offer.display?.periodLabel || humanize(offer.price?.period, { yearly: "/ năm", monthly: "/ tháng", one_time: "Một lần" });
+    html(item.querySelector("[data-offer-status]"), offerStatusContent(salesStatusPresentation(offer)));
+    html(item.querySelector("[data-offer-landing]"), offerStatusContent(landingStatusPresentation(offer)));
+    const recommended = item.querySelector("[data-offer-recommended]");
+    if (recommended) recommended.textContent = offer.display?.recommended ? "Có" : "Không";
   });
 }
 
@@ -417,16 +475,16 @@ function bindEditorNavigation() {
   document.querySelectorAll("[data-commercial-section]").forEach(button => {
     button.onclick = () => showSection(button.dataset.commercialSection);
   });
-  document.querySelectorAll(".commercial-offer-item").forEach(item => {
-    item.addEventListener("toggle", () => {
-      if (!item.isConnected) return;
-      if (!item.open) {
-        if (state.selectedOffer === item.dataset.commercialOfferRow) state.selectedOffer = "";
-        return;
-      }
-      state.selectedOffer = item.dataset.commercialOfferRow;
-      document.querySelectorAll(".commercial-offer-item").forEach(other => {
-        if (other !== item) other.open = false;
+  document.querySelectorAll("[data-commercial-offer-edit]").forEach(button => {
+    button.addEventListener("click", () => {
+      const code = button.dataset.commercialOfferEdit;
+      const willOpen = state.selectedOffer !== code;
+      state.selectedOffer = willOpen ? code : "";
+      document.querySelectorAll("[data-commercial-offer-edit]").forEach(other => {
+        other.setAttribute("aria-expanded", String(willOpen && other.dataset.commercialOfferEdit === code));
+      });
+      document.querySelectorAll("[data-commercial-offer-editor-row]").forEach(row => {
+        row.hidden = !(willOpen && row.dataset.commercialOfferEditorRow === code);
       });
     });
   });
@@ -437,13 +495,15 @@ function bindEditorNavigation() {
     const variant = document.getElementById("commercial-variant-filter").value;
     const visibility = document.getElementById("commercial-visibility-filter").value;
     let visible = 0;
-    document.querySelectorAll(".commercial-offer-item").forEach(item => {
+    document.querySelectorAll("[data-commercial-offer-row]").forEach(item => {
       const offer = state.draft.document.offers.find(value => value.code === item.dataset.commercialOfferRow);
-      const matches = (item.querySelector("summary").textContent.toLocaleLowerCase("vi").includes(query)
+      const matches = (item.textContent.toLocaleLowerCase("vi").includes(query)
         || item.dataset.commercialOfferRow.toLocaleLowerCase("vi").includes(query))
         && (!owner || offer.ownerKind === owner) && (!variant || offer.variant === variant)
         && (!visibility || (offer.display?.visibility || "public") === visibility);
       item.hidden = !matches;
+      const editor = [...document.querySelectorAll("[data-commercial-offer-editor-row]")].find(row => row.dataset.commercialOfferEditorRow === item.dataset.commercialOfferRow);
+      if (editor) editor.hidden = !matches || state.selectedOffer !== item.dataset.commercialOfferRow;
       if (matches) visible++;
     });
     document.getElementById("commercial-search-empty").hidden = visible > 0;
@@ -517,10 +577,11 @@ async function refresh(controller, preferredDraftId = "") {
     try {
       const response = classifyPublicCommercialResponse(await jsonRequest("/api/public/commercial/offers"));
       state.publicOffers = response.catalog?.offers || [];
+      state.publicCatalogState = response.state;
       state.publicStatus = response.state === "off" ? "Catalog công khai đang tắt (kiểm tra cấu hình runtime/trial)."
         : response.catalog ? `Catalog công khai: ${response.catalog.offers.length} gói · bản ${response.catalog.releaseId}. Hiển thị không đồng nghĩa thanh toán đã sẵn sàng.`
           : "Catalog công khai: chưa xác minh được phản hồi.";
-    } catch { state.publicOffers = []; state.publicStatus = "Catalog công khai: chưa xác minh được. Bản nháp vẫn có thể chỉnh sửa."; }
+    } catch { state.publicOffers = []; state.publicCatalogState = "unavailable"; state.publicStatus = "Catalog công khai: chưa xác minh được. Bản nháp vẫn có thể chỉnh sửa."; }
     const openDraftIds = new Set((state.overview.drafts || []).map((draft) => draft.id));
     const requestedDraftId = preferredDraftId || state.draft?.id || "";
     const draftId = openDraftIds.has(requestedDraftId)

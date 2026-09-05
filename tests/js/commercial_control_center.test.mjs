@@ -117,6 +117,17 @@ async function withPage(run) {
         response.end(JSON.stringify(stored));
         return;
       }
+      if (pathname === "/api/public/commercial/offers") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          releaseId: "release-current",
+          releaseChecksum: "checksum-current",
+          offers: [stored.document.offers[1]],
+          creditPacks: [],
+          quotaWarnings: [],
+        }));
+        return;
+      }
       if (pathname.endsWith('/validate') || pathname.endsWith('/publish')) {
         let body = ''; for await (const chunk of request) body += chunk;
         requests.push({ method: pathname.endsWith('/validate') ? 'VALIDATE' : 'PUBLISH', body: JSON.parse(body) });
@@ -159,18 +170,35 @@ test("Commercial Control Center renders a loaded policy document into the DOM", 
 
     const status = await page.locator("#commercial-status span:last-child").textContent();
     assert.doesNotMatch(status, /getElementById/u);
-    assert.equal(await page.locator('.commercial-offer-item[open]').count(), 0);
+    assert.equal(await page.getByRole('table', { name: 'Danh sách gói dịch vụ trong bản nháp thương mại' }).count(), 1);
+    assert.deepEqual(
+      await page.locator('.commercial-offer-table thead th').allTextContents(),
+      ['Thứ tự', 'Tên gói', 'Giá', 'Thời gian', 'Đối tượng', 'Tình trạng', 'Hiển thị landing', 'Đề xuất', 'Chỉnh sửa'],
+    );
+    assert.equal(await page.locator('[data-commercial-offer-row]').count(), 2);
+    assert.match(await page.locator('[data-commercial-offer-row="silver.internal.yearly"] [data-offer-status]').textContent(), /Hoạt động/u);
+    assert.match(await page.locator('[data-commercial-offer-row="silver.internal.yearly"] [data-offer-landing]').textContent(), /Chờ xuất bản/u);
+    assert.match(await page.locator('[data-commercial-offer-row="silver.connected.yearly"] [data-offer-landing]').textContent(), /Đang hiển thị/u);
+    assert.equal(await page.locator('[data-commercial-offer-editor-row]:visible').count(), 0);
+    await page.locator('#commercial-owner-filter').selectOption('account');
+    assert.equal(await page.locator('[data-commercial-offer-row]:visible').count(), 0);
+    assert.equal(await page.locator('#commercial-search-empty').isVisible(), true);
+    await page.locator('#commercial-owner-filter').selectOption('');
+    assert.equal(await page.locator('[data-commercial-offer-row]:visible').count(), 2);
     await page.getByRole('button', { name: 'Chính sách', exact: true }).click();
     await page.getByRole("heading", { name: "Chính sách & quyết định" }).waitFor();
     await page.getByText("Kỳ hạn gói cơ bản", { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Cổng thanh toán', exact: true }).click();
     await page.getByRole("heading", { name: "Cổng thanh toán" }).waitFor();
     await page.getByRole('button', { name: 'Gói dịch vụ', exact: true }).click();
-    await page.locator('[data-commercial-offer-row="silver.internal.yearly"] > summary').click();
+    const editInternal = page.locator('[data-commercial-offer-edit="silver.internal.yearly"]');
+    await editInternal.click();
+    assert.equal(await editInternal.getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('[data-commercial-offer-editor-row="silver.internal.yearly"]').isVisible(), true);
     assert.ok(await page.locator(".commercial-policy-list li").count() > 0);
     assert.equal(await page.getByText("Policy", { exact: true }).count(), 0);
     assert.equal(await page.getByText("Payment provider", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("silver.internal.yearly", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("silver.internal.yearly", { exact: true }).count() >= 1, true);
     assert.equal(await page.locator("[data-offer-code='silver.internal.yearly']").count() >= 4, true);
     assert.equal(
       await page.locator("[data-offer-code='silver.internal.yearly'][data-field='price.total']").inputValue(),
@@ -239,7 +267,7 @@ test('commercial edits preserve focus, validate the saved revision, and publish 
       const module = await import(window.commercialModuleURL);
       await module.mountCommercialControlCenter({ view: { createIconsScoped() {}, customConfirm: async () => false, customPrompt: async () => 'UX test on isolated fixture' } });
     });
-    await page.locator('.commercial-offer-item > summary').first().click();
+    await page.locator('[data-commercial-offer-edit]').first().click();
     const name = page.locator('[data-field="display.name"]').first();
     await name.fill('Gói được chỉnh');
     await name.dispatchEvent('change');
@@ -263,6 +291,9 @@ test('commercial edits preserve focus, validate the saved revision, and publish 
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      if (width === 390) {
+        assert.equal(await page.locator('.commercial-table-wrap').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+      }
       if (process.env.COMMERCIAL_QA_CAPTURE_DIR) {
         await mkdir(process.env.COMMERCIAL_QA_CAPTURE_DIR, { recursive: true });
         await page.screenshot({ path: join(process.env.COMMERCIAL_QA_CAPTURE_DIR, `commercial-${width}.png`), fullPage: true });
@@ -283,7 +314,7 @@ test('stale save retains local edits and can be retried without duplicated handl
       calls++;
       return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'COMMERCIAL_POLICY_STALE', error: 'Bản nháp đã thay đổi trên máy chủ.' }) });
     });
-    await page.locator('.commercial-offer-item > summary').first().click();
+    await page.locator('[data-commercial-offer-edit]').first().click();
     const name = page.locator('[data-field="display.name"]').first();
     await name.fill('Nháp cần giữ');
     await name.dispatchEvent('change');
@@ -295,4 +326,15 @@ test('stale save retains local edits and can be retried without duplicated handl
     }
     assert.equal(await page.locator('#commercial-publish').isDisabled(), true);
   });
+});
+
+test('legacy package editor is absent from user administration while account package data remains', async () => {
+  const template = await readFile(join(root, 'views/tabs/tab_superadmin.html'), 'utf8');
+  const controller = await readFile(join(root, 'frontend/admin/AdminUserController.js'), 'utf8');
+  const appController = await readFile(join(root, 'frontend/app/BiddingController.js'), 'utf8');
+  assert.doesNotMatch(template, /sa-pricing-grid|Gói Bạc|Gói Vàng|Gói Kim Cương/u);
+  assert.match(template, /id="sa-users-table"/u);
+  assert.match(template, />Gói đăng ký</u);
+  assert.doesNotMatch(controller, /editSystemPackage|togglePackageLock|form-edit-package/u);
+  assert.doesNotMatch(appController, /modal-edit-package|editSystemPackage|togglePackageLock/u);
 });

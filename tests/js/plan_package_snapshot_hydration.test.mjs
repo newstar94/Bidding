@@ -297,6 +297,63 @@ test("paginated first page cache deduplicates prefetch and click without mixing 
   }
 });
 
+test("paginated first page overlays locally durable creates and edits before server sync", async () => {
+  const previousFetch = globalThis.fetch;
+  const params = { page: 1, pageSize: 10, search: "", sortBy: "tenKeHoach", sortOrder: "asc" };
+  const model = {
+    useServerSidePagination: true,
+    getWorkspaceToken: () => "user:org-a@1",
+    workspaceScope: { key: "user:org-a" },
+    state: { activerole: "manager", kehoach: [] },
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+    getMutationQueue: () => ({
+      upserts: {
+        kehoach: {
+          "plan-existing": { id: "plan-existing", tenKeHoach: "Bản đã sửa" },
+          "plan-new": { id: "plan-new", tenKeHoach: "Kế hoạch mới" },
+          "plan-version-old": {
+            id: "plan-version-old", rootId: "plan-root", phienBan: "00", isLatest: 0,
+            tenKeHoach: "Phiên bản cũ",
+          },
+          "plan-version-new": {
+            id: "plan-version-new", rootId: "plan-root", phienBan: "01", isLatest: 1,
+            tenKeHoach: "Phiên bản mới",
+          },
+        },
+      },
+      patches: {},
+      deletes: [],
+    }),
+  };
+  globalThis.fetch = async () => response({
+    items: [
+      { id: "plan-existing", tenKeHoach: "Bản trên máy chủ" },
+      { id: "plan-version-old", rootId: "plan-root", phienBan: "00", isLatest: 1, tenKeHoach: "Phiên bản cũ" },
+    ],
+    totalItems: 2,
+    hasMore: false,
+    nextCursor: null,
+  });
+
+  try {
+    const loaded = await loadPaginatedRecords(model, "kehoach", params);
+    assert.deepEqual(loaded.items.map((record) => [record.id, record.tenKeHoach]), [
+      ["plan-existing", "Bản đã sửa"],
+      ["plan-new", "Kế hoạch mới"],
+      ["plan-version-new", "Phiên bản mới"],
+    ]);
+    assert.equal(loaded.totalItems, 3);
+    assert.deepEqual(
+      getCachedPaginatedRecords(model, "kehoach", params).items.map((record) => record.id),
+      ["plan-existing", "plan-new", "plan-version-new"],
+    );
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 test("paginated cache is isolated by workspace and invalidated through the entity index seam", async () => {
   const previousFetch = globalThis.fetch;
   let token = "user:org-a@1";

@@ -253,3 +253,27 @@ test("commercial renderer preserves authoritative offer count, order, and displa
   assert.doesNotMatch(result.pricingText, /DÀNH CHO CÁ NHÂN|DÀNH CHO TỔ CHỨC|CÓ GÓI KẾT NỐI/u);
   assert.deepEqual(result.errors, []);
 });
+
+test("commercial renderer supports any published offer count without creating placeholder tiers", async () => {
+  for (const count of [1, 2, 3, 4, 6]) {
+    const offers = Array.from({ length: count }, (_, index) => (
+      commercialOffer(`configured-${count}-${index + 1}`, `Gói cấu hình ${index + 1}`)
+    ));
+    const result = await renderScenario({
+      commercial: {
+        status: 200,
+        payload: {
+          releaseId: `release-${count}`,
+          releaseChecksum: `checksum-${count}`,
+          offers,
+          creditPacks: [],
+          quotaWarnings: [],
+        },
+      },
+    });
+
+    assert.equal(result.cardCount, count);
+    assert.deepEqual(result.commercialCardCodes, offers.map((offer) => offer.code));
+    assert.equal(result.compatibilityCardCount, 0);
+  }
+});
