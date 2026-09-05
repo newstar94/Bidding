@@ -30,7 +30,10 @@ const startupMark = (name) => {
   }
 };
 startupMark("app-module-start");
-const isLandingPath = () => window.location.pathname === "/";
+const isLandingPath = () => (
+  window.location.pathname === "/"
+  || document.documentElement.dataset.bfShell === "landing"
+);
 const isLegalPath = () => window.location.pathname === "/legal";
 const isNotFoundPage = () => document.querySelector('meta[name="bf-not-found"]')?.content === "true";
 const readSessionBootstrap = () => {
@@ -138,7 +141,6 @@ const bootstrapApplication = async () => {
     const { bootstrapLandingPage } = await import("../landing/LandingPage.js");
     await bootstrapLandingPage(readSessionBootstrap());
     requestAnimationFrame(() => {
-      void loadAndRenderLucideIcons([document.getElementById("landing-page")]);
       scheduleServiceWorkerRegistration();
     });
     return;

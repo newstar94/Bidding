@@ -1,6 +1,12 @@
 import { apiFetch } from "../shared/apiClient.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import {
+  classifyPublicCommercialResponse,
+  formatCommercialMoney,
+  presentCommercialOffer,
+  visibleOffersForOwner,
+} from "./PublicCommercialCatalog.js";
 
 const STYLE_URL = new URL("./CommercialStorefront.css", import.meta.url).pathname;
 const TERMINAL_ACTIVATIONS = new Set(["applied", "review_required", "reversed"]);
@@ -10,7 +16,7 @@ const state = {
   balance: null, orders: [], loading: false, polling: null, commercialReleaseId: "",
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-const money = (value) => `${new Intl.NumberFormat("vi-VN").format(Number(value || 0))} ₫`;
+const money = (value) => formatCommercialMoney(value, "VND");
 const request = async (path, options = {}) => {
   const response = await apiFetch(path, { handleHttpErrors: false, retries: 0, ...options });
   let payload = {}; try { payload = await response.json(); } catch { /* closed empty response */ }
@@ -45,8 +51,21 @@ function renderOffers(controller) {
   if (!root) return;
   const emptyState = state.availability === "off"
     ? `<div class="commercial-empty"><strong>Cửa hàng chưa mở bán.</strong><p>Bảng giá mới sẽ xuất hiện tại đây sau khi chính sách thương mại được phê duyệt và phát hành.</p></div>`
-    : `<div class="commercial-empty"><strong>Chưa có offer sellable.</strong><p>Super Admin cần publish release trước khi mở bán.</p></div>`;
-  root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${state.offers.map((offer) => `<article class="commercial-storefront__card ${offer.variant === "connected" ? "is-featured" : ""}"><div class="commercial-storefront__card-top"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span><span>${escapeHtml(offer.display?.name || offer.tier)}</span></div><h3>${escapeHtml(offer.display?.name || offer.code)}</h3><p class="commercial-storefront__price">${money(offer.price?.total)} <small>/ năm</small></p><ul><li>${Number(offer.memberQuota || 0).toLocaleString("vi-VN")} thành viên</li><li>${Number(offer.includedProcurementQuota || 0).toLocaleString("vi-VN")} lượt tra cứu kèm theo</li><li>${offer.variant === "connected" ? "Có kiểm tra vi phạm Nhà thầu" : "Dùng tra cứu đối tác chung"}</li></ul><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(offer.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(offer.code)}">Chọn gói</button></article>`).join("")}</div><div class="commercial-storefront__packs"><h3>Mua thêm lượt tra cứu</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>` : emptyState);
+    : `<div class="commercial-empty"><strong>Chưa có gói phù hợp.</strong><p>Catalog hiện hành chưa công bố gói bán cho không gian làm việc này.</p></div>`;
+  const cards = state.offers.map((offer) => {
+    const presented = presentCommercialOffer(offer);
+    const badge = presented.badge
+      ? `<span class="commercial-badge" data-tone="${presented.recommended ? "success" : "neutral"}">${escapeHtml(presented.badge)}</span>`
+      : "";
+    const variantLabel = presented.variantLabel ? `<span>${escapeHtml(presented.variantLabel)}</span>` : "";
+    const description = presented.description ? `<p>${escapeHtml(presented.description)}</p>` : "";
+    const benefits = presented.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("");
+    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button></article>`;
+  }).join("");
+  const packs = state.creditPacks.length
+    ? `<div class="commercial-storefront__packs"><h3>Mua thêm lượt lấy hồ sơ Mua Sắm Công</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>`
+    : "";
+  root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${cards}</div>${packs}` : emptyState);
   root.querySelectorAll(".storefront-buy").forEach((button) => button.addEventListener("click", () => {
     sendCommercialEvent("pricing.offer_selected", { skuCode: button.dataset.sku });
     void startCheckout(button.dataset.sku, controller, button.dataset.operation, button);
@@ -145,14 +164,22 @@ async function refresh(controller) {
   state.loading = true; status("Đang đồng bộ bảng giá và số dư…");
   try {
     const catalog = await request("/api/public/commercial/offers");
-    state.availability = catalog.availability || "available";
-    state.commercialReleaseId = String(catalog.releaseId || catalog.commercialReleaseId || "");
+    const classification = classifyPublicCommercialResponse(catalog);
+    state.availability = classification.state;
+    if (classification.state === "unavailable") {
+      state.commercialReleaseId = "";
+      state.offers = [];
+      state.creditPacks = [];
+      throw new Error("Catalog thương mại không đúng định dạng công khai hiện hành.");
+    }
+    const effectiveCatalog = classification.catalog;
+    state.commercialReleaseId = String(effectiveCatalog.releaseId || "");
     const actor = controller?.model?.state?.activeuser || {};
     const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
-    state.offers = (catalog.offers || []).filter((offer) => offer.ownerKind === ownerKind);
-    state.creditPacks = catalog.creditPacks || [];
-    state.quotaWarnings = catalog.quotaWarnings || [70, 90, 100];
+    state.offers = visibleOffersForOwner(effectiveCatalog.offers, ownerKind);
+    state.creditPacks = effectiveCatalog.creditPacks || [];
+    state.quotaWarnings = effectiveCatalog.quotaWarnings || [70, 90, 100];
     renderOffers(controller);
     sendCommercialEvent("pricing.viewed");
     if (state.availability === "off") {

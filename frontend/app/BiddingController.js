@@ -652,7 +652,7 @@ export class BiddingController {
       [this.routeMap["kehoach-detail"]]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap.goithau]: ["GOITHAU", "GOITHAUHANGHOA", "KEHOACH", "CHUDAUTU", "NHATHAU", "THONGTINMOTHAU", "ASSIGNMENTS"],
       [this.routeMap["goithau-timeline"]]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "HOPDONG", "THONGTINMOTHAU", "ASSIGNMENTS"],
-      [this.routeMap["goithau-detail"]]: ["GOITHAU", "GOITHAUHANGHOA", "KEHOACH", "CHUDAUTU", "NHATHAU", "HOPDONG", "THONGTINMOTHAU", "ASSIGNMENTS"],
+      [this.routeMap["goithau-detail"]]: ["GOITHAU", "GOITHAUHANGHOA", "HANGHOADUTHAUNHATHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "HOPDONG", "THONGTINMOTHAU", "ASSIGNMENTS"],
       [this.routeMap.mothau]: ["GOITHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],
       [this.routeMap.danhgiahsdt]: ["GOITHAU", "GOITHAUHANGHOA", "HANGHOADUTHAUNHATHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],
       [this.routeMap.hopdong]: ["HOPDONG", "GOITHAU", "NHATHAU", "CHUDAUTU", "CUSTOMCONTRACTSTATUSES"],

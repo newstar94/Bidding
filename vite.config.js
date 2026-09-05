@@ -7,6 +7,7 @@ import { createFrontendAssetRetentionPlugin } from './scripts/frontend_asset_ret
 import { localSecureReleaseId } from './scripts/secure_release_id.mjs';
 
 const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
+const landingStylesEntry = path.resolve(__dirname, 'views/css/landing-shell.css');
 const stylesEntry = '/views/css/app.css';
 
 function singleBundleStylesPlugin() {
@@ -275,7 +276,8 @@ export default defineConfig(({ mode }) => {
           pluginTimings: false
         },
         input: {
-          app: appEntry
+          app: appEntry,
+          landingShell: landingStylesEntry
         },
         output: {
           codeSplitting: {

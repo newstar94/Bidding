@@ -12,6 +12,14 @@ export const PLAN_BREAKDOWN_DRAFT_TABLES = [
   "assignments",
 ];
 
+export function capturePlanBreakdownDraftLocalState(model, draft) {
+  if (!draft?.active) return null;
+  return Object.fromEntries(PLAN_BREAKDOWN_DRAFT_TABLES.map((table) => [
+    table,
+    clone(model?.state?.[table] || []),
+  ]));
+}
+
 function clone(value) {
   return typeof structuredClone === "function"
     ? structuredClone(value)

@@ -17,6 +17,7 @@ from typing import Any, Mapping
 
 APP_ENTRY = "frontend/app/app.js"
 STYLE_ENTRY = "views/css/app.css"
+LANDING_STYLE_ENTRY = "views/css/landing-shell.css"
 HASHED_ASSET_PATH = re.compile(
     r"^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$"
 )
@@ -33,6 +34,7 @@ class FrontendAssets:
 
     app_file: str
     stylesheets: tuple[str, ...]
+    landing_stylesheet: str
     preload_files: tuple[str, ...]
     dist_root: Path
     manifest: Mapping[str, Any]
@@ -247,6 +249,11 @@ def assert_production_frontend_ready(project_root: str | Path) -> FrontendAssets
     return FrontendAssets(
         app_file=app_file,
         stylesheets=resolve_frontend_styles(manifest, dist_root),
+        landing_stylesheet=resolve_frontend_entry(
+            manifest,
+            dist_root,
+            LANDING_STYLE_ENTRY,
+        ),
         preload_files=resolve_preload_graph(manifest, dist_root),
         dist_root=dist_root,
         manifest=manifest,

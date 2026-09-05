@@ -29,6 +29,7 @@ import {
 import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
 import { requiresTechnicalScoreInput } from "./evaluationMethodRules.js";
 import { parseEvaluationMetadataStrict } from "./evaluationMetadata.js";
+import { isOfficialBidderGoodsRow } from "./bidderGoodsSelectors.js";
 
 export function buildDetailedEvaluationRow(reportId, criterionId) {
   return {
@@ -254,7 +255,7 @@ export function resolveDetailedEvaluationState(controller) {
     (row) => String(row.thongTinMoThauId || "") === String(bid?.id || ""),
   );
   const bidderGoodsReady = bidderGoodsRows.length > 0 && bidderGoodsRows.every(
-    (row) => row.isDraft === false && row.trangThaiUuDai === "ready",
+    (row) => isOfficialBidderGoodsRow(row) && row.trangThaiUuDai === "ready",
   );
   const accessibleGroups = resolveAccessibleDetailedEvaluationGroups({
     configuredGroups: context.configuredGroups,

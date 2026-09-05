@@ -251,9 +251,14 @@ export class WorkspaceLifecycleController {
     });
     this.assertCurrent(identity);
     globalThis.history?.pushState?.({ tab: targetTab, action: null }, "", targetPath);
-    await host.switchTab(targetTab, null, false);
+    const routeRender = Promise.resolve().then(
+      () => host.switchTab(targetTab, null, false),
+    );
+    const durablePurge = Promise.resolve().then(
+      () => model.purgeWorkspaceData?.(),
+    );
+    await Promise.all([routeRender, durablePurge]);
     this.assertCurrent(identity);
-    await model.purgeWorkspaceData?.();
     if (generation !== this.generation) throw transitionAbortedError();
     await model.init({
       userId,

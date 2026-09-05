@@ -49,6 +49,61 @@ def _get_rate_limit_database():
     return rate_limit_database
 
 
+def get_rate_limit_decision_in_transaction(
+    cursor,
+    bucket: str,
+    consume_attempt: bool = True,
+    *,
+    max_attempts: int = RATE_LIMIT_MAX,
+    window_seconds: int = RATE_LIMIT_WINDOW,
+) -> RateLimitDecision:
+    """Check or consume a persistent bucket through a caller-owned transaction."""
+    now = int(time.time())
+    max_attempts = max(1, int(max_attempts))
+    window_seconds = max(1, int(window_seconds))
+    bucket_key = hashlib.sha256(str(bucket or "unknown").encode("utf-8")).hexdigest()
+    if consume_attempt:
+        row = cursor.execute(
+            """
+            INSERT INTO rate_limit_buckets (
+                bucket_key, window_started_at, attempt_count, expires_at
+            ) VALUES (?, ?, 1, ?)
+            ON CONFLICT(bucket_key) DO UPDATE SET
+                window_started_at = CASE
+                    WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                    THEN excluded.window_started_at
+                    ELSE rate_limit_buckets.window_started_at
+                END,
+                attempt_count = CASE
+                    WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                    THEN 1
+                    ELSE LEAST(rate_limit_buckets.attempt_count + 1, ?)
+                END,
+                expires_at = CASE
+                    WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                    THEN excluded.expires_at
+                    ELSE rate_limit_buckets.expires_at
+                END
+            RETURNING attempt_count, expires_at
+            """,
+            (bucket_key, now, now + window_seconds, max_attempts + 1),
+        ).fetchone()
+    else:
+        row = cursor.execute(
+            """SELECT attempt_count, expires_at
+               FROM rate_limit_buckets
+               WHERE bucket_key = ? AND expires_at > ?""",
+            (bucket_key, now),
+        ).fetchone()
+    attempt_count = int(row[0]) if row is not None else 0
+    expires_at = int(row[1]) if row is not None else now + window_seconds
+    return RateLimitDecision(
+        attempt_count <= max_attempts,
+        max(1, expires_at - now) if attempt_count > max_attempts else 0,
+        max(0, max_attempts - attempt_count),
+    )
+
+
 def get_rate_limit_decision(
     bucket: str,
     consume_attempt: bool = True,
@@ -57,54 +112,18 @@ def get_rate_limit_decision(
     window_seconds: int = RATE_LIMIT_WINDOW,
 ) -> RateLimitDecision:
     """Check or atomically consume a persistent fixed-window bucket."""
-    now = int(time.time())
-    max_attempts = max(1, int(max_attempts))
-    window_seconds = max(1, int(window_seconds))
-    bucket_key = hashlib.sha256(str(bucket or "unknown").encode("utf-8")).hexdigest()
     conn = None
     try:
         conn = _get_rate_limit_database().get_connection()
-        if consume_attempt:
-            row = conn.execute(
-                """
-                INSERT INTO rate_limit_buckets (
-                    bucket_key, window_started_at, attempt_count, expires_at
-                ) VALUES (?, ?, 1, ?)
-                ON CONFLICT(bucket_key) DO UPDATE SET
-                    window_started_at = CASE
-                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
-                        THEN excluded.window_started_at
-                        ELSE rate_limit_buckets.window_started_at
-                    END,
-                    attempt_count = CASE
-                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
-                        THEN 1
-                        ELSE LEAST(rate_limit_buckets.attempt_count + 1, ?)
-                    END,
-                    expires_at = CASE
-                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
-                        THEN excluded.expires_at
-                        ELSE rate_limit_buckets.expires_at
-                    END
-                RETURNING attempt_count, expires_at
-                """,
-                (bucket_key, now, now + window_seconds, max_attempts + 1),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                """SELECT attempt_count, expires_at
-                   FROM rate_limit_buckets
-                   WHERE bucket_key = ? AND expires_at > ?""",
-                (bucket_key, now),
-            ).fetchone()
-        attempt_count = int(row[0]) if row is not None else 0
-        expires_at = int(row[1]) if row is not None else now + window_seconds
-        conn.commit()
-        return RateLimitDecision(
-            attempt_count <= max_attempts,
-            max(1, expires_at - now) if attempt_count > max_attempts else 0,
-            max(0, max_attempts - attempt_count),
+        decision = get_rate_limit_decision_in_transaction(
+            conn,
+            bucket,
+            consume_attempt,
+            max_attempts=max_attempts,
+            window_seconds=window_seconds,
         )
+        conn.commit()
+        return decision
     except Exception as rate_limit_error:
         if conn is not None:
             try:

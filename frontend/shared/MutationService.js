@@ -1,5 +1,9 @@
 import { isSyncedStateKey } from "./persistencePolicy.js";
 import { workspaceMutationCoordinator } from "./WorkspaceMutationCoordinator.js";
+import {
+  PLAN_BREAKDOWN_DRAFT_TABLES,
+  isPlanBreakdownEditSessionActive,
+} from "../plans/planBreakdownDraft.js";
 
 function explicitTableChanges(changes, table) {
   if (!changes || typeof changes !== "object") return null;
@@ -206,6 +210,14 @@ export async function refreshRecordBeforeMutation(controller, tableKey, recordId
     const records = Array.isArray(controller?.model?.state?.[tableKey])
       ? controller.model.state[tableKey]
       : [];
+    if (
+      PLAN_BREAKDOWN_DRAFT_TABLES.includes(tableKey)
+      && isPlanBreakdownEditSessionActive(controller)
+    ) {
+      return records.find(
+        (record) => String(record?.id) === String(authoritativeRecord.id),
+      ) || authoritativeRecord;
+    }
     const index = records.findIndex(
       (record) => String(record?.id) === String(authoritativeRecord.id),
     );

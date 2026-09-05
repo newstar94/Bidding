@@ -76,6 +76,7 @@ from backend.shared.email_templates import render_branded_email
 from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
+    get_rate_limit_decision_in_transaction,
     RateLimitDecision,
     rate_limit_response,
     clear_rate_limit_buckets,
@@ -86,6 +87,7 @@ from backend.auth.auth_service import (
     SESSION_INACTIVITY_TIMEOUT_HOURS,
     generate_otp,
     RATE_LIMIT_MAX,
+    RATE_LIMIT_WINDOW,
 )
 
 
@@ -387,14 +389,16 @@ async def login_api(request):
 
         username_rate_key = hashlib.sha256(username.lower().encode('utf-8')).hexdigest()
         user_rate_key = f"login_user:{username_rate_key}" if username else None
+        user = None
         try:
-            user_limit = (
-                await run_database_write(
-                    get_rate_limit_decision, user_rate_key, consume_attempt=True
+            if user_rate_key:
+                user_limit, user = await run_database_write(
+                    _load_login_user_with_rate_limit,
+                    username,
+                    user_rate_key,
                 )
-                if user_rate_key
-                else None
-            )
+            else:
+                user_limit = None
         except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
         if user_limit and not user_limit.allowed:
@@ -418,13 +422,6 @@ async def login_api(request):
         if not username or not validate_password_input(password):
             await record_failed_login()
             return JSONResponse({"error": "Vui lòng nhập tài khoản và mật khẩu!"}, status_code=400)
-
-        try:
-            user = await run_database_read(
-                _load_login_user, username, timeout_seconds=5.0
-            )
-        except (BlockingIOBusyError, BlockingIOTimeoutError):
-            return _database_lane_unavailable_response(request, write=False)
 
         if not user:
             try:
@@ -543,6 +540,47 @@ def _get_access_for_session(user, request):
         )
         conn.commit()
         return _attach_effective_session_role(user, access)
+    finally:
+        conn.close()
+
+
+def _load_login_user_with_rate_limit(username, user_rate_key):
+    """Consume the account bucket and read the account on one DB connection."""
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        try:
+            decision = get_rate_limit_decision_in_transaction(
+                cursor,
+                user_rate_key,
+                consume_attempt=True,
+            )
+        except DatabaseError as rate_limit_error:
+            conn.rollback()
+            log_error(rate_limit_error, "rate_limit", level="WARN")
+            return RateLimitDecision(
+                False,
+                RATE_LIMIT_WINDOW,
+                0,
+                storage_failed=True,
+            ), None
+
+        user = None
+        if decision.allowed:
+            row = cursor.execute(
+                """SELECT id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
+                          anh_dai_dien, da_xac_minh
+                   FROM tai_khoan
+                   WHERE trang_thai = 'active'
+                     AND (username_norm = ? OR email_norm = ?)""",
+                (username, username),
+            ).fetchone()
+            user = dict(row) if row else None
+        conn.commit()
+        return decision, user
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -709,26 +747,33 @@ async def check_session_api(request):
 
 
 def _set_active_role_sync(request, active_role):
-    is_valid, session = verify_session(request)
-    if not is_valid:
-        return JSONResponse({"error": session}, status_code=403)
-
-    platform_role = str(getattr(session, "platform_role", session) or "").strip()
-    if active_role == "super_admin" and platform_role != "super_admin":
-        return JSONResponse(
-            {"error": "Tài khoản không có quyền Super Admin."},
-            status_code=403,
-        )
-
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
+        is_valid, session = verify_session_in_transaction(cursor, request)
+        if not is_valid:
+            conn.rollback()
+            return JSONResponse({"error": session}, status_code=403)
+        try:
+            request.state.auth_user_id = str(session.user_id)
+        except (AttributeError, TypeError):
+            pass
+
+        platform_role = str(getattr(session, "platform_role", session) or "").strip()
+        if active_role == "super_admin" and platform_role != "super_admin":
+            conn.rollback()
+            return JSONResponse(
+                {"error": "Tài khoản không có quyền Super Admin."},
+                status_code=403,
+            )
+
         organization_id = get_active_org(request, session.user_id, cursor=cursor)
         if active_role == "manager" and platform_role != "super_admin":
             membership_role = organization_membership_role(
                 cursor, session.user_id, organization_id
             )
             if membership_role != "manager":
+                conn.rollback()
                 return JSONResponse(
                     {"error": "Tài khoản không có quyền Quản lý trong tổ chức này."},
                     status_code=403,

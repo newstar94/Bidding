@@ -15,6 +15,10 @@ MAX_CREDIT_PACKS = 32
 MAX_CREDIT_UNITS = 100_000
 SUPPORTED_TIERS = ("personal", "silver", "gold", "diamond")
 SUPPORTED_VARIANTS = ("internal", "connected")
+SUPPORTED_OWNER_KINDS = ("account", "organization")
+SUPPORTED_SALES_STATES = ("sellable", "stopped", "non_sellable")
+SUPPORTED_PRICE_PERIODS = ("yearly",)
+SUPPORTED_PUBLIC_VISIBILITY = ("public", "hidden")
 SUPPORTED_EXPORT_CAPABILITIES = (
     "document.export.word",
     "document.export.excel",
@@ -261,6 +265,12 @@ def validate_document(document, *, require_production_ready=False):
         encoded = canonical_json(document).encode("utf-8")
     except (TypeError, ValueError) as exc:
         return {"errors": [_error("INVALID_JSON", "$", str(exc))], "warnings": [], "impact": {}}
+    if not isinstance(document, dict):
+        return {
+            "errors": [_error("DOCUMENT_OBJECT_REQUIRED", "$", "Cấu hình thương mại phải là một object.")],
+            "warnings": [],
+            "impact": {},
+        }
     if len(encoded) > MAX_DOCUMENT_BYTES:
         errors.append(_error("DOCUMENT_TOO_LARGE", "$", "Cấu hình vượt giới hạn 256 KiB."))
     if _depth(document) > MAX_DEPTH:
@@ -280,6 +290,9 @@ def validate_document(document, *, require_production_ready=False):
     pairs = set()
     for index, offer in enumerate(offers):
         path = f"offers[{index}]"
+        if not isinstance(offer, dict):
+            errors.append(_error("OFFER_OBJECT_REQUIRED", path, "Mỗi offer phải là một object."))
+            continue
         code = str(offer.get("code") or "").strip()
         pair = (offer.get("tier"), offer.get("variant"))
         if not code or code in codes:
@@ -288,13 +301,26 @@ def validate_document(document, *, require_production_ready=False):
         if pair in pairs or pair[0] not in SUPPORTED_TIERS or pair[1] not in SUPPORTED_VARIANTS:
             errors.append(_error("OFFER_PAIR_INVALID", path, "Cặp quy mô/biến thể không hợp lệ hoặc bị trùng."))
         pairs.add(pair)
+        if offer.get("ownerKind") not in SUPPORTED_OWNER_KINDS:
+            errors.append(_error("OWNER_KIND_INVALID", f"{path}.ownerKind", "Đối tượng sở hữu offer không hợp lệ."))
+        if offer.get("salesState") not in SUPPORTED_SALES_STATES:
+            errors.append(_error("SALES_STATE_INVALID", f"{path}.salesState", "Trạng thái bán offer không hợp lệ."))
+        if type(offer.get("violationCheckEnabled")) is not bool:
+            errors.append(_error("VIOLATION_CHECK_INVALID", f"{path}.violationCheckEnabled", "Cờ kiểm tra vi phạm phải là boolean."))
         for field in ("memberQuota", "includedProcurementQuota"):
             value = offer.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value < (1 if field == "memberQuota" else 0):
                 errors.append(_error("INTEGER_REQUIRED", f"{path}.{field}", "Giá trị phải là số nguyên hợp lệ."))
             elif value > MAX_CREDIT_UNITS:
                 errors.append(_error("VALUE_TOO_LARGE", f"{path}.{field}", "Giá trị vượt giới hạn xử lý an toàn."))
-        price = offer.get("price") or {}
+        price = offer.get("price")
+        if not isinstance(price, dict):
+            errors.append(_error("PRICE_OBJECT_REQUIRED", f"{path}.price", "Giá offer phải là một object."))
+            price = {}
+        if price.get("period") not in SUPPORTED_PRICE_PERIODS:
+            errors.append(_error("PRICE_PERIOD_INVALID", f"{path}.price.period", "Chu kỳ giá offer không hợp lệ."))
+        if price.get("currency") != "VND":
+            errors.append(_error("PRICE_CURRENCY_INVALID", f"{path}.price.currency", "Đơn vị tiền offer phải là VND."))
         amounts = [price.get("subtotal"), price.get("tax"), price.get("total")]
         if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in amounts):
             errors.append(_error("MONEY_INTEGER_REQUIRED", f"{path}.price", "Tiền VND phải là số nguyên không âm."))
@@ -305,6 +331,34 @@ def validate_document(document, *, require_production_ready=False):
             errors.append(_error("BLOCKED_DECISION", f"{path}.exportCapabilities", "Chưa có mapping entitlement xuất đã được phê duyệt."))
         elif set(capabilities) != set(SUPPORTED_EXPORT_CAPABILITIES) or any(type(value) is not bool for value in capabilities.values()):
             errors.append(_error("CAPABILITY_INVALID", f"{path}.exportCapabilities", "Chỉ capability xuất hiện hữu trong allowlist được phép."))
+        display = offer.get("display")
+        if not isinstance(display, dict):
+            errors.append(_error("DISPLAY_OBJECT_REQUIRED", f"{path}.display", "Metadata hiển thị phải là một object."))
+            display = {}
+        for field in ("name", "description", "badge", "variantLabel", "periodLabel"):
+            value = display.get(field)
+            required = field == "name"
+            if required and (not isinstance(value, str) or not value.strip()):
+                errors.append(_error("DISPLAY_TEXT_INVALID", f"{path}.display.{field}", "Tên hiển thị phải là chuỗi không rỗng."))
+            elif value is not None and not isinstance(value, str):
+                errors.append(_error("DISPLAY_TEXT_INVALID", f"{path}.display.{field}", "Metadata hiển thị phải là chuỗi."))
+        order = display.get("order")
+        if order is not None and (
+            not isinstance(order, int) or isinstance(order, bool) or order < 0
+        ):
+            errors.append(_error("DISPLAY_ORDER_INVALID", f"{path}.display.order", "Thứ tự hiển thị phải là số nguyên không âm."))
+        recommended = display.get("recommended")
+        if recommended is not None and type(recommended) is not bool:
+            errors.append(_error("DISPLAY_BOOLEAN_INVALID", f"{path}.display.recommended", "Cờ đề xuất phải là boolean."))
+        visibility = display.get("visibility")
+        if visibility is not None and visibility not in SUPPORTED_PUBLIC_VISIBILITY:
+            errors.append(_error("DISPLAY_VISIBILITY_INVALID", f"{path}.display.visibility", "Mức hiển thị public không hợp lệ."))
+        benefits = display.get("benefits")
+        if benefits is not None and (
+            not isinstance(benefits, list)
+            or any(not isinstance(value, str) or not value.strip() for value in benefits)
+        ):
+            errors.append(_error("DISPLAY_BENEFITS_INVALID", f"{path}.display.benefits", "Danh sách lợi ích phải gồm các chuỗi không rỗng."))
     expected_pairs = {(tier, variant) for tier in SUPPORTED_TIERS for variant in SUPPORTED_VARIANTS}
     if pairs != expected_pairs:
         errors.append(_error("OFFER_MATRIX_INCOMPLETE", "offers", "Cấu hình bán năm phải có đủ 4 quy mô x 2 biến thể."))
@@ -367,7 +421,8 @@ def validate_document(document, *, require_production_ready=False):
     savings = []
     savings_blockers = {
         "INTEGER_REQUIRED", "MONEY_INTEGER_REQUIRED", "VALUE_TOO_LARGE",
-        "CREDIT_PACKS_INVALID", "OFFERS_INVALID",
+        "CREDIT_PACKS_INVALID", "OFFERS_INVALID", "OFFER_OBJECT_REQUIRED",
+        "PRICE_OBJECT_REQUIRED",
     }
     if packs and offers and not any(error["code"] in savings_blockers for error in errors):
         savings = connected_savings(document)

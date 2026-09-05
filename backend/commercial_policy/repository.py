@@ -274,10 +274,17 @@ class CommercialRepository:
                 ),
             )
         plan_ids = {}
-        for offer in document.get("offers") or []:
+        for source_order, offer in enumerate(document.get("offers") or [], start=1):
             plan_id = new_id("billing-plan")
             plan_ids[offer["code"]] = plan_id
             capabilities = offer["exportCapabilities"]
+            display_order = (offer.get("display") or {}).get("order")
+            if (
+                not isinstance(display_order, int)
+                or isinstance(display_order, bool)
+                or display_order < 0
+            ):
+                display_order = source_order
             self.cursor.execute(
                 """INSERT INTO billing_plan_versions
                        (id, release_id, logical_package_code, owner_kind, tier,
@@ -315,7 +322,7 @@ class CommercialRepository:
                     offer["code"],
                     plan_id,
                     offer["salesState"],
-                    len(plan_ids),
+                    display_order,
                 ),
             )
             price = offer["price"]

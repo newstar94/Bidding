@@ -5,7 +5,10 @@ import test from "node:test";
 test("secure build preserves reviewed code splitting and obfuscates every chunk", () => {
   const config = fs.readFileSync("vite.config.js", "utf8");
   const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-  assert.match(config, /input:\s*\{\s*app:\s*appEntry\s*\}/s);
+  assert.match(
+    config,
+    /input:\s*\{\s*app:\s*appEntry,\s*landingShell:\s*landingStylesEntry\s*\}/s,
+  );
   assert.match(config, /codeSplitting:\s*(?:true|\{[\s\S]*?groups:\s*\[)/);
   assert.match(config, /singleBundleStylesPlugin\(\)/);
   assert.match(config, /JavaScriptObfuscator\.obfuscate\(/);

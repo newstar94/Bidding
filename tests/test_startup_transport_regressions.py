@@ -285,6 +285,78 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
     assert '/vendor/fonts/plus-jakarta-sans-vietnamese.woff2' not in compiled
 
 
+def test_bundled_landing_uses_its_small_shell_stylesheet_without_app_css(
+    monkeypatch,
+    tmp_path,
+):
+    views_directory = tmp_path / "views"
+    manifest_directory = tmp_path / "dist" / ".vite"
+    assets_directory = tmp_path / "dist" / "assets"
+    views_directory.mkdir(parents=True)
+    manifest_directory.mkdir(parents=True)
+    assets_directory.mkdir(parents=True)
+    index_path = views_directory / "index.html"
+    index_path.write_text(
+        """<html><head>
+<link rel="stylesheet" href="/css/base.css">
+</head><body><script type="module" src="/frontend/app/app.js"></script></body></html>
+""",
+        encoding="utf-8",
+    )
+    manifest = {
+        "frontend/app/app.js": {
+            "file": "assets/app-12345678.js",
+            "css": ["assets/app-12345678.css"],
+        },
+        "views/css/landing-shell.css": {
+            "file": "assets/landing-shell-12345678.css",
+        },
+    }
+    for asset in (
+        "app-12345678.js",
+        "app-12345678.css",
+        "landing-shell-12345678.css",
+    ):
+        (assets_directory / asset).write_text("/* fixture */", encoding="utf-8")
+    (manifest_directory / "manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "bundle")
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+    monkeypatch.setattr(app_module, "_compiled_html_cache", None)
+    monkeypatch.setattr(app_module, "_compiled_html_cache_signature", None)
+    compiled = app_module.compile_html(str(index_path))
+    monkeypatch.setattr(
+        app_module,
+        "_build_index_response_payload",
+        lambda: (compiled, '"template"'),
+    )
+    monkeypatch.setattr(
+        app_module,
+        "build_session_bootstrap",
+        lambda _request: {"valid": False},
+    )
+
+    landing = asyncio.run(app_module.index(SimpleNamespace(
+        url=SimpleNamespace(path="/"),
+        headers={},
+    ))).body.decode("utf-8")
+    workspace = asyncio.run(app_module.index(SimpleNamespace(
+        url=SimpleNamespace(path="/goi-thau"),
+        headers={},
+    ))).body.decode("utf-8")
+
+    assert '/dist/assets/landing-shell-12345678.css' in landing
+    assert '/dist/assets/app-12345678.css' not in landing
+    assert 'data-bf-shell-styles="landing"' in landing
+    assert '/dist/assets/app-12345678.js' in landing
+    assert '/dist/assets/app-12345678.css' in workspace
+    assert '/dist/assets/landing-shell-12345678.css' not in workspace
+
+
 def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
     views_directory = tmp_path / "views"
     manifest_directory = tmp_path / "dist" / ".vite"
@@ -320,6 +392,35 @@ def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
     assert '/dist/assets/app-debug-12345678.css' in compiled
     assert '<meta name="bf-app-debug" content="false">' in compiled
     assert '/frontend/app/app.js' not in compiled
+
+
+def test_debug_runtime_defaults_to_bundled_frontend_transport():
+    environment = os.environ.copy()
+    environment.update({
+        "APP_DEBUG": "True",
+        "APP_ENV": "test",
+        "ALLOWED_HOSTS": "testserver",
+    })
+    environment.pop("FRONTEND_ASSET_MODE", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from backend.app import FRONTEND_ASSET_MODE, USE_FRONTEND_BUNDLE; "
+                "print(FRONTEND_ASSET_MODE, USE_FRONTEND_BUNDLE)"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "bundle True"
 
 
 def test_runtime_asset_mode_switch_invalidates_the_transport_choice(monkeypatch, tmp_path):

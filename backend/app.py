@@ -35,6 +35,7 @@ import contextlib
 import html
 import json
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 from starlette.applications import Starlette
@@ -55,6 +56,7 @@ from backend.shared.client_ip import parse_ip_networks
 from backend.shared.origin_policy import get_allowed_websocket_origins
 from backend.frontend_assets import (
     APP_ENTRY,
+    LANDING_STYLE_ENTRY,
     FrontendAssetError,
     assert_production_frontend_ready,
     resolve_frontend_entry,
@@ -92,7 +94,7 @@ APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "t
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
-FRONTEND_ASSET_MODE = os.environ.get("FRONTEND_ASSET_MODE", "source").strip().lower()
+FRONTEND_ASSET_MODE = os.environ.get("FRONTEND_ASSET_MODE", "bundle").strip().lower()
 if FRONTEND_ASSET_MODE not in {"source", "bundle"}:
     raise RuntimeError("FRONTEND_ASSET_MODE must be source or bundle.")
 USE_FRONTEND_BUNDLE = not APP_DEBUG or FRONTEND_ASSET_MODE == "bundle"
@@ -507,16 +509,75 @@ def _page_metadata(path):
             "áp dụng cho BiddingFlow."
         )
     else:
-        title = "BiddingFlow - Hệ thống Quản lý & Lưu trữ Thông tin Gói thầu"
+        title = "BiddingFlow – Phần mềm quản lý đấu thầu và gói thầu"
         description = (
-            "Hệ thống quản lý thông tin đấu thầu, kế hoạch lựa chọn nhà thầu, "
-            "gói thầu, chủ đầu tư, nhà thầu và tổ chuyên gia chuyên nghiệp, hiện đại."
+            "BiddingFlow giúp quản lý kế hoạch lựa chọn nhà thầu, gói thầu, hồ sơ, "
+            "tiến độ, phê duyệt và hợp đồng trên một nền tảng thống nhất."
         )
     canonical_link = ""
     if APP_PUBLIC_URL and path in {"/", "/legal"}:
         canonical_url = f"{APP_PUBLIC_URL}{'' if path == '/' else path}"
         canonical_link = f'<link rel="canonical" href="{html.escape(canonical_url, quote=True)}">'
     return title, description, canonical_link
+
+
+def _page_discovery_metadata(path, title, description):
+    """Render public discovery metadata without exposing workspace routes."""
+    if path not in {"/", "/legal"}:
+        return '<meta name="robots" content="noindex, nofollow">', "", ""
+
+    robots_meta = '<meta name="robots" content="index, follow, max-image-preview:large">'
+    canonical_url = f"{APP_PUBLIC_URL}{'' if path == '/' else path}" if APP_PUBLIC_URL else ""
+    image_url = f"{APP_PUBLIC_URL}/assets/biddingflow-social-preview.png" if APP_PUBLIC_URL else ""
+    social_tags = [
+        '<meta property="og:type" content="website">',
+        f'<meta property="og:title" content="{html.escape(title, quote=True)}">',
+        f'<meta property="og:description" content="{html.escape(description, quote=True)}">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{html.escape(title, quote=True)}">',
+        f'<meta name="twitter:description" content="{html.escape(description, quote=True)}">',
+    ]
+    if canonical_url:
+        escaped_url = html.escape(canonical_url, quote=True)
+        social_tags.append(f'<meta property="og:url" content="{escaped_url}">')
+    if image_url:
+        escaped_image = html.escape(image_url, quote=True)
+        social_tags.extend([
+            f'<meta property="og:image" content="{escaped_image}">',
+            '<meta property="og:image:width" content="1200">',
+            '<meta property="og:image:height" content="630">',
+            '<meta property="og:image:alt" content="BiddingFlow – Quản lý toàn bộ quy trình đấu thầu">',
+            f'<meta name="twitter:image" content="{escaped_image}">',
+        ])
+
+    structured_data = ""
+    if path == "/":
+        graph = [{
+            "@type": "WebApplication",
+            "name": "BiddingFlow",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "description": description,
+        }]
+        if APP_PUBLIC_URL:
+            graph[0]["url"] = APP_PUBLIC_URL
+        payload = json.dumps({"@context": "https://schema.org", "@graph": graph}, ensure_ascii=False).replace("<", "\\u003c")
+        structured_data = f'<script type="application/ld+json">{payload}</script>'
+    return robots_meta, "\n    ".join(social_tags), structured_data
+
+
+async def robots_txt(request):
+    base_url = APP_PUBLIC_URL or str(request.base_url).rstrip("/")
+    content = f"User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n"
+    return Response(content, media_type="text/plain")
+
+
+async def sitemap_xml(request):
+    base_url = APP_PUBLIC_URL or str(request.base_url).rstrip("/")
+    locations = [base_url, f"{base_url}/legal"]
+    entries = "".join(f"<url><loc>{html.escape(location)}</loc></url>" for location in locations)
+    content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{entries}</urlset>'
+    return Response(content, media_type="application/xml")
 
 
 def _page_shell(html_content, path):
@@ -536,7 +597,65 @@ def _page_shell(html_content, path):
             html_content = pattern.sub(lambda match: match.group(1), html_content, count=1)
         else:
             html_content = pattern.sub("", html_content, count=1)
+    if selected_shell == "LANDING":
+        html_content = re.sub(
+            r'(<body\b[^>]*?)\s+hidden(?=[\s>])',
+            r"\1",
+            html_content,
+            count=1,
+        )
     return html_content
+
+
+def _page_bundle_stylesheet(html_content, path):
+    """Select the smallest reviewed stylesheet for a bundled public shell."""
+    if path != "/" or not _frontend_bundle_enabled():
+        return html_content, ""
+
+    try:
+        if IS_PRODUCTION:
+            landing_stylesheet = assert_production_frontend_ready(
+                project_root,
+            ).landing_stylesheet
+        else:
+            manifest_path = os.path.join(
+                project_root,
+                "dist",
+                ".vite",
+                "manifest.json",
+            )
+            with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+                manifest = json.load(manifest_file)
+            landing_stylesheet = resolve_frontend_entry(
+                manifest,
+                Path(project_root) / "dist",
+                LANDING_STYLE_ENTRY,
+            )
+    except Exception as exc:
+        if IS_PRODUCTION:
+            raise
+        log_error(exc, "landing_bundle_stylesheet")
+        return html_content, ""
+
+    selected_link = (
+        f'<link rel="stylesheet" href="/dist/{landing_stylesheet}" '
+        'data-runtime-styles data-bf-shell-styles="landing">'
+    )
+    html_content, replacements = re.subn(
+        r'<link\s+rel="stylesheet"\s+href="/dist/[^"]+"\s+data-runtime-styles(?:\s+data-bf-shell-styles="[^"]+")?>',
+        selected_link,
+        html_content,
+        count=1,
+    )
+    if replacements != 1:
+        error = FrontendAssetError(
+            "bundled application shell is missing its runtime stylesheet link"
+        )
+        if IS_PRODUCTION:
+            raise error
+        log_error(error, "landing_bundle_stylesheet")
+        return html_content, ""
+    return html_content, landing_stylesheet
 
 
 def _initial_route_preload_tag(html_content):
@@ -571,8 +690,18 @@ async def index(request, *, not_found=False):
     request_path = request.url.path
     if request_path in {"/index.html", "/views/index.html"}:
         request_path = "/"
+    html_content = _page_shell(html_content, request_path)
+    html_content, page_asset_identity = _page_bundle_stylesheet(
+        html_content,
+        request_path,
+    )
     page_title, page_description, canonical_link = _page_metadata(request_path)
-    response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path).encode("utf-8")).hexdigest()}"'
+    robots_meta, social_metadata, structured_data = _page_discovery_metadata(
+        request_path,
+        page_title,
+        page_description,
+    )
+    response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path + page_asset_identity).encode("utf-8")).hexdigest()}"'
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
@@ -580,8 +709,10 @@ async def index(request, *, not_found=False):
     html_content = html_content.replace("__BF_PAGE_TITLE__", html.escape(page_title))
     html_content = html_content.replace("__BF_PAGE_DESCRIPTION__", html.escape(page_description, quote=True))
     html_content = html_content.replace("__BF_CANONICAL_LINK__", canonical_link)
+    html_content = html_content.replace("__BF_ROBOTS_META__", robots_meta)
+    html_content = html_content.replace("__BF_SOCIAL_METADATA__", social_metadata)
+    html_content = html_content.replace("__BF_STRUCTURED_DATA__", structured_data)
     html_content = html_content.replace("__BF_NOT_FOUND__", "true" if not_found else "false")
-    html_content = _page_shell(html_content, request_path)
     workspace_preload = "" if request_path in {"/", "/legal"} else _workspace_preload_tag(session_bootstrap)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
     initial_route_preload = (
@@ -845,6 +976,8 @@ def _is_production_view_asset_allowed(path):
         or normalized == "assets/auth-procurement-visual-v2.webp"
         or normalized == "assets/favicon.png"
         or normalized == "assets/app-brand-icon.webp"
+        or normalized == "assets/biddingflow-social-preview.png"
+        or normalized == "assets/landing-icons.svg"
         or (normalized.startswith("css/") and normalized.endswith(".css"))
         or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
         or (normalized.startswith("tabs/") and normalized.endswith(".html"))
@@ -1017,6 +1150,8 @@ routes = [
     Route("/metrics", metrics_api, methods=["GET"]),
     Route("/api/client-errors", client_error_api, methods=["POST"]),
     Route("/", index, methods=["GET"]),
+    Route("/robots.txt", robots_txt, methods=["GET"]),
+    Route("/sitemap.xml", sitemap_xml, methods=["GET"]),
     Route("/index.html", index, methods=["GET"]),
     Route("/views/index.html", index, methods=["GET"]),
     Route("/dang-nhap", index, methods=["GET"]),

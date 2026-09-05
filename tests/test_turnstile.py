@@ -383,8 +383,11 @@ def test_login_requires_turnstile_after_configured_prior_attempts(monkeypatch):
 
     _enable_local_turnstile(monkeypatch)
 
-    async def rate_limit_attempt(*_args, **_kwargs):
-        return SimpleNamespace(allowed=True, remaining=1)
+    async def rate_limit_attempt(function, *_args, **_kwargs):
+        decision = SimpleNamespace(allowed=True, remaining=1)
+        if function is auth_routes._load_login_user_with_rate_limit:
+            return decision, None
+        return decision
 
     class Request:
         headers = {}
@@ -416,8 +419,11 @@ def test_login_requires_turnstile_immediately_for_matching_edge_risk_signal(
     )
     monkeypatch.setenv("TURNSTILE_EDGE_CHALLENGE_VALUE", "challenge")
 
-    async def first_rate_limit_attempt(*_args, **_kwargs):
-        return SimpleNamespace(allowed=True, remaining=4)
+    async def first_rate_limit_attempt(function, *_args, **_kwargs):
+        decision = SimpleNamespace(allowed=True, remaining=4)
+        if function is auth_routes._load_login_user_with_rate_limit:
+            return decision, None
+        return decision
 
     class Request:
         headers = Headers({"X-BiddingFlow-Edge-Risk": "challenge"})

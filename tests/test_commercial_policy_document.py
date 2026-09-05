@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import pytest
+
 from backend.commercial_policy.document import (
     SUPPORTED_EXPORT_CAPABILITIES,
     build_initial_draft_document,
@@ -85,3 +87,81 @@ def test_production_release_requires_external_tax_and_live_provider_readiness():
     codes = {error["code"] for error in result["errors"]}
     assert "BLOCKED_EXTERNAL" in codes
     assert "NO_HEALTHY_PROVIDER" in codes
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("ownerKind", "workspace", "OWNER_KIND_INVALID"),
+        ("salesState", "paused", "SALES_STATE_INVALID"),
+        ("violationCheckEnabled", 1, "VIOLATION_CHECK_INVALID"),
+    ],
+)
+def test_offer_contract_rejects_invalid_closed_fields(field, value, expected_code):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][0][field] = value
+
+    result = validate_document(document)
+
+    assert any(
+        error["code"] == expected_code and error["path"] == f"offers[0].{field}"
+        for error in result["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("period", "weekly", "PRICE_PERIOD_INVALID"),
+        ("currency", "USD", "PRICE_CURRENCY_INVALID"),
+    ],
+)
+def test_offer_price_rejects_noncanonical_period_and_currency(field, value, expected_code):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][0]["price"][field] = value
+
+    result = validate_document(document)
+
+    assert any(
+        error["code"] == expected_code and error["path"] == f"offers[0].price.{field}"
+        for error in result["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("name", 10, "DISPLAY_TEXT_INVALID"),
+        ("description", [], "DISPLAY_TEXT_INVALID"),
+        ("order", -1, "DISPLAY_ORDER_INVALID"),
+        ("badge", {}, "DISPLAY_TEXT_INVALID"),
+        ("recommended", "yes", "DISPLAY_BOOLEAN_INVALID"),
+        ("visibility", "members_only", "DISPLAY_VISIBILITY_INVALID"),
+        ("variantLabel", 7, "DISPLAY_TEXT_INVALID"),
+        ("periodLabel", False, "DISPLAY_TEXT_INVALID"),
+        ("benefits", ["Hợp lệ", 2], "DISPLAY_BENEFITS_INVALID"),
+    ],
+)
+def test_offer_display_metadata_is_typed(field, value, expected_code):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][0]["display"][field] = value
+
+    result = validate_document(document)
+
+    assert any(
+        error["code"] == expected_code
+        and error["path"] == f"offers[0].display.{field}"
+        for error in result["errors"]
+    )
+
+
+def test_malformed_offer_item_returns_typed_validation_error_instead_of_raising():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][0] = "not-an-object"
+
+    result = validate_document(document)
+
+    assert any(
+        error["code"] == "OFFER_OBJECT_REQUIRED" and error["path"] == "offers[0]"
+        for error in result["errors"]
+    )

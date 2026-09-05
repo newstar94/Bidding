@@ -1394,6 +1394,108 @@ test("initial_plan_draft_storage_failure_does_not_leave_ephemeral_plan", async (
   }
 });
 
+test("plan edit waits for an active paginated projection before capturing its draft", async () => {
+  const previousDocument = globalThis.document;
+  const pull = deferred();
+  const token = "user:org-a@1";
+  const baseline = {
+    id: "plan-01",
+    rootId: "plan-root",
+    maKeHoach: "KH-01",
+    tenKeHoach: "Server v1",
+    phienBan: 1,
+    isLatest: 1,
+    rowVersion: 1,
+  };
+  const state = {
+    chudautu: [], chuyengia: [], nhathau: [], kehoach: [structuredClone(baseline)],
+    goithau: [], goithauhanghoa: [], thongtinmothau: [],
+    hanghoaduthaunhathau: [], assignments: [],
+    selectedPlanVersion: {}, selectedPackageVersion: {}, selectedPackageVersionIntent: {},
+  };
+  const elements = new Map();
+  const element = (id) => {
+    if (!elements.has(id)) {
+      elements.set(id, {
+        value: "",
+        dataset: {},
+        getAttribute: () => "",
+        closest: () => null,
+        querySelectorAll: () => [],
+      });
+    }
+    return elements.get(id);
+  };
+  element("form-kehoach-id").value = baseline.id;
+  element("kh-ma").value = baseline.maKeHoach;
+  element("kh-ten").value = "Local edit";
+  element("kh-loaihinh").value = "Dự toán mua sắm";
+  element("kh-pheduyet").value = "";
+  element("kh-tongmuc").value = "1";
+  globalThis.document = { getElementById: element };
+  const model = {
+    state,
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    getCurrentDateTimeString: () => "2026-09-05 00:00:00",
+    convertDMYHMSToYMDHMS: (value) => value,
+    convertDMYToYMD: (value) => value,
+    parseVND: () => 0,
+  };
+  const paginationRequest = {
+    lease: {
+      token,
+      scope: model.workspaceScope.key,
+      state,
+      db: model.db,
+    },
+    promise: null,
+  };
+  model._paginationRequests = new Map([["kehoach:page-1", paginationRequest]]);
+  paginationRequest.promise = pull.promise.finally(() => {
+    model._paginationRequests.delete("kehoach:page-1");
+  });
+  const controller = {
+    model,
+    tempPlanData: null,
+    tempPlanAction: null,
+    planBreakdownDraft: null,
+    backupKeHoachState: null,
+    backupGoiThauState: null,
+    view: {
+      validateForm: () => true,
+      closeModal() {},
+      focusInvalidControl() {},
+    },
+    async openPlanBreakdownModal() {},
+  };
+
+  try {
+    const saving = handleKeHoachSubmit.call(controller, { preventDefault() {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(
+      model.state.kehoach[0].tenKeHoach,
+      "Server v1",
+      "the form must not mutate a projection while prior plan rendering is scheduled",
+    );
+
+    const authoritative = { ...baseline, tenKeHoach: "Server v2", rowVersion: 2 };
+    model.state.kehoach = [authoritative];
+    pull.resolve({ ok: true });
+    await saving;
+
+    assert.equal(model.state.kehoach[0].tenKeHoach, "Local edit");
+    assert.equal(model.state.kehoach[0].rowVersion, 2);
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].tenKeHoach, "Server v2");
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].rowVersion, 2);
+  } finally {
+    pull.resolve({ ok: true });
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test("workspace_change_during_initial_plan_draft_save_cannot_restore_a_checkpoint_into_b", async () => {
   const previousDocument = globalThis.document;
   const stateA = {

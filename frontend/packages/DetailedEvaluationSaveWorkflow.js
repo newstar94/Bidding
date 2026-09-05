@@ -19,7 +19,11 @@ import {
   validateDetailedEvaluationGroup,
   validateDetailedEvaluationReport,
 } from "./detailedEvaluationValidation.js";
-import { getBidderGoodsForBid, getBidderGoodsRequirements } from "./bidderGoodsSelectors.js";
+import {
+  getBidderGoodsForBid,
+  getBidderGoodsRequirements,
+  isOfficialBidderGoodsRow,
+} from "./bidderGoodsSelectors.js";
 import { validateBidderGoodsSubmission } from "./bidderGoodsValidation.js";
 import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
 
@@ -119,7 +123,7 @@ export async function executeDetailedEvaluationSave({
       requirements: bidderGoodsRequirements,
       bidPrice: state.bid?.giaDuThau,
     });
-    const hasDraftRows = bidderGoodsRows.some((row) => row.isDraft !== false);
+    const hasDraftRows = bidderGoodsRows.some((row) => !isOfficialBidderGoodsRow(row));
     if (!bidderGoodsValidation.valid || hasDraftRows) {
       await appController.view.customAlert(
         "Chưa thể hoàn thành đánh giá",

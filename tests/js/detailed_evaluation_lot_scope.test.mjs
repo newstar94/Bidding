@@ -85,3 +85,36 @@ test("detailed evaluation bidder selector only includes bids in the active lot s
   assert.equal(state.selectedBidId, "bid-pl1");
   assert.equal(state.bid.id, "bid-pl1");
 });
+
+test("PostgreSQL integer false keeps officially saved bidder goods ready after reload", () => {
+  const controller = controllerForSelectedLotScope();
+  const selectedBid = controller.model.state.thongtinmothau[0];
+  selectedBid.baoCaoDanhGiaChiTietList = [{
+    id: "report-single",
+    loaiVong: "single",
+    trangThai: "draft",
+    chiTietList: [],
+    extension: {
+      completedGroups: ["validity", "capacity", "technical"],
+      groupResults: {
+        validity: "Đạt",
+        capacity: "Đạt",
+        technical: "Đạt",
+      },
+    },
+  }];
+  controller.model.state.hanghoaduthaunhathau = [{
+    id: "bidder-goods-1",
+    goiThauId: "package-1",
+    thongTinMoThauId: selectedBid.id,
+    isDraft: 0,
+    trangThaiUuDai: "ready",
+  }];
+
+  const state = resolveDetailedEvaluationState(controller);
+
+  assert.deepEqual(
+    state.context.visibleGroups,
+    ["validity", "capacity", "technical", "bidder_goods", "financial"],
+  );
+});

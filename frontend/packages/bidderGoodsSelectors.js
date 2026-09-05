@@ -1,5 +1,9 @@
 export const BIDDER_GOODS_TAB = "bidder_goods";
 
+export function isOfficialBidderGoodsRow(row) {
+  return [false, 0, "0", "false", "False"].includes(row?.isDraft);
+}
+
 export function getBidderGoodsRequirements(model, pkg, bid) {
   const lotCode = String(bid?.maPhanLo || "").trim().toLocaleLowerCase("vi");
   const lot = (pkg?.phanLoList || []).find((item) => String(item.maPhanLo || "").trim().toLocaleLowerCase("vi") === lotCode);

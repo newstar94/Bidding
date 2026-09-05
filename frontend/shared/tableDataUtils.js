@@ -4,6 +4,11 @@ import {
   captureWorkspaceLease,
 } from "../app/workspaceLease.js";
 import { perfNow, reportPerf } from "./perfDiagnostics.js";
+import { getAppController } from "../app/controllerRef.js";
+import {
+  capturePlanBreakdownDraftLocalState,
+  rebasePlanBreakdownDraftAfterServerMerge,
+} from "../plans/planBreakdownDraft.js";
 import {
   assertProjectionAuthorizationScopeCurrent,
   captureProjectionAuthorizationScope,
@@ -653,6 +658,12 @@ export function cachePaginatedRecords(
     ? (records || []).map((record) => model.normalizeRecordKeys(record, key))
     : records || []
   ).map((record) => ({ ...record, referenceOnly: false }));
+  const appController = getAppController();
+  const draftController = appController?.model === model ? appController : null;
+  const draftLocalState = capturePlanBreakdownDraftLocalState(
+    model,
+    draftController?.planBreakdownDraft,
+  );
   if (!Array.isArray(lease.state[key])) {
     lease.state[key] = [];
   }
@@ -664,6 +675,14 @@ export function cachePaginatedRecords(
       lease.state[key].push(record);
     }
   });
+  if (draftLocalState) {
+    rebasePlanBreakdownDraftAfterServerMerge(
+      model,
+      draftController.planBreakdownDraft,
+      draftLocalState,
+      new Set([key]),
+    );
+  }
   if (normalized.length > 0) {
     model.entityIndexes?.invalidate?.(key, { notify: !preserveQueryCache });
   }

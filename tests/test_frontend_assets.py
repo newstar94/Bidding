@@ -50,6 +50,9 @@ def _valid_manifest() -> dict[str, object]:
             "css": ["assets/app-abcdefgh.css"],
             "imports": ["_shared.js"],
         },
+        "views/css/landing-shell.css": {
+            "file": "assets/landing-shell-abcdefgh.css",
+        },
         "_shared.js": {"file": "assets/shared-abcdefgh.js"},
     }
 
@@ -58,6 +61,7 @@ def _valid_assets() -> dict[str, bytes]:
     return {
         "assets/app-abcdefgh.js": b"app",
         "assets/app-abcdefgh.css": b"styles",
+        "assets/landing-shell-abcdefgh.css": b"landing styles",
         "assets/shared-abcdefgh.js": b"shared",
     }
 
@@ -71,6 +75,7 @@ def test_valid_production_manifest_resolves_only_hashed_assets(tmp_path: Path):
 
     assert assets.app_file == "assets/app-abcdefgh.js"
     assert assets.stylesheets == ("assets/app-abcdefgh.css",)
+    assert assets.landing_stylesheet == "assets/landing-shell-abcdefgh.css"
     assert assets.preload_files == (
         "assets/app-abcdefgh.js",
         "assets/shared-abcdefgh.js",

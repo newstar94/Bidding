@@ -40,9 +40,26 @@ class CommercialPolicy:
                 status_code=503,
             )
         document = release["snapshot"]
+        offers_with_source_order = []
+        for source_order, offer in enumerate(document.get("offers") or []):
+            if offer.get("salesState") != "sellable":
+                continue
+            display = offer.get("display") or {}
+            if display.get("visibility", "public") == "hidden":
+                continue
+            display_order = display.get("order")
+            if (
+                not isinstance(display_order, int)
+                or isinstance(display_order, bool)
+                or display_order < 0
+            ):
+                display_order = source_order
+            offers_with_source_order.append((display_order, source_order, offer))
         offers = [
-            offer for offer in document.get("offers") or []
-            if offer.get("salesState") == "sellable"
+            offer for _, _, offer in sorted(
+                offers_with_source_order,
+                key=lambda item: (item[0], item[1]),
+            )
         ]
         packs = list(document.get("creditPacks") or [])
         return {

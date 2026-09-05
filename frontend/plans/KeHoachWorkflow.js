@@ -42,6 +42,7 @@ import {
   isWorkspaceLeaseCurrent,
   workspaceChangedError,
 } from "../app/workspaceLease.js";
+import { awaitCurrentWorkspacePulls } from "../app/SyncWorkspaceContext.js";
 import {
   capturePlanBreakdownDraft,
   boundProcurementRevisionChanges,
@@ -702,6 +703,7 @@ export async function editKeHoach(id, {
 }
 export async function handleKeHoachSubmit(e) {
   e.preventDefault();
+  await awaitCurrentWorkspacePulls(this);
   const form = document.getElementById("form-kehoach");
   if (!this.view.validateForm(form)) return;
   const id = document.getElementById("form-kehoach-id").value;

@@ -157,19 +157,35 @@ function renderOffers() {
   const policyDocument = state.draft?.document;
   if (!policyDocument) return;
   const savings = new Map((state.validation?.simulation?.connectedSavings || []).map((item) => [item.tier, item]));
+  const validationErrors = new Map((state.validation?.errors || []).map((error) => [error.path, error]));
+  const fieldError = (path) => {
+    const error = validationErrors.get(path);
+    return error ? `<small class="commercial-field-error" role="alert">${escapeHtml(error.message)}</small>` : "";
+  };
   html(document.getElementById("commercial-offers-content"), `
     <div class="commercial-table-wrap"><table class="data-table commercial-offer-table" data-mobile-layout="cards">
       <thead><tr><th>Quy mô</th><th>Biến thể</th><th>Đối tượng sở hữu</th><th>Số thành viên</th><th>Giá gói</th><th>Lượt tra cứu kèm theo</th><th>Trạng thái bán</th></tr></thead>
-      <tbody>${policyDocument.offers.map((offer, index) => `<tr>
-        <td data-label="Quy mô"><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${escapeHtml(offer.code)}</small></td>
+      <tbody>${policyDocument.offers.map((offer, index) => `<tr data-commercial-offer-row="${escapeHtml(offer.code)}">
+        <td data-label="Quy mô"><strong>${escapeHtml(offer.display?.name || offer.tier)}</strong><small>${escapeHtml(offer.code)}</small><div class="commercial-offer-order"><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="up" ${index === 0 ? "disabled" : ""} aria-label="Đưa ${escapeHtml(offer.display?.name || offer.code)} lên">↑</button><button type="button" class="btn btn-outline" data-offer-code="${escapeHtml(offer.code)}" data-offer-move="down" ${index === policyDocument.offers.length - 1 ? "disabled" : ""} aria-label="Đưa ${escapeHtml(offer.display?.name || offer.code)} xuống">↓</button></div></td>
         <td data-label="Biến thể"><span class="commercial-badge" data-tone="${offer.variant === "connected" ? "success" : "neutral"}">${offer.variant === "connected" ? "Kết nối" : "Nội bộ"}</span>${offer.variant === "connected" && savings.get(offer.tier) ? `<small>Tiết kiệm ${(savings.get(offer.tier).savingBasisPoints / 100).toFixed(1)}%</small>` : ""}</td>
         <td data-label="Đối tượng sở hữu">${humanize(offer.ownerKind, { organization: "Tổ chức", account: "Tài khoản cá nhân" })}</td>
-        <td data-label="Nhân sự"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-index="${index}" data-field="memberQuota" value="${integerInput(offer.memberQuota)}"></td>
-        <td data-label="Giá gói"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-index="${index}" data-field="price.total" value="${integerInput(offer.price.total)}"></td>
-        <td data-label="Lượt tra cứu kèm theo"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-index="${index}" data-field="includedProcurementQuota" value="${integerInput(offer.includedProcurementQuota)}"></td>
-        <td data-label="Trạng thái bán"><select class="form-control" data-offer-index="${index}" data-field="salesState"><option value="sellable" ${offer.salesState === "sellable" ? "selected" : ""}>Đang bán</option><option value="stopped" ${offer.salesState === "stopped" ? "selected" : ""}>Đã dừng bán</option><option value="non_sellable" ${offer.salesState === "non_sellable" ? "selected" : ""}>Không bán</option></select></td>
-      </tr>`).join("")}</tbody>
+        <td data-label="Nhân sự"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="memberQuota" value="${integerInput(offer.memberQuota)}"></td>
+        <td data-label="Giá gói"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="price.total" value="${integerInput(offer.price.total)}"></td>
+        <td data-label="Lượt lấy hồ sơ Mua Sắm Công kèm theo"><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-offer-code="${escapeHtml(offer.code)}" data-field="includedProcurementQuota" value="${integerInput(offer.includedProcurementQuota)}"></td>
+        <td data-label="Trạng thái bán"><select class="form-control" data-offer-code="${escapeHtml(offer.code)}" data-field="salesState"><option value="sellable" ${offer.salesState === "sellable" ? "selected" : ""}>Đang bán</option><option value="stopped" ${offer.salesState === "stopped" ? "selected" : ""}>Đã dừng bán</option><option value="non_sellable" ${offer.salesState === "non_sellable" ? "selected" : ""}>Không bán</option></select></td>
+      </tr><tr class="commercial-offer-presentation"><td colspan="7"><fieldset><legend>Hiển thị công khai · ${escapeHtml(offer.code)}</legend><div class="commercial-offer-presentation-grid">
+        <label>Tên hiển thị<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.name" value="${escapeHtml(offer.display?.name || "")}">${fieldError(`offers[${index}].display.name`)}</label>
+        <label>Thứ tự<input class="form-control" type="number" min="0" step="1" data-offer-code="${escapeHtml(offer.code)}" data-field="display.order" value="${Number(offer.display?.order ?? index)}">${fieldError(`offers[${index}].display.order`)}</label>
+        <label>Nhãn tùy chọn<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.badge" value="${escapeHtml(offer.display?.badge || "")}">${fieldError(`offers[${index}].display.badge`)}</label>
+        <label>Nhãn phương án<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.variantLabel" value="${escapeHtml(offer.display?.variantLabel || "")}">${fieldError(`offers[${index}].display.variantLabel`)}</label>
+        <label>Nhãn chu kỳ<input class="form-control" type="text" data-offer-code="${escapeHtml(offer.code)}" data-field="display.periodLabel" value="${escapeHtml(offer.display?.periodLabel || "")}">${fieldError(`offers[${index}].display.periodLabel`)}</label>
+        <label>Hiển thị<select class="form-control" data-offer-code="${escapeHtml(offer.code)}" data-field="display.visibility"><option value="public" ${offer.display?.visibility !== "hidden" ? "selected" : ""}>Công khai</option><option value="hidden" ${offer.display?.visibility === "hidden" ? "selected" : ""}>Ẩn khỏi catalog</option></select>${fieldError(`offers[${index}].display.visibility`)}</label>
+        <label class="commercial-check"><input type="checkbox" data-offer-code="${escapeHtml(offer.code)}" data-field="display.recommended" ${offer.display?.recommended === true ? "checked" : ""}> Đánh dấu đề xuất</label>
+        <label class="commercial-offer-presentation-wide">Mô tả<textarea class="form-control" rows="2" data-offer-code="${escapeHtml(offer.code)}" data-field="display.description">${escapeHtml(offer.display?.description || "")}</textarea>${fieldError(`offers[${index}].display.description`)}</label>
+        <label class="commercial-offer-presentation-wide">Lợi ích, mỗi dòng một mục<textarea class="form-control" rows="3" data-offer-code="${escapeHtml(offer.code)}" data-field="display.benefits">${escapeHtml((offer.display?.benefits || []).join("\n"))}</textarea>${fieldError(`offers[${index}].display.benefits`)}</label>
+      </div></fieldset></td></tr>`).join("")}</tbody>
     </table></div>
+    <p class="commercial-callout commercial-callout--warning"><strong>PRODUCT_GATE:</strong> Thêm, xóa hoặc đổi định danh offer cần quyết định sản phẩm; giao diện này chỉ sửa metadata hiển thị, trạng thái bán và thứ tự của offer hiện có.</p>
     <div class="commercial-credit-packs">${policyDocument.creditPacks.map((pack, index) => `<label><span>${Number(pack.quantity).toLocaleString("vi-VN")} lượt</span><input class="form-control" type="text" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" data-pack-index="${index}" value="${integerInput(pack.price)}"><small>${escapeHtml(pack.code)}</small></label>`).join("")}</div>
   `);
 }
@@ -233,16 +249,21 @@ function renderOrdersAndHistory() {
 
 function bindDraftInputs() {
   const root = document.getElementById("tab-commercial-admin");
-  root?.querySelectorAll("[data-offer-index]").forEach((input) => input.addEventListener("change", () => {
-    const offer = state.draft.document.offers[Number(input.dataset.offerIndex)];
+  root?.querySelectorAll("[data-offer-code][data-field]").forEach((input) => input.addEventListener("change", () => {
+    const offer = state.draft.document.offers.find((item) => item.code === input.dataset.offerCode);
+    if (!offer) return;
     const field = input.dataset.field;
-    const numericField = field !== "salesState";
-    const value = numericField ? parseIntegerInput(input.value) : input.value;
+    const numericField = ["memberQuota", "price.total", "includedProcurementQuota", "display.order"].includes(field);
+    let value = numericField ? parseIntegerInput(input.value) : input.value;
     const minimum = field === "memberQuota" ? 1 : 0;
     if (numericField && (value === null || value < minimum)) {
       input.setCustomValidity(`Giá trị phải là số nguyên từ ${minimum.toLocaleString("vi-VN")} trở lên.`);
       input.reportValidity();
-      const previous = field === "price.total" ? offer.price.total : offer[field];
+      const previous = field === "price.total"
+        ? offer.price.total
+        : field === "display.order"
+          ? offer.display?.order ?? 0
+          : offer[field];
       input.value = integerInput(previous);
       return;
     }
@@ -251,7 +272,28 @@ function bindDraftInputs() {
       offer.price.total = value;
       offer.price.subtotal = value;
       offer.price.tax = 0;
+    } else if (field.startsWith("display.")) {
+      offer.display ||= {};
+      const displayField = field.slice("display.".length);
+      if (displayField === "recommended") value = input.checked;
+      if (displayField === "benefits") {
+        value = input.value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean);
+      }
+      offer.display[displayField] = value;
     } else offer[field] = value;
+    state.validation = null;
+    renderAll(state.controller);
+  }));
+  root?.querySelectorAll("[data-offer-code][data-offer-move]").forEach((button) => button.addEventListener("click", () => {
+    const offers = state.draft.document.offers;
+    const sourceIndex = offers.findIndex((offer) => offer.code === button.dataset.offerCode);
+    const targetIndex = sourceIndex + (button.dataset.offerMove === "up" ? -1 : 1);
+    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= offers.length) return;
+    [offers[sourceIndex], offers[targetIndex]] = [offers[targetIndex], offers[sourceIndex]];
+    offers.forEach((offer, index) => {
+      offer.display ||= {};
+      offer.display.order = index;
+    });
     state.validation = null;
     renderAll(state.controller);
   }));

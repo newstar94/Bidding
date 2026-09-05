@@ -119,8 +119,8 @@ def test_active_role_route_binds_selection_to_resolved_workspace(monkeypatch):
 
     monkeypatch.setattr(
         auth_routes,
-        "verify_session",
-        lambda _request: (True, session),
+        "verify_session_in_transaction",
+        lambda _cursor, _request: (True, session),
     )
     monkeypatch.setattr(
         auth_routes.database,
@@ -148,6 +148,70 @@ def test_active_role_route_binds_selection_to_resolved_workspace(monkeypatch):
 
     assert response.status_code == 200
     assert persisted == [("session-1", "user-1", "manager", "org-a")]
+
+
+def test_active_role_route_verifies_and_updates_in_one_database_transaction(monkeypatch):
+    connections = []
+    authoritative_cursors = []
+
+    class Connection:
+        def __init__(self):
+            self.cursor_instance = RecordingCursor()
+            self.closed = False
+
+        def cursor(self):
+            return self.cursor_instance
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            self.closed = True
+
+    class Database:
+        def get_connection(self):
+            connection = Connection()
+            connections.append(connection)
+            return connection
+
+    session = type(
+        "Session",
+        (),
+        {
+            "user_id": "user-1",
+            "session_id": "session-1",
+            "platform_role": "user",
+        },
+    )()
+    request = type("Request", (), {})()
+
+    monkeypatch.setattr(auth_routes, "database", Database())
+    monkeypatch.setattr(
+        auth_routes,
+        "verify_session",
+        lambda _request: (_ for _ in ()).throw(
+            AssertionError("active-role must not open a separate session connection")
+        ),
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "verify_session_in_transaction",
+        lambda cursor, _request: authoritative_cursors.append(cursor) or (True, session),
+    )
+    monkeypatch.setattr(auth_routes, "get_active_org", lambda *_args, **_kwargs: "org-a")
+    monkeypatch.setattr(auth_routes, "organization_membership_role", lambda *_args: "manager")
+    monkeypatch.setattr(auth_routes, "set_session_active_role", lambda *_args: True)
+    monkeypatch.setattr(auth_routes, "log_audit", lambda *_args, **_kwargs: None)
+
+    response = auth_routes._set_active_role_sync(request, "manager")
+
+    assert response.status_code == 200
+    assert len(connections) == 1
+    assert authoritative_cursors == [connections[0].cursor_instance]
+    assert connections[0].closed is True
 
 
 def test_session_bootstrap_rederives_role_for_selected_workspace():

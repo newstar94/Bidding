@@ -15,7 +15,7 @@ import {
 import { renderChangedState } from "./SyncRenderCoordinator.js";
 import { normalizePackageVersionSelection } from "../shared/versionResolver.js";
 import {
-  PLAN_BREAKDOWN_DRAFT_TABLES,
+  capturePlanBreakdownDraftLocalState,
   rebasePlanBreakdownDraftAfterServerMerge,
 } from "../plans/planBreakdownDraft.js";
 import { reapplyPlanVersionDraftSessions } from "../plans/PlanVersionDraftSession.js";
@@ -92,11 +92,10 @@ function shouldShowFullPullLoader(controller, isBackground, hasLocalDataForCurre
 }
 
 function captureActivePlanBreakdownState(controller) {
-  if (!controller?.planBreakdownDraft?.active) return null;
-  return Object.fromEntries(PLAN_BREAKDOWN_DRAFT_TABLES.map((table) => [
-    table,
-    structuredClone(controller.model.state?.[table] || []),
-  ]));
+  return capturePlanBreakdownDraftLocalState(
+    controller?.model,
+    controller?.planBreakdownDraft,
+  );
 }
 
 function reconcilePulledPlanBreakdownState(controller, localBefore, changedKeys) {
@@ -201,7 +200,11 @@ export async function fetchRecordByLookup(tableKey, lookup) {
       ? model.normalizeRecordKeys(data.item, tableKey)
       : data.item;
     const record = { ...normalized, referenceOnly: false };
+    const draftLocalState = captureActivePlanBreakdownState(this);
     storeFetchedRecord(model, tableKey, record);
+    if (draftLocalState) {
+      reconcilePulledPlanBreakdownState(this, draftLocalState, new Set([tableKey]));
+    }
     if (request.lease.db && typeof request.lease.db.putRecord === "function") {
       await request.lease.db.putRecord(tableKey, record);
       assertWorkspaceLeaseCurrent(model, request.lease);

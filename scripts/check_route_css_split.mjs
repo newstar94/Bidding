@@ -16,7 +16,7 @@ const ROUTES = Object.freeze([
     ".dashboard-visually-hidden",
     "frontend/app/BiddingView.js",
   ],
-  ["frontend/landing/LandingPage.js", ".landing-eyebrow-dot", "frontend/app/app.js"],
+  ["frontend/landing/LandingPage.js", ".landing-product-stage", "frontend/app/app.js"],
   ["frontend/legal/LegalPage.js", ".legal-document-note", "frontend/app/app.js"],
   ["frontend/errors/NotFoundPage.js", ".bf-not-found", "frontend/app/app.js"],
   ["frontend/assistant/AssistantLoader.js", ".bf-assistant-panel", "frontend/app/workspaceBootstrap.js"],

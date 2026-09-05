@@ -127,6 +127,77 @@ test("active-role shell renders before the previous persona snapshot purge compl
   }
 });
 
+test("active-role route loading overlaps durable persona purge", async () => {
+  const route = deferred();
+  const purge = deferred();
+  const events = [];
+  const document = emptyDocument();
+  const restore = installGlobals({
+    document,
+    fetch: async () => new Response(JSON.stringify({ activeRole: "employee" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+    history: { pushState() { events.push("route"); } },
+    localStorage: memoryStorage({ bf_active_org: "org-1" }),
+    location: { origin: "http://localhost" },
+    navigator: { onLine: true },
+    sessionStorage: memoryStorage({ bf_active_org: "org-1", bf_user_id: "user-1" }),
+    window: { location: { pathname: "/tong-quan" } },
+  });
+  try {
+    const button = {
+      disabled: false,
+      getAttribute: () => "employee",
+      removeAttribute() {},
+      setAttribute() {},
+    };
+    const controller = {
+      model: {
+        state: { activeuser: { id: "user-1", name: "Người dùng", dbRoles: ["manager"] } },
+        switchActiveRole(roleName) { this.state.activerole = roleName; },
+        async prepareWorkspaceRoleTransition() {},
+        async purgeWorkspaceData() {
+          events.push("purge-start");
+          await purge.promise;
+          events.push("purge-complete");
+        },
+        async init() { events.push("local-ready"); },
+      },
+      view: {
+        updateActiveUserProfileDisplay() {},
+        async customAlert() {},
+      },
+      async switchTab() {
+        events.push("route-start");
+        await route.promise;
+        events.push("route-complete");
+      },
+      initializeStartupReconciliation() {},
+      reconcileInitialRouteData() { return Promise.resolve(true); },
+      getStartupPriorityKeys() { return []; },
+    };
+    setupRBACEvents.call(controller);
+
+    const handling = document.listeners.get("click")({ target: { closest: () => button } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.ok(events.includes("route-start"));
+    assert.ok(events.includes("purge-start"), "purge must not wait for route dependencies");
+    assert.ok(!events.includes("local-ready"));
+
+    route.resolve();
+    purge.resolve();
+    await handling;
+    assert.ok(events.indexOf("route-complete") < events.indexOf("local-ready"));
+    assert.ok(events.indexOf("purge-complete") < events.indexOf("local-ready"));
+  } finally {
+    route.resolve();
+    purge.resolve();
+    restore();
+  }
+});
+
 for (const failure of [
   { name: "403", response: () => new Response(JSON.stringify({ error: "Không có quyền", requestId: "req-403" }), { status: 403, headers: { "content-type": "application/json" } }) },
   { name: "409", response: () => new Response(JSON.stringify({ error: "Phiên đã thay đổi" }), { status: 409, headers: { "content-type": "application/json" } }) },

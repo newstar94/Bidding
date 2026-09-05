@@ -1,3 +1,6 @@
+/* Hallmark · restored legacy direction · design-system: design.md
+ * pre-emit critique: P5 H4 E4 S5 R4 V5
+ */
 html[data-bf-shell="landing"] {
   --landing-literal-white: #fff;
   --landing-literal-canvas: #f8fafc;
@@ -2134,7 +2137,7 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-footer .landing-brand-copy small,
 .landing-footer p {
-  color: #8f9caf;
+  color: var(--landing-literal-section-line);
 }
 
 .landing-footer p {
@@ -3417,7 +3420,7 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-commercial-price small,
 .landing-commercial-option p {
-  color: #6e7d93;
+  color: var(--landing-literal-preview-muted);
   font-size: 11px;
 }
 
@@ -3516,7 +3519,16 @@ a.landing-cta-login {
 
 .landing-footer {
   border-top: 1px solid #dce4ef;
+  color: var(--landing-muted);
   background: var(--landing-literal-white);
+}
+
+.landing-footer .landing-brand-copy strong,
+.landing-footer .landing-brand-copy small,
+.landing-footer p,
+.landing-footer-links a,
+.landing-footer-links a:hover {
+  color: var(--landing-ink);
 }
 
 @media (max-width: 1180px) {

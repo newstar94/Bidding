@@ -35,7 +35,37 @@ const draft = {
       includedProcurementQuota: 0,
       salesState: "sellable",
       price: { subtotal: 12_000_000, tax: 0, total: 12_000_000 },
-      display: { name: "Bạc" },
+      display: {
+        name: "Bạc nội bộ",
+        description: "Mô tả nội bộ",
+        order: 0,
+        badge: "",
+        recommended: false,
+        visibility: "public",
+        variantLabel: "Nội bộ",
+        periodLabel: "/ năm",
+        benefits: ["Lợi ích nội bộ"],
+      },
+    }, {
+      code: "silver.connected.yearly",
+      tier: "silver",
+      variant: "connected",
+      ownerKind: "organization",
+      memberQuota: 5,
+      includedProcurementQuota: 3000,
+      salesState: "sellable",
+      price: { subtotal: 15_000_000, tax: 0, total: 15_000_000 },
+      display: {
+        name: "Bạc kết nối",
+        description: "Mô tả kết nối",
+        order: 1,
+        badge: "Đề xuất",
+        recommended: true,
+        visibility: "public",
+        variantLabel: "Kết nối",
+        periodLabel: "/ năm",
+        benefits: ["Lợi ích kết nối"],
+      },
     }],
     creditPacks: [{ code: "procurement.20", quantity: 20, price: 99_000 }],
     policies: {
@@ -113,9 +143,9 @@ test("Commercial Control Center renders a loaded policy document into the DOM", 
     assert.equal(await page.getByText("Policy", { exact: true }).count(), 0);
     assert.equal(await page.getByText("Payment provider", { exact: true }).count(), 0);
     await page.getByText("silver.internal.yearly", { exact: true }).waitFor();
-    assert.equal(await page.locator("[data-offer-index='0']").count(), 4);
+    assert.equal(await page.locator("[data-offer-code='silver.internal.yearly']").count() >= 4, true);
     assert.equal(
-      await page.locator("[data-offer-index='0']").nth(1).inputValue(),
+      await page.locator("[data-offer-code='silver.internal.yearly'][data-field='price.total']").inputValue(),
       "12.000.000",
     );
     assert.equal(
@@ -123,20 +153,43 @@ test("Commercial Control Center renders a loaded policy document into the DOM", 
       "99.000",
     );
 
-    const yearlyPrice = page.locator("[data-offer-index='0']").nth(1);
+    const yearlyPrice = page.locator("[data-offer-code='silver.internal.yearly'][data-field='price.total']");
     await yearlyPrice.fill("13000000");
     await yearlyPrice.dispatchEvent("change");
     assert.equal(
-      await page.locator("[data-offer-index='0']").nth(1).inputValue(),
+      await page.locator("[data-offer-code='silver.internal.yearly'][data-field='price.total']").inputValue(),
       "13.000.000",
     );
 
-    const includedQuota = page.locator("[data-offer-index='0']").nth(2);
+    const includedQuota = page.locator("[data-offer-code='silver.internal.yearly'][data-field='includedProcurementQuota']");
     await includedQuota.fill("3000");
     await includedQuota.dispatchEvent("change");
     assert.equal(
-      await page.locator("[data-offer-index='0']").nth(2).inputValue(),
+      await page.locator("[data-offer-code='silver.internal.yearly'][data-field='includedProcurementQuota']").inputValue(),
       "3.000",
+    );
+
+    const displayName = page.locator("[data-offer-code='silver.internal.yearly'][data-field='display.name']");
+    await displayName.fill("Tên hiển thị tùy chỉnh");
+    await displayName.dispatchEvent("change");
+    assert.equal(await displayName.inputValue(), "Tên hiển thị tùy chỉnh");
+
+    const benefits = page.locator("[data-offer-code='silver.internal.yearly'][data-field='display.benefits']");
+    await benefits.fill("Lợi ích thứ nhất\nLợi ích thứ hai");
+    await benefits.dispatchEvent("change");
+    assert.equal(await benefits.inputValue(), "Lợi ích thứ nhất\nLợi ích thứ hai");
+
+    await page.locator("[data-offer-code='silver.internal.yearly'][data-offer-move='down']").click();
+    assert.deepEqual(
+      await page.locator("[data-commercial-offer-row]").evaluateAll(
+        (rows) => rows.map((row) => row.getAttribute("data-commercial-offer-row")),
+      ),
+      ["silver.connected.yearly", "silver.internal.yearly"],
+    );
+
+    assert.match(
+      await page.locator("#commercial-offers-content").textContent(),
+      /Thêm, xóa hoặc đổi định danh offer cần quyết định sản phẩm/u,
     );
 
   });

@@ -42,6 +42,10 @@ import {
   resolveProcurementImportedPackageStatus,
 } from "../../frontend/procurement/ProcurementDraftWorkflow.js";
 import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
+import { fetchRecordByLookup } from "../../frontend/app/SyncPullService.js";
+import { setAppController } from "../../frontend/app/controllerRef.js";
+import { cachePaginatedRecords } from "../../frontend/shared/tableDataUtils.js";
+import { refreshRecordBeforeMutation } from "../../frontend/shared/MutationService.js";
 import {
   createPlanVersionDraftSession,
   hydratePlanVersionDraftSessions,
@@ -1583,6 +1587,188 @@ test("row-version-only delta rebases an active edit draft without losing local f
     tenGoiThau: "Local edit",
   });
   assert.equal(draft.snapshot.goithau[0].rowVersion, 3);
+});
+
+test("late record lookup rebases an active plan draft while persisting the authoritative record", async () => {
+  const baselinePlan = {
+    id: "plan-01",
+    rootId: "plan-root",
+    phienBan: "01",
+    isLatest: 1,
+    rowVersion: 7,
+    tenKeHoach: "Server baseline",
+    referenceOnly: false,
+  };
+  const state = {
+    kehoach: [structuredClone(baselinePlan)],
+    goithau: [],
+    chudautu: [],
+    chuyengia: [],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const persisted = [];
+  const model = {
+    state,
+    db: {
+      async putRecord(table, record) {
+        persisted.push([table, structuredClone(record)]);
+      },
+    },
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  const controller = {
+    model,
+    planBreakdownDraft: capturePlanBreakdownDraft(state, {
+      planId: baselinePlan.id,
+      action: "edit",
+    }),
+  };
+  state.kehoach[0].tenKeHoach = "Local draft edit";
+  const authoritativePlan = {
+    ...baselinePlan,
+    rowVersion: 8,
+  };
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ item: authoritativePlan }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    const fetched = await fetchRecordByLookup.call(
+      controller,
+      "kehoach",
+      authoritativePlan.id,
+    );
+
+    assert.deepEqual(fetched, authoritativePlan);
+    assert.equal(state.kehoach[0].tenKeHoach, "Local draft edit");
+    assert.equal(state.kehoach[0].rowVersion, 8);
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].tenKeHoach, "Server baseline");
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].rowVersion, 8);
+    assert.deepEqual(persisted, [["kehoach", authoritativePlan]]);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("mutation refresh consumes the rebased active-draft row instead of restoring its server response", async () => {
+  const baselinePlan = {
+    id: "plan-01",
+    rootId: "plan-root",
+    rowVersion: 7,
+    tenKeHoach: "Server baseline",
+    referenceOnly: false,
+  };
+  const state = {
+    kehoach: [structuredClone(baselinePlan)],
+    goithau: [], chudautu: [], chuyengia: [], goithauhanghoa: [],
+    thongtinmothau: [], hanghoaduthaunhathau: [], assignments: [],
+  };
+  const model = {
+    state,
+    db: { async putRecord() {} },
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  const controller = {
+    model,
+    planBreakdownDraft: capturePlanBreakdownDraft(state, {
+      planId: baselinePlan.id,
+      action: "edit",
+    }),
+    fetchRecordByLookup,
+  };
+  state.kehoach[0].tenKeHoach = "Local draft edit";
+  const authoritativePlan = { ...baselinePlan, rowVersion: 8 };
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ item: authoritativePlan }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    const refreshed = await refreshRecordBeforeMutation(
+      controller,
+      "kehoach",
+      authoritativePlan.id,
+    );
+
+    assert.equal(refreshed.tenKeHoach, "Local draft edit");
+    assert.equal(refreshed.rowVersion, 8);
+    assert.equal(state.kehoach[0].tenKeHoach, "Local draft edit");
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].rowVersion, 8);
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("late paginated projection rebases an active plan draft while caching the authoritative record", async () => {
+  const baselinePlan = {
+    id: "plan-01",
+    rootId: "plan-root",
+    phienBan: "01",
+    isLatest: 1,
+    rowVersion: 7,
+    tenKeHoach: "Server baseline",
+    referenceOnly: false,
+  };
+  const state = {
+    kehoach: [structuredClone(baselinePlan)],
+    goithau: [],
+    chudautu: [],
+    chuyengia: [],
+    goithauhanghoa: [],
+    thongtinmothau: [],
+    hanghoaduthaunhathau: [],
+    assignments: [],
+  };
+  const persisted = [];
+  const model = {
+    state,
+    db: {
+      async putRecords(table, records) {
+        persisted.push([table, structuredClone(records)]);
+      },
+    },
+    workspaceScope: { key: "user:org-a" },
+    getWorkspaceToken: () => "user:org-a@1",
+    normalizeRecordKeys: (record) => record,
+    entityIndexes: { invalidate() {} },
+  };
+  const controller = {
+    model,
+    planBreakdownDraft: capturePlanBreakdownDraft(state, {
+      planId: baselinePlan.id,
+      action: "edit",
+    }),
+  };
+  setAppController(controller);
+  state.kehoach[0].tenKeHoach = "Local draft edit";
+  const authoritativePlan = { ...baselinePlan, rowVersion: 8 };
+
+  try {
+    const cached = cachePaginatedRecords(model, "kehoach", [authoritativePlan]);
+
+    assert.deepEqual(cached, [authoritativePlan]);
+    assert.equal(state.kehoach[0].tenKeHoach, "Local draft edit");
+    assert.equal(state.kehoach[0].rowVersion, 8);
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].tenKeHoach, "Server baseline");
+    assert.equal(controller.planBreakdownDraft.snapshot.kehoach[0].rowVersion, 8);
+    assert.deepEqual(persisted, [["kehoach", [authoritativePlan]]]);
+  } finally {
+    setAppController(null);
+  }
 });
 
 test("hydration metadata rebases without turning a local package edit into a false conflict", () => {
