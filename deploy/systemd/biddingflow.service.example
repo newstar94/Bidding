@@ -19,6 +19,7 @@ Environment=UVICORN_MAX_REQUESTS_JITTER=1000
 Environment=UVICORN_WS_MAX_SIZE=65536
 Environment=UVICORN_WS_MAX_QUEUE=16
 EnvironmentFile=/etc/biddingflow/web.env
+EnvironmentFile=/etc/biddingflow/database-web.env
 RuntimeDirectory=biddingflow-metrics
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=no

@@ -18,6 +18,29 @@ chỉ ghi tên và nơi lưu secret.
 
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.
 
+## Chuẩn bị kết nối PostgreSQL production
+
+Secret manager cấp một file tổng hợp tạm thời theo
+`deploy/production-database-secret.json.example`. File này phải nằm ngoài
+release, owner `root`, mode `0600` và có bốn credential độc lập: runtime,
+migrator, backup, document worker. Tên ba role dịch vụ tự lấy theo chuẩn của ứng
+dụng; cấu hình tối thiểu chỉ gồm URL runtime và ba mật khẩu. Sinh các environment
+fragment trước preflight:
+
+```bash
+python /opt/biddingflow/current/scripts/prepare_production_database_env.py \
+  --source /run/secrets/biddingflow-database.json \
+  --output-dir /etc/biddingflow \
+  --replace
+```
+
+`biddingflow.service` nạp `database-web.env`; unit document worker phải nạp
+`database-document-worker.env` bên cạnh `document-worker.env`. Chỉ source
+`database-backup.env` cho lệnh backup và `database-migrator.env` cho lệnh
+migration. Không source file tổng hợp vào bất kỳ service nào. Công cụ chỉ sinh
+URL và file `0600`; nó không tạo PostgreSQL role/database, không cấp quyền và
+không thay đổi mật khẩu thực tế.
+
 Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
 `DOCUMENT_WORKER_TEMP_DIR/award-result-validations` trước khi đặt
 `AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED=true`. Không dùng sticky session
@@ -227,6 +250,11 @@ if [ -e "$NEW_RELEASE" ] || [ -L "$NEW_RELEASE" ]; then
 fi
 unzip biddingflow-production.zip -d "$NEW_RELEASE"
 
+python "$NEW_RELEASE/scripts/prepare_production_database_env.py" \
+  --source /run/secrets/biddingflow-database.json \
+  --output-dir /etc/biddingflow \
+  --replace
+
 PREPARE_FRONTEND_ARGS=(
   --current-release "$NEW_RELEASE"
   --expected-current-release-id "$RELEASE_ID"
@@ -242,9 +270,17 @@ python "$NEW_RELEASE/scripts/verify_document_sandbox.py"
 
 # No database mutation is allowed until extraction, the full package inventory,
 # release identity, frontend graph and static sandbox have all passed.
+set -a
+. /etc/biddingflow/database-backup.env
+set +a
 python "$NEW_RELEASE/scripts/backup.py" create
 python "$NEW_RELEASE/scripts/backup.py" verify --snapshot <snapshot>
+unset BACKUP_DATABASE_URL
+set -a
+. /etc/biddingflow/database-migrator.env
+set +a
 DATABASE_AUTO_MIGRATE=false python "$NEW_RELEASE/scripts/manage_database.py"
+unset MIGRATOR_DATABASE_URL
 
 CUTOVER_STARTED=0
 rollback_failed_cutover() {

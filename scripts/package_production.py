@@ -52,6 +52,7 @@ RUNTIME_FILES = (
     "scripts/configure_database_roles.py",
     "scripts/env_utils.py",
     "scripts/manage_database.py",
+    "scripts/prepare_production_database_env.py",
     "scripts/prepare_frontend_asset_compatibility.py",
     "scripts/run_document_worker.py",
     "scripts/verify_document_worker_deployment.py",

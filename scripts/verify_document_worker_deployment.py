@@ -186,6 +186,7 @@ def validate_worker_unit_properties(
     *,
     exchange_root: Path,
     environment_file: Path,
+    database_environment_file: Path,
 ) -> tuple[int, int]:
     _require_equal(
         worker,
@@ -221,8 +222,9 @@ def validate_worker_unit_properties(
     if normalized_paths != {expected_root}:
         raise VerificationError("Document worker may write outside the exchange root.")
     environment_files = worker["EnvironmentFiles"]
-    if str(environment_file.resolve()) not in environment_files:
-        raise VerificationError("Document worker is not using the verified environment file.")
+    for required_file in (environment_file, database_environment_file):
+        if str(required_file.resolve()) not in environment_files:
+            raise VerificationError("Document worker is not using every verified environment file.")
     if _systemd_number(worker["CPUQuotaPerSecUSec"], "CPUQuotaPerSecUSec") > 2_000_000:
         raise VerificationError("Document worker CPUQuota exceeds 200%.")
     limits = {
@@ -511,6 +513,11 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--worker-unit", default="biddingflow-document-worker.service")
     parser.add_argument("--web-unit", default="biddingflow.service")
     parser.add_argument("--environment-file", type=Path, default=Path("/etc/biddingflow/document-worker.env"))
+    parser.add_argument(
+        "--database-environment-file",
+        type=Path,
+        default=Path("/etc/biddingflow/database-document-worker.env"),
+    )
     parser.add_argument("--release-root", type=Path, default=Path("/opt/biddingflow"))
     parser.add_argument("--exchange-root", type=Path, default=Path("/var/lib/biddingflow-document-jobs"))
     parser.add_argument("--python", type=Path, default=Path("/opt/biddingflow/.venv/bin/python"))
@@ -528,12 +535,20 @@ def main() -> int:
         return 2
     release_root = arguments.release_root.resolve()
     environment_file = arguments.environment_file.resolve()
+    database_environment_file = arguments.database_environment_file.resolve()
     exchange_root = arguments.exchange_root.resolve()
     if (release_root / ".env").exists():
         print("Release root must not contain .env.", file=sys.stderr)
         return 1
     try:
         environment = parse_environment_file(environment_file)
+        database_environment = parse_environment_file(database_environment_file)
+        duplicates = sorted(environment.keys() & database_environment.keys())
+        if duplicates:
+            raise VerificationError(
+                f"Document-worker environment files contain duplicate settings: {duplicates}"
+            )
+        environment.update(database_environment)
         validate_worker_environment(environment)
         worker = _systemd_properties(arguments.worker_unit, WORKER_PROPERTIES)
         web = _systemd_properties(arguments.web_unit, WEB_PROPERTIES)
@@ -542,6 +557,7 @@ def main() -> int:
             web,
             exchange_root=exchange_root,
             environment_file=environment_file,
+            database_environment_file=database_environment_file,
         )
         validate_process_boundaries(worker_pid, web_pid, environment)
         validate_exchange_root(exchange_root, environment)

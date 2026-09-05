@@ -31,6 +31,24 @@ File production có `BIDDING_DATABASE_PROFILE` sẽ bị từ chối. Các lện
 repo đọc `.env` thủ công muốn dùng URL dịch vụ đã chuyển phải dùng bộ nạp chung
 hoặc cấp URL trực tiếp; profile không phải tính năng có sẵn của python-dotenv.
 
+Production có bước chuẩn bị riêng bằng
+`scripts/prepare_production_database_env.py`. Secret manager materialize một
+file tổng hợp tạm thời theo mẫu `deploy/production-database-secret.json.example`;
+công cụ kiểm tra TLS `verify-full`, tài khoản và mật khẩu tách biệt, rồi sinh bốn
+file `database-web.env`, `database-migrator.env`, `database-backup.env` và
+`database-document-worker.env` với quyền `0600`. Đây là bước deploy, không phải
+logic startup: file tổng hợp không được đặt trong release, không được cấp cho
+web/worker và nên được secret manager thu hồi sau khi sinh file.
+
+Mỗi file đầu ra chỉ chứa URL đúng phạm vi tiến trình. Host, cổng, database mặc
+định và tham số TLS được suy ra từ `databaseUrl`; có thể đặt `database` riêng
+cho một role khi hạ tầng thực sự dùng database khác. Tên ba role dịch vụ dùng
+chuẩn có sẵn của ứng dụng nên file nguồn tối thiểu chỉ cần URL runtime và ba
+mật khẩu riêng; trường `username` chỉ cần thêm khi hạ tầng cũ dùng tên khác.
+Công cụ không tạo role,
+không cấp quyền và không đổi mật khẩu PostgreSQL; các đối tượng đó phải được
+provision trước qua quy trình quản trị database.
+
 Worker production tiếp tục chạy bằng `DOCUMENT_WORKER_DATABASE_URL` được cấp
 riêng; không cấp cho worker quyền đọc toàn bộ profile quản trị.
 
