@@ -10,6 +10,10 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
+from backend.procurement_lookup.config import (
+    PROCUREMENT_BROWSER_MODE,
+    RESEARCH_STEALTH_ENABLED,
+)
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
@@ -146,10 +150,8 @@ class MuaSamCongProcurementSource:
 
     @classmethod
     def from_environ(cls, *, observer=None):
-        browser_mode = str(
-            os.environ.get("PROCUREMENT_BROWSER_MODE", "research-stealth")
-        ).strip().casefold()
-        research_enabled = _boolean("RESEARCH_STEALTH_ENABLED", "true")
+        browser_mode = PROCUREMENT_BROWSER_MODE
+        research_enabled = RESEARCH_STEALTH_ENABLED
         allowed_research_hosts = {
             host.strip().casefold()
             for host in os.environ.get(

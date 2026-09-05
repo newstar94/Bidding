@@ -8,6 +8,8 @@ from typing import Mapping
 
 
 OFFICIAL_MUASAMCONG_HOST = "muasamcong.mpi.gov.vn"
+PROCUREMENT_BROWSER_MODE = "research-stealth"
+RESEARCH_STEALTH_ENABLED = True
 
 
 class ProcurementLookupConfigurationError(ValueError):
@@ -75,12 +77,8 @@ class ProcurementLookupSettings:
         enabled = _boolean(
             environ, "PROCUREMENT_LOOKUP_ENABLED", "true"
         )
-        mode = str(
-            environ.get("PROCUREMENT_BROWSER_MODE", "research-stealth")
-        ).strip().casefold()
-        research_enabled = _boolean(
-            environ, "RESEARCH_STEALTH_ENABLED", "true"
-        )
+        mode = PROCUREMENT_BROWSER_MODE
+        research_enabled = RESEARCH_STEALTH_ENABLED
         allowed_hosts = frozenset(
             host.strip().casefold()
             for host in str(environ.get(

@@ -71,14 +71,23 @@ def test_unified_source_defaults_to_research_stealth(monkeypatch):
     assert source.runtime.configuration["collectionConcurrency"] == 12
 
 
-def test_unified_source_rejects_ungated_research_mode(monkeypatch):
-    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "research-stealth")
+@pytest.mark.parametrize("mode", ["standard", "", "invalid"])
+def test_unified_source_ignores_legacy_browser_switches(monkeypatch, mode):
+    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", mode)
     monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")
     monkeypatch.setenv(
         "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
         "muasamcong.mpi.gov.vn",
     )
 
+    source = MuaSamCongProcurementSource.from_environ()
+    assert source.runtime.configuration["browserMode"] == "research-stealth"
+
+
+def test_fixed_stealth_still_rejects_foreign_host(monkeypatch):
+    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "standard")
+    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")
+    monkeypatch.setenv("RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS", "example.test")
     with pytest.raises(
         ProcurementLookupError,
         match="PROCUREMENT_ADAPTER_UNSUPPORTED",

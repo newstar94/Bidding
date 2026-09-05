@@ -31,6 +31,16 @@ def test_research_stealth_mode_and_gate_default_enabled():
     assert settings.research_enabled is True
 
 
+@pytest.mark.parametrize("mode", ["standard", "", "invalid"])
+def test_legacy_flags_cannot_disable_fixed_stealth(mode):
+    from backend.procurement_lookup.config import ProcurementLookupSettings
+    settings = ProcurementLookupSettings.from_environ({
+        "PROCUREMENT_BROWSER_MODE": mode, "RESEARCH_STEALTH_ENABLED": "false",
+    })
+    assert settings.mode == "research-stealth"
+    assert settings.research_enabled is True
+
+
 def test_research_launcher_requires_exact_gate_and_official_host():
     base = {
         "PROCUREMENT_LOOKUP_ENABLED": "true",
