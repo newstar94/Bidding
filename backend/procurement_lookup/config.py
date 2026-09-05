@@ -8,8 +8,6 @@ from typing import Mapping
 
 
 OFFICIAL_MUASAMCONG_HOST = "muasamcong.mpi.gov.vn"
-PROCUREMENT_BROWSER_MODE = "research-stealth"
-RESEARCH_STEALTH_ENABLED = True
 
 
 class ProcurementLookupConfigurationError(ValueError):
@@ -46,8 +44,6 @@ class ProcurementLookupSettings:
     """Validated settings consumed by startup, HTTP and browser boundaries."""
 
     enabled: bool
-    mode: str
-    research_enabled: bool
     allowed_hosts: frozenset[str]
     ttl_seconds: float
     plan_cache_ttl_seconds: float
@@ -77,12 +73,10 @@ class ProcurementLookupSettings:
         enabled = _boolean(
             environ, "PROCUREMENT_LOOKUP_ENABLED", "true"
         )
-        mode = PROCUREMENT_BROWSER_MODE
-        research_enabled = RESEARCH_STEALTH_ENABLED
         allowed_hosts = frozenset(
             host.strip().casefold()
             for host in str(environ.get(
-                "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+                "PROCUREMENT_ALLOWED_TARGET_HOSTS",
                 OFFICIAL_MUASAMCONG_HOST,
             )).split(",")
             if host.strip()
@@ -113,19 +107,10 @@ class ProcurementLookupSettings:
             environ, "MUASAMCONG_EXTRACT_DOM", "true"
         )
 
-        if enabled and mode not in {"standard", "research-stealth"}:
-            raise ProcurementLookupConfigurationError(
-                "PROCUREMENT_BROWSER_MODE must be standard or research-stealth."
-            )
-        if enabled and mode == "research-stealth":
-            if not research_enabled:
-                raise ProcurementLookupConfigurationError(
-                    "research-stealth mode requires "
-                    "RESEARCH_STEALTH_ENABLED=true."
-                )
+        if enabled:
             if allowed_hosts != {OFFICIAL_MUASAMCONG_HOST}:
                 raise ProcurementLookupConfigurationError(
-                    "research-stealth requires the exact official hostname "
+                    "procurement-browser requires the exact official hostname "
                     "allowlist."
                 )
         if enabled and not (driver_vue2 or driver_generic):
@@ -171,8 +156,6 @@ class ProcurementLookupSettings:
             )
         return cls(
             enabled=enabled,
-            mode=mode,
-            research_enabled=research_enabled,
             allowed_hosts=allowed_hosts,
             ttl_seconds=ttl_seconds,
             plan_cache_ttl_seconds=_number(
@@ -290,8 +273,7 @@ class ProcurementLookupSettings:
         """Return the complete server-owned browser launcher contract."""
 
         return {
-            "research_enabled": self.research_enabled,
-            "allowed_research_hosts": self.allowed_hosts,
+            "allowed_target_hosts": self.allowed_hosts,
             "driver_flags": self.driver_flags,
             "extractor_flags": self.extractor_flags,
             "idle_ttl_seconds": self.idle_ttl_seconds,

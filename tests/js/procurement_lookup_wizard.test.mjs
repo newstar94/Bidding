@@ -59,7 +59,7 @@ test("lookup client sends only code and workspace lease with cancellation", asyn
     () => client.lookup({
       code: "IB2600000001",
       workspaceLease: "org-1",
-      browserMode: "research-stealth",
+      browserMode: "unsupported-client-option",
     }),
     /code.*workspaceLease/i,
   );

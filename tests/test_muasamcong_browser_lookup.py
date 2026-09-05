@@ -21,9 +21,8 @@ from backend.procurement_lookup.cache import PostgresProcurementLookupCache
 from backend.integrations.muasamcong_browser.launchers import (
     BrowserLauncherFactory,
     NodeBrowserRuntime,
-    ResearchBrowserLauncher,
+    ProcurementBrowserLauncher,
     RestartableBrowserRuntime,
-    StandardBrowserLauncher,
 )
 from backend.procurement_lookup.domain import ProcurementLookupError
 from backend.procurement_lookup.service import ProcurementLookupService
@@ -59,7 +58,6 @@ def test_plan_lookup_returns_stable_dto_and_packages_from_one_browser_load():
         "provider": "MUASAMCONG_BROWSER",
         "driver": "vue2",
         "driverVersion": "2026.1",
-        "browserMode": "standard",
         "extractionStrategy": "network-json",
         "parserVersion": "2026.1",
         "retrievedAt": result["source"]["retrievedAt"],
@@ -209,7 +207,7 @@ def test_lookup_service_is_cache_first_and_coalesces_same_key_requests():
     assert calls == [("IB2600000002", "PACKAGE")]
 
 
-def test_browser_launcher_factory_keeps_warm_runtime_and_isolates_research_mode():
+def test_browser_launcher_factory_keeps_warm_browser_runtime_and_checks_host():
     created = []
 
     class Runtime:
@@ -220,14 +218,11 @@ def test_browser_launcher_factory_keeps_warm_runtime_and_isolates_research_mode(
         created.append(config)
         return Runtime()
 
-    standard = BrowserLauncherFactory.create(
-        "standard", runtime_factory=runtime_factory
-    )
-    assert isinstance(standard, StandardBrowserLauncher)
-    assert standard.get_runtime() is standard.get_runtime()
+    launcher = BrowserLauncherFactory.create(runtime_factory=runtime_factory)
+    assert isinstance(launcher, ProcurementBrowserLauncher)
+    assert launcher.get_runtime() is launcher.get_runtime()
     assert created == [{
         "headless": True,
-        "browserMode": "standard",
         "targetHost": "muasamcong.mpi.gov.vn",
         "chromiumArgs": [],
         "drivers": {"vue2": True, "generic": True},
@@ -240,38 +235,24 @@ def test_browser_launcher_factory_keeps_warm_runtime_and_isolates_research_mode(
         "workerQueueTimeoutMs": 250,
     }]
 
-    with pytest.raises(
-        ProcurementLookupError, match="PROCUREMENT_ADAPTER_UNSUPPORTED"
-    ):
-        BrowserLauncherFactory.create(
-            "research-stealth",
-            research_enabled=False,
-            runtime_factory=runtime_factory,
-        )
-
     research = BrowserLauncherFactory.create(
-        "research-stealth",
-        research_enabled=True,
-        allowed_research_hosts={"muasamcong.mpi.gov.vn"},
+        allowed_target_hosts={"muasamcong.mpi.gov.vn"},
         runtime_factory=runtime_factory,
     )
-    assert isinstance(research, ResearchBrowserLauncher)
+    assert isinstance(research, ProcurementBrowserLauncher)
     research.get_runtime()
-    assert created[-1]["browserMode"] == "research-stealth"
     assert created[-1]["chromiumArgs"] == []
 
     with pytest.raises(
         ProcurementLookupError, match="PROCUREMENT_ADAPTER_UNSUPPORTED"
     ):
         BrowserLauncherFactory.create(
-            "research-stealth",
-            research_enabled=True,
-            allowed_research_hosts={"example.test"},
+            allowed_target_hosts={"example.test"},
             runtime_factory=runtime_factory,
         )
 
 
-def test_browser_launcher_factory_defaults_to_research_stealth():
+def test_browser_launcher_factory_defaults_to_procurement_browser():
     created = []
 
     class Runtime:
@@ -284,9 +265,8 @@ def test_browser_launcher_factory_defaults_to_research_stealth():
         )
     )
 
-    assert isinstance(launcher, ResearchBrowserLauncher)
+    assert isinstance(launcher, ProcurementBrowserLauncher)
     launcher.get_runtime()
-    assert created[0]["browserMode"] == "research-stealth"
     assert created[0]["targetHost"] == "muasamcong.mpi.gov.vn"
 
 
@@ -309,7 +289,7 @@ def test_launcher_restarts_runtime_after_idle_ttl():
         created.append(runtime)
         return runtime
 
-    launcher = StandardBrowserLauncher(
+    launcher = ProcurementBrowserLauncher(
         runtime_factory=runtime_factory,
         idle_ttl_seconds=60,
         clock=lambda: now[0],
@@ -347,7 +327,6 @@ def test_node_browser_runtime_reuses_one_worker_and_exchanges_sanitized_json_lin
             else:
                 result = {
                     "schemaVersion": "muasamcong-browser-artifact-v1",
-                    "browserMode": request["browserMode"],
                     "driver": "generic",
                     "networkResponses": [],
                     "vueStateCandidates": [],
@@ -389,7 +368,6 @@ def test_node_browser_runtime_reuses_one_worker_and_exchanges_sanitized_json_lin
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "browserMode": "standard",
             "targetHost": "muasamcong.mpi.gov.vn",
             "chromiumArgs": [],
         },
@@ -401,7 +379,6 @@ def test_node_browser_runtime_reuses_one_worker_and_exchanges_sanitized_json_lin
     probe = runtime.probe()
 
     assert len(processes) == 1
-    assert first["browserMode"] == second["browserMode"] == "standard"
     requests = [json.loads(line) for line in processes[0].stdin.lines]
     assert [row["operation"] for row in requests] == [
         "initialize", "lookup", "lookup", "probe",
@@ -468,7 +445,6 @@ def test_node_browser_runtime_times_out_blocked_worker_and_marks_it_unhealthy():
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "browserMode": "standard",
             "targetHost": "muasamcong.mpi.gov.vn",
             "chromiumArgs": [],
             "workerResponseTimeoutMs": 50,
@@ -510,7 +486,7 @@ def test_restartable_browser_runtime_replaces_a_worker_after_timeout():
         return runtime
 
     runtime = RestartableBrowserRuntime(
-        {"browserMode": "standard"},
+        {},
         runtime_factory=runtime_factory,
     )
 
@@ -550,7 +526,6 @@ def test_node_browser_runtime_rejects_a_second_different_lookup_when_busy():
                 assert release.wait(timeout=1)
             result = {"ready": True} if request["operation"] == "initialize" else {
                 "schemaVersion": "muasamcong-browser-artifact-v1",
-                "browserMode": "standard",
                 "driver": "generic",
                 "networkResponses": [],
                 "vueStateCandidates": [],
@@ -584,7 +559,6 @@ def test_node_browser_runtime_rejects_a_second_different_lookup_when_busy():
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "browserMode": "standard",
             "targetHost": "muasamcong.mpi.gov.vn",
             "chromiumArgs": [],
             "workerResponseTimeoutMs": 1000,
@@ -707,7 +681,6 @@ def test_lookup_service_observer_distinguishes_source_and_cache_results():
                 "canonicalCode": code,
                 "source": {
                     "driver": "generic",
-                    "browserMode": "standard",
                     "extractionStrategy": "network-json",
                     "parserVersion": "2026.1",
                 },
@@ -726,7 +699,6 @@ def test_lookup_service_observer_distinguishes_source_and_cache_results():
         "kind": "PACKAGE",
         "canonicalCode": "IB2600000002",
         "driver": "generic",
-        "browserMode": "standard",
         "extractor": "network-json",
         "cache": "miss",
         "cacheLayer": "NONE",
@@ -883,7 +855,6 @@ def test_lookup_service_observes_sanitized_failure_class():
         "kind": "PACKAGE",
         "canonicalCode": "IB2600000002",
         "driver": "unknown",
-        "browserMode": "unknown",
         "extractor": "unknown",
         "cache": "miss",
         "cacheLayer": "NONE",

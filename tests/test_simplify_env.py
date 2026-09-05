@@ -5,11 +5,11 @@ from io import StringIO
 
 def test_removes_defaults_and_retired_setting_without_changing_configuration():
     text = ('AI_PROVIDER=fake\nAI_KNOWLEDGE_ENABLED=true\n'
-            'AI_DAILY_REQUEST_LIMIT=100\nRESEARCH_STEALTH_ENABLED=true\n'
+            'AI_DAILY_REQUEST_LIMIT=100\nPROCUREMENT_ALLOWED_TARGET_HOSTS=muasamcong.mpi.gov.vn\n'
             'WORD_EXPORT_STANDARDIZATION_MODE=apply_safe\n')
     result, removed = simplify(text)
     assert set(removed) == {'AI_KNOWLEDGE_ENABLED', 'AI_DAILY_REQUEST_LIMIT',
-                            'RESEARCH_STEALTH_ENABLED', 'WORD_EXPORT_STANDARDIZATION_MODE'}
+                            'PROCUREMENT_ALLOWED_TARGET_HOSTS', 'WORD_EXPORT_STANDARDIZATION_MODE'}
     assert configuration(dotenv_values(stream=StringIO(result))) == configuration(dotenv_values(stream=StringIO(text)))
 
 

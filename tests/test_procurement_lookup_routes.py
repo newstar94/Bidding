@@ -33,7 +33,6 @@ def test_lookup_route_returns_only_stable_normalized_contract(monkeypatch):
                 "provider": "MUASAMCONG_BROWSER",
                 "driver": "vue2",
                 "driverVersion": "2026.1",
-                "browserMode": "standard",
                 "extractionStrategy": "network-json",
                 "parserVersion": "2026.1",
                 "retrievedAt": "2026-08-11T00:00:00+00:00",
@@ -162,7 +161,6 @@ def test_lookup_route_rejects_browser_or_canonical_payload_from_client(
             "/api/procurement/lookup",
             json={
                 "code": "PL2600000001",
-                "browserMode": "research-stealth",
                 "canonicalData": {"planNo": "untrusted"},
             },
         )

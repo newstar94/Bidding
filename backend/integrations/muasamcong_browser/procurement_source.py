@@ -10,10 +10,6 @@ from pathlib import Path
 import re
 from threading import RLock
 import time
-from backend.procurement_lookup.config import (
-    PROCUREMENT_BROWSER_MODE,
-    RESEARCH_STEALTH_ENABLED,
-)
 
 from backend.integrations.muasamcong_browser.canonical import (
     ImportParserRegistry,
@@ -150,27 +146,19 @@ class MuaSamCongProcurementSource:
 
     @classmethod
     def from_environ(cls, *, observer=None):
-        browser_mode = PROCUREMENT_BROWSER_MODE
-        research_enabled = RESEARCH_STEALTH_ENABLED
-        allowed_research_hosts = {
+        allowed_target_hosts = {
             host.strip().casefold()
             for host in os.environ.get(
-                "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+                "PROCUREMENT_ALLOWED_TARGET_HOSTS",
                 OFFICIAL_HOST,
             ).split(",")
             if host.strip()
         }
-        if browser_mode not in {"standard", "research-stealth"}:
-            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
-        if browser_mode == "research-stealth" and (
-            not research_enabled
-            or allowed_research_hosts != {OFFICIAL_HOST}
-        ):
+        if allowed_target_hosts != {OFFICIAL_HOST}:
             raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
 
         configuration = {
             "headless": _boolean("MUASAMCONG_BROWSER_HEADLESS", "true"),
-            "browserMode": browser_mode,
             "targetHost": OFFICIAL_HOST,
             "chromiumArgs": [],
             "drivers": {
@@ -1102,7 +1090,6 @@ class MuaSamCongProcurementSource:
             "source": {
                 "provider": self.name,
                 "driver": "raw-snapshot",
-                "browserMode": "not-launched",
                 "extractionStrategy": "stored-raw-projection",
                 "parserVersion": self.parser_version,
                 "retrievedAt": raw_bundle.get("retrievedAt"),
@@ -1283,7 +1270,6 @@ class MuaSamCongProcurementSource:
             "source": {
                 "provider": self.name,
                 "driver": "protected-api",
-                "browserMode": "lazy-session-bootstrap",
                 "extractionStrategy": "protected-api",
                 "parserVersion": self.parser_version,
             },
@@ -1420,7 +1406,6 @@ class MuaSamCongProcurementSource:
                 "provider": self.name,
                 "driver": "protected-api",
                 "driverVersion": source.get("profile") or self.parser_version,
-                "browserMode": "session-bootstrap",
                 "extractionStrategy": "protected-api",
                 "parserVersion": self.parser_version,
                 "retrievedAt": source.get("retrievedAt"),

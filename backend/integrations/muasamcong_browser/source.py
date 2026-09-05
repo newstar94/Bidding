@@ -89,9 +89,7 @@ class MuaSamCongBrowserSource:
                 "driverVersion": str(
                     artifact.get("driverVersion") or "unknown"
                 ),
-                "browserMode": str(
-                    artifact.get("browserMode") or "research-stealth"
-                ),
+
                 "extractionStrategy": classified.strategy,
                 "parserVersion": parser.version,
                 "retrievedAt": datetime.now(timezone.utc).isoformat(),

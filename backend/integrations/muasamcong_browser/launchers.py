@@ -74,9 +74,6 @@ class NodeBrowserRuntime:
             request = {
                 "requestId": request_id,
                 "operation": operation,
-                "browserMode": self.configuration.get(
-                    "browserMode", "research-stealth"
-                ),
                 **payload,
             }
             try:
@@ -287,10 +284,9 @@ class RestartableBrowserRuntime:
             close()
 
 
-class StandardBrowserLauncher:
+class ProcurementBrowserLauncher:
     """Create one safe, headless runtime and keep it warm between lookups."""
 
-    browser_mode = "standard"
 
     def __init__(
         self,
@@ -348,7 +344,6 @@ class StandardBrowserLauncher:
     def _configuration(self):
         return {
             "headless": True,
-            "browserMode": self.browser_mode,
             "targetHost": self.target_host,
             "chromiumArgs": [],
             "drivers": dict(self.driver_flags),
@@ -395,20 +390,12 @@ class StandardBrowserLauncher:
             close()
 
 
-class ResearchBrowserLauncher(StandardBrowserLauncher):
-    """Separately gated research mode without embedded challenge bypass."""
-
-    browser_mode = "research-stealth"
-
-
 class BrowserLauncherFactory:
     @staticmethod
     def create(
-        mode=None,
         *,
         runtime_factory=NodeBrowserRuntime,
-        research_enabled=True,
-        allowed_research_hosts=None,
+        allowed_target_hosts=None,
         target_host=OFFICIAL_HOST,
         driver_flags=None,
         extractor_flags=None,
@@ -419,26 +406,10 @@ class BrowserLauncherFactory:
         action_timeout_ms=15_000,
         worker_queue_timeout_ms=250,
     ):
-        normalized = str(mode or "research-stealth").strip().casefold()
-        if normalized == "standard":
-            return StandardBrowserLauncher(
-                runtime_factory=runtime_factory,
-                target_host=target_host,
-                driver_flags=driver_flags,
-                extractor_flags=extractor_flags,
-                idle_ttl_seconds=idle_ttl_seconds,
-                worker_response_timeout_seconds=worker_response_timeout_seconds,
-                max_response_bytes=max_response_bytes,
-                navigation_timeout_ms=navigation_timeout_ms,
-                action_timeout_ms=action_timeout_ms,
-                worker_queue_timeout_ms=worker_queue_timeout_ms,
-            )
-        if normalized != "research-stealth" or not research_enabled:
-            raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
         configured_hosts = (
             {OFFICIAL_HOST}
-            if allowed_research_hosts is None
-            else allowed_research_hosts
+            if allowed_target_hosts is None
+            else allowed_target_hosts
         )
         allowed = {
             str(host).strip().casefold()
@@ -447,7 +418,7 @@ class BrowserLauncherFactory:
         }
         if target_host.casefold() != OFFICIAL_HOST or allowed != {OFFICIAL_HOST}:
             raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
-        return ResearchBrowserLauncher(
+        return ProcurementBrowserLauncher(
             runtime_factory=runtime_factory,
             target_host=target_host,
             driver_flags=driver_flags,

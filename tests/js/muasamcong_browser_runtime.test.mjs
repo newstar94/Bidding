@@ -600,6 +600,20 @@ test("versioned driver and extractor registries preserve ordered fallbacks", asy
 });
 
 
+test("browser rejects foreign hosts before launch", async () => {
+  let launches = 0;
+  const runtime = new BrowserLookupRuntime({
+    chromium: { async launch() { launches += 1; } },
+  });
+  for (const configuration of [
+    { targetHost: "example.test" },
+    { targetHost: "" },
+  ]) {
+    await assert.rejects(runtime.initialize(configuration), /PROCUREMENT_ADAPTER_UNSUPPORTED/);
+  }
+  assert.equal(launches, 0);
+});
+
 test("browser initialization records cold startup time once", async () => {
   const ticks = [100, 125];
   const runtime = new BrowserLookupRuntime({
@@ -621,7 +635,7 @@ test("browser initialization records cold startup time once", async () => {
   });
 
   assert.deepEqual(initialized, { ready: true, browserStartupMs: 25 });
-  assert.equal(runtime.configuration.browserMode, "research-stealth");
+  assert.equal("browserMode" in runtime.configuration, false);
   await runtime.close();
 });
 
@@ -655,7 +669,6 @@ test("search-page challenge returns interaction-required without solving", async
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     chromiumArgs: [],
   });
@@ -693,7 +706,6 @@ test("read-only probe reports live capabilities even when no driver is usable", 
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     chromiumArgs: [],
   });
@@ -741,7 +753,6 @@ test("navigation retries one transient timeout within the configured budget", as
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     navigationTimeoutMs: 20_000,
   });
@@ -780,7 +791,6 @@ test("known upstream error page retries once and fails with stable taxonomy", as
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
   });
 
@@ -858,7 +868,6 @@ test("browser runtime keeps Chromium warm and follows exact search result to det
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     chromiumArgs: [],
   });
@@ -940,7 +949,6 @@ test("browser runtime falls back to generic and opens a Vue2 fast-path circuit",
   });
   await runtime.initialize({
     headless: true,
-    browserMode: "standard",
     targetHost: "muasamcong.mpi.gov.vn",
     chromiumArgs: [],
     drivers: { vue2: true, generic: true },

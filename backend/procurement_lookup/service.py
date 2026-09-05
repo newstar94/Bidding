@@ -95,9 +95,7 @@ class ProcurementLookupService:
             "canonicalCode": str(value.get("canonicalCode") or "")
             if isinstance(value, dict) else "",
             "driver": str((source or {}).get("driver") or "unknown"),
-            "browserMode": str(
-                (source or {}).get("browserMode") or "unknown"
-            ),
+
             "extractor": str(
                 (source or {}).get("extractionStrategy") or "unknown"
             ),
@@ -174,7 +172,6 @@ class ProcurementLookupService:
             "kind": str(kind),
             "canonicalCode": str(code),
             "driver": "unknown",
-            "browserMode": "unknown",
             "extractor": "unknown",
             "cache": "miss",
             "cacheLayer": "NONE",

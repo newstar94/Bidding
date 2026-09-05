@@ -44,7 +44,6 @@ def summarize_artifact(artifact, *, code, kind):
     summary = {
         "code": str(code),
         "kind": str(kind),
-        "browserMode": str(artifact.get("browserMode") or "unknown"),
         "framework": str(artifact.get("framework") or "unknown"),
         "driver": str(artifact.get("driver") or "unknown"),
         "capabilities": {
@@ -83,7 +82,6 @@ def _live_artifact(code, kind):
             "Remove PROCUREMENT_LOOKUP_ENABLED=false or set it to true for live research."
         )
     launcher = BrowserLauncherFactory.create(
-        config.mode,
         **config.launcher_options,
     )
     try:
@@ -93,7 +91,6 @@ def _live_artifact(code, kind):
         except ProcurementLookupError as error:
             return {
                 "schemaVersion": "muasamcong-browser-probe-v1",
-                "browserMode": config.mode,
                 "framework": "unknown",
                 "capabilities": {},
                 "interactionRequired": False,

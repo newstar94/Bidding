@@ -21,32 +21,31 @@ def test_disabled_procurement_lookup_does_not_require_browser_runtime():
     validate_procurement_lookup_configuration({"PROCUREMENT_LOOKUP_ENABLED": "false"})
 
 
-def test_research_stealth_mode_and_gate_default_enabled():
+def test_procurement_browser_mode_and_gate_default_enabled():
     from backend.procurement_lookup.config import ProcurementLookupSettings
 
     settings = ProcurementLookupSettings.from_environ({})
 
     assert settings.enabled is True
-    assert settings.mode == "research-stealth"
-    assert settings.research_enabled is True
 
 
 @pytest.mark.parametrize("mode", ["standard", "", "invalid"])
-def test_legacy_flags_cannot_disable_fixed_stealth(mode):
+def test_legacy_flags_cannot_disable_fixed_browser(mode):
     from backend.procurement_lookup.config import ProcurementLookupSettings
     settings = ProcurementLookupSettings.from_environ({
-        "PROCUREMENT_BROWSER_MODE": mode, "RESEARCH_STEALTH_ENABLED": "false",
+        "PROCUREMENT_BROWSER_MODE": mode, "PROCUREMENT_BROWSER_ENABLED": "false",
     })
-    assert settings.mode == "research-stealth"
-    assert settings.research_enabled is True
+    assert settings == ProcurementLookupSettings.from_environ({})
+    assert not hasattr(settings, "mode")
+    assert not hasattr(settings, "research_enabled")
 
 
 def test_research_launcher_requires_exact_gate_and_official_host():
     base = {
         "PROCUREMENT_LOOKUP_ENABLED": "true",
-        "PROCUREMENT_BROWSER_MODE": "research-stealth",
-        "RESEARCH_STEALTH_ENABLED": "true",
-        "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS": "example.test",
+        "PROCUREMENT_BROWSER_MODE": "procurement-browser",
+        "PROCUREMENT_BROWSER_ENABLED": "true",
+        "PROCUREMENT_ALLOWED_TARGET_HOSTS": "example.test",
     }
     with pytest.raises(StartupValidationError, match="official hostname"):
         validate_procurement_lookup_configuration(base)

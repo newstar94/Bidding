@@ -77,7 +77,6 @@ export class BrowserLookupRuntime {
     const startupStarted = this.clock();
     const safe = {
       headless: configuration?.headless !== false,
-      browserMode: String(configuration?.browserMode || "research-stealth"),
       targetHost: String(configuration?.targetHost || ""),
       chromiumArgs: Array.isArray(configuration?.chromiumArgs)
         ? configuration.chromiumArgs
@@ -106,8 +105,7 @@ export class BrowserLookupRuntime {
         Math.min(Number(configuration?.actionTimeoutMs) || 15_000, 60_000),
       ),
     };
-    if (!["standard", "research-stealth"].includes(safe.browserMode)
-      || safe.targetHost !== OFFICIAL_HOST
+    if (safe.targetHost !== OFFICIAL_HOST
       || safe.chromiumArgs.length !== 0
       || !Object.values(safe.drivers).some(Boolean)
       || !Object.values(safe.extractors).some(Boolean)) {
@@ -250,7 +248,6 @@ export class BrowserLookupRuntime {
       const extractMs = this.clock() - extractStarted;
       const artifact = {
         schemaVersion: "muasamcong-browser-artifact-v1",
-        browserMode: this.configuration.browserMode,
         framework: capabilities.vue2 ? "vue2" : "unknown",
         capabilities,
         driver: driver.name,
@@ -310,7 +307,6 @@ export class BrowserLookupRuntime {
           : null;
       return {
         schemaVersion: "muasamcong-browser-probe-v1",
-        browserMode: this.configuration.browserMode,
         framework: capabilities.vue2 ? "vue2" : "unknown",
         capabilities,
         interactionRequired,

@@ -16,7 +16,6 @@ def test_benchmark_report_covers_every_required_scenario_and_usage_rate():
                 "canonicalCode": code,
                 "source": {
                     "driver": "vue2" if kind == "PLAN" else "generic",
-                    "browserMode": "standard",
                     "extractionStrategy": "network-json",
                 },
                 "data": {},

@@ -11,7 +11,7 @@
 2. Provider mặc định là `muasamcong`; deployment mới không phải khai báo ba
    biến `PROCUREMENT_LOOKUP_ENABLED`, `PROCUREMENT_IMPORT_ENABLED` và
    `PROCUREMENT_PROVIDER`.
-3. Browser mode mặc định là `research-stealth`, gate mặc định bật và target bị
+3. Trình duyệt tra cứu thống nhất theo ADR 0036, target bị
    giới hạn đúng hostname chính thức `muasamcong.mpi.gov.vn`.
 4. Override `false`, provider khác và các alias `VNEPS_*` cũ vẫn được đọc để
    rollback hoặc tương thích deployment cũ.
@@ -22,7 +22,7 @@
   assignment scope hoặc record scope.
 - Mọi thao tác vẫn đi qua tenant/record authorization và commercial policy hiện
   hành; không thay đổi masking hoặc dữ liệu người dùng được phép xem.
-- Stealth mode không giải CAPTCHA, replay token/cookie, giả challenge hoặc vô
+- Trình duyệt không giải CAPTCHA, replay token/cookie, giả challenge hoặc vô
   hiệu hóa sandbox/bảo mật Chromium.
 
 ## Compatibility impact
@@ -39,7 +39,7 @@
 - Xóa ba biến canonical khỏi `.env` của deployment dùng mặc định mới.
 - Giữ Chromium/Playwright và kết nối TLS tới hostname chính thức trong image.
 - Rollback bằng hai flag `false` nêu trên; dùng
-  `PROCUREMENT_BROWSER_MODE=standard` nếu chỉ cần rollback browser adapter.
+  rollback phiên bản code nếu cần phục hồi browser adapter trước đó.
 
 ## Regression seams
 

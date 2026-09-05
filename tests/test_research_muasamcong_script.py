@@ -4,7 +4,6 @@ from scripts.research_muasamcong import summarize_artifact
 
 def test_research_summary_contains_only_bounded_diagnostics():
     artifact = {
-        "browserMode": "standard",
         "framework": "vue2",
         "driver": "vue2",
         "capabilities": {"vue2": True, "genericSearchUi": True},
@@ -25,7 +24,6 @@ def test_research_summary_contains_only_bounded_diagnostics():
     assert summary == {
         "code": "IB2600000002",
         "kind": "PACKAGE",
-        "browserMode": "standard",
         "framework": "vue2",
         "driver": "vue2",
         "capabilities": {"vue2": True, "genericSearchUi": True},
@@ -54,7 +52,7 @@ def test_live_cli_loads_the_project_environment_before_launch(
         assert code == "PL2600000001"
         assert kind == "PLAN"
         assert research_module.os.environ["PROCUREMENT_LOOKUP_ENABLED"] == "true"
-        return {"browserMode": "standard"}
+        return {}
 
     monkeypatch.setattr(research_module, "_live_artifact", fake_live_artifact)
 

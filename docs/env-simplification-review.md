@@ -1,5 +1,9 @@
 # Rà soát khả năng tinh giản cấu hình môi trường BiddingFlow
 
+> Cập nhật theo ADR 0036: trình duyệt không còn lựa chọn mode hoặc cờ bật riêng.
+> Các đề xuất về hai công tắc chế độ bên dưới là lịch sử nghiên cứu, đã được thay
+> bằng launcher thống nhất. Allowlist hiện dùng `PROCUREMENT_ALLOWED_TARGET_HOSTS`.
+
 ## Cập nhật triển khai đợt 1
 
 Đã thực hiện sau khi được người dùng chấp thuận: bỏ 13 khai báo tương đương mặc định/kế thừa và biến đã nghỉ dùng `WORD_EXPORT_STANDARDIZATION_MODE` ở cả `.env` và `.env.example`. Số biến đang khai báo còn 94 và 64. Các con số và nội dung nghiên cứu bên dưới là ảnh chụp trước khi thực hiện.
@@ -26,7 +30,7 @@ Thử nghiệm chỉ đọc: nạp `.env` vào dictionary, tạo cấu hình b�
 |---|---|---|
 | AI — mặc định | `AI_BASE_URL`, `AI_PROVIDER_ALLOWED_HOSTS`, `AI_KNOWLEDGE_ENABLED`, `AI_PROVIDER_STORE_RESPONSES`, `AI_DAILY_REQUEST_LIMIT`, `AI_DAILY_TOKEN_LIMIT`, `AI_WEB_SEARCH_PROVIDER`, `AI_WEB_SEARCH_ALLOWED_DOMAINS` | Cùng với hai biến kế thừa bên dưới, bỏ đồng thời vẫn cho `get_ai_config` giống hệt trên cấu hình file hiện tại. Provider/URL riêng có thể cần override. Nguồn: `backend/ai/configuration.py:114-202`, `228-282`. |
 | AI — kế thừa | `AI_WEB_SEARCH_API_KEY`, `AI_WEB_SEARCH_MODEL` | Khóa tìm kiếm có chuỗi fallback qua `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `AI_API_KEY`; model tìm kiếm fallback về model chính. Chỉ bỏ khi cùng nhà cung cấp/tài khoản và model phù hợp; không dùng khóa của một nhà cung cấp cho nhà cung cấp khác. Nguồn: `backend/ai/configuration.py:244-267`. |
-| Tra cứu — mặc định | `PROCUREMENT_BROWSER_MODE`, `RESEARCH_STEALTH_ENABLED`, `RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS` | Bỏ cả ba cùng 10 biến AI: cấu hình AI và `ProcurementLookupSettings` đều bằng trước. Bộ nguồn trình duyệt cũng khai báo các mặc định tương ứng. Nguồn: `backend/procurement_lookup/config.py:73-91`; `backend/integrations/muasamcong_browser/procurement_source.py:147-166`. |
+| Tra cứu — mặc định | `PROCUREMENT_BROWSER_MODE`, `PROCUREMENT_BROWSER_ENABLED`, `PROCUREMENT_ALLOWED_TARGET_HOSTS` | Bỏ cả ba cùng 10 biến AI: cấu hình AI và `ProcurementLookupSettings` đều bằng trước. Bộ nguồn trình duyệt cũng khai báo các mặc định tương ứng. Nguồn: `backend/procurement_lookup/config.py:73-91`; `backend/integrations/muasamcong_browser/procurement_source.py:147-166`. |
 
 Kết quả đã chạy: `13-key combined AI parity True`; `13-key combined lookup parity True`. Nếu được duyệt, riêng nhóm này có thể giảm `.env` từ 108 xuống 95 dòng khai báo mà không đổi kết quả của hai bộ đọc đã kiểm tra. Chưa gọi đây là xác nhận toàn ứng dụng; mặc định có thể thay đổi khi nâng phiên bản, vì vậy cần khóa regression cho cấu hình triển khai mong muốn. Vẫn giữ các tên override trong tài liệu nâng cao.
 
@@ -43,7 +47,7 @@ Kết quả đã chạy: `13-key combined AI parity True`; `13-key combined look
 |---|---|---|
 | `COMMERCIAL_POLICY_ENABLED` + `COMMERCIAL_POLICY_MODE` | Một mode `off/shadow/enforce`, với alias tương thích có cảnh báo | Cần kiểm kê trạng thái `enabled=true, mode=off` và mọi consumer trước khi coi là tương đương. Trial vẫn có ưu tiên riêng. |
 | `WORD_TEMPLATE_CATALOG_ENABLED` + `WORD_TEMPLATE_CATALOG_MODE` | Một mode `off/shadow/cutover` | Chế độ shadow, cutover, tắt và điều kiện đường dẫn production. |
-| `PROCUREMENT_BROWSER_MODE` + `RESEARCH_STEALTH_ENABLED` | Giữ một lựa chọn mode ở cấu hình thông thường; phần nâng cao giữ override khi cần | Điều kiện host chính thức và quyền nguồn dữ liệu không bị nới rộng. |
+| `PROCUREMENT_BROWSER_MODE` + `PROCUREMENT_BROWSER_ENABLED` | Giữ một lựa chọn mode ở cấu hình thông thường; phần nâng cao giữ override khi cần | Điều kiện host chính thức và quyền nguồn dữ liệu không bị nới rộng. |
 
 Nguồn: `backend/commercial_policy/config.py:22-69`; `backend/startup.py:38-60`; `backend/documents/template_catalog/compatibility.py:26-35`; `backend/procurement_lookup/config.py:118-132`.
 

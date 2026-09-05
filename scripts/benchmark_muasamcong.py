@@ -110,7 +110,6 @@ def _measure(
             "extractor": str(
                 source.get("extractionStrategy") or "unknown"
             ),
-            "browserMode": str(source.get("browserMode") or "unknown"),
             "cacheLayer": str(cache.get("layer") or "NONE"),
             "browserStartupMs": float(metrics.get("browserStartupMs") or 0),
             "sessionAcquireMs": float(metrics.get("sessionAcquireMs") or 0),
@@ -143,7 +142,6 @@ def _measure(
             "durationMs": round(max(0, clock() - started) * 1000, 3),
             "driver": "unknown",
             "extractor": "unknown",
-            "browserMode": "unknown",
             "cacheLayer": "NONE",
             "browserStartupMs": 0,
             "sessionAcquireMs": 0,
@@ -316,9 +314,6 @@ def run_benchmark(
         )),
         "extractorUsage": _rates(Counter(
             record["extractor"] for record in successful
-        )),
-        "browserModeUsage": _rates(Counter(
-            record["browserMode"] for record in successful
         )),
         "latencyMs": latency,
         "interactionRequiredRate": round(

@@ -45,28 +45,26 @@ FIXTURES = Path(__file__).parent / "fixtures" / "muasamcong"
 
 
 def test_unified_source_honors_the_server_owned_browser_mode(monkeypatch):
-    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "research-stealth")
-    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "true")
+    monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "procurement-browser")
+    monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "true")
     monkeypatch.setenv(
-        "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+        "PROCUREMENT_ALLOWED_TARGET_HOSTS",
         "muasamcong.mpi.gov.vn",
     )
 
     source = MuaSamCongProcurementSource.from_environ()
 
-    assert source.runtime.configuration["browserMode"] == "research-stealth"
     assert source.runtime.configuration["targetHost"] == "muasamcong.mpi.gov.vn"
     assert source.runtime.configuration["chromiumArgs"] == []
 
 
-def test_unified_source_defaults_to_research_stealth(monkeypatch):
+def test_unified_source_defaults_to_procurement_browser(monkeypatch):
     monkeypatch.delenv("PROCUREMENT_BROWSER_MODE", raising=False)
-    monkeypatch.delenv("RESEARCH_STEALTH_ENABLED", raising=False)
-    monkeypatch.delenv("RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS", raising=False)
+    monkeypatch.delenv("PROCUREMENT_BROWSER_ENABLED", raising=False)
+    monkeypatch.delenv("PROCUREMENT_ALLOWED_TARGET_HOSTS", raising=False)
 
     source = MuaSamCongProcurementSource.from_environ()
 
-    assert source.runtime.configuration["browserMode"] == "research-stealth"
     assert source.runtime.configuration["apiMaxConcurrency"] == 12
     assert source.runtime.configuration["collectionConcurrency"] == 12
 
@@ -74,20 +72,22 @@ def test_unified_source_defaults_to_research_stealth(monkeypatch):
 @pytest.mark.parametrize("mode", ["standard", "", "invalid"])
 def test_unified_source_ignores_legacy_browser_switches(monkeypatch, mode):
     monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", mode)
-    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")
+    monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "false")
     monkeypatch.setenv(
-        "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+        "PROCUREMENT_ALLOWED_TARGET_HOSTS",
         "muasamcong.mpi.gov.vn",
     )
 
     source = MuaSamCongProcurementSource.from_environ()
-    assert source.runtime.configuration["browserMode"] == "research-stealth"
+    assert "browserMode" not in source.runtime.configuration
+    assert source.runtime.configuration["targetHost"] == "muasamcong.mpi.gov.vn"
+    assert source.runtime.configuration["chromiumArgs"] == []
 
 
-def test_fixed_stealth_still_rejects_foreign_host(monkeypatch):
+def test_fixed_browser_still_rejects_foreign_host(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "standard")
-    monkeypatch.setenv("RESEARCH_STEALTH_ENABLED", "false")
-    monkeypatch.setenv("RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS", "example.test")
+    monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "false")
+    monkeypatch.setenv("PROCUREMENT_ALLOWED_TARGET_HOSTS", "example.test")
     with pytest.raises(
         ProcurementLookupError,
         match="PROCUREMENT_ADAPTER_UNSUPPORTED",

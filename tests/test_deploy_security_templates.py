@@ -35,7 +35,7 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "TURNSTILE_ALLOWED_HOSTNAMES",
     "TURNSTILE_LOGIN_AFTER_ATTEMPTS",
     "TURNSTILE_VERIFY_AFTER_ATTEMPTS",
-    "RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS",
+    "PROCUREMENT_ALLOWED_TARGET_HOSTS",
     "MUASAMCONG_RECAPTCHA_SITE_KEY",
     "SESSION_EXPIRY_HOURS",
     "SESSION_REMEMBER_EXPIRY_HOURS",
@@ -167,8 +167,6 @@ def _assert_required_feature_profile(environment, *, compact=False):
     assert "PROCUREMENT_PROVIDER" not in environment
     from backend.procurement_lookup.config import ProcurementLookupSettings
     lookup = ProcurementLookupSettings.from_environ(environment)
-    assert lookup.mode == "research-stealth"
-    assert lookup.research_enabled is True
     assert environment["PAYOS_CREDENTIAL_REFERENCE"] == "env://payos/default"
     assert environment["COMMERCIAL_POLICY_ENABLED"] == "false"
     assert environment["COMMERCIAL_POLICY_MODE"] == "off"

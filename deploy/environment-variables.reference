@@ -341,12 +341,11 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 # inside the server-owned JSONL worker and are never returned to the browser.
 # Lookup is enabled by default. Uncomment only for an emergency rollback.
 # PROCUREMENT_LOOKUP_ENABLED=false
-# Chế độ trình duyệt cố định trong code: research-stealth, stealth luôn bật.
-# PROCUREMENT_BROWSER_MODE và RESEARCH_STEALTH_ENABLED cũ không còn tác dụng.
+# Trình duyệt tra cứu thống nhất; không có cấu hình lựa chọn chế độ.
 # Default isolated compatibility profile for the exact official host. It does
 # not solve CAPTCHA, replay tokens/cookies, forge challenges or weaken Chromium
 # security boundaries. Giới hạn hostname chính thức vẫn được kiểm tra.
-RESEARCH_STEALTH_ALLOWED_TARGET_HOSTS=muasamcong.mpi.gov.vn
+PROCUREMENT_ALLOWED_TARGET_HOSTS=muasamcong.mpi.gov.vn
 MUASAMCONG_DRIVER_VUE2=true
 MUASAMCONG_DRIVER_GENERIC=true
 MUASAMCONG_EXTRACT_NETWORK=true
