@@ -40,10 +40,11 @@ test("maps one-stage one-envelope packages to price methods", () => {
   }
 });
 
-test("maps one-stage two-envelope packages to all four applicable methods", () => {
+test("maps one-stage two-envelope packages using the approved five-rule table", () => {
   for (const field of ["Hàng hóa", "Xây lắp", "Phi tư vấn", "Hỗn hợp"]) {
-    assert.deepEqual(methods(field, "Đấu thầu rộng rãi", "Một giai đoạn hai túi hồ sơ"), advanced);
-    assert.deepEqual(methods(field, "Đấu thầu hạn chế", "Một giai đoạn hai túi hồ sơ"), advanced);
+    const expected = ["Xây lắp", "Hỗn hợp"].includes(field) ? [...standard, COMBINED] : advanced;
+    assert.deepEqual(methods(field, "Đấu thầu rộng rãi", "Một giai đoạn hai túi hồ sơ"), expected);
+    assert.deepEqual(methods(field, "Đấu thầu hạn chế", "Một giai đoạn hai túi hồ sơ"), expected);
   }
 });
 
@@ -55,8 +56,8 @@ test("maps two-stage methods only for goods, construction and mixed packages", (
   assert.deepEqual(methods("Phi tư vấn", "Đấu thầu rộng rãi", "Hai giai đoạn một túi hồ sơ"), []);
 });
 
-test("maps consulting packages to their four consulting methods", () => {
-  const consulting = [LOWEST_PRICE, FIXED_PRICE, COMBINED, TECHNICAL];
+test("maps consulting packages to the three approved methods", () => {
+  const consulting = [LOWEST_PRICE, COMBINED, TECHNICAL];
   assert.deepEqual(methods("Tư vấn", "Đấu thầu rộng rãi", "Một giai đoạn hai túi hồ sơ"), consulting);
   assert.deepEqual(methods("Tư vấn", "Đấu thầu hạn chế", "Một giai đoạn hai túi hồ sơ"), consulting);
 });
@@ -69,11 +70,12 @@ test("returns no method for combinations absent from the supplied matrix", () =>
 test("keeps direct appointment selectable through its opening and evaluation workflow", () => {
   for (const field of ["Hàng hóa", "Xây lắp", "Phi tư vấn", "Hỗn hợp"]) {
     assert.deepEqual(methods(field, "Chỉ định thầu", "Một giai đoạn một túi hồ sơ"), standard);
-    assert.deepEqual(methods(field, "Chỉ định thầu", "Một giai đoạn hai túi hồ sơ"), advanced);
+    assert.deepEqual(methods(field, "Chỉ định thầu", "Một giai đoạn hai túi hồ sơ"),
+      ["Xây lắp", "Hỗn hợp"].includes(field) ? [...standard, COMBINED] : advanced);
   }
   assert.deepEqual(
     methods("Tư vấn", "Chỉ định thầu", "Một giai đoạn hai túi hồ sơ"),
-    [LOWEST_PRICE, FIXED_PRICE, COMBINED, TECHNICAL],
+    [LOWEST_PRICE, COMBINED, TECHNICAL],
   );
 });
 

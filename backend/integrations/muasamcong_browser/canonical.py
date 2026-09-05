@@ -219,10 +219,6 @@ _GOODS_FORM_CODES = (
     "BD.MT.02.1265",
     "BD.MT.02.1281",
 )
-_EVALUATION_METHOD_FORM_CODES = {
-    "BD.CG.02.0113",
-    "BD.DT.02.1843",
-}
 
 
 def _decoded_form_value(value):
@@ -272,14 +268,47 @@ def _form_rows(raw, form_codes):
     return rows
 
 
-def normalize_evaluation_method_form(raw, bid_field):
-    """Read the overall evaluation method from its supported E-HSMT form."""
+def _evaluation_method_candidates(raw):
+    """Read root-level method values only from E-HSMT evaluation forms.
 
-    for value in _form_values(raw, _EVALUATION_METHOD_FORM_CODES):
-        if not isinstance(value, dict):
+    Older source projections omit chapter/file metadata. Keep those compatible
+    within the explicit bidoInvBiddingDTO collection, but reject other chapters
+    or files whenever the source supplies that metadata. Form codes are evidence
+    identifiers, not a discovery allowlist.
+    """
+    for container in _walk(raw):
+        if not isinstance(container, dict):
             continue
-        return map_evaluation_method(value.get("method"), bid_field)
-    return None
+        collection = "bidoInvBiddingDTO" if "bidoInvBiddingDTO" in container else "forms"
+        rows = container.get(collection)
+        if not isinstance(rows, list):
+            continue
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("chapterCode") or "").strip().upper() not in ("", "C3"):
+                continue
+            if str(row.get("bidFile") or "").strip().upper() not in ("", "HSMT"):
+                continue
+            value = _decoded_form_value(row.get("formValue"))
+            if not isinstance(value, dict) or value.get("method") in (None, ""):
+                continue
+            code = str(row.get("formCode") or "").strip()
+            selector = f"formCode={code}" if code else str(index)
+            yield value["method"], f"{collection}[{selector}].formValue.method"
+
+
+def normalize_evaluation_method_form(raw, bid_field):
+    """Resolve agreeing evaluation evidence using the package-field contract."""
+    methods = {
+        map_evaluation_method(method, bid_field)
+        for method, _path in _evaluation_method_candidates(raw)
+    }
+    if len(methods - {None}) > 1:
+        raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+    if None in methods:
+        return None
+    return next(iter(methods), None)
 
 
 def _text(value):
@@ -2071,10 +2100,11 @@ def normalize_notice_complete_bundle(bundle: dict):
                     operation = (sources.get("hsmt") or {}).get("operation")
                 source_path = field
                 if field == "evaluationMethod":
-                    source_path = (
-                        "bidoInvBiddingDTO[formCode=BD.CG.02.0113]."
-                        "formValue.method"
-                    )
+                    source_path = " | ".join(dict.fromkeys(
+                        path for _method, path in _evaluation_method_candidates(
+                            related_notice_raw
+                        )
+                    ))
                 field_sources[f"revisions.{revision_number}.{field}"] = {
                     "operation": operation,
                     "revision": str(revision_number),

@@ -128,6 +128,10 @@ export async function refreshPackageDeleteDependencies(controller, deleteContext
   );
 }
 export async function deleteGoiThau(id) {
+  const lease = captureWorkspaceLease(this.model);
+  const storage = this.model?.workspaceStorage;
+  const isCurrent = () => isWorkspaceLeaseCurrent(this.model, lease)
+    && this.model?.workspaceStorage === storage;
   const localTarget = this.model.state.goithau.find((pkg) => String(pkg.id) === String(id));
   if (localTarget && isPlanBreakdownDraftActive(this, localTarget.keHoachId)) {
     const confirmed = await this.view.customConfirm(
@@ -135,7 +139,7 @@ export async function deleteGoiThau(id) {
       `Bạn có chắc muốn xóa gói thầu "${localTarget.tenGoiThau || ""}" khỏi kế hoạch đang nhập?`,
       "trash-2",
     );
-    if (!confirmed) return;
+    if (!confirmed || !isCurrent()) return;
     removeDraftPackageAggregate(this.model, id);
     await persistActivePlanVersionDraftSession(this, localTarget.keHoachId);
     this.recalculatePlanTotal(localTarget.keHoachId);
@@ -143,8 +147,18 @@ export async function deleteGoiThau(id) {
     this.updateBreakdownTotal(localTarget.keHoachId);
     return { ok: true, draft: true };
   }
+  const confirmDelete = (target) => this.view.customConfirm(
+    "Xác nhận xóa",
+    `Bạn có chắc muốn xóa gói thầu "${target.tenGoiThau || ""}"? Gói thầu và tất cả snapshot của gói trong mọi phiên bản kế hoạch sẽ bị xóa.`,
+    "trash-2",
+  );
+  if (localTarget && (!await confirmDelete(localTarget) || !isCurrent())) return;
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);
+  if (!isCurrent()) return;
+  // A target absent from the local projection must be resolved before naming it.
+  if (!localTarget && (!refreshedTarget || !await confirmDelete(refreshedTarget) || !isCurrent())) return;
   await hydratePackageFamilyAcrossPlanVersions(this, refreshedTarget);
+  if (!isCurrent()) return;
   let deleteContext = getPackageDeleteContext(
     this.model.state.goithau,
     id,
@@ -153,6 +167,7 @@ export async function deleteGoiThau(id) {
   if (!deleteContext) return;
   for (const planId of deleteContext.planIds.filter(Boolean)) {
     await hydratePackageOwnedRows(this, planId);
+    if (!isCurrent()) return;
   }
   deleteContext = getPackageDeleteContext(
     this.model.state.goithau,
@@ -161,13 +176,7 @@ export async function deleteGoiThau(id) {
   );
   if (!deleteContext) return;
   deleteContext = await refreshPackageDeleteDependencies(this, deleteContext);
-  if (!deleteContext) return;
-  const confirmed = await this.view.customConfirm(
-    "Xác nhận xóa",
-    `Bạn có chắc muốn xóa gói thầu "${deleteContext.targetPackage.tenGoiThau || ""}"? Gói thầu và tất cả snapshot của gói trong mọi phiên bản kế hoạch sẽ bị xóa.`,
-    "trash-2",
-  );
-  if (!confirmed) return;
+  if (!deleteContext || !isCurrent()) return;
 
   const deleted = deleteAllPackageVersions(this.model, deleteContext);
   const changedPlans = this.model.state.kehoach.filter(

@@ -129,7 +129,6 @@ const ADVANCED_METHODS = Object.freeze([
 
 const CONSULTING_METHODS = Object.freeze([
   EVALUATION_METHODS.LOWEST_PRICE,
-  EVALUATION_METHODS.FIXED_PRICE,
   EVALUATION_METHODS.COMBINED,
   EVALUATION_METHODS.TECHNICAL,
 ]);
@@ -168,6 +167,9 @@ export function getEvaluationMethods({
     return [...STANDARD_METHODS];
   }
   if (phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ") {
+    if (linhVuc === "Xây lắp" || linhVuc === "Hỗn hợp") {
+      return [...STANDARD_METHODS, EVALUATION_METHODS.COMBINED];
+    }
     return [...ADVANCED_METHODS];
   }
   if (TWO_STAGE_FIELDS.has(linhVuc)) {

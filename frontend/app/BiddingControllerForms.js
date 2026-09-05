@@ -484,11 +484,16 @@ export function setupActionListeners() {
     const missingOption = preserveMissingSourceValue
       ? '<option value="">-- Chưa có dữ liệu --</option>'
       : "";
-    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(missingOption + methods
+    const currentLabel = evaluationMethodLabel(currentVal);
+    const preserveExistingMethod = !forceDefault && isExistingPackage
+      && currentLabel && !methods.includes(currentLabel);
+    const existingOption = preserveExistingMethod
+      ? `<option value="${escapeHtml(currentLabel)}">${escapeHtml(currentLabel)}</option>`
+      : "";
+    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(missingOption + existingOption + methods
       .map((method) => `<option value="${escapeHtml(method)}">${escapeHtml(method)}</option>`)
       .join(""));
-    const currentLabel = evaluationMethodLabel(currentVal);
-    if (!forceDefault && currentLabel && methods.includes(currentLabel)) {
+    if (!forceDefault && currentLabel && (methods.includes(currentLabel) || preserveExistingMethod)) {
       gtPhuongPhapDanhGiaSelect.value = currentLabel;
     } else if (preserveMissingSourceValue) {
       gtPhuongPhapDanhGiaSelect.value = "";
@@ -588,7 +593,7 @@ export function setupActionListeners() {
   const gtPhanLoContainer = document.getElementById("gt-phanlo-container");
   const gtPhanLoTableContainer = document.getElementById("gt-phanlo-table-container");
   if (gtLinhVucSelect && gtHinhThucSelect && gtPhuongThucSelect && gtPhuongThucContainer) {
-    const handleLinhVucChange = () => {
+    const handleLinhVucChange = (event) => {
       const val = gtLinhVucSelect.value;
       const options = gtHinhThucSelect.querySelectorAll("option");
       if (val === "Tư vấn") {
@@ -611,7 +616,8 @@ export function setupActionListeners() {
       if (this.handleHinhThucChange) {
         this.handleHinhThucChange();
       }
-      updatePhuongPhapDanhGiaOptions(true);
+      // Opening an existing form also calls this handler without a change event.
+      updatePhuongPhapDanhGiaOptions(event?.type === "change");
       if (gtTuyChonContainer) {
         setVisible(gtTuyChonContainer, true);
         if (this.handleTuyChonMuaThemChange) this.handleTuyChonMuaThemChange();

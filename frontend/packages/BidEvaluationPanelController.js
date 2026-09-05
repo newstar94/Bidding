@@ -59,7 +59,9 @@ function processTwoEligibility(appController, pkg, metadataOverride = null) {
     (bid) => String(bid.goiThauId) === String(pkg.id),
   );
   const reasons = [];
-  if (normalizeEvaluationMethod(pkg) !== EVALUATION_METHOD_CODES.LOWEST_PRICE) {
+  if (!normalizeEvaluationMethod(pkg)) {
+    reasons.push("Chưa có phương pháp đánh giá hợp lệ");
+  } else if (normalizeEvaluationMethod(pkg) !== EVALUATION_METHOD_CODES.LOWEST_PRICE) {
     reasons.push('PP đánh giá không phải "Giá thấp nhất"');
   }
   if (metadata.coUuDai) reasons.push("Có nhà thầu được hưởng ưu đãi");

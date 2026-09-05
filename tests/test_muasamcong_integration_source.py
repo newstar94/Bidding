@@ -139,6 +139,22 @@ def test_ib2600271825_evaluation_method_comes_from_ehsmt_form():
     assert revision["evaluationMethod"] == "Giá thấp nhất"
 
 
+@pytest.mark.parametrize('code,field,form,method,expected', [
+    ('IB2600079204', 'PTV', 'BD.MT.02.1093', '1', 'Giá thấp nhất'),
+    ('IB2600079201', 'TV', 'BD.DT.02.0822', '3', 'Kết hợp giữa kỹ thuật và giá'),
+])
+def test_import_evaluation_method_from_captured_consulting_forms(code, field, form, method, expected):
+    revision = normalize_notice_revision(
+        {'notifyNo': code, 'bidField': field, 'bidoInvBiddingDTO': [
+            {'formCode': form, 'formValue': json.dumps({'method': method})},
+        ]},
+        notice_no=code, revision_id='notice-00', revision_number='00',
+    )
+    draft = map_package_canonical_to_draft('MUASAMCONG', code, revision, revision)
+    assert revision['evaluationMethod'] == expected
+    assert draft['phuongPhapDanhGia'] == expected
+
+
 def test_ib2600212155_evaluation_method_comes_from_dt_1843_form():
     revision = normalize_notice_revision(
         {
