@@ -28,6 +28,76 @@ const TIMELINE_TEST_SHELL = `<!doctype html><html><head>
   </section>
 </body></html>`;
 
+test("timeline preserves the selected plan snapshot and all E-HSMT revisions", async () => {
+  const server = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url, "http://localhost").pathname;
+      response.setHeader("content-type", contentType(pathname));
+      response.end(pathname === "/" ? TIMELINE_TEST_SHELL
+        : await readFile(join(projectRoot, pathname.replace(/^\//u, ""))));
+    } catch {
+      response.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.evaluate(async () => {
+      const { renderPackageTimeline } = await import("/frontend/packages/PackageTimelineView.js");
+      const plans = [2, 3].map((n) => ({ id: `plan-${n}`, rootId: "plan-root",
+        phienBan: n, isLatest: 1, pheDuyet: "Kế hoạch", maKeHoach: "PL2600029845" }));
+      const original = { id: "z-current", rootId: "package-root", phienBan: 0,
+        isLatest: 1, keHoachId: "plan-3", maGoiThau: "IB2600079201",
+        hinhThucLuaChon: "OPEN_BIDDING", phuongThucLuaChon: "Một giai đoạn hai túi hồ sơ",
+        timelineItems: [], referenceOnly: false, soQuyetDinh: "42/QĐ-CLCB",
+        ngayQuyetDinh: "2026-03-06", thoiGianMoThau: "2026-03-24T08:30:00+07:00" };
+      const old = { ...original, id: "a-old", keHoachId: "plan-2", thoiGianMoThau: null };
+      const view = { model: { getWorkspaceToken: () => "test", useServerSidePagination: false,
+        workspaceSessionStorage: { readJson: () => ({ planId: "plan-3", packageId: original.id }),
+          writeJson() {}, removeItem() {} },
+        state: { kehoach: plans, goithau: [old, original], hopdong: [], activeuser: {} } },
+        createIconsScoped() {}, initFlatpickr() {}, showToast() {} };
+      globalThis.timelineSnapshotView = view;
+      globalThis.timelineSnapshotRender = renderPackageTimeline;
+      renderPackageTimeline.call(view);
+    });
+    await page.waitForFunction(() => globalThis.timelineSnapshotView._packageTimelineState?.package
+      && !globalThis.timelineSnapshotView._packageTimelineState.restoringSelection);
+    assert.deepEqual(await page.evaluate(() => {
+      const state = globalThis.timelineSnapshotView._packageTimelineState;
+      const row = state.rows.find((item) => item.milestoneKey === "BID_OPENING_MINUTES");
+      return [state.package.id, state.plan.id, row.ngayThucTe, row.trangThai];
+    }), ["z-current", "plan-3", "2026-03-24", "DONE"]);
+
+    // New package revisions still contribute the original decision and every adjustment.
+    await page.evaluate(() => {
+      const view = globalThis.timelineSnapshotView;
+      const original = view.model.state.goithau.find((pkg) => pkg.id === "z-current");
+      view.model.state.goithau.push(...[1, 2].map((n) => ({ ...original, id: `revision-${n}`,
+        phienBan: n, soQuyetDinh: `DC-${n}`, ngayQuyetDinh: `2026-03-${10 + n}` })));
+      view._packageTimelineState = null;
+      view.model.workspaceSessionStorage.readJson = () => ({ planId: "plan-3", packageId: "revision-2" });
+      globalThis.timelineSnapshotRender.call(view);
+    });
+    await page.waitForFunction(() => globalThis.timelineSnapshotView._packageTimelineState?.package?.id === "revision-2"
+      && !globalThis.timelineSnapshotView._packageTimelineState.restoringSelection);
+    assert.deepEqual(await page.evaluate(() => {
+      const state = globalThis.timelineSnapshotView._packageTimelineState;
+      return state.displayRows.filter((row) => ["E_HSMT_APPROVAL", "E_HSMT_ADJUSTMENT_APPROVAL"].includes(row.milestoneKey))
+        .map((row) => row.soVanBan);
+    }), ["42/QĐ-CLCB", "DC-2"]);
+    assert.deepEqual(await page.evaluate(() => globalThis.timelineSnapshotView._packageTimelineState
+      .dateHistoryByMilestone.E_HSMT_ADJUSTMENT_APPROVAL.map((date) => date.value)),
+    ["2026-03-11", "2026-03-12"]);
+  } finally {
+    await browser?.close();
+    await closeServer(server);
+  }
+});
+
 function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });

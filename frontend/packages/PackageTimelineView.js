@@ -810,7 +810,9 @@ async function selectPackage(view, packageId) {
     if (!requestedPackage) throw new Error("Không tìm thấy gói thầu đã chọn.");
     const lineagePackages = await fetchTimelineLineagePackages(view, requestedPackage);
     if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
-    const pkg = selectLatestVersion(lineagePackages) || requestedPackage;
+    // The picker already resolves the representative within the selected plan.
+    // Other plan snapshots remain history, never replacement edit targets.
+    const pkg = requestedPackage;
     state.package = pkg;
     const initialReference = timelineInitialPackageReference(lineagePackages, pkg) || pkg;
     state.initialPackage = lineagePackages.find(

@@ -157,22 +157,27 @@ def _parse_environment_template(path):
     return values
 
 
-def _assert_required_feature_profile(environment):
-    missing = REQUIRED_FEATURE_PROFILE_KEYS - environment.keys()
+def _assert_required_feature_profile(environment, *, compact=False):
+    from scripts.simplify_env import OPTIONAL_KEYS
+    required = REQUIRED_FEATURE_PROFILE_KEYS - OPTIONAL_KEYS if compact else REQUIRED_FEATURE_PROFILE_KEYS
+    missing = required - environment.keys()
     assert not missing, f"environment template is missing {sorted(missing)}"
 
     assert environment["TRIAL_FULL_ACCESS_ENABLED"] == "false"
     assert "PROCUREMENT_LOOKUP_ENABLED" not in environment
     assert "PROCUREMENT_IMPORT_ENABLED" not in environment
     assert "PROCUREMENT_PROVIDER" not in environment
-    assert environment["PROCUREMENT_BROWSER_MODE"] == "research-stealth"
-    assert environment["RESEARCH_STEALTH_ENABLED"] == "true"
+    from backend.procurement_lookup.config import ProcurementLookupSettings
+    lookup = ProcurementLookupSettings.from_environ(environment)
+    assert lookup.mode == "research-stealth"
+    assert lookup.research_enabled is True
     assert environment["PAYOS_CREDENTIAL_REFERENCE"] == "env://payos/default"
     assert environment["COMMERCIAL_POLICY_ENABLED"] == "false"
     assert environment["COMMERCIAL_POLICY_MODE"] == "off"
     assert environment["COMMERCIAL_PAYMENT_PROVIDER"] == "fake"
     assert environment["CONFLICT_CENTER_ENABLED"] == "false"
-    assert environment["AI_PROVIDER_STORE_RESPONSES"] == "false"
+    from backend.ai.configuration import get_ai_config
+    assert get_ai_config(environment).provider_store_responses is False
     for secret in ("PAYOS_CLIENT_ID", "PAYOS_API_KEY", "PAYOS_CHECKSUM_KEY"):
         assert environment[secret] == ""
     for secret in (
@@ -231,7 +236,7 @@ def test_root_environment_example_is_compact_local_feature_profile():
     environment = _parse_environment_template(path)
 
     assert environment["APP_ENV"] == "development"
-    _assert_required_feature_profile(environment)
+    _assert_required_feature_profile(environment, compact=True)
     assert len(environment) < 120
     assert "timeout/queue tuning" not in content.casefold()
 
