@@ -71,7 +71,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "1.62.0",
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",
     "source-map-js": "1.2.1",
