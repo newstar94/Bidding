@@ -403,7 +403,7 @@ def test_three_intermediate_versions_stay_absent_until_one_atomic_final_save(mon
         database.close()
 
 
-def test_atomic_finalize_commits_all_msc_plan_revisions_with_provenance(monkeypatch):
+def test_specialist_with_view_can_finalize_new_imported_plan_revisions(monkeypatch):
     database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
     if not database_url:
         pytest.skip("TEST_DATABASE_URL is required for plan draft integration test")
@@ -449,8 +449,14 @@ def test_atomic_finalize_commits_all_msc_plan_revisions_with_provenance(monkeypa
         setup.execute(
             """INSERT INTO thanh_vien_to_chuc
                    (user_id, organization_id, vai_tro_trong_to_chuc)
-               VALUES (?, ?, 'manager')""",
+               VALUES (?, ?, 'employee')""",
             (actor_id, organization_id),
+        )
+        setup.execute(
+            """INSERT INTO ma_tran_phan_quyen
+                   (id, organization_id, emp_id, kehoach)
+               VALUES (?, ?, ?, 'view')""",
+            (f"permission-{token}", organization_id, actor_id),
         )
         setup.execute(
             """INSERT INTO chu_dau_tu
@@ -485,7 +491,7 @@ def test_atomic_finalize_commits_all_msc_plan_revisions_with_provenance(monkeypa
         lambda _request: (
             True,
             SessionRole(
-                "user", actor_id, platform_role="user", active_role="manager",
+                "user", actor_id, platform_role="user", active_role="employee",
                 active_role_organization_id=organization_id,
             ),
         ),

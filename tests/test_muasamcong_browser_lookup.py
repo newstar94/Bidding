@@ -374,8 +374,8 @@ def test_node_browser_runtime_reuses_one_worker_and_exchanges_sanitized_json_lin
         popen=popen,
         node_executable="node",
     )
-    first = runtime.lookup("PL2600000001", "PLAN")
-    second = runtime.lookup("IB2600000002", "PACKAGE")
+    runtime.lookup("PL2600000001", "PLAN")
+    runtime.lookup("IB2600000002", "PACKAGE")
     probe = runtime.probe()
 
     assert len(processes) == 1

@@ -166,7 +166,7 @@ def _assert_required_feature_profile(environment, *, compact=False):
     assert "PROCUREMENT_IMPORT_ENABLED" not in environment
     assert "PROCUREMENT_PROVIDER" not in environment
     from backend.procurement_lookup.config import ProcurementLookupSettings
-    lookup = ProcurementLookupSettings.from_environ(environment)
+    ProcurementLookupSettings.from_environ(environment)
     assert environment["PAYOS_CREDENTIAL_REFERENCE"] == "env://payos/default"
     assert environment["COMMERCIAL_POLICY_ENABLED"] == "false"
     assert environment["COMMERCIAL_POLICY_MODE"] == "off"

@@ -202,8 +202,13 @@ class SyncRecordValidator:
         if self.allow_new_historical_parents:
             # The finalize command has already validated a wholly unpersisted,
             # closed plan/package graph against the server in this transaction.
-            for table in ("ke_hoach_lcnt", "goi_thau", "goi_thau_hang_hoa",
-                          "thong_tin_mo_thau", "hang_hoa_du_thau_nha_thau"):
+            for table in (
+                "ke_hoach_lcnt",
+                "goi_thau",
+                "goi_thau_hang_hoa",
+                "thong_tin_mo_thau",
+                "hang_hoa_du_thau_nha_thau",
+            ):
                 for record in records_by_table.get(table, ()):
                     record_id = self.clean_record_id(table, record.get("id"))
                     if record_id and record_id not in current_records_by_table.get(table, {}):

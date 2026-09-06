@@ -119,12 +119,26 @@ def _convert_qmark_parameters(statement: str) -> str:
     index = 0
     state = "normal"
     dollar_tag = ""
+    single_backslash_escapes = False
+    block_comment_depth = 0
     length = len(statement)
     while index < length:
         char = statement[index]
         following = statement[index + 1] if index + 1 < length else ""
         if state == "normal":
             if char == "'":
+                prefix = statement[index - 1] if index else ""
+                prefix_before = statement[index - 2] if index > 1 else ""
+                single_backslash_escapes = (
+                    prefix in {"e", "E"}
+                    and (
+                        not prefix_before
+                        or not (
+                            prefix_before.isalnum()
+                            or prefix_before in {"_", "$"}
+                        )
+                    )
+                )
                 state = "single"
             elif char == '"':
                 state = "double"
@@ -147,6 +161,7 @@ def _convert_qmark_parameters(statement: str) -> str:
             elif char == "-" and following == "-":
                 state = "line_comment"
             elif char == "/" and following == "*":
+                block_comment_depth = 1
                 state = "block_comment"
             elif char == "?":
                 # JSON/JSONB existence operators (``?``, ``?|``, ``?&``)
@@ -167,12 +182,17 @@ def _convert_qmark_parameters(statement: str) -> str:
                 index += 1
                 continue
         elif state == "single":
+            if single_backslash_escapes and char == "\\" and following:
+                output.extend((char, following))
+                index += 2
+                continue
             if char == "'" and following == "'":
                 output.extend((char, following))
                 index += 2
                 continue
             if char == "'":
                 state = "normal"
+                single_backslash_escapes = False
         elif state == "double":
             if char == '"' and following == '"':
                 output.extend((char, following))
@@ -184,10 +204,17 @@ def _convert_qmark_parameters(statement: str) -> str:
             if char in "\r\n":
                 state = "normal"
         elif state == "block_comment":
+            if char == "/" and following == "*":
+                output.extend((char, following))
+                index += 2
+                block_comment_depth += 1
+                continue
             if char == "*" and following == "/":
                 output.extend((char, following))
                 index += 2
-                state = "normal"
+                block_comment_depth -= 1
+                if block_comment_depth == 0:
+                    state = "normal"
                 continue
         elif state == "dollar":
             if dollar_tag and statement.startswith(dollar_tag, index):

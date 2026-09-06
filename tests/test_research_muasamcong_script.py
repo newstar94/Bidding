@@ -46,6 +46,7 @@ def test_live_cli_loads_the_project_environment_before_launch(
         encoding="utf-8",
     )
     monkeypatch.delenv("PROCUREMENT_LOOKUP_ENABLED", raising=False)
+    monkeypatch.delenv("BIDDING_DATABASE_PROFILE", raising=False)
     monkeypatch.setattr(research_module, "PROJECT_ROOT", tmp_path)
 
     def fake_live_artifact(code, kind):

@@ -735,18 +735,28 @@ def _prepare_notice_blocking(request, payload):
 
 def _import_session_permission(cursor, session, organization_id, stored):
     """A new plan draft needs module view; existing plans still require edit."""
-    module = "kehoach" if stored["kind"] == "PLAN" else "goithau"
+    kind = str(stored.get("kind") or "").strip().upper()
+    module = "kehoach" if kind == "PLAN" else "goithau"
     action = "edit"
-    family_no = str(stored.get("familyNo") or "").strip().upper()
-    if stored["kind"] == "PLAN" and family_no:
+    family_no = str(stored.get("familyNo") or "").strip()
+    if kind == "PLAN" and family_no:
         existing = cursor.execute(
             """SELECT id FROM ke_hoach_lcnt
-               WHERE organization_id = ? AND upper(ma_ke_hoach) = ? LIMIT 1""",
+               WHERE organization_id = ?
+                 AND lower(trim(ma_ke_hoach)) = lower(?)
+               LIMIT 1""",
             (organization_id, family_no),
         ).fetchone()
         if existing is None:
             action = "view"
-    return has_module_permission(cursor, session, session.user_id, organization_id, module, action)
+    return has_module_permission(
+        cursor,
+        session,
+        session.user_id,
+        organization_id,
+        module,
+        action,
+    )
 
 
 def _get_import_session_blocking(request, session_id, revision_number=None):
@@ -809,7 +819,12 @@ def _bind_import_session_decisions_blocking(request, session_id, payload):
         )
         if stored is None:
             raise LookupError("PROCUREMENT_SESSION_EXPIRED")
-        if stored["kind"] != "PLAN" or not _import_session_permission(cursor, session, organization_id, stored):
+        if stored["kind"] != "PLAN" or not _import_session_permission(
+            cursor,
+            session,
+            organization_id,
+            stored,
+        ):
             raise ProcurementRouteError(
                 "ORGANIZATION_ACCESS_DENIED",
                 "Không có quyền xác nhận phiên nhập trong workspace hiện tại.",

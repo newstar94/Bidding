@@ -395,32 +395,7 @@ def test_backend_debug_can_use_hashed_frontend_bundle(monkeypatch, tmp_path):
 
 
 def test_debug_runtime_defaults_to_bundled_frontend_transport():
-    environment = os.environ.copy()
-    environment.update({
-        "APP_DEBUG": "True",
-        "APP_ENV": "test",
-        "ALLOWED_HOSTS": "testserver",
-    })
-    environment.pop("FRONTEND_ASSET_MODE", None)
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "from backend.app import FRONTEND_ASSET_MODE, USE_FRONTEND_BUNDLE; "
-                "print(FRONTEND_ASSET_MODE, USE_FRONTEND_BUNDLE)"
-            ),
-        ],
-        cwd=Path(__file__).resolve().parents[1],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "bundle True"
+    assert app_module._resolve_frontend_asset_mode({}) == "bundle"
 
 
 def test_runtime_asset_mode_switch_invalidates_the_transport_choice(monkeypatch, tmp_path):

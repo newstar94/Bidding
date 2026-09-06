@@ -97,9 +97,18 @@ APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "t
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
-FRONTEND_ASSET_MODE = os.environ.get("FRONTEND_ASSET_MODE", "bundle").strip().lower()
-if FRONTEND_ASSET_MODE not in {"source", "bundle"}:
-    raise RuntimeError("FRONTEND_ASSET_MODE must be source or bundle.")
+
+
+def _resolve_frontend_asset_mode(environment):
+    """Resolve and validate the asset transport independently of env-file loading."""
+
+    mode = environment.get("FRONTEND_ASSET_MODE", "bundle").strip().lower()
+    if mode not in {"source", "bundle"}:
+        raise RuntimeError("FRONTEND_ASSET_MODE must be source or bundle.")
+    return mode
+
+
+FRONTEND_ASSET_MODE = _resolve_frontend_asset_mode(os.environ)
 USE_FRONTEND_BUNDLE = not APP_DEBUG or FRONTEND_ASSET_MODE == "bundle"
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "").strip().rstrip("/")
 BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
@@ -208,6 +217,19 @@ def _html_cache_signature():
     return tuple(entries)
 
 
+def _path_is_within_root(candidate, root):
+    """Return whether the resolved candidate is the root or a real descendant."""
+
+    try:
+        resolved_root = os.path.realpath(os.fspath(root))
+        resolved_candidate = os.path.realpath(os.fspath(candidate))
+        common = os.path.commonpath((resolved_root, resolved_candidate))
+    except (OSError, TypeError, ValueError):
+        # ValueError also covers paths on different Windows drives.
+        return False
+    return os.path.normcase(common) == os.path.normcase(resolved_root)
+
+
 def compile_html(file_path):
     """Biên dịch file HTML bằng cách giải quyết INCLUDE placeholders đệ quy.
     Khi production: trả về cache nếu đã biên dịch. Khi debug: luôn đọc từ disk.
@@ -230,7 +252,7 @@ def compile_html(file_path):
             full_path = os.path.join(project_root, include_path.replace("views/", ""))
 
         resolved = os.path.realpath(full_path)
-        if not resolved.startswith(os.path.realpath(project_root)):
+        if not _path_is_within_root(resolved, project_root):
             return f"<!-- INCLUDE ERROR: Path traversal denied for '{include_path}' -->"
         if os.path.exists(resolved):
             with open(resolved, 'r', encoding='utf-8') as f:

@@ -1,19 +1,32 @@
 from dataclasses import dataclass, field
 
-from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
-from backend.shared.workspace_scope import is_personal_scope_for_user
-from backend.shared.subscription_policy import can_use_word_export
-from backend.commercial_policy.config import trial_full_access_enabled
 from backend.shared.module_registry import (
-    CANONICAL_PERMISSION_MODULES,
     TABLE_TO_MODULE,
-    canonical_module,
+)
+from backend.shared.access_principals import (
+    MODULE_PERMISSION_COLUMNS as MODULE_PERMISSION_COLUMNS,
+    ORGANIZATION_MANAGER_ROLES,
+    PLATFORM_ADMIN_ROLES as PLATFORM_ADMIN_ROLES,
+    can_upload_workspace_assets as can_upload_workspace_assets,
+    has_active_organization_membership,
+    has_inherited_specialist_access,
+    has_module_permission,
+    is_assignment_scoped_active_role as is_assignment_scoped_active_role,
+    is_business_organization as is_business_organization,
+    is_manager_role,
+    is_organization_manager,
+    is_personal_workspace_owner,
+    organization_membership_role,
+)
+from backend.shared.document_access_policy import (
+    DocumentExportCapabilities as DocumentExportCapabilities,
+    can_manage_word_config as can_manage_word_config,
+    can_read_word_config as can_read_word_config,
+    resolve_document_export_capabilities as resolve_document_export_capabilities,
 )
 
 
-PLATFORM_ADMIN_ROLES = {"super_admin"}
-ORGANIZATION_MANAGER_ROLES = {"manager"}
 WRITE_PROTECTED_KEYS = {
     "assignments",
     "customcontractstatuses",
@@ -22,8 +35,6 @@ WRITE_PROTECTED_KEYS = {
     "employees",
     "systempackages",
 }
-
-MODULE_PERMISSION_COLUMNS = CANONICAL_PERMISSION_MODULES
 
 ASSIGNED_TABLE_TYPES = {
     "ke_hoach_lcnt": "kehoach",
@@ -90,228 +101,6 @@ def _chunked(values, size=_QUERY_CHUNK_SIZE):
     values = list(values)
     for offset in range(0, len(values), size):
         yield values[offset:offset + size]
-
-
-@dataclass(frozen=True)
-class DocumentExportCapabilities:
-    """Effective permission to place sensitive field families in a document."""
-
-    financial: bool = False
-    identity: bool = False
-    signature: bool = False
-
-    @classmethod
-    def allow_all(cls):
-        return cls(financial=True, identity=True, signature=True)
-
-    def as_dict(self):
-        return {
-            "financial": self.financial,
-            "identity": self.identity,
-            "signature": self.signature,
-        }
-
-
-def _roles(role_str):
-    return get_effective_roles(str(role_str or ""))
-
-
-def is_manager_role(role_str):
-    """Return whether an account has the platform-wide administration role.
-
-    Organization manager roles deliberately do not belong here: they must always
-    be resolved against a concrete membership and organization.
-    """
-
-    active_role = getattr(role_str, "active_role", None)
-    if active_role is not None:
-        return active_role == "super_admin"
-    return bool(_roles(role_str) & PLATFORM_ADMIN_ROLES)
-
-
-def is_assignment_scoped_active_role(active_role, scope_type="organization"):
-    """Return whether the selected workspace persona is assignment-scoped.
-
-    Membership role is deliberately not an input.  A manager who explicitly
-    selects the employee persona must use the same record scope as an employee
-    across every read channel; personal workspaces remain owner-scoped.
-    """
-
-    return (
-        str(scope_type or "organization").strip().lower() != "personal"
-        and str(active_role or "").strip().lower()
-        not in {"manager", "super_admin"}
-    )
-
-
-def organization_membership_role(cursor, user_id, organization_id):
-    if not user_id or not organization_id:
-        return None
-    cursor.execute(
-        """
-        SELECT lower(trim(vai_tro_trong_to_chuc))
-        FROM thanh_vien_to_chuc
-        WHERE user_id = ? AND organization_id = ?
-          AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
-        LIMIT 1
-        """,
-        (user_id, organization_id),
-    )
-    row = cursor.fetchone()
-    return str(row[0] or "").strip().lower() if row else None
-
-
-def is_business_organization(cursor, organization_id):
-    cursor.execute(
-        "SELECT 1 FROM to_chuc WHERE id = ? LIMIT 1",
-        (organization_id,),
-    )
-    return cursor.fetchone() is not None
-
-
-def is_personal_workspace_owner(cursor, user_id, organization_id):
-    if not is_personal_scope_for_user(organization_id, user_id):
-        return False
-    cursor.execute(
-        """SELECT 1 FROM tai_khoan
-           WHERE id = ? AND vai_tro != 'super_admin'
-             AND trang_thai = 'active' LIMIT 1""",
-        (user_id,),
-    )
-    return cursor.fetchone() is not None
-
-
-def is_organization_manager(cursor, role_str, user_id, organization_id):
-    if getattr(role_str, "active_role", None) == "employee":
-        return False
-    if is_manager_role(role_str):
-        return True
-    return organization_membership_role(cursor, user_id, organization_id) in ORGANIZATION_MANAGER_ROLES
-
-
-def can_upload_workspace_assets(cursor, role_str, user_id, organization_id):
-    """Allow personal owners or an active organization manager to upload assets."""
-
-    if is_personal_scope_for_user(organization_id, user_id):
-        return is_personal_workspace_owner(cursor, user_id, organization_id)
-    return is_organization_manager(cursor, role_str, user_id, organization_id)
-
-
-def has_active_organization_membership(cursor, role_str, user_id, organization_id):
-    if is_manager_role(role_str):
-        return True
-    return organization_membership_role(cursor, user_id, organization_id) is not None
-
-
-def has_inherited_specialist_access(cursor, role_str, user_id, organization_id):
-    """Allow an organization manager in employee mode to inherit read access."""
-
-    if getattr(role_str, "active_role", None) != "employee":
-        return False
-    return (
-        organization_membership_role(cursor, user_id, organization_id)
-        in ORGANIZATION_MANAGER_ROLES
-    )
-
-
-def _stored_document_export_capabilities(cursor, user_id, organization_id):
-    row = cursor.execute(
-        """SELECT financial, identity, signature
-           FROM document_export_capabilities
-           WHERE organization_id = ? AND user_id = ?
-           LIMIT 1""",
-        (organization_id, user_id),
-    ).fetchone()
-    if not row:
-        return DocumentExportCapabilities()
-    return DocumentExportCapabilities(
-        financial=bool(row[0]),
-        identity=bool(row[1]),
-        signature=bool(row[2]),
-    )
-
-
-def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
-    """Resolve field-family grants after workspace and subscription checks."""
-
-    if not can_use_word_export(cursor, role_str, user_id, organization_id):
-        return DocumentExportCapabilities()
-    if trial_full_access_enabled():
-        return DocumentExportCapabilities.allow_all()
-    if is_personal_workspace_owner(cursor, user_id, organization_id):
-        return DocumentExportCapabilities.allow_all()
-    if is_organization_manager(cursor, role_str, user_id, organization_id):
-        return DocumentExportCapabilities.allow_all()
-    if has_active_organization_membership(cursor, role_str, user_id, organization_id):
-        return _stored_document_export_capabilities(
-            cursor, user_id, organization_id
-        )
-    return DocumentExportCapabilities()
-
-
-def _permission_for(cursor, organization_id, user_id, module_name):
-    module_name = canonical_module(module_name)
-    if module_name not in MODULE_PERMISSION_COLUMNS:
-        return ""
-    cursor.execute(
-        f"SELECT {module_name} FROM ma_tran_phan_quyen WHERE organization_id = ? AND emp_id = ?",
-        (organization_id, user_id),
-    )
-    row = cursor.fetchone()
-    if not row:
-        return ""
-    try:
-        return str(row[0] or "").strip().lower()
-    except Exception:
-        return ""
-
-
-def has_module_permission(cursor, role_str, user_id, organization_id, module_name, action="view"):
-    module_name = canonical_module(module_name)
-    if module_name is None:
-        return False
-    if is_organization_manager(cursor, role_str, user_id, organization_id):
-        return True
-    if is_personal_workspace_owner(cursor, user_id, organization_id):
-        return True
-    if (
-        action != "edit"
-        and has_inherited_specialist_access(
-            cursor, role_str, user_id, organization_id
-        )
-    ):
-        return True
-    if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
-        return False
-    permission = _permission_for(cursor, organization_id, user_id, module_name)
-    if action == "edit":
-        return permission == "edit"
-    return permission in {"view", "edit"}
-
-
-def can_read_word_config(cursor, role_str, user_id, organization_id):
-    """Allow members to use the Word configuration of the active workspace."""
-
-    if not can_use_word_export(cursor, role_str, user_id, organization_id):
-        return False
-    if is_organization_manager(cursor, role_str, user_id, organization_id):
-        return True
-    if is_personal_workspace_owner(cursor, user_id, organization_id):
-        return True
-    return has_active_organization_membership(
-        cursor, role_str, user_id, organization_id
-    )
-
-
-def can_manage_word_config(cursor, role_str, user_id, organization_id):
-    """Allow only a personal owner or organization manager to change Word config."""
-
-    if not can_read_word_config(cursor, role_str, user_id, organization_id):
-        return False
-    return bool(
-        is_personal_workspace_owner(cursor, user_id, organization_id)
-        or is_organization_manager(cursor, role_str, user_id, organization_id)
-    )
 
 
 def _assigned(cursor, organization_id, user_id, target_id, target_type):
@@ -487,11 +276,6 @@ def _row_value(row, name, index):
         return row[name]
     except (KeyError, TypeError):
         return row[index]
-
-
-def _chunked(values):
-    for offset in range(0, len(values), _QUERY_CHUNK_SIZE):
-        yield values[offset:offset + _QUERY_CHUNK_SIZE]
 
 
 def _load_assigned_lineages(
@@ -952,7 +736,10 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     module_name = TABLE_TO_MODULE.get(table_name)
     if table_name in SHARED_REFERENCE_TABLES and not context.active_membership:
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
-    new_plan_draft = (table_name, clean_id(item.get("id"))) in context.new_plan_draft_records
+    new_plan_draft = (
+        table_name,
+        clean_id(item.get("id")),
+    ) in context.new_plan_draft_records
     if not _context_has_module_permission(
         context, module_name, "view" if new_plan_draft else "edit"
     ):

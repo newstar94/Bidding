@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from collections import Counter
 import json
 from pathlib import Path
@@ -20,6 +21,27 @@ DEBT_LIMITS = {
     "S110": 0,
     "S608": 116,
 }
+
+
+def find_duplicate_top_level_definitions(paths):
+    """Return duplicate function/class definitions that shadow earlier ones."""
+
+    duplicates = []
+    for base in paths:
+        for path in sorted(base.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except (OSError, SyntaxError, UnicodeError):
+                continue
+            seen = {}
+            for node in tree.body:
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue
+                if node.name in seen:
+                    duplicates.append((path, node.name, seen[node.name], node.lineno))
+                else:
+                    seen[node.name] = node.lineno
+    return duplicates
 
 
 def _run(*arguments):
@@ -65,10 +87,27 @@ def validate_module_debt(findings, baseline, *, root=ROOT):
 
 
 def main():
-    fatal = _run("--select", "E9,F63,F7,F82", "--output-format", "concise")
+    fatal = _run(
+        "--select",
+        "E9,F63,F7,F82,F811,B006,B012",
+        "--output-format",
+        "concise",
+    )
     if fatal.returncode:
         sys.stderr.write(fatal.stdout + fatal.stderr)
         return fatal.returncode
+
+    duplicate_definitions = find_duplicate_top_level_definitions(
+        ROOT / target for target in TARGETS
+    )
+    if duplicate_definitions:
+        for path, name, first_line, shadow_line in duplicate_definitions:
+            relative_path = path.relative_to(ROOT)
+            sys.stderr.write(
+                f"{relative_path}:{shadow_line}: duplicate top-level definition "
+                f"{name!r} shadows line {first_line}\n"
+            )
+        return 1
 
     measured = _run(
         "--select",
