@@ -739,7 +739,18 @@ def _import_session_permission(cursor, session, organization_id, stored):
     module = "kehoach" if kind == "PLAN" else "goithau"
     action = "edit"
     family_no = str(stored.get("familyNo") or "").strip()
-    if kind == "PLAN" and family_no:
+    plan = (stored.get("canonicalBundle") or {}).get("plan") or {}
+    continued_create_session = (
+        kind == "PLAN"
+        and str(plan.get("targetAction") or "").strip().upper() == "CREATE"
+        and int(stored.get("currentIndex") or 0) > 0
+    )
+    if continued_create_session:
+        # The first committed revision makes the plan visible in the database.
+        # Keep the server-owned CREATE session on its original view-permission
+        # path; switching to edit here would lock specialists out mid-session.
+        action = "view"
+    elif kind == "PLAN" and family_no:
         existing = cursor.execute(
             """SELECT id FROM ke_hoach_lcnt
                WHERE organization_id = ?

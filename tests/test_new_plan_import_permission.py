@@ -17,10 +17,18 @@ from backend.shared.access_policy import (
 
 
 @pytest.mark.parametrize(
-    "kind, exists, expected",
-    [("PLAN", False, True), ("PLAN", True, False), ("PACKAGE", False, False)],
+    "kind, exists, current_index, target_action, expected",
+    [
+        ("PLAN", False, 0, "CREATE", True),
+        ("PLAN", True, 0, "CREATE", False),
+        ("PLAN", True, 1, "CREATE", True),
+        ("PLAN", True, 1, "UPDATE", False),
+        ("PACKAGE", False, 0, "CREATE", False),
+    ],
 )
-def test_session_new_plan_uses_view_only(kind, exists, expected, monkeypatch):
+def test_session_new_plan_uses_view_only(
+    kind, exists, current_index, target_action, expected, monkeypatch
+):
     class Cursor:
         def execute(self, query, params):
             assert "lower(trim(ma_ke_hoach))" in query
@@ -39,7 +47,12 @@ def test_session_new_plan_uses_view_only(kind, exists, expected, monkeypatch):
         Cursor(),
         SimpleNamespace(user_id="employee"),
         "org",
-        {"kind": kind, "familyNo": "PL2600146586"},
+        {
+            "kind": kind,
+            "familyNo": "PL2600146586",
+            "currentIndex": current_index,
+            "canonicalBundle": {"plan": {"targetAction": target_action}},
+        },
     ) is expected
 
 
@@ -70,6 +83,41 @@ def test_new_plan_draft_does_not_grant_edit_or_unrelated_creation():
     assert not check("unrelated-new")
     context.permissions = {}
     assert not check("new")
+
+
+def test_specialist_view_can_create_but_not_edit_an_expert_record():
+    context = BatchWriteAuthorizationContext(
+        role_str="employee",
+        user_id="employee",
+        organization_id="org",
+        organization_manager=False,
+        personal_workspace_owner=False,
+        active_membership=True,
+        inherited_specialist_access=False,
+        membership_role="employee",
+        permissions={"chuyengia": "view"},
+        new_records={("chuyen_gia", "expert-new")},
+    )
+
+    assert authorize_record_write_from_context(
+        context,
+        "chuyengia",
+        "chuyen_gia",
+        {"id": "expert-new"},
+    ).allowed
+    assert not authorize_record_write_from_context(
+        context,
+        "chuyengia",
+        "chuyen_gia",
+        {"id": "expert-existing"},
+    ).allowed
+    context.new_records.add(("unmapped_internal_table", "internal-new"))
+    assert not authorize_record_write_from_context(
+        context,
+        "unmapped",
+        "unmapped_internal_table",
+        {"id": "internal-new"},
+    ).allowed
 
 
 def test_new_plan_package_graph_requires_view_for_each_module():
@@ -186,14 +234,23 @@ def test_specialist_view_can_resume_only_while_imported_plan_is_new(monkeypatch)
         ).create_from_bundle(
             {
                 "provider": "MUASAMCONG",
-                "plan": {"familyNo": family_no},
+                "plan": {
+                    "familyNo": family_no,
+                    "targetAction": "CREATE",
+                },
                 "revisions": [
                     {
                         "revisionId": f"revision-{token}",
                         "revisionNumber": "00",
                         "name": "Kế hoạch mới của chuyên viên",
                         "packages": [],
-                    }
+                    },
+                    {
+                        "revisionId": f"revision-next-{token}",
+                        "revisionNumber": "01",
+                        "name": "Phiên bản tiếp theo của kế hoạch mới",
+                        "packages": [],
+                    },
                 ],
             },
             organization_id=organization_id,
@@ -257,5 +314,32 @@ def test_specialist_view_can_resume_only_while_imported_plan_is_new(monkeypatch)
             )
         assert caught.value.status_code == 403
         assert caught.value.code == "ORGANIZATION_ACCESS_DENIED"
+
+        progressed = database.get_connection()
+        try:
+            ProcurementImportSessionRepository(
+                progressed.cursor()
+            ).mark_revision_committed(
+                import_session["sessionId"],
+                organization_id=organization_id,
+                revision_number="00",
+                committed_plan={
+                    "id": plan_id,
+                    "rootId": plan_id,
+                    "rowVersion": 1,
+                    "localVersion": 0,
+                    "sourceRevisionNumber": "00",
+                },
+            )
+            progressed.commit()
+        finally:
+            progressed.close()
+
+        resumed = routes._get_import_session_blocking(
+            request,
+            import_session["sessionId"],
+        )
+        assert resumed["currentIndex"] == 1
+        assert resumed["status"] == "WAITING_NEXT_CONFIRMATION"
     finally:
         database.close()

@@ -92,6 +92,7 @@ class BatchWriteAuthorizationContext:
     snapshot_package_ids: set[str] = field(default_factory=set)
     server_inherited_assignment_ids: set[str] = field(default_factory=set)
     new_plan_draft_records: set[tuple[str, str]] = field(default_factory=set)
+    new_records: set[tuple[str, str]] = field(default_factory=set)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -340,6 +341,7 @@ def build_batch_write_authorization_context(
     user_id,
     organization_id,
     records_by_table,
+    current_records_by_table=None,
 ):
     """Prefetch all stable authorization inputs needed for a sync batch."""
 
@@ -369,6 +371,19 @@ def build_batch_write_authorization_context(
         inherited_specialist_access=inherited_access,
         membership_role=membership_role,
     )
+    current_records_by_table = current_records_by_table or {}
+    for table_name, items in records_by_table.items():
+        if table_name not in current_records_by_table:
+            continue
+        current_ids = current_records_by_table[table_name]
+        context.new_records.update(
+            (table_name, record_id)
+            for item in items
+            if (
+                (record_id := clean_id(item.get("id")))
+                and record_id not in current_ids
+            )
+        )
 
     modules = sorted({
         module
@@ -736,12 +751,16 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     module_name = TABLE_TO_MODULE.get(table_name)
     if table_name in SHARED_REFERENCE_TABLES and not context.active_membership:
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
-    new_plan_draft = (
+    record_key = (
         table_name,
         clean_id(item.get("id")),
-    ) in context.new_plan_draft_records
+    )
+    new_plan_draft = record_key in context.new_plan_draft_records
+    new_record = module_name is not None and record_key in context.new_records
     if not _context_has_module_permission(
-        context, module_name, "view" if new_plan_draft else "edit"
+        context,
+        module_name,
+        "view" if new_plan_draft or new_record else "edit",
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
     if new_plan_draft:
@@ -881,10 +900,19 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
         )
     ):
         return AccessDecision(False, "Tài khoản không còn thuộc tổ chức này.")
-    if (
-        not has_module_permission(
-            cursor, role_str, user_id, organization_id, module_name, "edit"
-        )
+    new_record = not _table_record_exists(
+        cursor,
+        organization_id,
+        table_name,
+        item.get("id"),
+    )
+    if not has_module_permission(
+        cursor,
+        role_str,
+        user_id,
+        organization_id,
+        module_name,
+        "view" if new_record else "edit",
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 

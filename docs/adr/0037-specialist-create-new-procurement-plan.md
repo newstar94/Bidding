@@ -20,7 +20,11 @@ record scope hiện hành.
 
 1. Phiên nhập loại `PLAN` được tiếp tục với quyền `kehoach=view` khi trong đúng
    workspace chưa có kế hoạch mang cùng mã. Nếu mã đã tồn tại, phiên vẫn yêu cầu
-   `kehoach=edit` như trước.
+   `kehoach=edit` như trước. Ngoại lệ duy nhất là chính phiên `CREATE` do máy chủ
+   quản lý đã commit ít nhất một revision: kế hoạch vừa xuất hiện là kết quả của
+   phiên đó, nên các revision tiếp theo và bước đọc trạng thái hoàn tất tiếp tục
+   dùng quyền `view`. Session `CREATE` mới mở sau khi mã đã tồn tại vẫn yêu cầu
+   `edit` và không được hưởng ngoại lệ này.
 2. Quyền trên chỉ áp dụng cho luồng `finalize-draft` nguyên tử. Validator phải
    xác nhận toàn bộ chuỗi kế hoạch, snapshot gói thầu và bản ghi con là một graph
    khép kín, chưa từng persist, không có deletion và không nối vào ID/root đã có
@@ -38,7 +42,8 @@ record scope hiện hành.
 ## Compatibility impact
 
 - Chuyên viên có quyền xem phân hệ có thể hoàn tất một kế hoạch procurement hoàn
-  toàn mới thay vì nhận 403/validation error.
+  toàn mới, kể cả chuỗi nhiều revision và bước đọc trạng thái sau commit, thay vì
+  nhận 403/validation error giữa phiên.
 - Quản lý và người có quyền sửa giữ nguyên hành vi.
 - Kế hoạch cùng mã đã tồn tại, graph chứa ID/root đã persist, quyền xem bị thu
   hồi hoặc thiếu quyền phân hệ liên quan vẫn bị từ chối.
@@ -61,8 +66,9 @@ Chuyên viên tạo kế hoạch mới, nhưng không làm thay đổi dữ li�
 ## Regression seams
 
 - `tests/test_new_plan_import_permission.py`: phiên mới được tiếp tục bằng quyền
-  xem; cùng phiên bị từ chối ngay khi mã kế hoạch đã tồn tại; thu hồi quyền xem
-  vẫn bị từ chối.
+  xem; session mới mở bị từ chối khi mã kế hoạch đã tồn tại; chính session
+  `CREATE` đã commit revision đầu vẫn được đi tiếp; session cập nhật và trường hợp
+  thu hồi quyền xem vẫn bị từ chối.
 - `tests/test_plan_draft_finalize.py`: Chuyên viên chỉ có quyền xem hoàn tất được
   toàn bộ revision nguồn mới; validator vẫn từ chối graph đã persist hoặc liên
   kết sai.

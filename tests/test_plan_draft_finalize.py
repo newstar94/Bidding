@@ -553,6 +553,14 @@ def test_specialist_with_view_can_finalize_new_imported_plan_revisions(monkeypat
                 (organization_id, plan_ids[0]),
             ).fetchall()
             assert [tuple(row) for row in plans] == [(0, 0), (1, 1)]
+            assignments = check.execute(
+                """SELECT id_muc_tieu, id_nhan_vien FROM phan_cong_nhan_su
+                    WHERE organization_id = ? AND loai_doi_tuong = 'kehoach'""",
+                (organization_id,),
+            ).fetchall()
+            assert {tuple(row) for row in assignments} == {
+                (plan_id, actor_id) for plan_id in plan_ids
+            }
             session_row = check.execute(
                 """SELECT current_revision_index, status
                      FROM procurement_import_session

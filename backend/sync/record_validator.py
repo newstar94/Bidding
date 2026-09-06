@@ -198,6 +198,7 @@ class SyncRecordValidator:
             actor.user_id,
             organization_id,
             records_by_table,
+            current_records_by_table,
         )
         if self.allow_new_historical_parents:
             # The finalize command has already validated a wholly unpersisted,

@@ -216,7 +216,7 @@ class _AugmentationCursor(_AnswerCursor):
 def _organization_transaction():
     return SimpleNamespace(
         owner_type="organization",
-        actor=SimpleNamespace(user_id="creator", organization_id="org-1"),
+        actor=SimpleNamespace(role="manager", user_id="creator", organization_id="org-1"),
     )
 
 
