@@ -87,7 +87,7 @@ def test_only_active_organization_manager_can_upload_workspace_assets():
     )
 
 
-def test_organization_employee_cannot_upload_stamp_signature_or_certificate_images():
+def test_contractor_stamp_defers_to_record_write_but_expert_images_remain_protected():
     payload = {
         "nhathau": [{"id": "nt-1", "anhDau": "data:image/png;base64,AA=="}],
         "chuyengia": [{
@@ -104,7 +104,6 @@ def test_organization_employee_cannot_upload_stamp_signature_or_certificate_imag
     )
 
     assert {(item["table"], item["field"]) for item in errors} == {
-        ("nha_thau", "anh_dau"),
         ("chuyen_gia", "anh_chung_chi"),
         ("chuyen_gia", "anh_chu_ky"),
     }
@@ -178,7 +177,7 @@ class _CompatCursor:
         return [CompatRow(columns, row) for row in self._cursor.fetchall()]
 
 
-def test_employee_cannot_clear_or_repoint_media_but_filename_metadata_is_ignored():
+def test_contractor_stamp_can_be_cleared_but_expert_media_remains_protected():
     connection, cursor = _protected_media_cursor()
     try:
         errors = validate_protected_media_mutation_access(
@@ -205,13 +204,38 @@ def test_employee_cannot_clear_or_repoint_media_but_filename_metadata_is_ignored
         connection.close()
 
     assert {(item["table"], item["field"]) for item in errors} == {
-        ("nha_thau", "anh_dau"),
         ("chuyen_gia", "anh_chung_chi"),
         ("chuyen_gia", "anh_chu_ky"),
     }
     assert {item["code"] for item in errors} == {
         "ORG_ASSET_MUTATION_MANAGER_REQUIRED"
     }
+
+
+def test_contractor_fresh_stamp_upload_and_replace_defer_to_record_permission():
+    from backend.shared.access_policy import BatchWriteAuthorizationContext, authorize_record_write_from_context
+    connection, cursor = _protected_media_cursor()
+    try:
+        for record_id in ("nt-new", "nt-1"):
+            record = {"id": record_id, "anhDau": "data:image/png;base64,AA=="}
+            assert validate_protected_media_mutation_access(
+                {"nhathau": [record]}, owner_type="organization", can_upload=False,
+                cursor=cursor, organization_id="org-a",
+            ) == []
+            context = BatchWriteAuthorizationContext(
+                role_str="employee", user_id="employee", organization_id="org-a",
+                organization_manager=False, personal_workspace_owner=False,
+                active_membership=True, inherited_specialist_access=False,
+                membership_role="employee", permissions={"nhathau": "view"},
+                new_records={("nha_thau", "nt-new")},
+            )
+            assert authorize_record_write_from_context(context, "nhathau", "nha_thau", record).allowed == (record_id == "nt-new")
+            context.permissions["nhathau"] = "edit"
+            assert authorize_record_write_from_context(context, "nhathau", "nha_thau", record).allowed
+            context.permissions.clear()
+            assert not authorize_record_write_from_context(context, "nhathau", "nha_thau", record).allowed
+    finally:
+        connection.close()
 
 
 def test_organization_employee_can_preserve_existing_media_in_updates_and_versions():

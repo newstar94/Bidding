@@ -16,6 +16,29 @@ from backend.shared.access_policy import (
 )
 
 
+def test_archived_plan_does_not_turn_new_import_into_an_edit():
+    from tests.test_sync_conflict_authorization import _test_database, _seed_denied_package
+
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        org, actor, package = _seed_denied_package(cursor)
+        plan_id = cursor.execute("SELECT ke_hoach_id FROM goi_thau WHERE id = ?", (package,)).fetchone()[0]
+        cursor.execute("UPDATE ma_tran_phan_quyen SET kehoach = 'view' WHERE organization_id = ?", (org,))
+        cursor.execute("UPDATE ke_hoach_lcnt SET ma_ke_hoach = 'PL2600225773' WHERE id = ?", (plan_id,))
+        role = SessionRole('user', actor, platform_role='user', active_role='employee')
+        stored = {"kind": "PLAN", "familyNo": "PL2600225773", "currentIndex": 0,
+                  "canonicalBundle": {"plan": {"targetAction": "CREATE"}}}
+        assert not routes._import_session_permission(cursor, role, org, stored)
+        cursor.execute("UPDATE ke_hoach_lcnt SET archived_at = CURRENT_TIMESTAMP, is_latest = 0 WHERE id = ?", (plan_id,))
+        assert routes._import_session_permission(cursor, role, org, stored)
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
 @pytest.mark.parametrize(
     "kind, exists, current_index, target_action, expected",
     [

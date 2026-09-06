@@ -21,7 +21,7 @@ import {
 } from "../shared/VersionedEntityService.js";
 import { getCurrentDateYmd, getVersionLabel } from "../shared/formatters.js";
 import { setContractorViewOnly } from "../shared/runtimeState.js";
-import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
+import { canWriteContractorStamp } from "./contractorStampPolicy.js";
 import { generateRecordId } from "../shared/idUtils.js";
 import {
   applyPartnerValidationErrors,
@@ -51,7 +51,7 @@ const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "", canUpl
     uploadZone.setAttribute("aria-disabled", String(!canUpload));
     uploadZone.title = canUpload
       ? "Tải lên ảnh dấu"
-      : "Chỉ Quản lý của tổ chức được tải lên ảnh dấu";
+      : "Cần quyền tạo hoặc sửa nhà thầu để tải lên ảnh dấu";
   }
   if (fileInput) fileInput.disabled = isReadOnly || !canUpload;
   if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly || !canUpload ? "none" : "");
@@ -130,10 +130,7 @@ export async function editNhaThau(id, isReadOnly = false) {
     const form = document.getElementById("form-nhathau");
     if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
     clearFormValidation(form);
-    const canUploadAssets = canUploadWorkspaceAssets(
-      this.model.state.activeuser || {},
-      this.model.state.activerole,
-    );
+    const canUploadAssets = canWriteContractorStamp(this.model, id, isReadOnly);
     const inputs = form.querySelectorAll("input, select, textarea");
     inputs.forEach((inp) => {
       inp.disabled = isReadOnly;
@@ -234,14 +231,11 @@ export async function handleNhaThauSubmit(e) {
   const stampValue = safeStampSrc(this.tempNhaThauStampBase64);
   if (
     stampValue.startsWith("data:image/")
-    && !canUploadWorkspaceAssets(
-      this.model.state.activeuser || {},
-      this.model.state.activerole,
-    )
+    && !canWriteContractorStamp(this.model, id)
   ) {
     await this.view.customAlert(
       "Từ chối truy cập",
-      "Chỉ Quản lý của tổ chức được tải lên ảnh dấu.",
+      "Bạn cần quyền tạo hoặc sửa nhà thầu để tải lên ảnh dấu.",
       "lock",
     );
     return;

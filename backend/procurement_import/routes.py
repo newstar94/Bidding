@@ -755,6 +755,7 @@ def _import_session_permission(cursor, session, organization_id, stored):
             """SELECT id FROM ke_hoach_lcnt
                WHERE organization_id = ?
                  AND lower(trim(ma_ke_hoach)) = lower(?)
+                 AND archived_at IS NULL
                LIMIT 1""",
             (organization_id, family_no),
         ).fetchone()

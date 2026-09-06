@@ -153,7 +153,9 @@ def snapshot_assignment_state(cursor, organization_id: str) -> dict:
                      WHEN 'hopdong' THEN COALESCE(NULLIF(hd.id_goc, ''), hd.id)
                    END AS target_root_id,
                    COALESCE(NULLIF(trim(tv.ten_nhan_su), ''), NULLIF(trim(tk.ho_ten), ''), tk.ten_dang_nhap, tk.email, pc.id_nhan_vien) AS user_name,
-                   pc.created_at
+                   pc.created_at,
+                   CASE pc.loai_doi_tuong WHEN 'goithau' THEN gt.is_latest ELSE hd.is_latest END,
+                   CASE pc.loai_doi_tuong WHEN 'goithau' THEN gt.phien_ban ELSE hd.phien_ban END
            FROM phan_cong_nhan_su pc
            LEFT JOIN goi_thau gt
              ON pc.loai_doi_tuong = 'goithau'
@@ -182,6 +184,8 @@ def snapshot_assignment_state(cursor, organization_id: str) -> dict:
             "target_root_id": str(row[6] or row[2]).strip(),
             "user_name": str(row[7] or row[1]).strip(),
             "assigned_at": row[8],
+            "target_is_latest": bool(row[9]),
+            "target_version": int(row[10] or 0),
         }
         for row in rows
     }
@@ -221,6 +225,20 @@ def queue_assignment_state_changes(
 
     organization_name = _organization_name(cursor, organization_id)
     notifications = []
+    def lineage_projection(state):
+        projection = {}
+        for item in sorted(state.values(), key=lambda value: (
+            bool(value.get("target_is_latest")), int(value.get("target_version") or 0),
+            str(value.get("assigned_at") or ""), str(value["target_id"]),
+        )):
+            key = (item["target_type"], str(item.get("target_root_id") or item["target_id"]), item["user_id"])
+            projection[key] = item
+        return projection
+
+    # Only the notification projection is grouped. Persisted assignments and
+    # audit/activity snapshots retain their exact version identities.
+    before = lineage_projection(before)
+    after = lineage_projection(after)
     before_lineage_memberships = {
         (
             item["target_type"],

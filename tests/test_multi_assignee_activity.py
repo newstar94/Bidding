@@ -56,8 +56,8 @@ def _assignment(
 
 def test_snapshot_keeps_each_assignment_membership_without_collapsing():
     cursor = _AnswerCursor([
-        ("a-1", "user-a", "package-1", "goithau", "GT-1", "Gói 1", "root-1", "A", "2026-01-01"),
-        ("a-2", "user-b", "package-1", "goithau", "GT-1", "Gói 1", "root-1", "B", "2026-01-02"),
+        ("a-1", "user-a", "package-1", "goithau", "GT-1", "Gói 1", "root-1", "A", "2026-01-01", 1, 0),
+        ("a-2", "user-b", "package-1", "goithau", "GT-1", "Gói 1", "root-1", "B", "2026-01-02", 1, 0),
     ])
 
     snapshot = snapshot_assignment_state(cursor, "org-1")
@@ -74,7 +74,7 @@ def _measure_assignment_snapshot_queries(assignee_count):
     cursor = _AnswerCursor([
         (
             f"assignment-{index}", f"user-{index}", "package-1", "goithau",
-            "GT-1", "Gói 1", "root-1", f"User {index}", "2026-01-01",
+            "GT-1", "Gói 1", "root-1", f"User {index}", "2026-01-01", 1, 0,
         )
         for index in range(assignee_count)
     ])
@@ -322,6 +322,32 @@ def test_inherited_assignment_on_new_package_version_does_not_notify_again(monke
         after=after,
     ) == 0
     assert not any("INSERT INTO user_notifications" in sql for sql, _params in cursor.calls)
+
+
+def test_multiple_versions_in_same_commit_send_one_notification_per_lineage(monkeypatch):
+    import backend.notifications.service as notifications
+    captured = []
+    monkeypatch.setattr(notifications, "queue_user_notifications", lambda cursor, items: captured.extend(items) or items)
+    snapshots = {}
+    for version in ("v1", "v2", "v3"):
+        item = _assignment("assignment-" + version, "user-a", "package-" + version)
+        item["target_root_id"] = "package-root"
+        item["target_version"] = int(version[1:])
+        snapshots[("goithau", "package-" + version, "user-a")] = item
+    assert queue_assignment_state_changes(_NotificationCursor(), organization_id="org-1", before={}, after=snapshots) == 1
+    assert len(captured) == 1
+    assert captured[0]["target_id"] == "package-v3"
+    captured.clear()
+    assert queue_assignment_state_changes(_NotificationCursor(), organization_id="org-1", before=snapshots, after={}) == 1
+    assert captured[0]["kind"] == "assignment_removed"
+    captured.clear()
+    transferred = {}
+    for key, item in snapshots.items():
+        transferred[(key[0], key[1], "user-b")] = {**item, "user_id": "user-b"}
+    assert queue_assignment_state_changes(_NotificationCursor(), organization_id="org-1", before=snapshots, after=transferred) == 2
+    assert {(item["kind"], item["user_id"]) for item in captured} == {
+        ("assignment_removed", "user-a"), ("assignment_added", "user-b"),
+    }
 
 
 def test_removing_one_version_copy_keeps_lineage_assignment_without_notification(monkeypatch):

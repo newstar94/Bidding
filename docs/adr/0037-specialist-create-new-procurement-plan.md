@@ -41,6 +41,11 @@ record scope hiện hành.
 
 ## Compatibility impact
 
+- Kiểm tra mã đã tồn tại chỉ tính bản ghi chưa bị archive (`archived_at IS NULL`),
+  nhất quán với bước prepare. Bản ghi đã xóa/lưu trữ không biến phiên tạo mới
+  thành cập nhật yêu cầu `edit`. Không phục hồi bản ghi hay phân công cũ.
+  Regression: `test_archived_plan_does_not_turn_new_import_into_an_edit`.
+
 - Chuyên viên có quyền xem phân hệ có thể hoàn tất một kế hoạch procurement hoàn
   toàn mới, kể cả chuỗi nhiều revision và bước đọc trạng thái sau commit, thay vì
   nhận 403/validation error giữa phiên.

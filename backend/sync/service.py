@@ -263,6 +263,10 @@ def validate_protected_media_upload_access(data, *, owner_type, can_upload):
     for _payload_key, table_name, items in iter_sync_table_payloads(data):
         if table_name not in _PROTECTED_MEDIA_COLUMNS:
             continue
+        if table_name == "nha_thau":
+            # Contractor stamps use the same create/edit authorization as the
+            # record, enforced by SyncRecordValidator in this transaction.
+            continue
         for original_item in items:
             if not isinstance(original_item, dict):
                 continue
@@ -326,6 +330,12 @@ def validate_protected_media_mutation_access(
                     stored_values.get(column_name)
                 )
                 if incoming == current:
+                    continue
+                if table_name == "nha_thau" and (
+                    not incoming or incoming.startswith("data:image/")
+                ):
+                    # A fresh upload is staged by the server in this workspace.
+                    # Do not permit clients to point at an arbitrary stored file.
                     continue
                 errors.append({
                     "table": table_name,
