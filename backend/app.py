@@ -868,6 +868,7 @@ from backend.notifications.routes import (
     list_notifications_api,
     mark_all_notifications_read_api,
     mark_notification_read_api,
+    delete_notification_api,
 )
 from backend.documents.document_job_routes import document_job_routes
 from backend.documents.award_result_excel_routes import award_result_excel_routes
@@ -1194,6 +1195,7 @@ routes = [
     Route("/api/notifications", list_notifications_api, methods=["GET"]),
     Route("/api/notifications/read-all", mark_all_notifications_read_api, methods=["POST"]),
     Route("/api/notifications/{notification_id}/read", mark_notification_read_api, methods=["POST"]),
+    Route("/api/notifications/{notification_id}", delete_notification_api, methods=["DELETE"]),
     Route("/api/activities/{target_type}/{target_id}", list_activity_timeline_api, methods=["GET"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),

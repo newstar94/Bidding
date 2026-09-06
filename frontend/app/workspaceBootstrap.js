@@ -106,14 +106,30 @@ export function scheduleWorkspaceEnhancements(controller, {
   importNotificationCenter = () => import("./NotificationCenter.js"),
 } = {}) {
   if (typeof controller?.schedulePostStartupTask !== "function") return false;
-  controller.schedulePostStartupTask(async () => {
+  let notificationFlight = null;
+  const trigger = globalThis.document?.getElementById?.("notification-trigger");
+  const initializeNotifications = () => {
+    if (controller.notificationCenter) return Promise.resolve(controller.notificationCenter);
+    if (notificationFlight) return notificationFlight;
+    notificationFlight = (async () => {
     try {
       const { initializeNotificationCenter } = await importNotificationCenter();
       controller.notificationCenter = initializeNotificationCenter(controller);
+      if (controller.notificationCenter) trigger?.removeEventListener?.("click", onNotificationIntent);
+      return controller.notificationCenter;
     } catch (error) {
       console.warn("Notification center could not be initialized:", error);
+    } finally {
+      notificationFlight = null;
     }
-  }, {
+    })();
+    return notificationFlight;
+  };
+  const onNotificationIntent = () => {
+    void initializeNotifications().then((center) => center?.open?.());
+  };
+  trigger?.addEventListener?.("click", onNotificationIntent);
+  controller.schedulePostStartupTask(initializeNotifications, {
     timeout: 2500,
     delay: POST_STARTUP_TIMING.notificationCenter,
     key: "notification-center",

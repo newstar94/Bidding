@@ -50,6 +50,25 @@ test("workspace runtime is split out of the bootstrap entry", () => {
   }
 });
 
+test("notification click initializes immediately even before scheduled maintenance", async () => {
+  const previousDocument = globalThis.document;
+  const trigger = new EventTarget();
+  globalThis.document = { getElementById: () => trigger };
+  let opened = 0;
+  const scheduled = [];
+  const controller = { schedulePostStartupTask: (task) => scheduled.push(task) };
+  try {
+    scheduleWorkspaceEnhancements(controller, {
+      importNotificationCenter: async () => ({ initializeNotificationCenter: () => ({ open: () => opened++ }) }),
+    });
+    trigger.dispatchEvent(new Event("click"));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(opened, 1);
+    await scheduled[0]();
+    assert.equal(opened, 1);
+  } finally { globalThis.document = previousDocument; }
+});
+
 test("assistant and notification imports wait behind the post-startup interaction grace", async () => {
   const scheduled = [];
   const imports = [];

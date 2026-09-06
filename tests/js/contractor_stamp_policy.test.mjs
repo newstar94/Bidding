@@ -11,10 +11,13 @@ test("contractor stamp follows create or edit permission, not creator identity",
   };
   assert.equal(canWriteContractorStamp(model), true);
   assert.equal(canWriteContractorStamp(model, "existing"), false);
+  model.state.nhathau = [{ id: "mine", canEdit: true }];
+  assert.equal(canWriteContractorStamp(model, "mine"), true);
   permission = "edit";
   assert.equal(canWriteContractorStamp(model, "existing"), true);
   assert.equal(canWriteContractorStamp(model, "existing", true), false);
   permission = "";
   assert.equal(canWriteContractorStamp(model), false);
+  assert.equal(canWriteContractorStamp(model, "mine"), false);
   assert.equal(canWriteContractorStamp(model, "created-by-me"), false);
 });

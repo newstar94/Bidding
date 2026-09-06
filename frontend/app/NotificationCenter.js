@@ -1,4 +1,5 @@
 import { apiFetch } from "../shared/apiClient.js";
+import { workNotificationId, readDismissedWorkNotifications, dismissWorkNotification } from "./notificationDismissals.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml, htmlIcon, safeAttr } from "../shared/view_helpers.js";
 import {
@@ -59,7 +60,7 @@ function activityTone(item) {
   return "info";
 }
 
-function workAlerts(controller) {
+function rawWorkAlerts(controller) {
   const summaryItems = controller?.model?.dashboardSummary?.alertItems;
   if (Array.isArray(summaryItems)) return summaryItems;
   const model = controller?.model;
@@ -72,6 +73,17 @@ function workAlerts(controller) {
     ...derivePlanPublishingAlerts(plans).items,
     ...deriveContractExpiryAlerts(contracts).items
   ]);
+}
+
+function workAlerts(controller) {
+  const dismissed = readDismissedWorkNotifications(controller.model);
+  return rawWorkAlerts(controller).filter((item) => !dismissed.has(workNotificationId(item)));
+}
+
+function selectableNotifications(state, controller) {
+  return [...state.items, ...workAlerts(controller).map((item) => ({
+    id: workNotificationId(item), workAlert: true, readAt: 1,
+  }))];
 }
 
 function workIdentity(item) {
@@ -104,6 +116,9 @@ function renderNotifications(state, controller, elements) {
     return;
   }
   const items = state.items || [];
+  state.selected ||= new Set();
+  const visibleIds = new Set(selectableNotifications(state, controller).map((item) => item.id));
+  state.selected = new Set([...state.selected].filter((id) => visibleIds.has(id)));
   const alerts = workAlerts(controller);
   elements.readAll.disabled = !state.unreadCount;
   if (!items.length && !alerts.length) {
@@ -116,6 +131,8 @@ function renderNotifications(state, controller, elements) {
     const actionable = Boolean(item.route && item.targetId);
     const tone = activityTone(item);
     return `
+      <div class="notification-select-row">
+      ${state.selecting ? `<input type="checkbox" data-notification-select="${safeAttr(item.id)}" aria-label="Chọn thông báo: ${safeAttr(item.title)}" ${state.selected.has(item.id) ? "checked" : ""} ${state.deleting ? "disabled" : ""}>` : ""}
       <button type="button" class="notification-item ${unread ? "is-unread" : ""} notification-item-tone-${tone}"
           data-notification-id="${safeAttr(item.id)}"
           data-target-type="${safeAttr(item.targetType || "")}"
@@ -129,7 +146,7 @@ function renderNotifications(state, controller, elements) {
           <time>${escapeHtml(formatMoment(item.createdAt))}</time>
         </span>
         ${unread ? '<span class="notification-unread-dot" aria-label="Chưa đọc"></span>' : ""}
-      </button>`;
+      </button></div>`;
   }).join("");
 
   const workMarkup = alerts.map((item) => {
@@ -140,8 +157,12 @@ function renderNotifications(state, controller, elements) {
       tone: "amber"
     };
     const detail = item.alertDetail || meta.detail;
+    const selectionId = workNotificationId(item);
     return `
+      <div class="notification-select-row">
+      ${state.selecting ? `<input type="checkbox" data-notification-select="${safeAttr(selectionId)}" aria-label="Chọn thông báo: ${safeAttr(meta.label)}" ${state.selected.has(selectionId) ? "checked" : ""} ${state.deleting ? "disabled" : ""}>` : ""}
       <button type="button" class="notification-item notification-work-item"
+          data-work-selection-id="${safeAttr(selectionId)}"
           data-work-target-type="${safeAttr(item.targetType || "")}"
           data-work-target-id="${safeAttr(item.id || "")}">
         <span class="notification-item-icon tone-${safeAttr(meta.tone)}">
@@ -153,10 +174,16 @@ function renderNotifications(state, controller, elements) {
           ${item.deadline ? `<time>Hạn: ${escapeHtml(item.deadline)}</time>` : ""}
         </span>
         ${htmlIcon("chevron-right", 'class="notification-chevron" aria-hidden="true"')}
-      </button>`;
+      </button></div>`;
   }).join("");
 
-  elements.list.innerHTML = trustedHTML(`${activityMarkup}${workMarkup}`);
+  const selectionMarkup = state.selecting ? `<div class="notification-selection-tools">
+    <label><input type="checkbox" data-notification-select-all ${visibleIds.size && state.selected.size === visibleIds.size ? "checked" : ""} ${state.deleting ? "disabled" : ""}> Chọn tất cả đang hiển thị</label>
+    <button type="button" class="notification-read-all" data-notification-delete-selected ${!state.selected.size || state.deleting ? "disabled" : ""}>${state.deleting ? "Đang xóa…" : `Xóa (${state.selected.size})`}</button>
+    </div>` : "";
+  elements.list.innerHTML = trustedHTML(`${selectionMarkup}${activityMarkup}${workMarkup}`);
+  const selectAll = elements.list.querySelector("[data-notification-select-all]");
+  if (selectAll) selectAll.indeterminate = state.selected.size > 0 && state.selected.size < visibleIds.size;
   window.lucide?.createIcons?.({ root: elements.list });
 }
 
@@ -186,6 +213,15 @@ export function initializeNotificationCenter(controller) {
   const state = { items: [], unreadCount: 0, loading: false, unavailable: false };
   let activeRequest = null;
   let disposed = false;
+  const deleteToggle = document.getElementById("notification-delete-toggle");
+  const onDeleteToggle = () => {
+    if (disposed || state.deleting) return;
+    state.selecting = !state.selecting;
+    state.selected = new Set();
+    deleteToggle?.setAttribute("aria-pressed", String(state.selecting));
+    renderNotifications(state, controller, elements);
+  };
+  deleteToggle?.addEventListener("click", onDeleteToggle);
 
   const refresh = async () => {
     if (disposed || state.loading) return;
@@ -246,6 +282,68 @@ export function initializeNotificationCenter(controller) {
   };
   const onListClick = async (event) => {
     if (disposed) return;
+    // Rendering selection replaces the clicked node. Do not let the same
+    // event reach the outside-click handler with a now-detached target.
+    event.stopPropagation();
+    const selection = event.target.closest?.("[data-notification-select], [data-notification-select-all]");
+    if (selection) {
+      if (state.deleting) return;
+      if (selection.hasAttribute("data-notification-select-all")) {
+        state.selected = new Set(selection.checked ? selectableNotifications(state, controller).map((item) => item.id) : []);
+      } else {
+        const id = selection.dataset.notificationSelect;
+        if (selection.checked) state.selected.add(id);
+        else state.selected.delete(id);
+      }
+      renderNotifications(state, controller, elements);
+      return;
+    }
+    const deleteButton = event.target.closest?.("[data-notification-delete-selected]");
+    if (deleteButton) {
+      const selectedItems = selectableNotifications(state, controller).filter((entry) => state.selected.has(entry.id));
+      if (!selectedItems.length || state.deleting) return;
+      state.deleting = true;
+      deleteButton.disabled = true;
+      const request = beginWorkspaceRequest(controller.model);
+      try {
+        const confirmed = await controller.view.customConfirm(
+          "Xóa thông báo", `Xóa ${selectedItems.length} thông báo đã chọn? Không thể hoàn tác. Dữ liệu và phân công liên quan không bị xóa.`, "trash-2",
+        );
+        if (!confirmed || disposed) return;
+        assertWorkspaceLeaseCurrent(controller.model, request.lease);
+        for (const item of selectedItems) {
+        const id = item.id;
+        if (item.workAlert) {
+          assertWorkspaceLeaseCurrent(controller.model, request.lease);
+          dismissWorkNotification(controller.model, id);
+          state.selected.delete(id);
+          continue;
+        }
+        const response = await apiFetch(`/api/notifications/${encodeURIComponent(id)}`, {
+          method: "DELETE", signal: request.signal,
+        });
+        assertWorkspaceLeaseCurrent(controller.model, request.lease);
+        if (!response.ok) throw new Error("Không thể xóa thông báo.");
+        state.items = state.items.filter((entry) => entry.id !== id);
+        if (!item.readAt) state.unreadCount = Math.max(0, state.unreadCount - 1);
+        state.selected.delete(id);
+        }
+        renderNotifications(state, controller, elements);
+        updateBadge(state, elements);
+        elements.trigger.focus();
+        await refresh();
+      } catch (error) {
+        if (!disposed && error?.code !== "WORKSPACE_CHANGED") {
+          controller.view.showToast?.("Không thể xóa thông báo", "Vui lòng thử lại.", "error");
+        }
+      } finally {
+        finishWorkspaceRequest(controller.model, request);
+        state.deleting = false;
+        deleteButton.disabled = false;
+        if (!disposed) { renderNotifications(state, controller, elements); updateBadge(state, elements); }
+      }
+      return;
+    }
     if (event.target.closest?.("[data-notification-retry]")) {
       await refresh();
       return;
@@ -253,6 +351,13 @@ export function initializeNotificationCenter(controller) {
     const notificationItem = event.target.closest?.("[data-notification-id]");
     if (notificationItem) {
       const id = notificationItem.dataset.notificationId;
+      if (state.selecting) {
+        if (state.deleting) return;
+        if (state.selected.has(id)) state.selected.delete(id);
+        else state.selected.add(id);
+        renderNotifications(state, controller, elements);
+        return;
+      }
       const current = state.items.find((entry) => entry.id === id);
       if (current && !current.readAt) {
         await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
@@ -271,6 +376,14 @@ export function initializeNotificationCenter(controller) {
 
     const workItem = event.target.closest?.("[data-work-target-id]");
     if (!workItem) return;
+    if (state.selecting) {
+      if (state.deleting) return;
+      const id = workItem.dataset.workSelectionId;
+      if (state.selected.has(id)) state.selected.delete(id);
+      else state.selected.add(id);
+      renderNotifications(state, controller, elements);
+      return;
+    }
     setOpen(false);
     navigateToTarget(controller, workItem.dataset.workTargetType, workItem.dataset.workTargetId);
   };
@@ -300,12 +413,14 @@ export function initializeNotificationCenter(controller) {
 
   const api = {
     refresh,
+    open: () => setOpen(true),
     dispose() {
       if (disposed) return;
       disposed = true;
       activeRequest?.controller?.abort?.(workspaceChangedError());
       window.clearInterval(intervalId);
       elements.trigger.removeEventListener("click", onTriggerClick);
+      deleteToggle?.removeEventListener("click", onDeleteToggle);
       elements.readAll.removeEventListener("click", onReadAllClick);
       elements.list.removeEventListener("click", onListClick);
       document.removeEventListener("click", onDocumentClick);

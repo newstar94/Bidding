@@ -6,6 +6,23 @@ import {
   applySuccessfulPush,
 } from "../../frontend/app/SyncPushService.js";
 import { captureWorkspace } from "../../frontend/app/SyncWorkspaceContext.js";
+import { paginatedProjectionStore } from "../../frontend/shared/PaginatedProjectionStore.js";
+
+test("successful partner create invalidates pre-commit page before canonical rendering", async () => {
+  const race = raceController();
+  const previousDocument = globalThis.document;
+  globalThis.document = { getElementById: () => null };
+  try {
+    const store = paginatedProjectionStore(race.model);
+    store.setValue("chudautu", {}, { items: [], totalItems: 0 });
+    assert.equal(store.cache.size, 1);
+    await applySuccessfulPush(race.controller, {
+      workspace: captureWorkspace(race.controller), data: { status: "success" },
+      payload: { chudautu: [{ id: "new" }] }, snapshot: {}, deferPostCommitRender: true,
+    });
+    assert.equal(store.cache.size, 0, "ACK must retire the page fetched before the insert");
+  } finally { globalThis.document = previousDocument; }
+});
 
 function deferred() {
   let resolve;

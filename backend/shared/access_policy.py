@@ -167,6 +167,19 @@ def _record_owned_by(cursor, organization_id, user_id, table_name, lineage_root)
     return row is not None
 
 
+def _contractor_created_by(cursor, organization_id, user_id, lineage_root):
+    if not lineage_root:
+        return False
+    row = cursor.execute(
+        """SELECT actor_user_id FROM audit_log
+           WHERE organization_id = ? AND target_type = 'nha_thau'
+             AND target_id = ? AND action = 'sync.record_created'
+           ORDER BY id LIMIT 1""",
+        (organization_id, lineage_root),
+    ).fetchone()
+    return bool(row and str(row[0]) == str(user_id))
+
+
 def _assigned_for_lineage(cursor, organization_id, user_id, table_name, lineage_root):
     if not lineage_root:
         return False
@@ -555,7 +568,7 @@ def build_batch_write_authorization_context(
         )
 
     lineage_roots_by_table = {}
-    for table_name in ASSIGNED_TABLE_TYPES:
+    for table_name in (*ASSIGNED_TABLE_TYPES, "nha_thau"):
         candidates = set()
         for item in records_by_table.get(table_name, ()):
             record_id = clean_id(item.get("id"))
@@ -582,6 +595,23 @@ def build_batch_write_authorization_context(
 
     for table_name, roots in lineage_roots_by_table.items():
         sorted_roots = sorted(roots)
+        if table_name == "nha_thau":
+            for chunk in _chunked(sorted_roots):
+                placeholders = ", ".join("?" for _ in chunk)
+                rows = cursor.execute(
+                    f"""SELECT target_id, actor_user_id FROM (
+                        SELECT target_id, actor_user_id,
+                               row_number() OVER (PARTITION BY target_id ORDER BY id) AS ordinal
+                        FROM audit_log WHERE organization_id = ?
+                          AND target_type = 'nha_thau' AND action = 'sync.record_created'
+                          AND target_id IN ({placeholders})
+                    ) AS creation WHERE ordinal = 1""",
+                    (organization_id, *chunk),
+                ).fetchall()
+                context.owned_lineages.update(
+                    (table_name, str(row[0])) for row in rows if str(row[1]) == str(user_id)
+                )
+            continue
         context.assigned_lineages.update(
             (table_name, root)
             for root in _load_assigned_lineages(
@@ -757,10 +787,14 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
     )
     new_plan_draft = record_key in context.new_plan_draft_records
     new_record = module_name is not None and record_key in context.new_records
+    contractor_root = context.lineage_root_by_item.get(record_key) or context.lineage_root_by_item.get(
+        (table_name, clean_id(item.get("rootId") or item.get("id_goc")))
+    )
+    own_contractor = table_name == "nha_thau" and (table_name, contractor_root) in context.owned_lineages
     if not _context_has_module_permission(
         context,
         module_name,
-        "view" if new_plan_draft or new_record else "edit",
+        "view" if new_plan_draft or new_record or own_contractor else "edit",
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
     if new_plan_draft:
@@ -906,13 +940,17 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
         table_name,
         item.get("id"),
     )
+    own_contractor = table_name == "nha_thau" and _contractor_created_by(
+        cursor, organization_id, user_id,
+        _existing_lineage_root(cursor, organization_id, table_name, item),
+    )
     if not has_module_permission(
         cursor,
         role_str,
         user_id,
         organization_id,
         module_name,
-        "view" if new_record else "edit",
+        "view" if new_record or own_contractor else "edit",
     ):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 

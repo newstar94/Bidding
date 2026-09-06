@@ -1,4 +1,5 @@
 import { apiFetch } from "../shared/apiClient.js";
+import { invalidatePaginatedQueryCache } from "../shared/tableDataUtils.js";
 import {
   reportOutboxFailure,
   reportSyncConflict,
@@ -166,6 +167,9 @@ export async function applySuccessfulPush(controller, {
     }
   }
   const committedKeys = collectCommittedMutationKeys(payload);
+  // Pages loaded before the commit may omit the newly inserted rows. Once the
+  // outbox is acknowledged its overlay disappears, so retire those pages first.
+  for (const key of committedKeys) invalidatePaginatedQueryCache(controller.model, key);
   if (applyDashboardSummaryAfterMutation(controller.model, payload, data)) {
     committedKeys.add("dashboardSummary");
     if (controller.view) controller.view._dashboardAggregateCache = null;

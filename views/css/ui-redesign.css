@@ -341,6 +341,16 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   letter-spacing: -0.02em;
 }
 
+.notification-header-actions { display: flex; align-items: center; gap: 6px; }
+.notification-delete-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; flex-shrink: 0; }
+.notification-delete-toggle svg { width: 16px; height: 16px; }
+.notification-delete-toggle:hover, .notification-delete-toggle[aria-pressed="true"] { background: var(--bg-hover, #f1f5f9); }
+.notification-delete-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.notification-select-row { display: flex; align-items: center; gap: 6px; }
+.notification-select-row > .notification-item { flex: 1; min-width: 0; }
+.notification-select-row > input { margin-left: 10px; flex-shrink: 0; }
+.notification-selection-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px; font-size: 12px; }
+.notification-selection-tools label { display: flex; align-items: center; gap: 6px; }
 .notification-read-all {
   display: inline-flex;
   flex: 0 0 auto;

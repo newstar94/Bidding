@@ -537,7 +537,7 @@ def _paginate_records_blocking(request):
                 )
 
             item = map_db_to_json(table_name, row_dict)
-            if table_name in OWNERSHIP_SCOPED_TABLES:
+            if table_name in OWNERSHIP_SCOPED_TABLES or table_name == "nha_thau":
                 item["canEdit"] = authorize_record_write(
                     cursor,
                     role_str,

@@ -136,3 +136,34 @@ async def mark_all_notifications_read_api(request):
     finally:
         if connection:
             connection.close()
+
+
+async def delete_notification_api(request):
+    """Delete only a notification belonging to the authenticated recipient."""
+    connection = None
+    try:
+        valid, session = verify_session(request)
+        if not valid:
+            return JSONResponse({"error": session}, status_code=403)
+        notification_id = str(request.path_params.get("notification_id") or "").strip()
+        if not notification_id:
+            return JSONResponse({"error": "Thiếu mã thông báo."}, status_code=400)
+        connection = database.get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "DELETE FROM user_notifications WHERE id = ? AND user_id = ?",
+            (notification_id, session.user_id),
+        )
+        if cursor.rowcount != 1:
+            connection.rollback()
+            return JSONResponse({"error": "Không tìm thấy thông báo."}, status_code=404)
+        connection.commit()
+        return JSONResponse({"success": True})
+    except Exception as exc:
+        if connection:
+            connection.rollback()
+        return log_and_error(request, exc, "delete_notification_api",
+                             "NOTIFICATION_DELETE_FAILED", "Không thể xóa thông báo.")
+    finally:
+        if connection:
+            connection.close()
