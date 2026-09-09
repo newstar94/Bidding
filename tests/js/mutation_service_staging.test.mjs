@@ -2,11 +2,46 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
+  classifyCanonicalSyncResult,
   applyStateMutations,
   mutatePersistAndSync,
   persistAndSync,
   stageLocalRecords,
 } from "../../frontend/shared/MutationService.js";
+
+test("canonical save states distinguish commit, rejection, conflict, and offline pending", async () => {
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: true }),
+    CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED,
+  );
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: false, status: 400, data: {} }),
+    CANONICAL_SAVE_STATUS.CANONICAL_REJECTED,
+  );
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: false, status: 409, conflict: true }),
+    CANONICAL_SAVE_STATUS.CONFLICT,
+  );
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: false, error: new TypeError("offline"), transport: true }),
+    CANONICAL_SAVE_STATUS.OFFLINE_PENDING,
+  );
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: false, error: new Error("storage"), storageDegraded: true }),
+    CANONICAL_SAVE_STATUS.CANONICAL_REJECTED,
+  );
+  assert.equal(
+    classifyCanonicalSyncResult({ ok: true, skipped: true, localMutationsPending: true }),
+    CANONICAL_SAVE_STATUS.REMOTE_PENDING,
+  );
+
+  const canonical = await awaitCanonicalSyncResult({
+    syncPromise: Promise.resolve({ ok: true, canonicalStatus: CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED }),
+  });
+  assert.equal(canonical.canonicalStatus, CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED);
+});
 
 function persistenceController() {
   const calls = [];
@@ -311,8 +346,13 @@ test("interactive persistence responds after durability without awaiting remote 
   const result = await committing;
   assert.equal(result.local, true);
   assert.equal(result.queued, true);
+  assert.equal(result.localStatus, CANONICAL_SAVE_STATUS.LOCAL_DURABLE);
+  assert.equal(result.canonicalStatus, CANONICAL_SAVE_STATUS.REMOTE_PENDING);
   releaseSync({ ok: true });
-  await result.syncPromise;
+  assert.equal(
+    (await result.syncPromise).canonicalStatus,
+    CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED,
+  );
 });
 
 test("local durable result does not wait for a delayed paginated renderer", async () => {
@@ -389,4 +429,104 @@ test("background mutation separates local modal feedback from canonical table re
   releaseSync({ ok: true });
   await result.syncPromise;
   assert.ok(calls.indexOf("modal-closed") < calls.indexOf("table-rendered"));
+});
+
+test("background synchronization waits for the local durable phase to finish", async () => {
+  let finishLocalPhase;
+  const localPhase = new Promise((resolve) => { finishLocalPhase = resolve; });
+  const calls = [];
+  const controller = {
+    model: {
+      state: { hopdong: [{ id: "contract-local-phase" }] },
+      async flushMutationOutbox() { calls.push("flush"); },
+      async persistChanges() { calls.push("persist"); },
+    },
+    async autoSync() {
+      calls.push("sync-start");
+      return { ok: true };
+    },
+  };
+
+  const result = await persistAndSync(controller, "hopdong", {
+    backgroundSync: true,
+    changes: { upserts: { hopdong: [{ id: "contract-local-phase" }] } },
+    afterLocalDurable: async () => {
+      calls.push("local-start");
+      await localPhase;
+      calls.push("modal-closed");
+    },
+  });
+
+  assert.equal(result.localStatus, CANONICAL_SAVE_STATUS.LOCAL_DURABLE);
+  assert.deepEqual(calls, ["persist", "flush", "local-start"]);
+  finishLocalPhase();
+  assert.equal(
+    (await result.syncPromise).canonicalStatus,
+    CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED,
+  );
+  assert.deepEqual(calls, [
+    "persist",
+    "flush",
+    "local-start",
+    "modal-closed",
+    "sync-start",
+  ]);
+});
+
+test("a workspace switch during the local durable phase cannot redirect remote synchronization", async () => {
+  let finishLocalPhase;
+  const localPhase = new Promise((resolve) => { finishLocalPhase = resolve; });
+  const calls = [];
+  let currentWorkspace = "workspace-a";
+  const controller = {
+    model: {
+      state: { hopdong: [{ id: "contract-workspace-a" }] },
+      getWorkspaceToken: () => "workspace-a",
+      isWorkspaceCurrent: (token) => token === currentWorkspace,
+      async flushMutationOutbox() {},
+      async persistChanges() {},
+    },
+    async autoSync() {
+      calls.push("sync-start");
+      return { ok: true };
+    },
+  };
+
+  const result = await persistAndSync(controller, "hopdong", {
+    backgroundSync: true,
+    changes: { upserts: { hopdong: [{ id: "contract-workspace-a" }] } },
+    afterLocalDurable: () => localPhase,
+  });
+
+  currentWorkspace = "workspace-b";
+  finishLocalPhase();
+  const canonical = await result.syncPromise;
+
+  assert.equal(canonical.ok, false);
+  assert.equal(canonical.workspaceChanged, true);
+  assert.equal(canonical.code, "WORKSPACE_CHANGED");
+  assert.deepEqual(calls, []);
+});
+
+test("background mutation never invokes canonical success after server rejection", async () => {
+  const calls = [];
+  const controller = {
+    model: {
+      state: { hopdong: [{ id: "contract-rejected" }] },
+      async flushMutationOutbox() {},
+      async persistChanges() {},
+    },
+    async autoSync() { return { ok: false, status: 400, data: { errors: [] } }; },
+  };
+
+  const result = await persistAndSync(controller, "hopdong", {
+    backgroundSync: true,
+    changes: { upserts: { hopdong: [{ id: "contract-rejected" }] } },
+    afterLocalDurable: () => calls.push("local"),
+    afterCanonicalSync: () => calls.push("canonical"),
+  });
+
+  const canonical = await result.syncPromise;
+  assert.equal(canonical.canonicalStatus, CANONICAL_SAVE_STATUS.CANONICAL_REJECTED);
+  assert.deepEqual(calls, ["local"]);
 });

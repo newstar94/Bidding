@@ -16,6 +16,7 @@ export function createBrowserSessionManager({
   connect,
   contextOptions = {},
   configurePage = async () => {},
+  preserveIndexedDB = true,
 } = {}) {
   if (typeof launchServer !== "function" || typeof connect !== "function") {
     throw new TypeError("Browser session launch and connect functions are required.");
@@ -88,7 +89,7 @@ export function createBrowserSessionManager({
 
   async function captureState() {
     if (!session.context) throw new Error("Browser session is not open.");
-    const storageState = await session.context.storageState({ indexedDB: true });
+    const storageState = await session.context.storageState({ indexedDB: preserveIndexedDB });
     let capturedSessionStorage;
     if (session.page && typeof session.page.evaluate === "function") {
       capturedSessionStorage = await session.page.evaluate(() => ({

@@ -57,6 +57,13 @@ function paginationSupersededError() {
   return error;
 }
 
+function paginationInvalidatedError() {
+  const error = new Error("Paginated request invalidated by a canonical mutation");
+  error.name = "AbortError";
+  error.code = "PAGINATION_INVALIDATED";
+  return error;
+}
+
 function waitForOwnedPaginationRequest(promise, signal) {
   if (!signal) return promise;
   if (signal.aborted) {
@@ -509,20 +516,41 @@ export function invalidateTimelinePackageOptionProjection(model, recordId = "") 
   );
 }
 
-export function abortPaginatedTableRequests(model, table) {
+export function abortPaginatedTableRequests(
+  model,
+  table,
+  reason = projectionAuthorizationChangedError(),
+) {
   if (!model || !table) return;
-  const error = projectionAuthorizationChangedError();
   for (const [key, request] of model._paginationRequests || []) {
     if (String(request?.table || "") !== String(table)) continue;
-    request?.controller?.abort?.(error);
+    request?.controller?.abort?.(reason);
     if (model._paginationRequests.get(key) === request) {
       model._paginationRequests.delete(key);
     }
   }
 }
 
-export function invalidatePaginatedQueryCache(model, table = null) {
+export function invalidatePaginatedQueryCache(
+  model,
+  table = null,
+  { abortInFlight = false } = {},
+) {
   if (!model) return;
+  if (abortInFlight) {
+    const error = paginationInvalidatedError();
+    if (table) {
+      abortPaginatedTableRequests(model, table, error);
+    } else {
+      for (const requestTable of new Set(
+        [...(model._paginationRequests?.values?.() || [])]
+          .map((request) => String(request?.table || ""))
+          .filter(Boolean),
+      )) {
+        abortPaginatedTableRequests(model, requestTable, error);
+      }
+    }
+  }
   if (!table) delete model._timelinePackageOptionProjection;
   paginatedProjectionStore(model).invalidate(table);
 }
@@ -720,6 +748,11 @@ export async function loadPaginatedRecords(
   const requestPromise = (async () => {
     try {
       const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+      if (controller.signal.aborted) {
+        throw controller.signal.reason instanceof Error
+          ? controller.signal.reason
+          : paginationInvalidatedError();
+      }
       assertPaginatedLeaseCurrent(model, requestLease);
       const result = {
         items: cachePaginatedRecords(model, table, data?.items || [], requestLease, {
@@ -829,7 +862,18 @@ export function cachePaginatedRecords(
   if (!Array.isArray(lease.state[key])) {
     lease.state[key] = [];
   }
-  normalized.forEach((record) => {
+  // The query cache remains canonical. Shared state and durable local records
+  // must also retain pending edits, not just the returned table overlay.
+  const pendingBatch = currentMutationBatch(model);
+  const projected = normalized.map((record) => {
+    const id = String(record.id);
+    const pending = pendingBatch?.upserts?.[key]?.[id];
+    const patch = pendingBatch?.patches?.[key]?.[id];
+    return pending || patch
+      ? { ...record, ...pending, ...patch, referenceOnly: false }
+      : record;
+  });
+  projected.forEach((record) => {
     const index = lease.state[key].findIndex((item) => String(item.id) === String(record.id));
     if (index >= 0) {
       lease.state[key][index] = record;
@@ -849,7 +893,7 @@ export function cachePaginatedRecords(
     model.entityIndexes?.invalidate?.(key, { notify: !preserveQueryCache });
   }
   if (normalized.length > 0 && lease.db && typeof lease.db.putRecords === "function") {
-    lease.db.putRecords(key, normalized).catch((err) => {
+    lease.db.putRecords(key, projected).catch((err) => {
       console.error(`Failed to cache paginated ${key} records:`, err);
     });
   }

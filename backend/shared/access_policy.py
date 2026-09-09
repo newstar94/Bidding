@@ -83,7 +83,6 @@ class BatchWriteAuthorizationContext:
     existing_assignment_targets: set[tuple[str, str]] = field(default_factory=set)
     assigned_targets: set[tuple[str, str]] = field(default_factory=set)
     lineage_root_by_item: dict[tuple[str, str], str] = field(default_factory=dict)
-    assigned_lineages: set[tuple[str, str]] = field(default_factory=set)
     owned_lineages: set[tuple[str, str]] = field(default_factory=set)
     opening_parent_by_id: dict[str, str] = field(default_factory=dict)
     goods_parent_by_id: dict[str, str] = field(default_factory=dict)
@@ -104,19 +103,95 @@ def _chunked(values, size=_QUERY_CHUNK_SIZE):
         yield values[offset:offset + size]
 
 
-def _assigned(cursor, organization_id, user_id, target_id, target_type):
+def _assigned(
+    cursor,
+    organization_id,
+    user_id,
+    target_id,
+    target_type,
+    *,
+    lock=False,
+):
     target_id = clean_id(target_id)
     if not target_id or not target_type:
         return False
-    cursor.execute(
-        """
-        SELECT 1 FROM phan_cong_nhan_su
-        WHERE organization_id = ? AND id_nhan_vien = ? AND id_muc_tieu = ? AND loai_doi_tuong = ?
-        LIMIT 1
-        """,
-        (organization_id, user_id, target_id, target_type),
+    sql = (
+        """SELECT id FROM phan_cong_nhan_su
+            WHERE organization_id = ? AND id_nhan_vien = ?
+              AND id_muc_tieu = ? AND loai_doi_tuong = ?
+            ORDER BY id FOR UPDATE"""
+        if lock
+        else """SELECT id FROM phan_cong_nhan_su
+            WHERE organization_id = ? AND id_nhan_vien = ?
+              AND id_muc_tieu = ? AND loai_doi_tuong = ?
+            LIMIT 1"""
     )
+    cursor.execute(sql, (organization_id, user_id, target_id, target_type))
     return cursor.fetchone() is not None
+
+
+def _effective_assignment_targets(
+    cursor,
+    organization_id,
+    user_id,
+    targets,
+    *,
+    lock=False,
+):
+    """Resolve exact active assignment grants, optionally locking their rows.
+
+    Historical snapshot assignments remain audit/read evidence for that exact
+    snapshot. They never authorize another physical version in the lineage.
+    The lock variant is used by write transactions so an assignment transfer
+    cannot commit between authorization and persistence.
+    """
+
+    normalized = {}
+    for target_type, target_id in targets:
+        clean_target_id = clean_id(target_id)
+        if target_type in ASSIGNED_TABLE_TYPES.values() and clean_target_id:
+            normalized.setdefault(target_type, set()).add(clean_target_id)
+
+    effective = set()
+    for target_type in sorted(normalized):
+        for chunk in _chunked(sorted(normalized[target_type])):
+            placeholders = ", ".join("?" for _ in chunk)
+            lock_clause = " FOR UPDATE" if lock else ""
+            rows = cursor.execute(
+                f"""SELECT id, id_muc_tieu FROM phan_cong_nhan_su
+                    WHERE organization_id = ? AND id_nhan_vien = ?
+                      AND loai_doi_tuong = ?
+                      AND id_muc_tieu IN ({placeholders})
+                    ORDER BY id{lock_clause}""",  # noqa: S608 - type and placeholders come from fixed registries
+                (organization_id, user_id, target_type, *chunk),
+            ).fetchall()
+            effective.update(
+                (target_type, str(_row_value(row, "id_muc_tieu", 1)))
+                for row in rows
+            )
+
+    plan_ids = sorted(normalized.get("kehoach", ()))
+    for chunk in _chunked(plan_ids):
+        placeholders = ", ".join("?" for _ in chunk)
+        lock_clause = " FOR UPDATE OF assignment" if lock else ""
+        rows = cursor.execute(
+            f"""SELECT assignment.id, package.ke_hoach_id
+                FROM goi_thau AS package
+                JOIN phan_cong_nhan_su AS assignment
+                  ON assignment.organization_id = package.organization_id
+                 AND assignment.id_muc_tieu = package.id
+                 AND assignment.loai_doi_tuong = 'goithau'
+                WHERE package.organization_id = ?
+                  AND assignment.id_nhan_vien = ?
+                  AND package.ke_hoach_id IN ({placeholders})
+                ORDER BY assignment.id{lock_clause}""",  # noqa: S608 - placeholders are generated from validated IDs
+            (organization_id, user_id, *chunk),
+        ).fetchall()
+        effective.update(
+            ("kehoach", str(_row_value(row, "ke_hoach_id", 1)))
+            for row in rows
+        )
+    return effective
 
 
 def _table_record_exists(cursor, organization_id, table_name, record_id):
@@ -128,6 +203,38 @@ def _table_record_exists(cursor, organization_id, table_name, record_id):
         (organization_id, record_id),
     )
     return cursor.fetchone() is not None
+
+
+def existing_lineage_identifiers(
+    cursor,
+    organization_id,
+    table_name,
+    candidate_ids,
+):
+    """Return physical and root identifiers for matching persisted lineages."""
+
+    normalized = sorted({
+        candidate_id
+        for value in candidate_ids
+        if (candidate_id := clean_id(value))
+    })
+    existing = set()
+    for chunk in _chunked(normalized):
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT id, id_goc FROM {table_name}
+                WHERE organization_id = ?
+                  AND (id IN ({placeholders}) OR id_goc IN ({placeholders}))""",  # noqa: S608 - table is from a fixed registry and values remain bound
+            (organization_id, *chunk, *chunk),
+        ).fetchall()
+        for row in rows:
+            record_id = clean_id(_row_value(row, "id", 0))
+            root_id = clean_id(_row_value(row, "id_goc", 1)) or record_id
+            if record_id:
+                existing.add(record_id)
+            if root_id:
+                existing.add(root_id)
+    return existing
 
 
 def _existing_lineage_root(cursor, organization_id, table_name, item_or_id):
@@ -180,60 +287,6 @@ def _contractor_created_by(cursor, organization_id, user_id, lineage_root):
     return bool(row and str(row[0]) == str(user_id))
 
 
-def _assigned_for_lineage(cursor, organization_id, user_id, table_name, lineage_root):
-    if not lineage_root:
-        return False
-    target_type = ASSIGNED_TABLE_TYPES.get(table_name)
-    if not target_type:
-        return True
-    if table_name == "ke_hoach_lcnt":
-        row = cursor.execute(
-            """SELECT EXISTS (
-                   SELECT 1
-                   FROM ke_hoach_lcnt AS record
-                   WHERE record.organization_id = ?
-                     AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
-                     AND (
-                         EXISTS (
-                             SELECT 1 FROM phan_cong_nhan_su AS assignment
-                             WHERE assignment.organization_id = record.organization_id
-                               AND assignment.id_nhan_vien = ?
-                               AND assignment.id_muc_tieu = record.id
-                               AND assignment.loai_doi_tuong = 'kehoach'
-                         )
-                         OR EXISTS (
-                             SELECT 1
-                             FROM goi_thau AS package
-                             JOIN phan_cong_nhan_su AS assignment
-                               ON assignment.organization_id = package.organization_id
-                              AND assignment.id_muc_tieu = package.id
-                              AND assignment.loai_doi_tuong = 'goithau'
-                             WHERE package.organization_id = record.organization_id
-                               AND package.ke_hoach_id = record.id
-                               AND assignment.id_nhan_vien = ?
-                         )
-                     )
-               )""",
-            (organization_id, lineage_root, user_id, user_id),
-        ).fetchone()
-    else:
-        row = cursor.execute(
-            f"""SELECT EXISTS (
-                   SELECT 1
-                   FROM {table_name} AS record
-                   JOIN phan_cong_nhan_su AS assignment
-                     ON assignment.organization_id = record.organization_id
-                    AND assignment.id_muc_tieu = record.id
-                    AND assignment.loai_doi_tuong = ?
-                   WHERE record.organization_id = ?
-                     AND COALESCE(NULLIF(record.id_goc, ''), record.id) = ?
-                     AND assignment.id_nhan_vien = ?
-               )""",
-            (target_type, organization_id, lineage_root, user_id),
-        ).fetchone()
-    return bool(row and row[0])
-
-
 def _opening_parent_id(cursor, organization_id, item_or_id):
     if isinstance(item_or_id, dict):
         parent_id = item_or_id.get("goiThauId") or item_or_id.get("goi_thau_id")
@@ -253,10 +306,25 @@ def _opening_parent_id(cursor, organization_id, item_or_id):
     return clean_id(row[0]) if row else None
 
 
-def _assigned_for_table(cursor, organization_id, user_id, table_name, item_or_id):
+def _assigned_for_table(
+    cursor,
+    organization_id,
+    user_id,
+    table_name,
+    item_or_id,
+    *,
+    lock=False,
+):
     if table_name == "thong_tin_mo_thau":
         parent_id = _opening_parent_id(cursor, organization_id, item_or_id)
-        return _assigned(cursor, organization_id, user_id, parent_id, "goithau")
+        return _assigned(
+            cursor,
+            organization_id,
+            user_id,
+            parent_id,
+            "goithau",
+            lock=lock,
+        )
 
     target_type = ASSIGNED_TABLE_TYPES.get(table_name)
     if not target_type:
@@ -265,24 +333,16 @@ def _assigned_for_table(cursor, organization_id, user_id, table_name, item_or_id
         record_id = item_or_id.get("id")
     else:
         record_id = item_or_id
-    if table_name == "ke_hoach_lcnt":
-        plan_id = clean_id(record_id)
-        if _assigned(cursor, organization_id, user_id, plan_id, "kehoach"):
-            return True
-        cursor.execute(
-            """
-            SELECT 1 FROM goi_thau gt
-            JOIN phan_cong_nhan_su pc
-              ON pc.organization_id = gt.organization_id
-             AND pc.id_muc_tieu = gt.id
-             AND pc.loai_doi_tuong = 'goithau'
-            WHERE gt.organization_id = ? AND gt.ke_hoach_id = ? AND pc.id_nhan_vien = ?
-            LIMIT 1
-            """,
-            (organization_id, plan_id, user_id),
-        )
-        return cursor.fetchone() is not None
-    return _assigned(cursor, organization_id, user_id, record_id, target_type)
+    record_id = clean_id(record_id)
+    if not record_id:
+        return False
+    return (target_type, record_id) in _effective_assignment_targets(
+        cursor,
+        organization_id,
+        user_id,
+        {(target_type, record_id)},
+        lock=lock,
+    )
 
 
 def _row_value(row, name, index):
@@ -292,62 +352,6 @@ def _row_value(row, name, index):
         return row[index]
 
 
-def _load_assigned_lineages(
-    cursor,
-    organization_id,
-    user_id,
-    table_name,
-    lineage_roots,
-):
-    assigned = set()
-    target_type = ASSIGNED_TABLE_TYPES[table_name]
-    for chunk in _chunked(lineage_roots):
-        placeholders = ", ".join("?" for _ in chunk)
-        if table_name == "ke_hoach_lcnt":
-            rows = cursor.execute(
-                f"""SELECT DISTINCT COALESCE(NULLIF(record.id_goc, ''), record.id) AS lineage_root
-                    FROM ke_hoach_lcnt AS record
-                    WHERE record.organization_id = ?
-                      AND COALESCE(NULLIF(record.id_goc, ''), record.id) IN ({placeholders})
-                      AND (
-                          EXISTS (
-                              SELECT 1 FROM phan_cong_nhan_su AS assignment
-                              WHERE assignment.organization_id = record.organization_id
-                                AND assignment.id_nhan_vien = ?
-                                AND assignment.id_muc_tieu = record.id
-                                AND assignment.loai_doi_tuong = 'kehoach'
-                          )
-                          OR EXISTS (
-                              SELECT 1
-                              FROM goi_thau AS package
-                              JOIN phan_cong_nhan_su AS assignment
-                                ON assignment.organization_id = package.organization_id
-                               AND assignment.id_muc_tieu = package.id
-                               AND assignment.loai_doi_tuong = 'goithau'
-                              WHERE package.organization_id = record.organization_id
-                                AND package.ke_hoach_id = record.id
-                                AND assignment.id_nhan_vien = ?
-                          )
-                      )""",
-                (organization_id, *chunk, user_id, user_id),
-            ).fetchall()
-        else:
-            rows = cursor.execute(
-                f"""SELECT DISTINCT COALESCE(NULLIF(record.id_goc, ''), record.id) AS lineage_root
-                    FROM {table_name} AS record
-                    JOIN phan_cong_nhan_su AS assignment
-                      ON assignment.organization_id = record.organization_id
-                     AND assignment.id_muc_tieu = record.id
-                     AND assignment.loai_doi_tuong = ?
-                    WHERE record.organization_id = ?
-                      AND assignment.id_nhan_vien = ?
-                      AND COALESCE(NULLIF(record.id_goc, ''), record.id) IN ({placeholders})""",
-                (target_type, organization_id, user_id, *chunk),
-            ).fetchall()
-        assigned.update(str(_row_value(row, "lineage_root", 0)) for row in rows)
-    return assigned
-
-
 def build_batch_write_authorization_context(
     cursor,
     role_str,
@@ -355,6 +359,8 @@ def build_batch_write_authorization_context(
     organization_id,
     records_by_table,
     current_records_by_table=None,
+    *,
+    server_inherited_assignment_ids=(),
 ):
     """Prefetch all stable authorization inputs needed for a sync batch."""
 
@@ -384,6 +390,11 @@ def build_batch_write_authorization_context(
         inherited_specialist_access=inherited_access,
         membership_role=membership_role,
     )
+    context.server_inherited_assignment_ids.update(
+        clean_id(value)
+        for value in server_inherited_assignment_ids
+        if clean_id(value)
+    )
     current_records_by_table = current_records_by_table or {}
     for table_name, items in records_by_table.items():
         if table_name not in current_records_by_table:
@@ -395,6 +406,42 @@ def build_batch_write_authorization_context(
             if (
                 (record_id := clean_id(item.get("id")))
                 and record_id not in current_ids
+            )
+        )
+
+    # A new physical ID is not a new logical record when either its requested
+    # root or another persisted snapshot already identifies the lineage.
+    # This check is server-authoritative and prevents a client from regaining
+    # access by submitting a successor ID plus a self-assignment.
+    for table_name in ASSIGNED_TABLE_TYPES:
+        incoming_items = records_by_table.get(table_name, ())
+        candidate_ids = {
+            candidate_id
+            for item in incoming_items
+            for value in (
+                item.get("id"),
+                item.get("rootId") or item.get("id_goc"),
+            )
+            if (candidate_id := clean_id(value))
+        }
+        persisted_identifiers = existing_lineage_identifiers(
+            cursor,
+            organization_id,
+            table_name,
+            candidate_ids,
+        )
+        context.new_records.difference_update(
+            (table_name, record_id)
+            for item in incoming_items
+            if (
+                (record_id := clean_id(item.get("id")))
+                and (
+                    record_id in persisted_identifiers
+                    or (
+                        clean_id(item.get("rootId") or item.get("id_goc"))
+                        in persisted_identifiers
+                    )
+                )
             )
         )
 
@@ -423,6 +470,7 @@ def build_batch_write_authorization_context(
     assignment_target_ids_by_table = {}
     assignment_targets = set()
     incoming_self_assignment_targets = set()
+    trusted_inherited_self_assignment_targets = set()
     for item in records_by_table.get("phan_cong_nhan_su", ()):
         target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
         target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
@@ -437,6 +485,11 @@ def build_batch_write_authorization_context(
             employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
             if employee_id == clean_id(user_id):
                 incoming_self_assignment_targets.add((target_type, target_id))
+                assignment_id = clean_id(item.get("id"))
+                if assignment_id in context.server_inherited_assignment_ids:
+                    trusted_inherited_self_assignment_targets.add(
+                        (target_type, target_id)
+                    )
     for table_name, target_ids in assignment_target_ids_by_table.items():
         for chunk in _chunked(sorted(target_ids)):
             placeholders = ", ".join("?" for _ in chunk)
@@ -452,7 +505,20 @@ def build_batch_write_authorization_context(
     context.assigned_targets.update(
         target
         for target in incoming_self_assignment_targets
-        if target not in context.existing_assignment_targets
+        if (
+            target not in context.existing_assignment_targets
+            and (
+                target in trusted_inherited_self_assignment_targets
+                or (
+                    {
+                        "kehoach": "ke_hoach_lcnt",
+                        "goithau": "goi_thau",
+                        "hopdong": "hop_dong",
+                    }[target[0]],
+                    target[1],
+                ) in context.new_records
+            )
+        )
     )
 
     opening_parent_ids = set()
@@ -549,23 +615,19 @@ def build_batch_write_authorization_context(
     all_assignment_targets |= {
         ("goithau", parent_id) for parent_id in bidder_goods_parent_ids
     }
-    target_ids = sorted({target_id for _target_type, target_id in all_assignment_targets})
-    for chunk in _chunked(target_ids):
-        placeholders = ", ".join("?" for _ in chunk)
-        rows = cursor.execute(
-            f"""SELECT id_muc_tieu, loai_doi_tuong
-                FROM phan_cong_nhan_su
-                WHERE organization_id = ? AND id_nhan_vien = ?
-                  AND id_muc_tieu IN ({placeholders})""",
-            (organization_id, user_id, *chunk),
-        ).fetchall()
-        context.assigned_targets.update(
-            (
-                str(_row_value(row, "loai_doi_tuong", 1)),
-                str(_row_value(row, "id_muc_tieu", 0)),
-            )
-            for row in rows
-        )
+    all_assignment_targets |= {
+        (target_type, record_id)
+        for table_name, target_type in ASSIGNED_TABLE_TYPES.items()
+        for item in records_by_table.get(table_name, ())
+        if (record_id := clean_id(item.get("id")))
+    }
+    context.assigned_targets.update(_effective_assignment_targets(
+        cursor,
+        organization_id,
+        user_id,
+        all_assignment_targets,
+        lock=True,
+    ))
 
     lineage_roots_by_table = {}
     for table_name in (*ASSIGNED_TABLE_TYPES, "nha_thau"):
@@ -612,16 +674,6 @@ def build_batch_write_authorization_context(
                     (table_name, str(row[0])) for row in rows if str(row[1]) == str(user_id)
                 )
             continue
-        context.assigned_lineages.update(
-            (table_name, root)
-            for root in _load_assigned_lineages(
-                cursor,
-                organization_id,
-                user_id,
-                table_name,
-                sorted_roots,
-            )
-        )
         if table_name in OWNERSHIP_SCOPED_TABLES:
             for chunk in _chunked(sorted_roots):
                 placeholders = ", ".join("?" for _ in chunk)
@@ -715,8 +767,19 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
         if not target_id or target_type not in {"kehoach", "goithau", "hopdong"}:
             return AccessDecision(False, "Mục tiêu phân công không hợp lệ.")
         target = (target_type, target_id)
-        if target in context.existing_assignment_targets and target not in context.assigned_targets:
-            return AccessDecision(False, "Không được tự nhận một bản ghi đã tồn tại và chưa được phân công.")
+        target_table = {
+            "kehoach": "ke_hoach_lcnt",
+            "goithau": "goi_thau",
+            "hopdong": "hop_dong",
+        }[target_type]
+        if (
+            (target_table, target_id) not in context.new_records
+            or target not in context.assigned_targets
+        ):
+            return AccessDecision(
+                False,
+                "Chuyên viên chỉ được nhận phân công mặc định do máy chủ tạo cho bản ghi mới.",
+            )
         return AccessDecision(True)
     key_decision = authorize_payload_key_write(
         context.role_str,
@@ -825,7 +888,8 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
             (table_name, record_id),
             context.lineage_root_by_item.get((table_name, requested_root)),
         )
-        if lineage_root and (table_name, lineage_root) not in context.assigned_lineages:
+        target_type = ASSIGNED_TABLE_TYPES[table_name]
+        if lineage_root and (target_type, record_id) not in context.assigned_targets:
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
         return AccessDecision(True)
     return AccessDecision(True)
@@ -955,13 +1019,29 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 
     if table_name == "goi_thau_hang_hoa":
-        if not _assigned(cursor, organization_id, user_id, goods_parent_id, "goithau"):
+        if not _assigned(
+            cursor,
+            organization_id,
+            user_id,
+            goods_parent_id,
+            "goithau",
+            lock=True,
+        ):
             return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
     elif table_name == "hang_hoa_du_thau_nha_thau":
-        if not _assigned(cursor, organization_id, user_id, bidder_goods_parent_id, "goithau"):
+        if not _assigned(
+            cursor,
+            organization_id,
+            user_id,
+            bidder_goods_parent_id,
+            "goithau",
+            lock=True,
+        ):
             return AccessDecision(False, "Không có quyền sửa gói thầu chưa được phân công.")
     elif table_name == "thong_tin_mo_thau":
-        if not _assigned_for_table(cursor, organization_id, user_id, table_name, item):
+        if not _assigned_for_table(
+            cursor, organization_id, user_id, table_name, item, lock=True
+        ):
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
     elif table_name in OWNERSHIP_SCOPED_TABLES:
         lineage_root = _existing_lineage_root(cursor, organization_id, table_name, item)
@@ -971,8 +1051,8 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
             return AccessDecision(False, "Chuyên viên chỉ được sửa dữ liệu do mình tạo.")
     elif table_name in ASSIGNED_TABLE_TYPES:
         lineage_root = _existing_lineage_root(cursor, organization_id, table_name, item)
-        if lineage_root and not _assigned_for_lineage(
-            cursor, organization_id, user_id, table_name, lineage_root
+        if lineage_root and not _assigned_for_table(
+            cursor, organization_id, user_id, table_name, item, lock=True
         ):
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
         return AccessDecision(True)
@@ -1046,28 +1126,28 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
     record_ids = [record_id for record_id in record_ids if record_id]
     if not record_ids:
         return []
+    if table_name in ASSIGNED_TABLE_TYPES:
+        target_type = ASSIGNED_TABLE_TYPES[table_name]
+        effective_targets = _effective_assignment_targets(
+            cursor,
+            organization_id,
+            user_id,
+            {(target_type, record_id) for record_id in record_ids},
+        )
+        allowed_ids = {
+            record_id
+            for assignment_type, record_id in effective_targets
+            if assignment_type == target_type
+        }
+        return [
+            item for item in source_items
+            if clean_id(item.get("id") if isinstance(item, dict) else item)
+            in allowed_ids
+        ]
     allowed_ids = set()
     for record_chunk in _chunked(record_ids):
         placeholders = ", ".join("?" for _ in record_chunk)
-        if table_name == "ke_hoach_lcnt":
-            rows = cursor.execute(
-            f"""SELECT pc.id_muc_tieu
-                FROM phan_cong_nhan_su pc
-                WHERE pc.organization_id = ? AND pc.id_nhan_vien = ?
-                  AND pc.loai_doi_tuong = 'kehoach'
-                  AND pc.id_muc_tieu IN ({placeholders})
-                UNION
-                SELECT gt.ke_hoach_id
-                FROM goi_thau gt
-                JOIN phan_cong_nhan_su pc
-                  ON pc.organization_id = gt.organization_id
-                 AND pc.id_muc_tieu = gt.id
-                 AND pc.loai_doi_tuong = 'goithau'
-                WHERE gt.organization_id = ? AND pc.id_nhan_vien = ?
-                  AND gt.ke_hoach_id IN ({placeholders})""",
-            (organization_id, user_id, *record_chunk, organization_id, user_id, *record_chunk),
-            ).fetchall()
-        elif table_name == "goi_thau_hang_hoa":
+        if table_name == "goi_thau_hang_hoa":
             rows = cursor.execute(
             f"""SELECT goods.id
                 FROM goi_thau_hang_hoa AS goods
@@ -1102,14 +1182,6 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
                 WHERE mt.organization_id = ? AND pc.id_nhan_vien = ?
                   AND mt.id IN ({placeholders})""",
             (organization_id, user_id, *record_chunk),
-            ).fetchall()
-        else:
-            target_type = ASSIGNED_TABLE_TYPES[table_name]
-            rows = cursor.execute(
-            f"""SELECT id_muc_tieu FROM phan_cong_nhan_su
-                WHERE organization_id = ? AND id_nhan_vien = ?
-                  AND loai_doi_tuong = ? AND id_muc_tieu IN ({placeholders})""",
-            (organization_id, user_id, target_type, *record_chunk),
             ).fetchall()
         allowed_ids.update(clean_id(row[0]) for row in rows)
     return [

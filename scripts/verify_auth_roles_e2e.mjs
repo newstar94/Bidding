@@ -236,7 +236,10 @@ try {
   auth = await apiLogin(invalidContext, { username: `auth-e2e-${runId}-missing` }, password);
   assert(auth.response.status() === 400, `Unknown account returned ${auth.response.status()}`);
   auth = await apiLogin(invalidContext, accounts.unverified);
-  assert(auth.response.status() === 400 && auth.body.unverified === true, "Unverified account was not rejected");
+  assert(
+    auth.response.status() === 400 && auth.body.unverified === true,
+    `Unverified account was not rejected: HTTP ${auth.response.status()} ${JSON.stringify(auth.body)}`,
+  );
   await invalidContext.close();
   mark("invalid-logins-rejected");
   fixture("clear-rate-limits");

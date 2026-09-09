@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -527,8 +528,6 @@ jobs:
         run: |
           set -o pipefail
           npm run audit:dependencies 2>&1 | tee dependency-audit.log
-      - name: Build reproducible production archive candidate
-        run: npm run package:production:from-build
       - name: Upload package diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -539,28 +538,42 @@ jobs:
             dependency-audit.log
           if-no-files-found: ignore
           retention-days: 14
-      - name: Upload production package candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: biddingflow-production-candidate-${{ github.sha }}
-          path: |
-            release/biddingflow-production.zip
-            release/npm-sbom.cdx.json
-            release/python-sbom.cdx.json
-          if-no-files-found: error
-          retention-days: 1
-
   release:
     name: Publish verified production artifact
     needs: [quality, unit-python, unit-js, build, database, e2e, performance, package]
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Restore verified production package candidate
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install pinned Python dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r requirements-test.txt
+          python -m pip install --disable-pip-version-check --no-build-isolation --no-deps -e .
+      - name: Restore verified secure build
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: biddingflow-production-candidate-${{ github.sha }}
-          path: release
+          name: biddingflow-secure-build-${{ github.sha }}
+          path: dist
+      - name: Verify restored secure build artifact
+        run: python scripts/verify_secure_build_artifact.py
+      - name: Require approved production legal facts
+        run: npm run check:legal:production
+      - name: Build production SBOMs
+        run: npm run sbom
+      - name: Build reproducible production archive
+        run: npm run package:production:from-build
       - name: Upload production artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

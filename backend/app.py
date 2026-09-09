@@ -60,6 +60,7 @@ from backend.frontend_assets import (
     FrontendAssetError,
     assert_production_frontend_ready,
     resolve_frontend_entry,
+    resolve_font_preloads,
     resolve_preload_graph,
 )
 
@@ -282,8 +283,10 @@ def compile_html(file_path):
         )
         bundle_src = "/dist/assets/appbundle.js"
         bundled_stylesheet = None
+        font_manifest = {}
         if IS_PRODUCTION:
             frontend_assets = assert_production_frontend_ready(project_root)
+            font_manifest = frontend_assets.manifest
             bundle_src = f"/dist/{frontend_assets.app_file}"
             bundled_stylesheet = (
                 frontend_assets.stylesheets[0]
@@ -297,6 +300,7 @@ def compile_html(file_path):
                 try:
                     with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
                         manifest = json.load(manifest_file)
+                    font_manifest = manifest
                     bundle_file = manifest.get(APP_ENTRY, {}).get('file')
                     if bundle_file:
                         bundle_src = f"/dist/{bundle_file}"
@@ -315,6 +319,13 @@ def compile_html(file_path):
                     bundle_src = f"{bundle_src}?v={bundle_version}"
                 except OSError:
                     pass
+        font_preloads = resolve_font_preloads(font_manifest, Path(project_root) / "dist")
+        if font_preloads:
+            font_tags = "".join(
+                f'<link rel="preload" href="/dist/{asset}" as="font" type="font/woff2" crossorigin>\n'
+                for asset in font_preloads
+            )
+            compiled = compiled.replace('</head>', font_tags + '</head>', 1)
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/frontend/app/app\.js(?:\?v=[^"]*)?"></script>',
             f'<script type="module" src="{bundle_src}"></script>',
@@ -441,34 +452,41 @@ def _prewarm_frontend_assets():
         return 0, 0
 
 
-def _workspace_preload_tag(session_bootstrap):
-    """Preload the app entry first, then the authenticated workspace graph."""
+_LANDING_ENTRY = "frontend/landing/LandingPage.js"
+_LEGAL_ENTRY = "frontend/legal/LegalPage.js"
+_AUTH_SHELL_ENTRY = "frontend/auth/AuthShell.js"
+_WORKSPACE_ENTRY = "frontend/app/workspaceBootstrap.js"
+_REQUIRED_WORKSPACE_STARTUP_ENTRIES = (
+    "frontend/app/BiddingModel.js",
+    "frontend/app/BiddingView.js",
+    "frontend/app/BiddingController.js",
+    "frontend/auth/AuthController.js",
+    "frontend/app/BiddingControllerUI.js",
+    "frontend/app/BiddingControllerForms.js",
+    "frontend/app/BiddingControllerSync.js",
+    "frontend/app/IntegrationWorkflowBridges.js",
+    "frontend/admin/AdminUserController.js",
+)
+
+
+def _page_preload_entries(session_bootstrap, request_path):
+    entries = [APP_ENTRY]
+    if request_path == "/":
+        entries.append(_LANDING_ENTRY)
+    elif request_path == "/legal":
+        entries.append(_LEGAL_ENTRY)
+    elif session_bootstrap.get("valid"):
+        entries.extend((_WORKSPACE_ENTRY, *_REQUIRED_WORKSPACE_STARTUP_ENTRIES))
+    else:
+        entries.append(_AUTH_SHELL_ENTRY)
+    return tuple(entries)
+
+
+def _workspace_preload_tag(session_bootstrap, request_path="/workspace"):
+    """Preload the complete static graph required by the requested shell."""
+    entry_keys = _page_preload_entries(session_bootstrap, request_path)
     if not _frontend_bundle_enabled():
-        if not session_bootstrap.get("valid"):
-            return ""
-        workspace_src = "/frontend/app/workspaceBootstrap.js"
-        preload_sources = [workspace_src]
-        try:
-            workspace_path = os.path.join(project_root, workspace_src.lstrip("/").replace("/", os.sep))
-            with open(workspace_path, 'r', encoding='utf-8') as workspace_file:
-                source = workspace_file.read()
-            import_specifiers = re.findall(
-                r'(?:import|export)\s+(?:[^\"\']*?\s+from\s+)?[\"\']([^\"\']+\.js)[\"\']',
-                source,
-            )
-            workspace_directory = os.path.dirname(workspace_src)
-            for specifier in import_specifiers:
-                if specifier.startswith('/'):
-                    resolved = os.path.normpath(specifier).replace('\\', '/')
-                elif specifier.startswith('.'):
-                    resolved = os.path.normpath(os.path.join(workspace_directory, specifier)).replace('\\', '/')
-                else:
-                    continue
-                if not resolved.startswith('/'):
-                    resolved = f'/{resolved}'
-                preload_sources.append(resolved)
-        except Exception as exc:
-            log_error(exc, "workspace_preload_source")
+        preload_sources = [f"/{entry}" for entry in entry_keys[1:]]
         return "\n".join(
             f'<link rel="modulepreload" href="{module_src}">'
             for module_src in dict.fromkeys(preload_sources)
@@ -476,18 +494,11 @@ def _workspace_preload_tag(session_bootstrap):
 
     if IS_PRODUCTION:
         frontend_assets = assert_production_frontend_ready(project_root)
-        workspace_entry = 'frontend/app/workspaceBootstrap.js'
-        preload_files = list(resolve_preload_graph(
+        preload_files = resolve_preload_graph(
             frontend_assets.manifest,
             frontend_assets.dist_root,
-            (APP_ENTRY,),
-        ))
-        if session_bootstrap.get("valid") and workspace_entry in frontend_assets.manifest:
-            preload_files.append(resolve_frontend_entry(
-                frontend_assets.manifest,
-                frontend_assets.dist_root,
-                workspace_entry,
-            ))
+            entry_keys,
+        )
         return "\n".join(
             f'<link rel="modulepreload" href="/dist/{bundle_file}">'
             for bundle_file in dict.fromkeys(preload_files)
@@ -497,11 +508,9 @@ def _workspace_preload_tag(session_bootstrap):
     try:
         with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
             manifest = json.load(manifest_file)
-        workspace_entry = 'frontend/app/workspaceBootstrap.js'
-        app_entry = 'frontend/app/app.js'
         visited = set()
         preload_files = []
-        pending = [app_entry]
+        pending = list(entry_keys)
         while pending:
             manifest_key = pending.pop(0)
             if manifest_key in visited:
@@ -512,10 +521,6 @@ def _workspace_preload_tag(session_bootstrap):
             if bundle_file:
                 preload_files.append(bundle_file)
             pending.extend(entry.get('imports') or [])
-        if session_bootstrap.get("valid") and workspace_entry in manifest:
-            workspace_file = manifest[workspace_entry].get('file')
-            if workspace_file:
-                preload_files.append(workspace_file)
         if preload_files:
             return "\n".join(
                 f'<link rel="modulepreload" href="/dist/{bundle_file}">'
@@ -738,7 +743,7 @@ async def index(request, *, not_found=False):
     html_content = html_content.replace("__BF_SOCIAL_METADATA__", social_metadata)
     html_content = html_content.replace("__BF_STRUCTURED_DATA__", structured_data)
     html_content = html_content.replace("__BF_NOT_FOUND__", "true" if not_found else "false")
-    workspace_preload = "" if request_path in {"/", "/legal"} else _workspace_preload_tag(session_bootstrap)
+    workspace_preload = _workspace_preload_tag(session_bootstrap, request_path)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
     initial_route_preload = (
         ""

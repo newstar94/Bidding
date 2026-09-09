@@ -12,10 +12,14 @@ import {
   currentWorkspaceStorage,
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
-import { renderChangedState } from "./SyncRenderCoordinator.js";
+import {
+  dismissRevokedInteractiveState,
+  renderChangedState,
+} from "./SyncRenderCoordinator.js";
 import { normalizePackageVersionSelection } from "../shared/versionResolver.js";
 import {
   capturePlanBreakdownDraftLocalState,
+  pruneRevokedPlanBackupRows,
   rebasePlanBreakdownDraftAfterServerMerge,
 } from "../plans/planBreakdownDraft.js";
 import { reapplyPlanVersionDraftSessions } from "../plans/PlanVersionDraftSession.js";
@@ -98,12 +102,14 @@ function captureActivePlanBreakdownState(controller) {
   );
 }
 
-function reconcilePulledPlanBreakdownState(controller, localBefore, changedKeys) {
+function reconcilePulledPlanBreakdownState(controller, localBefore, changedKeys, revokedIdsByTable = {}) {
+  pruneRevokedPlanBackupRows(controller, revokedIdsByTable);
   rebasePlanBreakdownDraftAfterServerMerge(
     controller.model,
     controller.planBreakdownDraft,
     localBefore,
     changedKeys,
+    { revokedIdsByTable },
   );
   const versionStateChanged = changedKeys.has?.("kehoach") || changedKeys.has?.("goithau");
   if (versionStateChanged) normalizePackageVersionSelection(controller.model.state);
@@ -359,6 +365,18 @@ async function retryRequiredFullSync(controller, {
   };
 }
 
+function reconcileVisibilityScopeChanged(controller, snapshot, storage) {
+  const model = controller.model;
+  const priorObservation = model?._paginatedProjectionVisibility;
+  const workspaceKey = String(model.getWorkspaceToken?.() || model.workspaceScope?.key || "");
+  const priorLocalToken = priorObservation?.workspaceKey === workspaceKey ? priorObservation.token : null;
+  const observedScopeChanged = fencePaginatedAuthorizationScope(controller, snapshot);
+  const incomingToken = String(snapshot?.visibilityToken || "");
+  return observedScopeChanged || Boolean(incomingToken
+    && (incomingToken !== String(storage.getItem("bf_visibility_token") || "")
+      || (priorLocalToken !== null && incomingToken !== priorLocalToken)));
+}
+
 async function executeForceSyncData(
   isBackground = false,
   forceFull = false,
@@ -492,7 +510,10 @@ async function executeForceSyncData(
     if (!pullIsCurrent()) {
       return stalePullResult();
     }
-    const visibilityScopeChanged = fencePaginatedAuthorizationScope(this, dbData);
+    // A partial response may already have advanced the observed token without
+    // committing a workspace-wide snapshot. Compare the committed cursor too,
+    // so its full successor still performs authorization-reset reconciliation.
+    const visibilityScopeChanged = reconcileVisibilityScopeChanged(this, dbData, storage);
     if (visibilityScopeChanged && dbData?.partial) {
       // A route-only snapshot cannot remove rows from other modules. Once its
       // visibility fingerprint changes, reconcile the whole workspace before
@@ -503,10 +524,12 @@ async function executeForceSyncData(
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
       dbData,
-      { useVersionDelta, since },
+      { useVersionDelta, since, visibilityScopeChanged },
     );
-    reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys);
+    reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys,
+      visibilityScopeChanged ? deletionsByTable : {});
     await persistencePromise;
+    if (visibilityScopeChanged) dismissRevokedInteractiveState(this);
     const draftsReapplied = await reapplyCapturedPlanDraftSessions(
       this, pullResources, pullIsCurrent,
     );

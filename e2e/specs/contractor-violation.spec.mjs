@@ -1,19 +1,39 @@
 import { expect, test } from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 
-const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
-const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
-const packageId = String(process.env.E2E_CONTRACTOR_VIOLATION_PACKAGE_ID || "");
-const fixtureReady = Boolean(
-  password
-  && packageId
-  && process.env.VNEPS_VIOLATION_FIXTURE_PATH
-);
+const fixtureReady = Boolean(process.env.VNEPS_VIOLATION_FIXTURE_PATH);
 
 test.skip(
   !fixtureReady,
-  "Requires E2E password, contractor package ID and violation fixture.",
+  "Requires the isolated violation fixture provider.",
 );
+
+function fixture(script, action, payload) {
+  const result = spawnSync(process.env.PYTHON || "python", [script, action], {
+    input: JSON.stringify(payload), encoding: "utf8", windowsHide: true, env: process.env,
+  });
+  if (result.status !== 0) throw new Error(`Violation fixture ${action} failed: ${result.stderr}`);
+}
+
+test.beforeEach(async ({ page, browserName }) => {
+  const runId = `violation-${Date.now()}-${browserName}`;
+  const payload = { runId, organizationId: `${runId}-org`, contractors: [],
+    account: { id: `${runId}-user`, username: runId, name: runId, email: `${runId}@example.invalid` },
+    password: `Aa!9${randomBytes(12).toString("hex")}`,
+    package: { id: `${runId}-package`, code: runId.toUpperCase(), name: runId, price: 900000000 },
+    fixtureDates: { ownerEffective: "2026-01-01", contractorEffective: "2026-01-01",
+      planApproval: "2026-01-02", packageStart: "Quý I/2026",
+      packagePublishedAt: "2026-02-01 08:00:00", packageClosingAt: "2026-03-01 09:00:00",
+      packageOpeningAt: "2026-03-01 10:00:00" } };
+  fixture("scripts/joint_venture_e2e_fixture.py", "setup", payload);
+  page.__violationFixture = payload;
+});
+
+test.afterEach(async ({ page }) => {
+  if (page.__violationFixture) fixture("scripts/lifecycle_e2e_fixture.py", "cleanup", page.__violationFixture);
+});
 
 
 async function waitForApp(page) {
@@ -26,25 +46,32 @@ async function waitForApp(page) {
 
 
 async function login(page) {
+  const { account: { username }, password } = page.__violationFixture;
   await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(
-    () => getComputedStyle(document.getElementById("auth-overlay")).display === "none",
-  );
+  await expect(page.locator("#auth-overlay")).toBeHidden();
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
+  ));
 }
 
 
 async function openOpening(page) {
+  const packageId = page.__violationFixture.package.id;
   await page.goto("/goi-thau", {
     waitUntil: "domcontentloaded",
   });
   await waitForApp(page);
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
+  ));
   await page.locator(
     `[data-bf-action="show-package"][data-id="${packageId}"]`,
   ).first().click();
+  await expect(page.locator("#tab-goithau-detail.active")).toBeVisible();
   const openingTab = page.locator(
     'button[data-workflow-tab="opening"], button[data-workflow-tab="opening_tech"]',
   ).first();
@@ -122,7 +149,20 @@ test("confirmed contractor and exact joint-venture members stay red after reload
 
   await expect(page.getByText("Có vi phạm", { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-violation-badge], [data-violation-tooltip]')).toHaveCount(0);
+  const saveResponse = page.waitForResponse(response => (
+    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/sync"
+  ));
   await page.locator("#btn-mothau-save").click();
+  const response = await saveResponse;
+  const payload = await response.json();
+  const sentPackage = response.request().postDataJSON()?.goithau?.[0];
+  expect(response.ok(), JSON.stringify({ code: payload.code,
+    expectedPackageCode: page.__violationFixture.package.code,
+    submittedPackageCode: sentPackage?.maGoiThau,
+    errors: (payload.errors || payload.fields?.errors || []).map(error => ({
+      table: error.table, field: error.field, code: error.code, message: error.message,
+    })),
+  })).toBe(true);
   await expect(page.locator('[data-workflow-tab="eval_tech"]')).toHaveAttribute(
     "aria-selected",
     "true",

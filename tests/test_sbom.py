@@ -1,5 +1,6 @@
 import hashlib
 import json
+import pytest
 from pathlib import Path
 
 from scripts import generate_sbom
@@ -7,6 +8,55 @@ from scripts import generate_sbom
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VENDOR_ROOT = PROJECT_ROOT / "views" / "vendor"
+
+
+def test_python_root_dependencies_preserve_inventory_and_existing_edges():
+    document = {
+        "metadata": {"component": {"bom-ref": "root"}},
+        "components": [{"name": "Some_Package", "version": "1.2", "bom-ref": "pkg", "hashes": []}],
+        "dependencies": [{"ref": "root"}, {"ref": "pkg", "dependsOn": ["transitive"]}],
+    }
+    generate_sbom._link_python_root(document, ["some-package[extra]==1.2"])
+    assert document["dependencies"][0]["dependsOn"] == ["pkg"]
+    assert document["dependencies"][1]["dependsOn"] == ["transitive"]
+    assert document["components"][0]["hashes"] == []
+
+
+@pytest.mark.parametrize("components", [[], [
+    {"name": "example", "version": "2", "bom-ref": "wrong"},
+], [
+    {"name": "example", "version": "1", "bom-ref": "a"},
+    {"name": "example", "version": "1", "bom-ref": "b"},
+]])
+def test_python_root_rejects_missing_wrong_version_or_ambiguous_component(components):
+    document = {"metadata": {"component": {"bom-ref": "root"}},
+                "components": components, "dependencies": [{"ref": "root"}]}
+    with pytest.raises(ValueError, match="exactly one"):
+        generate_sbom._link_python_root(document, ["example==1"])
+
+
+def test_main_emits_python_root_edges_from_project_manifest(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["example==1"]\n', encoding="utf-8"
+    )
+    output = tmp_path / "release"
+    monkeypatch.setattr(generate_sbom, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(generate_sbom, "OUTPUT_DIRECTORY", output)
+    monkeypatch.setattr(generate_sbom.shutil, "which", lambda name: name)
+    monkeypatch.setattr(generate_sbom, "_run_json", lambda command: {"bomFormat": "CycloneDX"})
+    monkeypatch.setattr(generate_sbom, "_merge_vendor_inventory", lambda document: None)
+
+    def generate_inventory(*args, **kwargs):
+        (output / "python-sbom.cdx.json").write_text(json.dumps({
+            "metadata": {"component": {"bom-ref": "root"}},
+            "components": [{"name": "example", "version": "1", "bom-ref": "example-1"}],
+            "dependencies": [{"ref": "root"}],
+        }), encoding="utf-8")
+
+    monkeypatch.setattr(generate_sbom.subprocess, "run", generate_inventory)
+    generate_sbom.main()
+    document = json.loads((output / "python-sbom.cdx.json").read_text(encoding="utf-8"))
+    assert document["dependencies"] == [{"ref": "root", "dependsOn": ["example-1"]}]
 
 
 def test_vendor_manifest_is_merged_into_cyclonedx_with_file_hashes_and_licenses():

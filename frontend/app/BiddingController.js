@@ -501,7 +501,8 @@ export class BiddingController {
       editKeHoach: ["KEHOACH", "CHUDAUTU", "ASSIGNMENTS", "EMPLOYEES"],
       editGoiThau: ["GOITHAU", "KEHOACH", "NHATHAU", "CHUYENGIA", "ASSIGNMENTS", "EMPLOYEES", "THONGTINMOTHAU"]
     };
-    return dependencies[methodName] || null;
+    const keys = dependencies[methodName];
+    return keys ? [...new Set([...keys, "PERMISSIONMATRIX"])] : null;
   }
   ensureWorkflowData(methodName) {
     const keys = this.getWorkflowDataKeys(methodName);

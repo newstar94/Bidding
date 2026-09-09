@@ -3,7 +3,10 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { renderChangedState } from "../../frontend/app/SyncRenderCoordinator.js";
+import {
+  dismissRevokedInteractiveState,
+  renderChangedState,
+} from "../../frontend/app/SyncRenderCoordinator.js";
 import {
   completePackageWorkspaceEdit,
   packageWorkspaceFor,
@@ -323,5 +326,79 @@ test("background detail reconciliation preserves background semantics through ta
     else globalThis.document = previousDocument;
     if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
     else globalThis.requestAnimationFrame = previousAnimationFrame;
+  }
+});
+
+test("authorization scope reconciliation closes revoked editor and stale package workflow", () => {
+  const activeClasses = new Set(["active"]);
+  const packageModalClasses = new Set(["modal-overlay", "active"]);
+  const packageEditor = {
+    dataset: { bfUnsaved: "true" },
+    classList: {
+      contains: (name) => activeClasses.has(name),
+      remove: (name) => activeClasses.delete(name),
+    },
+  };
+  const packageWorkflowModal = {
+    dataset: { packageId: "package-revoked", bfUnsaved: "true" },
+    classList: {
+      remove: (name) => packageModalClasses.delete(name),
+    },
+  };
+  const elements = new Map([
+    ["modal-goithau", packageEditor],
+    ["form-goithau-id", { value: "package-revoked" }],
+  ]);
+  const toasts = [];
+  const controller = {
+    model: { state: { goithau: [], kehoach: [], hopdong: [] } },
+    view: {
+      _currentWorkflowPackageId: "package-revoked",
+      _currentWorkflowTab: "result",
+      closeModal: (id) => {
+        assert.equal(id, "modal-goithau");
+        activeClasses.delete("active");
+      },
+      showToast: (...args) => toasts.push(args),
+    },
+    _currentResultPackageId: "package-revoked",
+  };
+  const root = {
+    getElementById: (id) => elements.get(id) || null,
+    querySelectorAll: () => [packageWorkflowModal],
+  };
+
+  const dismissed = dismissRevokedInteractiveState(controller, root);
+
+  assert.equal(dismissed.length, 2);
+  assert.equal(activeClasses.has("active"), false);
+  assert.equal(packageModalClasses.has("active"), false);
+  assert.equal(packageEditor.dataset.bfUnsaved, undefined);
+  assert.equal(packageWorkflowModal.dataset.bfUnsaved, undefined);
+  assert.equal(controller.view._currentWorkflowPackageId, "");
+  assert.equal(controller.view._currentWorkflowTab, "");
+  assert.equal(controller._currentResultPackageId, "");
+  assert.deepEqual(toasts, [[
+    "Phân công đã thay đổi",
+    "Màn hình đang mở đã được đóng vì bản ghi không còn thuộc phạm vi của bạn.",
+    "warning",
+  ]]);
+});
+
+test("scope reconciliation preserves authorized editors and unsaved new-record forms", () => {
+  for (const recordId of ["still-visible", ""]) {
+    const editor = { dataset: { bfUnsaved: "true" }, classList: { contains: () => true } };
+    const controller = {
+      model: { state: { goithau: [{ id: "still-visible" }] } },
+      view: {
+        closeModal: () => assert.fail("must not close an authorized or new-record editor"),
+        showToast: () => assert.fail("must not report revocation for an authorized or new record"),
+      },
+    };
+    const elements = new Map([["modal-goithau", editor], ["form-goithau-id", { value: recordId }]]);
+    assert.deepEqual(dismissRevokedInteractiveState(controller, {
+      getElementById: (id) => elements.get(id),
+    }), []);
+    assert.equal(editor.dataset.bfUnsaved, "true");
   }
 });

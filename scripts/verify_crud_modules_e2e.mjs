@@ -79,6 +79,17 @@ async function openCreateModal(page, route, buttonSelector, modalSelector) {
 }
 
 async function submitModal(page, formSelector, modalSelector) {
+  const diagnostics = () => page.evaluate((selector) => {
+    const form = document.querySelector(selector);
+    return {
+      invalid: [...document.querySelectorAll(`${selector} :invalid`)].map((element) => ({
+        id: element.id, value: element.value, message: element.validationMessage,
+      })),
+      submitState: form?.dataset?.submitState || "",
+      dialog: document.getElementById("modal-custom-dialog")?.innerText || "",
+      toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+    };
+  }, formSelector);
   await page.locator(`${formSelector} button[type="submit"]`).click();
   const modal = page.locator(`${modalSelector}.active`);
   const outcome = await Promise.race([
@@ -87,21 +98,20 @@ async function submitModal(page, formSelector, modalSelector) {
       .then(() => "confirm").catch(() => null),
   ]);
   if (outcome === "confirm") {
+    const confirmation = await page.locator("#modal-custom-dialog").innerText().catch(() => "");
     await page.locator("#btn-dialog-ok").click();
     await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-    await modal.waitFor({ state: "hidden", timeout: 20_000 });
+    await modal.waitFor({ state: "hidden", timeout: 20_000 }).catch(async (error) => {
+      throw new Error(
+        `${formSelector} did not close after confirmation ${JSON.stringify(confirmation)}: ${JSON.stringify(await diagnostics())}; ${error.message}`,
+        { cause: error },
+      );
+    });
     return;
   }
   if (outcome === "closed") return;
   await modal.waitFor({ state: "hidden", timeout: 100 }).catch(async (error) => {
-    const diagnostics = await page.evaluate((selector) => ({
-      invalid: [...document.querySelectorAll(`${selector} :invalid`)].map((element) => ({
-        id: element.id, value: element.value, message: element.validationMessage,
-      })),
-      dialog: document.getElementById("modal-custom-dialog")?.innerText || "",
-      toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
-    }), formSelector);
-    throw new Error(`${formSelector} did not close: ${JSON.stringify(diagnostics)}; ${error.message}`);
+    throw new Error(`${formSelector} did not close: ${JSON.stringify(await diagnostics())}; ${error.message}`);
   });
 }
 
@@ -178,8 +188,18 @@ try {
   fixtureCreated = true;
   const paginationFixture = fixture("seed_catalog_pagination");
   const documentFixtures = fixture("create_document_fixtures");
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    // This suite only talks to the isolated loopback application. Keep host
+    // proxy injection and Windows headless GPU state out of its network/render
+    // lifecycle so long CRUD flows cannot stall between canonical saves.
+    args: ["--disable-gpu", "--no-proxy-server"],
+  });
   const page = await browser.newPage({ locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" });
+  // Direct Playwright-library calls have no action timeout by default. Bound
+  // actionability waits so a detached/covered control yields exact diagnostics
+  // instead of leaving the entire CI job silent until its outer timeout.
+  page.setDefaultTimeout(20_000);
   const pageErrors = [];
   const httpErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
@@ -260,7 +280,36 @@ try {
   await submitModal(page, "#form-chudautu", "#modal-chudautu");
   await page.locator("#search-chudautu").fill(crudCodes.investor);
   let investorRow = page.locator("#chudautu-table tbody tr").filter({ hasText: crudCodes.investor });
-  await investorRow.locator('[data-bf-action="edit-investor"]').click();
+  try {
+    await investorRow.locator('[data-bf-action="edit-investor"]').click();
+  } catch (error) {
+    const diagnostics = await page.evaluate(async (search) => {
+      const response = await fetch(
+        `/api/paginate?table=chudautu&page=1&pageSize=10&search=${encodeURIComponent(search)}&sortBy=tenChuDauTu&sortOrder=asc`,
+        { credentials: "same-origin" },
+      );
+      return {
+        searchValue: document.getElementById("search-chudautu")?.value || "",
+        tableText: document.querySelector("#chudautu-table tbody")?.textContent?.trim() || "",
+        rows: [...document.querySelectorAll("#chudautu-table tbody tr")].map((row) => ({
+          text: row.textContent?.trim() || "",
+          actions: [...row.querySelectorAll("[data-bf-action]")]
+            .map((action) => action.getAttribute("data-bf-action")),
+        })),
+        toasts: [...document.querySelectorAll(".bf-toast")].map((toast) => ({
+          className: toast.className,
+          text: toast.textContent?.trim() || "",
+        })),
+        modalActive: document.getElementById("modal-chudautu")?.classList.contains("active") === true,
+        serverStatus: response.status,
+        serverBody: await response.text(),
+      };
+    }, crudCodes.investor);
+    throw new Error(
+      `Investor did not become editable after save: ${JSON.stringify({ diagnostics, pageErrors, httpErrors })}; ${error.message}`,
+      { cause: error },
+    );
+  }
   await page.locator("#modal-chudautu.active").waitFor({ state: "visible" });
   const investorUpdated = `Chủ đầu tư CRUD đã sửa ${runId}`;
   await page.locator("#cdt-ten").fill(investorUpdated);
@@ -361,11 +410,43 @@ try {
   await select(page, "#gt-nhanvienphutrach", { index: 1 });
   await page.locator('#to-chuyengia-tbody input[name="tochuyengia-select"]').first().check();
   await page.locator('#to-thamdinh-tbody input[name="tothamdinh-select"]').nth(1).check();
+  const packageCreateReceipt = page.waitForResponse(response => {
+    if (new URL(response.url()).pathname !== "/api/sync" || response.request().method() !== "POST") return false;
+    return (response.request().postDataJSON()?.goithau || [])
+      .some(record => record.maGoiThau === crudCodes.package);
+  }, { timeout: 20_000 }).then(response => ({ response }), error => ({ error }));
   await submitModal(page, "#form-goithau", "#modal-goithau");
+  const createOutcome = await packageCreateReceipt;
+  if (createOutcome.error) throw createOutcome.error;
+  if (!createOutcome.response.ok()) throw new Error(`Package create rejected: ${createOutcome.response.status()}`);
+  const createdPackage = createOutcome.response.request().postDataJSON().goithau
+    .find(record => record.maGoiThau === crudCodes.package);
+  const receiptBody = await createOutcome.response.json();
+  if (!(receiptBody.rowVersions || []).some(entry => entry.table === "goithau"
+    && entry.id === createdPackage.id && Number.isInteger(entry.rowVersion))) {
+    throw new Error("Package create response did not acknowledge the exact package row version");
+  }
+  await page.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset.syncState === "server-saved",
+    null, { timeout: 20_000 });
   await page.locator("#search-goithau").fill(crudCodes.package);
   let packageRow = page.locator("#goithau-table tbody tr").filter({ hasText: crudCodes.package });
   await packageRow.locator('[data-bf-action="edit-package"]').click();
-  await page.locator("#modal-goithau.active").waitFor({ state: "visible" });
+  await page.locator("#modal-goithau.active").waitFor({ state: "visible" }).catch(async error => {
+    const handle = await page.waitForFunction(() => ({
+      route: location.pathname,
+      sync: { ...document.getElementById("btn-force-sync")?.dataset },
+      dialog: document.querySelector("#modal-custom-dialog.active")?.textContent?.trim(),
+      toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")].map(node => node.textContent?.trim()),
+      rows: [...document.querySelectorAll("#goithau-table tbody tr")].map(row => ({
+        text: row.textContent?.trim(),
+        editId: row.querySelector('[data-bf-action="edit-package"]')?.dataset.id,
+      })),
+    }), null, { timeout: 5000 });
+    const diagnostics = await handle.jsonValue();
+    await handle.dispose();
+    throw new Error(`Package edit did not open: ${JSON.stringify({ diagnostics,
+      pageErrors: pageErrors.slice(-8), httpErrors: httpErrors.slice(-8) })}`, { cause: error });
+  });
   const packageUpdated = `Gói CRUD đã sửa ${runId}`;
   await page.locator("#gt-ten").fill(packageUpdated);
   await submitModal(page, "#form-goithau", "#modal-goithau");

@@ -127,6 +127,17 @@ async function openOpeningForPackage(page, { packageCode, openingId }) {
     .waitFor({ state: "visible", timeout: 20_000 });
 }
 
+async function clickCurrentOpeningSave(page) {
+  await page.waitForFunction(() => {
+    const wrapper = document.getElementById("detail-workflow-content-wrapper");
+    const button = document.getElementById("btn-mothau-save");
+    return button?.isConnected
+      && !button.disabled
+      && wrapper?.dataset.renderedRenderVersion === wrapper?.dataset.pendingRenderVersion;
+  }, null, { timeout: 20_000 });
+  await page.locator("#btn-mothau-save").dispatchEvent("click");
+}
+
 async function queueOfflineOpeningChanges(page, context, {
   openingId,
   changes,
@@ -134,16 +145,18 @@ async function queueOfflineOpeningChanges(page, context, {
 }) {
   let row = page.locator(`#mothau-table-tbody tr[data-id="${openingId}"]`);
   if (await row.locator(expectedField).count() === 0) {
-    await page.locator("#btn-mothau-save").click();
+    await clickCurrentOpeningSave(page);
     await page.locator(`#mothau-table-tbody tr[data-id="${openingId}"] ${expectedField}`)
       .waitFor({ state: "visible", timeout: 10_000 });
     row = page.locator(`#mothau-table-tbody tr[data-id="${openingId}"]`);
   }
   await context.setOffline(true);
+  await page.locator("#offline-indicator-banner.visible")
+    .waitFor({ state: "visible", timeout: 10_000 });
   for (const [selector, value] of Object.entries(changes)) {
     await row.locator(selector).fill(value);
   }
-  await page.locator("#btn-mothau-save").click();
+  await clickCurrentOpeningSave(page);
   await page.waitForFunction(() => {
     const syncState = document.getElementById("btn-force-sync")?.dataset?.syncState;
     return syncState === "offline" || syncState === "transport-error";
@@ -155,7 +168,10 @@ let fixtureCreated = false;
 try {
   const seeded = fixture("setup");
   fixtureCreated = true;
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    args: ["--no-proxy-server"],
+  });
   const firstContext = await browser.newContext();
   const secondContext = await browser.newContext();
   await login(firstContext, accounts[0]);

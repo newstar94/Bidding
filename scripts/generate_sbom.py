@@ -7,8 +7,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from urllib.parse import quote
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -207,6 +211,32 @@ def _merge_vendor_inventory(document: dict[str, object]) -> None:
     dependencies.extend(vendor_dependencies)
 
 
+def _link_python_root(document: dict, requirements: list[str]) -> None:
+    """Attach declared direct requirements without inventing transitive edges."""
+    root_ref = document["metadata"]["component"]["bom-ref"]
+    references = set()
+    for declaration in requirements:
+        requirement = Requirement(declaration)
+        if requirement.marker and not requirement.marker.evaluate():
+            continue
+        matches = [
+            component for component in document["components"]
+            if canonicalize_name(component["name"]) == canonicalize_name(requirement.name)
+            and requirement.specifier.contains(component["version"], prereleases=True)
+        ]
+        if len(matches) != 1 or not matches[0].get("bom-ref"):
+            raise ValueError(f"Expected exactly one SBOM component for {declaration}")
+        references.add(matches[0]["bom-ref"])
+    dependencies = document.setdefault("dependencies", [])
+    roots = [entry for entry in dependencies if entry["ref"] == root_ref]
+    if len(roots) > 1:
+        raise ValueError("Ambiguous SBOM root dependency entry")
+    if not roots:
+        roots = [{"ref": root_ref}]
+        dependencies.extend(roots)
+    roots[0]["dependsOn"] = sorted(set(roots[0].get("dependsOn", [])).union(references))
+
+
 def main() -> None:
     OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
     npm = shutil.which("npm")
@@ -242,6 +272,11 @@ def main() -> None:
         cwd=PROJECT_ROOT,
         check=True,
     )
+    python_output = OUTPUT_DIRECTORY / "python-sbom.cdx.json"
+    python_document = json.loads(python_output.read_text(encoding="utf-8"))
+    project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    _link_python_root(python_document, project["project"]["dependencies"])
+    _write_reproducible(python_document, python_output)
     print("Generated production dependency and vendored-asset CycloneDX SBOMs in release/.")
 
 

@@ -179,7 +179,21 @@ def test_full_ci_decomposes_canonical_check_without_duplicating_its_gates():
     assert _job_runs(workflow, "build").count("npm run build:secure") == 1
     assert _job_runs(workflow, "unit-python").count("python -m pytest -q") == 1
     assert _job_runs(workflow, "unit-js").count("npm run test:js:coverage") == 1
-    assert "npm run package:production:from-build" in _job_runs(workflow, "package")
+    assert "npm run package:production:from-build" not in _job_runs(workflow, "package")
+
+
+def test_production_publication_is_manual_and_hard_gated_by_legal_readiness():
+    workflow = _ci_workflow()
+    release = workflow["jobs"]["release"]
+    release_runs = _job_runs(workflow, "release")
+
+    assert release["if"] == "github.event_name == 'workflow_dispatch'"
+    assert "npm run check:legal:production" in release_runs
+    assert "npm run package:production:from-build" in release_runs
+    assert "npm run check:legal:production" not in _job_runs(workflow, "package")
+    assert release_runs.index("npm run check:legal:production") < release_runs.index(
+        "npm run package:production:from-build"
+    )
 
 
 def test_full_npm_lock_audit_is_enforced_in_ci_and_scheduled_security():

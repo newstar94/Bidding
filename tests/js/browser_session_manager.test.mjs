@@ -6,6 +6,7 @@ function fakeSessionHarness({ failContextClose = false, failSessionCapture = fal
   const events = [];
   const contextArguments = [];
   const initScriptArguments = [];
+  const storageStateArguments = [];
   let sequence = 0;
   const makeResource = (name, extra = {}) => ({
     ...extra,
@@ -24,7 +25,8 @@ function fakeSessionHarness({ failContextClose = false, failSessionCapture = fal
       async newContext(options) {
         contextArguments.push(options);
         return makeResource(`context${id}`, {
-          async storageState() {
+          async storageState(options) {
+            storageStateArguments.push(options);
             return { cookies: [{ name: "session", value: id }], origins: [] };
           },
           async addInitScript(_script, argument) {
@@ -43,7 +45,7 @@ function fakeSessionHarness({ failContextClose = false, failSessionCapture = fal
       },
     });
   };
-  return { events, contextArguments, initScriptArguments, launchServer, connect };
+  return { events, contextArguments, initScriptArguments, storageStateArguments, launchServer, connect };
 }
 
 test("browser session restart closes the old resources and preserves storage", async () => {
@@ -69,7 +71,25 @@ test("browser session restart closes the old resources and preserves storage", a
     origin: "http://test",
     entries: [["bf_user_id", "user-1"]],
   });
+  assert.deepEqual(harness.storageStateArguments, [{ indexedDB: true }]);
   assert.equal(manager.snapshot().page !== null, true);
+  await manager.close();
+});
+
+test("browser restart may rehydrate canonical workflows without serializing IndexedDB", async () => {
+  const harness = fakeSessionHarness();
+  const manager = createBrowserSessionManager({
+    ...harness,
+    preserveIndexedDB: false,
+  });
+  await manager.open();
+  await manager.restartPreservingStorage();
+
+  assert.deepEqual(harness.storageStateArguments, [{ indexedDB: false }]);
+  assert.deepEqual(harness.contextArguments[1].storageState, {
+    cookies: [{ name: "session", value: "1" }],
+    origins: [],
+  });
   await manager.close();
 });
 

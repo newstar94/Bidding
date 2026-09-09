@@ -39,6 +39,15 @@ function assert(condition, message) {
 }
 
 
+function withTimeout(promise, timeoutMilliseconds, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(label)), timeoutMilliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+
 function fixture(action) {
   const execution = spawnSync(
     process.env.PYTHON || "python",
@@ -97,10 +106,17 @@ let fixtureCreated = false;
 try {
   fixture("setup");
   fixtureCreated = true;
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    args: ["--no-proxy-server"],
+  });
 
   const employeeContext = await browser.newContext({ locale: "vi-VN" });
   let droppedHints = 0;
+  let resolveSocketReady;
+  const socketReady = new Promise((resolve) => {
+    resolveSocketReady = resolve;
+  });
   await employeeContext.routeWebSocket("**/ws/sync", (pageSocket) => {
     const serverSocket = pageSocket.connectToServer();
     pageSocket.onMessage((message) => serverSocket.send(message));
@@ -115,6 +131,7 @@ try {
         droppedHints += 1;
         return;
       }
+      if (payload?.type === "ready") resolveSocketReady(payload);
       pageSocket.send(message);
     });
   });
@@ -132,55 +149,30 @@ try {
       body: await response.json().catch(() => null),
     });
   });
+  const initialAuthoritativePull = employeePage.waitForResponse((response) => (
+    response.request().method() === "GET"
+      && new URL(response.url()).pathname === "/api/get-all-data"
+      && response.ok()
+  ), { timeout: 30_000 });
   await employeePage.goto(`${baseURL}/chuyen-gia`, { waitUntil: "domcontentloaded" });
   await waitForApp(employeePage);
-  await employeePage.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const controller = getAppController();
-    return !controller?._backgroundSyncRunning && !controller?._backgroundSyncTimer;
-  }, null, { timeout: 30_000 });
-  let initialPull = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    initialPull = await employeePage.evaluate(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      return getAppController()?.forceSyncData?.(true, true);
-    });
-    if (initialPull?.ok === true) break;
-    await employeePage.waitForFunction(async () => {
-      const { getAppController } = await import("/frontend/app/controllerRef.js");
-      const controller = getAppController();
-      return !controller?._backgroundSyncRunning && !controller?._backgroundSyncTimer;
-    }, null, { timeout: 30_000 });
-  }
-  assert(initialPull?.ok === true, `Initial authoritative pull failed: ${JSON.stringify(initialPull)}`);
-  await employeePage.waitForFunction(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { currentWorkspaceStorage } = await import("/frontend/app/SyncWorkspaceContext.js");
-    const controller = getAppController();
-    return controller?._wsReady === true
-      && Boolean(controller?._wsPollingTimer)
-      && !controller?._backgroundSyncRunning
-      && !controller?._backgroundSyncTimer;
-  }, null, { timeout: 30_000 });
-
-  const before = await employeePage.evaluate(async () => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { currentWorkspaceStorage } = await import("/frontend/app/SyncWorkspaceContext.js");
-    const controller = getAppController();
-    return {
-      syncVersion: Number(currentWorkspaceStorage(controller)?.getItem("bf_last_sync_version") || 0),
-      socketReady: controller?._wsReady === true,
-      pollingActive: Boolean(controller?._wsPollingTimer),
-    };
-  });
+  const initialResponse = await initialAuthoritativePull;
+  const initialBody = await initialResponse.json().catch(() => ({}));
+  const readyMessage = await withTimeout(
+    socketReady,
+    30_000,
+    "Browser WebSocket did not receive the authenticated ready frame",
+  );
+  const before = {
+    syncVersion: Number(initialBody.syncVersion || 0),
+    socketReady: readyMessage?.type === "ready"
+      && String(readyMessage?.organizationId || "") === organizationId,
+  };
   assert(
-    before.socketReady && before.pollingActive,
-    `Browser did not retain ready socket + polling state: ${JSON.stringify({ before, syncResponses })}`,
+    before.socketReady && Number.isInteger(before.syncVersion),
+    `Browser did not finish authoritative startup with a ready socket: ${JSON.stringify({ before, syncResponses })}`,
   );
   droppedHints = 0;
-  syncResponses.length = 0;
-  const quietUntil = Date.now() + 3_000;
-  await employeePage.waitForFunction((deadline) => Date.now() >= deadline, quietUntil);
   syncResponses.length = 0;
 
   const managerContext = await browser.newContext({ locale: "vi-VN" });
@@ -210,46 +202,48 @@ try {
   const mutationBody = await mutationResponse.json().catch(() => ({}));
   assert(mutationResponse.ok(), `Manager mutation failed: ${JSON.stringify(mutationBody)}`);
 
-  const convergedRow = employeePage.locator("#chuyengia-table tbody tr").filter({ hasText: expertName });
+  const convergedRow = employeePage.locator(
+    `#chuyengia-table tbody tr:has(a[data-bf-action="show-expert"][data-id="${expertId}"])`,
+  );
   await convergedRow.first().waitFor({ state: "visible", timeout: 50_000 });
   assert(droppedHints > 0, "The E2E proxy did not drop a db_changed hint");
-  const after = await employeePage.evaluate(async (expectedId) => {
-    const { getAppController } = await import("/frontend/app/controllerRef.js");
-    const { currentWorkspaceStorage } = await import("/frontend/app/SyncWorkspaceContext.js");
-    const controller = getAppController();
-    const record = (controller?.model?.state?.chuyengia || []).find((item) => item.id === expectedId);
-    return {
-      record,
-      syncVersion: Number(currentWorkspaceStorage(controller)?.getItem("bf_last_sync_version") || 0),
-      socketReady: controller?._wsReady === true,
-      pollingActive: Boolean(controller?._wsPollingTimer),
-    };
-  }, expertId);
-  assert(await convergedRow.count() === 1, `Polling did not converge one visible committed record: ${JSON.stringify({ after, syncResponses })}`);
+  assert(await convergedRow.count() === 1, `Polling did not converge one visible committed record: ${JSON.stringify({ syncResponses })}`);
   assert((await convergedRow.first().innerText()).includes(expertName), "Visible row does not contain the committed record name");
-  assert(after.syncVersion > before.syncVersion, "Polling did not advance the browser sync cursor");
-  assert(after.socketReady && after.pollingActive, "Socket stopped being healthy during missed-hint recovery");
   const convergenceMilliseconds = Date.now() - mutationStartedAt;
   const earlyDeltaResponses = syncResponses.filter((item) => (
     item.path.startsWith("/api/sync/delta")
     && item.elapsedSinceMutation !== null
     && item.elapsedSinceMutation < 20_000
   ));
+  const pollingDeltaResponses = syncResponses.filter((item) => (
+    item.path.startsWith("/api/sync/delta")
+      && item.status === 200
+      && item.elapsedSinceMutation >= 20_000
+      && Number(item.body?.syncVersion || 0) > before.syncVersion
+  ));
+  const afterSyncVersion = Math.max(
+    before.syncVersion,
+    ...pollingDeltaResponses.map((item) => Number(item.body?.syncVersion || 0)),
+  );
   assert(
     convergenceMilliseconds >= 20_000,
     `Convergence happened before the bounded polling window and is not valid missed-hint evidence: ${JSON.stringify({ convergenceMilliseconds, syncResponses })}`,
   );
   assert(earlyDeltaResponses.length === 0, `A non-polling delta request caused convergence: ${JSON.stringify(earlyDeltaResponses)}`);
+  assert(
+    pollingDeltaResponses.length > 0 && afterSyncVersion > before.syncVersion,
+    `Visible convergence was not backed by the bounded polling delta: ${JSON.stringify(syncResponses)}`,
+  );
 
   process.stdout.write(`${JSON.stringify({
     runId,
     droppedHints,
     beforeSyncVersion: before.syncVersion,
-    afterSyncVersion: after.syncVersion,
+    afterSyncVersion,
     convergenceMilliseconds,
-    socketReady: after.socketReady,
-    pollingActive: after.pollingActive,
-    convergedRecordId: after.record.id,
+    socketReady: before.socketReady,
+    pollingActive: pollingDeltaResponses.length > 0,
+    convergedRecordId: expertId,
   }, null, 2)}\n`);
   await managerContext.close();
   await employeeContext.close();

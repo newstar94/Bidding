@@ -8,7 +8,37 @@ import {
   runManualSyncRetry,
   shouldShowLocalPending,
 } from "../../frontend/app/SyncCoordinator.js";
-import { applyFailedPush, autoSync } from "../../frontend/app/SyncPushService.js";
+import {
+  applyFailedPush,
+  autoSync,
+  categorizeValidationErrors,
+} from "../../frontend/app/SyncPushService.js";
+
+test("validation errors prefer stable codes for all user-facing categories", () => {
+  const categorized = categorizeValidationErrors([
+    { code: "PROCUREMENT_REQUIRED_FIELDS_MISSING", message: "required" },
+    { code: "INVALID_LOT_SCOPE", message: "format" },
+    { code: "HISTORICAL_PARENT_IMMUTABLE", message: "logic" },
+    { code: "ASSIGNMENT_ALREADY_EXISTS", message: "duplicate" },
+    { code: "RECORD_ACCESS_DENIED", message: "authorization" },
+    { code: "ROW_VERSION_CONFLICT", message: "conflict" },
+    { code: "PACKAGE_NOT_FOUND", message: "not found" },
+    { code: "DATABASE_WRITE_QUEUE_FULL", message: "system" },
+  ]);
+
+  assert.deepEqual(Object.fromEntries(
+    Object.entries(categorized).map(([category, messages]) => [category, messages.length]),
+  ), {
+    required: 1,
+    format: 1,
+    business_logic: 1,
+    duplicate: 1,
+    authorization: 1,
+    conflict: 1,
+    not_found: 1,
+    system: 1,
+  });
+});
 import { hashWorkspaceScope } from "../../frontend/shared/releaseDiagnostics.js";
 import {
   CONFLICT_CENTER_CAPABILITY,
@@ -1074,7 +1104,13 @@ test("terminal validation flushes the rejected batch and keeps an actionable val
       state: { goithau: [] },
       discardRejectedMutations(errors, snapshot, options) {
         calls.push(["discard", errors, snapshot, options]);
-        return [{ type: "goithau", id: "package-1", operation: "upsert", conflictingId: "" }];
+        return [{
+          type: "goithau",
+          id: "package-1",
+          operation: "upsert",
+          newInsert: true,
+          conflictingId: "",
+        }];
       },
       async flushMutationOutbox() { calls.push(["flush"]); },
       buildMutationSyncPayload: () => null,
@@ -1101,6 +1137,102 @@ test("terminal validation flushes the rejected batch and keeps an actionable val
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+test("rejected optimistic insert rolls back without a canonical record lookup", async () => {
+  const calls = [];
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {}, removeItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      state: { nhathau: [{ id: "contractor-new" }] },
+      discardRejectedMutations() {
+        return [{
+          type: "nhathau",
+          id: "contractor-new",
+          operation: "upsert",
+          newInsert: true,
+          conflictingId: "",
+        }];
+      },
+      async flushMutationOutbox() {},
+      db: { async deleteRecord(table, id) { calls.push(["delete", table, id]); } },
+    },
+    async fetchRecordByLookup() {
+      calls.push(["fetch"]);
+      throw new Error("new insert must not fetch /api/record");
+    },
+    updateSyncState() {},
+  };
+
+  try {
+    await applyFailedPush(controller, {
+      status: 400,
+      data: {
+        status: "error",
+        errors: [{ table: "nha_thau", id: "contractor-new", code: "RECORD_ACCESS_DENIED", message: "Denied" }],
+      },
+      snapshot: { id: "receipt-new" },
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.deepEqual(calls, [["delete", "nhathau", "contractor-new"]]);
+  assert.deepEqual(controller.model.state.nhathau, []);
+});
+
+test("rejected update still fetches and keeps the canonical server record", async () => {
+  const calls = [];
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  const canonical = { id: "contractor-existing", rowVersion: 5, tenNhaThau: "Canonical" };
+  const controller = {
+    model: {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: { setItem() {}, removeItem() {} },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      state: { nhathau: [{ id: "contractor-existing", rowVersion: 4, tenNhaThau: "Rejected" }] },
+      discardRejectedMutations() {
+        return [{
+          type: "nhathau",
+          id: "contractor-existing",
+          operation: "upsert",
+          newInsert: false,
+          conflictingId: "",
+        }];
+      },
+      async flushMutationOutbox() {},
+      db: { async deleteRecord() { calls.push(["delete"]); } },
+    },
+    async fetchRecordByLookup(table, id) {
+      calls.push(["fetch", table, id]);
+      this.model.state.nhathau = [canonical];
+      return canonical;
+    },
+    updateSyncState() {},
+  };
+
+  try {
+    await applyFailedPush(controller, {
+      status: 400,
+      data: {
+        status: "error",
+        errors: [{ table: "nha_thau", id: "contractor-existing", code: "RECORD_ACCESS_DENIED", message: "Denied" }],
+      },
+      snapshot: { id: "receipt-update" },
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.deepEqual(calls, [["fetch", "nhathau", "contractor-existing"]]);
+  assert.deepEqual(controller.model.state.nhathau, [canonical]);
 });
 
 test("row-version rejection remains conflict and does not acknowledge the local outbox", async () => {

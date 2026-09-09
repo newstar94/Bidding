@@ -1173,7 +1173,34 @@ test("package form returns after local durability and reports an authoritative c
 
   const conflict = { ok: false, conflictQuarantined: true };
   releaseSync(conflict);
-  assert.deepEqual(await localResult.syncPromise, conflict);
+  assert.deepEqual(await localResult.syncPromise, {
+    ...conflict,
+    canonicalStatus: "CONFLICT",
+  });
+});
+
+test("package import reports a synchronous server commit as canonical", async () => {
+  const packageRecord = { id: "package-imported", keHoachId: "plan-01", isLatest: 1 };
+  const controller = {
+    procurementPackageImport: { controller: {} },
+    model: {
+      state: { goithau: [packageRecord] },
+      commitLocalMutation() {},
+      async persistChanges() {},
+      async flushMutationOutbox() {},
+    },
+    async autoSync() { return { ok: true, status: 200, data: { status: "success" } }; },
+  };
+
+  const result = await persistPackageFormChanges(controller, {
+    goithau: [packageRecord],
+    goithauhanghoa: [],
+    hanghoaduthaunhathau: [],
+    kehoach: [],
+    thongtinmothau: [],
+  });
+
+  assert.equal(result.canonicalStatus, "CANONICAL_COMMITTED");
 });
 
 test("package save captures pre-edit base snapshots for every staged aggregate row", () => {
@@ -1373,12 +1400,12 @@ test("saving an expert closes and paints local data before remote synchronizatio
   }], { draft: false });
 
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start",
   ]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
+    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start", "render", "toast",
   ]);
 });
 
@@ -1411,12 +1438,12 @@ test("saving a contract closes and paints local data before remote synchronizati
   }]);
 
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start",
   ]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
+    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start", "render", "toast",
   ]);
 });
 
@@ -1452,12 +1479,12 @@ for (const [label, persist, table, modal, renderMethod] of [
     const result = await persist(controller, [{ id: `${label}-pending` }]);
 
     assert.deepEqual(calls, [
-      "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish",
+      "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start",
     ]);
     finishSync({ ok: true });
     await result.syncPromise;
     assert.deepEqual(calls, [
-      "persist", "flush", "render", "closeModal", "toast", "sync-start", "finish", "render",
+      "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start", "render", "toast",
     ]);
   });
 }
@@ -1494,7 +1521,7 @@ test("saving a package paints local data without awaiting remote synchronization
   });
 
   assert.equal(result.local, true);
-  assert.deepEqual(calls, ["stage", "persist", "flush", "render", "sync-start", "finish"]);
+  assert.deepEqual(calls, ["stage", "persist", "flush", "render", "finish", "sync-start"]);
   finishSync({ ok: true });
   await result.syncPromise;
 });
@@ -1915,6 +1942,88 @@ test("same-record business delta preserves stale rowVersion so a real concurrent
   assert.equal(model.state.goithau[0].tenGoiThau, "Local edit");
   assert.equal(model.state.goithau[0].rowVersion, 2);
   assert.equal(draft.snapshot.goithau[0].rowVersion, 2);
+});
+
+test("hydrated canonical package introduced after the draft baseline replaces its reference row", () => {
+  const referencePackage = {
+    id: "pkg-server",
+    rootId: "pkg-server-root",
+    keHoachId: "plan-01",
+    rowVersion: 1,
+    referenceOnly: true,
+    tenGoiThau: "Server added",
+  };
+  const serverPackage = {
+    ...referencePackage,
+    referenceOnly: false,
+    giaGoiThau: "500000000",
+    linhVuc: "Hàng hóa",
+    thoiGianToChuc: "45 ngày",
+    thoiGianBatDauToChuc: "Quý III/2026",
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [] },
+  };
+  const model = {
+    state: { goithau: [structuredClone(serverPackage)] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(
+    model,
+    draft,
+    { goithau: [structuredClone(referencePackage)] },
+    new Set(["goithau"]),
+  );
+
+  assert.deepEqual(model.state.goithau, [serverPackage]);
+  assert.deepEqual(draft.snapshot.goithau, [serverPackage]);
+});
+
+test("late reference projection cannot erase a hydrated canonical package from the draft", () => {
+  const serverPackage = {
+    id: "pkg-server",
+    rootId: "pkg-server-root",
+    keHoachId: "plan-01",
+    rowVersion: 1,
+    referenceOnly: false,
+    tenGoiThau: "Server added",
+    giaGoiThau: "500000000",
+    linhVuc: "Hàng hóa",
+    thoiGianToChuc: "45 ngày",
+    thoiGianBatDauToChuc: "Quý III/2026",
+  };
+  const referencePackage = {
+    id: serverPackage.id,
+    rootId: serverPackage.rootId,
+    keHoachId: serverPackage.keHoachId,
+    rowVersion: serverPackage.rowVersion,
+    referenceOnly: true,
+    tenGoiThau: serverPackage.tenGoiThau,
+  };
+  const draft = {
+    active: true,
+    action: "edit",
+    planId: "plan-01",
+    snapshot: { goithau: [structuredClone(serverPackage)] },
+  };
+  const model = {
+    state: { goithau: [structuredClone(serverPackage)] },
+    entityIndexes: { invalidate() {} },
+  };
+
+  rebasePlanBreakdownDraftAfterServerMerge(
+    model,
+    draft,
+    { goithau: [structuredClone(referencePackage)] },
+    new Set(["goithau"]),
+  );
+
+  assert.deepEqual(model.state.goithau, [serverPackage]);
+  assert.deepEqual(draft.snapshot.goithau, [serverPackage]);
 });
 
 test("server-added package becomes the draft baseline instead of an outgoing local change", () => {

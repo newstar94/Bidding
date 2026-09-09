@@ -61,7 +61,7 @@ test("startup profiler identifies exact over-budget phases and bounded resource 
   });
 });
 
-test("startup profiler keeps the reviewed 100 ms budget when input omits thresholds", () => {
+test("startup profiler uses the reconfirmed 100 ms budget when input omits thresholds", () => {
   const summary = summarizeStartupLongTasks({
     cold: { samples: [] },
     warm: { samples: [] },

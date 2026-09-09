@@ -24,7 +24,7 @@ const cases = [
   ["05", "Xây lắp", "Đấu thầu rộng rãi", "Hai giai đoạn một túi hồ sơ", "Giá thấp nhất", false],
   ["06", "Xây lắp", "Đấu thầu hạn chế", "Hai giai đoạn hai túi hồ sơ", "Giá đánh giá", true],
   ["07", "Tư vấn", "Đấu thầu rộng rãi", "Một giai đoạn hai túi hồ sơ", "Kết hợp giữa kỹ thuật và giá", false],
-  ["08", "Tư vấn", "Đấu thầu hạn chế", "Một giai đoạn hai túi hồ sơ", "Giá cố định", true],
+  ["08", "Tư vấn", "Đấu thầu hạn chế", "Một giai đoạn hai túi hồ sơ", "Dựa trên kỹ thuật", true],
   ["09", "Phi tư vấn", "Chào hàng cạnh tranh", "Một giai đoạn một túi hồ sơ", "Giá thấp nhất", true],
   ["10", "Phi tư vấn", "Đấu thầu rộng rãi", "Một giai đoạn hai túi hồ sơ", "Giá đánh giá", false],
   ["11", "Hỗn hợp", "Đấu thầu hạn chế", "Hai giai đoạn hai túi hồ sơ", "Dựa trên kỹ thuật", true],
@@ -112,6 +112,9 @@ async function createPackage(page, testCase, httpErrors) {
   await page.locator("#gt-nguonvon").fill("Ngân sách nhà nước");
   await page.locator("#gt-thoigiantochuc").fill("45 ngày");
   await page.locator("#gt-thoigianbatdautochuc").fill(testClock.quarter());
+  await page.waitForFunction(() => (
+    (document.getElementById("gt-nhanvienphutrach")?.options?.length || 0) > 1
+  ), null, { timeout: 10_000 });
   await page.locator("#gt-nhanvienphutrach").selectOption({ index: 1 }, { force: true });
 
   const expertSectionVisible = await page.locator("#to-chuyengia-section").isVisible();
@@ -126,7 +129,6 @@ async function createPackage(page, testCase, httpErrors) {
     await appraisalCheckbox.waitFor({ state: "visible", timeout: 10_000 });
     await appraisalCheckbox.check();
   }
-
   await page.locator("#form-goithau button[type='submit']").click();
   try {
     await modal.waitFor({ state: "hidden", timeout: 20_000 });

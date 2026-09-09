@@ -1,7 +1,7 @@
 {
   "BLE001": {
     "backend/api/org_routes.py": 5,
-    "backend/app.py": 7,
+    "backend/app.py": 6,
     "backend/auth/admin_user_routes.py": 3,
     "backend/auth/auth_routes.py": 15,
     "backend/auth/auth_service.py": 1,
@@ -42,7 +42,7 @@
     "backend/documents/package_document_service.py": 1,
     "backend/lot_lifecycle_service.py": 3,
     "backend/notifications/service.py": 1,
-    "backend/shared/access_policy.py": 19,
+    "backend/shared/access_policy.py": 14,
     "backend/shared/access_principals.py": 1,
     "backend/shared/subscription_policy.py": 1,
     "backend/sync/bidder_goods.py": 5,

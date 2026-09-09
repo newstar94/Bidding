@@ -4,8 +4,53 @@ import test from "node:test";
 
 import * as biddingWorkflowFacade from "../../frontend/packages/BiddingWorkflows.js";
 import {
+  WorkflowModuleLoader,
   importBiddingWorkflowsSequentially,
+  importPackageEditorWorkflows,
+  workflowRequirementForMethod,
 } from "../../frontend/app/WorkflowModuleLoader.js";
+
+test("package editor action uses its focused workflow graph", async () => {
+  assert.equal(workflowRequirementForMethod("editGoiThau"), "package-editor");
+
+  const loaded = await importPackageEditorWorkflows();
+  for (const exportName of [
+    "editGoiThau",
+    "_loadPhanLoRows",
+    "enforceSingleLeader",
+    "makeSearchableSelect",
+    "recalculatePlanTotal",
+  ]) {
+    assert.equal(typeof loaded[exportName], "function", exportName);
+  }
+  assert.equal(loaded.renderDanhGiaHsdtPanel, undefined);
+  assert.equal(loaded.openDetailedEvaluation, undefined);
+});
+
+test("package editor action does not wait for the complete bidding workflow group", async () => {
+  const calls = [];
+  const loader = new WorkflowModuleLoader({
+    importBidding: async () => {
+      calls.push("bidding");
+      return { renderDanhGiaHsdtPanel() {} };
+    },
+    importPackageEditor: async () => {
+      calls.push("package-editor");
+      return { editGoiThau() {} };
+    },
+    importPartner: async () => {
+      calls.push("partner");
+      return { editNhaThau() {} };
+    },
+    install: (name) => calls.push(`install:${name}`),
+  });
+
+  await loader.ensure(workflowRequirementForMethod("editGoiThau"));
+
+  assert.deepEqual(calls, ["package-editor", "install:package-editor-workflows"]);
+  assert.equal(loader.isReady("package-editor"), true);
+  assert.equal(loader.isReady("bidding"), false);
+});
 
 test("sequential bidding workflow loader preserves the exact facade export surface", async () => {
   const loaded = await importBiddingWorkflowsSequentially();

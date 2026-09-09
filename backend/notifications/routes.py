@@ -159,7 +159,7 @@ async def delete_notification_api(request):
             return JSONResponse({"error": "Không tìm thấy thông báo."}, status_code=404)
         connection.commit()
         return JSONResponse({"success": True})
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - API boundary must rollback and emit the standard diagnostic
         if connection:
             connection.rollback()
         return log_and_error(request, exc, "delete_notification_api",

@@ -708,10 +708,19 @@ export class WorkspaceMutationOutbox {
       this._releaseBaseSnapshot(type, id);
       const rejectedKey = `${type}:${id}`;
       const existing = rejectedByRecord.get(rejectedKey);
+      const sentRecord = receipt?.recordSnapshots?.upserts?.[type]?.[id];
+      const expectedVersion = sentRecord?.expectedVersion ?? sentRecord?.rowVersion;
+      const hasCanonicalBase = Boolean(receipt?.baseSnapshots?.[type]?.[id]);
       rejectedByRecord.set(rejectedKey, {
         type,
         id,
         operation: existing?.operation || operation,
+        ...(operation === "upsert" ? {
+          newInsert: existing?.newInsert === true || (
+            expectedVersion === undefined
+            && !hasCanonicalBase
+          ),
+        } : {}),
         conflictingId: String(error?.conflictingId || existing?.conflictingId || ""),
       });
     });

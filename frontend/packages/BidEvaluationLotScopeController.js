@@ -33,6 +33,9 @@ export function renderBidEvaluationLotScope({
     : allLots;
   if (!container || lots.length === 0 || !scope) {
     if (container) {
+      const projectionDataset = container.dataset || (container.dataset = {});
+      projectionDataset.evaluationLotScopeMode = "";
+      projectionDataset.evaluationLotScopeSelectedCodes = "[]";
       container.classList.add("is-hidden");
       setRuntimeStyle(container, "display", "none");
     }
@@ -67,6 +70,7 @@ export function renderBidEvaluationLotScope({
         return `
           <label class="evaluation-lot-option ${disabled ? "is-disabled" : ""}">
             <input type="checkbox" data-evaluation-lot-id="${escapeHtml(lot.id)}"
+              data-evaluation-lot-code="${escapeHtml(lot.code)}"
               ${selectedSet.has(lot.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
             <span><strong>${escapeHtml(lot.code)}</strong><small title="${escapeHtml(lot.name)}">${escapeHtml(lot.name || "Chưa có tên phần lô")}</small></span>
           </label>`;
@@ -78,6 +82,9 @@ export function renderBidEvaluationLotScope({
 
   const details = getEvaluationLotScopeDetails(pkg, scope);
   const isPartialScope = isPartialEvaluationLotScope(details);
+  const projectionDataset = container.dataset || (container.dataset = {});
+  projectionDataset.evaluationLotScopeMode = details?.mode || "";
+  projectionDataset.evaluationLotScopeSelectedCodes = JSON.stringify(details?.lotCodes || []);
   if (lotActions) {
     lotActions.classList.toggle("is-hidden", !isSelectedMode);
     setRuntimeStyle(lotActions, "display", isSelectedMode ? "flex" : "none");

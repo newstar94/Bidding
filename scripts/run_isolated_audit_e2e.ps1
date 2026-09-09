@@ -1,7 +1,14 @@
 param(
-    [ValidateSet("smoke", "ui-quality", "performance", "first-tab-performance", "auth-roles", "offline", "offline-soak", "websocket-missed-hint", "joint-venture", "low-price", "crud", "pairwise", "ui", "domain", "lifecycle", "bidder-goods", "all")]
+    [ValidateSet("smoke", "ui-quality", "performance", "first-tab-performance", "auth-shell", "auth-roles", "offline", "offline-soak", "websocket-missed-hint", "joint-venture", "low-price", "crud", "pairwise", "multi-assignee", "ui", "domain", "lifecycle", "bidder-goods", "all")]
     [string]$Suite = "all",
-    [int]$Port = 8010
+    [ValidateSet("all", "chromium", "firefox", "webkit")]
+    [string]$Project = "all",
+    [ValidateSet("127.0.0.1", "127.0.0.2")]
+    [string]$HostAddress = "127.0.0.1",
+    [int]$Port = 8010,
+    [string]$Grep = "",
+    [ValidateSet("backend.app:app", "scripts.diagnostics.font_preload_app:app")]
+    [string]$ServerApp = "backend.app:app"
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +24,7 @@ if ([string]::IsNullOrWhiteSpace($testUrl)) {
     $testUrl = ($testLine -replace '^TEST_DATABASE_URL=', '').Trim().Trim('"').Trim("'")
 }
 $testUrl = $testUrl.Trim()
-$baseUrl = "http://127.0.0.1:$Port"
+$baseUrl = "http://${HostAddress}:$Port"
 $env:DATABASE_URL = $testUrl
 $env:MIGRATOR_DATABASE_URL = $testUrl
 $env:TEST_DATABASE_URL = $testUrl
@@ -26,6 +33,7 @@ $env:VNEPS_VIOLATION_FIXTURE_PATH = "tests/fixtures/vneps_contractor_violations.
 $env:APP_DEBUG = "false"
 $env:DATABASE_AUTO_MIGRATE = "false"
 $env:APP_PUBLIC_URL = $baseUrl
+$env:ALLOWED_HOSTS = $HostAddress
 $env:APP_SECURE_COOKIES = "false"
 $env:CSRF_TRUSTED_ORIGINS = $baseUrl
 $env:CORS_ORIGINS = $baseUrl
@@ -33,6 +41,13 @@ $env:ALLOWED_WS_ORIGINS = $baseUrl
 $env:E2E_BASE_URL = $baseUrl
 $env:TURNSTILE_ENABLED = "false"
 $env:GOOGLE_AUTH_ENABLED = "false"
+$env:ENABLE_IMAGE_CACHE_PREWARM = "false"
+$env:ENABLE_PARTNER_LOOKUP_WORKER = "false"
+# Windows PowerShell 5 removes an empty environment variable. A whitespace
+# value survives process creation and resolve_runtime_path strips it to the
+# intended explicit-empty test setting, rather than using developer checkpoints.
+# Database audit-chain verification remains enabled.
+$env:AUDIT_CHECKPOINT_DIR = " "
 
 $uiCommands = @(
     "test:e2e:smoke",
@@ -60,6 +75,8 @@ $commands = if ($Suite -eq "smoke") {
     @("test:first-tab-performance")
 } elseif ($Suite -eq "auth-roles") {
     @("test:auth-roles-e2e")
+} elseif ($Suite -eq "auth-shell") {
+    @("test:auth-shell")
 } elseif ($Suite -eq "offline") {
     @("test:offline-sync-e2e")
 } elseif ($Suite -eq "offline-soak") {
@@ -74,6 +91,8 @@ $commands = if ($Suite -eq "smoke") {
     @("test:crud-modules-e2e")
 } elseif ($Suite -eq "pairwise") {
     @("test:package-pairwise-e2e")
+} elseif ($Suite -eq "multi-assignee") {
+    @("test:multi-assignee-e2e")
 } elseif ($Suite -eq "ui") {
     $uiCommands
 } elseif ($Suite -eq "domain") {
@@ -89,15 +108,17 @@ $commands = if ($Suite -eq "smoke") {
 $serverStdout = Join-Path ([System.IO.Path]::GetTempPath()) "biddingflow-e2e-server-$Port.stdout.log"
 $serverStderr = Join-Path ([System.IO.Path]::GetTempPath()) "biddingflow-e2e-server-$Port.stderr.log"
 $server = Start-Process -FilePath "python" `
-    -ArgumentList @("-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "$Port") `
+    -ArgumentList @("-m", "uvicorn", $ServerApp, "--host", $HostAddress, "--port", "$Port", "--no-proxy-headers") `
     -WorkingDirectory $root `
     -WindowStyle Hidden `
     -RedirectStandardOutput $serverStdout `
     -RedirectStandardError $serverStderr `
     -PassThru
 
+$suiteSucceeded = $false
 try {
     $ready = $false
+    $readinessFailure = ""
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         try {
             $response = Invoke-WebRequest -UseBasicParsing "$baseUrl/health/ready" -TimeoutSec 2
@@ -106,11 +127,13 @@ try {
                 break
             }
         } catch {
+            $readinessFailure = $_.ErrorDetails.Message
             # Startup is bounded by the retry loop.
         }
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) {
+        if ($readinessFailure) { Write-Output "Readiness response: $readinessFailure" }
         if (Test-Path -LiteralPath $serverStderr) {
             Get-Content -LiteralPath $serverStderr -Tail 80
         }
@@ -120,14 +143,44 @@ try {
         throw "Isolated test server did not become ready."
     }
     foreach ($command in $commands) {
-        & npm run $command
+        if ($command -eq "test:e2e:smoke") {
+            $playwrightArgs = @()
+            if ($Project -ne "all") {
+                $playwrightArgs += "--project=$Project"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($Grep)) {
+                $playwrightArgs += "--grep=$Grep"
+            }
+            if ($playwrightArgs.Count -gt 0) {
+                & npm run $command -- @playwrightArgs
+            } else {
+                & npm run $command
+            }
+        } else {
+            & npm run $command
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "$command failed with exit code $LASTEXITCODE."
         }
     }
+    $suiteSucceeded = $true
+} catch {
+    Write-Output "--- Isolated E2E server stderr ($serverStderr) ---"
+    if (Test-Path -LiteralPath $serverStderr) {
+        Get-Content -LiteralPath $serverStderr -Tail 160
+    }
+    Write-Output "--- Isolated E2E server stdout ($serverStdout) ---"
+    if (Test-Path -LiteralPath $serverStdout) {
+        Get-Content -LiteralPath $serverStdout -Tail 160
+    }
+    throw
 } finally {
     if ($server -and -not $server.HasExited) {
         Stop-Process -Id $server.Id -Force
     }
-    Remove-Item -LiteralPath $serverStdout, $serverStderr -Force -ErrorAction SilentlyContinue
+    if ($suiteSucceeded) {
+        Remove-Item -LiteralPath $serverStdout, $serverStderr -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Warning "Isolated E2E diagnostics retained at $serverStdout and $serverStderr"
+    }
 }

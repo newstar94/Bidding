@@ -1,6 +1,5 @@
-import { LANDING_ICON_NAMES, LANDING_ICON_VERSION } from "./landingIconManifest.js";
+import { LANDING_ICON_NAMES, LANDING_ICON_NODES } from "./landingIconManifest.js";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-const ICON_SPRITE_URL = `/assets/landing-icons.svg?v=${LANDING_ICON_VERSION}`;
 
 export function createLandingSvgIcon(name) {
   const icon = document.createElementNS(SVG_NAMESPACE, "svg");
@@ -15,10 +14,14 @@ export function createLandingSvgIcon(name) {
   icon.setAttribute("stroke-linecap", "round");
   icon.setAttribute("stroke-linejoin", "round");
   icon.classList.add("landing-icon");
-  const use = document.createElementNS(SVG_NAMESPACE, "use");
   const selected = LANDING_ICON_NAMES.includes(name) ? name : "info";
-  use.setAttribute("href", `${ICON_SPRITE_URL}#icon-${selected}`);
-  icon.append(use);
+  LANDING_ICON_NODES[selected].forEach(([tag, attributes]) => {
+    const node = document.createElementNS(SVG_NAMESPACE, tag);
+    Object.entries(attributes).forEach(([attribute, value]) => {
+      node.setAttribute(attribute, String(value));
+    });
+    icon.append(node);
+  });
   return icon;
 }
 

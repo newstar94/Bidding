@@ -395,6 +395,7 @@ def _isolated_smoke_environment(database_url: str) -> dict[str, str]:
     for key in tuple(environment):
         if (
             key == "DATABASE_URL"
+            or key == "BIDDING_DATABASE_PROFILE"
             or key.endswith("_DATABASE_URL")
             or (key.startswith("DATABASE_") and key.endswith("_URL"))
         ):
@@ -484,24 +485,39 @@ def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     environment = _smoke_child_environment(database_url, extraction_root)
     smoke_code = """
 from starlette.testclient import TestClient
+print('PACKAGE_SMOKE importing_app', flush=True)
 from backend.app import app
+print('PACKAGE_SMOKE starting_lifespan', flush=True)
 with TestClient(app) as client:
+    print('PACKAGE_SMOKE requesting_home', flush=True)
     home = client.get('/')
+    print('PACKAGE_SMOKE requesting_holidays', flush=True)
     holidays = client.get('/api/holidays')
+    print('PACKAGE_SMOKE checking_session', flush=True)
     session = client.post('/api/auth/check-session', json={'remember': False})
+    print('PACKAGE_SMOKE stopping_lifespan', flush=True)
 assert home.status_code == 200 and 'BiddingFlow' in home.text
 assert holidays.status_code == 200 and isinstance(holidays.json(), dict)
 assert session.status_code == 200 and session.json().get('valid') is False
 """
-    result = subprocess.run(
-        [sys.executable, "-c", smoke_code],
-        cwd=extraction_root,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", smoke_code],
+            cwd=extraction_root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or b""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        milestones = [line for line in output.splitlines() if line.startswith("PACKAGE_SMOKE ")]
+        raise RuntimeError(
+            f"Extracted production smoke timed out after 60 seconds; phases: {milestones}"
+        ) from error
     if result.returncode:
         raise RuntimeError(f"Extracted production smoke test failed:\n{result.stdout}\n{result.stderr}")
 

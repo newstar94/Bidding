@@ -42,6 +42,7 @@ export function resolvePackageTableVersionState(model, authoritativeRow) {
     packageVersionResolutionOptions(state.kehoach),
   );
   state.selectedPackageVersion ||= {};
+  state.selectedPackageVersionIntent ||= {};
   const rememberedId = state.selectedPackageVersion[root];
   const rememberedGt = rememberedId
     ? uniqueVersions.find(
@@ -50,8 +51,16 @@ export function resolvePackageTableVersionState(model, authoritativeRow) {
     : null;
   if (rememberedId && !rememberedGt) {
     delete state.selectedPackageVersion[root];
+    delete state.selectedPackageVersionIntent[root];
   }
-  const displayedGt = rememberedGt || uniqueVersions[0] || authoritativeRow;
+  const explicitHistorical = state.selectedPackageVersionIntent[root] === "historical";
+  const displayedGt = (explicitHistorical && rememberedGt)
+    || uniqueVersions[0]
+    || authoritativeRow;
+  if (!explicitHistorical && rememberedGt && displayedGt?.id) {
+    state.selectedPackageVersion[root] = displayedGt.id;
+    state.selectedPackageVersionIntent[root] = "latest";
+  }
   return {
     root,
     uniqueVersions,

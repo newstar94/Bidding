@@ -272,8 +272,8 @@ test("switching plans cancels a pending package search from the previous plan", 
       response.writeHead(200, { "content-type": contentType(url.pathname) });
       response.end(payload);
     } catch (error) {
-      if (!response.headersSent) response.writeHead(404);
-      if (!response.writableEnded) response.end(String(error?.message || "Not Found"));
+      if (!response.headersSent) response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      if (!response.writableEnded) response.end("Not Found");
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -395,8 +395,8 @@ test("package refresh preserves local options on server failure but clears them 
       response.writeHead(200, { "content-type": contentType(url.pathname) });
       response.end(payload);
     } catch (error) {
-      if (!response.headersSent) response.writeHead(404);
-      if (!response.writableEnded) response.end(String(error?.message || "Not Found"));
+      if (!response.headersSent) response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      if (!response.writableEnded) response.end("Not Found");
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

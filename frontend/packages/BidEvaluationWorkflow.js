@@ -28,6 +28,13 @@ function getEvaluationScopeStore(controller) {
   return controller._evaluationLotScopes;
 }
 
+function scheduleEvaluationLotScopeRender(callback) {
+  if (typeof globalThis.requestAnimationFrame === "function") {
+    return globalThis.requestAnimationFrame(callback);
+  }
+  return globalThis.setTimeout(callback, 0);
+}
+
 export function commitEvaluationLotScopeChange({
   controller,
   scopeStore,
@@ -35,7 +42,7 @@ export function commitEvaluationLotScopeChange({
   nextScope,
   syncNavigation,
   rerender,
-  schedule = queueMicrotask,
+  schedule = scheduleEvaluationLotScopeRender,
 } = {}) {
   if (!controller || !scopeStore || !scopeKey || !nextScope) return false;
   scopeStore[scopeKey] = nextScope;
@@ -48,10 +55,23 @@ export function commitEvaluationLotScopeChange({
   syncNavigation?.();
   if (controller._evaluationLotScopeRenderQueued) return true;
   controller._evaluationLotScopeRenderQueued = true;
+  let schedulerReturned = false;
   schedule(() => {
-    controller._evaluationLotScopeRenderQueued = false;
-    rerender?.();
+    const render = () => {
+      controller._evaluationLotScopeRenderQueued = false;
+      rerender?.();
+    };
+    // A scheduler supplied by a caller may invoke its callback immediately.
+    // Never replace lot controls inside the change event or its microtask
+    // checkpoint: browser actions must observe the checked state before the
+    // projection is rebuilt on the next frame/task.
+    if (!schedulerReturned) {
+      scheduleEvaluationLotScopeRender(render);
+      return;
+    }
+    render();
   });
+  schedulerReturned = true;
   return true;
 }
 
@@ -153,10 +173,6 @@ export function renderDanhGiaHsdtPanel() {
           nextScope,
           syncNavigation: () => syncDetailedEvaluationNavigation(this, gtId),
           rerender: handlePackageSelection,
-          // Scope controls are replaced by the rerender itself. Commit and
-          // render in one event turn so a second click cannot target controls
-          // from an older queued projection.
-          schedule: (callback) => callback(),
         });
       }
     });

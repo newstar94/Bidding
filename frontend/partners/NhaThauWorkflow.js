@@ -3,9 +3,13 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
   mutatePersistAndSync,
   persistAndSync,
   refreshRecordBeforeDelete,
+  showCanonicalSaveCommitted,
+  showLocalSavePending,
 } from "../shared/MutationService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../shared/view_helpers.js";
@@ -290,16 +294,23 @@ export async function handleNhaThauSubmit(e) {
   rememberSelectedVersion(this.model.state, "selectedNhaThauVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await persistContractorFormChanges(this, upsertRecords);
+  const persistence = await persistContractorFormChanges(this, upsertRecords);
+  const canonical = await awaitCanonicalSyncResult(persistence);
+  selectCanonicalContractorForOpenContract(this, data, canonical);
+}
+
+export function selectCanonicalContractorForOpenContract(controller, contractor, canonicalResult) {
+  if (canonicalResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) return false;
   const contractModal = document.getElementById("modal-hopdong");
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
     if (ntSelect) {
-      ntSelect.innerHTML = trustedHTML('<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>');
-      ntSelect.value = data.id;
+      ntSelect.innerHTML = trustedHTML('<option value="">-- Chọn Nhà thầu --</option>' + controller.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>');
+      ntSelect.value = contractor.id;
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
+  return true;
 }
 
 export function persistContractorFormChanges(controller, changedContractors) {
@@ -310,11 +321,12 @@ export function persistContractorFormChanges(controller, changedContractors) {
     afterLocalDurable: () => {
       const render = controller.view.renderNhaThauTable();
       const close = controller.closeModal("modal-nhathau");
-      controller.view.showToast?.("Đã lưu nhà thầu", "Thông tin nhà thầu đã được lưu.", "success");
+      showLocalSavePending(controller.view, "Nhà thầu");
       return Promise.all([render, close]);
     },
     afterCanonicalSync: async () => {
       await controller.view.renderNhaThauTable();
+      showCanonicalSaveCommitted(controller.view, "Nhà thầu");
     },
   });
 }

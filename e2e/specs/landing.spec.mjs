@@ -11,32 +11,92 @@ const REQUIRED_VIEWPORTS = [
   { width: 412, height: 915 },
 ];
 
+test.beforeEach(async ({ browserName, context, page }) => {
+  page.__bfRuntimeFailures = [];
+  page.on("requestfailed", (request) => {
+    page.__bfRuntimeFailures.push(
+      `requestfailed: ${request.url()} (${request.failure()?.errorText || "unknown"})`,
+    );
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") page.__bfRuntimeFailures.push(`console: ${message.text()}`);
+  });
+  if (browserName === "firefox") {
+    await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  }
+  const browserReady = await page.goto("/health/live", { waitUntil: "commit" });
+  expect(browserReady?.ok()).toBe(true);
+});
+
 async function openLanding(page) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The assertions below are the page's semantic readiness contract. Host-level
+  // browser instrumentation can hold DOMContentLoaded after the landing DOM is
+  // already complete, especially in Firefox/WebKit on Windows.
+  if (page.url() !== "about:blank") {
+    await page.goto("about:blank", { waitUntil: "commit" });
+  }
+  const response = await page.goto("/", { waitUntil: "commit" });
   await expect(page.locator("html")).toHaveAttribute("data-bf-shell", "landing");
   await expect(page.locator("body")).not.toHaveAttribute("hidden", "");
-  await expect(page.locator("body")).toHaveClass(/landing-ready/u);
+  await expect(page.locator("body")).toHaveClass(/landing-ready/u).catch((error) => {
+    throw new Error(
+      page.__bfRuntimeFailures.join("\n") || "landing bootstrap did not reach its ready state",
+      { cause: error },
+    );
+  });
   await expect(page.locator("h1")).toHaveCount(1);
+  return response;
 }
 
 async function resetScroll(page) {
   await page.evaluate(() => {
-    const previous = document.documentElement.style.scrollBehavior;
     document.documentElement.style.scrollBehavior = "auto";
     window.scrollTo(0, 0);
-    document.documentElement.style.scrollBehavior = previous;
   });
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  // Chromium can report a stable 1–2px sub-pixel offset after restoring a
+  // hash-bearing history entry. That is not a scroll lock.
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(4);
 }
 
 async function expectPageScrolls(page, action) {
-  await resetScroll(page);
-  await action();
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const previous = await page.evaluate(() => document.documentElement.style.scrollBehavior);
+  try {
+    await resetScroll(page);
+    await action();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100).catch(async (error) => {
+      const state = await page.evaluate(() => ({
+        path: location.pathname, hash: location.hash,
+        scrollY, scrollHeight: document.scrollingElement?.scrollHeight,
+        viewportHeight: innerHeight,
+        htmlOverflow: getComputedStyle(document.documentElement).overflow,
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        focused: document.activeElement?.tagName,
+        wheelEvents: window.__bfWheelDiagnostics || [],
+        scrollAncestors: (() => {
+          const items = [];
+          let node = document.elementFromPoint(720, 450);
+          while (node) {
+            const style = getComputedStyle(node);
+            items.push({ tag: node.tagName, className: node.getAttribute("class"),
+              top: node.scrollTop, height: node.clientHeight, scrollHeight: node.scrollHeight,
+              overflowY: style.overflowY, overscroll: style.overscrollBehaviorY });
+            node = node.parentElement;
+          }
+          return items;
+        })(),
+        wheelTarget: document.elementFromPoint(720, 450)?.outerHTML.slice(0, 400),
+      }));
+      throw new Error(`Native scroll did not advance: ${JSON.stringify(state)}`, { cause: error });
+    });
+  } finally {
+    await page.evaluate((value) => {
+      document.documentElement.style.scrollBehavior = value;
+    }, previous);
+  }
 }
 
 test("public landing exposes crawlable SEO and semantic content", async ({ page }) => {
-  const response = await page.goto("/", { waitUntil: "domcontentloaded" });
+  const response = await openLanding(page);
   expect(response?.status()).toBe(200);
   await expect(page).toHaveTitle("BiddingFlow – Phần mềm quản lý đấu thầu và gói thầu");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /quản lý kế hoạch lựa chọn nhà thầu/u);
@@ -52,9 +112,13 @@ test("public landing exposes crawlable SEO and semantic content", async ({ page 
 });
 
 test("landing keeps native scroll at every required viewport", async ({ page }) => {
+  // One responsive document is the subject of this test. Re-navigating for
+  // every viewport cold-loads the same module graph eight times and tests
+  // navigation reliability instead of responsive scrolling; that lifecycle
+  // has its own scenario below.
+  await openLanding(page);
   for (const viewport of REQUIRED_VIEWPORTS) {
     await page.setViewportSize(viewport);
-    await openLanding(page);
     const metrics = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
@@ -84,8 +148,16 @@ test("landing keeps native scroll at every required viewport", async ({ page }) 
 test("wheel and keyboard scrolling remain native", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openLanding(page);
-  await expectPageScrolls(page, () => page.mouse.wheel(0, 720));
+  await expectPageScrolls(page, async () => {
+    await page.mouse.move(720, 450);
+    await page.mouse.wheel(0, 720);
+  });
+
+  // Keyboard scrolling is animated by the browser compositor. Exercise each
+  // input from a fresh document so a previous animation cannot race the reset.
+  await openLanding(page);
   await expectPageScrolls(page, () => page.keyboard.press("PageDown"));
+  await openLanding(page);
   await expectPageScrolls(page, () => page.keyboard.press("Space"));
 });
 
@@ -97,17 +169,34 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
   await expect(page.locator("#giai-phap")).toBeInViewport();
   expect(await page.evaluate(() => getComputedStyle(document.body).overflowY)).not.toBe("hidden");
 
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.reload({ waitUntil: "commit" });
+  await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
-  await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
-  await page.goBack({ waitUntil: "domcontentloaded" });
+  await page.goto("/dang-nhap", { waitUntil: "commit" });
+  await expect(page.locator("#form-auth-login")).toBeVisible();
+  await page.goBack({ waitUntil: "commit" });
+  await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
-  await page.goForward({ waitUntil: "domcontentloaded" });
-  await page.goBack({ waitUntil: "domcontentloaded" });
-  await expectPageScrolls(page, () => page.mouse.wheel(0, 500));
+  await page.goForward({ waitUntil: "commit" });
+  await expect(page.locator("#form-auth-login")).toBeVisible();
+  await page.goBack({ waitUntil: "commit" });
+  await expect(page.locator("body")).toHaveClass(/landing-ready/u);
+  await expectPageScrolls(page, async () => {
+    await page.evaluate(() => {
+      window.__bfWheelDiagnostics = [];
+      document.addEventListener("wheel", (event) => {
+        const entry = { deltaY: event.deltaY, target: event.target?.tagName, prevented: event.defaultPrevented };
+        window.__bfWheelDiagnostics.push(entry);
+        queueMicrotask(() => { entry.prevented = event.defaultPrevented; });
+      }, { capture: true, passive: true, once: true });
+    });
+    // Refresh Chromium's wheel target after the page is restored from history.
+    await page.mouse.move(720, 450);
+    await page.mouse.wheel(0, 500);
+  });
 
   await context.clearCookies();
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openLanding(page);
   await expectPageScrolls(page, () => page.keyboard.press("PageDown"));
   await page.setViewportSize({ width: 390, height: 844 });
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
@@ -117,35 +206,41 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
 
 test("guest CTA continues to the authenticated entry point", async ({ page }) => {
   await openLanding(page);
-  await expect(page.locator('[data-cta-location="hero"]')).toHaveAttribute("href", "/dang-nhap");
-  await page.locator('[data-cta-location="hero"]').click();
+  const heroCta = page
+    .locator(".landing-hero-actions")
+    .getByRole("link", { name: /Bắt đầu sử dụng/u });
+  await expect(heroCta).toHaveAttribute("href", "/dang-nhap");
+  await heroCta.click();
   await expect(page).toHaveURL(/\/dang-nhap$/u);
 });
 
-test("mobile touch surface permits vertical gestures", async ({ browserName, browser }) => {
-  test.skip(browserName !== "chromium", "CDP touch input is available in the Chromium project");
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    hasTouch: true,
-    isMobile: true,
-  });
-  const page = await context.newPage();
-  try {
-    await openLanding(page);
-    const session = await context.newCDPSession(page);
-    await session.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: 195, y: 700 }],
+test.describe("Chromium touch input", () => {
+  test.skip(({ browserName }) => browserName !== "chromium", "CDP touch input is available in the Chromium project");
+
+  test("mobile touch surface permits vertical gestures", async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
     });
-    for (const y of [620, 540, 460, 380, 300]) {
+    const page = await context.newPage();
+    try {
+      await openLanding(page);
+      const session = await context.newCDPSession(page);
       await session.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [{ x: 195, y }],
+        type: "touchStart",
+        touchPoints: [{ x: 195, y: 700 }],
       });
+      for (const y of [620, 540, 460, 380, 300]) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: 195, y }],
+        });
+      }
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    } finally {
+      await context.close();
     }
-    await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  } finally {
-    await context.close();
-  }
+  });
 });

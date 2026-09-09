@@ -1,7 +1,11 @@
 import hashlib
 import json
 import re
+import subprocess
+import zipfile
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +16,32 @@ PACKAGED_OPERATIONAL_REFERENCE = re.compile(
     r"(?<![\w./-])((?:scripts|deploy|docs/runbooks)/[A-Za-z0-9_./-]+"
     r"|docs/production-security-information\.md)"
 )
+
+
+def test_smoke_timeout_reports_only_fixed_phase_output(tmp_path, monkeypatch):
+    archive = tmp_path / "candidate.zip"
+    with zipfile.ZipFile(archive, "w"):
+        pass
+    monkeypatch.setenv("PACKAGE_SMOKE_DATABASE_URL", "postgresql://isolated/package_test")
+    monkeypatch.setattr(package_production.psycopg, "connect", lambda *args, **kwargs:
+        nullcontext(SimpleNamespace(execute=lambda sql: None)))
+    monkeypatch.setattr(package_production, "_smoke_child_environment", lambda *args: {})
+
+    def timeout(*args, **kwargs):
+        assert kwargs["timeout"] == 60
+        assert kwargs["check"] is False
+        raise subprocess.TimeoutExpired(
+            ["synthetic-smoke"], 60,
+            output=b"private runtime output\nPACKAGE_SMOKE starting_lifespan\n",
+            stderr=b"private stderr",
+        )
+
+    monkeypatch.setattr(package_production.subprocess, "run", timeout)
+    with pytest.raises(RuntimeError, match="starting_lifespan") as failure:
+        package_production.smoke_test_archive(archive, tmp_path / "extracted")
+    assert "private runtime output" not in str(failure.value)
+    assert "private stderr" not in str(failure.value)
+    assert isinstance(failure.value.__cause__, subprocess.TimeoutExpired)
 
 
 def test_package_path_guard_allows_runtime_security_module_and_rejects_artifacts():
@@ -160,6 +190,7 @@ def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch
     monkeypatch.setenv("MIGRATOR_DATABASE_URL", "postgresql://migrator/dev")
     monkeypatch.setenv("DATABASE_ADMIN_URL", "postgresql://admin/dev")
     monkeypatch.setenv("API_TEST_DATABASE_URL", "postgresql://test/discovery")
+    monkeypatch.setenv("BIDDING_DATABASE_PROFILE", ".env.database.json")
 
     isolated = "postgresql://isolated/package_smoke_test"
     environment = package_production._isolated_smoke_environment(isolated)
@@ -168,6 +199,7 @@ def test_extracted_smoke_environment_cannot_inherit_another_database(monkeypatch
     assert environment["MIGRATOR_DATABASE_URL"] == isolated
     assert "DATABASE_ADMIN_URL" not in environment
     assert "API_TEST_DATABASE_URL" not in environment
+    assert "BIDDING_DATABASE_PROFILE" not in environment
 
 
 def test_package_smoke_child_uses_only_its_synthetic_trusted_hosts(tmp_path):

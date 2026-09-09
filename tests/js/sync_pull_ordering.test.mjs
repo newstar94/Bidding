@@ -496,6 +496,29 @@ function coordinatedController() {
   return controller;
 }
 
+test("push waits on real pull promises without recursively starving the event loop", async () => {
+  const response = deferred();
+  const restore = installPullGlobals(() => response.promise);
+  const controller = coordinatedController();
+  let retries = 0;
+  // Bound the observed retry seam so a broken implementation fails without OOM.
+  controller.autoSync = () => { retries += 1; return { ok: true }; };
+  const pull = controller.forceSyncData(true, false, false);
+  await new Promise((resolve) => setImmediate(resolve));
+  const push = autoSync.call(controller);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(retries, 0, "pending pull must not cause an immediately settled retry loop");
+  } finally {
+    response.resolve(new Response(JSON.stringify({
+      goithau: [], syncVersion: 1, timestamp: "v1",
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    await Promise.allSettled([pull, push]);
+    restore();
+  }
+  assert.equal(retries, 1, "retry only after the real pull settles");
+});
+
 test("automatic push waits for an active authoritative pull in the same workspace", async () => {
   const previousFetch = globalThis.fetch;
   const previousDocument = globalThis.document;
@@ -914,6 +937,7 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
     }), { status: 409, headers: { "content-type": "application/json" } }),
     new Response(JSON.stringify({
       goithau: [{ id: "package-5", name: "FULL VERSION 5" }],
+      ...(resetCode === "SYNC_VISIBILITY_RESET_REQUIRED" ? { kehoach: [], visibilityToken: "scope-new" } : {}),
       syncVersion: 5,
       timestamp: "v5",
     }), { status: 200, headers: { "content-type": "application/json" } }),
@@ -933,7 +957,7 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
   const model = {
     workspaceScope: { key: "user:org-a", organizationId: "org-a" },
     workspaceStorage: storage,
-    state: { goithau: [] },
+    state: { goithau: [], kehoach: [{ id: "revoked-plan", name: "local edit", rowVersion: 1 }] },
     getWorkspaceToken: () => "user:org-a@1",
     isWorkspaceCurrent: (token) => token === "user:org-a@1",
     normalizeRecordKeys: (record) => structuredClone(record),
@@ -952,6 +976,13 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
   };
   controller.forceSyncData = (...args) => forceSyncData.call(controller, ...args);
 
+  if (resetCode === "SYNC_VISIBILITY_RESET_REQUIRED") {
+    controller.planBreakdownDraft = {
+      active: true, action: "edit", planId: "revoked-plan",
+      snapshot: { kehoach: [{ id: "revoked-plan", name: "original", rowVersion: 1 }] },
+    };
+  }
+
   try {
     const result = await controller.forceSyncData(false, false, true);
 
@@ -962,6 +993,8 @@ test(`409 ${resetCode} recursion owns the latest pull generation`, async () => {
     assert.match(requestedUrls[0], /[?&]tables=goithau(?:&|$)/u);
     if (resetCode === "SYNC_VISIBILITY_RESET_REQUIRED") {
       assert.doesNotMatch(requestedUrls[1], /[?&]tables=/u);
+      assert.deepEqual(model.state.kehoach, []);
+      assert.deepEqual(controller.planBreakdownDraft.snapshot.kehoach, []);
     } else {
       assert.match(requestedUrls[1], /[?&]tables=goithau(?:&|$)/u);
     }
@@ -1060,6 +1093,9 @@ test("a route-only visibility change escalates before stale pagination or non-ro
       (reason) => ({ status: "rejected", reason }),
     );
     await new Promise((resolve) => setImmediate(resolve));
+    model.state.kehoach = [{ id: "revoked-draft", name: "local", rowVersion: 1 }];
+    controller.planBreakdownDraft = { active: true, action: "edit", planId: "revoked-draft",
+      snapshot: { kehoach: [{ id: "revoked-draft", name: "original", rowVersion: 1 }] } };
 
     const syncResult = await controller.forceSyncData(true, false, true);
     const stalePagination = await paginatedOutcome;

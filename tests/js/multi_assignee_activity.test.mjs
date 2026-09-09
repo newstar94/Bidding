@@ -19,6 +19,8 @@ import {
   buildActivityTimelineMarkup,
   formatActivityTime,
 } from "../../frontend/shared/ActivityTimeline.js";
+import { ensureNewPlanCreatorAssignment } from "../../frontend/plans/KeHoachWorkflow.js";
+import { resolveInitialContractAssigneeIds } from "../../frontend/contracts/HopDongWorkflow.js";
 
 
 test("assignee ids are normalized and deduplicated", () => {
@@ -74,15 +76,59 @@ test("compact assignee summary renders the first name and remaining count", () =
 });
 
 
-test("package assignees stay empty until explicitly selected", () => {
+test("new specialist package mirrors the server-authoritative self-assignment", () => {
   assert.deepEqual(resolvePackageAssigneeIds(["a", "b"], "creator"), ["a", "b"]);
   assert.deepEqual(resolvePackageAssigneeIds([], "creator"), []);
+  assert.deepEqual(derivePackageAssigneeControlState({
+    activeRole: "employee",
+    packageId: "",
+    assignedEmpIds: [],
+    currentUserId: "creator",
+  }), { values: ["creator"], disabled: true });
   assert.deepEqual(derivePackageAssigneeControlState({
     activeRole: "manager",
     packageId: "",
     assignedEmpIds: [],
-    creatorId: "creator",
+    currentUserId: "manager",
   }), { values: [], disabled: false });
+});
+
+test("new specialist plan draft mirrors the server-authoritative self-assignment", () => {
+  const invalidated = [];
+  const model = {
+    state: {
+      activeuser: { id: "specialist-1" },
+      activerole: "employee",
+      assignments: [],
+    },
+    entityIndexes: { invalidate: (table) => invalidated.push(table) },
+  };
+
+  const assignment = ensureNewPlanCreatorAssignment(model, "plan-new");
+  const duplicate = ensureNewPlanCreatorAssignment(model, "plan-new");
+
+  assert.equal(duplicate, assignment);
+  assert.deepEqual(model.state.assignments.map(({ empId, targetId, type }) => ({ empId, targetId, type })), [{
+    empId: "specialist-1",
+    targetId: "plan-new",
+    type: "kehoach",
+  }]);
+  assert.deepEqual(invalidated, ["assignments"]);
+});
+
+test("new specialist contract mirrors self-assignment while existing contracts restore assignments", () => {
+  assert.deepEqual(resolveInitialContractAssigneeIds({
+    activeRole: "employee",
+    contractId: "",
+    assignedEmpIds: [],
+    currentUserId: "specialist-1",
+  }), ["specialist-1"]);
+  assert.deepEqual(resolveInitialContractAssigneeIds({
+    activeRole: "employee",
+    contractId: "contract-1",
+    assignedEmpIds: ["specialist-2", "specialist-2"],
+    currentUserId: "specialist-1",
+  }), ["specialist-2"]);
 });
 
 

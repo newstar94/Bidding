@@ -83,10 +83,6 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
       }
       if (pathname === "/api/public/commercial/offers") {
         requests.commercial += 1;
-        if (commercial.networkError) {
-          request.socket.destroy();
-          return;
-        }
         if (commercial.body !== undefined) {
           response.writeHead(commercial.status, { "content-type": "application/json" });
           response.end(commercial.body);
@@ -121,6 +117,12 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
       if (message.type() === "error") errors.push(`console: ${message.location().url} ${message.text()}`);
     });
     page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
+    if (commercial.networkError) {
+      await page.route("**/api/public/commercial/offers", async (route) => {
+        requests.commercial += 1;
+        await route.abort("failed");
+      });
+    }
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async () => {
       const module = await import("/frontend/landing/LandingPage.js");

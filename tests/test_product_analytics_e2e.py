@@ -1,4 +1,5 @@
 import socket
+import os
 from threading import Thread
 import time
 from types import SimpleNamespace
@@ -97,7 +98,10 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
             *analytics_routes.product_analytics_routes(Route),
         ])
         socket_handle = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        socket_handle.bind(("127.0.0.1", 0))
+        host = os.environ.get("ANALYTICS_E2E_HOST", "127.0.0.1")
+        if host not in {"127.0.0.1", "127.0.0.2"}:
+            raise ValueError("Analytics E2E host must be loopback")
+        socket_handle.bind((host, int(os.environ.get("ANALYTICS_E2E_PORT", "0"))))
         socket_handle.listen(2048)
         port = socket_handle.getsockname()[1]
         server = uvicorn.Server(uvicorn.Config(
@@ -113,7 +117,7 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
         completed = subprocess.run(
             [
                 "node", "tests/fixtures/product_analytics_browser_journey.mjs",
-                f"http://127.0.0.1:{port}", release_id,
+                f"http://{host}:{port}", release_id,
             ],
             cwd=Path.cwd(), check=False, capture_output=True, text=True, timeout=90,
         )

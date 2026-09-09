@@ -77,6 +77,69 @@ def test_delta_cursor_expires():
         )
 
 
+def test_prepared_delta_package_upsert_keeps_expert_team_relations(monkeypatch):
+    package_id = "package-delta-team"
+    expert_id = "expert-delta-team"
+    candidate = {
+        "kind": "upsert",
+        "table_key": "goithau",
+        "record_id": package_id,
+        "record_json": json.dumps({
+            "id": package_id,
+            "organization_id": "org-a",
+            "ten_goi_thau": "Package with inherited team",
+        }),
+        "snapshot_json": None,
+        "version": 11,
+    }
+    monkeypatch.setattr(
+        delta_paging,
+        "attach_child_rows_to_items",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        delta_paging,
+        "get_expert_relations_for_packages",
+        lambda _cursor, package_ids, organization_id=None: {
+            package_id: {
+                "to_cg": [{
+                    "chuyenGiaId": expert_id,
+                    "id": expert_id,
+                    "chucVu": "Tổ trưởng",
+                    "congViec": "Tổng hợp",
+                }],
+                "to_td": [],
+                "cg_ids": [expert_id],
+            }
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(delta_paging, "can_read_record", lambda *_args: True)
+    prepared = delta_paging._prepare_upsert_items(
+        object(), [candidate], "org-a"
+    )
+
+    projected = _project_candidate(
+        object(),
+        candidate,
+        role=object(),
+        user_id="user-a",
+        organization_id="org-a",
+        media_session_token="session-secret",
+        sensitive_policy=SensitiveReadPolicy(True, True, True),
+        prepared_upserts=prepared,
+    )
+
+    assert projected["record"]["toChuyenGia"] == [{
+        "chuyenGiaId": expert_id,
+        "id": expert_id,
+        "chucVu": "Tổ trưởng",
+        "congViec": "Tổng hợp",
+    }]
+    assert projected["record"]["toThamDinh"] == []
+    assert projected["record"]["chuyenGiaIds"] == [expert_id]
+
+
 def test_visibility_scope_pushes_assignment_and_module_denial_into_sql():
     scope = VisibilityScope(
         organization_id="org-a",
@@ -583,6 +646,88 @@ def test_delta_package_upsert_keeps_normalized_evaluation_rounds():
         projected_metadata = json.loads(projected["record"]["danhGiaHsdtMetadata"])
         assert projected_metadata["lotBatches"][batch_id]["status"] == "FINAL"
         assert projected_metadata["lotBatches"][batch_id]["result"]["soQuyetDinhKetQua"] == "QD-LOT-1"
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_delta_package_upsert_keeps_expert_team_relations():
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, employee_id, package_id = _seed_denied_package(cursor)
+        expert_id = f"expert-{package_id}"
+        cursor.execute(
+            """INSERT INTO chuyen_gia
+               (id, organization_id, id_goc, phien_ban, is_latest, ho_ten)
+               VALUES (?, ?, ?, '00', 1, 'Delta expert')""",
+            (expert_id, organization_id, expert_id),
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+               (id, organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (f"assignment-delta-team-{package_id}", organization_id, employee_id, package_id),
+        )
+        save_child_payloads(
+            cursor,
+            "goi_thau",
+            {
+                "id": package_id,
+                "toChuyenGia": [{
+                    "chuyenGiaId": expert_id,
+                    "chucVu": "Tổ trưởng",
+                    "congViec": "Tổng hợp",
+                }],
+                "toThamDinh": [],
+            },
+            organization_id,
+            "organization",
+            11,
+            "2026-08-03 03:00:00",
+            employee_id,
+        )
+        cursor.execute(
+            "UPDATE goi_thau SET sync_version = 11 WHERE organization_id = ? AND id = ?",
+            (organization_id, package_id),
+        )
+        candidate = next(
+            row for row in _load_candidates(
+                cursor,
+                organization_id,
+                10,
+                11,
+                (10, "", "", ""),
+                100,
+            )
+            if row["table_key"] == "goithau" and row["record_id"] == package_id
+        )
+
+        projected = _project_candidate(
+            cursor,
+            candidate,
+            role=SessionRole(
+                "user",
+                employee_id,
+                platform_role="user",
+                active_role="employee",
+            ),
+            user_id=employee_id,
+            organization_id=organization_id,
+            media_session_token="session-secret",
+            sensitive_policy=SensitiveReadPolicy(True, True, True),
+        )
+
+        assert projected["record"]["toChuyenGia"] == [{
+            "chuyenGiaId": expert_id,
+            "id": expert_id,
+            "chucVu": "Tổ trưởng",
+            "congViec": "Tổng hợp",
+        }]
+        assert projected["record"]["toThamDinh"] == []
+        assert projected["record"]["chuyenGiaIds"] == [expert_id]
     finally:
         connection.rollback()
         connection.close()

@@ -24,6 +24,48 @@ def _secure_marker() -> dict[str, object]:
     }
 
 
+def test_font_preloads_resolve_exact_hashed_assets(tmp_path):
+    from backend.frontend_assets import resolve_font_preloads
+
+    manifest = {}
+    for subset in ("latin", "vietnamese"):
+        asset = f"assets/plus-jakarta-sans-{subset}-abcdefgh.woff2"
+        target = tmp_path / asset
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(b"font-fixture")
+        manifest[f"views/vendor/fonts/plus-jakarta-sans-{subset}.woff2"] = {"file": asset}
+    assert resolve_font_preloads(manifest, tmp_path) == (
+        "assets/plus-jakarta-sans-latin-abcdefgh.woff2",
+        "assets/plus-jakarta-sans-vietnamese-abcdefgh.woff2",
+    )
+
+
+def test_font_preloads_reject_unsafe_manifest_paths(tmp_path):
+    from backend.frontend_assets import FrontendAssetError, resolve_font_preloads
+
+    manifest = {"views/vendor/fonts/plus-jakarta-sans-latin.woff2": {"file": "../font.woff2"}}
+    with pytest.raises(FrontendAssetError):
+        resolve_font_preloads(manifest, tmp_path)
+
+
+@pytest.mark.parametrize("entry", ["bad-entry", {"file": "assets/font-abcdefgh.js"},
+                                  {"file": "assets/missing-abcdefgh.woff2"}])
+def test_font_preloads_reject_invalid_type_or_missing_file(tmp_path, entry):
+    from backend.frontend_assets import FrontendAssetError, resolve_font_preloads
+
+    asset = tmp_path / "assets" / "font-abcdefgh.js"
+    asset.parent.mkdir()
+    asset.write_text("not a font", encoding="utf-8")
+    with pytest.raises(FrontendAssetError):
+        resolve_font_preloads({"views/vendor/fonts/plus-jakarta-sans-latin.woff2": entry}, tmp_path)
+
+
+def test_legacy_manifest_without_font_entries_keeps_compatibility(tmp_path):
+    from backend.frontend_assets import resolve_font_preloads
+
+    assert resolve_font_preloads({}, tmp_path) == ()
+
+
 def _write_fixture(
     root: Path,
     manifest: object,

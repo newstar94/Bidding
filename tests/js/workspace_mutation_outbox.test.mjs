@@ -29,6 +29,15 @@ function createOutbox({ hydrated = null } = {}) {
   };
 }
 
+test("projection removal acknowledgement does not silently discard pending upserts", () => {
+  const { outbox } = createOutbox();
+  const update = { id: "revoked", rowVersion: 2, name: "unsent edit" };
+  const fresh = { id: "new-local", name: "new draft" };
+  outbox.enqueue({ kind: "upsert", table: "kehoach", records: [update, fresh] });
+  outbox.enqueue({ kind: "ack-server-deletions", deletionsByTable: { kehoach: ["revoked"] } });
+  assert.deepEqual(outbox.snapshot().upserts.kehoach, { revoked: update, "new-local": fresh });
+});
+
 
 test("outbox command variants preserve row versions and delete receipts", () => {
   const { outbox } = createOutbox();
@@ -204,6 +213,7 @@ test("terminal unscoped validation rejects only the sent outbox generation", () 
     type: "goithau",
     id: "package-1",
     operation: "upsert",
+    newInsert: true,
     conflictingId: "",
   }]);
   assert.deepEqual(outbox.snapshot().upserts, {});
@@ -259,9 +269,9 @@ test("unscoped historical validation preserves a current assignment deletion", (
     },
   });
 
-  assert.deepEqual(rejected.map(({ type, id, operation }) => ({ type, id, operation })), [
-    { type: "kehoach", id: "plan-history", operation: "upsert" },
-    { type: "goithau", id: "package-history", operation: "upsert" },
+  assert.deepEqual(rejected.map(({ type, id, operation, newInsert }) => ({ type, id, operation, newInsert })), [
+    { type: "kehoach", id: "plan-history", operation: "upsert", newInsert: true },
+    { type: "goithau", id: "package-history", operation: "upsert", newInsert: true },
   ]);
   assert.deepEqual(outbox.snapshot().upserts, {});
   assert.deepEqual(outbox.snapshot().deletes, [{
@@ -304,4 +314,30 @@ test("terminal validation cannot discard a newer edit made after the sent receip
     outbox.snapshot().upserts.goithau["package-1"].tenGoiThau,
     "Newer value",
   );
+});
+
+test("rejected upsert metadata distinguishes an existing canonical update", () => {
+  const { outbox } = createOutbox();
+  const existing = { id: "package-existing", rowVersion: 4, tenGoiThau: "Before" };
+  outbox.enqueue({
+    table: "goithau",
+    kind: "upsert",
+    records: [{ ...existing, tenGoiThau: "Rejected update" }],
+    baseRecords: [existing],
+  });
+  const sent = outbox.snapshotForSync({ goithau: [existing] });
+
+  const rejected = outbox.reject(sent.snapshot, [{
+    table: "goithau",
+    id: "package-existing",
+    code: "RECORD_ACCESS_DENIED",
+  }]);
+
+  assert.deepEqual(rejected, [{
+    type: "goithau",
+    id: "package-existing",
+    operation: "upsert",
+    newInsert: false,
+    conflictingId: "",
+  }]);
 });

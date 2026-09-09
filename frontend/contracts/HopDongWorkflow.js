@@ -13,6 +13,8 @@ import {
 import {
   persistAndSync,
   refreshRecordBeforeDelete,
+  showCanonicalSaveCommitted,
+  showLocalSavePending,
   stageLocalRecords,
 } from "../shared/MutationService.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
@@ -28,6 +30,20 @@ import {
   selectedAssigneeIds,
 } from "../shared/MultiAssigneeSelect.js";
 import { sortVersionsDescending, versionFamily } from "../shared/versionResolver.js";
+
+export function resolveInitialContractAssigneeIds({
+  activeRole,
+  contractId,
+  assignedEmpIds,
+  currentUserId,
+} = {}) {
+  if (String(contractId || "").trim()) return normalizeAssigneeIds(assignedEmpIds);
+  const creatorId = String(currentUserId || "").trim();
+  return String(activeRole || "").trim().toLowerCase() === "employee" && creatorId
+    ? [creatorId]
+    : [];
+}
+
 export async function deleteHopDong(id) {
   const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
   if (!targetHd) return;
@@ -306,11 +322,14 @@ export async function editHopDong(id) {
     const restoreHdEmpValue = () => {
       const empSelect = document.getElementById("hd-nhanvienphutrach");
       if (empSelect) {
-        const assignedEmpIds = id
-          ? this.model.state.assignments
+        const assignedEmpIds = resolveInitialContractAssigneeIds({
+          activeRole: this.model.state.activerole,
+          contractId: id,
+          assignedEmpIds: id ? this.model.state.assignments
             .filter((a) => String(a.targetId) === String(id) && a.type === "hopdong")
-            .map((assignment) => assignment.empId)
-          : [];
+            .map((assignment) => assignment.empId) : [],
+          currentUserId,
+        });
         initializeMultiAssigneeSelect(empSelect, {
           selectedIds: assignedEmpIds,
           disabled: this.model.state.activerole === "employee",
@@ -720,11 +739,12 @@ export async function persistContractFormChanges(controller, changedContracts) {
     afterLocalDurable: () => {
       const render = controller.view.renderHopDongTable();
       const close = controller.closeModal("modal-hopdong");
-      controller.view.showToast?.("Đã lưu hợp đồng", "Thông tin hợp đồng đã được lưu.", "success");
+      showLocalSavePending(controller.view, "Hợp đồng");
       return Promise.all([render, close]);
     },
     afterCanonicalSync: async () => {
       await controller.view.renderHopDongTable();
+      showCanonicalSaveCommitted(controller.view, "Hợp đồng");
     },
   });
 }

@@ -129,35 +129,6 @@ def test_admin_user_subscriptions_do_not_add_one_query_per_user(monkeypatch):
     assert count_for_many - count_for_one <= 1
 
 
-def _measure_lineage_assignment_queries(version_count):
-    versions = [(f"version-{index}",) for index in range(version_count)]
-
-    def handler(sql, _params):
-        if sql.startswith("SELECT id FROM goi_thau"):
-            return _Answer(rows=versions)
-        if "SELECT EXISTS" in sql:
-            return _Answer(one=(False,))
-        return _Answer()
-
-    cursor = _Cursor(handler)
-    assigned = access_policy._assigned_for_lineage(
-        cursor,
-        "organization-1",
-        "employee-1",
-        "goi_thau",
-        "lineage-1",
-    )
-    assert assigned is False
-    return len(cursor.calls)
-
-
-def test_lineage_assignment_query_count_is_independent_of_version_count():
-    count_for_one = _measure_lineage_assignment_queries(1)
-    count_for_many = _measure_lineage_assignment_queries(50)
-
-    assert count_for_many - count_for_one <= 1
-
-
 class _DeletionCursor:
     rowcount = 1
 
@@ -291,8 +262,10 @@ def _measure_sync_authorization_queries(monkeypatch, record_count):
             return _Answer(
                 rows=[{"lineage_root": record_id} for record_id in params[3:]]
             )
-        if sql.startswith("SELECT id_muc_tieu, loai_doi_tuong"):
-            return _Answer(rows=[(record_id, "goithau") for record_id in params[1:]])
+        if sql.startswith("SELECT id, id_muc_tieu FROM phan_cong_nhan_su"):
+            return _Answer(
+                rows=[(f"assignment-{record_id}", record_id) for record_id in params[3:]]
+            )
         if sql.startswith("SELECT 1 FROM phan_cong_nhan_su"):
             return _Answer(one=(1,))
         if sql.startswith("SELECT COALESCE(NULLIF(id_goc"):
@@ -537,21 +510,84 @@ def test_account_subscription_batch_is_chunked_and_deduplicated():
     assert len(cursor.calls[1][1]) == 1
 
 
-def test_lineage_assignment_query_keeps_tenant_and_employee_filters():
-    cursor = _Cursor(lambda _sql, _params: _Answer(one=(True,)))
+def test_effective_assignment_query_keeps_tenant_employee_and_exact_target_filters():
+    cursor = _Cursor(
+        lambda _sql, _params: _Answer(rows=[("assignment-1", "package-1")]),
+    )
 
-    assert access_policy._assigned_for_lineage(
+    assert access_policy._effective_assignment_targets(
+        cursor,
+        "organization-1",
+        "employee-1",
+        {("goithau", "package-1")},
+    ) == {("goithau", "package-1")}
+    sql, params = cursor.calls[0]
+    assert "organization_id = ?" in sql
+    assert "id_nhan_vien = ?" in sql
+    assert "id_muc_tieu IN (?)" in sql
+    assert params == ("organization-1", "employee-1", "goithau", "package-1")
+
+
+def test_direct_write_assignment_lookup_uses_the_transfer_row_lock():
+    cursor = _Cursor(
+        lambda sql, _params: _Answer(
+            rows=[("assignment-1", "package-1")]
+            if sql.startswith("SELECT id, id_muc_tieu FROM phan_cong_nhan_su")
+            else [],
+        ),
+    )
+
+    assert access_policy._assigned_for_table(
         cursor,
         "organization-1",
         "employee-1",
         "goi_thau",
-        "root-1",
+        {"id": "package-1"},
+        lock=True,
     )
-    sql, params = cursor.calls[0]
-    assert "record.organization_id = ?" in sql
-    assert "assignment.organization_id = record.organization_id" in sql
-    assert "assignment.id_nhan_vien = ?" in sql
-    assert params == ("goithau", "organization-1", "root-1", "employee-1")
+    assert cursor.calls[0][0].rstrip().endswith("FOR UPDATE")
+
+
+def test_direct_child_write_assignment_lookup_uses_the_transfer_row_lock(monkeypatch):
+    cases = (
+        ("thong_tin_mo_thau", {"id": "opening-1", "goiThauId": "package-1"}),
+        ("goi_thau_hang_hoa", {"id": "goods-1", "goiThauId": "package-1"}),
+        (
+            "hang_hoa_du_thau_nha_thau",
+            {"id": "bidder-goods-1", "goiThauId": "package-1"},
+        ),
+    )
+    monkeypatch.setattr(access_policy, "is_organization_manager", lambda *_args: False)
+    monkeypatch.setattr(access_policy, "is_personal_workspace_owner", lambda *_args: False)
+    monkeypatch.setattr(access_policy, "has_active_organization_membership", lambda *_args: True)
+    monkeypatch.setattr(access_policy, "has_module_permission", lambda *_args: True)
+
+    for table_name, item in cases:
+        def answer(sql, _params):
+            if sql.startswith("SELECT id FROM phan_cong_nhan_su"):
+                return _Answer(one=("assignment-1",))
+            if sql.startswith("SELECT trang_thai FROM goi_thau"):
+                status = "OPENED" if table_name == "hang_hoa_du_thau_nha_thau" else "Chuẩn bị"
+                return _Answer(one=(status,))
+            return _Answer()
+
+        cursor = _Cursor(answer)
+        decision = access_policy.authorize_record_write(
+            cursor,
+            SimpleNamespace(active_role="employee", platform_role="user"),
+            "employee-1",
+            "organization-1",
+            "thongtinmothau" if table_name == "thong_tin_mo_thau" else "goithauhanghoa",
+            table_name,
+            item,
+        )
+
+        assert decision.allowed
+        assignment_sql = next(
+            sql for sql, _params in cursor.calls
+            if sql.startswith("SELECT id FROM phan_cong_nhan_su")
+        )
+        assert assignment_sql.rstrip().endswith("FOR UPDATE")
 
 
 def test_delete_reference_batch_preserves_rule_order_and_tenant_scope():
@@ -1047,6 +1083,7 @@ def test_batch_authorization_recognizes_new_snapshot_and_cloned_assignment():
         "employee-1",
         "organization-1",
         records,
+        server_inherited_assignment_ids={"assignment-v2"},
     )
 
     assert context.snapshot_package_ids == {"package-v2"}
@@ -1107,7 +1144,7 @@ def test_batch_authorization_decisions_preserve_assignment_and_membership_rules(
         membership_role="employee",
         permissions={"goithau": "edit"},
         lineage_root_by_item={("goi_thau", "package-1"): "root-1"},
-        assigned_lineages={("goi_thau", "root-1")},
+        assigned_targets={("goithau", "package-1")},
     )
 
     assert access_policy.authorize_record_write_from_context(
@@ -1116,7 +1153,7 @@ def test_batch_authorization_decisions_preserve_assignment_and_membership_rules(
         "goi_thau",
         {"id": "package-1"},
     ).allowed
-    context.assigned_lineages.clear()
+    context.assigned_targets.clear()
     denied = access_policy.authorize_record_write_from_context(
         context,
         "goithau",

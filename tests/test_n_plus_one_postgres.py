@@ -267,14 +267,16 @@ def test_new_batch_sql_executes_in_rollback_only_postgres_transaction(
         "__missing-organization__",
         records,
     )
-    for table_name in ("ke_hoach_lcnt", "goi_thau", "hop_dong"):
-        assert access_policy._load_assigned_lineages(
-            postgres_cursor,
-            "__missing-organization__",
-            missing_id,
-            table_name,
-            [missing_id],
-        ) == set()
+    assert access_policy._effective_assignment_targets(
+        postgres_cursor,
+        "__missing-organization__",
+        missing_id,
+        {
+            ("kehoach", missing_id),
+            ("goithau", missing_id),
+            ("hopdong", missing_id),
+        },
+    ) == set()
     ownership.build_owner_reference_context(
         postgres_cursor,
         "__missing-organization__",

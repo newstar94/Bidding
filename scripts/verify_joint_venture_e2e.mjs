@@ -17,6 +17,8 @@ const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD |
 if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
 const scenario = String(process.env.E2E_JV_SCENARIO || "full").trim().toLowerCase();
 const multiLotOnly = scenario === "multi-lot";
+const twoEnvelopeOnly = scenario === "two-envelope";
+const primaryOnly = scenario === "primary";
 
 const runId = `jv-e2e-${Date.now()}`;
 const organizationId = `__${runId}-org`;
@@ -82,6 +84,49 @@ const mark = (step, details = {}) => {
 const waitForPageCondition = (page, predicate, argument = null, options = {}) => (
   page.waitForFunction(predicate, argument, { polling: 100, ...options })
 );
+
+async function assertActiveDialog(page, label) {
+  try {
+    await waitForPageCondition(page, () => {
+      const modal = document.getElementById("modal-custom-dialog");
+      if (!modal?.classList.contains("active")) return false;
+      const style = getComputedStyle(modal);
+      const rect = modal.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && Number(style.opacity || "1") > 0
+        && rect.width > 0
+        && rect.height > 0;
+    }, null, { timeout: 10_000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => {
+      const modal = document.getElementById("modal-custom-dialog");
+      if (!modal) return { active: false, missing: true };
+      const style = getComputedStyle(modal);
+      const rect = modal.getBoundingClientRect();
+      return {
+        active: modal.classList.contains("active"),
+        className: modal.className,
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        width: rect.width,
+        height: rect.height,
+        title: document.getElementById("dialog-title")?.textContent?.trim() || "",
+        message: document.getElementById("dialog-message")?.textContent?.trim() || "",
+      };
+    });
+    throw new Error(`${label} is not active: ${JSON.stringify(diagnostics)}`, { cause: error });
+  }
+  return page.evaluate(() => {
+    const modal = document.getElementById("modal-custom-dialog");
+    return {
+      active: true,
+      title: document.getElementById("dialog-title")?.textContent?.trim() || "",
+      message: document.getElementById("dialog-message")?.textContent?.trim() || "",
+    };
+  });
+}
 
 function fixture(action, extra = {}) {
   const execution = spawnSync(
@@ -174,7 +219,9 @@ const workflowTabReadySelectors = {
 async function activateWorkflowTab(page, tabId, { activate = true } = {}) {
   const tab = page.locator(`[data-workflow-tab="${tabId}"]`);
   await tab.waitFor({ state: "visible", timeout: 20_000 });
-  if (activate && await tab.getAttribute("aria-selected") !== "true") await tab.click();
+  if (activate && await tab.getAttribute("aria-selected") !== "true") {
+    await page.locator(`[data-workflow-tab="${tabId}"]`).dispatchEvent("click");
+  }
   const readySelectors = workflowTabReadySelectors[tabId] || ["#detail-workflow-content-wrapper"];
   try {
     await page.waitForFunction(({ expectedTab, selectors }) => {
@@ -301,6 +348,40 @@ async function openPackage(page, tabId, targetPackage = packageData) {
   }
   await link.click();
   await activateWorkflowTab(page, tabId);
+}
+
+async function ensureOpeningRowCount(page, rows, targetCount, label) {
+  const addButton = page.locator("#btn-mothau-add-bid");
+  for (let attempt = 0; attempt < targetCount; attempt += 1) {
+    const before = await rows.count();
+    if (before >= targetCount) return;
+    await addButton.click();
+    const after = await rows.count();
+    if (after > before) continue;
+    const diagnostics = await page.evaluate(() => ({
+      activeTab: document.querySelector('[data-workflow-tab][aria-selected="true"]')
+        ?.getAttribute("data-workflow-tab") || "",
+      selectedPackageId: document.getElementById("mothau-goithau-select")?.value || "",
+      addButton: (() => {
+        const button = document.getElementById("btn-mothau-add-bid");
+        return button ? {
+          disabled: button.disabled,
+          hidden: button.hidden,
+          display: getComputedStyle(button).display,
+          visibility: getComputedStyle(button).visibility,
+        } : null;
+      })(),
+      rowCount: document.querySelectorAll("#mothau-table-tbody tr").length,
+      tableText: document.getElementById("mothau-table-tbody")?.textContent?.trim().slice(0, 500) || "",
+    }));
+    throw new Error(
+      `Opening row count did not advance for ${label}: ${JSON.stringify({ before, after, diagnostics })}`,
+    );
+  }
+  const finalCount = await rows.count();
+  if (finalCount < targetCount) {
+    throw new Error(`Opening row target was not reached for ${label}: ${finalCount}/${targetCount}`);
+  }
 }
 
 async function fillOpeningRow(page, row, { type, contractor, price }) {
@@ -567,7 +648,13 @@ try {
   }
   fixtureCreated = true;
   const wordTemplateEvidence = fixture("create_word_template");
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    // Every browser request in this suite targets the isolated loopback app.
+    // Host proxy injection can strand a later navigation before it reaches
+    // Uvicorn, especially after the auth suite has opened many local sessions.
+    args: ["--no-proxy-server"],
+  });
   const context = await browser.newContext({ locale: "vi-VN" });
   const page = await context.newPage();
   const pageErrors = [];
@@ -588,7 +675,7 @@ try {
   });
   await loginAndSelectWorkspace(page);
 
-  if (!multiLotOnly) {
+  if (!multiLotOnly && !twoEnvelopeOnly) {
   await gotoReady(page, `${baseURL}/bieu-mau`);
   await page.waitForFunction(() => {
     const input = document.getElementById("word-file-input");
@@ -769,9 +856,11 @@ try {
     });
   });
   await waitForInitialJointVentureEvaluation(page);
-  await page.locator("#btn-danhgiahsdt-save").click();
+  const initialSaveButton = page.locator("#btn-danhgiahsdt-save");
+  await initialSaveButton.click();
+  const modalDiagnostics = await assertActiveDialog(page, "Mandatory low-price prompt");
   try {
-    await page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 10_000 });
+    if (!modalDiagnostics.active) throw new Error("Mandatory low-price prompt is inactive");
   } catch (error) {
     const diagnostics = await evaluationRows.evaluateAll((rows) => rows.map((row) => ({
       text: row.innerText,
@@ -1112,6 +1201,7 @@ try {
   mark("joint-venture-contract-created-and-reloaded", contractEvidence);
   }
 
+  if (!twoEnvelopeOnly && !primaryOnly) {
   await openPackage(page, "opening", lotPackageData);
   const lotAddButton = page.locator("#btn-mothau-add-bid");
   const lotOpeningRows = page.locator("#mothau-table-tbody tr");
@@ -1337,7 +1427,7 @@ try {
         expectedRenderedStatus: expectedPackageStatus === "COMPLETED"
           ? "Đã có kết quả"
           : "Đã có kết quả một phần",
-        approve: () => page.locator("#btn-approve-award").click(),
+        approve: () => page.locator("#btn-approve-award").click({ noWaitAfter: true }),
         waitForPageCondition,
       });
     } catch (error) {
@@ -1420,11 +1510,12 @@ try {
   await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
   const multiLotEvidence = fixture("verify_lot_outcomes");
   mark("joint-venture-multi-lot-outcomes-verified", multiLotEvidence);
+  }
 
-  if (!multiLotOnly) {
+  if (!multiLotOnly && !primaryOnly) {
   await openPackage(page, "opening_tech", twoEnvelopePackageData);
   const twoEnvelopeRows = page.locator("#mothau-table-tbody tr");
-  while (await twoEnvelopeRows.count() < 2) await page.locator("#btn-mothau-add-bid").click();
+  await ensureOpeningRowCount(page, twoEnvelopeRows, 2, "two-envelope technical opening");
   const twoEnvelopeOpeningSpecs = [
     { type: "Liên danh", contractor: contractors[0] },
     { type: "Độc lập", contractor: contractors[3] },

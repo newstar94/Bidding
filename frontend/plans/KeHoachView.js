@@ -173,8 +173,22 @@ async function fetchPlanPackageSnapshots(planId) {
 export async function renderPlanVersionDetails(versionId) {
   const kh = this.model.state.kehoach.find((k) => k.id === versionId);
   if (!kh) return;
-  await hydrateVersionFamily(getAppController(), "kehoach", kh);
   const editBtn = document.getElementById("btn-edit-kehoach-fullpage");
+  if (editBtn) {
+    // The detail shell can paint before version-family hydration completes.
+    // Keep the action visibly non-interactive until its canonical target and
+    // handler are both ready so an early click is never silently discarded.
+    editBtn.disabled = true;
+    editBtn.setAttribute("aria-busy", "true");
+    editBtn.dataset.bfActionReady = "false";
+    editBtn.onclick = null;
+  }
+  try {
+    await hydrateVersionFamily(getAppController(), "kehoach", kh);
+  } catch (error) {
+    if (editBtn) editBtn.setAttribute("aria-busy", "false");
+    throw error;
+  }
   if (editBtn) {
     const latestPlan = this.model.getLatestPlan(versionId);
     const isLatest = latestPlan && latestPlan.id === versionId;
@@ -183,9 +197,12 @@ export async function renderPlanVersionDetails(versionId) {
       editBtn.onclick = () => {
         executeAppCommand("editKeHoach", versionId);
       };
+      editBtn.disabled = false;
+      editBtn.dataset.bfActionReady = "true";
     } else {
       setRuntimeStyle(editBtn, "display", "none");
     }
+    editBtn.setAttribute("aria-busy", "false");
   }
   const rootId = versionRootId(kh);
   const allRelated = this.model.state.kehoach.filter((plan) => versionRootId(plan) === rootId);

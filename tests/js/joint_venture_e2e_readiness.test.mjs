@@ -28,7 +28,7 @@ test("joint-venture relogin readiness tolerates a detached auth overlay", async 
   assert.match(source, /qualified: \["#qualified-so-bctd"\]/);
   assert.match(source, /await saveEvaluationAndWait\(page, httpErrors, pageErrors\);\s+await activateWorkflowTab\(page, "qualified"\);/);
   assert.match(source, /function initialJointVentureEvaluationBarrier/);
-  assert.match(source, /await waitForInitialJointVentureEvaluation\(page\);\s+await page\.locator\("#btn-danhgiahsdt-save"\)\.click\(\)/);
+  assert.match(source, /await waitForInitialJointVentureEvaluation\(page\);\s+const initialSaveButton = page\.locator\("#btn-danhgiahsdt-save"\);\s+await initialSaveButton\.click\(\);\s+const modalDiagnostics = await assertActiveDialog\(page, "Mandatory low-price prompt"\)/);
   assert.match(source, /function twoEnvelopeTechnicalEvaluationBarrier/);
   assert.match(source, /await waitForTwoEnvelopeTechnicalEvaluation\(page\);\s+await saveEvaluationAndWait\(page, httpErrors, pageErrors\)/);
   assert.match(

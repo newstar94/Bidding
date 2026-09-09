@@ -68,6 +68,34 @@ test("lot approval arms the response wait before clicking and waits for rendered
   assert.equal(result.packageRowVersion, 9);
 });
 
+test("lot approval may verify render on a canonical page rehydrated after finalize", async () => {
+  const approvalPage = {
+    waitForResponse: () => Promise.resolve(response()),
+  };
+  const canonicalPage = { name: "canonical-page" };
+  const events = [];
+  await finalizeLotAndWaitForRender({
+    page: approvalPage,
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => events.push("approved"),
+    prepareRenderedState: async ({ lifecycle, page }) => {
+      events.push("rehydrated");
+      assert.equal(page, approvalPage);
+      assert.equal(lifecycle.packageRowVersion, 9);
+      return canonicalPage;
+    },
+    waitForPageCondition: async (renderPage, predicate) => {
+      events.push("rendered");
+      assert.equal(renderPage, canonicalPage);
+      assert.equal(predicate, hasRenderedLotFinalization);
+    },
+  });
+  assert.deepEqual(events, ["approved", "rehydrated", "rendered"]);
+});
+
 test("lot approval reports a failed finalize response instead of timing out", async () => {
   await assert.rejects(finalizeLotAndWaitForRender({
     page: {
@@ -108,6 +136,98 @@ test("lot approval reports a pre-finalize workflow failure without waiting for a
       return { jsonValue: async () => ({ state: "failed", kind: "sync_failed" }) };
     },
   }), /Lot approval failed before finalize: sync_failed/u);
+});
+
+test("lot approval cannot hang when Playwright misses every semantic completion signal", async () => {
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      waitForResponse: () => new Promise(() => {}),
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => new Promise(() => {}),
+    timeout: 20,
+  }), /did not yield an authoritative finalize response/u);
+});
+
+test("lot approval cannot hang after the UI reports success but the response observer misses finalize", async () => {
+  const operation = finalizeLotAndWaitForRender({
+    page: {
+      evaluate: async () => 4,
+      waitForResponse: () => new Promise(() => {}),
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => ({
+      jsonValue: async () => ({ state: "succeeded", kind: "lot" }),
+    }),
+    timeout: 20,
+  });
+  await assert.rejects(Promise.race([
+    operation,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error("regression test deadline expired")),
+      100,
+    )),
+  ]), /settled without an authoritative finalize response/u);
+});
+
+test("lot approval rejects a missing package identity before arming browser observers", async () => {
+  let observerArmed = false;
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      waitForResponse: () => {
+        observerArmed = true;
+        return Promise.resolve(response());
+      },
+    },
+    packageId: undefined,
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => {},
+  }), /package identity is required/u);
+  assert.equal(observerArmed, false);
+});
+
+test("lot approval cannot hang while reading the authoritative response body", async () => {
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      waitForResponse: () => Promise.resolve({
+        ...response(),
+        json: () => new Promise(() => {}),
+      }),
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => {},
+    timeout: 20,
+  }), /response body did not settle/u);
+});
+
+test("lot approval cannot hang after an authoritative response when render stalls", async () => {
+  await assert.rejects(finalizeLotAndWaitForRender({
+    page: {
+      waitForResponse: () => Promise.resolve(response()),
+    },
+    packageId: "package-1",
+    roundsBefore: 0,
+    expectedPackageStatus: "COMPLETED",
+    expectedRenderedStatus: "Đã có kết quả",
+    approve: async () => {},
+    waitForPageCondition: async () => new Promise(() => {}),
+    timeout: 20,
+  }), /render did not converge/u);
 });
 
 test("pending lot approval exposes its failure dialog as a settled operation", () => {

@@ -4,6 +4,8 @@ import { collectFormValues, resetFormState, setFormValues } from "../shared/Form
 import {
   persistAndSync,
   refreshRecordBeforeDelete,
+  showCanonicalSaveCommitted,
+  showLocalSavePending,
   stageLocalRecords,
 } from "../shared/MutationService.js";
 import { canUploadWorkspaceAssets } from "../auth/accessContext.js";
@@ -47,11 +49,12 @@ export async function persistExpertFormChanges(controller, changedExperts, {
     afterLocalDurable: () => {
       const render = controller.view.renderChuyenGiaTable();
       const close = controller.closeModal("modal-chuyengia");
-      controller.view.showToast?.("Đã lưu chuyên gia", "Thông tin chuyên gia đã được lưu.", "success");
+      showLocalSavePending(controller.view, "Chuyên gia");
       return Promise.all([render, close]);
     },
     afterCanonicalSync: async () => {
       await controller.view.renderChuyenGiaTable();
+      showCanonicalSaveCommitted(controller.view, "Chuyên gia");
     },
   });
 }

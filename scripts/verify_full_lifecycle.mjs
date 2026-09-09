@@ -1,4 +1,5 @@
 import process from "node:process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,21 +8,31 @@ import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
 import { createBrowserSessionManager } from "./lib/browserSessionManager.mjs";
 import { isExpectedSyncReset, isExpectedTelemetryBackpressure } from "./lib/e2eHttpErrors.mjs";
+import { selectSingleEvaluationLot } from "./lib/evaluationLotScopeSynchronization.mjs";
 import { finalizeLotAndWaitForRender } from "./lib/lotLifecycleSynchronization.mjs";
 import { reportOpeningFailure } from "./lib/openingFailureDiagnostics.mjs";
 
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
-const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
 
 const runId = `E2E-${Date.now()}`;
+const organizationId = `__${runId.toLowerCase()}-org`;
+const account = {
+  id: `${runId.toLowerCase()}-manager-id`,
+  username: `${runId.toLowerCase()}-manager`,
+  name: `Quản lý vòng đời ${runId}`,
+  email: `${runId.toLowerCase()}@example.invalid`,
+};
+const username = account.username;
+const fixturePayload = { runId, organizationId, account, password };
 const runDigits = String(Date.now()).slice(-9);
 const result = { runId, steps: [] };
-  const pageErrors = [];
-  const httpErrors = [];
+const pageErrors = [];
+const httpErrors = [];
 const recentApiTraffic = [];
+const clientDiagnostics = [];
 process.stdout.write(`[E2E] run ${runId}\n`);
 
 function loadSheetJs() {
@@ -97,10 +108,10 @@ if (generatedExcelFixtures) {
   process.stdout.write(`[E2E] Generated CI Excel fixtures in ${generatedExcelFixtures.directory}\n`);
 }
 // The lifecycle suite exercises every major workflow through a small number of
-// browser sessions. Chromium's Windows headless renderer can retain several
-// gigabytes across the full sequence and eventually stop servicing Playwright
-// even though the application and HTTP server remain healthy. This suite does
-// not test hardware GPU compositing, so disable GPU acceleration while retaining
+// browser sessions. The observed renderer OOM was traced to a promise-wait loop
+// in SyncPushService (see docs/prompt1-renderer-crash-evidence.md), not established
+// as a Chromium transport/GPU defect. This suite does not test hardware GPU
+// compositing, so disable GPU acceleration while retaining
 // Chromium's software rasterizer for deterministic hit-testing. Restart only at
 // server-persisted workflow boundaries.
 const launchOptions = {
@@ -121,6 +132,11 @@ let page = null;
 const configureLifecyclePage = async (nextPage) => {
   nextPage.setDefaultTimeout(20_000);
   nextPage.setDefaultNavigationTimeout(20_000);
+  nextPage.on("crash", () => {
+    const failure = `Lifecycle renderer crashed at ${nextPage.url()}`;
+    pageErrors.push(failure);
+    process.stderr.write(`${failure}\n`);
+  });
   const blockInjectedScript = (route) => route.abort("blockedbyclient");
   await nextPage.route(
     /^https?:\/\/local\.adguard\.org(?::\d+)?(?:\/|$)/i,
@@ -129,9 +145,48 @@ const configureLifecyclePage = async (nextPage) => {
   await nextPage.route(/[?&]type=content-script(?:&|$)/i, blockInjectedScript);
   await nextPage.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
   nextPage.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+  nextPage.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const text = message.text();
+    if (text.includes("ERR_BLOCKED_BY_CLIENT.Inspector")) return;
+    // API response failures are classified with their URL/body by the response
+    // listener below. Chromium also emits this context-free duplicate for the
+    // expected sync-cursor reset response.
+    if (text === "Failed to load resource: the server responded with a status of 409 (Conflict)") return;
+    pageErrors.push(`console: ${text}`);
+  });
   nextPage.on("request", (request) => {
     if (!request.url().includes("/api/")) return;
-    recentApiTraffic.push(`-> ${request.method()} ${new URL(request.url()).pathname}`);
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/client-errors") {
+      try {
+        clientDiagnostics.push(request.postDataJSON());
+        if (clientDiagnostics.length > 8) clientDiagnostics.shift();
+      } catch {
+        clientDiagnostics.push({ unreadable: true });
+      }
+    }
+    let mutationSummary = "";
+    if (pathname === "/api/sync" && request.method() === "POST") {
+      try {
+        const payload = request.postDataJSON();
+        mutationSummary = JSON.stringify({
+          goithau: (payload?.goithau || []).map((item) => ({
+            id: item.id,
+            status: item.trangThai,
+            rowVersion: item.expectedVersion,
+          })),
+          hopdong: (payload?.hopdong || []).map((item) => ({
+            id: item.id,
+            status: item.trangThaiHopDong,
+            rowVersion: item.expectedVersion,
+          })),
+        });
+      } catch {
+        mutationSummary = "<unreadable-sync-payload>";
+      }
+    }
+    recentApiTraffic.push(`-> ${request.method()} ${pathname}${mutationSummary ? ` ${mutationSummary}` : ""}`);
     if (recentApiTraffic.length > 30) recentApiTraffic.shift();
   });
   nextPage.on("response", async (response) => {
@@ -150,13 +205,19 @@ const configureLifecyclePage = async (nextPage) => {
 };
 
 const browserSessions = createBrowserSessionManager({
-  launchServer: () => chromium.launchServer(launchOptions),
-  connect: (server) => chromium.connect({ wsEndpoint: server.wsEndpoint() }),
+  // Use Playwright's direct pipe transport. This is not the renderer OOM fix;
+  // the production pull-promise regression is verified separately.
+  launchServer: async () => null,
+  connect: () => chromium.launch(launchOptions),
   contextOptions: {
     locale: "vi-VN",
     timezoneId: "Asia/Ho_Chi_Minh",
     serviceWorkers: "block",
   },
+  // Restarts occur only after the preceding business transition is committed
+  // to PostgreSQL. Preserve the authenticated session, then rehydrate the
+  // canonical workspace instead of serializing the suite's growing IndexedDB.
+  preserveIndexedDB: false,
   configurePage: configureLifecyclePage,
 });
 
@@ -172,9 +233,45 @@ const mark = (step, details = {}) => {
   process.stdout.write(`[E2E] ${step}\n`);
 };
 
+const lifecycleFixture = (action) => {
+  const execution = spawnSync(
+    process.env.PYTHON || "python",
+    ["scripts/lifecycle_e2e_fixture.py", action],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      input: JSON.stringify(fixturePayload),
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+  if (execution.status !== 0) {
+    throw new Error(`Lifecycle fixture ${action} failed: ${execution.stderr || execution.stdout}`);
+  }
+  return JSON.parse(execution.stdout || "{}");
+};
+
 const waitForPageCondition = (page, predicate, argument = null, options = {}) => (
   page.waitForFunction(predicate, argument, { polling: 100, ...options })
 );
+
+const readPageDiagnosticState = async (page, reader, argument = null) => {
+  let timer;
+  const read = (async () => {
+    const handle = await page.waitForFunction(reader, argument, { timeout: 5_000 });
+    try { return await handle.jsonValue(); }
+    finally { void handle.dispose().catch(() => {}); }
+  })();
+  try {
+    return await Promise.race([read, new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ rendererUnresponsive: true }), 5_000);
+    })]);
+  } catch {
+    return { rendererUnresponsive: true };
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const waitForApp = async (page) => {
   try {
@@ -184,7 +281,7 @@ const waitForApp = async (page) => {
         && getComputedStyle(loader).visibility === "hidden";
     }, null, { timeout: 20_000 });
   } catch (error) {
-    const diagnostics = await page.evaluate(() => {
+    const diagnostics = await readPageDiagnosticState(page, () => {
       const loader = document.getElementById("system-init-loader");
       const sync = document.getElementById("btn-force-sync");
       return {
@@ -198,11 +295,15 @@ const waitForApp = async (page) => {
           opacity: getComputedStyle(loader).opacity,
         } : null,
         reconciliation: sync?.dataset.startupReconciliationPhase || "",
+        bootstrap: document.documentElement.dataset.bfBootstrap || "",
+        release: globalThis.__BIDDINGFLOW_RELEASE__ || "",
+        appReady: Boolean(globalThis.app),
         authVisible: Boolean(document.getElementById("auth-overlay")?.getClientRects().length),
         bodyClasses: document.body.className,
+        recentResources: performance.getEntriesByType("resource").slice(-12).map((entry) => entry.name),
       };
-    }).catch(() => ({ url: page.url(), rendererUnresponsive: true }));
-    throw new Error(`Application loader did not settle: ${JSON.stringify({ diagnostics, pageErrors: pageErrors.slice(-8), httpErrors: httpErrors.slice(-8) })}`, { cause: error });
+    });
+    throw new Error(`Application loader did not settle: ${JSON.stringify({ diagnostics, clientDiagnostics: clientDiagnostics.slice(-4), pageErrors: pageErrors.slice(-8), httpErrors: httpErrors.slice(-8) })}`, { cause: error });
   }
 };
 
@@ -286,6 +387,7 @@ const reloadReady = async (page) => {
 const openPackageWorkflow = async (title, tab = null) => {
   await gotoReady(page, `${baseURL}/goi-thau`);
   await waitForApp(page);
+  await waitForInitialReconciliation(page);
   await page.locator("#search-goithau").fill(title);
   await page.getByText(title, { exact: true }).click();
   if (tab) {
@@ -363,7 +465,235 @@ const submitModal = async (page, formSelector, modalSelector, { diagnostics = nu
   }
 };
 
+const armCanonicalSyncEvidence = (page) => page.waitForResponse((response) => {
+  const url = new URL(response.url());
+  return response.request().method() === "POST" && url.pathname === "/api/sync";
+}, { timeout: 20_000 }).then(async (response) => ({
+  status: response.status(),
+  request: response.request().postDataJSON(),
+  body: await response.text().catch(() => "<unavailable>"),
+})).catch((error) => ({ waitError: error }));
+
+const waitForCanonicalSync = async (page, syncEvidence, label) => {
+  const response = await syncEvidence;
+  if (response.waitError) {
+    const diagnostics = await page.evaluate(() => {
+      const app = globalThis.app;
+      const outbox = app?.model?.getMutationOutboxStatus?.() || {};
+      return {
+        syncState: document.getElementById("btn-force-sync")?.dataset?.syncState || "",
+        pendingMutations: Number(app?._pendingMutationCount || 0),
+        autoSyncPromise: Boolean(app?._autoSyncPromise),
+        autoSyncQueued: Boolean(app?._autoSyncQueued),
+        outbox,
+        toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+          .map((toast) => toast.textContent?.trim() || ""),
+      };
+    }).catch(() => ({ rendererUnresponsive: true }));
+    throw new Error(`${label} canonical sync response was not observed: ${JSON.stringify({
+      diagnostics,
+      recentApiTraffic: recentApiTraffic.slice(-20),
+      httpErrors: httpErrors.slice(-8),
+      pageErrors: pageErrors.slice(-8),
+    })}`, { cause: response.waitError });
+  }
+  let payload = null;
+  try { payload = JSON.parse(response.body); } catch {}
+  if (response.status < 200 || response.status >= 300 || payload?.status === "error") {
+    throw new Error(`${label} canonical sync failed: ${JSON.stringify(response)}`);
+  }
+  await waitForPageCondition(page, () => {
+    const app = globalThis.app;
+    const outbox = app?.model?.getMutationOutboxStatus?.() || {};
+    const activePull = [...(app?._workspacePullFlights?.values?.() || [])]
+      .some((flights) => Number(flights?.size || 0) > 0);
+    return document.getElementById("btn-force-sync")?.dataset?.syncState === "server-saved"
+      && !app?._autoSyncPromise
+      && !app?._autoSyncQueued
+      && !activePull
+      && outbox.state !== "pending"
+      && !app?.model?.hasPendingMutationOutboxChanges?.();
+  }, null, { timeout: 20_000 });
+  return { response, payload };
+};
+
+const armEvaluationSuccessFeedback = async (page, label) => {
+  const token = `${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  await page.evaluate((feedbackToken) => {
+    document.querySelectorAll(".bf-toast.toast-success").forEach((toast) => {
+      toast.dataset.e2eBeforeEvaluationFeedback = feedbackToken;
+    });
+  }, token);
+  return token;
+};
+
+const waitForEvaluationSuccessFeedback = async (page, token, label) => {
+  try {
+    const handle = await waitForPageCondition(page, (feedbackToken) => {
+      const toast = [...document.querySelectorAll(".bf-toast.toast-success:not(.toast-hiding)")]
+        .find((candidate) => (
+          candidate.dataset.e2eBeforeEvaluationFeedback !== feedbackToken
+          && candidate.querySelector(".bf-toast-desc")?.textContent?.includes("báo cáo đánh giá")
+        ));
+      return toast ? {
+        title: toast.querySelector(".bf-toast-title")?.textContent?.trim() || "",
+        message: toast.querySelector(".bf-toast-desc")?.textContent?.trim() || "",
+      } : false;
+    }, token, { timeout: 10_000 });
+    const feedback = await handle.jsonValue();
+    await handle.dispose();
+    if (feedback.title !== "Thành công") {
+      throw new Error(`${label} yielded unexpected success feedback: ${JSON.stringify(feedback)}`);
+    }
+    return feedback;
+  } catch (error) {
+    const diagnostics = await readPageDiagnosticState(page, () => ({
+      dialog: document.querySelector("#modal-custom-dialog.active")?.textContent?.trim() || "",
+      toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+        .map((toast) => toast.textContent?.trim() || ""),
+    }));
+    throw new Error(`${label} success feedback did not settle: ${JSON.stringify(diagnostics)}`, { cause: error });
+  }
+};
+
+const completeBidEvaluationAndWaitForWorkflow = async (page, {
+  label,
+  targetTab,
+  targetSelector,
+}) => {
+  const feedbackToken = await armEvaluationSuccessFeedback(page, label);
+  const syncEvidence = armCanonicalSyncEvidence(page);
+  await page.locator("#btn-danhgiahsdt-save").click({ noWaitAfter: true });
+  await waitForCanonicalSync(page, syncEvidence, label);
+  await waitForRenderedWorkflowTab(page, targetTab);
+  await page.locator(targetSelector).waitFor({ state: "visible", timeout: 20_000 });
+  await waitForEvaluationSuccessFeedback(page, feedbackToken, label);
+  await waitForRenderedWorkflowTab(page, targetTab);
+  await page.locator(targetSelector).waitFor({ state: "visible", timeout: 20_000 });
+};
+
+const waitForAwardApprovalInputs = async (page, expected) => {
+  try {
+    await waitForPageCondition(page, (values) => {
+      const row = document.querySelector("#approve-bidders-tbody tr[data-approve-bid-id]");
+      const submit = document.getElementById("btn-approve-award");
+      return document.getElementById("award-so-bctd")?.value === values.appraisalNumber
+        && document.getElementById("award-ngay-bctd")?.value === values.appraisalDate
+        && document.getElementById("award-decision-no")?.value === values.decisionNumber
+        && document.getElementById("award-decision-date")?.value === values.decisionDate
+        && row?.querySelector(".row-status-select")?.value === "trung"
+        && row?.querySelector(".row-gia-trung")?.value.replace(/\D/g, "") === values.price
+        && row?.querySelector(".row-tg-goithau")?.value === values.packageDuration
+        && row?.querySelector(".row-tg-hopdong")?.value === values.contractDuration
+        && !submit?.disabled
+        && typeof submit?.onclick === "function";
+    }, expected, { timeout: 10_000 });
+  } catch (error) {
+    const diagnostics = await readPageDiagnosticState(page, () => {
+      const row = document.querySelector("#approve-bidders-tbody tr[data-approve-bid-id]");
+      const submit = document.getElementById("btn-approve-award");
+      const wrapper = document.getElementById("detail-workflow-content-wrapper");
+      return {
+        appraisalNumber: document.getElementById("award-so-bctd")?.value || "",
+        appraisalDate: document.getElementById("award-ngay-bctd")?.value || "",
+        decisionNumber: document.getElementById("award-decision-no")?.value || "",
+        decisionDate: document.getElementById("award-decision-date")?.value || "",
+        status: row?.querySelector(".row-status-select")?.value || "",
+        price: row?.querySelector(".row-gia-trung")?.value || "",
+        packageDuration: row?.querySelector(".row-tg-goithau")?.value || "",
+        contractDuration: row?.querySelector(".row-tg-hopdong")?.value || "",
+        submitPresent: Boolean(submit),
+        submitDisabled: Boolean(submit?.disabled),
+        submitHandlerBound: typeof submit?.onclick === "function",
+        renderedTab: wrapper?.dataset.renderedWorkflowTab || "",
+        renderedVersion: wrapper?.dataset.renderedRenderVersion || "",
+        pendingVersion: wrapper?.dataset.pendingRenderVersion || "",
+      };
+    });
+    throw new Error(`Award approval inputs did not stabilize: ${JSON.stringify({ expected, diagnostics })}`, { cause: error });
+  }
+};
+
+const dispatchCurrentAwardApproval = (page, expected) => page.evaluate((values) => {
+  const row = document.querySelector("#approve-bidders-tbody tr[data-approve-bid-id]");
+  const submit = document.getElementById("btn-approve-award");
+  const ready = document.getElementById("award-so-bctd")?.value === values.appraisalNumber
+    && document.getElementById("award-ngay-bctd")?.value === values.appraisalDate
+    && document.getElementById("award-decision-no")?.value === values.decisionNumber
+    && document.getElementById("award-decision-date")?.value === values.decisionDate
+    && row?.querySelector(".row-status-select")?.value === "trung"
+    && row?.querySelector(".row-gia-trung")?.value.replace(/\D/g, "") === values.price
+    && row?.querySelector(".row-tg-goithau")?.value === values.packageDuration
+    && row?.querySelector(".row-tg-hopdong")?.value === values.contractDuration
+    && submit?.isConnected
+    && !submit.disabled
+    && typeof submit.onclick === "function";
+  if (!ready) {
+    throw new Error("The current award approval form was replaced before dispatch.");
+  }
+  submit.dispatchEvent(new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  }));
+}, expected);
+
+const approveAwardAndWaitForRender = async (page, label) => {
+  const generationBefore = await page.locator("html").getAttribute("data-award-approval-generation");
+  await page.locator("#btn-approve-award").click();
+  await waitForPageCondition(page, (previous) => {
+    const root = document.documentElement;
+    return Number(root.dataset.awardApprovalGeneration || 0) > Number(previous || 0)
+      && root.dataset.awardApprovalState
+      && root.dataset.awardApprovalState !== "pending";
+  }, generationBefore, { timeout: 20_000 });
+  const operation = await page.evaluate(() => ({
+    generation: document.documentElement.dataset.awardApprovalGeneration || "",
+    state: document.documentElement.dataset.awardApprovalState || "",
+    kind: document.documentElement.dataset.awardApprovalKind || "",
+  }));
+  if (operation.state !== "succeeded") {
+    const diagnostics = await page.evaluate(() => ({
+      dialog: document.querySelector("#modal-custom-dialog.active")?.innerText || "",
+      invalid: [...document.querySelectorAll('[aria-invalid="true"]')]
+        .map((item) => item.id || item.className),
+      rows: [...document.querySelectorAll("#approve-bidders-tbody tr")].map((row) => ({
+        id: row.getAttribute("data-approve-bid-id") || "",
+        status: row.querySelector(".row-status-select")?.value || "",
+        price: row.querySelector(".row-gia-trung")?.value || "",
+        packageDuration: row.querySelector(".row-tg-goithau")?.value || "",
+        contractDuration: row.querySelector(".row-tg-hopdong")?.value || "",
+      })),
+    }));
+    throw new Error(`${label} failed: ${JSON.stringify({ operation, diagnostics })}`);
+  }
+  await waitForRenderedWorkflowTab(page, "result");
+  await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
+  return operation;
+};
+
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
+
+const selectCurrentOptionByLabel = async (page, selector, label) => {
+  const selectedValue = await page.evaluate(({ targetSelector, targetLabel }) => {
+    const control = document.querySelector(targetSelector);
+    if (!(control instanceof HTMLSelectElement) || !control.isConnected) {
+      throw new Error(`Missing current select ${targetSelector}`);
+    }
+    const option = [...control.options].find((item) => item.textContent?.trim() === targetLabel);
+    if (!option) {
+      throw new Error(`Missing option ${targetLabel} in ${targetSelector}`);
+    }
+    control.value = option.value;
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    return control.value;
+  }, { targetSelector: selector, targetLabel: label });
+  await waitForPageCondition(page, ({ targetSelector, targetValue }) => (
+    document.querySelector(targetSelector)?.value === targetValue
+  ), { targetSelector: selector, targetValue: selectedValue }, { timeout: 10_000 });
+  return selectedValue;
+};
 
 const ensureSelectedValue = async (page, selector, value) => {
   const control = page.locator(selector);
@@ -417,7 +747,10 @@ const waitForOpeningSaveCompletion = async (page) => {
   await select(page, wardSelector, { index: 1 });
 };
 
+let fixtureCreated = false;
 try {
+  lifecycleFixture("setup");
+  fixtureCreated = true;
   await openBrowserSession();
 
   await gotoReady(page, `${baseURL}/dang-nhap`);
@@ -437,9 +770,11 @@ try {
   await page.locator("#cdt-chucvudaidien").fill("Giám đốc");
   await selectFirstAddress(page, "#cdt-tinh", "#cdt-xa");
   await page.locator("#cdt-diachichitiet").fill("01 Đường Kiểm thử E2E");
+  const investorCreateSync = armCanonicalSyncEvidence(page);
   await submitModal(page, "#form-chudautu", "#modal-chudautu", {
     diagnostics: "investor",
   });
+  await waitForCanonicalSync(page, investorCreateSync, "Investor create");
   await page.locator("#search-chudautu").fill(`Chủ đầu tư ${runId}`);
   await waitForVisibleRowText(page, "#chudautu-table tbody tr", `Chủ đầu tư ${runId}`);
   mark("owner-created");
@@ -454,9 +789,11 @@ try {
   await page.locator("#nt-chucvudaidien").fill("Giám đốc");
   await selectFirstAddress(page, "#nt-tinh", "#nt-xa");
   await page.locator("#nt-diachichitiet").fill("02 Đường Kiểm thử E2E");
+  const contractorCreateSync = armCanonicalSyncEvidence(page);
   await submitModal(page, "#form-nhathau", "#modal-nhathau", {
     diagnostics: "contractor",
   });
+  await waitForCanonicalSync(page, contractorCreateSync, "Contractor create");
   await page.locator("#search-nhathau").fill(`Nhà thầu ${runId}`);
   await waitForVisibleRowText(page, "#nhathau-table tbody tr", `Nhà thầu ${runId}`);
   mark("contractor-created");
@@ -471,9 +808,11 @@ try {
     await page.locator("#cg-sochungchi").fill(`${runId}-CC-${ordinal}`);
     await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
     await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
+    const expertCreateSync = armCanonicalSyncEvidence(page);
     await submitModal(page, "#form-chuyengia", "#modal-chuyengia", {
       diagnostics: `expert ${ordinal}`,
     });
+    await waitForCanonicalSync(page, expertCreateSync, `Expert ${ordinal} create`);
     await page.locator("#search-chuyengia").fill(`Chuyên gia ${ordinal} ${runId}`);
     await waitForVisibleRowText(page, "#chuyengia-table tbody tr", `Chuyên gia ${ordinal} ${runId}`);
   };
@@ -636,16 +975,36 @@ try {
   await openingRow.locator(".mt-gia-tri-dam-bao").fill("10000000");
   await openingRow.locator(".mt-hieu-luc-bao-dam-ngay").fill("120");
   await openingRow.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
-  await page.locator("#btn-mothau-save").click();
+  await page.locator("#btn-mothau-save").click({ noWaitAfter: true });
   const openingSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+    const visibility = await readPageDiagnosticState(page, () => {
+      const ancestors = [];
+      for (let element = document.querySelector('button[data-workflow-tab="eval_tech"]'); element; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        ancestors.push({ tag: element.tagName, id: element.id, classes: element.className,
+          hidden: element.hidden, display: style.display, visibility: style.visibility,
+          width: rect.width, height: rect.height });
+      }
+      return { ancestors, rendered: { ...document.getElementById("detail-workflow-content-wrapper")?.dataset } };
+    });
+    const { mkdir } = await import("node:fs/promises");
+    const artifactDirectory = resolve("test-results", "lifecycle");
+    await mkdir(artifactDirectory, { recursive: true });
+    writeFileSync(join(artifactDirectory, `${runId}-opening-visibility.json`), JSON.stringify(visibility));
+    await page.screenshot({ path: join(artifactDirectory, `${runId}-opening-visibility.png`), timeout: 5000 }).catch(() => {});
+    process.stderr.write(`Opening visibility: ${JSON.stringify(visibility)}\n`);
     const state = await page.evaluate(() => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
       dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
       tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
       rowValues: [...document.querySelectorAll("#mothau-table-tbody input")].map((item) => ({ className: item.className, value: item.value })),
     }));
-    throw new Error(`Opening did not advance: ${JSON.stringify(state)}; ${error.message}`);
+    throw new Error(`Opening did not advance: ${JSON.stringify({ state,
+      recentApiTraffic: recentApiTraffic.slice(-20), pageErrors: pageErrors.slice(-8),
+      httpErrors: httpErrors.slice(-8),
+    })}; ${error.message}`);
   });
   await openingSaveCompletion;
   await renewBrowserSession();
@@ -676,34 +1035,12 @@ try {
   if (await evaluationRow.locator(".mt-gia-de-nghi-trung-thau").count()) {
     await evaluationRow.locator(".mt-gia-de-nghi-trung-thau").fill("772200000");
   }
-  await page.locator("#btn-danhgiahsdt-save").click();
-  mark("evaluation-save-clicked");
-  await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
-    const state = await page.evaluate(() => ({
-      dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
-      dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
-      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
-      conclusion: document.querySelector("#danhgiahsdt-table-tbody .mt-ketluan-cell")?.textContent?.trim() || "",
-      saveButton: (() => { const button = document.querySelector("#btn-danhgiahsdt-save"); return button ? { text: button.textContent.trim(), disabled: button.disabled, ariaBusy: button.getAttribute("aria-busy") } : null; })(),
-      startupReconciliation: (() => {
-        const app = globalThis.app;
-        const state = app?.getStartupReconciliationState?.();
-        return state ? { phase: state.phase, workspaceToken: state.workspaceToken, hasPromise: Boolean(state.promise) } : null;
-      })(),
-      activeSync: (() => { const owner = globalThis.app?._autoSyncOwner; return owner ? { workspaceToken: owner.workspaceToken || "", queued: Boolean(owner.queued), hasPromise: Boolean(owner.promise) } : null; })(),
-      evaluationControls: ["danhgiahsdt-goithau-select", "danhgiahsdt-so-baocao", "danhgiahsdt-ngay-baocao", "danhgiahsdt-table-tbody"].map((id) => ({
-        id,
-        count: document.querySelectorAll(`#${id}`).length,
-        value: document.querySelector(`#${id}`)?.value || "",
-        activePane: document.querySelector(`#${id}`)?.closest?.(".tab-pane")?.id || "",
-      })),
-      saveHandler: (() => {
-        const button = document.querySelector("#btn-danhgiahsdt-save");
-        return { onclickType: typeof button?.onclick, onclick: String(button?.onclick || "") };
-      })(),
-    }));
-    throw new Error(`Evaluation did not advance: ${JSON.stringify({ state, pageErrors, httpErrors, recentApiTraffic })}; ${error.message}`);
+  await completeBidEvaluationAndWaitForWorkflow(page, {
+    label: "Primary package evaluation",
+    targetTab: "result",
+    targetSelector: "#award-so-bctd",
   });
+  mark("evaluation-save-clicked");
   mark("evaluation-saved");
   await renewBrowserSession();
   await openPackageWorkflow(`Gói hàng hóa ${runId}`, "result");
@@ -725,31 +1062,14 @@ try {
   mark("award-package-duration-filled");
   await awardRow.locator(".row-tg-hopdong").fill("90 ngày và nghĩa vụ bảo hành");
   mark("award-contract-duration-filled");
-  await page.locator("#btn-approve-award").click();
-  mark("award-approve-clicked");
-  await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
-    const state = await page.evaluate(() => ({
-      dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
-      dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
-      invalid: [...document.querySelectorAll('[aria-invalid="true"]')].map((item) => item.id || item.className),
-      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
-      approval: (() => {
-        const row = document.querySelector("#approve-bidders-tbody tr[data-approve-bid-id]");
-        const field = (selector) => { const item = row?.querySelector(selector); return item ? { value: item.value, border: item.style.border } : null; };
-        const button = document.querySelector("#btn-approve-award");
-        return {
-          status: field(".row-status-select"), price: field(".row-gia-trung"),
-          packageDuration: field(".row-tg-goithau"), contractDuration: field(".row-tg-hopdong"),
-          decisionNo: document.querySelector("#award-decision-no")?.value || "",
-          decisionDate: document.querySelector("#award-decision-date")?.value || "",
-          appraisalNo: document.querySelector("#award-so-bctd")?.value || "",
-          appraisalDate: document.querySelector("#award-ngay-bctd")?.value || "",
-          hasHandler: Boolean(button?.onclick),
-        };
-      })(),
-    }));
-    throw new Error(`Award did not complete: ${JSON.stringify({ state, pageErrors, httpErrors })}; ${error.message}`);
+  await waitForAwardApprovalInputs(page, {
+    appraisalNumber: `${runId}/BC-TD-KQ`, appraisalDate: testClock.date(-5),
+    decisionNumber: `${runId}/QD-KQ`, decisionDate: testClock.date(-4),
+    price: "772200000", packageDuration: "90 ngày",
+    contractDuration: "90 ngày và nghĩa vụ bảo hành",
   });
+  await approveAwardAndWaitForRender(page, "Primary package award approval");
+  mark("award-approve-clicked");
   mark("award-approved");
 
   await reloadReady(page);
@@ -773,7 +1093,7 @@ try {
   mark("contract-basics-filled");
   await select(page, "#hd-chudautuid", { label: `Chủ đầu tư ${runId}` });
   mark("contract-owner-selected");
-  await select(page, "#hd-nhathauid", { label: `Nhà thầu ${runId}` });
+  await selectCurrentOptionByLabel(page, "#hd-nhathauid", `Nhà thầu ${runId}`);
   await page.locator("#hd-giatri").fill("772200000");
   await select(page, "#hd-loai", { label: "Trọn gói" });
   await select(page, "#hd-phanloai", { label: "Khác" });
@@ -782,22 +1102,38 @@ try {
   await page.locator('input[name="hd-goithau-checkbox"]').check();
   await select(page, "#hd-nhanvienphutrach", { index: 1 });
   await select(page, "#hd-trangthai-hopdong", { label: "Đang thực hiện" });
+  const contractCreateSync = armCanonicalSyncEvidence(page);
   await submitModal(page, "#form-hopdong", "#modal-hopdong", {
     diagnostics: "contract create",
   });
+  await waitForCanonicalSync(page, contractCreateSync, "Contract create");
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
   const contractRow = () => page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng ${runId}` });
   await contractRow().waitFor({ state: "visible", timeout: 15_000 });
   await contractRow().getByText("Đang thực hiện", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   mark("contract-created");
+  await restartBrowserSession();
+  await gotoReady(page, `${baseURL}/hop-dong`);
+  await waitForInitialReconciliation(page);
 
   const advanceContractStatus = async (status, liquidationDate = "") => {
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
     await contractRow().waitFor({ state: "visible", timeout: 15_000 });
-    await contractRow().locator('[data-bf-action="edit-contract"]').click();
-    await page.locator("#modal-hopdong.active").waitFor({ state: "visible", timeout: 10_000 });
+    const editButton = contractRow().locator('[data-bf-action="edit-contract"]');
+    const expectedContractId = await editButton.getAttribute("data-id");
+    if (!expectedContractId) throw new Error("Contract edit action does not identify its record.");
+    await editButton.click();
+    // The modal shell becomes visible before the async canonical record lookup
+    // has hydrated the edit form. Wait for the requested record identity, not
+    // merely the shell, before changing fields or submitting.
+    await waitForPageCondition(page, (contractId) => (
+      document.getElementById("modal-hopdong")?.classList.contains("active") === true
+      && document.getElementById("form-hopdong-id")?.value === contractId
+      && document.getElementById("modal-hopdong-title")?.textContent?.includes("Cập nhật")
+    ), expectedContractId, { timeout: 10_000 });
     await select(page, "#hd-trangthai-hopdong", { label: status });
     if (liquidationDate) await page.locator("#hd-ngaythanhly").fill(liquidationDate);
+    const contractSyncEvidence = armCanonicalSyncEvidence(page);
     await page.locator("#form-hopdong button[type='submit']").click({
       force: true,
       noWaitAfter: true,
@@ -806,7 +1142,7 @@ try {
     try {
       await page.locator("#modal-hopdong.active").waitFor({ state: "hidden", timeout: 15_000 });
     } catch (error) {
-      const diagnostics = await page.evaluate(() => {
+      const diagnostics = await readPageDiagnosticState(page, () => {
         const modal = document.getElementById("modal-hopdong");
         const formId = document.getElementById("form-hopdong-id")?.value || "";
         const model = globalThis.app?.model;
@@ -834,16 +1170,54 @@ try {
             hasPromise: Boolean(globalThis.app._autoSyncOwner.promise),
           } : null,
         };
-      }).catch(() => ({ rendererUnresponsive: true }));
+      });
       throw new Error(`Contract status modal did not close: ${JSON.stringify({ diagnostics, recentApiTraffic: recentApiTraffic.slice(-20), httpErrors: httpErrors.slice(-8), pageErrors: pageErrors.slice(-8) })}`, { cause: error });
     }
+    const canonicalSync = await waitForCanonicalSync(
+      page,
+      contractSyncEvidence,
+      `Contract status ${status}`,
+    );
     await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
-    await contractRow().getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+    try {
+      await contractRow().getByText(status, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+    } catch (error) {
+      const diagnostics = await readPageDiagnosticState(page, () => {
+        const model = globalThis.app?.model;
+        return {
+          rows: [...document.querySelectorAll("#hopdong-table tbody tr")]
+            .map((row) => row.innerText.trim()),
+          toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")]
+            .map((toast) => toast.textContent?.trim() || ""),
+          contracts: (model?.state?.hopdong || [])
+            .filter((contract) => String(contract?.tenHopDong || "").includes("Hợp đồng E2E-"))
+            .map((contract) => ({
+              id: contract.id,
+              rootId: contract.rootId,
+              version: contract.phienBan,
+              isLatest: contract.isLatest,
+              status: contract.trangThaiHopDong,
+              rowVersion: contract.rowVersion,
+            })),
+          pendingMutations: Number(globalThis.app?._pendingMutationCount || 0),
+          syncPhase: globalThis.app?.syncState?.phase || "",
+        };
+      });
+      throw new Error(`Contract status did not converge: ${JSON.stringify({
+        expectedStatus: status,
+        sync: canonicalSync,
+        diagnostics,
+        recentApiTraffic: recentApiTraffic.slice(-20),
+        httpErrors: httpErrors.slice(-8),
+        pageErrors: pageErrors.slice(-8),
+      })}`, { cause: error });
+    }
   };
   await advanceContractStatus("Đã hoàn thành");
   mark("contract-completed");
   await renewBrowserSession();
   await gotoReady(page, `${baseURL}/hop-dong`);
+  await waitForInitialReconciliation(page);
   await advanceContractStatus("Đã thanh lý", testClock.date(6));
   mark("contract-liquidated");
 
@@ -1138,7 +1512,7 @@ try {
   await cancelOpeningRow.locator(".mt-gia-tri-dam-bao").fill("5000000");
   await cancelOpeningRow.locator(".mt-hieu-luc-bao-dam-ngay").fill("120");
   await cancelOpeningRow.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
-  await page.locator("#btn-mothau-save").click();
+  await page.locator("#btn-mothau-save").click({ noWaitAfter: true });
   const cancelOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
   try {
     await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
@@ -1198,7 +1572,7 @@ try {
     return dialogTitle === "Thành công"
       || document.getElementById("cancel-dec-no")?.disabled === true;
   }, null, { timeout: 20_000 }).catch(async (error) => {
-    const state = await page.evaluate(() => ({
+    const state = await readPageDiagnosticState(page, () => ({
       dialog: document.querySelector("#modal-custom-dialog.active")?.innerText || "",
       saveButton: (() => {
         const button = document.getElementById("btn-save-cancel-details");
@@ -1212,7 +1586,7 @@ try {
           reason: pkg.lyDoHuy,
         } : null;
       })(),
-    })).catch(() => ({ rendererUnresponsive: true }));
+    }));
     throw new Error(`Package cancellation did not finish rendering: ${JSON.stringify(state)}`, { cause: error });
   });
   if (await page.locator("#modal-custom-dialog.active #dialog-title", { hasText: "Thành công" }).count()) {
@@ -1226,6 +1600,7 @@ try {
 
   await gotoReady(page, `${baseURL}/goi-thau`);
   await waitForApp(page);
+  await waitForInitialReconciliation(page);
   await page.locator("#btn-add-goithau").click();
   await page.locator("#modal-goithau.active").waitFor({ state: "visible", timeout: 10_000 });
   await select(page, "#gt-kehoachid", { label: `Kế hoạch ${runId}` });
@@ -1234,15 +1609,16 @@ try {
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.locator("#gt-ma").fill(`${runId}-GT-REBID`);
   await page.locator("#gt-ten").fill(`Gói đấu thầu lại ${runId}`);
+  const rebidCreateSync = armCanonicalSyncEvidence(page);
   await page.locator("#form-goithau button[type='submit']").click();
   await page.locator("#modal-goithau.active").waitFor({ state: "hidden", timeout: 20_000 });
+  await waitForCanonicalSync(page, rebidCreateSync, "Rebid package create");
   await page.locator("#search-goithau").fill(`Gói đấu thầu lại ${runId}`);
   await waitForVisibleRowText(page, "#goithau-table tbody tr", `Gói đấu thầu lại ${runId}`);
   mark("package-rebid-created");
 
-  await page.locator("#search-goithau").fill(twoEnvelopePackage);
-  await page.getByText(twoEnvelopePackage, { exact: true }).click();
-  await page.locator('button[data-workflow-tab="preparation_action"]').click();
+  await restartBrowserSession();
+  await openPackageWorkflow(twoEnvelopePackage, "preparation_action");
   await page.locator('button[data-fn="phatHanhHsmtGoiThau"]').click();
   await page.locator("#modal-phathanh-hsmt.active").waitFor({ state: "visible", timeout: 10_000 });
   await page.locator("#phathanh-magoithau").fill(`${runId}-GT-2T`);
@@ -1274,7 +1650,7 @@ try {
   await technicalOpeningRow.locator(".mt-dam-bao-du-thau").fill("5000000");
   await technicalOpeningRow.locator(".mt-hieu-luc-dam-bao").fill("120");
   await technicalOpeningRow.locator(".mt-hieu-luc-hsdxt").fill("90");
-  await page.locator("#btn-mothau-save").click();
+  await page.locator("#btn-mothau-save").click({ noWaitAfter: true });
   const technicalOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 });
   await technicalOpeningSaveCompletion;
@@ -1340,30 +1716,11 @@ try {
   }, null, { timeout: 10_000 });
   await page.locator("#danhgiahsdt-so-baocao").fill(`${runId}/BC-DG-KT`);
   await page.locator("#danhgiahsdt-ngay-baocao").fill(testClock.date(-2));
-  const technicalEvaluationSubmission = await page.evaluate(() => ({
-    packageId: document.getElementById("danhgiahsdt-goithau-select")?.value || "",
-    reportNumber: document.getElementById("danhgiahsdt-so-baocao")?.value || "",
-    reportDate: document.getElementById("danhgiahsdt-ngay-baocao")?.value || "",
-    technical: document.querySelector("#danhgiahsdt-table-tbody .mt-dg-ky-thuat")?.value || "",
-    conclusion: document.querySelector("#danhgiahsdt-table-tbody .mt-ketluan-cell")?.textContent?.trim() || "",
-  }));
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await page.locator('button[data-workflow-tab="qualified"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
-    const state = await page.evaluate(() => ({
-      tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
-      evaluation: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")].map((row) => ({
-        bidId: row.getAttribute("data-bid-id"),
-        validity: row.querySelector(".mt-dg-hop-le")?.value || "",
-        capacity: row.querySelector(".mt-dg-nang-luc")?.value || "",
-        technical: row.querySelector(".mt-dg-ky-thuat")?.value || "",
-        conclusion: row.querySelector(".mt-ketluan-cell")?.textContent?.trim() || "",
-      })),
-      content: document.getElementById("detail-workflow-content-wrapper")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 700) || "",
-    }));
-    throw new Error(`Technical evaluation did not expose qualified approval: ${JSON.stringify({ technicalEvaluationSubmission, state, pageErrors, httpErrors })}; ${error.message}`);
+  await completeBidEvaluationAndWaitForWorkflow(page, {
+    label: "Two-envelope technical evaluation",
+    targetTab: "qualified",
+    targetSelector: "#qualified-so-bctd",
   });
-  await page.locator('button[data-workflow-tab="qualified"]').click();
-  await waitForRenderedWorkflowTab(page, "qualified");
   await page.locator("#qualified-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
     const state = await page.evaluate(() => ({
       selectedTab: document.querySelector('[data-workflow-tab][aria-selected="true"]')?.getAttribute("data-workflow-tab") || "",
@@ -1445,10 +1802,11 @@ try {
       throw new Error("Automatic ranking was not calculated");
     }
   }
-  await page.locator("#btn-danhgiahsdt-save").click();
-  await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
-  await page.locator('button[data-workflow-tab="result"]').click();
-  await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 });
+  await completeBidEvaluationAndWaitForWorkflow(page, {
+    label: "Two-envelope financial evaluation",
+    targetTab: "result",
+    targetSelector: "#award-so-bctd",
+  });
   mark("two-envelope-financial-evaluation-saved");
   await renewBrowserSession();
   await openPackageWorkflow(twoEnvelopePackage, "result");
@@ -1462,8 +1820,13 @@ try {
   await twoEnvelopeAwardRow.locator(".row-gia-trung").fill("445500000");
   await twoEnvelopeAwardRow.locator(".row-tg-goithau").fill("90 ngày");
   await twoEnvelopeAwardRow.locator(".row-tg-hopdong").fill("90 ngày và nghĩa vụ bảo hành");
-  await page.locator("#btn-approve-award").click();
-  await page.locator(".award-result-card").waitFor({ state: "visible", timeout: 20_000 });
+  await waitForAwardApprovalInputs(page, {
+    appraisalNumber: `${runId}/BC-TD-2T-KQ`, appraisalDate: testClock.date(3),
+    decisionNumber: `${runId}/QD-2T-KQ`, decisionDate: testClock.date(4),
+    price: "445500000", packageDuration: "90 ngày",
+    contractDuration: "90 ngày và nghĩa vụ bảo hành",
+  });
+  await approveAwardAndWaitForRender(page, "Two-envelope award approval");
   mark("two-envelope-award-approved");
 
   await restartBrowserSession();
@@ -1497,6 +1860,8 @@ try {
   await page.locator("#btn-dialog-ok").click();
   await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
   await lotOpeningSync;
+  await restartBrowserSession();
+  await openPackageWorkflow(lotPackage, "opening");
   await page.locator("#btn-mothau-save").waitFor({ state: "visible", timeout: 15_000 }).catch(async (error) => {
     const browserState = await page.evaluate((expectedName) => {
       const pkg = globalThis.app?.model?.state?.goithau?.find?.(
@@ -1550,10 +1915,10 @@ try {
     await row.locator(".mt-hieu-luc-bao-dam-ngay").fill("120");
     await row.locator(".mt-thoi-gian-thuc-hien").fill("90 ngày");
   }
-  await page.locator("#btn-mothau-save").click();
+  await page.locator("#btn-mothau-save").click({ noWaitAfter: true });
   const lotOpeningSaveCompletion = waitForOpeningSaveCompletion(page);
   await page.locator('button[data-workflow-tab="eval_tech"]').waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
-    const state = await page.evaluate(() => ({
+    const state = await readPageDiagnosticState(page, () => ({
       dialogTitle: document.querySelector("#modal-custom-dialog.active #dialog-title")?.textContent || "",
       dialogMessage: document.querySelector("#modal-custom-dialog.active #dialog-message")?.textContent || "",
       tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
@@ -1572,21 +1937,10 @@ try {
   mark("lot-opening-saved", { lots: 2 });
 
   const evaluateCurrentLot = async ({ lotCode, reportSuffix, price }) => {
-    const selectedMode = page.locator('input[name="danhgiahsdt-scope-mode"][value="selected"]');
-    if (await selectedMode.count()) {
-      await selectedMode.check();
-      const optionLabels = page.locator("#danhgiahsdt-lot-options label");
-      for (const optionText of await optionLabels.allTextContents()) {
-        if (optionText.includes(lotCode)) continue;
-        const unwanted = page.locator("#danhgiahsdt-lot-options label")
-          .filter({ hasText: optionText.trim() })
-          .locator("input");
-        if (await unwanted.isChecked()) await unwanted.uncheck();
-      }
-      const lotChoice = page.locator("#danhgiahsdt-lot-options label").filter({ hasText: lotCode }).locator("input");
-      await lotChoice.waitFor({ state: "visible", timeout: 10_000 });
-      if (!await lotChoice.isChecked()) await lotChoice.check();
-    }
+    await selectSingleEvaluationLot({
+      page,
+      lotCode,
+    });
     const row = page.locator("#danhgiahsdt-table-tbody tr[data-bid-id]").filter({ hasText: lotCode }).first();
     await waitForPageCondition(page, (code) => {
       const selectedLotInputs = [...document.querySelectorAll("#danhgiahsdt-lot-options [data-evaluation-lot-id]:checked")];
@@ -1601,7 +1955,7 @@ try {
           return control && !control.disabled;
         });
     }, lotCode, { timeout: 15_000 }).catch(async (error) => {
-      const state = await page.evaluate((code) => ({
+      const state = await readPageDiagnosticState(page, (code) => ({
         tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
           selectedLot: [...document.querySelectorAll("#danhgiahsdt-table-tbody tr[data-bid-id]")]
           .filter((item) => item.textContent?.includes(code))
@@ -1648,9 +2002,11 @@ try {
     if (await lowPriceAcceptance.isVisible()) {
       await lowPriceAcceptance.check();
     }
-    await page.locator("#btn-danhgiahsdt-save").click();
-    await page.locator('button[data-workflow-tab="result"]').waitFor({ state: "visible", timeout: 20_000 });
-    await page.locator('button[data-workflow-tab="result"]').click();
+    await completeBidEvaluationAndWaitForWorkflow(page, {
+      label: `Lot ${lotCode} evaluation`,
+      targetTab: "result",
+      targetSelector: "#award-so-bctd",
+    });
     await page.locator("#award-so-bctd").waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
       const state = await page.evaluate(() => ({
         tabs: [...document.querySelectorAll("[data-workflow-tab]")].map((item) => item.getAttribute("data-workflow-tab")),
@@ -1669,25 +2025,52 @@ try {
   };
 
   const approveCurrentLot = async ({ sequence, price, expectedPackageStatus }) => {
-    await page.locator("#award-so-bctd").fill(`${runId}/BC-TD-LOT-${sequence}`);
-    await page.locator("#award-ngay-bctd").fill(sequence === 1 ? testClock.date(7) : testClock.date(10));
-    await page.locator("#award-decision-no").fill(`${runId}/QD-LOT-${sequence}`);
-    await page.locator("#award-decision-date").fill(sequence === 1 ? testClock.date(8) : testClock.date(11));
+    const appraisalNumber = `${runId}/BC-TD-LOT-${sequence}`;
+    const appraisalDate = sequence === 1 ? testClock.date(7) : testClock.date(10);
+    const decisionNumber = `${runId}/QD-LOT-${sequence}`;
+    const decisionDate = sequence === 1 ? testClock.date(8) : testClock.date(11);
+    await page.locator("#award-so-bctd").fill(appraisalNumber);
+    await page.locator("#award-ngay-bctd").fill(appraisalDate);
+    await page.locator("#award-decision-no").fill(decisionNumber);
+    await page.locator("#award-decision-date").fill(decisionDate);
     const row = page.locator("#approve-bidders-tbody tr[data-approve-bid-id]").first();
     await row.locator(".row-status-select").selectOption("trung", { force: true });
     await row.locator(".row-gia-trung").fill(price);
     await row.locator(".row-tg-goithau").fill("90 ngày");
     await row.locator(".row-tg-hopdong").fill("90 ngày và nghĩa vụ bảo hành");
+    const expectedInputs = {
+      appraisalNumber,
+      appraisalDate,
+      decisionNumber,
+      decisionDate,
+      price,
+      packageDuration: "90 ngày",
+      contractDuration: "90 ngày và nghĩa vụ bảo hành",
+    };
+    await waitForAwardApprovalInputs(page, expectedInputs);
     const roundsBefore = await page.locator(".evaluation-round-card").count();
+    const activeLotPackageId = await page.locator("#detail-workflow-content-wrapper")
+      .getAttribute("data-rendered-package-id");
+    if (!activeLotPackageId) throw new Error("Lot award approval is missing the active package identity.");
     return finalizeLotAndWaitForRender({
       page,
-      packageId: lotPackage.id,
+      packageId: activeLotPackageId,
       roundsBefore,
       expectedPackageStatus,
       expectedRenderedStatus: expectedPackageStatus === "COMPLETED"
         ? "Đã có kết quả"
         : "Đã có kết quả một phần",
-      approve: () => page.locator("#btn-approve-award").click(),
+      approve: async () => {
+        // Arm the authoritative response/operation observers first, then
+        // atomically confirm and dispatch against the currently bound submit.
+        await waitForAwardApprovalInputs(page, expectedInputs);
+        await dispatchCurrentAwardApproval(page, expectedInputs);
+      },
+      prepareRenderedState: async () => {
+        await restartBrowserSession();
+        await openPackageWorkflow(lotPackage, "result");
+        return page;
+      },
       waitForPageCondition,
     });
   };
@@ -1921,5 +2304,8 @@ try {
   await browserSessions.close().catch(() => {});
   if (generatedExcelFixtures) {
     rmSync(generatedExcelFixtures.directory, { recursive: true, force: true });
+  }
+  if (fixtureCreated) {
+    process.stdout.write(`[E2E] fixture-removed ${JSON.stringify(lifecycleFixture("cleanup"))}\n`);
   }
 }

@@ -4,10 +4,14 @@ const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME |
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 if (!password) console.warn("E2E_PASSWORD or ADMIN_PASSWORD is not configured; proceeding with empty password.");
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ browserName, context }) => {
   // Keep the browser matrix deterministic when host-level traffic filters
-  // inject their own userscripts into Playwright's temporary profiles.
-  await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  // inject their own userscripts into Firefox's temporary profile. Playwright
+  // routing disables the HTTP cache for the entire context, so do not install
+  // this Firefox-only workaround in Chromium or WebKit.
+  if (browserName === "firefox") {
+    await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  }
 });
 
 async function waitForApp(page) {
@@ -18,26 +22,52 @@ async function waitForApp(page) {
   }, undefined, { timeout: 30_000 });
 }
 
-async function expectFilterDropdownToOpen(context, route, selectId) {
-  // Route restoration is document-owned. Test each cold route in its own page
-  // so a late callback from one route cannot cancel navigation for the next.
-  const page = await context.newPage();
-  try {
-    await page.goto(route, { waitUntil: "domcontentloaded" });
-    await waitForApp(page);
-
-    const combobox = page.locator(`${selectId}-combobox`);
-    await expect(combobox).toBeVisible();
-    await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
-    await combobox.click();
-    await expect(combobox).toHaveAttribute("aria-expanded", "true");
-
-    const listboxId = await combobox.getAttribute("aria-controls");
-    expect(listboxId).toBeTruthy();
-    await expect(page.locator(`#${listboxId}`)).toBeVisible();
-  } finally {
-    await page.close();
+async function loginWithBrowserTransport(page) {
+  if (!/^https?:/u.test(page.url())) {
+    const browserReady = await page.goto("/health/live", { waitUntil: "domcontentloaded" });
+    expect(browserReady?.ok()).toBe(true);
   }
+  const login = await page.evaluate(async (credentials) => {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    return { ok: response.ok, status: response.status, body: await response.text() };
+  }, { username, password, remember: false });
+  expect(login.ok, login.body).toBe(true);
+}
+
+async function expectFilterDropdownToOpen(page, route, selectId) {
+  const browserName = page.context().browser()?.browserType().name();
+  if (/^https?:/u.test(page.url()) && browserName !== "firefox") {
+    // These assertions cover route navigation and filter behavior. Reuse the
+    // authenticated application document so each route module loads once;
+    // authenticated cold startup is covered by the dedicated scenario above.
+    await page.evaluate((target) => {
+      history.pushState({}, "", target);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, route);
+    await page.waitForURL((url) => url.pathname === route);
+  } else {
+    // Firefox can retain a host-injected callback across top-level navigation.
+    if (/^https?:/u.test(page.url())) {
+      await page.goto("about:blank", { waitUntil: "commit" });
+    }
+    await page.goto(route, { waitUntil: "commit" });
+    await waitForApp(page);
+  }
+
+  const combobox = page.locator(`${selectId}-combobox`);
+  await expect(combobox).toBeVisible();
+  await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
+  await combobox.click();
+  await expect(combobox).toHaveAttribute("aria-expanded", "true");
+
+  const listboxId = await combobox.getAttribute("aria-controls");
+  expect(listboxId).toBeTruthy();
+  await expect(page.locator(`#${listboxId}`)).toBeVisible();
 }
 
 test("authenticated cold load hydrates icons and navigation handlers", async ({ page }) => {
@@ -58,12 +88,15 @@ test("authenticated cold load hydrates icons and navigation handlers", async ({ 
     }
   });
 
-  const login = await page.context().request.post("/api/auth/login", {
-    data: { username, password, remember: false },
-  });
-  expect(login.ok()).toBe(true);
+  // Reuse the browser transport warmed by /health/live. On filtered Windows
+  // hosts, opening a second APIRequest transport here can time out even while
+  // the browser's already-established same-origin connection remains healthy.
+  await loginWithBrowserTransport(page);
 
-  const response = await page.goto("/tong-quan", { waitUntil: "domcontentloaded" });
+  // The app exposes its own first-frame and loader readiness contracts below.
+  // Waiting for DOMContentLoaded here lets host-injected parser scripts hold
+  // Firefox's navigation open even after BiddingFlow has received a 200.
+  const response = await page.goto("/tong-quan", { waitUntil: "commit" });
   expect(response?.ok()).toBe(true);
   // Keep readiness polling inside the page. Repeated Playwright evaluate calls
   // can deadlock Firefox trace snapshots while Lucide replaces the initial
@@ -85,10 +118,7 @@ test("authenticated cold load hydrates icons and navigation handlers", async ({ 
 });
 
 test("primary route module warms once and navigation reuses the loaded module", async ({ page }) => {
-  const login = await page.context().request.post("/api/auth/login", {
-    data: { username, password, remember: false },
-  });
-  expect(login.ok()).toBe(true);
+  await loginWithBrowserTransport(page);
 
   await page.route("**/service-worker.js?**", (route) => route.abort());
   let chunkRequests = 0;
@@ -97,7 +127,7 @@ test("primary route module warms once and navigation reuses the loaded module", 
     await route.continue();
   });
 
-  const response = await page.goto("/tong-quan", { waitUntil: "domcontentloaded" });
+  const response = await page.goto("/tong-quan", { waitUntil: "commit" });
   expect(response?.ok()).toBe(true);
   await waitForApp(page);
 
@@ -110,22 +140,21 @@ test("primary route module warms once and navigation reuses the loaded module", 
 });
 
 test("required browser renders public routes, shell, and filter dropdowns", async ({ page }) => {
-  const landing = await page.goto("/", { waitUntil: "domcontentloaded" });
+  const landing = await page.goto("/", { waitUntil: "commit" });
   expect(landing?.ok()).toBe(true);
   await expect(page.locator('[data-bf-shell="landing"]')).toBeVisible();
+  await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", await page.locator("body").evaluate((body) => body.clientWidth));
 
-  const legal = await page.goto("/legal", { waitUntil: "domcontentloaded" });
+  const legal = await page.goto("/legal", { waitUntil: "commit" });
   expect(legal?.ok()).toBe(true);
   await expect(page.locator('[data-bf-shell="legal"]')).toBeVisible();
+  await expect(page.locator("body")).toHaveClass(/legal-ready/u);
 
-  await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
+  await page.goto("/dang-nhap", { waitUntil: "commit" });
   await waitForApp(page);
   await expect(page.locator("#form-auth-login")).toBeVisible();
-  const loginResponse = await page.context().request.post("/api/auth/login", {
-    data: { username, password, remember: false },
-  });
-  expect(loginResponse.ok()).toBe(true);
+  await loginWithBrowserTransport(page);
 
   // AuthShell on the public login document observes the newly-created session
   // and may schedule its own redirect. Retire that document before navigating
@@ -133,7 +162,7 @@ test("required browser renders public routes, shell, and filter dropdowns", asyn
   const context = page.context();
   await page.close();
   const workspacePage = await context.newPage();
-  const workspace = await workspacePage.goto("/tong-quan", { waitUntil: "domcontentloaded" });
+  const workspace = await workspacePage.goto("/tong-quan", { waitUntil: "commit" });
   expect(workspace?.ok()).toBe(true);
   await waitForApp(workspacePage);
 
@@ -144,7 +173,12 @@ test("required browser renders public routes, shell, and filter dropdowns", asyn
   await expect(workspacePage.locator("#profile-dropdown-menu")).toHaveClass(/active/);
   await workspacePage.close();
 
-  await expectFilterDropdownToOpen(context, "/goi-thau", "#filter-goithau-trangthai");
-  await expectFilterDropdownToOpen(context, "/ke-hoach", "#filter-kehoach-nam");
-  await expectFilterDropdownToOpen(context, "/hop-dong", "#filter-hopdong-nam");
+  const filterPage = await context.newPage();
+  try {
+    await expectFilterDropdownToOpen(filterPage, "/goi-thau", "#filter-goithau-trangthai");
+    await expectFilterDropdownToOpen(filterPage, "/ke-hoach", "#filter-kehoach-nam");
+    await expectFilterDropdownToOpen(filterPage, "/hop-dong", "#filter-hopdong-nam");
+  } finally {
+    await filterPage.close();
+  }
 });

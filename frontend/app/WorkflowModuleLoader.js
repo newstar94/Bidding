@@ -8,7 +8,6 @@ const BIDDING_METHODS = new Set([
   "addGiaHanRow",
   "deleteGoiThau",
   "deleteKeHoach",
-  "editGoiThau",
   "editKeHoach",
   "enforceSingleLeader",
   "moThauGoiThau",
@@ -38,6 +37,10 @@ const STATIC_WORKFLOW_METHODS = new Set([
   "triggerExcelTemplateDownload",
 ]);
 
+const PACKAGE_EDITOR_METHODS = new Set([
+  "editGoiThau",
+]);
+
 const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../shared/BiddingCalculations.js"),
   () => import("../packages/BidEvaluationWorkflow.js"),
@@ -49,6 +52,15 @@ const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../procurement/OpeningImportWizard.js"),
   () => import("../packages/GoiThauWorkflow.js"),
   () => import("../packages/BidProcessWorkflow.js"),
+  () => import("../shared/FormSubTables.js"),
+  () => import("../shared/PartnerHelpers.js"),
+]);
+
+const PACKAGE_EDITOR_WORKFLOW_IMPORTERS = Object.freeze([
+  // Package persistence updates the linked plan total. Keep that invariant in
+  // the focused editor graph even when the full bidding group has not loaded.
+  () => import("../plans/KeHoachWorkflow.js"),
+  () => import("../packages/GoiThauWorkflow.js"),
   () => import("../shared/FormSubTables.js"),
   () => import("../shared/PartnerHelpers.js"),
 ]);
@@ -103,6 +115,13 @@ export async function importBiddingWorkflowsSequentially({
   return Object.freeze(workflowModule);
 }
 
+export async function importPackageEditorWorkflows() {
+  const workflowModules = await Promise.all(
+    PACKAGE_EDITOR_WORKFLOW_IMPORTERS.map((importWorkflowModule) => importWorkflowModule()),
+  );
+  return Object.freeze(Object.assign(Object.create(null), ...workflowModules));
+}
+
 export function workflowRequirementForRoute(tabName, action = null) {
   if (BIDDING_ROUTES.has(tabName)) return "bidding";
   if (action !== "taomoi") return null;
@@ -112,6 +131,7 @@ export function workflowRequirementForRoute(tabName, action = null) {
 }
 
 export function workflowRequirementForMethod(methodName) {
+  if (PACKAGE_EDITOR_METHODS.has(methodName)) return "package-editor";
   if (BIDDING_METHODS.has(methodName)) return "bidding";
   if (PARTNER_METHODS.has(methodName)) return "partner";
   if (STATIC_WORKFLOW_METHODS.has(methodName)) return null;
@@ -121,6 +141,7 @@ export function workflowRequirementForMethod(methodName) {
 export class WorkflowModuleLoader {
   constructor({
     importBidding = importBiddingWorkflowsSequentially,
+    importPackageEditor = importPackageEditorWorkflows,
     importPartner = () => import("../partners/PartnerWorkflows.js"),
     install,
   }) {
@@ -129,11 +150,13 @@ export class WorkflowModuleLoader {
     }
     this.importers = {
       bidding: importBidding,
+      "package-editor": importPackageEditor,
       partner: importPartner,
     };
     this.install = install;
     this.states = {
       bidding: { ready: false, promise: null },
+      "package-editor": { ready: false, promise: null },
       partner: { ready: false, promise: null },
       all: { promise: null },
     };
@@ -143,6 +166,7 @@ export class WorkflowModuleLoader {
     if (group === "all") {
       return this.states.bidding.ready && this.states.partner.ready;
     }
+    if (group === "package-editor" && this.states.bidding.ready) return true;
     return Boolean(this.states[group]?.ready);
   }
 
@@ -157,7 +181,8 @@ export class WorkflowModuleLoader {
   ensureOne(group) {
     const state = this.states[group];
     if (state.promise) return state.promise;
-    if (state.ready) {
+    if (this.isReady(group)) {
+      state.ready = true;
       state.promise = Promise.resolve();
       return state.promise;
     }

@@ -10,7 +10,10 @@ from backend.shared.access_principals import (
     is_assignment_scoped_active_role,
     is_organization_manager,
 )
-from backend.shared.access_policy import ASSIGNED_TABLE_TYPES
+from backend.shared.access_policy import (
+    ASSIGNED_TABLE_TYPES,
+    existing_lineage_identifiers,
+)
 from backend.sync.request_contract import sync_batch_size
 
 
@@ -68,16 +71,12 @@ def augment_default_assignments(
             }
             lookup_ids.discard(None)
             lookup_ids.discard("")
-            existing = set()
-            ordered_ids = sorted(lookup_ids)
-            for start in range(0, len(ordered_ids), 500):
-                chunk = ordered_ids[start:start + 500]
-                placeholders = ", ".join("?" for _ in chunk)
-                rows = cursor.execute(
-                    f"SELECT id FROM {table} WHERE organization_id = ? AND id IN ({placeholders})",
-                    (actor.organization_id, *chunk),
-                ).fetchall()
-                existing.update(str(row[0]) for row in rows)
+            existing = existing_lineage_identifiers(
+                cursor,
+                actor.organization_id,
+                table,
+                lookup_ids,
+            )
             for item in records:
                 record_id = clean_id(item.get("id"))
                 root_id = clean_id(item.get("rootId") or item.get("id_goc")) or record_id

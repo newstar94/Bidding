@@ -5,6 +5,57 @@ import {
   isPlanBreakdownEditSessionActive,
 } from "../plans/planBreakdownDraft.js";
 
+export const CANONICAL_SAVE_STATUS = Object.freeze({
+  LOCAL_DURABLE: "LOCAL_DURABLE",
+  REMOTE_PENDING: "REMOTE_PENDING",
+  CANONICAL_COMMITTED: "CANONICAL_COMMITTED",
+  CANONICAL_REJECTED: "CANONICAL_REJECTED",
+  CONFLICT: "CONFLICT",
+  OFFLINE_PENDING: "OFFLINE_PENDING",
+});
+
+export function classifyCanonicalSyncResult(result, { online = globalThis.navigator?.onLine !== false } = {}) {
+  if (result?.conflict === true
+    || result?.conflictQuarantined === true
+    || result?.reloadRequired === true
+    || result?.status === 409) {
+    return CANONICAL_SAVE_STATUS.CONFLICT;
+  }
+  if (result?.ok === true
+    && result?.localMutationsPending !== true
+    && !result?.requiredActiveRole) {
+    return CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED;
+  }
+  if (online === false || result?.transport === true) {
+    return CANONICAL_SAVE_STATUS.OFFLINE_PENDING;
+  }
+  if (result?.ok === true && result?.localMutationsPending === true) {
+    return CANONICAL_SAVE_STATUS.REMOTE_PENDING;
+  }
+  return CANONICAL_SAVE_STATUS.CANONICAL_REJECTED;
+}
+
+export async function awaitCanonicalSyncResult(result) {
+  if (!result?.syncPromise) return result;
+  return await result.syncPromise;
+}
+
+export function showLocalSavePending(view, entityLabel) {
+  view?.showToast?.(
+    "Đã lưu trên thiết bị",
+    `Đã lưu trên thiết bị. ${entityLabel} đang chờ máy chủ xác nhận.`,
+    "warning",
+  );
+}
+
+export function showCanonicalSaveCommitted(view, entityLabel) {
+  view?.showToast?.(
+    `Đã lưu ${entityLabel.toLowerCase()}`,
+    `${entityLabel} đã được máy chủ xác nhận.`,
+    "success",
+  );
+}
+
 function explicitTableChanges(changes, table) {
   if (!changes || typeof changes !== "object") return null;
   const hasUpserts = Object.prototype.hasOwnProperty.call(changes.upserts || {}, table);
@@ -135,23 +186,50 @@ export async function persistAndSync(controller, tableKeys, {
     if (!backgroundSync && usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
       await afterPersist();
     }
-    if (syncResult?.ok !== false && typeof afterCanonicalSync === "function") {
+    const canonicalStatus = classifyCanonicalSyncResult(syncResult);
+    const canonicalResult = { ...syncResult, canonicalStatus };
+    if (
+      canonicalStatus === CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED
+      && typeof afterCanonicalSync === "function"
+    ) {
       await phaseCoordinator.afterCanonicalSync(keys.join(","), afterCanonicalSync);
     }
-    return syncResult;
+    return backgroundSync ? canonicalResult : syncResult;
   };
   if (backgroundSync) {
     const localCallback = afterLocalDurable || afterPersist;
+    let localPhaseCompletion = null;
     if (typeof localCallback === "function") {
       // The local state and outbox are durable now. Render that state
-      // immediately without making delayed pagination part of the save path.
-      phaseCoordinator.afterLocalDurable(localCallback);
+      // immediately. The caller still returns without waiting, while remote
+      // reconciliation starts only after this local phase has settled so it
+      // cannot invalidate the resources used to close the modal or paint the
+      // durable projection.
+      localPhaseCompletion = phaseCoordinator.afterLocalDurable(localCallback);
     }
-    const syncPromise = startRemoteSync();
+    const scheduledWorkspaceToken = model?.getWorkspaceToken?.() || "";
+    const beginRemoteSync = () => {
+      if (
+        scheduledWorkspaceToken
+        && typeof model?.isWorkspaceCurrent === "function"
+        && !model.isWorkspaceCurrent(scheduledWorkspaceToken)
+      ) {
+        return {
+          ok: false,
+          code: "WORKSPACE_CHANGED",
+          workspaceChanged: true,
+          canonicalStatus: CANONICAL_SAVE_STATUS.CANONICAL_REJECTED,
+        };
+      }
+      return startRemoteSync();
+    };
+    const syncPromise = localPhaseCompletion
+      ? Promise.resolve(localPhaseCompletion).then(beginRemoteSync)
+      : beginRemoteSync();
     // Once IndexedDB and the outbox are durable, the workspace lease no longer
-    // needs to be held by network latency. autoSync captures the current scope
-    // synchronously before this release, so a later workspace switch cannot
-    // redirect the request to another tenant.
+    // needs to be held by local painting or network latency. A delayed local
+    // phase is fenced by the captured workspace token before it can start the
+    // remote request, so a later workspace switch cannot redirect the request.
     if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
     // autoSync owns user-visible error/conflict reporting. This handler only
     // prevents a caller that intentionally does not await the background work
@@ -159,7 +237,14 @@ export async function persistAndSync(controller, tableKeys, {
     void syncPromise.catch((error) => {
       console.error("Background synchronization failed:", error);
     });
-    return { ok: true, local: true, queued: true, syncPromise };
+    return {
+      ok: true,
+      local: true,
+      queued: true,
+      localStatus: CANONICAL_SAVE_STATUS.LOCAL_DURABLE,
+      canonicalStatus: CANONICAL_SAVE_STATUS.REMOTE_PENDING,
+      syncPromise,
+    };
   }
   if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
   return await startRemoteSync();

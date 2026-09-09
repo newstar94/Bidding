@@ -1,15 +1,34 @@
 import { expect, test } from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 
-const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
-const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 const planCode = String(process.env.E2E_PROCUREMENT_PLAN_CODE || "PL2600000001");
 const fixtureReady = Boolean(
-  password
-  && String(process.env.VNEPS_PROCUREMENT_IMPORT_ENABLED || "").toLowerCase() === "true"
+  String(process.env.VNEPS_PROCUREMENT_IMPORT_ENABLED || "").toLowerCase() === "true"
   && String(process.env.VNEPS_PROCUREMENT_PROVIDER || "").toLowerCase() === "fixture"
   && process.env.VNEPS_PROCUREMENT_FIXTURE_PATH
 );
+
+function fixture(action, payload) {
+  const result = spawnSync(process.env.PYTHON || "python", ["scripts/lifecycle_e2e_fixture.py", action], {
+    input: JSON.stringify(payload), encoding: "utf8", windowsHide: true, env: process.env,
+  });
+  if (result.status !== 0) throw new Error(`Procurement fixture ${action} failed: ${result.stderr}`);
+}
+
+test.beforeEach(async ({ page, browserName }) => {
+  const runId = `procurement-${Date.now()}-${browserName}`;
+  const payload = { runId, organizationId: `${runId}-org`, seedInvestor: true,
+    account: { id: `${runId}-user`, username: runId, name: runId, email: `${runId}@example.invalid` },
+    password: `Aa!9${randomBytes(12).toString("hex")}` };
+  fixture("setup", payload);
+  page.__procurementFixture = payload;
+});
+
+test.afterEach(async ({ page }) => {
+  if (page.__procurementFixture) fixture("cleanup", page.__procurementFixture);
+});
 
 test.skip(
   !fixtureReady,
@@ -27,6 +46,7 @@ async function waitForApp(page) {
 
 
 async function login(page) {
+  const { account: { username }, password } = page.__procurementFixture;
   await page.goto("/dang-nhap", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.waitForFunction(
@@ -58,14 +78,11 @@ test("fixture KHLCNT stays draft-only until the final inline-import confirmation
   await page.getByRole("button", { name: "Thêm Kế hoạch mới" }).click();
   await expect(page.locator("#modal-kehoach.active")).toBeVisible();
   await page.locator("#kh-ma").fill(planCode);
-  await page.locator("#kh-chudautuid").evaluate((select) => {
-    const option = [...select.options].find((candidate) => (
-      candidate.value && candidate.value !== "__NEW_INVESTOR__"
-    ));
-    if (!option) throw new Error("Fixture workspace has no existing investor");
-    select.value = option.value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  // Modal paint precedes option hydration; assert the exact seeded choice.
+  const investorId = `${page.__procurementFixture.runId}-owner`;
+  await expect(page.locator(`#kh-chudautuid option[value="${investorId}"]`)).toHaveCount(1);
+  await page.locator("#kh-chudautuid").selectOption(investorId, { force: true });
+  await expect(page.locator("#kh-chudautuid")).toHaveValue(investorId);
   await page.locator("#procurement-lookup-plan-enabled").check();
 
   const status = page.locator("#procurement-lookup-plan-status");

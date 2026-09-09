@@ -103,4 +103,14 @@ test("package, plan, and contract detail paths hydrate their version family", as
   for (const source of [packageDetail, planView, contractView]) {
     assert.match(source, /await hydrateVersionFamily\(/u);
   }
+
+  const disabledIndex = planView.indexOf("editBtn.disabled = true");
+  const hydrateIndex = planView.indexOf('await hydrateVersionFamily(getAppController(), "kehoach", kh)');
+  const handlerIndex = planView.indexOf('executeAppCommand("editKeHoach", versionId)');
+  const enabledIndex = planView.indexOf("editBtn.disabled = false");
+  assert.ok(disabledIndex >= 0, "plan edit action must be disabled before async hydration");
+  assert.ok(disabledIndex < hydrateIndex, "plan edit action must disable before hydration yields");
+  assert.ok(hydrateIndex < handlerIndex, "plan edit handler must use the hydrated canonical version");
+  assert.ok(handlerIndex < enabledIndex, "plan edit action must enable only after its handler is bound");
+  assert.match(planView, /editBtn\.dataset\.bfActionReady = "true"/u);
 });

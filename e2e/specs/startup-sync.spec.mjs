@@ -5,6 +5,16 @@ const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD |
 
 test.use({ serviceWorkers: "block" });
 
+test.beforeEach(async ({ browserName, context }) => {
+  // A host-level AdGuard userscript can abort Firefox reloads before the
+  // document reaches the application's startup reconciliation boundary.
+  // Routing disables the context HTTP cache, so this workaround must remain
+  // scoped to the browser where the injected request is observed.
+  if (browserName === "firefox") {
+    await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
+  }
+});
+
 test.afterEach(async ({ page }) => {
   await page.__releaseStartupSyncReads?.();
 });
@@ -26,8 +36,39 @@ async function login(page) {
 
 async function waitForInitialReconciliation(page) {
   await page.waitForFunction(() => (
-    document.getElementById("btn-force-sync")?.dataset.syncState === "server-saved"
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
   ));
+}
+
+async function openExpertRouteReady(page) {
+  await page.goto("/chuyen-gia", { waitUntil: "commit" });
+  await waitForApp(page);
+  await waitForInitialReconciliation(page);
+}
+
+async function readExpertFromIndexedDb(page, recordId) {
+  return page.evaluate(async (id) => {
+    const userId = sessionStorage.getItem("bf_user_id") || localStorage.getItem("bf_user_id");
+    const organizationId = sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org");
+    if (!userId || !organizationId) return null;
+    const dbName = `BiddingFlowDB_${encodeURIComponent(userId)}:${encodeURIComponent(organizationId)}`;
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(dbName, 5);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = database.transaction("chuyengia", "readonly")
+          .objectStore("chuyengia")
+          .get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      database.close();
+    }
+  }, recordId);
 }
 
 async function fillExpertForm(page, suffix) {
@@ -92,11 +133,15 @@ async function setupServerReadGate(page, { includePagination = false } = {}) {
   };
 }
 
+async function reloadThroughBlankDocument(page) {
+  const currentUrl = page.url();
+  await page.goto("about:blank", { waitUntil: "commit" });
+  await page.goto(currentUrl, { waitUntil: "commit" });
+}
+
 test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation", async ({ page }) => {
   await login(page);
-  await page.goto("/chuyen-gia", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await waitForInitialReconciliation(page);
+  await openExpertRouteReady(page);
 
   await setupServerReadGate(page);
   let syncPosts = 0;
@@ -118,9 +163,9 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
     });
   });
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.locator("#chuyengia-table")).toBeVisible();
+  await reloadThroughBlankDocument(page);
   await page.waitForFunction(() => globalThis.__bfStartupSyncReadGate?.started === true);
+  await expect(page.locator("#btn-add-chuyengia")).toBeVisible();
   await page.locator("#btn-add-chuyengia").click();
   await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
   const formRoute = new URL(page.url()).pathname;
@@ -149,11 +194,69 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
   await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
 });
 
+test("local durable save never shows final success before server rejection", async ({ page }) => {
+  await login(page);
+  await openExpertRouteReady(page);
+
+  let releaseRejection;
+  const rejectionGate = new Promise((resolve) => { releaseRejection = resolve; });
+  let confirmRejectionStarted;
+  const rejectionStarted = new Promise((resolve) => { confirmRejectionStarted = resolve; });
+  let rejectedRecordId = "";
+  await page.route("**/api/sync", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    rejectedRecordId = String(payload?.chuyengia?.[0]?.id || "");
+    confirmRejectionStarted();
+    await rejectionGate;
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "error",
+        code: "SYNC_VALIDATION_FAILED",
+        errors: [{
+          table: "chuyen_gia",
+          id: rejectedRecordId,
+          field: "$record",
+          code: "RECORD_ACCESS_DENIED",
+          message: "E2E canonical rejection",
+        }],
+      }),
+    });
+  });
+
+  try {
+    const suffix = `rejected-${Date.now()}-${test.info().project.name}`;
+    await page.locator("#btn-add-chuyengia").click();
+    await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
+    await fillExpertForm(page, suffix);
+    await page.locator("#form-chuyengia button[type='submit']").click();
+
+    await expect(page.locator(".bf-toast.toast-warning").filter({
+      hasText: "Đã lưu trên thiết bị",
+    })).toBeVisible();
+    await expect(page.locator(".bf-toast.toast-success")).toHaveCount(0);
+    await rejectionStarted;
+    expect(rejectedRecordId).toBeTruthy();
+
+    releaseRejection();
+    await expect(page.locator(".bf-toast.toast-error").filter({
+      hasText: "Thất bại",
+    })).toBeVisible();
+    await expect(page.locator(".bf-toast.toast-success")).toHaveCount(0);
+    await expect(page.locator("#chuyengia-table")).not.toContainText(suffix);
+  } finally {
+    releaseRejection?.();
+  }
+});
+
 test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({ page }) => {
   await login(page);
-  await page.goto("/chuyen-gia", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  await waitForInitialReconciliation(page);
+  await openExpertRouteReady(page);
 
   const suffix = `deleted-${Date.now()}-${test.info().project.name}`;
   const expertName = `Chuyên gia startup ${suffix}`;
@@ -182,6 +285,9 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
   expect(Number.isInteger(createdSyncVersion)).toBe(true);
   await expect(page.locator("#modal-chuyengia.active")).toBeHidden();
   await expect(page).toHaveURL(/\/chuyen-gia$/u);
+  await expect.poll(async () => (
+    await readExpertFromIndexedDb(page, createdExpert.id)
+  )?.hoTen).toBe(expertName);
 
   await setupServerReadGate(page, { includePagination: true });
 
@@ -221,18 +327,23 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
     suffix,
   });
   expect(deleteResult, JSON.stringify(deleteResult.body)).toMatchObject({ ok: true, status: 200 });
+  expect((await readExpertFromIndexedDb(page, createdExpert.id))?.hoTen).toBe(expertName);
 
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.locator("#chuyengia-table")).toBeVisible();
+  let startupSyncPosts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/sync") {
+      startupSyncPosts += 1;
+    }
+  });
+
+  await reloadThroughBlankDocument(page);
   await page.waitForFunction(() => globalThis.__bfStartupSyncReadGate?.started === true);
   expect(new URL(page.url()).pathname).toBe("/chuyen-gia");
-  await page.locator("#search-chuyengia").fill(expertName);
-  await expect(
-    page.locator("#chuyengia-table tbody tr").filter({ hasText: expertName }).first(),
-  ).toBeVisible();
+  expect(startupSyncPosts).toBe(0);
 
   await page.__releaseStartupSyncReads();
   await waitForInitialReconciliation(page);
+  await expect(page.locator("#chuyengia-table")).toBeVisible();
   await page.locator("#search-chuyengia").fill(expertName);
   await expect(
     page.locator("#chuyengia-table tbody tr").filter({ hasText: expertName }),

@@ -27,15 +27,50 @@ import {
 } from "./SyncPresenter.js";
 
 
-function categorizeValidationErrors(errors) {
-  const categorized = { missing: [], format: [], logic: [], duplicate: [] };
+const VALIDATION_ERROR_CATEGORIES = Object.freeze([
+  "required",
+  "format",
+  "business_logic",
+  "duplicate",
+  "authorization",
+  "conflict",
+  "not_found",
+  "system",
+]);
+
+function categoryFromCode(rawCode) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return "";
+  if (/(?:DUPLICATE|ALREADY_EXISTS|_EXISTS$)/.test(code)) return "duplicate";
+  if (/(?:ACCESS_DENIED|AUTH_REQUIRED|FORBIDDEN|MANAGER_REQUIRED|PERMISSION_REQUIRED|OWNER_MISMATCH)/.test(code)) {
+    return "authorization";
+  }
+  if (/(?:CONFLICT|STALE|FULL_SYNC_REQUIRED|VISIBILITY_RESET_REQUIRED|IDEMPOTENCY_KEY_REUSED)/.test(code)) {
+    return "conflict";
+  }
+  if (/(?:NOT_FOUND|RECORD_DELETED)/.test(code)) return "not_found";
+  if (/(?:REQUIRED|MISSING)/.test(code)) return "required";
+  if (/(?:FAILED|UNAVAILABLE|WRITE_QUEUE|INTERNAL|SYSTEM)/.test(code)) return "system";
+  if (/(?:IMMUTABLE|LOCKED|BLOCKED|INCOMPLETE|NOT_APPLICABLE|MISMATCH)/.test(code)) {
+    return "business_logic";
+  }
+  if (/(?:INVALID|FORMAT)/.test(code)) return "format";
+  return "";
+}
+
+export function categorizeValidationErrors(errors) {
+  const categorized = Object.fromEntries(
+    VALIDATION_ERROR_CATEGORIES.map((category) => [category, []]),
+  );
   errors.forEach((error) => {
     const message = error.message || "";
-    if (message.includes("không được để trống")) categorized.missing.push(message);
+    const codedCategory = categoryFromCode(error?.code);
+    if (codedCategory) categorized[codedCategory].push(message);
+    else if (message.includes("không được để trống")) categorized.required.push(message);
     else if (message.includes("định dạng") || message.includes("không đúng")) categorized.format.push(message);
-    else if (["phải sau", "phải bằng", "phải nằm", "không được nhỏ"].some((term) => message.includes(term))) categorized.logic.push(message);
+    else if (["phải sau", "phải bằng", "phải nằm", "không được nhỏ"].some((term) => message.includes(term))) categorized.business_logic.push(message);
     else if (message.includes("đã tồn tại")) categorized.duplicate.push(message);
-    else categorized.format.push(message);
+    else categorized.system.push(message);
   });
   return categorized;
 }
@@ -44,10 +79,14 @@ function logValidationErrors(errors, requestId) {
   const categorized = categorizeValidationErrors(errors);
   const lines = ["⚠️ Phát hiện lỗi dữ liệu, không thể đồng bộ:\n"];
   const sections = [
-    ["missing", "❌ THIẾU THÔNG TIN BẮT BUỘC:"],
+    ["required", "❌ THIẾU THÔNG TIN BẮT BUỘC:"],
     ["format", "📋 SAI ĐỊNH DẠNG:"],
-    ["logic", "⚡ SAI LOGIC NGHIỆP VỤ:"],
+    ["business_logic", "⚡ SAI LOGIC NGHIỆP VỤ:"],
     ["duplicate", "🔁 DỮ LIỆU BỊ TRÙNG LẶP:"],
+    ["authorization", "🔒 KHÔNG ĐỦ QUYỀN:"],
+    ["conflict", "⚠️ XUNG ĐỘT DỮ LIỆU:"],
+    ["not_found", "🔎 KHÔNG TÌM THẤY DỮ LIỆU:"],
+    ["system", "🛠️ LỖI HỆ THỐNG:"],
   ];
   sections.forEach(([key, title]) => {
     if (!categorized[key].length) return;
@@ -99,13 +138,15 @@ async function restoreRejectedRecords(controller, rejectedRecords, workspace) {
   for (const rejected of rejectedRecords) {
     if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
     let serverRecord = null;
-    try {
-      serverRecord = await controller.fetchRecordByLookup(
-        rejected.type,
-        rejected.conflictingId || rejected.id,
-      );
-    } catch (error) {
-      console.error("Failed to restore rejected server record:", error);
+    if (rejected.newInsert !== true) {
+      try {
+        serverRecord = await controller.fetchRecordByLookup(
+          rejected.type,
+          rejected.conflictingId || rejected.id,
+        );
+      } catch (error) {
+        console.error("Failed to restore rejected server record:", error);
+      }
     }
     if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult();
     if (Array.isArray(controller.model.state[rejected.type]) && (!serverRecord || String(serverRecord.id) !== rejected.id)) {
@@ -169,7 +210,9 @@ export async function applySuccessfulPush(controller, {
   const committedKeys = collectCommittedMutationKeys(payload);
   // Pages loaded before the commit may omit the newly inserted rows. Once the
   // outbox is acknowledged its overlay disappears, so retire those pages first.
-  for (const key of committedKeys) invalidatePaginatedQueryCache(controller.model, key);
+  for (const key of committedKeys) {
+    invalidatePaginatedQueryCache(controller.model, key, { abortInFlight: true });
+  }
   if (applyDashboardSummaryAfterMutation(controller.model, payload, data)) {
     committedKeys.add("dashboardSummary");
     if (controller.view) controller.view._dashboardAggregateCache = null;
@@ -399,9 +442,7 @@ export function autoSync(options = {}) {
     return activeSync.promise.then((result) => {
       const retryRecoveredTransport = options.retryAfterReconnect === true
         && result?.ok === false
-        && result?.error
-        && result?.status === undefined
-        && result?.data === undefined;
+        && result?.transport === true;
       if (!activeSync.queued || (result?.ok !== true && !retryRecoveredTransport)) {
         activeSync.queued = false;
         if (this._autoSyncOwner === activeSync) this._autoSyncQueued = false;
@@ -414,7 +455,8 @@ export function autoSync(options = {}) {
     });
   }
   const pullKey = String(workspace.token || workspace.organizationId || "");
-  const activePulls = [...(this._workspacePullFlights?.get(pullKey) || [])];
+  const activePulls = [...(this._workspacePullFlights?.get(pullKey)?.values() || [])]
+    .map((flight) => flight.promise);
   if (activePulls.length > 0) {
     return Promise.allSettled(activePulls).then(() => {
       if (!workspaceIsCurrent(this, workspace)) {
@@ -571,7 +613,7 @@ export function autoSync(options = {}) {
       return staleWorkspaceResult({ error });
     }
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
-    return { ok: false, error };
+    return { ok: false, error, transport: true };
   });
   const syncOwner = { workspaceToken, promise: null, queued: false };
   const trackedRequest = request.finally(() => {

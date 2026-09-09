@@ -67,6 +67,59 @@ export function shouldRefreshRouteAfterBackgroundSync(
   return true;
 }
 
+const AUTHORIZATION_SCOPED_EDITORS = Object.freeze([
+  ["modal-kehoach", "form-kehoach-id", "kehoach"],
+  ["modal-plan-breakdown", "breakdown-plan-id", "kehoach"],
+  ["modal-goithau", "form-goithau-id", "goithau"],
+  ["modal-hopdong", "form-hopdong-id", "hopdong"],
+]);
+
+export function dismissRevokedInteractiveState(controller, root = globalThis.document) {
+  if (!controller?.model?.state || !root) return [];
+  const dismissed = [];
+  for (const [modalId, inputId, stateKey] of AUTHORIZATION_SCOPED_EDITORS) {
+    const modal = root.getElementById?.(modalId);
+    if (!modal?.classList?.contains?.("active")) continue;
+    const recordId = String(root.getElementById?.(inputId)?.value || "").trim();
+    if (!recordId) continue;
+    const remainsVisible = (controller.model.state[stateKey] || []).some(
+      (record) => String(record?.id || "") === recordId,
+    );
+    if (remainsVisible) continue;
+    delete modal.dataset?.bfUnsaved;
+    if (typeof controller.view?.closeModal === "function") {
+      controller.view.closeModal(modalId);
+    } else {
+      modal.classList.remove("active");
+    }
+    dismissed.push({ modalId, stateKey, recordId });
+  }
+
+  const activePackageId = String(controller.view?._currentWorkflowPackageId || "").trim();
+  if (activePackageId && !(controller.model.state.goithau || []).some(
+    (record) => String(record?.id || "") === activePackageId,
+  )) {
+    controller.view._currentWorkflowPackageId = "";
+    controller.view._currentWorkflowTab = "";
+    controller._currentResultPackageId = "";
+    root.querySelectorAll?.(".modal-overlay.active[data-package-id]")
+      ?.forEach?.((modal) => {
+        if (String(modal.dataset?.packageId || "") !== activePackageId) return;
+        delete modal.dataset?.bfUnsaved;
+        modal.classList.remove("active");
+      });
+    dismissed.push({ stateKey: "goithau", recordId: activePackageId });
+  }
+  if (dismissed.length > 0) {
+    controller.view?.showToast?.(
+      "Phân công đã thay đổi",
+      "Màn hình đang mở đã được đóng vì bản ghi không còn thuộc phạm vi của bạn.",
+      "warning",
+    );
+  }
+  return dismissed;
+}
+
 export function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
   if (!changedKeys || changedKeys.size === 0 || !controller.view) return Promise.resolve();
   const renderPromises = [];

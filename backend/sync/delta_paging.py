@@ -22,7 +22,7 @@ from backend.shared.sensitive_data import (
 )
 from backend.sync.conflict_projection import project_conflict_record
 from backend.sync.mapper import attach_child_rows_to_items, map_db_to_json
-from backend.sync.queries import TABLE_KEYS
+from backend.sync.queries import TABLE_KEYS, get_expert_relations_for_packages
 from backend.sync.visibility_epoch import build_visibility_token
 from backend.sync.visibility_scope import VisibilityScope, scoped_deletion_branches
 
@@ -204,6 +204,20 @@ def _json_object(value):
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _attach_package_expert_relations(cursor, items, organization_id):
+    package_ids = [str(item.get("id")) for item in items if item.get("id")]
+    relations = get_expert_relations_for_packages(
+        cursor, package_ids, organization_id
+    )
+    for item in items:
+        package_relations = relations.get(
+            item.get("id"), {"to_cg": [], "to_td": [], "cg_ids": []}
+        )
+        item["toChuyenGia"] = package_relations.get("to_cg", [])
+        item["toThamDinh"] = package_relations.get("to_td", [])
+        item["chuyenGiaIds"] = package_relations.get("cg_ids", [])
+
+
 def _prepare_upsert_items(cursor, rows, organization_id):
     items_by_table = {}
     prepared = {}
@@ -226,6 +240,8 @@ def _prepare_upsert_items(cursor, rows, organization_id):
                 items,
                 organization_id=organization_id,
             )
+        if table_name == "goi_thau":
+            _attach_package_expert_relations(cursor, items, organization_id)
     return prepared
 
 
@@ -255,6 +271,8 @@ def _project_candidate(
                 [item],
                 organization_id=organization_id,
             )
+        if kind == "upsert" and table_name == "goi_thau":
+            _attach_package_expert_relations(cursor, [item], organization_id)
     if not can_read_record(
         cursor, role, user_id, organization_id,
         payload_key, table_name, item,

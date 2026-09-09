@@ -10,8 +10,12 @@ import {
 } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
+  classifyCanonicalSyncResult,
   persistAndSync,
   refreshRecordBeforeMutation,
+  showLocalSavePending,
   stageLocalRecords,
 } from "../shared/MutationService.js";
 import {
@@ -127,7 +131,7 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
   Object.entries(aggregateUpserts).forEach(([table, records]) => {
     stageLocalRecords(controller.model, table, records, null, baseUpserts[table] || []);
   });
-  return persistAndSync(controller, [
+  const result = await persistAndSync(controller, [
     "goithau",
     "goithauhanghoa",
     "hanghoaduthaunhathau",
@@ -136,10 +140,19 @@ export async function persistPackageFormChanges(controller, explicitUpserts, {
   ], {
     backgroundSync: !controller?.procurementPackageImport?.controller,
     changes: { upserts: aggregateUpserts },
-    afterLocalDurable: afterPersist,
+    afterLocalDurable: () => {
+      const render = afterPersist?.();
+      showLocalSavePending(controller.view, "Gói thầu");
+      return render;
+    },
     afterPersist,
     afterCanonicalSync: afterPersist,
   });
+  if (result?.canonicalStatus || result?.syncPromise) return result;
+  return {
+    ...result,
+    canonicalStatus: classifyCanonicalSyncResult(result),
+  };
 }
 
 const PACKAGE_SAVE_AGGREGATE_TABLES = [
@@ -155,6 +168,12 @@ export function capturePackageSaveBaseState(state) {
     table,
     structuredClone(Array.isArray(state?.[table]) ? state[table] : []),
   ]));
+}
+
+export function changedPackageParentPlans(plans, basePlans, affectedIds) {
+  const baseline = new Map(basePlans.map((plan) => [String(plan.id), plan]));
+  return plans.filter((plan) => affectedIds.has(String(plan.id))
+    && JSON.stringify(plan) !== JSON.stringify(baseline.get(String(plan.id))));
 }
 
 export async function refreshPackageSavePlans(controller, planIds) {
@@ -188,6 +207,7 @@ export function isPackageDraftSaveActive(controller, planId) {
 export function shouldShowPackageSyncFailureDialog(syncResult) {
   return Boolean(
     syncResult?.ok === false
+    && syncResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.OFFLINE_PENDING
     && syncResult?.conflictQuarantined !== true
     && syncResult?.reloadRequired !== true,
   );
@@ -222,7 +242,12 @@ export function showPackageSyncReloadToast(view) {
   );
 }
 
-export function packageFamilyUpsertsForPlan(packages, finalPackage) {
+export function packageFamilyUpsertsForPlan(packages, finalPackage, {
+  includeHistorical = false,
+} = {}) {
+  if (!includeHistorical) {
+    return packages.filter((item) => String(item.id) === String(finalPackage?.id || ""));
+  }
   const rootId = String(finalPackage?.rootId || finalPackage?.id || "");
   const planId = String(finalPackage?.keHoachId || "");
   return packages.filter((item) => (
@@ -366,6 +391,7 @@ export async function editGoiThau(id, isReadOnly = false) {
         activeRole: this.model.state.activerole,
         packageId: id,
         assignedEmpIds,
+        currentUserId,
       });
       initializeMultiAssigneeSelect(empSelect, {
         selectedIds: controlState.values,
@@ -945,6 +971,7 @@ export async function handleGoiThauSubmit(e) {
   }
   const id = formVals.id;
   let finalGtId = id;
+  let includeHistoricalPackageUpserts = false;
   let oldPlanId = null;
   if (id) {
     const oldGt = this.model.state.goithau.find((g) => g.id === id);
@@ -1280,6 +1307,7 @@ export async function handleGoiThauSubmit(e) {
       } else {
         const newGtId = generateRecordId("goithau");
         finalGtId = newGtId;
+        includeHistoricalPackageUpserts = true;
         const timestamp = this.model.getCurrentDateTimeString();
         const newPackageSnapshot = snapshotPackageAggregate(this.model.state, oldGt, {
           targetPackageId: newGtId,
@@ -1377,7 +1405,9 @@ export async function handleGoiThauSubmit(e) {
       ? this.model.state.goithau.filter(
         (item) => String(item.id) === String(finalGtId),
       )
-      : packageFamilyUpsertsForPlan(this.model.state.goithau, finalPackage),
+      : packageFamilyUpsertsForPlan(this.model.state.goithau, finalPackage, {
+        includeHistorical: includeHistoricalPackageUpserts,
+      }),
     goithauhanghoa: this.model.state.goithauhanghoa.filter(
       (item) => String(item.goiThauId) === String(finalGtId),
     ),
@@ -1392,8 +1422,8 @@ export async function handleGoiThauSubmit(e) {
     ),
   };
   const affectedPlanIds = new Set([oldPlanId, gtData.keHoachId].filter(Boolean).map(String));
-  explicitUpserts.kehoach = this.model.state.kehoach.filter(
-    (item) => affectedPlanIds.has(String(item.id)),
+  explicitUpserts.kehoach = changedPackageParentPlans(
+    this.model.state.kehoach, packageSaveBaseState.kehoach, affectedPlanIds,
   );
   let localTableRefresh;
   const syncResult = await persistPackageFormChanges(this, explicitUpserts, {
@@ -1404,18 +1434,19 @@ export async function handleGoiThauSubmit(e) {
       return localTableRefresh;
     },
   });
-  if (packageSyncRequiresReload(syncResult)) {
+  const canonicalResult = await awaitCanonicalSyncResult(syncResult);
+  if (packageSyncRequiresReload(canonicalResult)) {
     const packageModal = document.getElementById("modal-goithau");
     restorePackageEditorAfterSyncConflict(form, packageModal);
     if (
-      syncResult?.conflictQuarantined !== true
-      && syncResult?.reloadRequired !== true
+      canonicalResult?.conflictQuarantined !== true
+      && canonicalResult?.reloadRequired !== true
     ) {
       showPackageSyncReloadToast(this.view);
     }
     return;
   }
-  if (shouldShowPackageSyncFailureDialog(syncResult)) {
+  if (shouldShowPackageSyncFailureDialog(canonicalResult)) {
     await this.view.customAlert(
       "Lỗi đồng bộ",
       "Dữ liệu đã được lưu tạm trên máy nhưng chưa ghi được vào cơ sở dữ liệu. Vui lòng kiểm tra lỗi đồng bộ và thử lưu lại.",
@@ -1433,6 +1464,17 @@ export async function handleGoiThauSubmit(e) {
     preserveProcurementImport: true,
   });
   setPackageEditorState(packageModal, "closed");
+  if (
+    !draftPackageSave
+    && canonicalResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED
+  ) {
+    this.view.showToast?.(
+      "Đang chờ đồng bộ gói thầu",
+      "Dữ liệu đã lưu trên thiết bị nhưng chưa được máy chủ xác nhận.",
+      "warning",
+    );
+    return;
+  }
   if (this.procurementPackageImport?.controller) {
     await this.completeProcurementPackageImportRevision?.(finalGtId);
     return;

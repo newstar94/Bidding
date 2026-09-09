@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Product-reconfirmed acceptance; explicit historical report limits win.
 export const STARTUP_LONG_TASK_LIMIT_MS = 100;
 
 const resourcePath = (value) => {

@@ -6,6 +6,7 @@ import { createE2ETestClock } from "./e2e_test_clock.mjs";
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const testClock = createE2ETestClock();
 const runId = `multi-assignee-${Date.now()}`;
+const pollingRevocation = process.env.E2E_REVOCATION_TRANSPORT === "polling";
 const password = `Aa!9${randomBytes(12).toString("hex")}`;
 const account = (key, name) => ({
   id: `${runId}-${key}-id`,
@@ -295,39 +296,39 @@ async function updatePackageAs(browser, user, state) {
 }
 
 async function createPackageVersion(page, assigneeIds) {
-  const packageId = `${runId}-package-v2`;
-  const payload = {
-    goithau: [{
-      id: packageId,
-      rootId: `${runId}-package`,
-      phienBan: 2,
-      isLatest: true,
-      maGoiThau: data.packageCode,
-      tenGoiThau: `Gói nhiều người phiên bản 2 ${runId}`,
-      keHoachId: `${runId}-plan`,
-      giaGoiThau: 500000000,
-      linhVuc: "Hàng hóa",
-      hinhThucLuaChon: "Đấu thầu rộng rãi",
-      phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
-      phuongPhapDanhGia: "Giá thấp nhất",
-      phanLo: "Không",
-      thoiGianThucHien: "90 ngày",
-      nguonVon: "Ngân sách nhà nước",
-      thoiGianToChuc: "45 ngày",
-      thoiGianBatDauToChuc: testClock.quarter(100),
-      trangThai: "Chuẩn bị",
-    }],
-    assignments: assigneeIds.map((employeeId) => ({
-      id: `${runId}-package-v2-assignment-${employeeId}`,
-      empId: employeeId,
-      targetId: packageId,
-      type: "goithau",
-    })),
-  };
-  const clientMutationId = `${runId}-package-version`;
-  await syncMutation(page, payload, { clientMutationId });
-  await syncMutation(page, payload, { clientMutationId });
-  return packageId;
+  const result = await page.evaluate(async ({ sourceId, organizationId, mutationId }) => {
+    const csrf = decodeURIComponent(document.cookie.split(";").map(x => x.trim())
+      .find(x => x.startsWith("csrf_token="))?.slice(11) || "");
+    const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrf,
+      "X-Active-Org": organizationId };
+    const read = await fetch(`/api/paginate?table=goithau&page=1&pageSize=100`, { headers });
+    if (!read.ok) throw new Error(`Source read failed: ${read.status}`);
+    const source = (await read.json()).items.find(row => row.id === sourceId);
+    if (!source) throw new Error("Version source missing from authoritative page");
+    const command = { kind: "package", sourceId, expectedRowVersion: source.rowVersion,
+      clientMutationId: mutationId, changes: {} };
+    const response = await fetch("/api/versioning/aggregate", { method: "POST",
+      headers: { ...headers, "Idempotency-Key": mutationId }, body: JSON.stringify(command) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(`Aggregate version failed: ${JSON.stringify(body)}`);
+    const version = (body.rowVersions || []).find(row => row.table === "goithau" && row.id !== sourceId);
+    if (!version) throw new Error("Aggregate response omitted new package acknowledgment");
+    // An intentional replay checks idempotency, not a retry of a failed request.
+    const replay = await fetch("/api/versioning/aggregate", { method: "POST",
+      headers: { ...headers, "Idempotency-Key": mutationId }, body: JSON.stringify(command) });
+    const replayBody = await replay.json();
+    if (!replay.ok || !(replayBody.rowVersions || []).some(row => row.table === "goithau" && row.id === version.id)) {
+      throw new Error("Aggregate replay did not acknowledge the same package version");
+    }
+    return version.id;
+  }, { sourceId: `${runId}-package`, organizationId: data.organizationId,
+    mutationId: `${runId}-official-package-version` });
+  data.packageVersionId = result;
+  const inherited = fixture("verify").versionAssignments.map(row => row.userId).sort();
+  if (inherited.join(",") !== [...assigneeIds].sort().join(",")) {
+    throw new Error("Server aggregate did not inherit the exact assignee set");
+  }
+  return result;
 }
 
 async function editPackageAssignees(page, previousState, employeeIds) {
@@ -402,7 +403,7 @@ async function updateContract(page, state) {
   return updatedName;
 }
 
-async function activityStatus(browser, user, targetType, targetId) {
+async function activityStatus(browser, user, targetType, targetId, { membershipRemoved = false } = {}) {
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
@@ -410,12 +411,26 @@ async function activityStatus(browser, user, targetType, targetId) {
     const organizationId = user.id === data.outsider.id
       ? data.outsiderOrganizationId
       : data.organizationId;
-    return await page.evaluate(async ({ targetType, targetId, organizationId }) => {
+    return await page.evaluate(async ({ targetType, targetId, organizationId, membershipRemoved }) => {
       const response = await fetch(`/api/activities/${targetType}/${targetId}`, {
         headers: { "X-Active-Org": organizationId },
       });
+      if (targetType === "goithau" && response.status === 403) {
+        const headers = { "X-Active-Org": organizationId };
+        const list = await fetch("/api/paginate?table=goithau&page=1&pageSize=100", { headers });
+        if (membershipRemoved ? list.status !== 403 : !list.ok) {
+          throw new Error(`Revoked pagination returned unexpected status: ${list.status}`);
+        }
+        if (list.ok && (await list.json()).items.some(row => row.id === targetId)) {
+          throw new Error("Revoked package remains in pagination");
+        }
+        const record = await fetch(`/api/record?table=goithau&id=${encodeURIComponent(targetId)}`, { headers });
+        if (![403, 404].includes(record.status)) {
+          throw new Error(`Revoked direct record unexpectedly returned ${record.status}`);
+        }
+      }
       return response.status;
-    }, { targetType, targetId, organizationId });
+    }, { targetType, targetId, organizationId, membershipRemoved });
   } finally {
     await context.close();
   }
@@ -462,7 +477,137 @@ try {
     throw new Error(`Idempotent document delete failed: ${JSON.stringify(deleteAttempts)}`);
   }
 
-  await editPackageAssignees(page, state, [employeeB.id, employeeC.id]);
+  const revokedContext = await browser.newContext();
+  let droppedRevocationHints = 0;
+  if (pollingRevocation) {
+    await revokedContext.routeWebSocket("**/ws/sync", pageSocket => {
+      const serverSocket = pageSocket.connectToServer();
+      pageSocket.onMessage(message => serverSocket.send(message));
+      serverSocket.onMessage(message => {
+        let event;
+        try { event = JSON.parse(String(message)); } catch { /* Forward opaque frames. */ }
+        if (event?.event === "db_changed") { droppedRevocationHints += 1; return; }
+        pageSocket.send(message);
+      });
+    });
+  }
+  const revocationTraffic = [];
+  const revocationSockets = [];
+  const revocationPageIds = new WeakMap();
+  const revocationSocketReady = new WeakMap();
+  let nextRevocationPageId = 0;
+  let transferStartedAt = null;
+  let transferCompletedAt = null;
+  revokedContext.on("page", observedPage => {
+    revocationPageIds.set(observedPage, ++nextRevocationPageId);
+    let resolveReady;
+    revocationSocketReady.set(observedPage, new Promise(resolve => { resolveReady = resolve; }));
+    observedPage.on("websocket", socket => {
+      socket.on("framereceived", frame => {
+        try {
+          const message = JSON.parse(String(frame.payload));
+          if (message.type === "ready" && message.organizationId === data.organizationId) resolveReady();
+          revocationSockets.push({ time: Date.now(), pageId: revocationPageIds.get(observedPage), path: observedPage.url().split("?")[0],
+            event: message.event || message.type || "unknown" });
+          if (revocationSockets.length > 30) revocationSockets.shift();
+        } catch { /* Ignore non-JSON protocol frames in diagnostics. */ }
+      });
+    });
+  });
+  revokedContext.on("response", async response => {
+    const pathname = new URL(response.url()).pathname;
+    if (!["/api/sync/delta", "/api/get-all-data"].includes(pathname)) return;
+    const receivedAt = Date.now();
+    try {
+      const body = await response.json();
+      revocationTraffic.push({ time: receivedAt, pageId: revocationPageIds.get(response.frame().page()), path: response.frame().url().split("?")[0], endpoint: pathname,
+        status: response.status(), code: body.code, syncVersion: body.syncVersion,
+        hasVisibilityToken: Boolean(body.visibilityToken), partial: body.partial,
+        packageIds: (body.goithau || []).map(row => row.id) });
+      if (revocationTraffic.length > 30) revocationTraffic.shift();
+    } catch { /* Failure diagnostics must not affect browser execution. */ }
+  });
+  try {
+    const revokedPage = await revokedContext.newPage();
+    await login(revokedPage, employeeA);
+    await gotoRoute(revokedPage, "/goi-thau");
+    await revokedPage.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED");
+    await revokedPage.locator("#search-goithau").fill(data.packageCode);
+    await revokedPage.locator("#goithau-table tbody tr").filter({ hasText: data.packageCode })
+      .locator('[data-bf-action="edit-package"]').click();
+    await revokedPage.locator("#modal-goithau.active").waitFor({ state: "visible" });
+    await revokedPage.locator("#gt-ten").fill(`Unsaved revoked edit ${runId}`);
+    const breakdownPage = await revokedContext.newPage();
+    await gotoRoute(breakdownPage, "/ke-hoach");
+    await breakdownPage.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED");
+    await breakdownPage.locator("#search-kehoach").fill(runId);
+    await breakdownPage.locator("#kehoach-table tbody tr").filter({ hasText: runId })
+      .locator('[data-bf-action="edit-plan"]').click();
+    await breakdownPage.locator("#modal-kehoach.active").waitFor({ state: "visible" });
+    await breakdownPage.locator("#kh-ten").fill(`Unsaved revoked plan ${runId}`);
+    await select(breakdownPage, "#kh-loaihinh", { label: "Dự toán mua sắm" });
+    await select(breakdownPage, "#kh-pheduyet", { value: "Dự toán và kế hoạch" });
+    await breakdownPage.locator("#kh-sototrinhdutoankehoach").fill(`${runId}/TTR-DRAFT`);
+    await breakdownPage.locator("#kh-ngaytrinhkehoach").fill(testClock.date(-30));
+    await breakdownPage.locator("#kh-ngaypheduyet").fill(testClock.date(-29));
+    await breakdownPage.locator("#form-kehoach button[type='submit']").click();
+    await breakdownPage.locator("#modal-plan-breakdown.active").waitFor({ state: "visible" }).catch(async (error) => {
+      const diagnostic = await breakdownPage.evaluate(() => ({
+        invalid: [...document.querySelectorAll("#form-kehoach :invalid")].map((field) => ({
+          id: field.id, value: field.value, message: field.validationMessage,
+        })),
+        dialog: document.getElementById("modal-custom-dialog")?.innerText,
+        toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+      }));
+      throw new Error(`Plan breakdown did not open: ${JSON.stringify(diagnostic)}`, { cause: error });
+    });
+    // This case checks hint-driven revocation. Polling without a delivered hint
+    // is exercised separately; do not transfer before either socket authenticates.
+    let readinessTimer;
+    try {
+      await Promise.race([
+        Promise.all([revocationSocketReady.get(revokedPage), revocationSocketReady.get(breakdownPage)]),
+        new Promise((_, reject) => { readinessTimer = setTimeout(() => reject(new Error("Revocation sockets did not authenticate")), 20000); }),
+      ]);
+    } finally { clearTimeout(readinessTimer); }
+    transferStartedAt = Date.now();
+    droppedRevocationHints = 0;
+    await editPackageAssignees(page, state, [employeeB.id, employeeC.id]);
+    transferCompletedAt = Date.now();
+    await revokedPage.locator("#modal-goithau.active").waitFor({ state: "hidden", timeout: pollingRevocation ? 50_000 : 20_000 }).catch(async (error) => {
+      const readState = (target) => target.evaluate(() => ({
+        path: location.pathname, visibility: document.visibilityState,
+        sync: { ...document.getElementById("btn-force-sync")?.dataset },
+        toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+        activeModals: [...document.querySelectorAll(".modal-overlay.active")].map((item) => item.id),
+      }));
+      throw new Error(`Revoked editors remain visible: ${JSON.stringify({
+        transferStartedAt, transferCompletedAt,
+        packageTab: await readState(revokedPage), planTab: await readState(breakdownPage), revocationTraffic, revocationSockets,
+      })}`, { cause: error });
+    });
+    await revokedPage.waitForFunction((code) => !document.querySelector("#goithau-table")?.textContent.includes(code), data.packageCode);
+    process.stdout.write("[E2E] revoked-open-package-editor-closed\n");
+    await breakdownPage.locator("#modal-plan-breakdown.active").waitFor({ state: "hidden", timeout: pollingRevocation ? 50_000 : 20_000 });
+    await breakdownPage.waitForFunction((id) => !document.querySelector("#kehoach-table")?.textContent.includes(id), runId);
+    process.stdout.write("[E2E] revoked-dirty-plan-breakdown-closed\n");
+    if (pollingRevocation) {
+      if (!droppedRevocationHints) throw new Error("Polling revocation did not drop any hints");
+      for (const target of [revokedPage, breakdownPage]) {
+        const pageId = revocationPageIds.get(target);
+        if (!revocationTraffic.some(entry => entry.pageId === pageId && entry.time >= transferStartedAt
+          && entry.endpoint === "/api/get-all-data" && entry.status === 200 && entry.partial === false)) {
+          throw new Error("Polling revocation lacks an authoritative full reset for each tab");
+        }
+      }
+    }
+    process.stdout.write(`[E2E] revocation-observation ${JSON.stringify({ transport: pollingRevocation ? "polling" : "websocket",
+      droppedRevocationHints, transferStartedAt, transferCompletedAt,
+      traffic: revocationTraffic.filter(entry => entry.time >= transferStartedAt),
+      sockets: revocationSockets.filter(entry => entry.time >= transferStartedAt) })}\n`);
+  } finally {
+    await revokedContext.close();
+  }
   await createContract(page, [employeeA.id, employeeC.id]);
   state = fixture("verify");
   const newB = state.packageAssignments.find((item) => item.userId === employeeB.id);
@@ -578,6 +723,39 @@ try {
     throw new Error("C cannot read the inherited package version");
   }
 
+  // Transfer only the latest physical snapshot away from C. C intentionally
+  // remains assigned to V00, proving historical lineage evidence cannot grant
+  // access to the successor after its latest assignment is revoked.
+  const transferredLatestAssignment = state.versionAssignments.find(
+    (item) => item.userId === employeeC.id,
+  );
+  await syncMutation(page, {
+    deletions: [{
+      table: "assignments",
+      id: transferredLatestAssignment.id,
+      expectedVersion: transferredLatestAssignment.rowVersion,
+    }],
+  });
+  state = fixture("verify");
+  if (await activityStatus(browser, employeeC, "goithau", packageVersionId) !== 403) {
+    throw new Error("C retained latest-version access through the historical assignment");
+  }
+  if (await activityStatus(browser, employeeC, "goithau", state.packageId) !== 200) {
+    throw new Error("Transferring the successor incorrectly removed C's explicit historical access");
+  }
+  await syncMutation(page, {
+    assignments: [{
+      id: `${runId}-package-v2-assignment-restored-${employeeC.id}`,
+      empId: employeeC.id,
+      targetId: packageVersionId,
+      type: "goithau",
+    }],
+  });
+  state = fixture("verify");
+  if (await activityStatus(browser, employeeC, "goithau", packageVersionId) !== 200) {
+    throw new Error("C did not regain successor access after an explicit assignment");
+  }
+
   const inheritedVersionAssignments = state.versionAssignments;
   const lastAssigneeRemoval = await removeOrganizationMember(page, employeeC.id);
   if (lastAssigneeRemoval.status !== 200 || !lastAssigneeRemoval.body?.success) {
@@ -604,7 +782,7 @@ try {
   if (!employeeCContractHistory || employeeCContractHistory.successorUserId !== null) {
     throw new Error(`Final optional assignment unexpectedly used a successor: ${JSON.stringify(state.removalHistory)}`);
   }
-  if (await activityStatus(browser, employeeC, "goithau", packageVersionId) !== 403) {
+  if (await activityStatus(browser, employeeC, "goithau", packageVersionId, { membershipRemoved: true }) !== 403) {
     throw new Error("Removed C retained access to the inherited package version");
   }
 
@@ -628,6 +806,30 @@ try {
     documentActivity: state.activityEvents.filter((item) => item.action.startsWith("package_document.")),
     access: { removedA: 403, retainedB: 200, addedC: 200, outsider: 404 },
   }, null, 2)}\n`);
+  const planVersion = await page.evaluate(async ({ organizationId, sourceId, mutationId }) => {
+    const csrf = decodeURIComponent(document.cookie.split(";").map(value => value.trim())
+      .find(value => value.startsWith("csrf_token="))?.slice(11) || "");
+    const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrf, "X-Active-Org": organizationId };
+    const lookup = await fetch("/api/paginate?table=kehoach&page=1&pageSize=100", { headers });
+    if (!lookup.ok) throw new Error(`Plan lookup failed: ${lookup.status}`);
+    const source = (await lookup.json()).items.find(row => row.id === sourceId);
+    if (!source) throw new Error("Authoritative plan source missing");
+    const response = await fetch("/api/versioning/aggregate", { method: "POST",
+      headers: { ...headers, "Idempotency-Key": mutationId },
+      body: JSON.stringify({ kind: "plan", sourceId, expectedRowVersion: source.rowVersion,
+        clientMutationId: mutationId, changes: {} }) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(`Plan aggregate failed: ${JSON.stringify(body)}`);
+    const version = (body.rowVersions || []).find(row => row.table === "kehoach" && row.id !== sourceId);
+    if (!version) throw new Error("Plan version acknowledgment missing");
+    return version.id;
+  }, { organizationId: data.organizationId, sourceId: `${runId}-plan`, mutationId: `${runId}-plan-version` });
+  data.planVersionId = planVersion;
+  const verifiedPlan = fixture("verify").planVersionAssignments;
+  if (!verifiedPlan.some(row => row.userId === data.manager.id)) {
+    throw new Error("Server plan version failed to inherit its explicit manager assignment");
+  }
+  process.stdout.write("[E2E] official-plan-version-assignment-inherited\n");
   await managerContext.close();
 } finally {
   await browser.close();

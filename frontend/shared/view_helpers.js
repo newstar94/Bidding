@@ -44,7 +44,7 @@ export function safeImageSrc(value, cacheKey = "") {
       const parsed = new URL(src, window.location.origin);
       if (
         parsed.origin !== window.location.origin
-        || !/^\/images\/(?:chuyen_gia|nha_thau)\/[A-Za-z0-9_.-]+\.(?:png|jpg|webp)$/i.test(parsed.pathname)
+        || !/^\/images\/(?:chuyen_gia|nha_thau)\/(?:t-[a-f0-9]{24}\/)?[A-Za-z0-9_.-]+\.(?:png|jpg|webp)$/i.test(parsed.pathname)
       ) {
         return "";
       }

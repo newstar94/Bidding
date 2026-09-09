@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  invalidatePaginatedQueryCache,
+  cachePaginatedRecords,
   loadPaginatedRecords,
   paginatedSearchHasChanged,
 } from "../../frontend/shared/tableDataUtils.js";
@@ -43,6 +45,37 @@ function paginatedModel() {
     entityIndexes: { invalidate() {} },
   };
 }
+
+test("pagination hydration preserves an in-flight package mutation in shared detail state", () => {
+  const model = paginatedModel();
+  const pending = { id: "package-1", trangThai: "Đang chấm thầu", rowVersion: 3 };
+  model.state.goithau = [pending];
+  model.getMutationQueue = () => ({ upserts: { goithau: { "package-1": pending } } });
+  cachePaginatedRecords(model, "goithau", [
+    { id: "package-1", trangThai: "Đã mở thầu", rowVersion: 3 },
+  ]);
+  assert.equal(model.state.goithau[0].trangThai, "Đang chấm thầu");
+});
+
+test("pending hydration persists local fields without contaminating canonical cache or adding absent IDs", () => {
+  const model = paginatedModel();
+  const writes = [];
+  model.db = { putRecords: async (table, rows) => { writes.push({ table, rows }); } };
+  const patch = { id: "package-1", trangThai: "Đang chấm thầu", rowVersion: 3 };
+  model.getMutationQueue = () => ({ patches: { goithau: { "package-1": patch } },
+    upserts: { goithau: { absent: { id: "absent", rowVersion: 1 } } } });
+  const canonical = { id: "package-1", tenGoiThau: "Server title", trangThai: "Đã mở thầu", rowVersion: 3 };
+  const result = cachePaginatedRecords(model, "goithau", [canonical]);
+  assert.equal(result[0].trangThai, "Đã mở thầu");
+  assert.equal(model.state.goithau[0].trangThai, "Đang chấm thầu");
+  assert.equal(model.state.goithau[0].tenGoiThau, "Server title");
+  assert.deepEqual(writes[0].rows, model.state.goithau);
+  assert.deepEqual(model.state.goithau.map(row => row.id), ["package-1"]);
+  assert.equal(patch.rowVersion, 3);
+  model.getMutationQueue = () => null;
+  cachePaginatedRecords(model, "goithau", [{ ...canonical, trangThai: "Đang chấm thầu", rowVersion: 4 }]);
+  assert.equal(model.state.goithau[0].rowVersion, 4);
+});
 
 test("a delayed search debounce does not reset a page rendered by sync", () => {
   const model = {
@@ -149,6 +182,82 @@ test("a newer paginated search aborts the older request owned by the same list",
     const result = await second;
     assert.deepEqual(result.items.map((item) => item.id), ["new-result"]);
   } finally {
+    requests.forEach(({ pending }) => pending.resolve(jsonResponse({
+      items: [], totalItems: 0, hasMore: false, nextCursor: null,
+    })));
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("an aborted pre-commit response cannot repopulate cache when transport ignores abort", async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const model = paginatedModel();
+  globalThis.fetch = (url, options = {}) => {
+    const pending = deferred();
+    const request = { url: String(url), options, pending, aborted: false };
+    requests.push(request);
+    options.signal?.addEventListener?.("abort", () => {
+      request.aborted = true;
+      // Deliberately leave the transport pending. A late response must still be fenced.
+    }, { once: true });
+    return pending.promise;
+  };
+
+  try {
+    const params = { page: 1, pageSize: 10, search: "" };
+    const staleRequest = loadPaginatedRecords(
+      model,
+      "hopdong",
+      params,
+      { cancellationOwner: "contract-list" },
+    );
+    const staleOutcome = staleRequest.then(
+      (value) => ({ status: "fulfilled", value }),
+      (reason) => ({ status: "rejected", reason }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    invalidatePaginatedQueryCache(model, "hopdong", { abortInFlight: true });
+    const canonicalRequest = loadPaginatedRecords(
+      model,
+      "hopdong",
+      params,
+      { cancellationOwner: "contract-list" },
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(requests.length, 2);
+
+    requests[1].pending.resolve(jsonResponse({
+      items: [{ id: "contract-v2", trangThaiHopDong: "Đã hoàn thành" }],
+      totalItems: 1,
+      hasMore: false,
+      nextCursor: null,
+    }));
+    const canonical = await canonicalRequest;
+    assert.equal(canonical.items[0].trangThaiHopDong, "Đã hoàn thành");
+
+    requests[0].pending.resolve(jsonResponse({
+      items: [{ id: "contract-v1", trangThaiHopDong: "Đang thực hiện" }],
+      totalItems: 1,
+      hasMore: false,
+      nextCursor: null,
+    }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const stale = await staleOutcome;
+    assert.equal(stale.status, "rejected");
+    assert.equal(stale.reason?.name, "AbortError");
+    assert.equal(
+      paginatedProjectionStore(model).read("hopdong", params)?.items?.[0]?.trangThaiHopDong,
+      "Đã hoàn thành",
+      "the late pre-commit response must not overwrite the canonical cache",
+    );
+  } finally {
+    requests.forEach(({ pending }) => pending.resolve(jsonResponse({
+      items: [], totalItems: 0, hasMore: false, nextCursor: null,
+    })));
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;
   }
@@ -202,6 +311,74 @@ test("a fresh cache hit still aborts an older request owned by the same list", a
     assert.equal(staleOutcome.status, "rejected");
     assert.equal(staleOutcome.reason?.name, "AbortError");
     assert.deepEqual(cached.items.map((item) => item.id), ["cached-result"]);
+  } finally {
+    requests.forEach(({ pending }) => pending.resolve(jsonResponse({
+      items: [], totalItems: 0, hasMore: false, nextCursor: null,
+    })));
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
+test("canonical mutation invalidation fences an older in-flight page before revalidation", async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  const model = paginatedModel();
+  globalThis.fetch = (url, options = {}) => {
+    const pending = deferred();
+    const request = { url: String(url), options, pending, aborted: false };
+    requests.push(request);
+    options.signal?.addEventListener?.("abort", () => {
+      request.aborted = true;
+      pending.reject(Object.assign(new Error("request aborted"), { name: "AbortError" }));
+    }, { once: true });
+    return pending.promise;
+  };
+
+  try {
+    const params = { page: 1, pageSize: 10, search: "" };
+    const staleRequest = loadPaginatedRecords(
+      model,
+      "hopdong",
+      params,
+      { cancellationOwner: "contract-list" },
+    );
+    const staleOutcome = staleRequest.then(
+      (value) => ({ status: "fulfilled", value }),
+      (reason) => ({ status: "rejected", reason }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // A successful POST /api/sync has committed a newer contract version.
+    // The pre-commit pagination response must not be reused by the canonical render.
+    invalidatePaginatedQueryCache(model, "hopdong", { abortInFlight: true });
+    const canonicalRequest = loadPaginatedRecords(
+      model,
+      "hopdong",
+      params,
+      { cancellationOwner: "contract-list" },
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(requests.length, 2, "canonical revalidation must start a post-commit request");
+    assert.equal(requests[0].aborted, true, "the pre-commit page request must be fenced");
+    requests[1].pending.resolve(jsonResponse({
+      items: [{ id: "contract-v2", trangThaiHopDong: "Đã hoàn thành" }],
+      totalItems: 1,
+      hasMore: false,
+      nextCursor: null,
+    }));
+
+    const stale = await staleOutcome;
+    assert.equal(stale.status, "rejected");
+    assert.equal(stale.reason?.name, "AbortError");
+    const canonical = await canonicalRequest;
+    assert.equal(canonical.items[0].trangThaiHopDong, "Đã hoàn thành");
+    assert.equal(
+      paginatedProjectionStore(model).read("hopdong", params)?.items?.[0]?.trangThaiHopDong,
+      "Đã hoàn thành",
+      "only the post-commit page may repopulate the projection cache",
+    );
   } finally {
     if (previousFetch === undefined) delete globalThis.fetch;
     else globalThis.fetch = previousFetch;

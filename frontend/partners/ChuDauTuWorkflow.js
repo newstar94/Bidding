@@ -2,9 +2,13 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
   mutatePersistAndSync,
   persistAndSync,
   refreshRecordBeforeDelete,
+  showCanonicalSaveCommitted,
+  showLocalSavePending,
 } from "../shared/MutationService.js";
 import {
   createNextVersion,
@@ -159,7 +163,9 @@ export async function handleChuDauTuSubmit(e) {
   rememberSelectedVersion(this.model.state, "selectedChuDauTuVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await persistInvestorFormChanges(this, upsertRecords);
+  const persistence = await persistInvestorFormChanges(this, upsertRecords);
+  const canonical = await awaitCanonicalSyncResult(persistence);
+  if (canonical?.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) return;
   const planModal = document.getElementById("modal-kehoach");
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");
@@ -187,11 +193,12 @@ export function persistInvestorFormChanges(controller, changedInvestors) {
     afterLocalDurable: () => {
       const render = controller.view.renderChuDauTuTable();
       const close = controller.closeModal("modal-chudautu");
-      controller.view.showToast?.("Đã lưu chủ đầu tư", "Thông tin chủ đầu tư đã được lưu.", "success");
+      showLocalSavePending(controller.view, "Chủ đầu tư");
       return Promise.all([render, close]);
     },
     afterCanonicalSync: async () => {
       await controller.view.renderChuDauTuTable();
+      showCanonicalSaveCommitted(controller.view, "Chủ đầu tư");
     },
   });
 }

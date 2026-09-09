@@ -9,21 +9,29 @@ export function resolvePackageAssigneeIds(selectedAssigneeIds) {
 }
 
 export function resolveInitialPackageAssigneeIds({
+  activeRole,
   packageId,
   assignedEmpIds,
+  currentUserId,
 } = {}) {
-  return normalizeId(packageId) ? normalizeAssigneeIds(assignedEmpIds) : [];
+  if (normalizeId(packageId)) return normalizeAssigneeIds(assignedEmpIds);
+  return normalizeId(activeRole).toLowerCase() === "employee" && normalizeId(currentUserId)
+    ? [normalizeId(currentUserId)]
+    : [];
 }
 
 export function derivePackageAssigneeControlState({
   activeRole,
   packageId,
   assignedEmpIds,
+  currentUserId,
 } = {}) {
   return {
     values: resolveInitialPackageAssigneeIds({
       packageId,
       assignedEmpIds,
+      activeRole,
+      currentUserId,
     }),
     disabled: String(activeRole || "").trim().toLowerCase() === "employee",
   };

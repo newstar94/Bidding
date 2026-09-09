@@ -207,3 +207,69 @@ test("authoritative page row replaces a stale physical row of the same package v
     "the stale remembered physical ID must not keep current actions view-only",
   );
 });
+
+test("authoritative latest package row wins over a stale non-historical selection", () => {
+  const historical = {
+    id: "pkg-00",
+    rootId: "pkg-root",
+    phienBan: "00",
+    isLatest: 0,
+    keHoachId: "plan-01",
+  };
+  const authoritativeCurrent = {
+    id: "pkg-01",
+    rootId: "pkg-root",
+    phienBan: "01",
+    isLatest: 1,
+    keHoachId: "plan-01",
+  };
+  const model = {
+    state: {
+      kehoach: [
+        { id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1 },
+      ],
+      goithau: [historical],
+      selectedPackageVersion: { "pkg-root": historical.id },
+      selectedPackageVersionIntent: { "pkg-root": "latest" },
+    },
+  };
+
+  const resolved = resolvePackageTableVersionState(model, authoritativeCurrent);
+
+  assert.equal(resolved.displayedGt.id, authoritativeCurrent.id);
+  assert.equal(resolved.isHistorical, false);
+  assert.equal(model.state.selectedPackageVersion["pkg-root"], authoritativeCurrent.id);
+  assert.equal(model.state.selectedPackageVersionIntent["pkg-root"], "latest");
+});
+
+test("authoritative latest package row preserves an explicit historical selection", () => {
+  const historical = {
+    id: "pkg-00",
+    rootId: "pkg-root",
+    phienBan: "00",
+    isLatest: 0,
+    keHoachId: "plan-01",
+  };
+  const authoritativeCurrent = {
+    id: "pkg-01",
+    rootId: "pkg-root",
+    phienBan: "01",
+    isLatest: 1,
+    keHoachId: "plan-01",
+  };
+  const model = {
+    state: {
+      kehoach: [
+        { id: "plan-01", rootId: "plan-root", phienBan: "01", isLatest: 1 },
+      ],
+      goithau: [historical],
+      selectedPackageVersion: { "pkg-root": historical.id },
+      selectedPackageVersionIntent: { "pkg-root": "historical" },
+    },
+  };
+
+  const resolved = resolvePackageTableVersionState(model, authoritativeCurrent);
+
+  assert.equal(resolved.displayedGt.id, historical.id);
+  assert.equal(resolved.isHistorical, true);
+});

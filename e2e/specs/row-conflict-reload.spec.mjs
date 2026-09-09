@@ -14,19 +14,22 @@ async function waitForApp(page) {
     const loader = document.getElementById("system-init-loader");
     return loader?.getAttribute("aria-busy") === "false"
       && getComputedStyle(loader).visibility === "hidden";
-  });
+  }, undefined, { polling: 100 });
 }
 
 async function waitForInitialReconciliation(page) {
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
-  ));
+  ), undefined, { polling: 100 });
 }
 
-async function isolateHostInjectedScripts(context) {
+async function isolateHostInjectedScripts(context, { force = false } = {}) {
+  const browserName = context.browser()?.browserType().name();
+  if (!force && browserName !== "firefox") return;
   // Some developer machines inject AdGuard userscripts into every document.
-  // This scenario intentionally performs many cold navigations, so keep its
-  // manually-created contexts as isolated as Playwright's standard fixtures.
+  // Firefox can let these host-level scripts abort a competing cold navigation.
+  // Do not install Playwright routes in the other engines: routing disables the
+  // HTTP cache, while this scenario intentionally performs many cold navigations.
   // Register only the injected-script signatures: a catch-all route also
   // intercepts every application API request and can delay sync commits.
   const blockInjectedScript = (route) => route.abort("blockedbyclient");
@@ -38,11 +41,37 @@ async function isolateHostInjectedScripts(context) {
   await context.route(/[?&]name=AdGuard[^&]*(?:&|$)/i, blockInjectedScript);
 }
 
+test.beforeEach(async ({ context }) => {
+  await isolateHostInjectedScripts(context);
+});
+
 async function login(page) {
   const response = await page.context().request.post("/api/auth/login", {
     data: { username, password, remember: false },
   });
   expect(response.ok(), await response.text().catch(() => "")).toBe(true);
+}
+
+const tabNameByPath = Object.freeze({
+  "/chu-dau-tu": "chudautu",
+  "/goi-thau": "goithau",
+  "/ke-hoach": "kehoach",
+});
+
+async function navigateWithinReadyApp(page, targetPath) {
+  const tabName = tabNameByPath[targetPath];
+  if (!tabName) return false;
+  await waitForApp(page);
+  await waitForInitialReconciliation(page);
+  await page.evaluate((path) => {
+    history.pushState({}, "", path);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, targetPath);
+  await page.waitForURL((url) => (
+    url.pathname.replace(/\/$/, "") || "/"
+  ) === targetPath);
+  await expect(page.locator(`#tab-${tabName}.active`)).toBeVisible();
+  return true;
 }
 
 async function gotoReady(page, route) {
@@ -51,16 +80,23 @@ async function gotoReady(page, route) {
     ? new URL(currentUrl).pathname.replace(/\/$/, "") || "/"
     : null;
   const targetPath = new URL(route, "http://e2e.local").pathname.replace(/\/$/, "") || "/";
+  const browserName = page.context().browser()?.browserType().name();
   if (currentPath !== null && currentPath === targetPath) {
     await waitForApp(page);
     await waitForInitialReconciliation(page);
     return;
   }
-  // Tear down the previous application document before the cold navigation.
-  // Firefox can otherwise let a late route/module callback from that document
-  // abort the next top-level request. The blank document keeps this context's
-  // cookies and IndexedDB while removing those stale callbacks deterministically.
-  await page.goto("about:blank", { waitUntil: "commit" });
+  if (
+    currentPath !== null
+    && browserName !== "firefox"
+    && await navigateWithinReadyApp(page, targetPath)
+  ) return;
+  // Firefox can let a late route/module callback from an existing application
+  // document abort the next top-level request. Only that engine needs the blank
+  // teardown; Chromium/WebKit retain the ready document and module cache above.
+  if (browserName === "firefox" && currentPath !== null) {
+    await page.goto("about:blank", { waitUntil: "commit" });
+  }
   // Host-injected scripts can delay DOMContentLoaded independently of the app.
   // The two readiness checks below are the authoritative synchronization seam.
   await page.goto(route, { waitUntil: "commit" });
@@ -70,8 +106,13 @@ async function gotoReady(page, route) {
 
 async function reloadReady(page) {
   const currentUrl = page.url();
-  await page.goto("about:blank", { waitUntil: "commit" });
-  await page.goto(currentUrl, { waitUntil: "commit" });
+  const browserName = page.context().browser()?.browserType().name();
+  if (browserName === "firefox") {
+    await page.goto("about:blank", { waitUntil: "commit" });
+    await page.goto(currentUrl, { waitUntil: "commit" });
+  } else {
+    await page.reload({ waitUntil: "commit" });
+  }
   await waitForApp(page);
   await waitForInitialReconciliation(page);
 }
@@ -121,15 +162,19 @@ async function checkMountedCheckbox(locator) {
 async function openPlanDetails(page, row) {
   const details = page.locator("#fullpage-kh-version-select");
   const action = row.locator('[data-bf-action="show-plan"]');
+  const expectedPlanId = await action.getAttribute("data-id");
+  expect(expectedPlanId).toBeTruthy();
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (await details.count()) return details;
+    if (await details.count() && await details.inputValue() === expectedPlanId) return details;
     await action.click();
-    const attached = await details.waitFor({ state: "attached", timeout: 3_000 })
-      .then(() => true)
+    const ready = await details.waitFor({ state: "attached", timeout: 3_000 })
+      .then(() => details.inputValue())
+      .then((value) => value === expectedPlanId)
       .catch(() => false);
-    if (attached) return details;
+    if (ready) break;
   }
-  expect(await details.count(), "plan detail did not open after the delegated action retry").toBe(1);
+  await expect(details, "plan detail did not open its current canonical version")
+    .toHaveValue(expectedPlanId);
   return details;
 }
 
@@ -198,6 +243,41 @@ async function searchPackageRow(page, packageCode) {
     expect(response.ok(), await response.text().catch(() => "")).toBe(true);
   }
   const row = page.locator("#goithau-table tbody tr").filter({ hasText: packageCode }).first();
+  await expect(row).toBeVisible();
+  return row;
+}
+
+function waitForPlanSearchResponse(page, planCode, { expectedVersion = null } = {}) {
+  const normalizedCode = String(planCode).toLowerCase();
+  return page.waitForResponse(async (response) => {
+    if (response.request().method() !== "GET") return false;
+    const url = new URL(response.url());
+    const matchesQuery = url.pathname === "/api/paginate"
+      && url.searchParams.get("table") === "kehoach"
+      && String(url.searchParams.get("search") || "").toLowerCase() === normalizedCode;
+    if (!matchesQuery || expectedVersion === null) return matchesQuery;
+    if (!response.ok()) return true;
+    const body = await response.json().catch(() => null);
+    return (body?.items || []).some((row) => (
+      String(row.maKeHoach || "").toLowerCase() === normalizedCode
+      && Number(row.phienBan) === Number(expectedVersion)
+    ));
+  });
+}
+
+async function searchPlanRow(page, planCode, { responsePromise = null } = {}) {
+  const normalizedCode = String(planCode).toLowerCase();
+  const input = page.locator("#search-kehoach");
+  if (!responsePromise && (await input.inputValue()).toLowerCase() !== normalizedCode) {
+    responsePromise = waitForPlanSearchResponse(page, planCode);
+    await input.fill(planCode);
+  }
+  if (responsePromise) {
+    const response = await responsePromise;
+    expect(response.ok(), await response.text().catch(() => "")).toBe(true);
+  }
+  await expect(input).toHaveValue(planCode);
+  const row = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
   await expect(row).toBeVisible();
   return row;
 }
@@ -381,14 +461,15 @@ async function createPackage00(page, {
 
 async function createPlan01(page, { planCode }) {
   await gotoReady(page, "/ke-hoach");
-  await page.locator("#search-kehoach").fill(planCode);
-  const sourceRow = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
-  await expect(sourceRow).toBeVisible();
+  const sourceRow = await searchPlanRow(page, planCode);
   const sourceVersionSelect = await openPlanDetails(page, sourceRow);
   const historicalPlanId = await sourceVersionSelect.inputValue();
   expect(historicalPlanId).toBeTruthy();
 
-  await page.locator("#btn-edit-kehoach-fullpage").click();
+  const editPlan = page.locator("#btn-edit-kehoach-fullpage");
+  await expect(editPlan).toHaveAttribute("data-bf-action-ready", "true");
+  await expect(editPlan).toBeEnabled();
+  await editPlan.click();
   await expect(page.locator("#modal-kehoach.active")).toBeVisible();
   await page.locator("#kh-thoigiandang").fill(clock.dateTime(-30, "08:00"));
   await page.locator("#form-kehoach button[type='submit']").click();
@@ -397,17 +478,20 @@ async function createPlan01(page, { planCode }) {
     response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/versioning/aggregate"
   ));
+  const latestPlanResponse = waitForPlanSearchResponse(page, planCode, {
+    expectedVersion: 1,
+  });
   await savePlanBreakdown(page);
   const versionResponse = await versionResponsePromise;
   expect(versionResponse.ok(), await versionResponse.text().catch(() => "")).toBe(true);
   const versionCommand = versionResponse.request().postDataJSON();
   expect(versionCommand.kind).toBe("plan");
   expect(String(versionCommand.sourceId)).toBe(String(historicalPlanId));
+  const latestListResponse = await latestPlanResponse;
+  expect(latestListResponse.ok(), await latestListResponse.text().catch(() => "")).toBe(true);
 
   await gotoReady(page, "/ke-hoach");
-  await page.locator("#search-kehoach").fill(planCode);
-  const latestRow = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
-  await expect(latestRow).toBeVisible();
+  const latestRow = await searchPlanRow(page, planCode);
   const latestVersionSelect = await openPlanDetails(page, latestRow);
   const versions = await latestVersionSelect.evaluate((element) => ({
     selected: element.value,
@@ -582,6 +666,78 @@ async function deleteSearchedEntity(page, {
   return { deleted: deletedIds.size };
 }
 
+async function readServerRecordsForCleanup(request, headers, {
+  table, field, value,
+}) {
+  const records = [];
+  const seenCursors = new Set();
+  let cursor = "";
+  do {
+    expect(seenCursors.has(cursor), `${table} cleanup cursor repeated`).toBe(false);
+    seenCursors.add(cursor);
+    const query = new URLSearchParams({
+      table,
+      pageSize: "200",
+      pagination: "cursor",
+      sortBy: "id",
+      sortOrder: "asc",
+    });
+    if (cursor) query.set("cursor", cursor);
+    const response = await request.get(`/api/paginate?${query}`, { headers });
+    const body = await response.json();
+    expect(response.ok(), JSON.stringify(body)).toBe(true);
+    for (const row of body.items || []) {
+      const fieldValue = String(row?.[field] || "");
+      if (fieldValue.toLowerCase() === String(value).toLowerCase()) {
+        records.push({ id: row.id, rowVersion: row.rowVersion, value: fieldValue });
+      }
+    }
+    const nextCursor = String(body.nextCursor || "");
+    if (!body.hasMore || !nextCursor) break;
+    cursor = nextCursor;
+  } while (true);
+  return records;
+}
+
+async function deleteSearchedEntityForCleanup(request, cleanupState, target) {
+  let records = await readServerRecordsForCleanup(request, cleanupState.headers, {
+    table: target.table,
+    field: target.exactField,
+    value: target.expectedText,
+  });
+  if (records.length === 0) return { alreadyAbsent: true };
+  const deletedIds = new Set();
+  while (records.length > 0) {
+    const repeatedId = records.find((record) => deletedIds.has(String(record.id)));
+    expect(repeatedId, `${target.table}:${target.expectedText} cleanup made no server progress`)
+      .toBeUndefined();
+    records.forEach((record) => deletedIds.add(String(record.id)));
+    const response = await request.post("/api/sync", {
+      headers: cleanupState.headers,
+      data: {
+        baseSyncVersion: cleanupState.baseSyncVersion,
+        clientMutationId: `row-conflict-cleanup-${crypto.randomUUID()}`,
+        deletions: records.map((record) => ({
+          table: target.table,
+          id: record.id,
+          expectedVersion: record.rowVersion,
+        })),
+      },
+    });
+    const body = await response.json();
+    expect(response.ok(), JSON.stringify(body)).toBe(true);
+    cleanupState.baseSyncVersion = body.syncVersion
+      ?? body.currentSyncVersion
+      ?? cleanupState.baseSyncVersion;
+    records = await readServerRecordsForCleanup(request, cleanupState.headers, {
+      table: target.table,
+      field: target.exactField,
+      value: target.expectedText,
+    });
+  }
+  return { deleted: deletedIds.size };
+}
+
 function cleanupTargetsForSuffix(suffix) {
   return [
     {
@@ -614,39 +770,37 @@ function cleanupTargetsForSuffix(suffix) {
 
 async function cleanupCreatedEntities(page, targets) {
   const failures = [];
-  // Use a fresh storage context for cleanup. The scenario deliberately keeps
-  // its primary context in a durable row conflict; sharing that IndexedDB
-  // state makes unrelated fixture deletes inherit the conflict and stall.
-  const browser = page.context().browser();
-  const cleanupContext = browser
-    ? await browser.newContext({
-      serviceWorkers: "block",
-      storageState: await page.context().storageState(),
-    })
-    : page.context();
-  if (cleanupContext !== page.context()) await isolateHostInjectedScripts(cleanupContext);
-  try {
-    // Cleanup only needs an authenticated same-origin document for fetch,
-    // cookies, and workspace storage. Bootstrapping an application route for
-    // every table adds five unrelated WebKit cold navigations to teardown.
-    const targetPage = await cleanupContext.newPage();
-    for (const target of targets) {
-      try {
-        if (targetPage.url() === "about:blank") {
-          await targetPage.goto("/health/ready", { waitUntil: "commit" });
-        }
-        await deleteSearchedEntity(targetPage, target);
-      } catch (error) {
-        failures.push(new Error(
-          `${target.table}:${target.expectedText}: ${error?.message || error}`,
-          { cause: error },
-        ));
-      }
-    }
-    await targetPage.close().catch(() => undefined);
-  } finally {
-    if (cleanupContext !== page.context()) {
-      await cleanupContext.close().catch(() => undefined);
+  // Cleanup deliberately bypasses the application's conflicted outbox and
+  // uses the authenticated API transport. A third WebKit page/context is not
+  // part of the product scenario and can compete with the two real clients.
+  const cleanupAuth = await page.evaluate(() => ({
+    activeOrganizationId: sessionStorage.getItem("bf_active_org")
+      || localStorage.getItem("bf_active_org")
+      || "",
+    baseSyncVersion: Number(localStorage.getItem("bf_last_sync_version") || 0),
+    origin: location.origin,
+    csrfToken: document.cookie.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("csrf_token="))
+      ?.slice("csrf_token=".length) || "",
+  }));
+  const cleanupState = {
+    baseSyncVersion: cleanupAuth.baseSyncVersion,
+    headers: {
+      Origin: cleanupAuth.origin,
+      Referer: `${cleanupAuth.origin}/goi-thau`,
+      "X-Active-Org": encodeURIComponent(cleanupAuth.activeOrganizationId),
+      "X-CSRF-Token": decodeURIComponent(cleanupAuth.csrfToken),
+    },
+  };
+  for (const target of targets) {
+    try {
+      await deleteSearchedEntityForCleanup(page.context().request, cleanupState, target);
+    } catch (error) {
+      failures.push(new Error(
+        `${target.table}:${target.expectedText}: ${error?.message || error}`,
+        { cause: error },
+      ));
     }
   }
   if (failures.length > 0) {
@@ -676,6 +830,25 @@ async function cleanupStaleRowConflictFixtures(page, {
   return staleSuffixes.length;
 }
 
+test("package create editor opens after authoritative route reconciliation", async ({ page }) => {
+  const runtimeFailures = [];
+  page.on("pageerror", (error) => runtimeFailures.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") runtimeFailures.push(`console: ${message.text()}`);
+  });
+
+  await login(page);
+  // Warm the application shell only. The package workflow graph must remain
+  // cold so this isolates the first package-editor action after app startup.
+  await page.goto("/tong-quan", { waitUntil: "commit" });
+  await waitForApp(page);
+  await gotoReady(page, "/goi-thau");
+  await page.locator("#btn-add-goithau").click();
+
+  await expect(page.locator('#modal-goithau.active[data-editor-state="ready"]')).toBeVisible();
+  expect(runtimeFailures).toEqual([]);
+});
+
 test("plan 01 breakdown is one commit, historical stays view-only, and real package conflict reloads server state", async ({ browser }) => {
   // Contexts provide the required client/storage isolation. Reuse the project
   // browser process so Firefox does not run two traced browser runtimes in the
@@ -689,6 +862,9 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
   let contextB = null;
   let pageB = null;
   const suffix = `${Date.now()}-${test.info().project.name}`;
+  const fixtureIdSuffix = suffix.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+  const baselineExpertId = `row-conflict-expert-base-${fixtureIdSuffix}`;
+  const addedExpertId = `row-conflict-expert-add-${fixtureIdSuffix}`;
   const ownerCode = `F5-${suffix}-CDT`;
   const ownerName = `Chủ đầu tư F5 ${suffix}`;
   const baselineExpertName = `Chuyên gia nền F5 ${suffix}`;
@@ -701,9 +877,43 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
   const packageName01 = `Gói F5 01 ${suffix}`;
   const packageNameB = `Gói F5 Server B ${suffix}`;
   let cleanupEnabled = false;
+  const clientARuntimeFailures = [];
+  pageA.on("requestfailed", (request) => {
+    clientARuntimeFailures.push(
+      `requestfailed: ${request.url()} (${request.failure()?.errorText || "unknown"})`,
+    );
+  });
+  pageA.on("console", (message) => {
+    if (message.type() === "error") clientARuntimeFailures.push(`console: ${message.text()}`);
+  });
 
   try {
     await login(pageA);
+    // Finish one authoritative shell startup at a time. Both clients still
+    // capture the same later business baseline, while WebKit is not asked to
+    // cold-load two large module graphs in overlapping contexts.
+    await pageA.goto("/tong-quan", { waitUntil: "commit" });
+    await waitForApp(pageA).catch((error) => {
+      throw new Error(clientARuntimeFailures.join("\n") || error.message, { cause: error });
+    });
+    await waitForInitialReconciliation(pageA);
+    const authenticatedState = await contextA.storageState();
+    contextB = await browser.newContext({
+      serviceWorkers: "block",
+      // A separate client shares the authenticated server session, not the
+      // first client's local mutation/outbox storage.
+      storageState: { cookies: authenticatedState.cookies, origins: [] },
+    });
+    await isolateHostInjectedScripts(contextB);
+    pageB = await contextB.newPage();
+    // Start warming only the common application shell while client A creates
+    // the fixtures. This domain test validates the conflict protocol, while
+    // cold-start budgets have their own performance gate; the later
+    // /goi-thau load still performs authoritative reconciliation.
+    await pageB.goto("/tong-quan", { waitUntil: "commit" });
+    await waitForApp(pageB);
+    await waitForInitialReconciliation(pageB);
+
     await cleanupStaleRowConflictFixtures(pageA, { excludeSuffix: suffix });
     await createReferenceFixtures(pageA, {
       suffix,
@@ -713,6 +923,10 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
       expertName,
     });
     cleanupEnabled = true;
+    // The fixtures above are committed through the API, outside client A's
+    // in-memory model. Reconcile that model once before forms consume the
+    // owner/expert catalogs; route rendering alone must not imply fresh data.
+    await reloadReady(pageA);
     await createPlan00(pageA, { code: planCode, name: planName00, ownerName });
     await createPackage00(pageA, {
       code: packageCode,
@@ -721,6 +935,12 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
       baselineExpertName,
       appraisalExpertName: expertName,
     });
+    const createdPackage = (await readServerRows(pageA, { table: "goithau" }))
+      .find((row) => String(row.maGoiThau).toLowerCase() === packageCode.toLowerCase());
+    expect(createdPackage?.toChuyenGia, "created package must persist its baseline expert")
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ chuyenGiaId: baselineExpertId }),
+      ]));
 
     const { historicalPlanId, latestPlanId } = await createPlan01(pageA, { planCode });
     const planSnapshot = await pageA.evaluate(async ({ oldPlanId, newPlanId, packageCode: code }) => {
@@ -745,6 +965,14 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect(planSnapshot.historicalPackageId).toBeTruthy();
     expect(planSnapshot.latestPackageId).toBeTruthy();
     expect(planSnapshot.latestPackageId).not.toBe(planSnapshot.historicalPackageId);
+    const clonedPackage = (await readServerRows(pageA, {
+      table: "goithau",
+      filters: { keHoachId: latestPlanId },
+    })).find((row) => String(row.id) === String(planSnapshot.latestPackageId));
+    expect(clonedPackage?.toChuyenGia, "plan clone must preserve the baseline expert")
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ chuyenGiaId: baselineExpertId }),
+      ]));
 
     await pageA.locator("#btn-edit-kehoach-fullpage").click();
     await expect(pageA.locator("#modal-kehoach.active")).toBeVisible();
@@ -757,9 +985,19 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await breakdownRow.locator('[data-bf-action="edit-package"]').click();
     await expect(pageA.locator("#modal-goithau.active")).toBeVisible();
     await pageA.locator("#gt-ten").fill(packageName01);
+    const checkedBeforeAddition = await pageA
+      .locator('#to-chuyengia-tbody input[name="tochuyengia-select"]:checked')
+      .evaluateAll((inputs) => inputs.map((input) => input.value));
+    expect(checkedBeforeAddition, "package editor must hydrate its baseline expert")
+      .toContain(baselineExpertId);
     const expertRow = pageA.locator("#to-chuyengia-tbody tr").filter({ hasText: expertName }).first();
     await expect(expertRow).toHaveCount(1);
     await checkMountedCheckbox(expertRow.locator('input[name="tochuyengia-select"]'));
+    const checkedAfterAddition = await pageA
+      .locator('#to-chuyengia-tbody input[name="tochuyengia-select"]:checked')
+      .evaluateAll((inputs) => inputs.map((input) => input.value));
+    expect(checkedAfterAddition, "adding an expert must preserve the hydrated baseline")
+      .toEqual(expect.arrayContaining([baselineExpertId, addedExpertId]));
     const draftPackageId = await pageA.locator("#form-goithau-id").inputValue();
     expect(draftPackageId).toBeTruthy();
 
@@ -854,32 +1092,56 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
 
-    await reloadReady(pageA);
     packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow.locator('select[data-bf-change="change-package-version"]')).toHaveValue(latestPackage.id);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);
     await expect(packageRow.locator('[data-bf-action="delete-package"]')).toHaveCount(1);
 
-    const authenticatedState = await contextA.storageState();
-    contextB = await browser.newContext({
-      serviceWorkers: "block",
-      // A separate client shares the authenticated server session, not the
-      // first client's local mutation/outbox storage.
-      storageState: { cookies: authenticatedState.cookies, origins: [] },
-    });
-    await isolateHostInjectedScripts(contextB);
-    pageB = await contextB.newPage();
+    // Client B deliberately completed startup before the fixtures existed.
+    // Refresh once here so both editors capture the same authoritative baseline;
+    // the conflict itself is created below, after A crosses its mutation barrier.
+    await reloadReady(pageB);
     const packageIdA = await openLatestPackageForEdit(pageA, packageCode);
     const packageIdB = await openLatestPackageForEdit(pageB, packageCode);
     expect(packageIdA).toBe(latestPackage.id);
     expect(packageIdB).toBe(latestPackage.id);
-    await pageA.route("**/api/sync/delta**", (route) => route.abort());
+    await expect(pageA.locator("#gt-kehoachid")).toHaveValue(latestPlanId);
+    await expect(pageB.locator("#gt-kehoachid")).toHaveValue(latestPlanId);
+
+    let releaseClientARequest;
+    let captureClientARequest;
+    const clientARequestCaptured = new Promise((resolve) => {
+      captureClientARequest = resolve;
+    });
+    const clientARequestReleased = new Promise((resolve) => {
+      releaseClientARequest = resolve;
+    });
+    await pageA.route("**/api/sync", async (route) => {
+      const request = route.request();
+      const payload = request.method() === "POST"
+        ? request.postDataJSON()
+        : null;
+      const isTargetMutation = (payload?.goithau || []).some((row) => (
+        String(row.id) === String(latestPackage.id)
+          && row.nguonVon === "Nguồn vốn Local A"
+      ));
+      if (!isTargetMutation) {
+        await route.continue();
+        return;
+      }
+      captureClientARequest(request);
+      await clientARequestReleased;
+      await route.continue();
+    });
+
+    await pageA.locator("#gt-nguonvon").fill("Nguồn vốn Local A");
+    await pageA.locator("#form-goithau button[type='submit']").click();
+    await clientARequestCaptured;
 
     await pageB.locator("#gt-ten").fill(packageNameB);
     const clientBResponsePromise = pageB.waitForResponse((response) => (
       response.request().method() === "POST"
         && new URL(response.url()).pathname === "/api/sync"
-        && response.ok()
         && (response.request().postDataJSON()?.goithau || []).some((row) => (
           String(row.id) === String(latestPackage.id) && row.tenGoiThau === packageNameB
         ))
@@ -887,6 +1149,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await pageB.locator("#form-goithau button[type='submit']").click();
     const clientBResponse = await clientBResponsePromise;
     const clientBBody = await clientBResponse.json();
+    expect(clientBResponse.ok(), JSON.stringify(clientBBody)).toBe(true);
     expect((clientBBody.rowVersions || []).some((entry) => (
       entry.table === "goithau" && String(entry.id) === String(latestPackage.id)
     ))).toBe(true);
@@ -896,18 +1159,19 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     );
     await expect(pageB.locator("#modal-goithau.active")).toBeHidden();
 
-    await pageA.locator("#gt-nguonvon").fill("Nguồn vốn Local A");
+    // A is deliberately held while B commits. Start the response budget only
+    // when A can reach the server, not while the test itself prevents a reply.
     const conflictResponsePromise = pageA.waitForResponse((response) => (
       response.request().method() === "POST"
         && new URL(response.url()).pathname === "/api/sync"
-        && response.status() === 409
         && (response.request().postDataJSON()?.goithau || []).some((row) => (
           String(row.id) === String(latestPackage.id) && row.nguonVon === "Nguồn vốn Local A"
         ))
     ));
-    await pageA.locator("#form-goithau button[type='submit']").click();
+    releaseClientARequest();
     const conflictResponse = await conflictResponsePromise;
     const conflictBody = await conflictResponse.json();
+    expect(conflictResponse.status(), JSON.stringify(conflictBody)).toBe(409);
     expect(conflictBody.errors.some((error) => (
       error.code === "ROW_VERSION_CONFLICT"
         && ["goithau", "goi_thau"].includes(error.table)
@@ -919,7 +1183,6 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
     await expect(pageA.locator(".bf-toast").filter({ hasText: "Nhấn F5" }).last()).toBeVisible();
 
-    await pageA.unroute("**/api/sync/delta**");
     await reloadReady(pageA);
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
     packageRow = await searchPackageRow(pageA, packageCode);

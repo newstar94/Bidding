@@ -279,6 +279,7 @@ export function setupAuth() {
       sessionStorage.setItem("bf_username", user.username);
     }
     if (!this.model.state.activeuser) this.model.state.activeuser = {};
+    this.model.state.activeuser.id = user.id || "";
     applyAccessContext(this.model.state.activeuser, user);
     this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(this.model.state.activeuser, requestedRole);
     this.model.state.activeuser.name = user.name || user.username || "Người dùng";

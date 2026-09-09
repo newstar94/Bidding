@@ -193,7 +193,16 @@ def verify(data):
                         (data["organizationId"], target_id, target_type),
                     ).fetchall()
                 ]
-            version_id = f"{data['runId']}-package-v2"
+            version_id = data.get("packageVersionId") or f"{data['runId']}-package-v2"
+            result["planVersionAssignments"] = [
+                {"id": row[0], "userId": row[1], "rowVersion": row[2]}
+                for row in cursor.execute(
+                    """SELECT id, id_nhan_vien, row_version FROM phan_cong_nhan_su
+                       WHERE organization_id = %s AND id_muc_tieu = %s
+                         AND loai_doi_tuong = 'kehoach' ORDER BY id_nhan_vien""",
+                    (data["organizationId"], data.get("planVersionId", "")),
+                ).fetchall()
+            ]
             result["versionAssignments"] = [
                 {"id": row[0], "userId": row[1], "rowVersion": row[2]}
                 for row in cursor.execute(

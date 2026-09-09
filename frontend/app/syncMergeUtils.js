@@ -1,5 +1,25 @@
 import { applyRecordPatch } from "./mutationQueue.js";
 
+const revokedProjectionByModel = new WeakMap();
+const REVOKED_PROJECTION_STORAGE_KEY = "bf_revoked_projection_ids_v1";
+
+function revokedProjectionIds(model) {
+  const workspace = String(model.getWorkspaceToken?.() || model.workspaceScope?.key || "");
+  let entry = revokedProjectionByModel.get(model);
+  const stored = model.workspaceStorage?.getItem?.(REVOKED_PROJECTION_STORAGE_KEY);
+  if (!entry || entry.workspace !== workspace || entry.persisted !== stored) {
+    const rows = stored ? JSON.parse(stored) : [];
+    if (!Array.isArray(rows) || rows.some((row) => !Array.isArray(row)
+      || typeof row[0] !== "string" || !Array.isArray(row[1])
+      || row[1].some((id) => typeof id !== "string"))) {
+      throw new Error("Invalid persisted revocation projection metadata");
+    }
+    entry = { workspace, persisted: stored, tables: new Map(rows.map(([key, ids]) => [key, new Set(ids)])) };
+    revokedProjectionByModel.set(model, entry);
+  }
+  return entry.tables;
+}
+
 export function normalizeIncomingRecords(model, key, records) {
   if (model && typeof model.normalizeRecordKeys === "function") {
     return (records || []).map((record) => model.normalizeRecordKeys(record, key));
@@ -95,6 +115,11 @@ export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds =
   return mergedRecords;
 }
 export function applyServerSnapshot(model, dbData, options = {}) {
+  const revokedTables = revokedProjectionIds(model);
+  const revokedFor = (key) => {
+    if (!revokedTables.has(key)) revokedTables.set(key, new Set());
+    return revokedTables.get(key);
+  };
   const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "visibilityToken", "dashboardSummary", "domainContract", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
@@ -135,11 +160,26 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   const applyIncoming = () => Object.keys(dbData).forEach((key) => {
     if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
     const incoming = normalizeIncomingRecords(model, key, dbData[key]);
+    for (const record of incoming) revokedFor(key).delete(String(record?.id || ""));
     if (isFullInitialSync) {
       if (shouldSkipEmptyPaginatedStore(key, incoming)) {
         return;
       }
-      const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
+      const incomingIds = new Set(incoming.map((record) => String(record?.id || "")));
+      const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {}).filter((record) => (
+        !revokedFor(key).has(String(record?.id || "")) && (!options.visibilityScopeChanged || useServerSidePagination
+        || incomingIds.has(String(record?.id || ""))
+        || !(Number(record?.rowVersion) > 0 || Number(record?.expectedVersion) > 0
+          || mutationBatch?.baseSnapshots?.[key]?.[String(record?.id || "")]))
+      ));
+      if (options.visibilityScopeChanged && !useServerSidePagination) {
+        const retainedIds = new Set([...incoming, ...pendingUpserts].map((record) => String(record?.id || "")));
+        const removedIds = (model.state[key] || [])
+          .filter((record) => Number.isInteger(record?.rowVersion) && record.rowVersion > 0)
+          .map((record) => String(record?.id || ""))
+          .filter((id) => id && !retainedIds.has(id));
+        if (removedIds.length) deletionsByTable[key] = removedIds;
+      }
       const pendingPatches = Object.values(mutationBatch?.patches?.[key] || {});
       const pendingDeleteIds = pendingDeleteIdsByTable.get(key) || new Set();
       const serverRecords = incoming.filter(
@@ -165,7 +205,8 @@ export function applyServerSnapshot(model, dbData, options = {}) {
       replacementsByTable[key] = overlaid;
       return;
     }
-    const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {});
+    const pendingUpserts = Object.values(mutationBatch?.upserts?.[key] || {})
+      .filter((record) => !revokedFor(key).has(String(record?.id || "")));
     const pendingPatches = Object.values(mutationBatch?.patches?.[key] || {});
     if (incoming.length === 0 && pendingUpserts.length === 0 && pendingPatches.length === 0) return;
     const protectedIds = new Set(
@@ -220,15 +261,23 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   Object.entries(dbData.recordManifest || {}).forEach(([key, serverRecordIds]) => {
     if (!Array.isArray(serverRecordIds) || !Array.isArray(model.state[key])) return;
     const serverIds = new Set(serverRecordIds.map((id) => String(id)));
+    for (const id of serverIds) revokedFor(key).delete(id);
     const inFlightIds = new Set(Object.keys(mutationBatch?.upserts?.[key] || {}).map((id) => String(id)));
     const removedIds = [];
     model.state[key] = model.state[key].filter((item) => {
       const id = String(item?.id || "");
-      const keep = serverIds.has(id) || inFlightIds.has(id);
+      const pending = mutationBatch?.upserts?.[key]?.[id];
+      const pendingExisting = Number(pending?.rowVersion) > 0 || Number(pending?.expectedVersion) > 0
+        || Boolean(mutationBatch?.baseSnapshots?.[key]?.[id]);
+      const keep = serverIds.has(id) || (inFlightIds.has(id)
+        && !revokedFor(key).has(id) && !(options.visibilityScopeChanged && pendingExisting));
       if (!keep && id) removedIds.push(id);
       return keep;
     });
     if (removedIds.length > 0) {
+      if (Object.prototype.hasOwnProperty.call(replacementsByTable, key)) {
+        replacementsByTable[key] = model.state[key];
+      }
       changedKeys.add(key);
       if (!deletionsByTable[key]) deletionsByTable[key] = [];
       deletionsByTable[key].push(...removedIds);
@@ -268,6 +317,18 @@ export function applyServerSnapshot(model, dbData, options = {}) {
     }
   }
   let persistencePromise = Promise.resolve();
+  if (options.visibilityScopeChanged) {
+    Object.entries(deletionsByTable).forEach(([key, ids]) => {
+      for (const id of ids) revokedFor(key).add(String(id));
+    });
+  }
+  const serializedRevocations = JSON.stringify([...revokedTables].filter(([, ids]) => ids.size)
+    .map(([key, ids]) => [key, [...ids]]));
+  const persistedRevocations = revokedProjectionByModel.get(model).persisted || "[]";
+  if (model.workspaceStorage?.setItem && serializedRevocations !== persistedRevocations) {
+    model.workspaceStorage.setItem(REVOKED_PROJECTION_STORAGE_KEY, serializedRevocations);
+    revokedProjectionByModel.get(model).persisted = serializedRevocations;
+  }
   if (model.db && typeof model.db.applySyncChanges === "function") {
     const persistenceDeletions = { ...deletionsByTable };
     Object.entries(overlayDeletionsByTable).forEach(([key, ids]) => {

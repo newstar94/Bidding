@@ -20,6 +20,16 @@ export function capturePlanBreakdownDraftLocalState(model, draft) {
   ]));
 }
 
+export function pruneRevokedPlanBackupRows(controller, revokedIdsByTable = {}) {
+  for (const [table, field] of [["kehoach", "backupKeHoachState"], ["goithau", "backupGoiThauState"]]) {
+    const revoked = new Set((revokedIdsByTable[table] || []).map(String));
+    if (!revoked.size || !Array.isArray(controller[field])) continue;
+    controller[field] = controller[field].filter((row) => (
+      !revoked.has(String(row.id)) || !(Number(row.rowVersion) > 0)
+    ));
+  }
+}
+
 function clone(value) {
   return typeof structuredClone === "function"
     ? structuredClone(value)
@@ -40,14 +50,19 @@ function changedFieldNames(current = {}, baseline = {}) {
   ));
 }
 
-export function rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, changedTables) {
+export function rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefore, changedTables, { revokedIdsByTable = {} } = {}) {
   if (!draft?.active || !draft?.snapshot || !localBefore) return false;
   const changed = new Set(changedTables || []);
   let rebased = false;
   PLAN_BREAKDOWN_DRAFT_TABLES.forEach((table) => {
     if (!changed.has(table)) return;
-    const baseline = draft.snapshot[table] || [];
-    const localRows = localBefore[table] || [];
+    const revokedIds = new Set((revokedIdsByTable[table] || []).map(String));
+    const committedIds = new Set([...(draft.snapshot[table] || []), ...(localBefore[table] || [])]
+      .filter((row) => Number.isInteger(row?.rowVersion) && row.rowVersion > 0)
+      .map((row) => String(row.id)));
+    const preserveDraftRow = (row) => !revokedIds.has(String(row.id)) || !committedIds.has(String(row.id));
+    const baseline = (draft.snapshot[table] || []).filter(preserveDraftRow);
+    const localRows = (localBefore[table] || []).filter(preserveDraftRow);
     const serverRows = model.state?.[table] || [];
     const baselineById = new Map(baseline.map((row) => [String(row?.id || ""), row]));
     const localById = new Map(localRows.map((row) => [String(row?.id || ""), row]));
@@ -58,6 +73,18 @@ export function rebasePlanBreakdownDraftAfterServerMerge(model, draft, localBefo
     serverById.forEach((serverRow, id) => {
       const baseRow = baselineById.get(id);
       const localRow = localById.get(id);
+      if (localRow?.referenceOnly === true && serverRow?.referenceOnly === false) {
+        const merged = clone(serverRow);
+        if (baseRow) {
+          changedFieldNames(localRow, baseRow)
+            .filter((field) => Object.prototype.hasOwnProperty.call(localRow, field))
+            .forEach((field) => { merged[field] = clone(localRow[field]); });
+        }
+        serverById.set(id, merged);
+        nextSnapshotById.set(id, clone(serverRow));
+        rebased = true;
+        return;
+      }
       if (!baseRow) {
         if (localRow) serverById.set(id, clone(localRow));
         else nextSnapshotById.set(id, clone(serverRow));

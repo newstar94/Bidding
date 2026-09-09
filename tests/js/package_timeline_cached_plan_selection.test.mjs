@@ -62,8 +62,8 @@ test("timeline renders exact authorized cached packages in the plan change event
       response.writeHead(200, { "content-type": contentType(url.pathname) });
       response.end(payload);
     } catch (error) {
-      if (!response.headersSent) response.writeHead(404);
-      if (!response.writableEnded) response.end(String(error?.message || "Not Found"));
+      if (!response.headersSent) response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      if (!response.writableEnded) response.end("Not Found");
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

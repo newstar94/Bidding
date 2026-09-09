@@ -5,7 +5,14 @@ import { businessOrganizations, normalizeOrganizations, organizationEmployeeProf
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { isTrialFullAccess } from "../commercial-policy/trialMode.js";
-import { persistAndSync, refreshRecordBeforeDelete } from "../shared/MutationService.js";
+import {
+  CANONICAL_SAVE_STATUS,
+  classifyCanonicalSyncResult,
+  persistAndSync,
+  refreshRecordBeforeDelete,
+  showCanonicalSaveCommitted,
+  showLocalSavePending,
+} from "../shared/MutationService.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
@@ -618,14 +625,16 @@ export function setupRBACEvents() {
         }
       });
       await persistAdminUpserts(this.model, { permissionmatrix: changedPermissions });
-      this.view.showToast?.(
-        "Đã lưu ma trận phân quyền",
-        "Thay đổi đã được lưu trên thiết bị; máy chủ đang được đối chiếu nền.",
-        "success",
-      );
-      void Promise.resolve(this.autoSync?.()).catch((error) => {
-        console.error("Background permission synchronization failed:", error);
-      });
+      showLocalSavePending(this.view, "Ma trận phân quyền");
+      void Promise.resolve(this.autoSync?.())
+        .then((result) => {
+          if (classifyCanonicalSyncResult(result) === CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+            showCanonicalSaveCommitted(this.view, "Ma trận phân quyền");
+          }
+        })
+        .catch((error) => {
+          console.error("Background permission synchronization failed:", error);
+        });
     });
   }
   const formHsg = document.getElementById("form-manager-hosogiay");
@@ -658,14 +667,16 @@ export function setupRBACEvents() {
       document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
       renderLucideIcons(document.getElementById("btn-save-hosogiay"), lucide);
       this.view.renderManagerHoSoGiayPanel();
-      this.view.showToast?.(
-        "Đã lưu trạng thái hợp đồng",
-        "Thay đổi đã được lưu trên thiết bị; máy chủ đang được đối chiếu nền.",
-        "success",
-      );
-      void Promise.resolve(this.autoSync?.()).catch((error) => {
-        console.error("Background contract status synchronization failed:", error);
-      });
+      showLocalSavePending(this.view, "Trạng thái hợp đồng");
+      void Promise.resolve(this.autoSync?.())
+        .then((result) => {
+          if (classifyCanonicalSyncResult(result) === CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+            showCanonicalSaveCommitted(this.view, "Trạng thái hợp đồng");
+          }
+        })
+        .catch((error) => {
+          console.error("Background contract status synchronization failed:", error);
+        });
     });
   }
   const accountPackageSelect = document.getElementById("detail-su-account-package");

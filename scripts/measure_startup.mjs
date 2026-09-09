@@ -21,6 +21,7 @@ const warmRuns = Math.max(1, Number(process.env.STARTUP_WARM_RUNS || 30));
 // bounded host-scheduler margin over the clean 30-run 1841/391 ms p95 sample.
 const coldP95LimitMs = Math.max(1, Number(process.env.STARTUP_COLD_P95_MS || 2100));
 const warmP95LimitMs = Math.max(1, Number(process.env.STARTUP_WARM_P95_MS || 450));
+// Product reconfirmed the original target; see docs/performance-follow-up.md.
 const longTaskLimitMs = Math.max(1, Number(process.env.STARTUP_LONG_TASK_MS || 100));
 const disableServiceWorker = process.env.STARTUP_DISABLE_SERVICE_WORKER === "1";
 // Endpoint protection can inject local scripts into every Chromium page. Keep

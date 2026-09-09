@@ -173,7 +173,7 @@ def test_dynamic_response_keeps_defensive_chunked_framing():
     assert "content-length" not in headers
 
 
-def test_bundle_mode_preloads_app_graph_and_authenticated_workspace_entry(monkeypatch, tmp_path):
+def test_bundle_mode_preloads_route_graph_for_reliable_cold_start(monkeypatch, tmp_path):
     manifest_directory = tmp_path / "dist" / ".vite"
     manifest_directory.mkdir(parents=True)
     manifest = {
@@ -187,26 +187,42 @@ def test_bundle_mode_preloads_app_graph_and_authenticated_workspace_entry(monkey
             "imports": ["_workspace-shared.js"],
         },
         "_workspace-shared.js": {"file": "assets/workspace-shared-12345678.js"},
+        "frontend/landing/LandingPage.js": {
+            "file": "assets/landing-12345678.js",
+            "imports": ["_landing-shared.js"],
+        },
+        "_landing-shared.js": {"file": "assets/landing-shared-12345678.js"},
     }
+    for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES:
+        manifest[entry_key] = {
+            "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
+        }
     (manifest_directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setattr(app_module, "APP_DEBUG", False)
     monkeypatch.setattr(app_module, "project_root", str(tmp_path))
 
-    anonymous = app_module._workspace_preload_tag({"valid": False})
+    anonymous = app_module._workspace_preload_tag({"valid": False}, "/")
     authenticated = app_module._workspace_preload_tag({"valid": True})
 
     assert anonymous.splitlines() == [
         '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/landing-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/landing-shared-12345678.js">',
     ]
     assert authenticated.splitlines() == [
         '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
-        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/workspace-12345678.js">',
+        *[
+            f'<link rel="modulepreload" href="/dist/assets/{entry_key.rsplit("/", 1)[-1]}-12345678.js">'
+            for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES
+        ],
+        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/workspace-shared-12345678.js">',
     ]
 
 
-def test_production_preloads_app_graph_and_authenticated_workspace_entry(monkeypatch, tmp_path):
+def test_production_preloads_route_graph_for_reliable_cold_start(monkeypatch, tmp_path):
     dist_root = tmp_path / "dist"
     assets_directory = dist_root / "assets"
     assets_directory.mkdir(parents=True)
@@ -221,7 +237,16 @@ def test_production_preloads_app_graph_and_authenticated_workspace_entry(monkeyp
             "imports": ["_workspace-shared.js"],
         },
         "_workspace-shared.js": {"file": "assets/workspace-shared-12345678.js"},
+        "frontend/landing/LandingPage.js": {
+            "file": "assets/landing-12345678.js",
+            "imports": ["_landing-shared.js"],
+        },
+        "_landing-shared.js": {"file": "assets/landing-shared-12345678.js"},
     }
+    for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES:
+        manifest[entry_key] = {
+            "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
+        }
     for entry in manifest.values():
         (dist_root / entry["file"]).write_text("export {};", encoding="utf-8")
     frontend_assets = SimpleNamespace(manifest=manifest, dist_root=dist_root)
@@ -232,17 +257,24 @@ def test_production_preloads_app_graph_and_authenticated_workspace_entry(monkeyp
         lambda _project_root: frontend_assets,
     )
 
-    anonymous = app_module._workspace_preload_tag({"valid": False})
+    anonymous = app_module._workspace_preload_tag({"valid": False}, "/")
     authenticated = app_module._workspace_preload_tag({"valid": True})
 
     assert anonymous.splitlines() == [
         '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/landing-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/landing-shared-12345678.js">',
     ]
     assert authenticated.splitlines() == [
         '<link rel="modulepreload" href="/dist/assets/app-12345678.js">',
-        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/workspace-12345678.js">',
+        *[
+            f'<link rel="modulepreload" href="/dist/assets/{entry_key.rsplit("/", 1)[-1]}-12345678.js">'
+            for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES
+        ],
+        '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
+        '<link rel="modulepreload" href="/dist/assets/workspace-shared-12345678.js">',
     ]
 
 
@@ -283,6 +315,24 @@ def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):
     assert '/css/runtime-styles.css' not in compiled
     assert '/vendor/fonts/plus-jakarta-sans-latin.woff2' not in compiled
     assert '/vendor/fonts/plus-jakarta-sans-vietnamese.woff2' not in compiled
+
+
+def test_compiled_bundle_preloads_exact_manifest_fonts(monkeypatch, tmp_path):
+    test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path)
+    manifest_path = tmp_path / "dist" / ".vite" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for subset in ("latin", "vietnamese"):
+        font = f"assets/plus-jakarta-sans-{subset}-12345678.woff2"
+        target = tmp_path / "dist" / font
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(b"fixture-font")
+        manifest[f"views/vendor/fonts/plus-jakarta-sans-{subset}.woff2"] = {"file": font}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(app_module, "_compiled_html_cache", None)
+    compiled = app_module.compile_html(str(tmp_path / "views" / "index.html"))
+    for subset in ("latin", "vietnamese"):
+        assert compiled.count(f'href="/dist/assets/plus-jakarta-sans-{subset}-12345678.woff2"') == 1
+    assert 'as="font" type="font/woff2" crossorigin' in compiled
 
 
 def test_bundled_landing_uses_its_small_shell_stylesheet_without_app_css(

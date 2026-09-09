@@ -10,4 +10,9 @@ test('landing sprite covers every static icon and declares outline paint', () =>
   const renderer = readFileSync('frontend/landing/landingIcons.js', 'utf8');
   assert.match(renderer, /setAttribute\("fill", "none"\)/);
   assert.match(renderer, /setAttribute\("stroke", "currentColor"\)/);
+  assert.doesNotMatch(
+    renderer,
+    /landing-icons\.svg|createElementNS\([^\n]+, "use"\)|setAttribute\("href"/u,
+    'landing icons must use generated inline geometry so WebKit cannot fan out one sprite request per icon',
+  );
 });

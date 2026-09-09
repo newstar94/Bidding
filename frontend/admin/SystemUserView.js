@@ -196,10 +196,10 @@ export function populateNhanVienPhuTrachDropdowns() {
   const optionsHtml = employees.map((e) => {
     return `<option value="${escapeHTML(e.id)}">${escapeHTML(organizationEmployeeLabel(e))}</option>`;
   }).join("");
-  if (gtDropdown) {
+  if (gtDropdown && !gtDropdown.__bfMultiAssigneeSelect) {
     gtDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml);
   }
-  if (hdDropdown) {
+  if (hdDropdown && !hdDropdown.__bfMultiAssigneeSelect) {
     hdDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml);
   }
 }

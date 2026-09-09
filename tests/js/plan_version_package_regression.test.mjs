@@ -818,9 +818,30 @@ test("package copy-on-write sync excludes the historical plan snapshot", () => {
   const upserts = packageFamilyUpsertsForPlan(
     [historicalPackage, currentSource, copiedPackage],
     copiedPackage,
+    { includeHistorical: true },
   );
 
   assert.deepEqual(upserts, [currentSource, copiedPackage]);
+});
+
+test("ordinary package save excludes immutable historical siblings", () => {
+  const historicalPackage = {
+    id: "package-v00",
+    rootId: "package-root",
+    keHoachId: "plan-current",
+    isLatest: 0,
+  };
+  const currentPackage = {
+    id: "package-v01",
+    rootId: "package-root",
+    keHoachId: "plan-current",
+    isLatest: 1,
+  };
+
+  assert.deepEqual(
+    packageFamilyUpsertsForPlan([historicalPackage, currentPackage], currentPackage),
+    [currentPackage],
+  );
 });
 
 test("plan detail opens its package snapshot without upgrading to the latest plan snapshot", () => {

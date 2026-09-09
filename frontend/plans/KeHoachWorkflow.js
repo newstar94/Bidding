@@ -12,10 +12,13 @@ import {
   removeLatestVersion
 } from "../shared/VersionedEntityService.js";
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
   mutatePersistAndSync,
   persistAndSync,
   refreshRecordBeforeDelete,
   refreshRecordBeforeMutation,
+  showLocalSavePending,
 } from "../shared/MutationService.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
@@ -852,6 +855,7 @@ export async function handleKeHoachSubmit(e) {
       updatedAt: this.model.getCurrentDateTimeString(),
       ...this.tempPlanData
     });
+    ensureNewPlanCreatorAssignment(this.model, planId);
     const versionDraft = createPlanVersionDraftSession(this.model.state, planId);
     try {
       await savePlanVersionDraftSession(this.model, versionDraft);
@@ -1388,6 +1392,30 @@ export async function backToPlanDraft() {
   });
 }
 
+export function ensureNewPlanCreatorAssignment(model, planId) {
+  const currentUserId = String(
+    model?.state?.activeuser?.id
+    || globalThis.sessionStorage?.getItem("bf_user_id")
+    || "",
+  ).trim();
+  if (model?.state?.activerole !== "employee" || !currentUserId || !planId) return null;
+  const existing = (model.state.assignments || []).find((assignment) => (
+    assignment.type === "kehoach"
+    && String(assignment.targetId) === String(planId)
+    && String(assignment.empId) === currentUserId
+  ));
+  if (existing) return existing;
+  const assignment = {
+    id: generateRecordId("assignments"),
+    empId: currentUserId,
+    targetId: planId,
+    type: "kehoach",
+  };
+  model.state.assignments.push(assignment);
+  model.entityIndexes?.invalidate?.("assignments");
+  return assignment;
+}
+
 export async function savePlanBreakdown() {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
@@ -1638,11 +1666,13 @@ export async function savePlanBreakdown() {
         ],
         afterPersist: () => {
           localTableRefresh = renderVersionTables();
+          showLocalSavePending(this.view, "Kế hoạch");
           return localTableRefresh;
         },
       });
   }
-  if (!syncResult?.ok) return;
+  const canonicalResult = await awaitCanonicalSyncResult(syncResult);
+  if (!canonicalResult?.ok && canonicalResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.OFFLINE_PENDING) return;
   await localTableRefresh;
   {
     this.backupKeHoachState = null;
@@ -1655,6 +1685,17 @@ export async function savePlanBreakdown() {
       preserveProcurementImport: true,
       deferPlanTableRender: true,
     });
+  }
+  if (
+    canonicalResult?.canonicalStatus
+    && canonicalResult.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED
+  ) {
+    this.view.showToast?.(
+      "Đang chờ đồng bộ kế hoạch",
+      "Bản kế hoạch đã lưu trên thiết bị nhưng chưa được máy chủ xác nhận.",
+      "warning",
+    );
+    return;
   }
   if (this.procurementPlanImport?.controller) {
     await this.completeProcurementPlanImportRevision?.(finalPlanId);

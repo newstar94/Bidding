@@ -92,7 +92,7 @@ try {
   await fillExpertForm(page, expertName, "1");
   await page.locator("#form-chuyengia button[type='submit']").click();
   await page.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset?.syncState === "offline", null, { timeout: 15_000 });
-  await page.locator("#modal-chuyengia.active").waitFor({ state: "visible" });
+  await page.locator("#modal-chuyengia.active").waitFor({ state: "hidden", timeout: 15_000 });
 
   const committed = page.waitForResponse((response) => (
     response.request().method() === "POST"
@@ -155,17 +155,15 @@ try {
   await interruptedRequestFailed;
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
-      && document.getElementById("modal-chuyengia")?.classList.contains("active")
+      && !document.getElementById("modal-chuyengia")?.classList.contains("active")
   ), null, { timeout: 15_000 });
   const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
   if (interruptedSyncState !== "transport-error") {
     throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
   }
-  if (abortedSyncCount < 1 || await page.locator("#modal-chuyengia.active").isHidden()) {
-    throw new Error("Interrupted save did not remain pending for an explicit retry");
+  if (abortedSyncCount < 1 || await page.locator("#modal-chuyengia.active").isVisible()) {
+    throw new Error("Interrupted save did not close after becoming locally durable and remain pending for retry");
   }
-  await page.locator('#modal-chuyengia .modal-close[data-close="modal-chuyengia"]').click();
-  await page.locator("#modal-chuyengia.active").waitFor({ state: "hidden", timeout: 10_000 });
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
   ), null, { timeout: 10_000 });

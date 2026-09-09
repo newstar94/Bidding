@@ -54,6 +54,14 @@ async function pageFunctionValue(value) {
   return typeof value?.jsonValue === "function" ? value.jsonValue() : value;
 }
 
+function withDeadline(promise, timeout, message) {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeout);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
 export async function finalizeLotAndWaitForRender({
   page,
   packageId,
@@ -61,44 +69,94 @@ export async function finalizeLotAndWaitForRender({
   expectedPackageStatus,
   expectedRenderedStatus,
   approve,
+  prepareRenderedState,
   waitForPageCondition,
   timeout = 20_000,
 }) {
+  const normalizedPackageId = String(packageId || "").trim();
+  if (!normalizedPackageId) {
+    throw new TypeError("Lot approval package identity is required.");
+  }
   const approvalGeneration = typeof page.evaluate === "function"
-    ? await page.evaluate(() => Number.parseInt(
+    ? await withDeadline(page.evaluate(() => Number.parseInt(
       document.documentElement.dataset.awardApprovalGeneration || "0",
       10,
-    ))
+    )), timeout, "Lot approval generation probe did not settle.")
     : null;
   const finalizeResponsePromise = page.waitForResponse(
-    (response) => isLotFinalizeResponse(response, packageId),
+    (response) => isLotFinalizeResponse(response, normalizedPackageId),
     // The approval workflow commits dependent records before issuing finalize.
     // The application transport owns that operation's bounded deadline; a UI
     // default timeout here would also count time before the request exists.
     { timeout: 0 },
-  ).then((response) => ({ type: "response", response }));
+  ).then(
+    (response) => ({ type: "response", response }),
+    (error) => ({ type: "response-error", error }),
+  );
   const approvalOutcomePromise = approvalGeneration === null
     ? null
     : waitForPageCondition(page, hasSettledAwardApproval, {
       afterGeneration: approvalGeneration,
-    }, { timeout: 0 }).then(async (value) => ({
-      type: "approval",
-      approval: await pageFunctionValue(value),
-    }));
-  await approve();
-  const outcome = await Promise.race([
-    finalizeResponsePromise,
-    ...(approvalOutcomePromise ? [approvalOutcomePromise] : []),
-  ]);
+    }, { timeout: 0 }).then(
+      async (value) => ({
+        type: "approval",
+        approval: await pageFunctionValue(value),
+      }),
+      (error) => ({ type: "approval-error", error }),
+    );
+  const approvalInvocationFailure = Promise.resolve()
+    .then(approve)
+    // A completed click is not authoritative. Keep this branch pending until
+    // either the finalize response or the semantic operation state settles.
+    .then(() => new Promise(() => {}), (error) => ({ type: "approve-error", error }));
+  const outcome = await withDeadline(
+    Promise.race([
+      finalizeResponsePromise,
+      ...(approvalOutcomePromise ? [approvalOutcomePromise] : []),
+      approvalInvocationFailure,
+    ]),
+    timeout,
+    "Lot approval did not yield an authoritative finalize response or settled operation state.",
+  ).catch(async (error) => {
+    let diagnostic;
+    try {
+      diagnostic = await withDeadline(page.evaluate(() => ({
+        path: location.pathname,
+        operation: { ...document.documentElement.dataset },
+        render: { ...document.getElementById("detail-workflow-content-wrapper")?.dataset },
+        invalid: [...document.querySelectorAll(":invalid")].map((item) => ({ id: item.id, message: item.validationMessage })).slice(0, 20),
+        dialog: document.getElementById("modal-custom-dialog")?.innerText,
+        toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+      })), timeout, "Lot failure diagnostics did not settle.");
+    } catch (diagnosticError) {
+      diagnostic = { unavailable: diagnosticError.message };
+    }
+    throw new Error(`${error.message} Diagnostics: ${JSON.stringify(diagnostic)}`, { cause: error });
+  });
+  if (outcome.type === "response-error" || outcome.type === "approval-error" || outcome.type === "approve-error") {
+    throw new Error(`Lot approval observation failed: ${outcome.error?.message || "unknown"}`);
+  }
   if (outcome.type === "approval" && outcome.approval?.state === "failed") {
     throw new Error(
       `Lot approval failed before finalize: ${outcome.approval.kind || "unknown"}`,
     );
   }
-  const finalizeResponse = outcome.type === "response"
-    ? outcome.response
-    : (await finalizeResponsePromise).response;
-  const lifecycle = await finalizeResponse.json();
+  const finalizeOutcome = outcome.type === "response"
+    ? outcome
+    : await withDeadline(
+      finalizeResponsePromise,
+      timeout,
+      "Lot approval settled without an authoritative finalize response.",
+    );
+  if (finalizeOutcome.type === "response-error") {
+    throw new Error(`Lot approval observation failed: ${finalizeOutcome.error?.message || "unknown"}`);
+  }
+  const finalizeResponse = finalizeOutcome.response;
+  const lifecycle = await withDeadline(
+    finalizeResponse.json(),
+    timeout,
+    "Lot finalize response body did not settle.",
+  );
   if (finalizeResponse.status() !== 200) {
     throw new Error(
       `Lot finalize failed: HTTP ${finalizeResponse.status()}${describeFinalizeFailure(lifecycle)}`,
@@ -112,11 +170,21 @@ export async function finalizeLotAndWaitForRender({
   if (lifecycle.packageRowVersion === undefined || lifecycle.packageRowVersion === null) {
     throw new Error("Lot lifecycle response is missing packageRowVersion.");
   }
-  await waitForPageCondition(page, hasRenderedLotFinalization, {
-    expectedId: String(packageId),
+  const renderPage = typeof prepareRenderedState === "function"
+    ? await withDeadline(
+      Promise.resolve(prepareRenderedState({ lifecycle, page })),
+      timeout,
+      "Lot canonical rendered state preparation did not settle.",
+    )
+    : page;
+  if (!renderPage) {
+    throw new TypeError("Lot canonical rendered state preparation must return a page.");
+  }
+  await withDeadline(waitForPageCondition(renderPage, hasRenderedLotFinalization, {
+    expectedId: normalizedPackageId,
     expectedRounds: roundsBefore + 1,
     expectedStatus: expectedRenderedStatus,
     expectedVersion: lifecycle.packageRowVersion,
-  }, { timeout });
+  }, { timeout }), timeout, "Lot finalization render did not converge before the operation deadline.");
   return lifecycle;
 }

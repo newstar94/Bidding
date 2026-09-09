@@ -99,6 +99,22 @@ def validate_frontend_asset_path(dist_root: Path, asset_path: object) -> str:
     return normalized
 
 
+def resolve_font_preloads(manifest: Mapping[str, Any], dist_root: Path) -> tuple[str, ...]:
+    """Resolve existing product fonts without guessing hashed file names."""
+    fonts = []
+    for subset in ("latin", "vietnamese"):
+        entry = manifest.get(f"views/vendor/fonts/plus-jakarta-sans-{subset}.woff2")
+        if entry is None:
+            continue
+        if not isinstance(entry, Mapping):
+            raise FrontendAssetError("Invalid font manifest entry")
+        asset = validate_frontend_asset_path(dist_root, entry.get("file"))
+        if not asset.endswith(".woff2"):
+            raise FrontendAssetError("Font preload must reference a WOFF2 asset")
+        fonts.append(asset)
+    return tuple(fonts)
+
+
 def _entry(manifest: Mapping[str, Any], key: str, *, required: bool = True) -> Mapping[str, Any] | None:
     value = manifest.get(key)
     if value is None and not required:
