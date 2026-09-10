@@ -277,8 +277,14 @@ def test_local_environment_update_is_atomic_and_allowlisted(monkeypatch, tmp_pat
     )
 
 
-def test_environment_update_is_read_only_outside_local_environments(monkeypatch):
-    monkeypatch.setenv("APP_ENV", "production")
+@pytest.mark.parametrize("app_environment", [None, "", "invalid", "staging", "production"])
+def test_environment_update_is_read_only_outside_local_environments(
+    monkeypatch, app_environment,
+):
+    if app_environment is None:
+        monkeypatch.delenv("APP_ENV", raising=False)
+    else:
+        monkeypatch.setenv("APP_ENV", app_environment)
     monkeypatch.setattr(
         operational.database,
         "get_connection",

@@ -253,7 +253,10 @@ def _restore_local_env(original, *, env_path=None):
 
 
 def _update_environment_sync(request, payload):
-    if str(os.environ.get("APP_ENV", "development")).strip().casefold() not in {"development", "test"}:
+    app_environment = _normalized_choice(
+        os.environ.get("APP_ENV"), _ENVIRONMENT_NAMES, "unknown"
+    )
+    if app_environment not in {"development", "test"}:
         return _error("Môi trường này dùng cấu hình triển khai chỉ đọc.", "DEPLOYMENT_CONFIG_READ_ONLY", 409)
     try:
         updates = _validated_environment_updates(payload)
