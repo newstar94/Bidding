@@ -29,6 +29,11 @@ _PAYMENT_SORT_COLUMNS = {
     "payment_state": "orders.payment_state",
     "checkout_state": "orders.checkout_state",
 }
+_INVOICE_SORT_COLUMNS = {
+    "status": "invoice_requests.status",
+    "created_at": "invoice_requests.created_at",
+    "updated_at": "invoice_requests.updated_at",
+}
 _SUBSCRIPTION_STATUSES = {"", "active", "suspended", "expired", "cancelled"}
 _OWNER_KINDS = {"", "account", "organization"}
 _OPERATIONS = {"", "purchase", "renew", "upgrade", "downgrade", "credit_pack"}
@@ -42,6 +47,7 @@ _ACTIVATION_STATES = {
     "review_required", "reversed",
 }
 _TRANSACTION_STATUSES = {"", "verified", "settled", "failed"}
+_INVOICE_STATUSES = {"", "requested", "issued", "failed"}
 
 
 def _bounded_identifier(value, label):
@@ -403,8 +409,252 @@ async def list_admin_payments_api(request):
         return response
 
 
+def _invoice_request_select_sql():
+    return """
+        SELECT invoice_requests.id, invoice_requests.status,
+               invoice_requests.provider_reference,
+               invoice_requests.attempt_count,
+               invoice_requests.created_at, invoice_requests.updated_at,
+               orders.public_id AS order_public_id, orders.owner_kind,
+               orders.account_user_id, orders.organization_id,
+               orders.total_amount, orders.currency,
+               COALESCE(account.ho_ten, account.ten_dang_nhap, account.email)
+                   AS account_name,
+               account.email AS account_email,
+               organization.ten_to_chuc AS organization_name,
+               transactions.id AS transaction_id,
+               transactions.provider_transaction_id,
+               transactions.status AS transaction_status,
+               transactions.verified_paid_amount,
+               transactions.provider_occurred_at,
+               transactions.created_at AS transaction_created_at,
+               provider.provider, provider.environment AS provider_environment
+          FROM billing_invoice_requests invoice_requests
+          JOIN billing_orders orders ON orders.id = invoice_requests.order_id
+          JOIN payment_transactions transactions
+            ON transactions.id = invoice_requests.payment_transaction_id
+           AND transactions.order_id = orders.id
+          LEFT JOIN tai_khoan account ON account.id = orders.account_user_id
+          LEFT JOIN to_chuc organization ON organization.id = orders.organization_id
+          LEFT JOIN payment_provider_profiles provider
+            ON provider.id = orders.provider_profile_id
+    """
+
+
+def _invoice_request_item(row):
+    owner_id = (
+        row["account_user_id"]
+        if row["owner_kind"] == "account"
+        else row["organization_id"]
+    )
+    owner_name = (
+        row["account_name"]
+        if row["owner_kind"] == "account"
+        else row["organization_name"]
+    )
+    return {
+        "id": row["id"],
+        "status": row["status"],
+        "owner": {
+            "kind": row["owner_kind"],
+            "id": owner_id,
+            "name": owner_name,
+            "email": row["account_email"] if row["owner_kind"] == "account" else None,
+        },
+        "orderPublicId": row["order_public_id"],
+        "amounts": {
+            "orderTotalMinor": int(row["total_amount"]),
+            "verifiedPaidMinor": int(row["verified_paid_amount"]),
+            "currency": row["currency"],
+        },
+        "paymentTransaction": {
+            "id": row["transaction_id"],
+            "providerTransactionId": row["provider_transaction_id"],
+            "status": row["transaction_status"],
+            "providerOccurredAt": _json_value(row["provider_occurred_at"]),
+            "createdAt": _json_value(row["transaction_created_at"]),
+        },
+        "provider": {
+            "name": row["provider"],
+            "environment": row["provider_environment"],
+            "invoiceReference": row["provider_reference"],
+        },
+        "attemptCount": int(row["attempt_count"]),
+        "createdAt": _json_value(row["created_at"]),
+        "updatedAt": _json_value(row["updated_at"]),
+        "documentAvailable": False,
+    }
+
+
+def _list_admin_invoice_requests_sync(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    try:
+        page, page_size, search, sort_by, sort_direction = _parse_common_query(
+            request,
+            sort_columns=_INVOICE_SORT_COLUMNS,
+            default_sort="created_at",
+            allowed_filters={"ownerKind", "status"},
+        )
+        if "sortDir" not in request.query_params:
+            sort_direction = "desc"
+        owner_kind = str(request.query_params.get("ownerKind") or "").strip().lower()
+        status = str(request.query_params.get("status") or "").strip().lower()
+        if owner_kind not in _OWNER_KINDS:
+            raise _InvalidDirectoryQuery("Loại chủ thể không hợp lệ.")
+        if status not in _INVOICE_STATUSES:
+            raise _InvalidDirectoryQuery("Trạng thái yêu cầu hóa đơn không hợp lệ.")
+
+        predicates = []
+        values = []
+        if search:
+            term = f"%{search.lower()}%"
+            predicates.append(
+                "(lower(invoice_requests.id) LIKE ? "
+                "OR lower(orders.public_id) LIKE ? "
+                "OR lower(COALESCE(invoice_requests.provider_reference, '')) LIKE ? "
+                "OR lower(transactions.provider_transaction_id) LIKE ? "
+                "OR lower(COALESCE(account.ho_ten, account.email, '')) LIKE ? "
+                "OR lower(COALESCE(organization.ten_to_chuc, '')) LIKE ?)"
+            )
+            values.extend((term, term, term, term, term, term))
+        if owner_kind:
+            predicates.append("orders.owner_kind = ?")
+            values.append(owner_kind)
+        if status:
+            predicates.append("invoice_requests.status = ?")
+            values.append(status)
+        where_sql = f" WHERE {' AND '.join(predicates)}" if predicates else ""
+        select_sql = _invoice_request_select_sql()
+
+        connection = database.get_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"""SELECT COUNT(*) AS total_rows
+                       FROM billing_invoice_requests invoice_requests
+                       JOIN billing_orders orders ON orders.id = invoice_requests.order_id
+                       JOIN payment_transactions transactions
+                         ON transactions.id = invoice_requests.payment_transaction_id
+                        AND transactions.order_id = orders.id
+                       LEFT JOIN tai_khoan account ON account.id = orders.account_user_id
+                       LEFT JOIN to_chuc organization ON organization.id = orders.organization_id
+                       {where_sql}""",
+                tuple(values),
+            )
+            total_rows = int(cursor.fetchone()["total_rows"])
+            cursor.execute(
+                f"""{select_sql}{where_sql}
+                     ORDER BY {_INVOICE_SORT_COLUMNS[sort_by]} {sort_direction.upper()},
+                              invoice_requests.id
+                     LIMIT ? OFFSET ?""",
+                (*values, page_size, (page - 1) * page_size),
+            )
+            rows = cursor.fetchall()
+        finally:
+            connection.close()
+
+        return JSONResponse(
+            {
+                "items": [_invoice_request_item(row) for row in rows],
+                "pagination": _pagination(page, page_size, total_rows),
+                "sort": {"by": sort_by, "direction": sort_direction},
+                "filters": {
+                    "search": search,
+                    "ownerKind": owner_kind,
+                    "status": status,
+                },
+                "resource": "invoice_request",
+            },
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except _InvalidDirectoryQuery as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
+        log_error(exc, "list_platform_admin_invoice_requests")
+        return JSONResponse(
+            {"error": "Đã xảy ra lỗi tải danh sách yêu cầu hóa đơn."},
+            status_code=500,
+        )
+
+
+async def list_admin_invoice_requests_api(request):
+    try:
+        return await run_database_read(_list_admin_invoice_requests_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        response = JSONResponse(
+            {"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
+
+def _get_admin_invoice_request_sync(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    try:
+        invoice_request_id = _bounded_identifier(
+            request.path_params.get("invoice_request_id"), "Yêu cầu hóa đơn"
+        )
+        if not invoice_request_id:
+            raise _InvalidDirectoryQuery("Yêu cầu hóa đơn không hợp lệ.")
+        connection = database.get_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"""{_invoice_request_select_sql()}
+                     WHERE invoice_requests.id = ?
+                     LIMIT 1""",
+                (invoice_request_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return JSONResponse(
+                {"error": "Không tìm thấy yêu cầu hóa đơn."}, status_code=404
+            )
+        return JSONResponse(
+            {
+                "invoiceRequest": _invoice_request_item(row),
+                "resource": "invoice_request",
+                "notice": (
+                    "Đây là dữ liệu yêu cầu phát hành hóa đơn; hệ thống chưa có "
+                    "mô hình tài liệu hóa đơn để tải xuống."
+                ),
+            },
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except _InvalidDirectoryQuery as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
+        log_error(exc, "get_platform_admin_invoice_request")
+        return JSONResponse(
+            {"error": "Đã xảy ra lỗi tải yêu cầu hóa đơn."}, status_code=500
+        )
+
+
+async def get_admin_invoice_request_api(request):
+    try:
+        return await run_database_read(_get_admin_invoice_request_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        response = JSONResponse(
+            {"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
+
 def platform_admin_billing_routes(Route):
     return [
         Route("/api/admin/subscriptions", list_admin_subscriptions_api, methods=["GET"]),
         Route("/api/admin/payments", list_admin_payments_api, methods=["GET"]),
+        Route("/api/admin/invoices", list_admin_invoice_requests_api, methods=["GET"]),
+        Route(
+            "/api/admin/invoices/{invoice_request_id}",
+            get_admin_invoice_request_api,
+            methods=["GET"],
+        ),
     ]

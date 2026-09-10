@@ -5,8 +5,12 @@ import { directoryQuery, directoryResultsMarkup, readDirectoryState } from "../.
 import {
   formatMinorMoney,
   executePaymentAction,
+  invoiceRequestDetailMarkup,
   invoiceUnavailableMarkup,
+  INVOICE_DIRECTORY,
+  paymentDetailMarkup,
   PAYMENT_DIRECTORY,
+  subscriptionDetailMarkup,
   SUBSCRIPTION_DIRECTORY,
 } from "../../frontend/admin-platform/AdminBilling.js";
 
@@ -23,6 +27,11 @@ test("billing directories emit only supported bounded server controls", () => {
   assert.deepEqual(directoryQuery(payments, PAYMENT_DIRECTORY), {
     page: 1, pageSize: 25, sortBy: "created_at", sortDir: "desc",
     paymentState: "verified_paid", transactionStatus: "settled",
+  });
+  const invoices = readDirectoryState(INVOICE_DIRECTORY, "?status=issued&ownerKind=account&pageSize=100&unknown=x");
+  assert.deepEqual(directoryQuery(invoices, INVOICE_DIRECTORY), {
+    page: 1, pageSize: 100, sortBy: "created_at", sortDir: "desc",
+    ownerKind: "account", status: "issued",
   });
 });
 
@@ -112,6 +121,17 @@ test("subscription rows render real ownership and subscription values", () => {
   assert.match(markup, /business/u);
   assert.match(markup, /order-public-1/u);
   assert.match(markup, />20</u);
+  assert.match(markup, /data-admin-billing-detail="organization:org-a"/u);
+  const detail = subscriptionDetailMarkup({
+    owner: { kind: "organization", id: "org-a", name: "Alpha Org" },
+    packageId: "business", planVersionId: "plan-v1", status: "active",
+    source: "order", sourceOrderPublicId: "order-public-1",
+    startsAt: 100, expiresAt: 4102444800, memberQuota: 20, revision: 3,
+    createdAt: "2026-01-01", updatedAt: "2026-01-02",
+  });
+  assert.match(detail, /Dòng thời gian đăng ký/u);
+  assert.match(detail, /order-public-1/u);
+  assert.match(detail, /Revision/u);
 });
 
 test("payment rows preserve minor-unit currency semantics and real transaction states", () => {
@@ -133,11 +153,48 @@ test("payment rows preserve minor-unit currency semantics and real transaction s
   assert.match(markup, /110[.]000/u);
   assert.match(markup, /verified_paid/u);
   assert.match(markup, /settled/u);
+  assert.match(markup, /data-admin-billing-detail="order-public-1"/u);
+  const detail = paymentDetailMarkup({
+    publicId: "order-public-1", owner: { kind: "account", id: "user-a", name: "Alpha" },
+    operation: "purchase", amounts: { subtotalMinor: 100000, taxMinor: 10000, totalMinor: 110000, currency: "VND" },
+    paymentState: "verified_paid", activationState: "applied", checkoutState: "open",
+    provider: { name: "payos", environment: "live", reference: "provider-ref" },
+    createdAt: "2026-01-01", updatedAt: "2026-01-02", checkoutExpiresAt: 4102444800,
+    transactions: [{ id: "tx-1", providerTransactionId: "provider-tx", type: "payment", status: "settled", verifiedPaidAmountMinor: 110000, currency: "VND", providerOccurredAt: 1500, createdAt: "2026-01-02" }],
+  });
+  assert.match(detail, /Dòng thời gian đơn hàng/u);
+  assert.match(detail, /Giao dịch thanh toán/u);
+  assert.match(detail, /provider-tx/u);
+  assert.match(detail, /110[.]000/u);
 });
 
-test("invoice route explicitly renders unavailable state without invented records", () => {
-  const markup = invoiceUnavailableMarkup();
-  assert.match(markup, /Chưa có nguồn dữ liệu hóa đơn/u);
-  assert.match(markup, /Không có số liệu giả/u);
-  assert.doesNotMatch(markup, /data-admin-retry/u);
+test("invoice directory and detail render authoritative request facts without invented document", () => {
+  const request = {
+    id: "invoice-request-1", status: "issued",
+    owner: { kind: "organization", id: "org-a", name: "Alpha Org" },
+    orderPublicId: "order-public-1",
+    amounts: { orderTotalMinor: 110000, verifiedPaidMinor: 110000, currency: "VND" },
+    paymentTransaction: { id: "tx-1", providerTransactionId: "provider-tx", status: "settled", providerOccurredAt: 1500, createdAt: "2026-01-02" },
+    provider: { name: "payos", environment: "live", invoiceReference: "provider-invoice-ref" },
+    attemptCount: 1, createdAt: "2026-01-02", updatedAt: "2026-01-04", documentAvailable: false,
+  };
+  const state = readDirectoryState(INVOICE_DIRECTORY, "");
+  const markup = directoryResultsMarkup(INVOICE_DIRECTORY, state, {
+    items: [request], pagination: { page: 1, totalPages: 1, totalRows: 1 },
+  });
+  assert.match(markup, /invoice-request-1/u);
+  assert.match(markup, /provider-invoice-ref/u);
+  assert.match(markup, /110[.]000/u);
+  assert.match(markup, /data-admin-billing-detail="invoice-request-1"/u);
+  const detail = invoiceRequestDetailMarkup({
+    invoiceRequest: request,
+    notice: "Đây là dữ liệu yêu cầu phát hành hóa đơn; chưa có tài liệu tải xuống.",
+  });
+  assert.match(detail, /Yêu cầu phát hành hóa đơn/u);
+  assert.match(detail, /provider-tx/u);
+  assert.match(detail, /provider-invoice-ref/u);
+  assert.match(detail, /Chưa có mô hình tài liệu hóa đơn/u);
+  assert.doesNotMatch(detail, /PDF|Số hóa đơn/u);
+  const noticeMarkup = invoiceUnavailableMarkup();
+  assert.match(noticeMarkup, /không phải tài liệu hóa đơn được tạo giả/u);
 });

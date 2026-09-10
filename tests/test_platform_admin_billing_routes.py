@@ -71,6 +71,12 @@ def _database():
             currency TEXT NOT NULL, payment_timing TEXT NOT NULL,
             provider_occurred_at INTEGER NOT NULL, created_at TEXT NOT NULL
         );
+        CREATE TABLE billing_invoice_requests (
+            id TEXT PRIMARY KEY, order_id TEXT NOT NULL,
+            payment_transaction_id TEXT NOT NULL, status TEXT NOT NULL,
+            provider_reference TEXT, attempt_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
         """
     )
     connection.execute(
@@ -108,6 +114,11 @@ def _database():
         """INSERT INTO payment_transactions VALUES
            ('tx-a', 'order-a', 'payos-tx-a', 'payment', 'settled',
             110000, 1000, 109000, 'VND', 'on_time', 1500, '2026-01-02')"""
+    )
+    connection.execute(
+        """INSERT INTO billing_invoice_requests VALUES
+           ('invoice-request-a', 'order-a', 'tx-a', 'issued',
+            'invoice-provider-ref', 1, '2026-01-02', '2026-01-04')"""
     )
     connection.commit()
     return connection
@@ -214,6 +225,84 @@ def test_payments_return_orders_and_transactions_with_minor_unit_amounts(monkeyp
         connection.close()
 
 
+def test_invoice_requests_are_bounded_authoritative_facts_with_detail(monkeypatch):
+    connection = _database()
+    try:
+        select_statements = []
+        connection.set_trace_callback(
+            lambda statement: select_statements.append(statement)
+            if statement.lstrip().upper().startswith("SELECT")
+            else None
+        )
+        client, calls = _client(monkeypatch, connection)
+        with client:
+            listing = client.get(
+                "/api/admin/invoices?ownerKind=account&status=issued&pageSize=25"
+                "&sortBy=updated_at&sortDir=desc"
+            )
+            assert len(select_statements) == 2
+            select_statements.clear()
+            detail = client.get("/api/admin/invoices/invoice-request-a")
+            assert len(select_statements) == 1
+
+        assert listing.status_code == 200
+        assert listing.headers["cache-control"] == "private, no-store"
+        payload = listing.json()
+        assert payload["resource"] == "invoice_request"
+        assert payload["pagination"] == {
+            "page": 1, "pageSize": 25, "totalRows": 1, "totalPages": 1,
+        }
+        item = payload["items"][0]
+        assert item == {
+            "id": "invoice-request-a",
+            "status": "issued",
+            "owner": {
+                "kind": "account", "id": "user-a", "name": "Alpha User",
+                "email": "alpha@example.test",
+            },
+            "orderPublicId": "order-public-account",
+            "amounts": {
+                "orderTotalMinor": 110000,
+                "verifiedPaidMinor": 110000,
+                "currency": "VND",
+            },
+            "paymentTransaction": {
+                "id": "tx-a",
+                "providerTransactionId": "payos-tx-a",
+                "status": "settled",
+                "providerOccurredAt": 1500,
+                "createdAt": "2026-01-02",
+            },
+            "provider": {
+                "name": "payos", "environment": "live",
+                "invoiceReference": "invoice-provider-ref",
+            },
+            "attemptCount": 1,
+            "createdAt": "2026-01-02",
+            "updatedAt": "2026-01-04",
+            "documentAvailable": False,
+        }
+        assert detail.status_code == 200
+        assert detail.headers["cache-control"] == "private, no-store"
+        assert detail.json()["invoiceRequest"] == item
+        assert "chưa có mô hình tài liệu hóa đơn" in detail.json()["notice"]
+        assert calls == ["super_admin", "super_admin"]
+    finally:
+        connection.close()
+
+
+def test_invoice_request_detail_returns_not_found_without_inventing_document(monkeypatch):
+    connection = _database()
+    try:
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/invoices/missing")
+        assert response.status_code == 404
+        assert response.json() == {"error": "Không tìm thấy yêu cầu hóa đơn."}
+    finally:
+        connection.close()
+
+
 def test_billing_admin_reads_require_server_side_super_admin(monkeypatch):
     connection = _database()
     try:
@@ -221,10 +310,14 @@ def test_billing_admin_reads_require_server_side_super_admin(monkeypatch):
         with client:
             subscriptions = client.get("/api/admin/subscriptions")
             payments = client.get("/api/admin/payments")
+            invoices = client.get("/api/admin/invoices")
+            invoice_detail = client.get("/api/admin/invoices/invoice-request-a")
 
         assert subscriptions.status_code == 403
         assert payments.status_code == 403
-        assert calls == ["super_admin", "super_admin"]
+        assert invoices.status_code == 403
+        assert invoice_detail.status_code == 403
+        assert calls == ["super_admin", "super_admin", "super_admin", "super_admin"]
     finally:
         connection.close()
 
@@ -236,12 +329,14 @@ def test_billing_admin_query_allowlists_reject_invalid_values(monkeypatch):
         with client:
             oversized = client.get("/api/admin/subscriptions?pageSize=101")
             invalid_state = client.get("/api/admin/payments?paymentState=paid")
+            invalid_invoice_state = client.get("/api/admin/invoices?status=paid")
             injected_sort = client.get(
                 "/api/admin/payments?sortBy=created_at%20DESC%3B%20DROP%20TABLE%20billing_orders"
             )
 
         assert oversized.status_code == 400
         assert invalid_state.status_code == 400
+        assert invalid_invoice_state.status_code == 400
         assert injected_sort.status_code == 400
         assert connection.execute("SELECT count(*) FROM billing_orders").fetchone()[0] == 2
     finally:

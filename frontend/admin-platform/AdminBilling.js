@@ -1,6 +1,6 @@
 import { renderAdminDirectory } from "./AdminDirectory.js";
-import { postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
-import { adminStateMarkup, renderAdminMarkup } from "./AdminStateView.js";
+import { getAdminJson, postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
+import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
@@ -42,6 +42,113 @@ function transactionMarkup(transactions) {
   return transactions.map((transaction) => (
     `<div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}<div class="small text-secondary">${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.createdAt)}</div></div>`
   )).join("");
+}
+
+function timelineMarkup(entries) {
+  const rows = entries
+    .filter((entry) => entry?.value !== null && entry?.value !== undefined && entry?.value !== "")
+    .map((entry) => `<li class="list-group-item"><div class="fw-semibold">${text(entry.label)}</div><div class="small text-secondary">${formatDate(entry.value)}${entry.detail ? ` · ${text(entry.detail)}` : ""}</div></li>`)
+    .join("");
+  return rows
+    ? `<ol class="list-group list-group-flush mb-3">${rows}</ol>`
+    : '<p class="text-secondary">Chưa có mốc thời gian được ghi nhận.</p>';
+}
+
+function detailShell(eyebrow, title, body) {
+  return `<div class="offcanvas-header"><div><div class="text-secondary small">${text(eyebrow)}</div><h2 class="offcanvas-title">${text(title)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-billing-detail></button></div><div class="offcanvas-body">${body}</div>`;
+}
+
+export function subscriptionDetailMarkup(subscription) {
+  const owner = subscription?.owner;
+  const quota = Number.isFinite(subscription?.memberQuota) ? escapeHtml(subscription.memberQuota) : "N/A";
+  return detailShell("Chi tiết đăng ký", owner?.name || owner?.id, `<dl class="row"><dt class="col-5">Chủ đăng ký</dt><dd class="col-7">${ownerMarkup(owner)}</dd><dt class="col-5">Gói dịch vụ</dt><dd class="col-7">${text(subscription?.packageId)}</dd><dt class="col-5">Phiên bản gói</dt><dd class="col-7">${text(subscription?.planVersionId)}</dd><dt class="col-5">Trạng thái</dt><dd class="col-7">${text(subscription?.status)}</dd><dt class="col-5">Nguồn</dt><dd class="col-7">${text(subscription?.source)}</dd><dt class="col-5">Đơn hàng nguồn</dt><dd class="col-7">${text(subscription?.sourceOrderPublicId)}</dd><dt class="col-5">Hạn mức thành viên</dt><dd class="col-7">${quota}</dd><dt class="col-5">Revision</dt><dd class="col-7">${Number.isFinite(subscription?.revision) ? escapeHtml(subscription.revision) : "N/A"}</dd></dl><h3 class="h4">Dòng thời gian đăng ký</h3>${timelineMarkup([
+    { label: "Tạo bản ghi", value: subscription?.createdAt },
+    { label: "Bắt đầu hiệu lực", value: subscription?.startsAt },
+    { label: "Cập nhật gần nhất", value: subscription?.updatedAt },
+    { label: "Hết hạn", value: subscription?.expiresAt },
+  ])}`);
+}
+
+export function paymentDetailMarkup(payment) {
+  const amount = payment?.amounts;
+  const provider = payment?.provider;
+  const transactions = Array.isArray(payment?.transactions) ? payment.transactions : [];
+  const transactionTimeline = transactions.length
+    ? transactions.map((transaction) => `<li class="list-group-item"><div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}</div><div class="small text-secondary">${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.providerOccurredAt || transaction.createdAt)}</div><div class="small text-secondary">${text(transaction.providerTransactionId, transaction.id)}</div></li>`).join("")
+    : '<li class="list-group-item text-secondary">Chưa có giao dịch thanh toán.</li>';
+  return detailShell("Chi tiết thanh toán", payment?.publicId, `<dl class="row"><dt class="col-5">Chủ thanh toán</dt><dd class="col-7">${ownerMarkup(payment?.owner)}</dd><dt class="col-5">Nghiệp vụ</dt><dd class="col-7">${text(payment?.operation)}</dd><dt class="col-5">Tổng đơn hàng</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</dd><dt class="col-5">Tạm tính</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.subtotalMinor, amount?.currency))}</dd><dt class="col-5">Thuế</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.taxMinor, amount?.currency))}</dd><dt class="col-5">Thanh toán</dt><dd class="col-7">${text(payment?.paymentState)}</dd><dt class="col-5">Kích hoạt</dt><dd class="col-7">${text(payment?.activationState)}</dd><dt class="col-5">Checkout</dt><dd class="col-7">${text(payment?.checkoutState)}</dd><dt class="col-5">Nhà cung cấp</dt><dd class="col-7">${text(provider?.name)} · ${text(provider?.environment)}</dd><dt class="col-5">Tham chiếu</dt><dd class="col-7">${text(provider?.reference)}</dd></dl><h3 class="h4">Dòng thời gian đơn hàng</h3>${timelineMarkup([
+    { label: "Tạo đơn hàng", value: payment?.createdAt },
+    { label: "Cập nhật đơn hàng", value: payment?.updatedAt },
+    { label: "Checkout hết hạn", value: payment?.checkoutExpiresAt },
+  ])}<h3 class="h4">Giao dịch thanh toán</h3><ol class="list-group list-group-flush">${transactionTimeline}</ol>`);
+}
+
+export function invoiceRequestDetailMarkup(payload) {
+  const request = payload?.invoiceRequest || payload;
+  const amount = request?.amounts;
+  const transaction = request?.paymentTransaction;
+  const provider = request?.provider;
+  return detailShell("Yêu cầu phát hành hóa đơn", request?.id, `<div class="alert alert-info" role="note">${text(payload?.notice, "Đây là dữ liệu yêu cầu phát hành hóa đơn, không phải tài liệu hóa đơn đã phát hành.")}</div><dl class="row"><dt class="col-5">Trạng thái yêu cầu</dt><dd class="col-7">${text(request?.status)}</dd><dt class="col-5">Chủ thanh toán</dt><dd class="col-7">${ownerMarkup(request?.owner)}</dd><dt class="col-5">Đơn hàng</dt><dd class="col-7">${text(request?.orderPublicId)}</dd><dt class="col-5">Tổng đơn hàng</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.orderTotalMinor, amount?.currency))}</dd><dt class="col-5">Đã xác minh thanh toán</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.verifiedPaidMinor, amount?.currency))}</dd><dt class="col-5">Giao dịch</dt><dd class="col-7">${text(transaction?.providerTransactionId, transaction?.id)} · ${text(transaction?.status)}</dd><dt class="col-5">Nhà cung cấp</dt><dd class="col-7">${text(provider?.name)} · ${text(provider?.environment)}</dd><dt class="col-5">Tham chiếu hóa đơn</dt><dd class="col-7">${text(provider?.invoiceReference, "Chưa có")}</dd><dt class="col-5">Số lần thử</dt><dd class="col-7">${Number.isFinite(request?.attemptCount) ? escapeHtml(request.attemptCount) : "N/A"}</dd><dt class="col-5">Tài liệu tải xuống</dt><dd class="col-7">${request?.documentAvailable === true ? "Khả dụng" : "Chưa có mô hình tài liệu hóa đơn"}</dd></dl><h3 class="h4">Dòng thời gian yêu cầu</h3>${timelineMarkup([
+    { label: "Thanh toán tại nhà cung cấp", value: transaction?.providerOccurredAt, detail: transaction?.status },
+    { label: "Ghi nhận giao dịch", value: transaction?.createdAt },
+    { label: "Tạo yêu cầu hóa đơn", value: request?.createdAt, detail: request?.status },
+    { label: "Cập nhật yêu cầu", value: request?.updatedAt, detail: request?.status },
+  ])}`);
+}
+
+function openBillingDetail(button, markup) {
+  document.querySelector("[data-admin-billing-detail-drawer]")?.remove();
+  document.querySelector("[data-admin-billing-detail-backdrop]")?.remove();
+  const drawer = document.createElement("aside");
+  drawer.className = "offcanvas offcanvas-end show";
+  drawer.tabIndex = -1;
+  drawer.setAttribute("role", "dialog");
+  drawer.setAttribute("aria-modal", "true");
+  drawer.setAttribute("aria-label", "Chi tiết thanh toán");
+  drawer.setAttribute("data-admin-billing-detail-drawer", "");
+  drawer.style.visibility = "visible";
+  drawer.innerHTML = trustedHTML(markup);
+  const backdrop = document.createElement("div");
+  backdrop.className = "offcanvas-backdrop fade show";
+  backdrop.setAttribute("data-admin-billing-detail-backdrop", "");
+  const close = () => { drawer.remove(); backdrop.remove(); button?.focus?.(); };
+  const bindClose = () => drawer.querySelector("[data-admin-close-billing-detail]")?.addEventListener("click", close);
+  bindClose();
+  backdrop.addEventListener("click", close);
+  drawer.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+  document.body.append(drawer, backdrop);
+  drawer.querySelector("button")?.focus();
+  return { drawer, close, bindClose };
+}
+
+function bindBillingDetails(root, items, options, kind) {
+  const idFor = (item) => String(kind === "invoice" ? item?.id : kind === "payment" ? item?.publicId : `${item?.owner?.kind}:${item?.owner?.id}`);
+  const byId = new Map(items.map((item) => [idFor(item), item]));
+  root.querySelectorAll("[data-admin-billing-detail]").forEach((button) => button.addEventListener("click", async () => {
+    const id = String(button.dataset.adminBillingDetail || "");
+    const item = byId.get(id);
+    if (!item) return;
+    if (kind === "subscription") {
+      openBillingDetail(button, subscriptionDetailMarkup(item));
+      return;
+    }
+    if (kind === "payment") {
+      openBillingDetail(button, paymentDetailMarkup(item));
+      return;
+    }
+    const detail = openBillingDetail(button, detailShell("Yêu cầu phát hành hóa đơn", id, adminLoadingMarkup("Đang tải yêu cầu hóa đơn…")));
+    try {
+      const payload = await getAdminJson(`/api/admin/invoices/${encodeURIComponent(id)}`, options);
+      detail.drawer.innerHTML = trustedHTML(invoiceRequestDetailMarkup(payload));
+      detail.bindClose();
+      detail.drawer.querySelector("button")?.focus();
+    } catch (error) {
+      if (options.signal?.aborted) return detail.close();
+      detail.drawer.innerHTML = trustedHTML(detailShell("Yêu cầu phát hành hóa đơn", id, adminStateMarkup(error?.status === 403 ? "permission" : "error", { message: error?.message })));
+      detail.bindClose();
+      detail.drawer.querySelector("button")?.focus();
+    }
+  }));
 }
 
 const PAYMENT_ACTION_COPY = Object.freeze({
@@ -215,12 +322,14 @@ export const SUBSCRIPTION_DIRECTORY = Object.freeze({
     { label: "Chủ đăng ký", sortKey: "owner" }, { label: "Gói dịch vụ" },
     { label: "Trạng thái", sortKey: "status" }, { label: "Nguồn" },
     { label: "Bắt đầu", sortKey: "starts_at" }, { label: "Hết hạn", sortKey: "expires_at" },
-    { label: "Hạn mức" }, { label: "Cập nhật", sortKey: "updated_at" },
+    { label: "Hạn mức" }, { label: "Cập nhật", sortKey: "updated_at" }, { label: "Chi tiết" },
   ],
   rowMarkup(subscription) {
     const quota = Number.isFinite(subscription?.memberQuota) ? escapeHtml(subscription.memberQuota) : "N/A";
-    return `<tr><td data-label="Chủ đăng ký">${ownerMarkup(subscription?.owner)}</td><td data-label="Gói dịch vụ"><strong>${text(subscription?.packageId)}</strong><div class="small text-secondary">${text(subscription?.planVersionId)}</div></td><td data-label="Trạng thái">${text(subscription?.status)}</td><td data-label="Nguồn">${text(subscription?.source)}<div class="small text-secondary">${text(subscription?.sourceOrderPublicId)}</div></td><td data-label="Bắt đầu">${formatDate(subscription?.startsAt)}</td><td data-label="Hết hạn">${formatDate(subscription?.expiresAt)}</td><td data-label="Hạn mức">${quota}</td><td data-label="Cập nhật">${formatDate(subscription?.updatedAt)}</td></tr>`;
+    const detailId = text(`${subscription?.owner?.kind}:${subscription?.owner?.id}`, "");
+    return `<tr><td data-label="Chủ đăng ký">${ownerMarkup(subscription?.owner)}</td><td data-label="Gói dịch vụ"><strong>${text(subscription?.packageId)}</strong><div class="small text-secondary">${text(subscription?.planVersionId)}</div></td><td data-label="Trạng thái">${text(subscription?.status)}</td><td data-label="Nguồn">${text(subscription?.source)}<div class="small text-secondary">${text(subscription?.sourceOrderPublicId)}</div></td><td data-label="Bắt đầu">${formatDate(subscription?.startsAt)}</td><td data-label="Hết hạn">${formatDate(subscription?.expiresAt)}</td><td data-label="Hạn mức">${quota}</td><td data-label="Cập nhật">${formatDate(subscription?.updatedAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${detailId}">Xem</button></td></tr>`;
   },
+  bindResultActions(root, options) { bindBillingDetails(root, options.payload?.items || [], options, "subscription"); },
 });
 
 export const PAYMENT_DIRECTORY = Object.freeze({
@@ -241,20 +350,44 @@ export const PAYMENT_DIRECTORY = Object.freeze({
     { label: "Số tiền", sortKey: "total_amount" },
     { label: "Thanh toán", sortKey: "payment_state" },
     { label: "Checkout", sortKey: "checkout_state" },
-    { label: "Giao dịch" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Thao tác" },
+    { label: "Giao dịch" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" }, { label: "Thao tác" },
   ],
   rowMarkup(payment) {
     const amount = payment?.amounts;
     const provider = payment?.provider;
-    return `<tr><td data-label="Đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div></td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td><td data-label="Thao tác">${paymentActionsMarkup(payment)}</td></tr>`;
+    return `<tr><td data-label="Đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div></td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${text(payment?.publicId, "")}">Xem</button></td><td data-label="Thao tác">${paymentActionsMarkup(payment)}</td></tr>`;
   },
   bindResultActions(root, options) {
     const payments = new Map((options.payload?.items || []).map((payment) => [String(payment?.publicId || ""), payment]));
     root.querySelectorAll("[data-admin-payment-action]").forEach((button) => {
       button._adminPayment = payments.get(button.dataset.adminPaymentId);
     });
+    bindBillingDetails(root, options.payload?.items || [], options, "payment");
     bindPaymentActions(root, options);
   },
+});
+
+export const INVOICE_DIRECTORY = Object.freeze({
+  endpoint: "/api/admin/invoices",
+  title: "Yêu cầu hóa đơn",
+  searchPlaceholder: "Mã yêu cầu, đơn hàng, giao dịch hoặc chủ thanh toán",
+  emptyMessage: "Chưa có yêu cầu phát hành hóa đơn phù hợp với bộ lọc.",
+  defaultSort: "created_at",
+  defaultSortDir: "desc",
+  sortKeys: ["status", "created_at", "updated_at"],
+  filters: [
+    { key: "ownerKind", label: "Loại chủ thể", allLabel: "Mọi chủ thể", options: [["account", "Cá nhân"], ["organization", "Tổ chức"]] },
+    { key: "status", label: "Trạng thái", allLabel: "Mọi trạng thái", options: [["requested", "Đã yêu cầu"], ["issued", "Đã phát hành"], ["failed", "Thất bại"]] },
+  ],
+  columns: [
+    { label: "Yêu cầu" }, { label: "Chủ thanh toán" }, { label: "Đơn hàng" },
+    { label: "Số tiền" }, { label: "Trạng thái", sortKey: "status" },
+    { label: "Nhà cung cấp" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
+  ],
+  rowMarkup(request) {
+    return `<tr><td data-label="Yêu cầu"><strong>${text(request?.id)}</strong><div class="small text-secondary">Yêu cầu phát hành hóa đơn</div></td><td data-label="Chủ thanh toán">${ownerMarkup(request?.owner)}</td><td data-label="Đơn hàng">${text(request?.orderPublicId)}<div class="small text-secondary">${text(request?.paymentTransaction?.providerTransactionId)}</div></td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(request?.amounts?.orderTotalMinor, request?.amounts?.currency))}</strong><div class="small text-secondary">${text(request?.amounts?.currency)}</div></td><td data-label="Trạng thái">${text(request?.status)}<div class="small text-secondary">${Number.isFinite(request?.attemptCount) ? `${escapeHtml(request.attemptCount)} lần thử` : "N/A"}</div></td><td data-label="Nhà cung cấp">${text(request?.provider?.name)}<div class="small text-secondary">${text(request?.provider?.invoiceReference, "Chưa có tham chiếu")}</div></td><td data-label="Ngày tạo">${formatDate(request?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${text(request?.id, "")}">Xem</button></td></tr>`;
+  },
+  bindResultActions(root, options) { bindBillingDetails(root, options.payload?.items || [], options, "invoice"); },
 });
 
 export function renderAdminSubscriptions(container, options) {
@@ -266,12 +399,9 @@ export function renderAdminPayments(container, options) {
 }
 
 export function invoiceUnavailableMarkup() {
-  return adminStateMarkup("empty", {
-    title: "Chưa có nguồn dữ liệu hóa đơn",
-    message: "Hệ thống hiện chưa lưu dữ liệu hóa đơn để hiển thị. Không có số liệu giả được tạo cho mục này.",
-  });
+  return '<div class="alert alert-info" role="note">Trang này hiển thị yêu cầu phát hành hóa đơn đã được hệ thống ghi nhận. Đây không phải tài liệu hóa đơn được tạo giả.</div>';
 }
 
-export function renderAdminInvoicesUnavailable(container) {
-  renderAdminMarkup(container, invoiceUnavailableMarkup());
+export function renderAdminInvoicesUnavailable(container, options) {
+  return renderAdminDirectory(container, INVOICE_DIRECTORY, options);
 }
