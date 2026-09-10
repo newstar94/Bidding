@@ -537,6 +537,8 @@ def _organization_detail(request):
         members = cursor.execute(
             """SELECT account.id, account.ho_ten AS name, account.email,
                       membership.vai_tro_trong_to_chuc AS role,
+                      membership.ten_nhan_su AS employee_name,
+                      membership.so_dien_thoai AS employee_phone,
                       membership.trang_thai_thanh_vien AS membership_status,
                       MAX(session.last_seen_at) AS last_active_at
                  FROM thanh_vien_to_chuc membership
@@ -545,6 +547,7 @@ def _organization_detail(request):
                 WHERE membership.organization_id = ?
                 GROUP BY account.id, account.ho_ten, account.email,
                          membership.vai_tro_trong_to_chuc,
+                         membership.ten_nhan_su, membership.so_dien_thoai,
                          membership.trang_thai_thanh_vien
                 ORDER BY CASE lower(trim(membership.vai_tro_trong_to_chuc))
                               WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END,
@@ -578,12 +581,14 @@ def _organization_detail(request):
     users = [
         {"id": item["id"], "name": item["name"], "email": item["email"],
          "role": item["role"], "status": item["membership_status"],
+         "employeeName": item["employee_name"], "employeePhone": item["employee_phone"],
          "lastActiveAt": _json_value(item["last_active_at"])}
         for item in members
     ]
     primary_contact = next(
         (item for item in users
-         if str(item["role"] or "").strip().lower() in {"owner", "manager"}),
+         if str(item["role"] or "").strip().lower() in {"owner", "manager"}
+         and str(item["status"] or "active").strip().lower() == "active"),
         None,
     )
     encoded_organization_id = quote(organization_id, safe="")

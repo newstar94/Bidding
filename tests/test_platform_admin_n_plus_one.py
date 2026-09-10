@@ -151,6 +151,7 @@ class _TracingCursor:
             "id": f"user-{index}", "name": f"User {index}",
             "email": f"user{index}@example.test",
             "role": "owner" if index == 0 else "employee",
+            "employee_name": f"Employee {index}", "employee_phone": None,
             "membership_status": "active", "last_active_at": 100,
         }
 
