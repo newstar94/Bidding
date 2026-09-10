@@ -104,9 +104,22 @@ function paginationMarkup(pagination) {
 export function directoryResultsMarkup(config, state, payload) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (!items.length) return adminStateMarkup("empty", { message: config.emptyMessage });
-  const headers = config.columns.map((column) => sortHeader(column, state)).join("");
-  const rows = items.map(config.rowMarkup).join("");
-  return `<section class="card" aria-label="${escapeHtml(config.title)}"><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
+  const selectionHeader = config.selectable
+    ? '<th scope="col" class="w-1"><input class="form-check-input" type="checkbox" data-admin-select-all aria-label="Chọn tất cả bản ghi trên trang"></th>'
+    : "";
+  const headers = selectionHeader + config.columns.map((column) => sortHeader(column, state)).join("");
+  const rows = items.map((item) => {
+    const markup = config.rowMarkup(item);
+    if (!config.selectable) return markup;
+    const recordId = String(config.selectionKey?.(item) ?? item?.id ?? item?.publicId ?? item?.sessionId ?? "").trim();
+    if (!recordId) return markup;
+    const control = `<td><input class="form-check-input" type="checkbox" data-admin-select-row="${escapeHtml(recordId)}" aria-label="Chọn bản ghi ${escapeHtml(recordId)}"></td>`;
+    return markup.replace(/^(<tr[^>]*>)/u, `$1${control}`);
+  }).join("");
+  const selectionStatus = config.selectable
+    ? '<div class="card-header py-2"><span class="text-secondary" data-admin-selection-status aria-live="polite">Chưa chọn bản ghi</span></div>'
+    : "";
+  return `<section class="card" aria-label="${escapeHtml(config.title)}">${selectionStatus}<div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
 }
 
 function replaceBrowserQuery(state, config) {
@@ -119,11 +132,39 @@ function replaceBrowserQuery(state, config) {
 
 export function renderAdminDirectory(container, config, { fetchImpl, signal } = {}) {
   let state = readDirectoryState(config);
+  const selectedIds = new Set();
   const loader = createLatestAdminLoader();
   renderAdminMarkup(container, controlsMarkup(config, state));
   const results = container.querySelector("[data-admin-directory-results]");
 
   const bindResultActions = () => {
+    const selectionStatus = results.querySelector("[data-admin-selection-status]");
+    const selectAll = results.querySelector("[data-admin-select-all]");
+    const rowSelectors = Array.from(results.querySelectorAll("[data-admin-select-row]"));
+    const updateSelection = () => {
+      rowSelectors.forEach((control) => { control.checked = selectedIds.has(control.dataset.adminSelectRow); });
+      const selectedOnPage = rowSelectors.filter((control) => control.checked).length;
+      if (selectAll) {
+        selectAll.checked = rowSelectors.length > 0 && selectedOnPage === rowSelectors.length;
+        selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < rowSelectors.length;
+      }
+      if (selectionStatus) selectionStatus.textContent = selectedIds.size
+        ? `Đã chọn ${selectedIds.size} bản ghi`
+        : "Chưa chọn bản ghi";
+    };
+    rowSelectors.forEach((control) => control.addEventListener("change", () => {
+      if (control.checked) selectedIds.add(control.dataset.adminSelectRow);
+      else selectedIds.delete(control.dataset.adminSelectRow);
+      updateSelection();
+    }));
+    selectAll?.addEventListener("change", () => {
+      rowSelectors.forEach((control) => {
+        if (selectAll.checked) selectedIds.add(control.dataset.adminSelectRow);
+        else selectedIds.delete(control.dataset.adminSelectRow);
+      });
+      updateSelection();
+    });
+    updateSelection();
     results.querySelectorAll("[data-admin-sort]").forEach((button) => button.addEventListener("click", () => {
       state = normalizeState(config, { ...state, page: 1, sortBy: button.dataset.adminSort, sortDir: button.dataset.adminSortDir });
       void load();

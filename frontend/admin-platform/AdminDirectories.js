@@ -201,6 +201,7 @@ function bindDirectoryDetails(root, items, options, kind) {
 }
 
 export const USER_DIRECTORY = Object.freeze({
+  selectable: true,
   endpoint: "/api/admin/users",
   title: "Người dùng",
   searchPlaceholder: "Tên, tài khoản hoặc email",
@@ -223,6 +224,7 @@ export const USER_DIRECTORY = Object.freeze({
 });
 
 export const ORGANIZATION_DIRECTORY = Object.freeze({
+  selectable: true,
   endpoint: "/api/admin/organizations",
   title: "Tổ chức",
   searchPlaceholder: "Tên hoặc mã tổ chức",

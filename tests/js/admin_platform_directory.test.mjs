@@ -49,6 +49,9 @@ test("user directory renders authorized fields in an accessible responsive table
   assert.match(markup, /an@example[.]test/u);
   assert.match(markup, /Nguyễn An · 0901/u);
   assert.match(markup, /data-admin-page="2"/u);
+  assert.match(markup, /data-admin-select-all/u);
+  assert.match(markup, /data-admin-select-row="user-1"/u);
+  assert.match(markup, /data-admin-selection-status/u);
 });
 
 test("organization directory renders real subscription values and an empty state", () => {
