@@ -826,6 +826,12 @@ def _filesystem_metrics() -> dict[str, Any]:
     return refresh_filesystem_metrics()
 
 
+def operational_status_snapshot() -> dict[str, Any]:
+    """Return the cached path-free operational snapshot for trusted adapters."""
+
+    return _filesystem_metrics()
+
+
 async def monitor_filesystem_metrics():
     """Keep expensive DB/filesystem metrics off the request-time scrape path."""
 

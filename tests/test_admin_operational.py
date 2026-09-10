@@ -30,6 +30,14 @@ def _install_database_runner(monkeypatch, database_status=None):
             return True, SimpleNamespace(user_id="admin-1")
         if function is operational._safe_read_database_status:
             return status
+        if function is operational._safe_read_operational_status:
+            return {
+                "databaseBytes": 4096,
+                "waitingLocks": 0,
+                "walBytes": 1024,
+                "storage": {"data": {"freeBytes": 100, "totalBytes": 200}},
+                "backup": {"lastVerifiedAt": 123, "ageSeconds": 10},
+            }
         return function(*args)
 
     monkeypatch.setattr(operational, "run_database_read", database_read)
@@ -133,6 +141,8 @@ def test_health_reports_real_application_and_database_state(monkeypatch):
         "eventLoopLagMs": 4.2,
     }
     assert payload["database"] == {"status": "available", "schemaVersion": 90}
+    assert payload["operations"]["databaseBytes"] == 4096
+    assert payload["operations"]["storage"]["data"]["totalBytes"] == 200
 
 
 def test_health_is_degraded_without_leaking_database_failure(monkeypatch):

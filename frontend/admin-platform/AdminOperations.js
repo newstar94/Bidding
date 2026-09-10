@@ -40,6 +40,19 @@ function yesNo(value) {
   return "N/A";
 }
 
+function bytes(value) {
+  if (!Number.isFinite(value) || value < 0) return "N/A";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let amount = value; let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; }
+  return `${amount.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ${units[unit]}`;
+}
+
+function timestamp(value) {
+  if (!Number.isFinite(value) || value <= 0) return "N/A";
+  return escapeHtml(new Date(value * 1000).toLocaleString("vi-VN"));
+}
+
 function statusBadge(status) {
   const normalized = String(status || "").trim().toLowerCase();
   const statusMap = {
@@ -71,6 +84,9 @@ export function healthMarkup(payload) {
   }
   const application = payload.application;
   const database = payload.database;
+  const operations = payload.operations && typeof payload.operations === "object" ? payload.operations : {};
+  const storage = operations.storage && typeof operations.storage === "object" ? operations.storage : {};
+  const backup = operations.backup && typeof operations.backup === "object" ? operations.backup : {};
   return `<div class="row row-cards"><div class="col-lg-6">${detailsCard("Ứng dụng", [
     ["Trạng thái", statusBadge(payload.status)],
     ["Khởi động hoàn tất", text(yesNo(application.startupComplete))],
@@ -79,6 +95,18 @@ export function healthMarkup(payload) {
   ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("Cơ sở dữ liệu", [
     ["Trạng thái", statusBadge(database.status)],
     ["Phiên bản schema", text(database.schemaVersion)],
+    ["Dung lượng database", text(bytes(operations.databaseBytes))],
+    ["Khóa đang chờ", Number.isFinite(operations.waitingLocks) ? text(operations.waitingLocks) : "N/A"],
+    ["WAL", text(bytes(operations.walBytes))],
+  ])}</div><div class="col-lg-6">${detailsCard("Lưu trữ", [
+    ["Data còn trống", text(bytes(storage.data?.freeBytes))],
+    ["Tổng dung lượng data", text(bytes(storage.data?.totalBytes))],
+    ["Backup còn trống", text(bytes(storage.backup?.freeBytes))],
+    ["Tổng dung lượng backup", text(bytes(storage.backup?.totalBytes))],
+  ])}</div><div class="col-lg-6">${detailsCard("Sao lưu và khôi phục", [
+    ["Bản sao lưu đã xác minh gần nhất", timestamp(backup.lastVerifiedAt)],
+    ["Lần diễn tập khôi phục gần nhất", timestamp(backup.lastRestoreDrillAt)],
+    ["Lần kiểm tra trạng thái", timestamp(backup.checkedAt)],
   ])}</div></div>`;
 }
 
@@ -139,4 +167,3 @@ export function renderAdminEnvironment(container, options) {
 export function renderAdminSystemVersion(container, options) {
   return renderOperation(container, "/api/admin/system/version", versionMarkup, options);
 }
-

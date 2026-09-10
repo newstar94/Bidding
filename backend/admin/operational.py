@@ -20,6 +20,7 @@ from backend.db.db_utils import (
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
 from backend.shared.logging_utils import log_error
+from backend.observability.metrics import operational_status_snapshot
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -142,6 +143,35 @@ def _safe_read_database_status() -> dict:
         return {"status": "unavailable", "schemaVersion": None}
 
 
+def _safe_read_operational_status() -> dict:
+    try:
+        snapshot = operational_status_snapshot()
+    except Exception as exc:  # noqa: BLE001 - details must not cross the API boundary.
+        log_error(exc, "admin_operational_snapshot", level="WARN")
+        return {}
+    disk = snapshot.get("disk") if isinstance(snapshot.get("disk"), dict) else {}
+    return {
+        "databaseBytes": int(snapshot.get("postgres_database_bytes") or 0),
+        "waitingLocks": int(snapshot.get("postgres_waiting_locks") or 0),
+        "walBytes": int(snapshot.get("postgres_wal_bytes") or 0),
+        "storage": {
+            volume: {
+                "freeBytes": int(values.get("free") or 0),
+                "totalBytes": int(values.get("total") or 0),
+            }
+            for volume, values in disk.items()
+            if volume in {"data", "backup"} and isinstance(values, dict)
+        },
+        "backup": {
+            "lastVerifiedAt": snapshot.get("backup_timestamp"),
+            "ageSeconds": snapshot.get("backup_age"),
+            "lastRestoreDrillAt": snapshot.get("restore_timestamp"),
+            "restoreDrillAgeSeconds": snapshot.get("restore_age"),
+            "checkedAt": snapshot.get("artifact_checked_at"),
+        },
+    }
+
+
 def _app_version() -> str | None:
     try:
         payload = json.loads((_PROJECT_ROOT / "package.json").read_text(encoding="utf-8"))
@@ -168,6 +198,13 @@ async def admin_health_api(request):
         )
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         database_status = {"status": "unavailable", "schemaVersion": None}
+    try:
+        operations = await run_database_read(
+            _safe_read_operational_status,
+            timeout_seconds=5,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        operations = {}
     startup_complete = bool(getattr(request.app.state, "startup_complete", False))
     ready = bool(getattr(request.app.state, "ready", False))
     lag = getattr(request.app.state, "event_loop_lag_ms", None)
@@ -183,6 +220,7 @@ async def admin_health_api(request):
                 "eventLoopLagMs": event_loop_lag_ms,
             },
             "database": database_status,
+            "operations": operations,
         },
         headers={"Cache-Control": "private, no-store"},
     )
@@ -230,4 +268,3 @@ def operational_routes(Route):
         Route("/api/admin/environment", admin_environment_api, methods=["GET"]),
         Route("/api/admin/system/version", admin_system_version_api, methods=["GET"]),
     ]
-
