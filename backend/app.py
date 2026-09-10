@@ -834,6 +834,7 @@ from backend.usage_analytics.routes import usage_analytics_routes
 from backend.product_analytics.routes import product_analytics_routes
 from backend.admin.api import admin_routes
 from backend.admin.operational import operational_routes
+from backend.admin.security_routes import platform_admin_security_routes
 from backend.admin.platform_directory_routes import platform_admin_directory_routes
 from backend.admin.platform_billing_routes import platform_admin_billing_routes
 
@@ -1218,6 +1219,7 @@ routes = [
     *ai_routes,
     *admin_routes(Route),
     *operational_routes(Route),
+    *platform_admin_security_routes(Route),
     *platform_admin_directory_routes(Route),
     *platform_admin_billing_routes(Route),
     *usage_analytics_routes(Route),
