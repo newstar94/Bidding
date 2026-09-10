@@ -133,6 +133,7 @@ def test_users_are_server_paginated_filtered_sorted_and_include_memberships(monk
             )
 
         assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
         assert calls == ["super_admin"]
         assert response.json() == {
             "items": [
@@ -185,6 +186,7 @@ def test_organizations_are_server_paginated_and_expose_real_subscription(monkeyp
             )
 
         assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
         payload = response.json()
         assert payload["pagination"] == {"page": 1, "pageSize": 25, "totalRows": 1, "totalPages": 1}
         assert payload["items"] == [
@@ -219,6 +221,8 @@ def test_directory_routes_require_server_side_super_admin(monkeypatch):
 
         assert users.status_code == 403
         assert organizations.status_code == 403
+        assert users.headers["cache-control"] == "private, no-store"
+        assert organizations.headers["cache-control"] == "private, no-store"
         assert calls == ["super_admin", "super_admin"]
     finally:
         connection.close()

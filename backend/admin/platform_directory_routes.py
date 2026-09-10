@@ -33,6 +33,14 @@ class _InvalidDirectoryQuery(ValueError):
     pass
 
 
+def _response(payload, *, status_code=200):
+    return JSONResponse(
+        payload,
+        status_code=status_code,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 def _json_value(value):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -78,7 +86,7 @@ def _pagination(page, page_size, total_rows):
 def _forbidden_or_role(request):
     valid, role_or_error = verify_session(request, required_role="super_admin")
     if not valid:
-        return JSONResponse({"error": role_or_error}, status_code=403), None
+        return _response({"error": role_or_error}, status_code=403), None
     return None, role_or_error
 
 
@@ -195,7 +203,7 @@ def _list_admin_users_sync(request):
                     "organizations": organizations,
                 }
             )
-        return JSONResponse(
+        return _response(
             {
                 "items": items,
                 "pagination": _pagination(page, page_size, total_rows),
@@ -209,17 +217,17 @@ def _list_admin_users_sync(request):
             }
         )
     except _InvalidDirectoryQuery as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        return _response({"error": str(exc)}, status_code=400)
     except Exception as exc:
         log_error(exc, "list_platform_admin_users")
-        return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
+        return _response({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
 
 
 async def list_admin_users_api(request):
     try:
         return await run_database_read(_list_admin_users_sync, request)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = JSONResponse(
+        response = _response(
             {"error": "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau."},
             status_code=503,
         )
@@ -321,7 +329,7 @@ def _list_admin_organizations_sync(request):
                     "subscription": subscription,
                 }
             )
-        return JSONResponse(
+        return _response(
             {
                 "items": items,
                 "pagination": _pagination(page, page_size, total_rows),
@@ -335,17 +343,17 @@ def _list_admin_organizations_sync(request):
             }
         )
     except _InvalidDirectoryQuery as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+        return _response({"error": str(exc)}, status_code=400)
     except Exception as exc:
         log_error(exc, "list_platform_admin_organizations")
-        return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách tổ chức."}, status_code=500)
+        return _response({"error": "Đã xảy ra lỗi tải danh sách tổ chức."}, status_code=500)
 
 
 async def list_admin_organizations_api(request):
     try:
         return await run_database_read(_list_admin_organizations_sync, request)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = JSONResponse(
+        response = _response(
             {"error": "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau."},
             status_code=503,
         )
