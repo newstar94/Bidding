@@ -57,6 +57,29 @@ test("admin API classifies permission denial", async () => {
   );
 });
 
+test("admin API announces an expired session once the server returns 401", async () => {
+  const originalDispatch = globalThis.dispatchEvent;
+  const target = new EventTarget();
+  globalThis.dispatchEvent = target.dispatchEvent.bind(target);
+  let expired = 0;
+  const listener = () => { expired += 1; };
+  target.addEventListener("admin:session-expired", listener);
+  try {
+    await assert.rejects(
+      () => getAdminJson("/api/admin/overview", {
+        fetchImpl: async () => new Response(JSON.stringify({ error: "expired" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      }),
+      (error) => error instanceof AdminApiError && error.status === 401,
+    );
+    assert.equal(expired, 1);
+  } finally {
+    globalThis.dispatchEvent = originalDispatch;
+  }
+});
+
 test("admin API encodes server-side directory query values", async () => {
   let requestedUrl = "";
   await getAdminJson("/api/admin/users", {

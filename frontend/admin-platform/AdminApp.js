@@ -23,6 +23,14 @@ function shellMarkup(session) {
   return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#admin-navbar" aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl"><div class="navbar-nav flex-row order-md-last"><span class="nav-link">${name}</span><a class="nav-link" href="/tong-quan">Không gian làm việc</a></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
 }
 let routeController = null;
+let sessionExpiryHandled = false;
+function handleSessionExpiry() {
+  if (sessionExpiryHandled) return;
+  sessionExpiryHandled = true;
+  routeController?.abort();
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/dang-nhap?next=${encodeURIComponent(next)}`);
+}
 function renderRoute() {
   routeController?.abort(); routeController = new AbortController();
   const route = getAdminRoute(window.location.pathname); const view = document.getElementById("admin-view");
@@ -54,6 +62,7 @@ const app = document.getElementById("admin-app"); const session = readSession();
 if (!session.valid || session.user?.platform_role !== "super_admin") app.innerHTML = trustedHTML(`<main class="page-body"><div class="container-tight py-5"><div class="empty"><p class="empty-title">Không có quyền truy cập</p></div></div></main>`);
 else {
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
+  window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });
   window.addEventListener("popstate", renderRoute); window.addEventListener("admin:navigate", renderRoute); renderRoute();
 }

@@ -60,6 +60,19 @@ function errorMessage(status, payload) {
   return payload?.message || payload?.error || "Không thể tải dữ liệu quản trị.";
 }
 
+function notifySessionExpired() {
+  if (typeof globalThis.dispatchEvent !== "function" || typeof globalThis.Event !== "function") return;
+  globalThis.dispatchEvent(new globalThis.Event("admin:session-expired"));
+}
+
+function adminError(response, payload) {
+  if (response.status === 401) notifySessionExpired();
+  return new AdminApiError(errorMessage(response.status, payload), {
+    status: response.status,
+    code: payload?.code || payload?.error_code || "HTTP_ERROR",
+  });
+}
+
 function queryString(query) {
   if (!query || typeof query !== "object") return "";
   return Object.entries(query)
@@ -89,10 +102,7 @@ export async function getAdminJson(path, { query, signal, fetchImpl = globalThis
   }
   const payload = await readPayload(response);
   if (!response.ok) {
-    throw new AdminApiError(errorMessage(response.status, payload), {
-      status: response.status,
-      code: payload?.code || payload?.error_code || "HTTP_ERROR",
-    });
+    throw adminError(response, payload);
   }
   return payload;
 }
@@ -126,10 +136,7 @@ export async function postAdminJson(path, {
   }
   const payload = await readPayload(response);
   if (!response.ok) {
-    throw new AdminApiError(errorMessage(response.status, payload), {
-      status: response.status,
-      code: payload?.code || payload?.error_code || "HTTP_ERROR",
-    });
+    throw adminError(response, payload);
   }
   return payload;
 }
@@ -164,10 +171,7 @@ export async function patchAdminJson(path, {
   }
   const payload = await readPayload(response);
   if (!response.ok) {
-    throw new AdminApiError(errorMessage(response.status, payload), {
-      status: response.status,
-      code: payload?.code || payload?.error_code || "HTTP_ERROR",
-    });
+    throw adminError(response, payload);
   }
   return payload;
 }
