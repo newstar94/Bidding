@@ -30,6 +30,22 @@ test("overview marks every missing metric unavailable without fabricating a valu
   assert.match(markup, /Chưa có tổ chức gần đây/u);
 });
 
+test("overview consumes the current authoritative backend metric contract", () => {
+  const markup = overviewMarkup({
+    metrics: {
+      organizations: 17,
+      users: 42,
+      activeSubscriptions: 8,
+      currentPeriodRevenue: { value: 1_250_000, currency: "VND", period: "current_month" },
+    },
+    recentOrganizations: [],
+  });
+  assert.match(markup, /data-admin-metric="organizations">17/u);
+  assert.match(markup, /data-admin-metric="users">42/u);
+  assert.match(markup, /data-admin-metric="activeSubscriptions">8/u);
+  assert.match(markup, /data-admin-metric="verifiedRevenue">1[.]250[.]000/u);
+});
+
 test("shared states provide accessible loading, empty, retry and permission variants", () => {
   assert.match(adminLoadingMarkup(), /role="status"/u);
   assert.match(adminStateMarkup("empty"), /data-admin-state="empty"/u);

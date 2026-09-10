@@ -8,10 +8,10 @@ import {
 import { escapeHtml } from "../shared/view_helpers.js";
 
 const METRICS = Object.freeze([
-  ["organizations", "Tổ chức", (metrics) => metrics.organizations?.total],
-  ["users", "Người dùng", (metrics) => metrics.users?.total],
-  ["activeSubscriptions", "Đăng ký đang hoạt động", (metrics) => metrics.subscriptions?.active],
-  ["verifiedRevenue", "Doanh thu tháng đã xác minh", (metrics) => metrics.billing?.verifiedRevenue],
+  ["organizations", "Tổ chức", (metrics) => metrics.organizations?.total ?? metrics.organizations],
+  ["users", "Người dùng", (metrics) => metrics.users?.total ?? metrics.users],
+  ["activeSubscriptions", "Đăng ký đang hoạt động", (metrics) => metrics.subscriptions?.active ?? metrics.activeSubscriptions],
+  ["verifiedRevenue", "Doanh thu tháng đã xác minh", (metrics) => metrics.billing?.verifiedRevenue ?? metrics.currentPeriodRevenue?.value],
 ]);
 
 function displayMetric(value) {
