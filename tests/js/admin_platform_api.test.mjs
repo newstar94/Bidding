@@ -64,6 +64,21 @@ test("admin API permits the exact read-only commercial overview endpoint", async
   assert.equal(request.options.method, "GET");
 });
 
+test("admin API permits the exact authoritative public commercial catalog", async () => {
+  let request;
+  await getAdminJson("/api/public/commercial/offers", {
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify({ offers: [], creditPacks: [], quotaWarnings: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assert.equal(request.url, "/api/public/commercial/offers");
+  assert.equal(request.options.method, "GET");
+});
+
 test("admin API classifies permission denial", async () => {
   await assert.rejects(
     () => getAdminJson("/api/admin/overview", {

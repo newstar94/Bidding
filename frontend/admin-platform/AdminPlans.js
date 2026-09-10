@@ -12,6 +12,11 @@ import {
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import {
+  classifyPublicCommercialResponse,
+  formatCommercialMoney,
+  presentCommercialOffer,
+} from "../commercial-policy/PublicCommercialCatalog.js";
 
 function text(value, fallback = "N/A") {
   const normalized = typeof value === "string" || typeof value === "number"
@@ -27,6 +32,10 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? text(value) : escapeHtml(date.toLocaleString("vi-VN"));
 }
 
+function formatInteger(value) {
+  return Number.isSafeInteger(value) ? escapeHtml(value.toLocaleString("vi-VN")) : "N/A";
+}
+
 function releaseCard(title, release, actions = "") {
   if (!release) {
     return `<section class="card h-100" aria-label="${escapeHtml(title)}"><div class="card-body">${adminStateMarkup("empty", { title, message: "Chưa có bản phát hành ở trạng thái này." })}</div></section>`;
@@ -39,6 +48,56 @@ function draftTable(drafts) {
   if (!drafts.length) return adminStateMarkup("empty", { message: "Chưa có bản nháp chính sách thương mại đang mở." });
   const rows = drafts.map((draft) => `<tr><td><strong>${text(draft?.id)}</strong></td><td>${text(draft?.status)}</td><td class="text-end">${Number.isSafeInteger(draft?.revision) ? escapeHtml(draft.revision) : "N/A"}</td><td>${text(draft?.baseReleaseId ?? draft?.base_release_id)}</td><td>${formatDate(draft?.updatedAt ?? draft?.updated_at)}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-draft-open="${text(draft?.id)}">Mở</button></td></tr>`).join("");
   return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Bản nháp</th><th>Trạng thái</th><th class="text-end">Lần sửa</th><th>Phiên bản gốc</th><th>Cập nhật</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+const CAPABILITY_LABELS = Object.freeze({
+  "document.export.word": "Xuất Word",
+  "document.export.excel": "Xuất Excel",
+  "document.export.award_result_excel": "Xuất kết quả lựa chọn nhà thầu",
+});
+
+function offerRightsMarkup(offer, presented) {
+  const explicitBenefits = presented.benefits.map((benefit) => `<li>${text(benefit)}</li>`).join("");
+  const capabilities = offer?.exportCapabilities && typeof offer.exportCapabilities === "object"
+    ? Object.entries(CAPABILITY_LABELS).map(([key, label]) => `<li>${escapeHtml(label)}: <strong>${offer.exportCapabilities[key] === true ? "Có" : "Không"}</strong></li>`).join("")
+    : "";
+  const structured = [
+    Number.isSafeInteger(offer?.memberQuota) ? `<li>Hạn mức thành viên: <strong>${formatInteger(offer.memberQuota)}</strong></li>` : "",
+    Number.isSafeInteger(offer?.includedProcurementQuota) ? `<li>Lượt Mua Sắm Công kèm theo: <strong>${formatInteger(offer.includedProcurementQuota)}</strong></li>` : "",
+    typeof offer?.violationCheckEnabled === "boolean" ? `<li>Kiểm tra vi phạm nhà thầu: <strong>${offer.violationCheckEnabled ? "Có" : "Không"}</strong></li>` : "",
+  ].filter(Boolean).join("");
+  const items = `${explicitBenefits}${structured}${capabilities}`;
+  return items ? `<ul class="bf-admin-plan-benefits mb-0">${items}</ul>` : '<p class="text-secondary mb-0">Chưa công bố mô tả quyền lợi.</p>';
+}
+
+function offerCard(offer) {
+  const presented = presentCommercialOffer(offer);
+  const salesState = ({ sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Không bán" })[offer?.salesState] || "N/A";
+  const ownerKind = offer?.ownerKind === "account" ? "Cá nhân" : (offer?.ownerKind === "organization" ? "Tổ chức" : "N/A");
+  return `<div class="col-md-6 col-xl-4"><article class="card h-100 bf-admin-plan-card${presented.recommended ? " is-recommended" : ""}" data-admin-offer-code="${text(presented.code, "")}"><div class="card-header"><div><div class="d-flex flex-wrap gap-2 mb-1"><span class="badge bg-primary-lt">${text(presented.variantLabel, offer?.variant)}</span>${presented.recommended ? '<span class="badge bg-success-lt">Được đề xuất</span>' : ""}</div><h4 class="card-title">${text(presented.name, presented.code)}</h4><div class="text-secondary small">${text(presented.code)}</div></div></div><div class="card-body"><div class="bf-admin-plan-price">${text(presented.priceLabel)} <small class="text-secondary fw-normal">${text(presented.periodLabel, "")}</small></div>${presented.description ? `<p class="text-secondary mt-2">${text(presented.description)}</p>` : ""}<div class="bf-admin-plan-meta my-3"><div><span class="text-secondary small d-block">Đối tượng</span><strong>${ownerKind}</strong></div><div><span class="text-secondary small d-block">Trạng thái bán</span><strong>${text(salesState)}</strong></div></div><h5>Quyền lợi</h5>${offerRightsMarkup(offer, presented)}</div></article></div>`;
+}
+
+function creditPackMarkup(packs, currency) {
+  if (!packs.length) return "";
+  const rows = packs.map((pack) => `<tr><td><strong>${text(pack?.code)}</strong></td><td class="text-end">${formatInteger(pack?.quantity)}</td><td class="text-end">${Number.isFinite(pack?.price) ? escapeHtml(formatCommercialMoney(pack.price, currency)) : "N/A"}</td></tr>`).join("");
+  return `<section class="card mt-3" aria-labelledby="admin-credit-packs-title"><div class="card-header"><h3 class="card-title" id="admin-credit-packs-title">Gói lượt Mua Sắm Công</h3></div><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Mã gói lượt</th><th class="text-end">Số lượt</th><th class="text-end">Giá</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+export function catalogMarkup(catalogPayload) {
+  const classification = classifyPublicCommercialResponse(catalogPayload);
+  if (classification.state === "unavailable") {
+    return adminStateMarkup("error", { title: "Không thể đọc danh mục gói", message: "Dữ liệu danh mục hiện hành không đúng định dạng." });
+  }
+  if (classification.state === "off") {
+    return adminStateMarkup("empty", { title: "Danh mục đang tắt", message: "Chưa có gói dịch vụ được công bố để bán." });
+  }
+  const catalog = classification.catalog;
+  const offers = Array.isArray(catalog?.offers) ? catalog.offers : [];
+  const packs = Array.isArray(catalog?.creditPacks) ? catalog.creditPacks : [];
+  const offerContent = offers.length
+    ? `<div class="row row-cards">${offers.map(offerCard).join("")}</div>`
+    : adminStateMarkup("empty", { message: "Release hiện hành chưa công bố gói dịch vụ." });
+  return `<section aria-labelledby="admin-plan-catalog-title"><div class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-2 mb-3"><div><h3 class="h2 mb-1" id="admin-plan-catalog-title">Danh mục gói đang công bố</h3><p class="text-secondary mb-0">Release <strong>${text(catalog?.releaseId)}</strong> · ${text(catalog?.currency)}</p></div><span class="badge bg-success-lt align-self-start">Dữ liệu hiện hành</span></div>${offerContent}${creditPackMarkup(packs, catalog?.currency)}</section>`;
 }
 
 function validationMarkup(validation) {
@@ -64,7 +123,7 @@ export function draftEditorMarkup(draft, validation = null) {
   return `<section class="card" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><h3 class="card-title">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Revision ${text(draft.revision)} · thay đổi chỉ có hiệu lực sau khi lưu, kiểm tra và xuất bản.</p></div></div><div class="card-body"><div id="admin-plan-validation">${validationMarkup(validation)}</div><label class="form-label" for="admin-plan-document">Tài liệu chính sách thương mại (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-document" rows="18" spellcheck="false">${escapeHtml(JSON.stringify(draft.document, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div><div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực (để trống = ngay)</label><input class="form-control" id="admin-plan-effective" type="datetime-local"></div></div></div><div class="card-footer d-flex flex-wrap gap-2"><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary ms-auto" type="button" data-admin-plan-action="close">Đóng</button></div></section>`;
 }
 
-export function plansMarkup(payload, { editor = "" } = {}) {
+export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
   const current = payload?.currentRelease || null;
   const scheduled = payload?.scheduledRelease || null;
   const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
@@ -72,7 +131,8 @@ export function plansMarkup(payload, { editor = "" } = {}) {
   const currentActions = current
     ? `<button class="btn btn-sm btn-outline-primary" type="button" data-admin-plan-action="clone" data-release-id="${text(current.id)}">Nhân bản</button> <button class="btn btn-sm btn-outline-danger" type="button" data-admin-plan-action="stop-sales" data-release-id="${text(current.id)}"${current.nonSellable ? " disabled" : ""}>Dừng bán</button>`
     : "";
-  return `<div class="d-flex justify-content-end mb-3"><button class="btn btn-primary" type="button" data-admin-plan-action="create">Tạo bản nháp</button></div>${empty ? adminStateMarkup("empty", { message: "Chưa có phiên bản gói dịch vụ hoặc bản nháp thương mại." }) : `<div class="row row-cards"><div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div><div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mọi thay đổi dùng quy trình versioned policy hiện hành.</p></div></div>${draftTable(drafts)}</section></div>${editor ? `<div class="col-12">${editor}</div>` : ""}</div>`}<div class="mt-3" id="admin-plan-status" aria-live="polite"></div>`;
+  const releaseManagement = empty ? adminStateMarkup("empty", { message: "Chưa có phiên bản gói dịch vụ hoặc bản nháp thương mại." }) : `<div class="row row-cards"><div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div><div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mọi thay đổi dùng quy trình versioned policy hiện hành.</p></div></div>${draftTable(drafts)}</section></div>${editor ? `<div class="col-12">${editor}</div>` : ""}</div>`;
+  return `<div class="d-flex justify-content-end mb-3"><button class="btn btn-primary" type="button" data-admin-plan-action="create">Tạo bản nháp</button></div>${catalog ? `${catalogMarkup(catalog)}<hr class="my-4"><h3 class="h2 mb-3">Quản lý phiên bản</h3>` : ""}${releaseManagement}<div class="mt-3" id="admin-plan-status" aria-live="polite"></div>`;
 }
 
 function mutationKey(action) {
@@ -102,6 +162,7 @@ function setStatus(container, message, tone = "success") {
 
 export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   let overview = null;
+  let catalog = null;
   let draft = null;
   let validation = null;
   let busy = false;
@@ -109,11 +170,15 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   const render = () => {
     renderAdminMarkup(container, plansMarkup(overview, {
       editor: draftEditorMarkup(draft, validation),
+      catalog,
     }));
     bind();
   };
   const refresh = async ({ keepDraft = false } = {}) => {
-    overview = await getAdminJson("/api/commercial/admin/overview", { fetchImpl, signal });
+    [overview, catalog] = await Promise.all([
+      getAdminJson("/api/commercial/admin/overview", { fetchImpl, signal }),
+      getAdminJson("/api/public/commercial/offers", { fetchImpl, signal }),
+    ]);
     if (!keepDraft) { draft = null; validation = null; }
     render();
   };

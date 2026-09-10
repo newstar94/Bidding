@@ -1,7 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { draftEditorMarkup, plansMarkup } from "../../frontend/admin-platform/AdminPlans.js";
+import { catalogMarkup, draftEditorMarkup, plansMarkup } from "../../frontend/admin-platform/AdminPlans.js";
+
+test("plans catalog renders authoritative offers prices benefits and entitlement values", () => {
+  const markup = catalogMarkup({
+    releaseId: "release-live-7",
+    releaseChecksum: "checksum-live-7",
+    currency: "VND",
+    quotaWarnings: [70, 90, 100],
+    offers: [{
+      code: "gold.connected.yearly",
+      tier: "gold",
+      variant: "connected",
+      ownerKind: "organization",
+      memberQuota: 15,
+      includedProcurementQuota: 7000,
+      price: { period: "yearly", currency: "VND", total: 35000000 },
+      exportCapabilities: {
+        "document.export.word": true,
+        "document.export.excel": false,
+        "document.export.award_result_excel": true,
+      },
+      violationCheckEnabled: true,
+      salesState: "sellable",
+      display: { name: "Vàng", variantLabel: "Kết nối", benefits: ["Quyền lợi từ release"], recommended: true },
+      rawSecret: "must-not-render",
+    }],
+    creditPacks: [{ code: "procurement.20", quantity: 20, price: 99000, internal: "hidden" }],
+  });
+  assert.match(markup, /release-live-7/u);
+  assert.match(markup, /Vàng/u);
+  assert.match(markup, /gold[.]connected[.]yearly/u);
+  assert.match(markup, /35[.]000[.]000/u);
+  assert.match(markup, /Quyền lợi từ release/u);
+  assert.match(markup, /Hạn mức thành viên:[\s\S]*15/u);
+  assert.match(markup, /Lượt Mua Sắm Công kèm theo:[\s\S]*7[.]000/u);
+  assert.match(markup, /Xuất Word:[\s\S]*Có/u);
+  assert.match(markup, /Xuất Excel:[\s\S]*Không/u);
+  assert.match(markup, /procurement[.]20[\s\S]*20[\s\S]*99[.]000/u);
+  assert.doesNotMatch(markup, /must-not-render|hidden/u);
+});
+
+test("plans catalog keeps off and malformed authoritative states explicit", () => {
+  assert.match(catalogMarkup({ availability: "off", offers: [], creditPacks: [], quotaWarnings: [] }), /Danh mục đang tắt/u);
+  assert.match(catalogMarkup({ offers: [] }), /data-admin-state="error"/u);
+});
 
 test("plans view renders real release versions, status and draft revisions", () => {
   const markup = plansMarkup({

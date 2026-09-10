@@ -14,6 +14,7 @@ function assertAdminPath(path, method = "GET") {
   const verb = String(method || "GET").toUpperCase();
   const platformPath = verb === "GET" && /^\/api\/admin(?:\/|$)/u.test(value);
   const approvedCommercialPath = verb === "GET" && value === "/api/commercial/admin/overview";
+  const approvedCommercialCatalog = verb === "GET" && value === "/api/public/commercial/offers";
   const commercialDraftCollection = verb === "POST" && value === "/api/commercial/drafts";
   const commercialDraftItem = /^(?:GET|PATCH)$/u.test(verb)
     && /^\/api\/commercial\/drafts\/[^/?#]+$/u.test(value);
@@ -31,7 +32,7 @@ function assertAdminPath(path, method = "GET") {
     && value === "/api/organizations/subscription";
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
   const approvedActiveRoleTransition = verb === "POST" && value === "/api/auth/active-role";
-  const approved = platformPath || approvedCommercialPath || commercialDraftCollection
+  const approved = platformPath || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
     || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
     || approvedOrganizationSubscription || approvedReauthentication
