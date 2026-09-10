@@ -345,6 +345,134 @@ def test_postgres_create_assignment_then_transfer_revokes_creator(kind, table):
         database.close()
 
 
+@pytest.mark.parametrize(
+    "payload_key,table_name,package_status",
+    [
+        ("thongtinmothau", "thong_tin_mo_thau", "PREPARING"),
+        ("goithauhanghoa", "goi_thau_hang_hoa", "PREPARING"),
+        ("hanghoaduthaunhathau", "hang_hoa_du_thau_nha_thau", "OPENED"),
+    ],
+)
+def test_postgres_package_transfer_revokes_old_assignee_child_mutations(
+    payload_key,
+    table_name,
+    package_status,
+):
+    from backend.auth.auth_helper import SessionRole
+    from backend.shared.access_policy import (
+        authorize_record_write,
+        authorize_record_write_from_context,
+        build_batch_write_authorization_context,
+    )
+    from tests.test_sync_conflict_authorization import (
+        _seed_denied_package,
+        _test_database,
+    )
+    import uuid
+
+    database = _test_database()
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id, successor_id, package_id = _seed_denied_package(cursor)
+        assignment_id, old_assignee_id = cursor.execute(
+            """SELECT id, id_nhan_vien FROM phan_cong_nhan_su
+                WHERE organization_id = ? AND id_muc_tieu = ?
+                  AND loai_doi_tuong = 'goithau'""",
+            (organization_id, package_id),
+        ).fetchone()
+        cursor.execute(
+            """INSERT INTO ma_tran_phan_quyen
+                (id, organization_id, emp_id, goithau)
+                VALUES (?, ?, ?, 'edit')""",
+            (uuid.uuid4().hex, organization_id, old_assignee_id),
+        )
+        cursor.execute(
+            "UPDATE goi_thau SET trang_thai = ? WHERE organization_id = ? AND id = ?",
+            (package_status, organization_id, package_id),
+        )
+
+        record_id = uuid.uuid4().hex
+        opening_id = uuid.uuid4().hex
+        if table_name in {"thong_tin_mo_thau", "hang_hoa_du_thau_nha_thau"}:
+            contractor_id = uuid.uuid4().hex
+            cursor.execute(
+                "INSERT INTO nha_thau (id, organization_id, ten_nha_thau) VALUES (?, ?, 'Nhà thầu')",
+                (contractor_id, organization_id),
+            )
+            if table_name == "thong_tin_mo_thau":
+                opening_id = record_id
+            cursor.execute(
+                """INSERT INTO thong_tin_mo_thau
+                    (id, organization_id, goi_thau_id, nha_thau_id)
+                    VALUES (?, ?, ?, ?)""",
+                (opening_id, organization_id, package_id, contractor_id),
+            )
+        if table_name == "goi_thau_hang_hoa":
+            cursor.execute(
+                """INSERT INTO goi_thau_hang_hoa
+                    (id, organization_id, goi_thau_id, ma_hang_hoa,
+                     ten_hang_hoa, don_vi_tinh, so_luong)
+                    VALUES (?, ?, ?, 'HH-01', 'Hàng hóa', 'cái', 1)""",
+                (record_id, organization_id, package_id),
+            )
+        elif table_name == "hang_hoa_du_thau_nha_thau":
+            cursor.execute(
+                """INSERT INTO hang_hoa_du_thau_nha_thau
+                    (id, organization_id, goi_thau_id, thong_tin_mo_thau_id,
+                     danh_muc_hang_hoa)
+                    VALUES (?, ?, ?, ?, 'Hàng hóa dự thầu')""",
+                (record_id, organization_id, package_id, opening_id),
+            )
+
+        record = {"id": record_id, "goiThauId": package_id}
+        role = SessionRole(
+            "user",
+            old_assignee_id,
+            platform_role="user",
+            active_role="employee",
+        )
+
+        def decisions():
+            context = build_batch_write_authorization_context(
+                cursor,
+                role,
+                old_assignee_id,
+                organization_id,
+                {table_name: [record]},
+                {table_name: {record_id: record}},
+            )
+            return (
+                authorize_record_write(
+                    cursor,
+                    role,
+                    old_assignee_id,
+                    organization_id,
+                    payload_key,
+                    table_name,
+                    record,
+                ).allowed,
+                authorize_record_write_from_context(
+                    context,
+                    payload_key,
+                    table_name,
+                    record,
+                ).allowed,
+            )
+
+        assert decisions() == (True, True)
+        cursor.execute(
+            """UPDATE phan_cong_nhan_su SET id_nhan_vien = ?
+                WHERE organization_id = ? AND id = ?""",
+            (successor_id, organization_id, assignment_id),
+        )
+        assert decisions() == (False, False)
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
 @pytest.mark.parametrize("kind,table", [
     ("kehoach", "ke_hoach_lcnt"), ("goithau", "goi_thau"),
     ("hopdong", "hop_dong"),
@@ -546,13 +674,28 @@ def test_postgres_latest_version_transfer_does_not_leave_historical_lineage_gran
         database.close()
 
 
-def test_postgres_assignment_transfer_serializes_with_write_authorization():
+@pytest.mark.parametrize(
+    "kind,payload_key,table_name,mutable_column,mutated_value",
+    [
+        ("kehoach", "kehoach", "ke_hoach_lcnt", "ten_ke_hoach", "Plan mutation serialized before transfer"),
+        ("goithau", "goithau", "goi_thau", "ten_goi_thau", "Package mutation serialized before transfer"),
+        ("hopdong", "hopdong", "hop_dong", "ten_hop_dong", "Contract mutation serialized before transfer"),
+    ],
+)
+def test_postgres_assignment_transfer_serializes_with_write_authorization(
+    kind,
+    payload_key,
+    table_name,
+    mutable_column,
+    mutated_value,
+):
     """A writer and transfer serialize; no old-user write follows revocation."""
 
     from concurrent.futures import ThreadPoolExecutor
     from datetime import datetime, timezone
     from queue import Queue
     import time
+    import uuid
 
     from backend.auth.auth_helper import SessionRole
     from backend.db.db_helper import PostgresCursor
@@ -569,7 +712,7 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
         pytest.skip("TEST_DATABASE_URL is not configured")
     setup_database = _test_database_url()
     setup = _connect(setup_database)
-    organization_id = old_assignee_id = successor_id = package_id = None
+    organization_id = old_assignee_id = successor_id = record_id = None
     try:
         cursor = PostgresCursor(setup.cursor())
         organization_id, successor_id, package_id = _seed_denied_package(cursor)
@@ -579,10 +722,69 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
                   AND loai_doi_tuong = 'goithau'""",
             (organization_id, package_id),
         ).fetchone()
-        assignment_id, old_assignee_id = assignment
+        seeded_assignment_id, old_assignee_id = assignment
+        parent_plan_id, investor_id = cursor.execute(
+            """SELECT plan.id, plan.chu_dau_tu_id
+                 FROM ke_hoach_lcnt AS plan
+                 JOIN goi_thau AS package ON package.ke_hoach_id = plan.id
+                WHERE package.organization_id = ? AND package.id = ?""",
+            (organization_id, package_id),
+        ).fetchone()
+        if kind == "kehoach":
+            record_id = uuid.uuid4().hex
+            cursor.execute(
+                """INSERT INTO ke_hoach_lcnt
+                    (id, organization_id, id_goc, ten_ke_hoach,
+                     loai_hinh_mua_sam, chu_dau_tu_id, ngay_phe_duyet,
+                     quyet_dinh_phe_duyet)
+                    VALUES (?, ?, ?, 'Independent plan', 'Dự án', ?,
+                            CURRENT_DATE, 'QD-RACE')""",
+                (record_id, organization_id, record_id, investor_id),
+            )
+        elif kind == "goithau":
+            record_id = package_id
+        else:
+            record_id = uuid.uuid4().hex
+            contractor_id = uuid.uuid4().hex
+            cursor.execute(
+                "INSERT INTO nha_thau (id, organization_id, ten_nha_thau) VALUES (?, ?, 'Contractor')",
+                (contractor_id, organization_id),
+            )
+            cursor.execute(
+                """INSERT INTO danh_muc_trang_thai_hop_dong
+                    (id, organization_id, name) VALUES (?, ?, 'Dang thuc hien')""",
+                (uuid.uuid4().hex, organization_id),
+            )
+            cursor.execute(
+                """INSERT INTO hop_dong
+                    (id, organization_id, id_goc, ten_hop_dong, so_hop_dong,
+                     ngay_ky, chu_dau_tu_id, nha_thau_id, ke_hoach_id, gia_tri,
+                     loai_hop_dong, thoi_gian_thuc_hien, trang_thai_hop_dong)
+                    VALUES (?, ?, ?, 'Contract', ?, CURRENT_DATE, ?, ?, ?, 100,
+                            'Consulting', '30 days', 'Dang thuc hien')""",
+                (
+                    record_id,
+                    organization_id,
+                    record_id,
+                    f"HD-{record_id}",
+                    investor_id,
+                    contractor_id,
+                    parent_plan_id,
+                ),
+            )
+        if kind == "goithau":
+            assignment_id = seeded_assignment_id
+        else:
+            assignment_id = uuid.uuid4().hex
+            cursor.execute(
+                """INSERT INTO phan_cong_nhan_su
+                    (id, organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)
+                    VALUES (?, ?, ?, ?, ?)""",
+                (assignment_id, organization_id, old_assignee_id, record_id, kind),
+            )
         cursor.execute(
-            """INSERT INTO ma_tran_phan_quyen
-                (id, organization_id, emp_id, goithau)
+            f"""INSERT INTO ma_tran_phan_quyen
+                (id, organization_id, emp_id, {kind})
                 VALUES (?, ?, ?, 'edit')""",
             (f"permission-old-{assignment_id}", organization_id, old_assignee_id),
         )
@@ -600,12 +802,12 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
             active_role="employee",
         )
         previous_record = dict(mutation.execute(
-            "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
-            (organization_id, package_id),
+            f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ?",
+            (organization_id, record_id),
         ).fetchone())
         record = {
-            "id": package_id,
-            "rootId": previous_record.get("id_goc") or package_id,
+            "id": record_id,
+            "rootId": previous_record.get("id_goc") or record_id,
             "rowVersion": previous_record["row_version"],
             "expectedVersion": previous_record["row_version"],
         }
@@ -614,11 +816,11 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
             role,
             old_assignee_id,
             organization_id,
-            {"goi_thau": [record]},
-            {"goi_thau": {package_id: record}},
+            {table_name: [record]},
+            {table_name: {record_id: record}},
         )
         assert authorize_record_write_from_context(
-            context, "goithau", "goi_thau", record,
+            context, payload_key, table_name, record,
         ).allowed
 
         class Tracker:
@@ -626,7 +828,7 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
                 return lambda *_args, **_kwargs: None
 
         updated_record = dict(previous_record)
-        updated_record["ten_goi_thau"] = "Mutation serialized before transfer"
+        updated_record[mutable_column] = mutated_value
         writer = SyncRecordWriter(
             SimpleNamespace(
                 cursor=mutation,
@@ -646,8 +848,8 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
             save_children=lambda *_args: None,
         )
         write_result = writer.write(
-            payload_key="goithau",
-            table_name="goi_thau",
+            payload_key=payload_key,
+            table_name=table_name,
             item=record,
             db_row_data=updated_record,
             previous_record=previous_record,
@@ -701,12 +903,12 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
         try:
             after = PostgresCursor(after_connection.cursor())
             current = dict(after.execute(
-                "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
-                (organization_id, package_id),
+                f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ?",
+                (organization_id, record_id),
             ).fetchone())
             second_record = {
-                "id": package_id,
-                "rootId": current.get("id_goc") or package_id,
+                "id": record_id,
+                "rootId": current.get("id_goc") or record_id,
                 "rowVersion": current["row_version"],
                 "expectedVersion": current["row_version"],
             }
@@ -715,13 +917,13 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
                 role,
                 old_assignee_id,
                 organization_id,
-                {"goi_thau": [second_record]},
-                {"goi_thau": {package_id: second_record}},
+                {table_name: [second_record]},
+                {table_name: {record_id: second_record}},
             )
             assert not authorize_record_write_from_context(
-                revoked_context, "goithau", "goi_thau", second_record,
+                revoked_context, payload_key, table_name, second_record,
             ).allowed
-            assert current["ten_goi_thau"] == "Mutation serialized before transfer"
+            assert current[mutable_column] == mutated_value
             after_connection.rollback()
         finally:
             after_connection.close()
@@ -740,6 +942,10 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
                 (organization_id,),
             )
             cursor.execute(
+                "DELETE FROM hop_dong WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cursor.execute(
                 "DELETE FROM goi_thau WHERE organization_id = ?",
                 (organization_id,),
             )
@@ -749,6 +955,14 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization():
             )
             cursor.execute(
                 "DELETE FROM chu_dau_tu WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cursor.execute(
+                "DELETE FROM nha_thau WHERE organization_id = ?",
+                (organization_id,),
+            )
+            cursor.execute(
+                "DELETE FROM danh_muc_trang_thai_hop_dong WHERE organization_id = ?",
                 (organization_id,),
             )
             cursor.execute(
