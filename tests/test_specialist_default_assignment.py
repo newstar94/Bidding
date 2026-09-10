@@ -707,6 +707,23 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization(
     from tests.test_member_quota_concurrency import _connect, _test_database_url
     from tests.test_sync_conflict_authorization import _seed_denied_package
 
+    permission_insert_sql = {
+        "kehoach": """INSERT INTO ma_tran_phan_quyen
+            (id, organization_id, emp_id, kehoach)
+            VALUES (?, ?, ?, 'edit')""",
+        "goithau": """INSERT INTO ma_tran_phan_quyen
+            (id, organization_id, emp_id, goithau)
+            VALUES (?, ?, ?, 'edit')""",
+        "hopdong": """INSERT INTO ma_tran_phan_quyen
+            (id, organization_id, emp_id, hopdong)
+            VALUES (?, ?, ?, 'edit')""",
+    }
+    record_select_sql = {
+        "ke_hoach_lcnt": "SELECT * FROM ke_hoach_lcnt WHERE organization_id = ? AND id = ?",
+        "goi_thau": "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
+        "hop_dong": "SELECT * FROM hop_dong WHERE organization_id = ? AND id = ?",
+    }
+
     database_url = _test_database_url()
     if not database_url:
         pytest.skip("TEST_DATABASE_URL is not configured")
@@ -783,9 +800,7 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization(
                 (assignment_id, organization_id, old_assignee_id, record_id, kind),
             )
         cursor.execute(
-            f"""INSERT INTO ma_tran_phan_quyen
-                (id, organization_id, emp_id, {kind})
-                VALUES (?, ?, ?, 'edit')""",
+            permission_insert_sql[kind],
             (f"permission-old-{assignment_id}", organization_id, old_assignee_id),
         )
         setup.commit()
@@ -802,7 +817,7 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization(
             active_role="employee",
         )
         previous_record = dict(mutation.execute(
-            f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ?",
+            record_select_sql[table_name],
             (organization_id, record_id),
         ).fetchone())
         record = {
@@ -903,7 +918,7 @@ def test_postgres_assignment_transfer_serializes_with_write_authorization(
         try:
             after = PostgresCursor(after_connection.cursor())
             current = dict(after.execute(
-                f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ?",
+                record_select_sql[table_name],
                 (organization_id, record_id),
             ).fetchone())
             second_record = {
