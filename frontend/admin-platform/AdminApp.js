@@ -11,6 +11,15 @@ import { renderAdminLegalCatalog } from "./AdminLegalCatalog.js";
 import { adminStateMarkup } from "./AdminStateView.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
+window.performance?.mark?.("bf:app-module-start");
+
+let startupReadyMarked = false;
+function markStartupReady() {
+  if (startupReadyMarked) return;
+  startupReadyMarked = true;
+  window.performance?.mark?.("bf:loader:hidden");
+}
+
 function readSession() {
   try { return JSON.parse(document.getElementById("bf-admin-session")?.textContent || "{}"); }
   catch { return { valid: false }; }
@@ -63,8 +72,9 @@ function renderRoute() {
 const app = document.getElementById("admin-app"); const session = readSession();
 if (!session.valid || session.user?.platform_role !== "super_admin") app.innerHTML = trustedHTML(`<main class="page-body"><div class="container-tight py-5"><div class="empty"><p class="empty-title">Không có quyền truy cập</p></div></div></main>`);
 else {
+  window.performance?.mark?.("bf:init:start");
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });
-  window.addEventListener("popstate", renderRoute); window.addEventListener("admin:navigate", renderRoute); renderRoute();
+  window.addEventListener("popstate", renderRoute); window.addEventListener("admin:navigate", renderRoute); renderRoute(); markStartupReady();
 }

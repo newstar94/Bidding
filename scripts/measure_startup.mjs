@@ -7,7 +7,7 @@ import { chromium } from "@playwright/test";
 const argumentsSet = new Set(process.argv.slice(2));
 const shouldAssert = argumentsSet.has("--assert");
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-const route = process.env.STARTUP_ROUTE || "/tong-quan-admin";
+const route = process.env.STARTUP_ROUTE || "/admin";
 const username = process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin";
 const password = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD;
 // With only 10 samples, nearest-rank p95 equals the maximum and makes the gate

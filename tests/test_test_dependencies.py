@@ -298,3 +298,16 @@ def test_performance_probe_authenticates_once_and_reuses_session_state():
     assert "await authenticatedContext.storageState()" in probe
     assert "browser.newContext({" in probe
     assert "storageState: authenticatedState" in probe
+
+
+def test_performance_probe_targets_active_admin_shell_readiness():
+    probe = (PROJECT_ROOT / "scripts" / "measure_startup.mjs").read_text(
+        encoding="utf-8"
+    )
+    admin_app = (
+        PROJECT_ROOT / "frontend" / "admin-platform" / "AdminApp.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'process.env.STARTUP_ROUTE || "/admin"' in probe
+    assert 'performance.getEntriesByName("bf:loader:hidden")' in probe
+    assert 'window.performance?.mark?.("bf:loader:hidden")' in admin_app
