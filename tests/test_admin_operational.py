@@ -227,6 +227,9 @@ def test_system_version_uses_sanitized_release_and_installed_schema(monkeypatch)
         lambda: "c0d8ebfc699258c28662f7d03e7bbadd507a9305",
     )
     monkeypatch.setattr(operational, "_app_version", lambda: "2.0.0")
+    monkeypatch.setattr(operational, "_build_sha", lambda: "c0d8ebfc699258c2")
+    monkeypatch.setattr(operational, "_build_time", lambda: "2026-09-11T01:02:03Z")
+    monkeypatch.setenv("APP_ENV", "production")
 
     response = asyncio.run(operational.admin_system_version_api(_request()))
     payload = _payload(response)
@@ -235,6 +238,9 @@ def test_system_version_uses_sanitized_release_and_installed_schema(monkeypatch)
     assert response.headers["cache-control"] == "private, no-store"
     assert payload["applicationVersion"] == "2.0.0"
     assert payload["releaseId"] == "c0d8ebfc699258c28662f7d03e7bbadd507a9305"
+    assert payload["buildSha"] == "c0d8ebfc699258c2"
+    assert payload["buildTime"] == "2026-09-11T01:02:03Z"
+    assert payload["environment"] == "production"
     assert payload["frontendBundleVersion"] == payload["releaseId"]
     assert payload["schemaVersion"] == 90
     assert payload["expectedSchemaVersion"] == operational.DB_SCHEMA_VERSION
@@ -245,6 +251,18 @@ def test_release_id_rejects_arbitrary_or_path_values():
     assert operational._release_id({"APP_RELEASE_ID": "../../private/release"}) is None
     assert operational._release_id({"APP_RELEASE_ID": "release id with spaces"}) is None
     assert operational._release_id({"APP_RELEASE_ID": "release-2026.09"}) == "release-2026.09"
+
+
+def test_build_metadata_is_allowlisted_and_normalized():
+    assert operational._build_sha({"GITHUB_SHA": "ABCDEF1234567"}) == "abcdef1234567"
+    assert operational._build_sha({"GITHUB_SHA": "../../private"}) is None
+    assert operational._build_time({"APP_BUILD_TIME": "2026-09-11T08:02:03+07:00"}) == (
+        "2026-09-11T01:02:03Z"
+    )
+    assert operational._build_time({"SOURCE_DATE_EPOCH": "1789088523"}) == (
+        "2026-09-11T01:02:03Z"
+    )
+    assert operational._build_time({"APP_BUILD_TIME": "not-a-date"}) is None
 
 
 def test_environment_update_validation_rejects_unknown_and_malformed_values():

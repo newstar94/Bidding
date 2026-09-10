@@ -450,3 +450,48 @@ test("local admin settings save through privileged reauthentication", async ({ c
   expect(mutations).toHaveLength(2);
   expect(mutations[1].features.aiEnabled).toBe(true);
 });
+
+test("local environment replaces a secret only after explicit confirmation and reauthentication", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  const mutations = [];
+  await context.route("**/api/admin/environment", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, {
+        runtime: { environment: "development", frontendAssetMode: "bundle", debugEnabled: false, secureCookies: false },
+        features: { aiEnabled: false, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: false },
+        secretStatus: {
+          OTP_HMAC_KEY: {
+            configured: true, writable: true, restartRequired: true,
+            source: "local_env", lastUpdated: null,
+          },
+        },
+        configuration: { writable: true, restartRequired: true, source: "local_env" },
+      });
+      return;
+    }
+    mutations.push(route.request().postDataJSON());
+    await fulfillJson(
+      route,
+      mutations.length === 1
+        ? { message: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." }
+        : { success: true, restartRequired: true },
+      mutations.length === 1 ? 403 : 200,
+    );
+  });
+  await context.route("**/api/auth/privileged-reauth", (route) => fulfillJson(route, { success: true }));
+
+  await page.goto("/admin/environment", { waitUntil: "commit" });
+  await expectAdminReady(page, "Môi trường");
+  await page.getByRole("button", { name: "Thay thế" }).click();
+  await page.getByLabel("Nhập OTP_HMAC_KEY để xác nhận").fill("OTP_HMAC_KEY");
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await page.getByLabel("Khóa xác thực OTP").fill("s".repeat(32));
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await page.getByLabel("Mật khẩu hiện tại").fill("correct-password");
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+
+  await expect(page.locator("[data-admin-environment-status]")).toContainText("Cần khởi động lại");
+  expect(mutations).toHaveLength(2);
+  expect(mutations[1]).toEqual({ secrets: { OTP_HMAC_KEY: "s".repeat(32) } });
+  await expect(page.locator("body")).not.toContainText("s".repeat(32));
+});

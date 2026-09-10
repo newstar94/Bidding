@@ -141,14 +141,22 @@ export function environmentMarkup(payload) {
   const secretStatus = payload.secretStatus;
   const writable = payload.configuration?.writable === true;
   const secretRows = SECRET_FIELDS.map(([key, label]) => {
-    const configured = secretStatus?.[key]?.configured === true;
+    const secret = secretStatus?.[key] && typeof secretStatus[key] === "object"
+      ? secretStatus[key]
+      : {};
+    const configured = secret.configured === true;
     const state = configured ? "Đã cấu hình" : "Thiếu cấu hình";
     const tone = configured ? "success" : "warning";
-    const canReplace = writable && secretStatus?.[key]?.writable === true;
+    const canReplace = writable && secret.writable === true;
     const action = canReplace
       ? `<button class="btn btn-sm btn-outline-primary" type="button" data-admin-secret-replace="${escapeHtml(key)}">${configured ? "Thay thế" : "Cấu hình"}</button>`
       : '<span class="text-secondary small">Do hệ thống triển khai quản lý</span>';
-    return `<tr><th scope="row">${escapeHtml(label)}</th><td><span class="badge bg-${tone}-lt" data-admin-secret-status="${escapeHtml(key)}">${state}</span></td><td class="text-end">${action}</td></tr>`;
+    const source = text(secret.source, "Không xác định");
+    const restart = secret.restartRequired === true ? "Cần khởi động lại" : "Không xác định";
+    const updated = typeof secret.lastUpdated === "string" && secret.lastUpdated.trim()
+      ? text(new Date(secret.lastUpdated).toLocaleString("vi-VN"))
+      : "Chưa có dữ liệu";
+    return `<tr><th scope="row">${escapeHtml(label)}<div class="text-secondary small"><code>${escapeHtml(key)}</code></div></th><td><span class="badge bg-${tone}-lt" data-admin-secret-status="${escapeHtml(key)}">${state}</span></td><td class="small text-secondary">${source}<br>${restart}<br>Cập nhật: ${updated}</td><td class="text-end">${action}</td></tr>`;
   }).join("");
   const configurationNotice = writable
     ? '<div class="alert alert-info" role="note">Có thể thay thế bí mật trong môi trường cục bộ. Giá trị hiện tại không bao giờ được hiển thị. Mọi thay đổi cần khởi động lại ứng dụng.</div>'
@@ -166,12 +174,27 @@ export function settingsMarkup(payload) {
     return adminStateMarkup("empty", { message: "Chưa có dữ liệu cài đặt hệ thống." });
   }
   const features = payload.features;
+  const runtime = payload.runtime && typeof payload.runtime === "object" ? payload.runtime : {};
+  const secretStatus = payload.secretStatus && typeof payload.secretStatus === "object"
+    ? payload.secretStatus
+    : {};
   const writable = payload.configuration?.writable === true;
   const controls = FEATURE_FIELDS.map(([key, label]) => `<label class="form-check form-switch bf-admin-setting-row"><input class="form-check-input" type="checkbox" data-admin-feature="${escapeHtml(key)}"${features[key] === true ? " checked" : ""}${writable ? "" : " disabled"}><span class="form-check-label">${escapeHtml(label)}</span></label>`).join("");
   const notice = writable
     ? "Thay đổi được lưu vào cấu hình cục bộ trên máy chủ và có hiệu lực sau khi khởi động lại."
     : "Môi trường này chỉ đọc; tính năng do hệ thống cấu hình triển khai quản lý.";
-  return `<div class="row row-cards"><div class="col-lg-8"><section class="card" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Tính năng hệ thống</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div></div>`;
+  const configured = (key) => secretStatus?.[key]?.configured === true ? "Đã cấu hình" : "Chưa cấu hình";
+  const deploymentRows = [
+    ["Application", `Môi trường ${text(runtime.environment, "không xác định")}; tài nguyên ${text(runtime.frontendAssetMode, "không xác định")}`],
+    ["Registration", `Turnstile: ${configured("TURNSTILE_SECRET_KEY")}`],
+    ["Localization", "Chưa có kho cấu hình runtime có thẩm quyền"],
+    ["Billing", `Thanh toán: ${text(yesNo(features.paymentCheckoutEnabled))}; payOS: ${configured("PAYOS_API_KEY")}`],
+    ["Documents", `Mã hóa worker: ${configured("EMAIL_OUTBOX_ENCRYPTION_KEY")}`],
+    ["Notifications", `Hộp thư đi: ${configured("EMAIL_OUTBOX_ENCRYPTION_KEY")}`],
+    ["Storage", `Database: ${configured("DATABASE_URL")}`],
+    ["Sync", `Bản nháp xung đột: ${configured("CONFLICT_DRAFT_ENCRYPTION_KEY")}`],
+  ];
+  return `<div class="row row-cards"><div class="col-lg-8"><section class="card" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Feature Flags</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div><div class="col-lg-8">${detailsCard("Phân loại cấu hình hệ thống", deploymentRows, { subtitle: '<p class="text-secondary small mb-0">Các mục chưa có persistent runtime store được hiển thị rõ, không giả lập khả năng ghi.</p>' })}</div></div>`;
 }
 
 function updateStatus(element, message, tone = "secondary") {
@@ -208,11 +231,31 @@ export async function executeEnvironmentUpdate(body, options) {
   return privilegedEnvironmentUpdate(body, options);
 }
 
+export async function confirmSecretReplacement(key, {
+  requestConfirmation = requestAdminValue,
+} = {}) {
+  const confirmation = await requestConfirmation({
+    title: "Xác nhận thay thế bí mật",
+    message: `Thao tác này thay thế ${key} trên máy chủ và cần khởi động lại ứng dụng.`,
+    label: `Nhập ${key} để xác nhận`,
+    type: "text",
+    autocomplete: "off",
+  });
+  return confirmation !== null && String(confirmation).trim() === key;
+}
+
 export function bindEnvironmentControls(root, payload, options = {}) {
   const status = root.querySelector?.("[data-admin-environment-status]");
   root.querySelectorAll?.("[data-admin-secret-replace]").forEach((button) => button.addEventListener("click", async () => {
     const key = String(button.dataset.adminSecretReplace || "");
     if (!SECRET_FIELDS.some(([candidate]) => candidate === key)) return;
+    const confirmed = await confirmSecretReplacement(key, {
+      requestConfirmation: options.requestConfirmation || requestAdminValue,
+    });
+    if (!confirmed) {
+      updateStatus(status, "Đã hủy thao tác.");
+      return;
+    }
     const value = await (options.requestSecret || requestAdminValue)({
       title: "Thay thế bí mật cấu hình",
       message: "Giá trị mới được gửi thẳng tới máy chủ và không được hiển thị lại.",
@@ -265,6 +308,9 @@ export function versionMarkup(payload) {
   return detailsCard("Thông tin phát hành", [
     ["Phiên bản ứng dụng", text(payload.applicationVersion)],
     ["Mã phát hành", text(payload.releaseId, "Chưa cấu hình")],
+    ["Build SHA", text(payload.buildSha, "Chưa cấu hình")],
+    ["Thời điểm build", text(payload.buildTime, "Chưa cấu hình")],
+    ["Môi trường", text(payload.environment, "Không xác định")],
     ["Phiên bản bundle giao diện", text(payload.frontendBundleVersion, "Chưa cấu hình")],
     ["Phiên bản schema đang chạy", text(payload.schemaVersion)],
     ["Phiên bản schema yêu cầu", text(payload.expectedSchemaVersion)],

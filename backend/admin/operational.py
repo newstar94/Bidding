@@ -29,6 +29,7 @@ from backend.observability.recording import snapshot_recorded_metrics
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SAFE_RELEASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SAFE_BUILD_SHA = re.compile(r"^[0-9a-fA-F]{7,64}$")
 _SAFE_APP_VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?$")
 _ENVIRONMENT_NAMES = frozenset({"development", "test", "staging", "production"})
 _ASSET_MODES = frozenset({"source", "bundle"})
@@ -415,6 +416,34 @@ def _release_id(environment=None) -> str | None:
     return value if _SAFE_RELEASE_ID.fullmatch(value) else None
 
 
+def _build_sha(environment=None) -> str | None:
+    environ = os.environ if environment is None else environment
+    value = str(environ.get("GITHUB_SHA") or "").strip()
+    return value.lower() if _SAFE_BUILD_SHA.fullmatch(value) else None
+
+
+def _build_time(environment=None) -> str | None:
+    environ = os.environ if environment is None else environment
+    value = str(environ.get("APP_BUILD_TIME") or "").strip()
+    if value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    epoch = str(environ.get("SOURCE_DATE_EPOCH") or "").strip()
+    if not epoch.isdigit():
+        return None
+    try:
+        return datetime.fromtimestamp(int(epoch), timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 async def admin_health_api(request):
     authorization_error = await _authorize(request)
     if authorization_error:
@@ -494,6 +523,11 @@ async def admin_system_version_api(request):
             "generatedAt": _utc_now(),
             "applicationVersion": _app_version(),
             "releaseId": release_id,
+            "buildSha": _build_sha(),
+            "buildTime": _build_time(),
+            "environment": _normalized_choice(
+                os.environ.get("APP_ENV"), _ENVIRONMENT_NAMES, "unknown"
+            ),
             "frontendBundleVersion": release_id,
             "schemaVersion": database_status["schemaVersion"],
             "expectedSchemaVersion": DB_SCHEMA_VERSION,

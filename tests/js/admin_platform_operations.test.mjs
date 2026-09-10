@@ -3,6 +3,7 @@ import test from "node:test";
 import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import {
+  confirmSecretReplacement,
   environmentMarkup,
   executeEnvironmentUpdate,
   healthMarkup,
@@ -94,6 +95,9 @@ test("version view renders release contract and ignores unrecognized fields", ()
     generatedAt: "2026-09-10T00:00:00Z",
     applicationVersion: "2.0.0",
     releaseId: "abc123",
+    buildSha: "abcdef1234567",
+    buildTime: "2026-09-11T01:02:03Z",
+    environment: "production",
     frontendBundleVersion: "abc123",
     schemaVersion: 90,
     expectedSchemaVersion: 90,
@@ -103,6 +107,9 @@ test("version view renders release contract and ignores unrecognized fields", ()
 
   assert.match(markup, /2[.]0[.]0/u);
   assert.match(markup, /abc123/u);
+  assert.match(markup, /abcdef1234567/u);
+  assert.match(markup, /2026-09-11T01:02:03Z/u);
+  assert.match(markup, /production/u);
   assert.match(markup, /Khả dụng/u);
   assert.equal(markup.includes("D:/private/dist"), false);
   assert.match(versionMarkup(null), /data-admin-state="empty"/u);
@@ -115,6 +122,9 @@ test("settings view renders writable feature controls without secret data", () =
     configuration: { writable: true },
   });
   assert.match(markup, /Trợ lý AI/u);
+  assert.match(markup, /Registration/u);
+  assert.match(markup, /Localization/u);
+  assert.match(markup, /Notifications/u);
   assert.match(markup, /data-admin-feature="aiEnabled" checked/u);
   assert.match(markup, /data-admin-settings-save>Lưu cấu hình/u);
   assert.doesNotMatch(markup, /DATABASE_URL|private/u);
@@ -154,6 +164,18 @@ test("environment update reauthenticates and retries once without retaining secr
     "/api/admin/environment",
   ]);
   assert.deepEqual(requests[1].body, { password: "admin-password" });
+});
+
+test("secret replacement requires the exact key as explicit confirmation", async () => {
+  assert.equal(await confirmSecretReplacement("OTP_HMAC_KEY", {
+    requestConfirmation: async () => "OTP_HMAC_KEY",
+  }), true);
+  assert.equal(await confirmSecretReplacement("OTP_HMAC_KEY", {
+    requestConfirmation: async () => "wrong-key",
+  }), false);
+  assert.equal(await confirmSecretReplacement("OTP_HMAC_KEY", {
+    requestConfirmation: async () => null,
+  }), false);
 });
 
 test("operation pages call their dedicated same-origin admin APIs", async () => {
