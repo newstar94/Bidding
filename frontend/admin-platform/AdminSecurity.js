@@ -33,6 +33,9 @@ function detailCard(title, body) {
 }
 
 export function auditDetailMarkup(item) {
+  const details = item?.details && typeof item.details === "object"
+    ? Object.entries(item.details).map(([key, value]) => detailRow(key, Array.isArray(value) ? value.join(", ") : value))
+    : [];
   return detailCard("Chi tiết sự kiện nhật ký", [
     detailRow("Thời gian", formatDateTime(item?.createdAt)),
     detailRow("Hành động", item?.action),
@@ -40,8 +43,11 @@ export function auditDetailMarkup(item) {
     detailRow("Tổ chức", item?.organizationId, "Toàn nền tảng"),
     detailRow("Loại đối tượng", item?.targetType),
     detailRow("Đối tượng", item?.targetId),
+    detailRow("Kết quả", item?.result),
+    detailRow("Request ID", item?.requestId),
     detailRow("Chuỗi nhật ký", item?.chainId),
     detailRow("Thứ tự", item?.sequence),
+    ...details,
   ].join(""));
 }
 
@@ -97,15 +103,17 @@ export const AUDIT_DIRECTORY = Object.freeze({
   filters: [
     {
       key: "action",
-      label: "Loại sự kiện đăng nhập",
-      allLabel: "Mọi sự kiện",
-      options: [
-        ["auth.login_success", "Đăng nhập mật khẩu thành công"],
-        ["auth.login_failed", "Đăng nhập mật khẩu thất bại"],
-        ["auth.google_login_success", "Đăng nhập Google thành công"],
-        ["auth.google_login_failed", "Đăng nhập Google thất bại"],
-      ],
+      label: "Hành động",
+      placeholder: "Hành động",
+      maxLength: 120,
     },
+    { key: "targetType", label: "Loại đối tượng", placeholder: "Loại đối tượng", maxLength: 120 },
+    { key: "actorUserId", label: "Người thực hiện", placeholder: "ID người thực hiện" },
+    { key: "organizationId", label: "Tổ chức", placeholder: "ID tổ chức" },
+    { key: "result", label: "Kết quả", allLabel: "Mọi kết quả", options: [["success", "Thành công"], ["failure", "Thất bại"]] },
+    { key: "requestId", label: "Request ID", placeholder: "Request ID", maxLength: 128 },
+    { key: "from", label: "Từ ngày", type: "date" },
+    { key: "to", label: "Đến ngày", type: "date" },
   ],
   columns: [
     { label: "Thời gian", sortKey: "created_at" },
@@ -113,11 +121,13 @@ export const AUDIT_DIRECTORY = Object.freeze({
     { label: "Đối tượng", sortKey: "target_type" },
     { label: "Người thực hiện" },
     { label: "Tổ chức" },
+    { label: "Kết quả" },
+    { label: "Request ID" },
     { label: "Chuỗi / thứ tự", sortKey: "sequence" },
     { label: "Chi tiết" },
   ],
   rowMarkup(item, index) {
-    return `<tr><td data-label="Thời gian">${formatDateTime(item?.createdAt)}</td><td data-label="Hành động"><strong>${text(item?.action)}</strong></td><td data-label="Đối tượng">${auditTarget(item)}</td><td data-label="Người thực hiện">${text(item?.actorUserId, "Hệ thống")}</td><td data-label="Tổ chức">${text(item?.organizationId, "Toàn nền tảng")}</td><td data-label="Chuỗi / thứ tự"><div>${text(item?.chainId)}</div><div class="small text-secondary">#${text(item?.sequence)}</div></td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-secondary" type="button" data-admin-security-detail-index="${index}">Xem</button></td></tr>`;
+    return `<tr><td data-label="Thời gian">${formatDateTime(item?.createdAt)}</td><td data-label="Hành động"><strong>${text(item?.action)}</strong></td><td data-label="Đối tượng">${auditTarget(item)}</td><td data-label="Người thực hiện">${text(item?.actorUserId, "Hệ thống")}</td><td data-label="Tổ chức">${text(item?.organizationId, "Toàn nền tảng")}</td><td data-label="Kết quả">${text(item?.result)}</td><td data-label="Request ID">${text(item?.requestId)}</td><td data-label="Chuỗi / thứ tự"><div>${text(item?.chainId)}</div><div class="small text-secondary">#${text(item?.sequence)}</div></td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-secondary" type="button" data-admin-security-detail-index="${index}">Xem</button></td></tr>`;
   },
   bindResultActions(results, { payload }) { bindSafeDetails(results, payload, auditDetailMarkup); },
 });

@@ -29,7 +29,9 @@ test("audit controls stay bounded to server pagination search and allowlisted so
   });
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?sortBy=metadata_json").sortBy, "created_at");
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.login_success").action, "auth.login_success");
-  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.unknown").action, "");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.unknown").action, "auth.unknown");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?result=unknown").result, "");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?requestId=req-123").requestId, "req-123");
 });
 
 test("audit table renders summary fields without raw metadata hashes or IP data", () => {
@@ -45,6 +47,9 @@ test("audit table renders summary fields without raw metadata hashes or IP data"
       targetType: "user",
       targetId: "user-2",
       createdAt: "2026-09-10T08:00:00Z",
+      result: "success",
+      requestId: "req-123",
+      details: { reason: "approved correction" },
       metadata: "raw-metadata-secret",
       entryHash: "raw-entry-hash",
       ipAddress: "192.0.2.10",
@@ -56,6 +61,7 @@ test("audit table renders summary fields without raw metadata hashes or IP data"
   assert.match(markup, /admin-1/u);
   assert.match(markup, /user-2/u);
   assert.match(markup, /data-admin-security-detail-index="0"/u);
+  assert.match(markup, /req-123/u);
   assert.doesNotMatch(markup, /raw-metadata-secret|raw-entry-hash|192[.]0[.]2[.]10/u);
 });
 
@@ -136,6 +142,9 @@ test("audit detail renders safe login and target fields without raw internals", 
     chainId: "global",
     sequence: 41,
     createdAt: "2026-09-10T08:00:00Z",
+    result: "failure",
+    requestId: "req-login-1",
+    details: { reason: "invalid_password" },
     metadata: { password: "raw-password", deviceFingerprint: "fingerprint-secret" },
     ipAddress: "192.0.2.44",
     entryHash: "audit-hash-secret",
@@ -143,6 +152,7 @@ test("audit detail renders safe login and target fields without raw internals", 
   assert.match(markup, /auth[.]login_success/u);
   assert.match(markup, /account-1/u);
   assert.match(markup, /Toàn nền tảng/u);
+  assert.match(markup, /req-login-1|invalid_password/u);
   assert.doesNotMatch(markup, /raw-password|fingerprint-secret|192[.]0[.]2[.]44|audit-hash-secret/u);
 });
 

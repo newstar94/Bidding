@@ -349,9 +349,14 @@ def log_audit(
         if request is not None:
             ip_address = get_client_ip(request)
 
-        metadata_json = None
-        if metadata is not None:
-            metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+        audit_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        if request is not None:
+            audit_metadata.setdefault("requestId", get_request_id(request))
+        metadata_json = (
+            json.dumps(audit_metadata, ensure_ascii=False, default=str)
+            if audit_metadata
+            else None
+        )
 
         event = {
             "actor_user_id": actor_user_id,

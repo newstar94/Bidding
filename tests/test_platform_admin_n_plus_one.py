@@ -155,6 +155,7 @@ class _TracingCursor:
             "actor_user_id": "admin-1", "organization_id": None,
             "action": "admin.test", "target_type": "test",
             "target_id": str(index), "created_at": "2026-01-01",
+            "metadata_json": None, "result": "success",
         }
 
     @staticmethod

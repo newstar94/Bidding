@@ -41,8 +41,19 @@ test("admin console uses one primary accent and semantic status colors", async (
   assert.match(admin, /--tblr-success:\s*var\(--bf-admin-success\);/u);
   assert.match(admin, /--tblr-warning:\s*var\(--bf-admin-warning\);/u);
   assert.match(admin, /--tblr-danger:\s*var\(--bf-admin-danger\);/u);
+  assert.match(admin, /\.form-check-input:checked\s*\{[^}]*var\(--bf-admin-brand\)/su);
+  assert.match(admin, /\.table\s*\{[^}]*--tblr-table-hover-bg:\s*var\(--bf-admin-brand-soft\)/su);
   assert.doesNotMatch(admin, /gradient\s*\(/iu);
   assert.doesNotMatch(admin, /#(?:6d28d9|5b21b6|ae3ec9)\b/iu);
+});
+
+test("admin action buttons keep status colors reserved for status feedback", async () => {
+  const plans = await readFile(
+    new URL("../../frontend/admin-platform/AdminPlans.js", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(plans, /data-admin-plan-action="publish"[^>]*btn-success/u);
+  assert.match(plans, /class="btn btn-primary"[^>]*data-admin-plan-action="publish"/u);
 });
 
 test("admin entry ships Tabler styles without the unused demo JavaScript bundle", async () => {

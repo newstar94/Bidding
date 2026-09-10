@@ -54,7 +54,11 @@ function normalizeState(config, values = {}) {
     sortDir: values.sortDir === "desc" || (!values.sortDir && config.defaultSortDir === "desc") ? "desc" : "asc",
     ...Object.fromEntries(config.filters.map((filter) => {
       const value = String(values[filter.key] || "");
-      return [filter.key, filter.options.some(([option]) => option === value) ? value : ""];
+      if (Array.isArray(filter.options)) {
+        return [filter.key, filter.options.some(([option]) => option === value) ? value : ""];
+      }
+      const maximum = Number.isSafeInteger(filter.maxLength) ? filter.maxLength : 200;
+      return [filter.key, value.trim().slice(0, maximum)];
     })),
   };
 }
@@ -74,6 +78,10 @@ export function directoryQuery(state, config) {
 }
 
 function filterMarkup(filter, state) {
+  if (!Array.isArray(filter.options)) {
+    const type = filter.type === "date" ? "date" : "text";
+    return `<label class="form-label mb-0"><span class="visually-hidden">${escapeHtml(filter.label)}</span><input class="form-control" name="${escapeHtml(filter.key)}" type="${type}" value="${escapeHtml(state[filter.key])}" maxlength="${escapeHtml(filter.maxLength || 200)}" placeholder="${escapeHtml(filter.placeholder || filter.label)}" aria-label="${escapeHtml(filter.label)}"></label>`;
+  }
   const options = [["", filter.allLabel], ...filter.options]
     .map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(state[filter.key], value)}>${escapeHtml(label)}</option>`)
     .join("");

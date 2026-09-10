@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from backend.admin import security_routes
+from backend.shared import logging_utils
 
 
 class _Result:
@@ -82,6 +83,12 @@ def test_audit_endpoint_is_bounded_parameterized_and_excludes_sensitive_columns(
             "target_type": "user",
             "target_id": "user-2",
             "created_at": "2026-09-10 08:00:00",
+            "metadata_json": json.dumps({
+                "requestId": "req-123",
+                "reason": "approved correction for user@example.test",
+                "password": "must-not-leak",
+            }),
+            "result": "success",
         }
     )
     connection = _Connection(cursor)
@@ -93,6 +100,12 @@ def test_audit_endpoint_is_bounded_parameterized_and_excludes_sensitive_columns(
             pageSize="25",
             search="user",
             action="admin.user_updated",
+            targetType="user",
+            actorUserId="admin-1",
+            organizationId="org-1",
+            result="success",
+            requestId="req-123",
+            **{"from": "2026-09-01", "to": "2026-09-10"},
             sortBy="sequence",
             sortDir="asc",
         )
@@ -105,7 +118,7 @@ def test_audit_endpoint_is_bounded_parameterized_and_excludes_sensitive_columns(
     assert cursor.calls[1][1][-2:] == (25, 25)
     assert "LIMIT ? OFFSET ?" in cursor.calls[1][0]
     assert "admin.user_updated" not in cursor.calls[1][0]
-    assert "metadata_json" not in cursor.calls[1][0]
+    assert "audit.metadata_json" in cursor.calls[1][0]
     assert "ip_address" not in cursor.calls[1][0]
     assert "entry_hash" not in cursor.calls[1][0]
     assert payload["items"][0] == {
@@ -118,6 +131,9 @@ def test_audit_endpoint_is_bounded_parameterized_and_excludes_sensitive_columns(
         "targetType": "user",
         "targetId": "user-2",
         "createdAt": "2026-09-10 08:00:00",
+        "result": "success",
+        "requestId": "req-123",
+        "details": {"reason": "approved correction for [REDACTED_EMAIL]"},
     }
     assert connection.closed is True
 
@@ -169,6 +185,12 @@ def test_security_queries_reject_unknown_unbounded_or_invalid_controls(monkeypat
 
     assert security_routes._list_admin_audit_sync(_request(pageSize="101")).status_code == 400
     assert security_routes._list_admin_audit_sync(_request(sortBy="metadata_json")).status_code == 400
+    assert security_routes._list_admin_audit_sync(_request(result="unknown")).status_code == 400
+    assert security_routes._list_admin_audit_sync(_request(requestId="bad request id")).status_code == 400
+    assert security_routes._list_admin_audit_sync(_request(**{"from": "10/09/2026"})).status_code == 400
+    assert security_routes._list_admin_audit_sync(
+        _request(**{"from": "2026-09-11", "to": "2026-09-10"})
+    ).status_code == 400
     assert security_routes._list_admin_sessions_sync(_request(status="unknown")).status_code == 400
     assert security_routes._list_admin_sessions_sync(_request(raw="secret")).status_code == 400
 
@@ -200,3 +222,34 @@ def test_security_routes_are_get_only():
         "/api/admin/security/sessions",
     ]
     assert all(route.methods == ["GET"] for route in routes)
+
+
+def test_audit_write_adds_safe_request_correlation_without_mutating_metadata(monkeypatch):
+    observed = {}
+    metadata = {"reason": "approved correction"}
+    request = SimpleNamespace(
+        state=SimpleNamespace(request_id="req-audit-123"),
+        headers={},
+    )
+    monkeypatch.setattr(logging_utils, "require_audit_chain_available", lambda: None)
+    monkeypatch.setattr(logging_utils, "get_client_ip", lambda _request: "192.0.2.1")
+    monkeypatch.setattr(
+        logging_utils,
+        "insert_audit_row",
+        lambda _cursor, **event: observed.update(event) or 17,
+    )
+
+    result = logging_utils.log_audit(
+        "admin.user_updated",
+        request=request,
+        metadata=metadata,
+        cursor=object(),
+        required=True,
+    )
+
+    assert result == 17
+    assert metadata == {"reason": "approved correction"}
+    assert json.loads(observed["metadata_json"]) == {
+        "reason": "approved correction",
+        "requestId": "req-audit-123",
+    }

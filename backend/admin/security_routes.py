@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+import json
+import re
 import time
+from datetime import date, timedelta
 
 from starlette.responses import JSONResponse
 
@@ -20,6 +23,7 @@ from backend.admin.platform_directory_routes import (
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
 from backend.shared.helpers import database, log_error
+from backend.shared.logging_utils import redact_log_value
 
 
 _AUDIT_SORT_COLUMNS = {
@@ -34,6 +38,33 @@ _SESSION_SORT_COLUMNS = {
     "absolute_expires_at": "sessions.absolute_expires_at",
     "user": "lower(COALESCE(account.ho_ten, account.ten_dang_nhap, account.email))",
 }
+_AUDIT_RESULT_SQL = """CASE
+    WHEN lower(audit.action) LIKE '%failed%'
+      OR lower(audit.action) LIKE '%denied%'
+      OR lower(audit.action) LIKE '%rejected%'
+      OR lower(audit.action) LIKE '%rate_limited%'
+      OR lower(audit.action) LIKE '%blocked%'
+    THEN 'failure'
+    ELSE 'success'
+END"""
+_AUDIT_DETAIL_KEYS = {
+    "amount",
+    "currency",
+    "effectiveAt",
+    "field",
+    "operation",
+    "ownerKind",
+    "preservedData",
+    "publicId",
+    "reason",
+    "remember",
+    "revision",
+    "stage",
+    "status",
+    "updated_fields",
+}
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 def _response(payload, *, status_code=200):
@@ -51,6 +82,49 @@ def _bounded_identifier(value, label, *, maximum=200):
     return normalized
 
 
+def _iso_date(value, label):
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if not _DATE_PATTERN.fullmatch(normalized):
+        raise _InvalidDirectoryQuery(f"{label} không hợp lệ.")
+    try:
+        return date.fromisoformat(normalized).isoformat()
+    except ValueError as exc:
+        raise _InvalidDirectoryQuery(f"{label} không hợp lệ.") from exc
+
+
+def _audit_metadata(value):
+    try:
+        payload = json.loads(value or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _safe_audit_scalar(value):
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return redact_log_value(value)[:500]
+    if isinstance(value, list):
+        return [_safe_audit_scalar(item) for item in value[:20] if isinstance(item, (type(None), bool, int, float, str))]
+    return None
+
+
+def _audit_public_fields(row):
+    metadata = _audit_metadata(row["metadata_json"])
+    request_id = str(metadata.get("requestId") or "").strip()
+    if not _REQUEST_ID_PATTERN.fullmatch(request_id):
+        request_id = ""
+    details = {
+        key: _safe_audit_scalar(metadata[key])
+        for key in sorted(_AUDIT_DETAIL_KEYS)
+        if key in metadata and _safe_audit_scalar(metadata[key]) is not None
+    }
+    return request_id or None, details
+
+
 def _where_sql(predicates):
     return f" WHERE {' AND '.join(predicates)}" if predicates else ""
 
@@ -64,7 +138,10 @@ def _list_admin_audit_sync(request):
             request,
             sort_columns=_AUDIT_SORT_COLUMNS,
             default_sort="created_at",
-            allowed_filters={"action", "targetType", "actorUserId", "organizationId"},
+            allowed_filters={
+                "action", "targetType", "actorUserId", "organizationId",
+                "from", "to", "result", "requestId",
+            },
         )
         if "sortDir" not in request.query_params:
             sort_direction = "desc"
@@ -72,6 +149,16 @@ def _list_admin_audit_sync(request):
         target_type = _bounded_identifier(request.query_params.get("targetType"), "Loại đối tượng", maximum=120)
         actor_user_id = _bounded_identifier(request.query_params.get("actorUserId"), "Người thực hiện")
         organization_id = _bounded_identifier(request.query_params.get("organizationId"), "Tổ chức")
+        from_date = _iso_date(request.query_params.get("from"), "Ngày bắt đầu")
+        to_date = _iso_date(request.query_params.get("to"), "Ngày kết thúc")
+        if from_date and to_date and from_date > to_date:
+            raise _InvalidDirectoryQuery("Ngày bắt đầu phải trước hoặc trùng ngày kết thúc.")
+        result = str(request.query_params.get("result") or "").strip().lower()
+        if result not in {"", "success", "failure"}:
+            raise _InvalidDirectoryQuery("Kết quả không hợp lệ.")
+        request_id = _bounded_identifier(request.query_params.get("requestId"), "Request ID", maximum=128)
+        if request_id and not _REQUEST_ID_PATTERN.fullmatch(request_id):
+            raise _InvalidDirectoryQuery("Request ID không hợp lệ.")
 
         predicates = []
         values = []
@@ -91,6 +178,19 @@ def _list_admin_audit_sync(request):
             if value:
                 predicates.append(f"audit.{column} = ?")
                 values.append(value)
+        if from_date:
+            predicates.append("audit.created_at >= ?")
+            values.append(f"{from_date} 00:00:00")
+        if to_date:
+            next_day = date.fromisoformat(to_date) + timedelta(days=1)
+            predicates.append("audit.created_at < ?")
+            values.append(f"{next_day.isoformat()} 00:00:00")
+        if result:
+            predicates.append(f"({_AUDIT_RESULT_SQL}) = ?")
+            values.append(result)
+        if request_id:
+            predicates.append("audit.metadata_json LIKE ?")
+            values.append(f'%"requestId": "{request_id}"%')
         where_sql = _where_sql(predicates)
 
         connection = database.get_connection()
@@ -105,7 +205,8 @@ def _list_admin_audit_sync(request):
                 f"""SELECT audit.id, audit.chain_id, audit.sequence,
                            audit.actor_user_id, audit.organization_id,
                            audit.action, audit.target_type, audit.target_id,
-                           audit.created_at
+                           audit.created_at, audit.metadata_json,
+                           {_AUDIT_RESULT_SQL} AS result
                       FROM audit_log audit{where_sql}
                      ORDER BY {_AUDIT_SORT_COLUMNS[sort_by]} {sort_direction.upper()},
                               audit.id DESC
@@ -129,8 +230,12 @@ def _list_admin_audit_sync(request):
                         "targetType": row["target_type"],
                         "targetId": row["target_id"],
                         "createdAt": _json_value(row["created_at"]),
+                        "result": row["result"],
+                        "requestId": public_fields[0],
+                        "details": public_fields[1],
                     }
                     for row in rows
+                    for public_fields in (_audit_public_fields(row),)
                 ],
                 "pagination": _pagination(page, page_size, total_rows),
                 "sort": {"by": sort_by, "direction": sort_direction},
@@ -140,6 +245,10 @@ def _list_admin_audit_sync(request):
                     "targetType": target_type,
                     "actorUserId": actor_user_id,
                     "organizationId": organization_id,
+                    "from": from_date,
+                    "to": to_date,
+                    "result": result,
+                    "requestId": request_id,
                 },
             }
         )

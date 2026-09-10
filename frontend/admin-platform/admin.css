@@ -10,6 +10,8 @@
   --bf-admin-brand: #3157e8;
   --bf-admin-brand-strong: #2446c7;
   --bf-admin-brand-soft: #edf2ff;
+  --bf-admin-brand-line: #b9c8fb;
+  --bf-admin-sidebar-accent: #a8c0ff;
   --bf-admin-sidebar: #182433;
   --bf-admin-success: #0f766e;
   --bf-admin-warning: #c2410c;
@@ -24,7 +26,7 @@
   --tblr-primary: var(--bf-admin-brand);
   --tblr-primary-rgb: 49, 87, 232;
   --tblr-primary-bg-subtle: var(--bf-admin-brand-soft);
-  --tblr-primary-border-subtle: #b9c8fb;
+  --tblr-primary-border-subtle: var(--bf-admin-brand-line);
   --tblr-link-color: var(--bf-admin-brand);
   --tblr-link-color-rgb: 49, 87, 232;
   --tblr-link-hover-color: var(--bf-admin-brand-strong);
@@ -67,18 +69,24 @@
 body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .navbar-vertical { background: var(--bf-admin-sidebar); border-color: transparent; }
 .navbar-brand { color: var(--bf-admin-surface); }
-.navbar-brand span { color: #a8c0ff; font-weight: 500; margin-left: .35rem; }
+.navbar-brand span { color: var(--bf-admin-sidebar-accent); font-weight: 500; margin-left: .35rem; }
 .navbar-vertical .navbar-nav { gap: .125rem; }
 .navbar-vertical .nav-link { border-radius: .5rem; color: rgba(255, 255, 255, .72); transition: background-color .16s ease-out, color .16s ease-out; }
 .navbar-vertical .nav-link:hover { background: rgba(255, 255, 255, .07); color: var(--bf-admin-surface); }
 .navbar-vertical .nav-link.active { background: var(--bf-admin-brand); color: var(--bf-admin-surface); }
-.navbar-vertical .nav-link:focus-visible { outline: 2px solid #a8c0ff; outline-offset: 2px; }
+.navbar-vertical .nav-link:focus-visible { outline: 2px solid var(--bf-admin-sidebar-accent); outline-offset: 2px; }
 .page-wrapper > .navbar { background: var(--bf-admin-surface); border-color: var(--bf-admin-line); }
 .page-header { margin-top: 1.5rem; }
 .page-pretitle { color: var(--bf-admin-brand); }
 .card { border-color: var(--bf-admin-line); box-shadow: 0 1px 2px rgba(17, 26, 44, .04); }
-.btn-primary { --tblr-btn-bg: var(--bf-admin-brand); --tblr-btn-border-color: var(--bf-admin-brand); --tblr-btn-hover-bg: var(--bf-admin-brand-strong); --tblr-btn-hover-border-color: var(--bf-admin-brand-strong); }
-.btn-outline-primary { --tblr-btn-color: var(--bf-admin-brand); --tblr-btn-border-color: var(--bf-admin-line-strong); --tblr-btn-hover-bg: var(--bf-admin-brand-soft); --tblr-btn-hover-color: var(--bf-admin-brand-strong); --tblr-btn-hover-border-color: var(--bf-admin-brand); }
+.btn-primary { --tblr-btn-color: var(--bf-admin-surface); --tblr-btn-bg: var(--bf-admin-brand); --tblr-btn-border-color: var(--bf-admin-brand); --tblr-btn-hover-color: var(--bf-admin-surface); --tblr-btn-hover-bg: var(--bf-admin-brand-strong); --tblr-btn-hover-border-color: var(--bf-admin-brand-strong); --tblr-btn-active-color: var(--bf-admin-surface); --tblr-btn-active-bg: var(--bf-admin-brand-strong); --tblr-btn-active-border-color: var(--bf-admin-brand-strong); }
+.btn-outline-primary { --tblr-btn-color: var(--bf-admin-brand); --tblr-btn-border-color: var(--bf-admin-line-strong); --tblr-btn-hover-bg: var(--bf-admin-brand-soft); --tblr-btn-hover-color: var(--bf-admin-brand-strong); --tblr-btn-hover-border-color: var(--bf-admin-brand); --tblr-btn-active-color: var(--bf-admin-surface); --tblr-btn-active-bg: var(--bf-admin-brand); --tblr-btn-active-border-color: var(--bf-admin-brand); }
+.btn-check:focus-visible + .btn, .btn:focus-visible, .form-control:focus, .form-select:focus { border-color: var(--bf-admin-brand); box-shadow: 0 0 0 .2rem var(--tblr-focus-ring-color); }
+.form-check-input:checked { background-color: var(--bf-admin-brand); border-color: var(--bf-admin-brand); }
+.pagination { --tblr-pagination-active-bg: var(--bf-admin-brand); --tblr-pagination-active-border-color: var(--bf-admin-brand); --tblr-pagination-color: var(--bf-admin-brand); --tblr-pagination-hover-color: var(--bf-admin-brand-strong); }
+.nav-tabs { --tblr-nav-tabs-link-active-color: var(--bf-admin-brand-strong); }
+.table { --tblr-table-striped-bg: var(--bf-admin-surface-subtle); --tblr-table-hover-bg: var(--bf-admin-brand-soft); }
+.alert-primary { --tblr-alert-color: var(--bf-admin-brand-strong); --tblr-alert-bg: var(--bf-admin-brand-soft); --tblr-alert-border-color: var(--bf-admin-brand-line); }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
