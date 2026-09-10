@@ -59,7 +59,9 @@ function newIdempotencyKey() {
   return `admin-refund:${Array.from(bytes, (value) => value.toString(16).padStart(8, "0")).join("")}`;
 }
 
-export function requestAdminValue({ title, message, label, type = "text", inputMode = "text" }) {
+export function requestAdminValue({
+  title, message, label, type = "text", inputMode = "text", autocomplete = null,
+}) {
   if (!globalThis.document?.body) return Promise.resolve(null);
   const modal = document.createElement("div");
   modal.className = "modal modal-blur show";
@@ -68,7 +70,8 @@ export function requestAdminValue({ title, message, label, type = "text", inputM
   modal.setAttribute("aria-modal", "true");
   modal.setAttribute("aria-labelledby", "admin-prompt-title");
   modal.style.display = "block";
-  modal.innerHTML = trustedHTML(`<div class="modal-dialog modal-dialog-centered" role="document"><form class="modal-content"><div class="modal-header"><h2 id="admin-prompt-title" class="modal-title">${escapeHtml(title)}</h2></div><div class="modal-body"><p class="text-secondary">${escapeHtml(message)}</p><label class="form-label">${escapeHtml(label)}<input class="form-control" name="value" type="${escapeHtml(type)}" inputmode="${escapeHtml(inputMode)}" required autocomplete="${type === "password" ? "current-password" : "off"}"></label></div><div class="modal-footer"><button class="btn btn-link link-secondary" type="button" data-admin-prompt-cancel>Hủy</button><button class="btn btn-primary" type="submit">Tiếp tục</button></div></form></div>`);
+  const autocompleteValue = autocomplete || (type === "password" ? "current-password" : "off");
+  modal.innerHTML = trustedHTML(`<div class="modal-dialog modal-dialog-centered" role="document"><form class="modal-content"><div class="modal-header"><h2 id="admin-prompt-title" class="modal-title">${escapeHtml(title)}</h2></div><div class="modal-body"><p class="text-secondary">${escapeHtml(message)}</p><label class="form-label">${escapeHtml(label)}<input class="form-control" name="value" type="${escapeHtml(type)}" inputmode="${escapeHtml(inputMode)}" required autocomplete="${escapeHtml(autocompleteValue)}"></label></div><div class="modal-footer"><button class="btn btn-link link-secondary" type="button" data-admin-prompt-cancel>Hủy</button><button class="btn btn-primary" type="submit">Tiếp tục</button></div></form></div>`);
   document.body.append(modal);
   const input = modal.querySelector("input[name='value']");
   return new Promise((resolve) => {

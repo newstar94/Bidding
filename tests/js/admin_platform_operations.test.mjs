@@ -4,6 +4,7 @@ import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import {
   environmentMarkup,
+  executeEnvironmentUpdate,
   healthMarkup,
   renderAdminEnvironment,
   renderAdminHealth,
@@ -68,10 +69,11 @@ test("environment view shows configured or missing without raw secret values and
     },
     features: { aiEnabled: true },
     secretStatus: {
-      DATABASE_URL: { configured: true, value: "postgresql://secret" },
-      OTP_HMAC_KEY: { configured: false, value: "otp-secret" },
+      DATABASE_URL: { configured: true, writable: true, value: "postgresql://secret" },
+      OTP_HMAC_KEY: { configured: false, writable: true, value: "otp-secret" },
       UNKNOWN_SECRET: { configured: true, value: "unknown-secret" },
     },
+    configuration: { writable: true, restartRequired: true, source: "local_env" },
     environmentDump: "raw-environment-dump",
   });
 
@@ -82,6 +84,8 @@ test("environment view shows configured or missing without raw secret values and
   assert.doesNotMatch(markup, /otp-secret|unknown-secret/u);
   assert.equal(markup.includes("D:/private/build"), false);
   assert.doesNotMatch(markup, /raw-environment-dump|UNKNOWN_SECRET/u);
+  assert.match(markup, /data-admin-secret-replace="DATABASE_URL">Thay thế/u);
+  assert.match(markup, /data-admin-secret-replace="OTP_HMAC_KEY">Cấu hình/u);
   assert.match(environmentMarkup({}), /data-admin-state="empty"/u);
 });
 
@@ -104,15 +108,52 @@ test("version view renders release contract and ignores unrecognized fields", ()
   assert.match(versionMarkup(null), /data-admin-state="empty"/u);
 });
 
-test("settings view shows deployment-managed feature states without secret data", () => {
+test("settings view renders writable feature controls without secret data", () => {
   const markup = settingsMarkup({
     features: { aiEnabled: true, legalVersioningEnabled: false },
     secretStatus: { DATABASE_URL: { configured: true, value: "private" } },
+    configuration: { writable: true },
   });
   assert.match(markup, /Trợ lý AI/u);
-  assert.match(markup, />Bật</u);
-  assert.match(markup, /môi trường triển khai quản lý/u);
+  assert.match(markup, /data-admin-feature="aiEnabled" checked/u);
+  assert.match(markup, /data-admin-settings-save>Lưu cấu hình/u);
   assert.doesNotMatch(markup, /DATABASE_URL|private/u);
+});
+
+test("settings view remains explicitly read-only for deployment-managed environments", () => {
+  const markup = settingsMarkup({
+    features: { aiEnabled: false },
+    configuration: { writable: false },
+  });
+  assert.match(markup, /data-admin-feature="aiEnabled" disabled/u);
+  assert.match(markup, /data-admin-settings-save disabled/u);
+  assert.match(markup, /Chỉ đọc/u);
+});
+
+test("environment update reauthenticates and retries once without retaining secret data", async () => {
+  const requests = [];
+  const secret = "new-secret-value-that-must-not-be-retained";
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    if (requests.length === 1) {
+      return jsonResponse({ message: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." }, 403);
+    }
+    if (url === "/api/auth/privileged-reauth") return jsonResponse({ success: true });
+    return jsonResponse({ success: true, restartRequired: true });
+  };
+
+  const result = await executeEnvironmentUpdate(
+    { secrets: { OTP_HMAC_KEY: secret } },
+    { fetchImpl, requestPassword: async () => "admin-password" },
+  );
+
+  assert.equal(result.restartRequired, true);
+  assert.deepEqual(requests.map(({ url }) => url), [
+    "/api/admin/environment",
+    "/api/auth/privileged-reauth",
+    "/api/admin/environment",
+  ]);
+  assert.deepEqual(requests[1].body, { password: "admin-password" });
 });
 
 test("operation pages call their dedicated same-origin admin APIs", async () => {

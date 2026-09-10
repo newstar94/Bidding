@@ -224,13 +224,17 @@ function bindDirectoryDetails(root, items, options, kind) {
       try {
         const detail = await loadDirectoryDetail(kind, item.id, options);
         drawer.innerHTML = trustedHTML(isUser ? userDetailMarkup(detail) : organizationDetailMarkup(detail));
-        drawer.querySelector("[data-admin-close-detail]")?.addEventListener("click", close);
+        const closeButton = drawer.querySelector("[data-admin-close-detail]");
+        closeButton?.addEventListener("click", close);
         if (isUser) bindUserDetail(drawer, detail, options, close);
         else bindOrganizationDetail(drawer, detail, options, close);
+        closeButton?.focus();
       } catch (error) {
         if (options.signal?.aborted) return close();
         drawer.innerHTML = trustedHTML(`<div class="offcanvas-header"><h2 class="offcanvas-title">Không thể tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${adminStateMarkup(error?.status === 403 ? "permission" : "error", { message: error?.message })}</div>`);
-        drawer.querySelector("[data-admin-close-detail]")?.addEventListener("click", close);
+        const closeButton = drawer.querySelector("[data-admin-close-detail]");
+        closeButton?.addEventListener("click", close);
+        closeButton?.focus();
       }
     });
   }));

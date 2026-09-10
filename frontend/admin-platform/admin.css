@@ -97,6 +97,11 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-directory-table td > div + div { margin-top: .35rem; }
 .bf-admin-operation-table th { width: 55%; color: var(--bf-admin-muted); font-weight: 600; }
 .bf-admin-operation-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.bf-admin-settings-list { display: grid; gap: 0; padding-block: .25rem; }
+.bf-admin-setting-row { align-items: center; justify-content: space-between; min-height: 3.5rem; margin: 0; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bf-admin-line); }
+.bf-admin-setting-row:last-child { border-bottom: 0; }
+.bf-admin-setting-row .form-check-input { order: 2; margin: 0; }
+.bf-admin-setting-row .form-check-label { color: var(--bf-admin-ink); font-weight: 600; }
 .bf-admin-plan-card { position: relative; overflow: hidden; }
 .bf-admin-plan-card.is-recommended { border-color: var(--bf-admin-brand-line); }
 .bf-admin-plan-price { color: var(--bf-admin-ink); font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }

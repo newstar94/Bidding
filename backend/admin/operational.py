@@ -1,4 +1,4 @@
-"""Sanitized, read-only operational APIs for platform administrators."""
+"""Sanitized operational APIs for platform administrators."""
 
 from __future__ import annotations
 
@@ -7,10 +7,12 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
+import threading
 
 from starlette.responses import JSONResponse
 
-from backend.auth.auth_helper import verify_session
+from backend.auth.auth_helper import verify_session, verify_session_in_transaction
 from backend.db.db_helper import database
 from backend.db.db_utils import (
     DB_RUNTIME_MAX_SCHEMA_VERSION,
@@ -18,8 +20,9 @@ from backend.db.db_utils import (
     DB_SCHEMA_VERSION,
 )
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
-from backend.shared.database_io import run_database_read
-from backend.shared.logging_utils import log_error
+from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.logging_utils import log_audit, log_error
+from backend.shared.request_validation import read_json_object
 from backend.observability.metrics import operational_status_snapshot
 from backend.observability.recording import snapshot_recorded_metrics
 
@@ -41,6 +44,25 @@ _SECRET_STATUS_NAMES = (
     "PAYOS_API_KEY",
     "PAYOS_CHECKSUM_KEY",
 )
+_ENV_WRITE_LOCK = threading.Lock()
+_FEATURE_SETTING_KEYS = {
+    "aiEnabled": "AI_ENABLED",
+    "legalVersioningEnabled": "LEGAL_VERSIONING_ENABLED",
+    "versionComparisonEnabled": "VERSION_COMPARISON_ENABLED",
+    "paymentCheckoutEnabled": "PAYMENT_CHECKOUT_ENABLED",
+}
+_SECRET_MINIMUM_LENGTHS = {
+    "DATABASE_URL": 12,
+    "OTP_HMAC_KEY": 32,
+    "EMAIL_OUTBOX_ENCRYPTION_KEY": 32,
+    "CONFLICT_DRAFT_ENCRYPTION_KEY": 32,
+    "AUDIT_CHECKPOINT_HMAC_KEY": 32,
+    "ANALYTICS_HMAC_KEY": 32,
+    "TURNSTILE_SECRET_KEY": 8,
+    "PAYOS_CLIENT_ID": 4,
+    "PAYOS_API_KEY": 8,
+    "PAYOS_CHECKSUM_KEY": 8,
+}
 
 
 def _error(message: str, code: str, status_code: int) -> JSONResponse:
@@ -93,6 +115,7 @@ def build_environment_payload(environment=None) -> dict:
     asset_mode = _normalized_choice(
         environ.get("FRONTEND_ASSET_MODE"), _ASSET_MODES, "bundle"
     )
+    writable = app_environment in {"development", "test"} and environment is None
     return {
         "generatedAt": _utc_now(),
         "runtime": {
@@ -112,10 +135,151 @@ def build_environment_payload(environment=None) -> dict:
             ),
         },
         "secretStatus": {
-            name: {"configured": bool(str(environ.get(name, "")).strip())}
+            name: {
+                "configured": bool(str(environ.get(name, "")).strip()),
+                "writable": writable,
+                "restartRequired": True,
+            }
             for name in _SECRET_STATUS_NAMES
         },
+        "configuration": {
+            "writable": writable,
+            "restartRequired": True,
+            "source": "local_env" if writable else "deployment_environment",
+        },
     }
+
+
+def _validated_environment_updates(payload):
+    if not isinstance(payload, dict) or set(payload) - {"features", "secrets"}:
+        raise ValueError("Yêu cầu cấu hình không hợp lệ.")
+    updates = {}
+    features = payload.get("features", {})
+    secrets = payload.get("secrets", {})
+    if not isinstance(features, dict) or set(features) - set(_FEATURE_SETTING_KEYS):
+        raise ValueError("Tính năng cấu hình không hợp lệ.")
+    if not isinstance(secrets, dict) or set(secrets) - set(_SECRET_MINIMUM_LENGTHS):
+        raise ValueError("Bí mật cấu hình không hợp lệ.")
+    for key, value in features.items():
+        if not isinstance(value, bool):
+            raise ValueError("Trạng thái tính năng phải là bật hoặc tắt.")
+        updates[_FEATURE_SETTING_KEYS[key]] = "true" if value else "false"
+    for key, value in secrets.items():
+        if not isinstance(value, str) or "\n" in value or "\r" in value:
+            raise ValueError(f"Giá trị thay thế cho {key} không hợp lệ.")
+        normalized = value.strip()
+        if len(normalized) < _SECRET_MINIMUM_LENGTHS[key] or len(normalized) > 8192:
+            raise ValueError(f"Giá trị thay thế cho {key} không hợp lệ.")
+        updates[key] = normalized
+    if not updates:
+        raise ValueError("Chưa có thay đổi cấu hình.")
+    return updates
+
+
+def _replace_local_env(updates, *, env_path=None):
+    path = Path(env_path or (_PROJECT_ROOT / ".env")).resolve()
+    if path.parent != _PROJECT_ROOT.resolve():
+        raise ValueError("Đường dẫn cấu hình không hợp lệ.")
+    original_exists = path.exists()
+    existing = path.read_text(encoding="utf-8") if original_exists else ""
+    pending = dict(updates)
+    lines = []
+    for line in existing.splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+            lines.append(line)
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key in pending:
+            lines.append(f"{key}={pending.pop(key)}")
+        else:
+            lines.append(line)
+    if pending and lines and lines[-1] != "":
+        lines.append("")
+    lines.extend(f"{key}={value}" for key, value in pending.items())
+    content = "\n".join(lines).rstrip("\n") + "\n"
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="\n", dir=path.parent, delete=False,
+    ) as temporary:
+        temporary.write(content)
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return existing if original_exists else None
+
+
+def _restore_local_env(original, *, env_path=None):
+    path = Path(env_path or (_PROJECT_ROOT / ".env")).resolve()
+    if path.parent != _PROJECT_ROOT.resolve():
+        raise ValueError("Đường dẫn cấu hình không hợp lệ.")
+    if original is None:
+        path.unlink(missing_ok=True)
+        return
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="\n", dir=path.parent, delete=False,
+    ) as temporary:
+        temporary.write(original)
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _update_environment_sync(request, payload):
+    if str(os.environ.get("APP_ENV", "development")).strip().casefold() not in {"development", "test"}:
+        return _error("Môi trường này dùng cấu hình triển khai chỉ đọc.", "DEPLOYMENT_CONFIG_READ_ONLY", 409)
+    try:
+        updates = _validated_environment_updates(payload)
+    except ValueError as exc:
+        return _error(str(exc), "INVALID_ADMIN_CONFIGURATION", 400)
+    connection = database.get_connection()
+    original_environment = None
+    environment_replaced = False
+    environment_lock_acquired = False
+    try:
+        cursor = connection.cursor()
+        cursor.execute("BEGIN")
+        valid, actor = verify_session_in_transaction(cursor, request, required_role="super_admin")
+        if not valid:
+            connection.rollback()
+            return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
+        _ENV_WRITE_LOCK.acquire()
+        environment_lock_acquired = True
+        original_environment = _replace_local_env(updates)
+        environment_replaced = True
+        log_audit(
+            "admin.environment_configuration_updated",
+            actor_user_id=actor.user_id,
+            target_type="deployment_configuration",
+            target_id="local_env",
+            request=request,
+            metadata={
+                "updated_fields": sorted(updates),
+                "restartRequired": True,
+            },
+            cursor=cursor,
+            required=True,
+        )
+        connection.commit()
+        return JSONResponse(
+            {"success": True, "restartRequired": True, "updatedKeys": sorted(updates)},
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except Exception as exc:  # noqa: BLE001 - never return paths or values.
+        connection.rollback()
+        if environment_replaced:
+            try:
+                _restore_local_env(original_environment)
+            except Exception as restore_exc:  # noqa: BLE001 - report without values.
+                log_error(restore_exc, "admin_environment_restore")
+        log_error(exc, "admin_environment_update")
+        return _error("Không thể lưu cấu hình môi trường.", "ADMIN_CONFIGURATION_FAILED", 500)
+    finally:
+        if environment_lock_acquired:
+            _ENV_WRITE_LOCK.release()
+        connection.close()
 
 
 def _read_database_status() -> dict:
@@ -270,6 +434,19 @@ async def admin_environment_api(request):
     )
 
 
+async def update_admin_environment_api(request):
+    authorization_error = await _authorize(request)
+    if authorization_error:
+        return authorization_error
+    payload, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    try:
+        return await run_database_write(_update_environment_sync, request, payload)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _error("Hệ thống đang bận lưu cấu hình.", "ADMIN_CONFIGURATION_UNAVAILABLE", 503)
+
+
 async def admin_system_version_api(request):
     authorization_error = await _authorize(request)
     if authorization_error:
@@ -300,5 +477,6 @@ def operational_routes(Route):
     return [
         Route("/api/admin/health", admin_health_api, methods=["GET"]),
         Route("/api/admin/environment", admin_environment_api, methods=["GET"]),
+        Route("/api/admin/environment", update_admin_environment_api, methods=["POST"]),
         Route("/api/admin/system/version", admin_system_version_api, methods=["GET"]),
     ]

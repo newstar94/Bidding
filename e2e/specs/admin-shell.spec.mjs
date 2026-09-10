@@ -231,7 +231,28 @@ test("user and organization details keep keyboard focus and execute authoritativ
   await installAuthorizedShell(context);
   const mutations = [];
   await context.route("**/api/admin/users?**", (route) => fulfillJson(route, DIRECTORY_PAGE));
+  await context.route("**/api/admin/users/user-e2e", (route) => fulfillJson(route, {
+    user: {
+      ...DIRECTORY_PAGE.items[0],
+      activeSessionCount: 1,
+      organizationCount: 0,
+      subscription: null,
+      usage: null,
+      recentAudit: [],
+      links: { sessions: "/admin/security?userId=user-e2e", audit: "/admin/audit?actorUserId=user-e2e" },
+    },
+  }));
   await context.route("**/api/admin/organizations?**", (route) => fulfillJson(route, ORGANIZATION_PAGE));
+  await context.route("**/api/admin/organizations/org-e2e", (route) => fulfillJson(route, {
+    organization: {
+      ...ORGANIZATION_PAGE.items[0],
+      owner: { id: "owner-e2e", name: "Chủ sở hữu", email: "owner@example.test" },
+      users: [],
+      recentAudit: [],
+      usage: null,
+      links: { users: "/admin/users?organizationId=org-e2e", activity: "/admin/audit?organizationId=org-e2e" },
+    },
+  }));
   await context.route("**/api/auth/users/update-metadata", async (route) => {
     mutations.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
     await fulfillJson(route, { ok: true });
@@ -380,7 +401,7 @@ test("operational admin routes render sanitized data and safe detail focus", asy
     ["/admin/system/jobs", "Tác vụ", "job-e2e"],
     ["/admin/system/sync", "Đồng bộ", "broadcast"],
     ["/admin/settings", "Cài đặt", "Tính năng hệ thống"],
-    ["/admin/environment", "Môi trường", "Trạng thái bí mật"],
+    ["/admin/environment", "Môi trường", "Cấu hình bí mật"],
     ["/admin/health", "Vận hành", "Cơ sở dữ liệu"],
     ["/admin/system/version", "Phiên bản", "release-safe"],
   ];
@@ -394,4 +415,38 @@ test("operational admin routes render sanitized data and safe detail focus", asy
   await page.getByRole("button", { name: "Xem" }).click();
   await expect(page.locator("[data-admin-security-detail]")).toBeFocused();
   await expect(page.locator("[data-admin-security-detail]")).not.toContainText("DATABASE_URL=");
+});
+
+test("local admin settings save through privileged reauthentication", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  const mutations = [];
+  await context.route("**/api/admin/environment", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, {
+        runtime: { environment: "development", frontendAssetMode: "bundle", debugEnabled: false, secureCookies: false },
+        features: { aiEnabled: false, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: false },
+        secretStatus: {},
+        configuration: { writable: true, restartRequired: true, source: "local_env" },
+      });
+      return;
+    }
+    mutations.push(route.request().postDataJSON());
+    if (mutations.length === 1) {
+      await fulfillJson(route, { message: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." }, 403);
+      return;
+    }
+    await fulfillJson(route, { success: true, restartRequired: true });
+  });
+  await context.route("**/api/auth/privileged-reauth", (route) => fulfillJson(route, { success: true }));
+
+  await page.goto("/admin/settings", { waitUntil: "commit" });
+  await expectAdminReady(page, "Cài đặt");
+  await page.locator('[data-admin-feature="aiEnabled"]').check();
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await page.getByLabel("Mật khẩu hiện tại").fill("correct-password");
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+
+  await expect(page.locator("[data-admin-settings-status]")).toContainText("Cần khởi động lại");
+  expect(mutations).toHaveLength(2);
+  expect(mutations[1].features.aiEnabled).toBe(true);
 });

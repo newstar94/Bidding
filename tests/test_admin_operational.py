@@ -121,8 +121,17 @@ def test_environment_payload_exposes_only_allowlisted_values_and_secret_presence
         "secureCookies": True,
     }
     assert payload["features"]["aiEnabled"] is True
-    assert payload["secretStatus"]["DATABASE_URL"] == {"configured": True}
-    assert payload["secretStatus"]["TURNSTILE_SECRET_KEY"] == {"configured": False}
+    assert payload["secretStatus"]["DATABASE_URL"] == {
+        "configured": True, "writable": False, "restartRequired": True,
+    }
+    assert payload["secretStatus"]["TURNSTILE_SECRET_KEY"] == {
+        "configured": False, "writable": False, "restartRequired": True,
+    }
+    assert payload["configuration"] == {
+        "writable": False,
+        "restartRequired": True,
+        "source": "deployment_environment",
+    }
     assert secret not in serialized
     assert "otp-never-return-this" not in serialized
     assert "D:/private/files" not in serialized
@@ -236,7 +245,153 @@ def test_release_id_rejects_arbitrary_or_path_values():
     assert operational._release_id({"APP_RELEASE_ID": "release-2026.09"}) == "release-2026.09"
 
 
-def test_operational_routes_are_get_only():
+def test_environment_update_validation_rejects_unknown_and_malformed_values():
+    with pytest.raises(ValueError):
+        operational._validated_environment_updates({"arbitrary": True})
+    with pytest.raises(ValueError):
+        operational._validated_environment_updates({"features": {"unknown": True}})
+    with pytest.raises(ValueError):
+        operational._validated_environment_updates({"features": {"aiEnabled": "true"}})
+    with pytest.raises(ValueError):
+        operational._validated_environment_updates({"secrets": {"OTP_HMAC_KEY": "short"}})
+    with pytest.raises(ValueError):
+        operational._validated_environment_updates({"secrets": {"OTP_HMAC_KEY": "x" * 32 + "\n"}})
+
+
+def test_local_environment_update_is_atomic_and_allowlisted(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("# retained\nAI_ENABLED=false\nPRIVATE_SETTING=retained\n", encoding="utf-8")
+    monkeypatch.setattr(operational, "_PROJECT_ROOT", tmp_path)
+
+    original = operational._replace_local_env({
+        "AI_ENABLED": "true",
+        "OTP_HMAC_KEY": "x" * 32,
+    })
+
+    assert original == "# retained\nAI_ENABLED=false\nPRIVATE_SETTING=retained\n"
+    assert env_path.read_text(encoding="utf-8") == (
+        "# retained\nAI_ENABLED=true\nPRIVATE_SETTING=retained\n\nOTP_HMAC_KEY="
+        + "x" * 32 + "\n"
+    )
+
+
+def test_environment_update_is_read_only_outside_local_environments(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setattr(
+        operational.database,
+        "get_connection",
+        lambda: (_ for _ in ()).throw(AssertionError("database must not be opened")),
+    )
+
+    response = operational._update_environment_sync(
+        _request(), {"features": {"aiEnabled": True}},
+    )
+
+    assert response.status_code == 409
+    assert _payload(response)["code"] == "DEPLOYMENT_CONFIG_READ_ONLY"
+
+
+def test_environment_update_rechecks_authority_and_audits_only_key_names(monkeypatch, tmp_path):
+    class Cursor:
+        def execute(self, _statement, _params=()):
+            return self
+
+    class Connection:
+        def __init__(self):
+            self.cursor_value = Cursor()
+            self.committed = False
+            self.closed = False
+
+        def cursor(self):
+            return self.cursor_value
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    connection = Connection()
+    audits = []
+    secret = "s" * 32
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setattr(operational, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(operational.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(
+        operational,
+        "verify_session_in_transaction",
+        lambda cursor, request, required_role: (
+            True, SimpleNamespace(user_id="admin-1")
+        ),
+    )
+    monkeypatch.setattr(
+        operational,
+        "log_audit",
+        lambda action, **kwargs: audits.append((action, kwargs)),
+    )
+
+    response = operational._update_environment_sync(
+        _request(),
+        {"features": {"aiEnabled": True}, "secrets": {"OTP_HMAC_KEY": secret}},
+    )
+    serialized_audit = json.dumps(audits[0][1]["metadata"])
+
+    assert response.status_code == 200
+    assert _payload(response) == {
+        "success": True,
+        "restartRequired": True,
+        "updatedKeys": ["AI_ENABLED", "OTP_HMAC_KEY"],
+    }
+    assert connection.committed is True
+    assert connection.closed is True
+    assert audits[0][0] == "admin.environment_configuration_updated"
+    assert audits[0][1]["metadata"] == {
+        "updated_fields": ["AI_ENABLED", "OTP_HMAC_KEY"],
+        "restartRequired": True,
+    }
+    assert secret not in serialized_audit
+
+
+def test_environment_update_stops_before_file_write_when_authority_is_revoked(
+    monkeypatch, tmp_path,
+):
+    class Cursor:
+        def execute(self, _statement, _params=()):
+            return self
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("AI_ENABLED=false\n", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setattr(operational, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(operational.database, "get_connection", Connection)
+    monkeypatch.setattr(
+        operational,
+        "verify_session_in_transaction",
+        lambda *_args, **_kwargs: (False, "Cần xác thực lại mật khẩu"),
+    )
+
+    response = operational._update_environment_sync(
+        _request(), {"features": {"aiEnabled": True}},
+    )
+
+    assert response.status_code == 403
+    assert env_path.read_text(encoding="utf-8") == "AI_ENABLED=false\n"
+
+
+def test_operational_routes_include_bounded_environment_write():
     class _Route:
         def __init__(self, path, endpoint, methods):
             self.path = path
@@ -248,6 +403,7 @@ def test_operational_routes_are_get_only():
     assert [route.path for route in routes] == [
         "/api/admin/health",
         "/api/admin/environment",
+        "/api/admin/environment",
         "/api/admin/system/version",
     ]
-    assert all(route.methods == ["GET"] for route in routes)
+    assert [route.methods for route in routes] == [["GET"], ["GET"], ["POST"], ["GET"]]

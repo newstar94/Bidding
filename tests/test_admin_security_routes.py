@@ -138,6 +138,13 @@ def test_audit_endpoint_is_bounded_parameterized_and_excludes_sensitive_columns(
     assert connection.closed is True
 
 
+def test_audit_result_literals_are_escaped_for_psycopg_parameters():
+    # Psycopg parses percent tokens whenever parameters are supplied. A single
+    # ``%failed%`` is interpreted as an invalid ``%f`` placeholder.
+    assert "LIKE '%%failed%%'" in security_routes._AUDIT_RESULT_SQL
+    assert "LIKE '%failed%'" not in security_routes._AUDIT_RESULT_SQL
+
+
 def test_session_endpoint_joins_accounts_once_and_never_selects_tokens_or_devices(monkeypatch):
     _allow(monkeypatch)
     monkeypatch.setattr(security_routes.time, "time", lambda: 2_000)

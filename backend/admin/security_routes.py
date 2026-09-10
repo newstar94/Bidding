@@ -39,11 +39,11 @@ _SESSION_SORT_COLUMNS = {
     "user": "lower(COALESCE(account.ho_ten, account.ten_dang_nhap, account.email))",
 }
 _AUDIT_RESULT_SQL = """CASE
-    WHEN lower(audit.action) LIKE '%failed%'
-      OR lower(audit.action) LIKE '%denied%'
-      OR lower(audit.action) LIKE '%rejected%'
-      OR lower(audit.action) LIKE '%rate_limited%'
-      OR lower(audit.action) LIKE '%blocked%'
+    WHEN lower(audit.action) LIKE '%%failed%%'
+      OR lower(audit.action) LIKE '%%denied%%'
+      OR lower(audit.action) LIKE '%%rejected%%'
+      OR lower(audit.action) LIKE '%%rate_limited%%'
+      OR lower(audit.action) LIKE '%%blocked%%'
     THEN 'failure'
     ELSE 'success'
 END"""

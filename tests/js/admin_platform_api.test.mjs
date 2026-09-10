@@ -159,6 +159,23 @@ test("admin API permits only approved billing mutations and sends CSRF and idemp
   }
 });
 
+test("admin API permits only the exact environment configuration mutation", async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ success: true, restartRequired: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  await postAdminJson("/api/admin/environment", {
+    body: { features: { aiEnabled: true } }, fetchImpl,
+  });
+  assert.equal(requests[0].options.method, "POST");
+  await assert.rejects(() => postAdminJson("/api/admin/health", { fetchImpl }), TypeError);
+});
+
 test("admin API sends commercial draft concurrency, CSRF and idempotency contracts", async () => {
   const requests = [];
   const previousDocument = globalThis.document;
