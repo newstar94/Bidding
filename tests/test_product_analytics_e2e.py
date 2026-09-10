@@ -7,7 +7,8 @@ from pathlib import Path
 
 import subprocess
 from starlette.applications import Starlette
-from starlette.responses import FileResponse, HTMLResponse
+from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import FileResponse
 from starlette.routing import Route
 import uvicorn
 import pytest
@@ -86,15 +87,37 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
         )
 
         async def index(_request):
-            template = Path("views/tabs/tab_usage_analytics.html").read_text(encoding="utf-8")
-            return HTMLResponse(f"<!doctype html><html lang='vi'><body>{template}</body></html>")
+            return HTMLResponse("<!doctype html><html lang='vi'><body><main id='admin-analytics'></main></body></html>")
 
-        async def frontend_file(request):
-            return FileResponse(f"frontend/{request.path_params['path']}")
+        async def usage_summary(request):
+            if request.cookies.get("analytics_role") != "super_admin":
+                return JSONResponse({"code": "SUPER_ADMIN_REQUIRED"}, status_code=403)
+            return JSONResponse({
+                "coverage": {"hasData": True},
+                "onlineNow": 1,
+                "activeUsers": 1,
+                "workActivityCount": 3,
+                "wordExportCount": 0,
+                "topFeatures": [{"feature": "plans", "label": "Kế hoạch", "count": 3}],
+            })
+
+        async def frontend_javascript(request):
+            return FileResponse(
+                Path("frontend") / request.path_params["path"],
+                media_type="text/javascript",
+            )
+
+        async def dependency_javascript(request):
+            return FileResponse(
+                Path("node_modules") / request.path_params["path"],
+                media_type="text/javascript",
+            )
 
         app = Starlette(routes=[
             Route("/", index),
-            Route("/frontend/{path:path}", frontend_file),
+            Route("/frontend/{path:path}", frontend_javascript, methods=["GET"]),
+            Route("/node_modules/{path:path}", dependency_javascript, methods=["GET"]),
+            Route("/api/admin/usage-analytics/summary", usage_summary),
             *analytics_routes.product_analytics_routes(Route),
         ])
         socket_handle = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

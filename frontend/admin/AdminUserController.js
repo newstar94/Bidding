@@ -384,8 +384,12 @@ export function setupRBACEvents() {
           body: JSON.stringify({ active_role: val })
         });
         const activeRole = await confirmedActiveRole(response, currentUser);
-        const targetTab = activeRole === "super_admin" ? "superadmin-dashboard" : "dashboard";
-        const targetPath = targetTab === "superadmin-dashboard" ? "/tong-quan-admin" : "/tong-quan";
+        if (activeRole === "super_admin") {
+          window.location.assign("/admin");
+          return;
+        }
+        const targetTab = "dashboard";
+        const targetPath = "/tong-quan";
         await workspaceLifecycleController(this).transitionConfirmedRole({
           activeRole,
           userName,

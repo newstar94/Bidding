@@ -41,7 +41,7 @@ from urllib.parse import urlparse
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
-from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse
+from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse, RedirectResponse
 from starlette.requests import Request
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -809,6 +809,33 @@ async def admin_index(request):
     return HTMLResponse(content, headers={"Cache-Control": "private, no-store", "Vary": "Cookie", "X-Robots-Tag": "noindex, nofollow"})
 
 
+_LEGACY_ADMIN_DESTINATIONS = {
+    "/tong-quan-admin": "/admin",
+    "/phan-tich-su-dung": "/admin/analytics",
+    "/quan-ly-tai-khoan": "/admin/users",
+    "/thuong-mai-thanh-toan": "/admin/plans",
+}
+
+
+async def legacy_admin_redirect(request):
+    """Keep old bookmarks working without serving the retired workspace UI."""
+    try:
+        is_valid, _role_or_error = await run_database_read(
+            verify_session,
+            request,
+            "super_admin",
+            timeout_seconds=5,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return Response("Không thể xác thực quyền quản trị lúc này.", status_code=503, headers={"Cache-Control": "private, no-store"})
+    if not is_valid:
+        return Response("Không có quyền truy cập bảng quản trị nền tảng.", status_code=403, media_type="text/plain", headers={"Cache-Control": "private, no-store"})
+    destination = _LEGACY_ADMIN_DESTINATIONS.get(request.url.path)
+    if not destination:
+        return Response("Không tìm thấy đường dẫn quản trị.", status_code=404)
+    return RedirectResponse(destination, status_code=308, headers={"Cache-Control": "private, no-store"})
+
+
 from backend.shared.helpers import (
     log_error,
     ErrorLoggingMiddleware,
@@ -1376,10 +1403,10 @@ routes = [
     Route("/xuat-ban-word", index, methods=["GET"]),
     Route("/reset-password", index, methods=["GET"]),
 
-    Route("/tong-quan-admin", index, methods=["GET"]),
-    Route("/quan-ly-tai-khoan", index, methods=["GET"]),
-    Route("/thuong-mai-thanh-toan", index, methods=["GET"]),
-    Route("/phan-tich-su-dung", index, methods=["GET"]),
+    Route("/tong-quan-admin", legacy_admin_redirect, methods=["GET"]),
+    Route("/quan-ly-tai-khoan", legacy_admin_redirect, methods=["GET"]),
+    Route("/thuong-mai-thanh-toan", legacy_admin_redirect, methods=["GET"]),
+    Route("/phan-tich-su-dung", legacy_admin_redirect, methods=["GET"]),
     Route("/admin", admin_index, methods=["GET"]),
     Route("/admin/{admin_path:path}", admin_index, methods=["GET"]),
     Route("/goi-va-thanh-toan", index, methods=["GET"]),

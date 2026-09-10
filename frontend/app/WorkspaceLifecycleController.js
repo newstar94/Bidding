@@ -165,10 +165,12 @@ export class WorkspaceLifecycleController {
     if (host.view) host.view._dashboardAggregateCache = null;
     host.renderWorkspaceSwitcher?.();
     host.view?.updateActiveUserProfileDisplay?.();
+    if (model.state.activerole === "super_admin") {
+      globalThis.window?.location?.assign?.("/admin");
+      return;
+    }
     if (typeof host.switchTab === "function") {
-      const targetTab = model.state.activerole === "super_admin"
-        ? "superadmin-dashboard" : "dashboard";
-      await host.switchTab(targetTab, null, true);
+      await host.switchTab("dashboard", null, true);
       this.assertCurrent(identity);
     }
     host.schedulePostStartupTask?.(

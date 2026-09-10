@@ -140,7 +140,7 @@ export function renderChangedState(controller, changedKeys, { isBackground = fal
       routes.forEach((route) => controller._dirtyRouteProjections.delete(route));
     }
   };
-  renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, ["dashboard", "superadmin-dashboard"], "tab-dashboard");
+  renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, "dashboard", "tab-dashboard");
   renderIfChanged(["kehoach", "chudautu", "goithau"], controller.view.renderKeHoachTable, "kehoach", "tab-kehoach");
   renderIfChanged(["goithau", "goithauhanghoa", "hanghoaduthaunhathau", "kehoach", "chudautu", "nhathau", "thongtinmothau", "assignments"], controller.view.renderGoiThauTable, "goithau", "tab-goithau");
   renderIfChanged(["goithau", "kehoach", "hopdong", "thongtinmothau"], controller.view.renderPackageTimeline, "goithau-timeline", "tab-goithau-timeline");

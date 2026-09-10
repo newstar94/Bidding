@@ -87,8 +87,6 @@ const VIEW_MODULE_LOADERS = Object.freeze({
 
 const VIEW_MODULES_BY_TAB = Object.freeze({
   dashboard: ["dashboard"],
-  "superadmin-dashboard": ["dashboard"],
-  "usage-analytics": [],
   kehoach: ["plan-list"],
   "kehoach-detail": ["plan-list"],
   goithau: ["package-list"],

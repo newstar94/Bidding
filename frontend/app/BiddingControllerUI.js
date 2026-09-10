@@ -30,12 +30,11 @@ import {
   resolveTrialVisibleTab,
 } from "../commercial-policy/trialMode.js";
 function requiredRoleForTab(tabName) {
-  if (["superadmin-dashboard", "superadmin", "usage-analytics", "commercial-admin"].includes(tabName)) return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
   return null;
 }
-function defaultTabForRole(model) {
-  return model?.state?.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
+function defaultTabForRole(_model) {
+  return "dashboard";
 }
 
 export function resolvePackageDetailRoute(model, action, snapshotId = "") {
@@ -657,10 +656,6 @@ export function switchTab(tabName, action = null, updateState = true, transition
     hopdong: "Danh sách Hợp đồng",
     bieumau: "Quản lý Biểu mẫu & Từ điển",
     "xuatban-word": "Xuất bản Word",
-    "superadmin-dashboard": "Bảng điều khiển Super Admin BiddingFlow",
-    superadmin: "Quản lý Đơn vị & Tài khoản Thành viên",
-    "usage-analytics": "Phân tích mức độ sử dụng",
-    "commercial-admin": "Thương mại & Thanh toán",
     managernhanvien: "Quản lý Chuyên viên & Phân quyền Matrix",
     managerhosogiay: "Cấu hình trạng thái hợp đồng",
     mothau: "Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)",
@@ -814,19 +809,6 @@ export function renderTabData(tabName, action = null, options = {}) {
       break;
     case "xuatban-word":
       return this.setupWordPublicationPage();
-    case "superadmin-dashboard":
-      this.view.renderSuperAdminDashboard();
-      break;
-    case "superadmin":
-      this.view.renderSuperAdminPanel();
-      this.loadSystemUsers();
-      break;
-    case "usage-analytics":
-      return import("../admin/UsageAnalyticsView.js")
-        .then(({ mountUsageAnalytics }) => mountUsageAnalytics(this));
-    case "commercial-admin":
-      return import("../commercial-policy/CommercialControlCenter.js")
-        .then(({ mountCommercialControlCenter }) => mountCommercialControlCenter(this));
     case "commercial-storefront":
       return import("../commercial-policy/CommercialStorefront.js")
         .then(({ mountCommercialStorefront }) => mountCommercialStorefront(this));

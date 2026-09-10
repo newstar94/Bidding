@@ -78,10 +78,6 @@ export class BiddingController {
       "chuyengia": "chuyen-gia",
       "bieumau": "bieu-mau",
       "xuatban-word": "xuat-ban-word",
-      "superadmin-dashboard": "tong-quan-admin",
-      "superadmin": "quan-ly-tai-khoan",
-      "usage-analytics": "phan-tich-su-dung",
-      "commercial-admin": "thuong-mai-thanh-toan",
       "commercial-storefront": "goi-va-thanh-toan",
       "managernhanvien": "nhan-su",
       "managerhosogiay": "trang-thai-hop-dong",
@@ -107,10 +103,6 @@ export class BiddingController {
       "hopdong-detail": "/tabs/tab_hopdong_detail.html",
       bieumau: "/tabs/tab_bieumau.html",
       "xuatban-word": "/tabs/tab_xuatban_word.html",
-      "superadmin-dashboard": "/tabs/tab_superadmin_dashboard.html",
-      superadmin: "/tabs/tab_superadmin.html",
-      "usage-analytics": "/tabs/tab_usage_analytics.html",
-      "commercial-admin": "/tabs/tab_commercial_admin.html",
       "commercial-storefront": "/tabs/tab_commercial_storefront.html",
       managernhanvien: "/tabs/tab_managernhanvien.html",
       managerhosogiay: "/tabs/tab_managerhosogiay.html",
@@ -158,7 +150,7 @@ export class BiddingController {
         this.view.elements.tabPanes = document.querySelectorAll(".tab-pane");
         if (isTab) {
           this.setupActionListeners?.();
-          if (["superadmin", "superadmin-dashboard", "usage-analytics", "commercial-admin", "commercial-storefront", "managernhanvien", "managerhosogiay", "profile"].includes(id)) {
+          if (["commercial-storefront", "managernhanvien", "managerhosogiay", "profile"].includes(id)) {
             this.setupRBACEvents?.();
           }
         }
@@ -642,10 +634,6 @@ export class BiddingController {
     const tab = cleanPath.split("/").filter(Boolean)[0] || this.routeMap.dashboard;
     const byRoute = {
       [this.routeMap.dashboard]: ["KEHOACH", "GOITHAU", "HOPDONG", "CHUDAUTU", "NHATHAU", "ASSIGNMENTS"],
-      [this.routeMap["superadmin-dashboard"]]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
-      [this.routeMap.superadmin]: ["SYSTEMPACKAGES", "ORGANIZATIONS", "EMPLOYEES", "PERMISSIONMATRIX"],
-      [this.routeMap["usage-analytics"]]: [],
-      [this.routeMap["commercial-admin"]]: [],
       [this.routeMap.managernhanvien]: ["EMPLOYEES", "PERMISSIONMATRIX", "ORGANIZATIONS"],
       [this.routeMap.managerhosogiay]: ["CUSTOMCONTRACTSTATUSES"],
       [this.routeMap.kehoach]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
@@ -965,7 +953,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.handlePathRouting(window.location.pathname, false);
     });
     const initialPath = window.location.pathname;
-    const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+    const initialTabName = this.getTabNameForPath(initialPath) || "dashboard";
     const routePreparationTasks = [this.view.ensureViewModules(initialTabName)];
     const initialWorkflowRequirement = this.getWorkflowRequirementForRoute(initialTabName);
     if (!this.isWorkflowRequirementReady(initialWorkflowRequirement)) {

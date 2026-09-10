@@ -238,11 +238,15 @@ export function setupAuth() {
     hideInitLoader();
   };
   const showCachedWorkspace = async () => {
+    if (this.model.state.activerole === "super_admin") {
+      window.location.assign("/admin");
+      return;
+    }
     setRuntimeStyle(overlay, "display", "none");
     setRuntimeStyle(document.querySelector(".app-container"), "filter", "none");
     this.view.updateActiveUserProfileDisplay();
     try {
-      const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+      const initialTab = this.getTabNameForPath?.(window.location.pathname) || "dashboard";
       await this.view.ensureViewModules(initialTab);
       const workflowRequirement = this.getWorkflowRequirementForRoute?.(initialTab);
       if (!this.isWorkflowRequirementReady?.(workflowRequirement)) {
@@ -258,7 +262,7 @@ export function setupAuth() {
       }
     } catch (error) {
       console.error("Failed to restore the initial workspace route:", error);
-      this.switchTab(this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+      this.switchTab("dashboard");
     } finally {
       hideInitLoader();
     }
@@ -648,7 +652,8 @@ export function setupAuth() {
         this.renderWorkspaceSwitcher();
       }
       if (activeRole === "super_admin") {
-        await this.switchTab("superadmin-dashboard");
+        window.location.assign("/admin");
+        return;
       } else {
         await this.switchTab("dashboard");
       }

@@ -445,7 +445,7 @@ async function executeForceSyncData(
     const currentTab = typeof this.getTabNameForPath === "function"
       ? this.getTabNameForPath(window.location.pathname)
       : "";
-    if (currentTab === "dashboard" || currentTab === "superadmin-dashboard") {
+    if (currentTab === "dashboard") {
       queryParams.set("include_summary", "1");
     }
     if (routeOnly && typeof this.getSyncTableKeysForPath === "function") {

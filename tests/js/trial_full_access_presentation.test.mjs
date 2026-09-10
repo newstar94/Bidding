@@ -74,24 +74,11 @@ test("application templates mark every primary paid surface for trial hiding", (
   const sidebar = source("views/components/sidebar.html");
   const profile = source("views/tabs/tab_profile.html");
   const manager = source("views/tabs/tab_managernhanvien.html");
-  const superAdmin = source("views/tabs/tab_superadmin.html");
-  const superAdminDashboard = source("views/tabs/tab_superadmin_dashboard.html");
 
   assert.match(index, /data-trial-full-access="__TRIAL_FULL_ACCESS_ENABLED__"/);
   assert.match(landing, /href="#bang-gia" data-commercial-only/);
   assert.match(landing, /id="bang-gia"[^>]*data-commercial-only/);
-  assert.match(
-    sidebar,
-    /<li[^>]*data-commercial-only[^>]*>\s*<button[^>]*data-tab="commercial-admin"/u,
-  );
-  assert.doesNotMatch(
-    sidebar,
-    /<li[^>]*data-commercial-only[^>]*>\s*<button[^>]*data-tab="superadmin"/u,
-  );
+  assert.doesNotMatch(sidebar, /data-tab="(?:commercial-admin|superadmin(?:-dashboard)?)"/u);
   assert.match(profile, /profile-purchase-history" data-commercial-only/);
   assert.match(manager, /bf-s-6acd22af4f" data-commercial-only/);
-  assert.match(superAdmin, /id="sa-stat-revenue"[\s\S]*?data-commercial-only/);
-  assert.match(superAdmin, /<th data-commercial-only>Gói đăng ký<\/th>/);
-  assert.match(superAdminDashboard, /id="sad-stat-revenue"[\s\S]*?data-commercial-only/);
-  assert.match(superAdminDashboard, /<th data-commercial-only>Gói cước<\/th>/);
 });

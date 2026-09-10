@@ -132,7 +132,8 @@ export function setupGoogleSignIn() {
       this.view.updateActiveUserProfileDisplay();
       if (typeof this.renderWorkspaceSwitcher === "function") this.renderWorkspaceSwitcher();
       if (activeRole === "super_admin") {
-        await this.switchTab("superadmin-dashboard");
+        window.location.assign("/admin");
+        return;
       } else {
         await this.switchTab("dashboard");
       }

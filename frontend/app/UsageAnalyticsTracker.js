@@ -22,11 +22,7 @@ export const USAGE_FEATURE_BY_TAB = Object.freeze({
   "hopdong-detail": "contracts",
   bieumau: "templates",
   "xuatban-word": "word-publication",
-  "superadmin-dashboard": "dashboard",
-  superadmin: "account-admin",
-  "commercial-admin": "commercial",
   "commercial-storefront": "commercial",
-  "usage-analytics": "usage-analytics",
   profile: "profile",
 });
 
