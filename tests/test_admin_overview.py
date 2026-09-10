@@ -89,6 +89,33 @@ def test_overview_service_returns_real_aggregates_and_explicit_unavailable_metri
             "subscriptionStatus": "active",
         }
     ]
+    assert payload["activityFeed"] == [{
+        "id": "org-1",
+        "kind": "organization.created",
+        "title": "Organization One",
+        "occurredAt": "2026-09-01 08:00:00",
+        "status": "active",
+        "memberCount": 3,
+        "subscriptionStatus": "active",
+    }]
+    assert payload["alerts"] == [
+        {
+            "code": "INACTIVE_ORGANIZATIONS",
+            "severity": "warning",
+            "count": 2,
+            "title": "Tổ chức cần rà soát",
+            "message": "Tổ chức không ở trạng thái hoạt động.",
+            "href": "/admin/organizations?status=suspended",
+        },
+        {
+            "code": "INACTIVE_ACCOUNTS",
+            "severity": "warning",
+            "count": 5,
+            "title": "Tài khoản cần rà soát",
+            "message": "Tài khoản không ở trạng thái hoạt động.",
+            "href": "/admin/users?status=inactive",
+        },
+    ]
     assert len(cursor.calls) == 2
     assert cursor.calls[1][1] == (AdminOverviewRepository.RECENT_ORGANIZATION_LIMIT,)
 

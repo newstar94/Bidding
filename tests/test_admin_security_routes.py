@@ -25,7 +25,14 @@ class _Cursor:
 
     def execute(self, statement, params=()):
         self.calls.append((statement, params))
-        if "COUNT(*) AS total_rows" in statement:
+        if "AS failed_logins" in statement:
+            self.result = _Result(row={
+                "failed_logins": 2,
+                "suspicious_events": 1,
+                "authorization_denies": 3,
+                "admin_actions": 4,
+            })
+        elif "COUNT(*) AS total_rows" in statement:
             self.result = _Result(row={"total_rows": 1})
         else:
             self.result = _Result(rows=[self.detail_row])
@@ -143,6 +150,42 @@ def test_audit_result_literals_are_escaped_for_psycopg_parameters():
     # ``%failed%`` is interpreted as an invalid ``%f`` placeholder.
     assert "LIKE '%%failed%%'" in security_routes._AUDIT_RESULT_SQL
     assert "LIKE '%failed%'" not in security_routes._AUDIT_RESULT_SQL
+    assert "ELSE 'unknown'" in security_routes._AUDIT_RESULT_SQL
+
+
+def test_security_summary_uses_bounded_audit_facts_and_unknown_outcomes(monkeypatch):
+    _allow(monkeypatch)
+    cursor = _Cursor({
+        "id": 9,
+        "actor_user_id": "admin-1",
+        "organization_id": None,
+        "action": "admin.user_updated",
+        "target_type": "user",
+        "target_id": "user-2",
+        "created_at": "2026-09-11 08:00:00",
+        "metadata_json": json.dumps({"requestId": "req-security-1"}),
+    })
+    connection = _Connection(cursor)
+    monkeypatch.setattr(security_routes, "database", _Database(connection))
+
+    response = security_routes._security_summary_sync(_request())
+    payload = _payload(response)
+
+    assert response.status_code == 200
+    assert payload["counts"] == {
+        "failedLogins": 2,
+        "suspiciousEvents": 1,
+        "authorizationDenies": 3,
+        "adminActions": 4,
+    }
+    assert payload["sections"]["adminActions"][0]["outcome"] == "unknown"
+    assert payload["sections"]["adminActions"][0]["requestId"] == "req-security-1"
+    assert payload["coverage"]["failedLogins"] == "partial"
+    assert len(cursor.calls) == 2
+    assert cursor.calls[1][1][-1] == security_routes._SECURITY_EVENT_LIMIT
+    assert "LIMIT ?" in cursor.calls[1][0]
+    assert "ip_address" not in cursor.calls[1][0]
+    assert connection.closed is True
 
 
 def test_session_endpoint_joins_accounts_once_and_never_selects_tokens_or_devices(monkeypatch):
@@ -192,7 +235,7 @@ def test_security_queries_reject_unknown_unbounded_or_invalid_controls(monkeypat
 
     assert security_routes._list_admin_audit_sync(_request(pageSize="101")).status_code == 400
     assert security_routes._list_admin_audit_sync(_request(sortBy="metadata_json")).status_code == 400
-    assert security_routes._list_admin_audit_sync(_request(result="unknown")).status_code == 400
+    assert security_routes._list_admin_audit_sync(_request(result="ambiguous")).status_code == 400
     assert security_routes._list_admin_audit_sync(_request(requestId="bad request id")).status_code == 400
     assert security_routes._list_admin_audit_sync(_request(**{"from": "10/09/2026"})).status_code == 400
     assert security_routes._list_admin_audit_sync(
@@ -226,6 +269,7 @@ def test_security_routes_are_get_only():
 
     assert [route.path for route in routes] == [
         "/api/admin/audit",
+        "/api/admin/security/summary",
         "/api/admin/security/sessions",
     ]
     assert all(route.methods == ["GET"] for route in routes)

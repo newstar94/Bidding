@@ -11,6 +11,7 @@ import {
   AUDIT_DIRECTORY,
   SESSION_DIRECTORY,
   auditDetailMarkup,
+  securityCenterMarkup,
   sessionDetailMarkup,
 } from "../../frontend/admin-platform/AdminSecurity.js";
 
@@ -30,8 +31,30 @@ test("audit controls stay bounded to server pagination search and allowlisted so
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?sortBy=metadata_json").sortBy, "created_at");
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.login_success").action, "auth.login_success");
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.unknown").action, "auth.unknown");
-  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?result=unknown").result, "");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?result=unknown").result, "unknown");
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?requestId=req-123").requestId, "req-123");
+});
+
+test("security center separates authoritative sections and labels absent outcomes Unknown", () => {
+  const event = {
+    action: "admin.user_updated", actorUserId: "admin-1", targetType: "user",
+    targetId: "user-2", createdAt: "2026-09-11T08:00:00Z", outcome: "unknown",
+  };
+  const markup = securityCenterMarkup({
+    counts: { failedLogins: 2, suspiciousEvents: 1, authorizationDenies: 3, adminActions: 4 },
+    sections: {
+      failedLogins: [], suspiciousEvents: [], authorizationDenies: [], adminActions: [event],
+    },
+    coverage: { note: "Chỉ hiển thị sự kiện có audit." },
+  });
+  assert.equal((markup.match(/data-admin-security-count=/gu) || []).length, 4);
+  assert.match(markup, /Đăng nhập thất bại/u);
+  assert.match(markup, /Sự kiện đáng chú ý/u);
+  assert.match(markup, /Từ chối quyền/u);
+  assert.match(markup, /Thao tác quản trị/u);
+  assert.match(markup, /admin[.]user_updated/u);
+  assert.match(markup, />Unknown</u);
+  assert.match(markup, /Phạm vi dữ liệu/u);
 });
 
 test("audit table renders summary fields without raw metadata hashes or IP data", () => {

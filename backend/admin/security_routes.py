@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from starlette.responses import JSONResponse
 
@@ -45,8 +45,15 @@ _AUDIT_RESULT_SQL = """CASE
       OR lower(audit.action) LIKE '%%rate_limited%%'
       OR lower(audit.action) LIKE '%%blocked%%'
     THEN 'failure'
-    ELSE 'success'
+    WHEN lower(audit.action) LIKE '%%success%%'
+      OR lower(audit.action) LIKE '%%succeeded%%'
+      OR lower(audit.action) LIKE '%%completed%%'
+    THEN 'success'
+    ELSE 'unknown'
 END"""
+_SECURITY_EVENT_LIMIT = 80
+_SECURITY_SECTION_ITEM_LIMIT = 6
+_SECURITY_WINDOW_HOURS = 24
 _AUDIT_DETAIL_KEYS = {
     "amount",
     "currency",
@@ -125,6 +132,58 @@ def _audit_public_fields(row):
     return request_id or None, details
 
 
+def _audit_outcome(action, metadata):
+    normalized_action = str(action or "").strip().lower()
+    explicit = str(
+        metadata.get("outcome")
+        or metadata.get("result")
+        or metadata.get("status")
+        or ""
+    ).strip().lower()
+    if explicit in {"failure", "failed", "denied", "rejected", "blocked", "error"}:
+        return "failure"
+    if explicit in {"success", "succeeded", "completed", "verified", "settled"}:
+        return "success"
+    if any(token in normalized_action for token in (
+        "failed", "denied", "rejected", "rate_limited", "blocked",
+    )):
+        return "failure"
+    if any(token in normalized_action for token in ("success", "succeeded", "completed")):
+        return "success"
+    return "unknown"
+
+
+def _security_sections(action):
+    normalized = str(action or "").strip().lower()
+    sections = []
+    if "login_failed" in normalized or "reauth_failed" in normalized:
+        sections.append("failedLogins")
+    if any(token in normalized for token in ("suspicious", "rate_limited", "blocked")):
+        sections.append("suspiciousEvents")
+    if any(token in normalized for token in ("denied", "rejected", "forbidden", "access_denied")):
+        sections.append("authorizationDenies")
+    if normalized.startswith("admin."):
+        sections.append("adminActions")
+    return sections
+
+
+def _security_event(row):
+    metadata = _audit_metadata(row["metadata_json"])
+    request_id, details = _audit_public_fields(row)
+    return {
+        "id": row["id"],
+        "actorUserId": row["actor_user_id"],
+        "organizationId": row["organization_id"],
+        "action": row["action"],
+        "targetType": row["target_type"],
+        "targetId": row["target_id"],
+        "createdAt": _json_value(row["created_at"]),
+        "outcome": _audit_outcome(row["action"], metadata),
+        "requestId": request_id,
+        "details": details,
+    }
+
+
 def _where_sql(predicates):
     return f" WHERE {' AND '.join(predicates)}" if predicates else ""
 
@@ -154,7 +213,7 @@ def _list_admin_audit_sync(request):
         if from_date and to_date and from_date > to_date:
             raise _InvalidDirectoryQuery("Ngày bắt đầu phải trước hoặc trùng ngày kết thúc.")
         result = str(request.query_params.get("result") or "").strip().lower()
-        if result not in {"", "success", "failure"}:
+        if result not in {"", "success", "failure", "unknown"}:
             raise _InvalidDirectoryQuery("Kết quả không hợp lệ.")
         request_id = _bounded_identifier(request.query_params.get("requestId"), "Request ID", maximum=128)
         if request_id and not _REQUEST_ID_PATTERN.fullmatch(request_id):
@@ -257,6 +316,89 @@ def _list_admin_audit_sync(request):
     except Exception as exc:  # noqa: BLE001 - internal database details stay private.
         log_error(exc, "list_platform_admin_audit")
         return _response({"error": "Đã xảy ra lỗi tải nhật ký quản trị."}, status_code=500)
+
+
+def _security_summary_sync(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    since = datetime.now(timezone.utc) - timedelta(hours=_SECURITY_WINDOW_HOURS)
+    since_value = since.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        connection = database.get_connection()
+        try:
+            cursor = connection.cursor()
+            counts = cursor.execute(
+                """SELECT
+                    COUNT(*) FILTER (WHERE lower(action) LIKE '%%login_failed%%'
+                        OR lower(action) LIKE '%%reauth_failed%%') AS failed_logins,
+                    COUNT(*) FILTER (WHERE lower(action) LIKE '%%suspicious%%'
+                        OR lower(action) LIKE '%%rate_limited%%'
+                        OR lower(action) LIKE '%%blocked%%') AS suspicious_events,
+                    COUNT(*) FILTER (WHERE lower(action) LIKE '%%denied%%'
+                        OR lower(action) LIKE '%%rejected%%'
+                        OR lower(action) LIKE '%%forbidden%%'
+                        OR lower(action) LIKE '%%access_denied%%') AS authorization_denies,
+                    COUNT(*) FILTER (WHERE lower(action) LIKE 'admin.%%') AS admin_actions
+                   FROM audit_log
+                  WHERE created_at >= ?""",
+                (since_value,),
+            ).fetchone()
+            rows = cursor.execute(
+                """SELECT id, actor_user_id, organization_id, action,
+                          target_type, target_id, created_at, metadata_json
+                     FROM audit_log
+                    WHERE created_at >= ?
+                      AND (lower(action) LIKE '%%login_failed%%'
+                       OR lower(action) LIKE '%%reauth_failed%%'
+                       OR lower(action) LIKE '%%suspicious%%'
+                       OR lower(action) LIKE '%%rate_limited%%'
+                       OR lower(action) LIKE '%%blocked%%'
+                       OR lower(action) LIKE '%%denied%%'
+                       OR lower(action) LIKE '%%rejected%%'
+                       OR lower(action) LIKE '%%forbidden%%'
+                       OR lower(action) LIKE '%%access_denied%%'
+                       OR lower(action) LIKE 'admin.%%')
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?""",
+                (since_value, _SECURITY_EVENT_LIMIT),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        sections = {
+            "failedLogins": [],
+            "suspiciousEvents": [],
+            "authorizationDenies": [],
+            "adminActions": [],
+        }
+        for row in rows:
+            event = _security_event(row)
+            for section in _security_sections(row["action"]):
+                if len(sections[section]) < _SECURITY_SECTION_ITEM_LIMIT:
+                    sections[section].append(event)
+        return _response({
+            "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "window": {"hours": _SECURITY_WINDOW_HOURS, "since": since.isoformat().replace("+00:00", "Z")},
+            "counts": {
+                "failedLogins": int(counts["failed_logins"]),
+                "suspiciousEvents": int(counts["suspicious_events"]),
+                "authorizationDenies": int(counts["authorization_denies"]),
+                "adminActions": int(counts["admin_actions"]),
+            },
+            "sections": sections,
+            "coverage": {
+                "source": "audit_log",
+                "failedLogins": "partial",
+                "note": (
+                    "Chỉ hiển thị sự kiện đăng nhập thất bại đã được ghi vào audit log; "
+                    "log vận hành không được suy diễn thành dữ liệu audit."
+                ),
+            },
+        })
+    except Exception as exc:  # noqa: BLE001 - internal database details stay private.
+        log_error(exc, "platform_admin_security_summary")
+        return _response({"error": "Đã xảy ra lỗi tải trung tâm bảo mật."}, status_code=500)
 
 
 def _session_status(row, now):
@@ -389,6 +531,15 @@ async def list_admin_audit_api(request):
         return response
 
 
+async def admin_security_summary_api(request):
+    try:
+        return await run_database_read(_security_summary_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        response = _response({"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503)
+        response.headers["Retry-After"] = "1"
+        return response
+
+
 async def list_admin_sessions_api(request):
     try:
         return await run_database_read(_list_admin_sessions_sync, request)
@@ -401,5 +552,6 @@ async def list_admin_sessions_api(request):
 def platform_admin_security_routes(Route):
     return [
         Route("/api/admin/audit", list_admin_audit_api, methods=["GET"]),
+        Route("/api/admin/security/summary", admin_security_summary_api, methods=["GET"]),
         Route("/api/admin/security/sessions", list_admin_sessions_api, methods=["GET"]),
     ]
