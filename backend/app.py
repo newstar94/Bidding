@@ -770,7 +770,8 @@ def _compile_admin_shell(session_bootstrap):
     with open(template_path, "r", encoding="utf-8") as template_file:
         content = template_file.read()
     entry_src = "/frontend/admin-platform/AdminApp.js"
-    stylesheet_tags = ""
+    stylesheet_tags = '<link rel="stylesheet" href="/vendor/tabler/tabler.min.css">\n<link rel="stylesheet" href="/frontend/admin-platform/admin.css">'
+    vendor_script = '<script src="/vendor/tabler/tabler.min.js" defer></script>'
     if _frontend_bundle_enabled():
         manifest_path = Path(project_root) / "dist" / ".vite" / "manifest.json"
         with manifest_path.open("r", encoding="utf-8") as manifest_file:
@@ -781,8 +782,9 @@ def _compile_admin_shell(session_bootstrap):
             f'<link rel="stylesheet" href="/dist/{asset}">'
             for asset in resolve_frontend_styles(manifest, dist_root, ADMIN_ENTRY)
         )
+        vendor_script = ""
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
-    return content.replace("__BF_ADMIN_STYLES__", stylesheet_tags).replace("__BF_ADMIN_ENTRY__", entry_src).replace("__BF_ADMIN_SESSION__", safe_bootstrap)
+    return content.replace("__BF_ADMIN_STYLES__", stylesheet_tags).replace("__BF_ADMIN_VENDOR_SCRIPT__", vendor_script).replace("__BF_ADMIN_ENTRY__", entry_src).replace("__BF_ADMIN_SESSION__", safe_bootstrap)
 
 
 async def admin_index(request):
@@ -831,6 +833,7 @@ from backend.billing.routes import billing_routes
 from backend.usage_analytics.routes import usage_analytics_routes
 from backend.product_analytics.routes import product_analytics_routes
 from backend.admin.api import admin_routes
+from backend.admin.platform_directory_routes import platform_admin_directory_routes
 
 from backend.auth.otp_routes import (
     register_api,
@@ -1212,6 +1215,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 routes = [
     *ai_routes,
     *admin_routes(Route),
+    *platform_admin_directory_routes(Route),
     *usage_analytics_routes(Route),
     *product_analytics_routes(Route),
     Route("/health/live", health_live_api, methods=["GET"]),
@@ -1396,6 +1400,21 @@ if APP_DEBUG:
             media_type="text/javascript",
         )
 
+    async def tabler_development_asset(request):
+        asset = request.path_params.get("asset")
+        allowed = {
+            "tabler.min.css": ("css", "tabler.min.css", "text/css"),
+            "tabler.min.js": ("js", "tabler.min.js", "text/javascript"),
+        }
+        parts = allowed.get(asset)
+        if not parts:
+            return Response("Not found", status_code=404)
+        directory, filename, media_type = parts
+        return FileResponse(
+            os.path.join(project_root, "node_modules", "@tabler", "core", "dist", directory, filename),
+            media_type=media_type,
+        )
+
     routes.extend([
         Route(
             "/node_modules/dompurify/dist/purify.es.mjs",
@@ -1403,6 +1422,7 @@ if APP_DEBUG:
             methods=["GET"],
             name="dompurify-dev",
         ),
+        Route("/vendor/tabler/{asset}", tabler_development_asset, methods=["GET"], name="tabler-dev"),
         Mount("/frontend", app=SafeStaticFiles(directory=os.path.join(project_root, 'frontend')), name="frontend"),
         Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
         Mount("/", app=NotFoundViewStaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
