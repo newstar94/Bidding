@@ -621,6 +621,21 @@ def _delete_user_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
+        role_or_err = current_actor
+        if str(user_id) == str(role_or_err.user_id):
+            conn.rollback()
+            return JSONResponse(
+                {"error": "Không thể tự ngừng hoạt động tài khoản quản trị."},
+                status_code=409,
+            )
         lock_platform_role_invariants(cursor)
         cursor.execute(
             """SELECT vai_tro, trang_thai FROM tai_khoan

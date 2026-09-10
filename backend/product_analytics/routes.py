@@ -9,8 +9,9 @@ from starlette.responses import JSONResponse
 
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
+from backend.auth.auth_helper import verify_session_in_transaction
 from backend.shared.helpers import database, get_active_org, verify_session
-from backend.shared.logging_utils import log_error
+from backend.shared.logging_utils import log_audit, log_error
 from backend.shared.request_validation import read_json_object
 
 from .aggregation import refresh_product_analytics
@@ -144,15 +145,40 @@ async def commercial_analytics_dashboard_api(request):
     return JSONResponse({"dashboard": payload}, headers={"Cache-Control": "private, max-age=30"})
 
 
-def _refresh_write(from_date, to_date):
+class _RefreshAuthorityError(RuntimeError):
+    pass
+
+
+def _refresh_write(request, actor_user_id, from_date, to_date):
     connection = database.get_connection()
     try:
         connection.execute("BEGIN")
+        cursor = connection.cursor()
+        valid, actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if not valid or str(actor.user_id) != str(actor_user_id):
+            connection.rollback()
+            raise _RefreshAuthorityError(
+                str(actor) if not valid else "Phiên quản trị đã thay đổi."
+            )
         result = refresh_product_analytics(
-            connection.cursor(),
+            cursor,
             from_date=from_date,
             to_date=to_date,
             hmac_key=os.environ.get("ANALYTICS_HMAC_KEY", ""),
+        )
+        log_audit(
+            "admin.product_analytics_refreshed",
+            actor_user_id=actor.user_id,
+            target_type="product_analytics",
+            target_id=f"{from_date}:{to_date}",
+            request=request,
+            metadata={"fromDate": from_date, "toDate": to_date},
+            cursor=cursor,
+            required=True,
         )
         connection.commit()
         return result
@@ -164,11 +190,18 @@ async def refresh_product_analytics_api(request):
     valid, session = await run_database_read(verify_session, request, "super_admin", timeout_seconds=5)
     if not valid:
         return _error(str(session), "SUPER_ADMIN_REQUIRED", 403)
-    del session
     try:
         end = date.today()
         start = end - timedelta(days=90)
-        result = await run_database_write(_refresh_write, start.isoformat(), end.isoformat())
+        result = await run_database_write(
+            _refresh_write,
+            request,
+            session.user_id,
+            start.isoformat(),
+            end.isoformat(),
+        )
+    except _RefreshAuthorityError as exc:
+        return _error(str(exc), "SUPER_ADMIN_REQUIRED", 403)
     except Exception as exc:  # noqa: BLE001
         log_error(exc, "commercial_analytics_refresh")
         return _error("Không thể làm mới analytics.", "ANALYTICS_REFRESH_FAILED", 500)

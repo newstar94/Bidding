@@ -115,6 +115,33 @@ def test_admin_access_mutation_stops_when_authority_is_revoked_in_write_lane(
     assert not any("UPDATE tai_khoan" in statement for statement, _ in cursor.statements)
 
 
+def test_admin_deactivation_stops_when_authority_is_revoked_in_write_lane(
+    monkeypatch,
+):
+    cursor = _Cursor()
+    connection = _Connection(cursor)
+    request = _request(method="DELETE")
+    request.path_params = {"user_id": "target-1"}
+    initial_actor = SimpleNamespace(user_id="actor-1")
+    monkeypatch.setattr(admin_user_routes.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(
+        admin_user_routes,
+        "verify_session",
+        lambda *_args, **_kwargs: (True, initial_actor),
+    )
+    monkeypatch.setattr(
+        admin_user_routes,
+        "verify_session_in_transaction",
+        lambda *_args, **_kwargs: (False, "step-up expired"),
+    )
+
+    response = admin_user_routes._delete_user_sync(request)
+
+    assert response.status_code == 403
+    assert ("rollback",) in connection.events
+    assert not any("UPDATE tai_khoan" in statement for statement, _ in cursor.statements)
+
+
 def test_system_package_mutation_stops_when_step_up_is_revoked_in_write_lane(
     monkeypatch,
 ):

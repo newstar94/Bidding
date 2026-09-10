@@ -290,6 +290,14 @@ def test_account_deactivation_preserves_personal_tombstones_and_account_history(
                 actor_session,
             ),
         )
+        monkeypatch.setattr(
+            admin_user_routes,
+            "verify_session_in_transaction",
+            lambda _cursor, _request, required_role=None: (
+                True,
+                actor_session,
+            ),
+        )
         audit_events = []
         monkeypatch.setattr(
             admin_user_routes,
