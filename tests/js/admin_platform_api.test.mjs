@@ -22,6 +22,22 @@ test("admin API uses same-origin credentials without workspace organization head
 
 test("admin API rejects paths outside the platform boundary", async () => {
   await assert.rejects(() => getAdminJson("/api/auth/users"), TypeError);
+  await assert.rejects(() => getAdminJson("/api/commercial/drafts"), TypeError);
+});
+
+test("admin API permits the exact read-only commercial overview endpoint", async () => {
+  let request;
+  await getAdminJson("/api/commercial/admin/overview", {
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify({ drafts: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assert.equal(request.url, "/api/commercial/admin/overview");
+  assert.equal(request.options.method, "GET");
 });
 
 test("admin API classifies permission denial", async () => {

@@ -9,8 +9,10 @@ export class AdminApiError extends Error {
 
 function assertAdminPath(path) {
   const value = String(path || "");
-  if (!/^\/api\/admin(?:\/|$)/u.test(value) || /[?#]/u.test(value)) {
-    throw new TypeError("Admin API requests require an internal /api/admin path");
+  const platformPath = /^\/api\/admin(?:\/|$)/u.test(value);
+  const approvedCommercialPath = value === "/api/commercial/admin/overview";
+  if ((!platformPath && !approvedCommercialPath) || /[?#]/u.test(value)) {
+    throw new TypeError("Admin API requests require an approved internal platform path");
   }
   return value;
 }
