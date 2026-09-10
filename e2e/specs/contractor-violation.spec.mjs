@@ -19,7 +19,11 @@ function fixture(script, action, payload) {
 
 test.beforeEach(async ({ page, browserName }) => {
   const runId = `violation-${Date.now()}-${browserName}`;
-  const payload = { runId, organizationId: `${runId}-org`, contractors: [],
+  const payload = { runId, organizationId: `${runId}-org`, contractors: [
+    { id: `${runId}-contractor-1`, code: "vn000000001", taxCode: "0000000001", name: "Nhà thầu vi phạm fixture" },
+    { id: `${runId}-contractor-2`, code: "vn000000002", taxCode: "0000000002", name: "Thành viên đứng đầu liên danh fixture" },
+    { id: `${runId}-contractor-3`, code: "vn000000003", taxCode: "0000000003", name: "Thành viên vi phạm fixture" },
+  ],
     account: { id: `${runId}-user`, username: runId, name: runId, email: `${runId}@example.invalid` },
     password: `Aa!9${randomBytes(12).toString("hex")}`,
     package: { id: `${runId}-package`, code: runId.toUpperCase(), name: runId, price: 900000000 },

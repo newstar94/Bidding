@@ -137,7 +137,7 @@ def _setup(data: dict) -> dict:
                         contractor["id"],
                         contractor["code"],
                         contractor["name"],
-                        f"01000000{index:02d}",
+                        contractor.get("taxCode") or f"01000000{index:02d}",
                         dates["contractorEffective"],
                     ),
                 )

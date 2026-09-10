@@ -713,11 +713,11 @@ test("row-conflict browser isolation preserves cache and cleanup bypasses confli
   );
   assert.match(
     source,
-    /if \(browserName === "firefox" && currentPath !== null\) \{\s*await page\.goto\("about:blank", \{ waitUntil: "commit" \}\);\s*\}/u,
+    /const FIREFOX_RESET_URL = "data:text\/html,[^"]+";[\s\S]*if \(browserName === "firefox" && currentPath !== null\) \{\s*await page\.goto\(FIREFOX_RESET_URL, \{ waitUntil: "commit" \}\);\s*\}/u,
   );
   assert.match(
     source,
-    /async function reloadReady[\s\S]*browserName === "firefox"[\s\S]*about:blank[\s\S]*else \{\s*await page\.reload\(\{ waitUntil: "commit" \}\);/u,
+    /async function reloadReady[\s\S]*browserName === "firefox"[\s\S]*page\.goto\(FIREFOX_RESET_URL[\s\S]*else \{\s*await page\.reload\(\{ waitUntil: "commit" \}\);/u,
   );
   assert.match(
     source,

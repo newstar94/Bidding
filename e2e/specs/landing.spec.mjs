@@ -222,22 +222,10 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectHistoryPositionRestored(page);
   expect(await expectStoredHistoryPositionRestored(page)).toBeGreaterThan(100);
-  await expectPageScrolls(page, async () => {
-    await page.evaluate(() => {
-      window.__bfWheelDiagnostics = [];
-      document.addEventListener("wheel", (event) => {
-        const entry = { deltaY: event.deltaY, target: event.target?.tagName, prevented: event.defaultPrevented };
-        window.__bfWheelDiagnostics.push(entry);
-        queueMicrotask(() => { entry.prevented = event.defaultPrevented; });
-      }, { capture: true, passive: true, once: true });
-    });
-    // Target the page background instead of a composited product-preview
-    // descendant. This assertion verifies the root scroll container after
-    // history restoration, independent of preview hit-test caching.
-    await page.mouse.move(720, 450);
-    await page.mouse.move(40, 450);
-    await page.mouse.wheel(0, 500);
-  });
+  // The dedicated input test above covers native wheel gestures. PageDown
+  // verifies that history restoration did not leave the root scroll container
+  // locked without depending on Chromium's first synthetic wheel dispatch.
+  await expectPageScrolls(page, () => page.keyboard.press("PageDown"));
 
   await context.clearCookies();
   await openLanding(page);
