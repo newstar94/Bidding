@@ -3,6 +3,11 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_DOCUMENT = /^https?:\/\/[^/]+\/admin(?:\/[^?]*)?(?:\?.*)?$/u;
 const ADMIN_TEMPLATE = await readFile(new URL("../../views/admin/index.html", import.meta.url), "utf8");
+const ADMIN_MANIFEST = JSON.parse(await readFile(
+  new URL("../../dist/.vite/manifest.json", import.meta.url),
+  "utf8",
+));
+const ADMIN_BUNDLE = ADMIN_MANIFEST["frontend/admin-platform/AdminEntry.js"];
 const ADMIN_SESSION = {
   valid: true,
   user: {
@@ -49,9 +54,11 @@ const ORGANIZATION_PAGE = {
 
 function authorizedShell() {
   return ADMIN_TEMPLATE
-    .replace("__BF_ADMIN_STYLES__", '<link rel="stylesheet" href="/vendor/tabler/tabler.min.css">\n<link rel="stylesheet" href="/frontend/admin-platform/admin.css">')
-    .replace("__BF_ADMIN_VENDOR_SCRIPT__", '<script src="/vendor/tabler/tabler.min.js" defer></script>')
-    .replace("__BF_ADMIN_ENTRY__", "/frontend/admin-platform/AdminApp.js")
+    .replace("__BF_ADMIN_STYLES__", ADMIN_BUNDLE.css.map(
+      (asset) => `<link rel="stylesheet" href="/dist/${asset}">`,
+    ).join("\n"))
+    .replace("__BF_ADMIN_VENDOR_SCRIPT__", "")
+    .replace("__BF_ADMIN_ENTRY__", `/dist/${ADMIN_BUNDLE.file}`)
     .replace("__BF_ADMIN_SESSION__", JSON.stringify(ADMIN_SESSION).replaceAll("<", "\\u003c"));
 }
 
