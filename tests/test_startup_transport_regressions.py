@@ -515,7 +515,7 @@ def test_foreground_sync_does_not_show_full_loader_after_startup():
     assert "!controller?._initialSyncStarted" in source
 
 
-def test_active_role_switch_stays_in_spa_without_location_reload():
+def test_active_role_switch_keeps_workspace_roles_in_spa_and_opens_isolated_admin():
     source = (Path(app_module.project_root) / "frontend" / "admin" / "AdminUserController.js").read_text(
         encoding="utf-8"
     )
@@ -530,4 +530,9 @@ def test_active_role_switch_stays_in_spa_without_location_reload():
     )[0]
     assert "transitionConfirmedRole" in role_block
     assert "history?.pushState" in lifecycle_source
-    assert "window.location.assign" not in role_block
+    assert 'if (activeRole === "super_admin")' in role_block
+    assert 'window.location.assign("/admin")' in role_block
+    workspace_role_block = role_block.split('if (activeRole === "super_admin")', 1)[1].split(
+        'const targetTab = "dashboard"', 1
+    )[1]
+    assert "window.location.assign" not in workspace_role_block
