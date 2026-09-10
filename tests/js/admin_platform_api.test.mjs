@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AdminApiError, getAdminJson, postAdminJson } from "../../frontend/admin-platform/AdminApi.js";
+import {
+  AdminApiError,
+  getAdminJson,
+  patchAdminJson,
+  postAdminJson,
+} from "../../frontend/admin-platform/AdminApi.js";
 
 test("admin API uses same-origin credentials without workspace organization headers", async () => {
   let request;
@@ -91,6 +96,56 @@ test("admin API permits only approved billing mutations and sends CSRF and idemp
     assert.equal(new Headers(mutation.options.headers).get("Idempotency-Key"), "admin-refund:test-1234");
     assert.equal(new Headers(mutation.options.headers).has("X-Active-Org"), false);
     await assert.rejects(() => postAdminJson("/api/billing/admin/orders/order-public-1/delete", { fetchImpl }), TypeError);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("admin API sends commercial draft concurrency, CSRF and idempotency contracts", async () => {
+  const requests = [];
+  const previousDocument = globalThis.document;
+  globalThis.document = { cookie: "csrf_token=csrf-commercial-token" };
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ id: "draft-1", revision: 4, document: {} }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    await patchAdminJson("/api/commercial/drafts/draft-1", {
+      body: { expectedRevision: 3, document: { offers: [] } },
+      expectedRevision: 3,
+      idempotencyKey: "admin-plan-save-test",
+      fetchImpl,
+    });
+    const mutation = requests.at(-1);
+    const headers = new Headers(mutation.options.headers);
+    assert.equal(mutation.options.method, "PATCH");
+    assert.equal(headers.get("If-Match"), '"3"');
+    assert.equal(headers.get("X-CSRF-Token"), "csrf-commercial-token");
+    assert.equal(headers.get("Idempotency-Key"), "admin-plan-save-test");
+    assert.deepEqual(JSON.parse(mutation.options.body), {
+      expectedRevision: 3,
+      document: { offers: [] },
+    });
+
+    await postAdminJson("/api/commercial/drafts/draft-1/validate", {
+      body: { expectedRevision: 4 },
+      idempotencyKey: "admin-plan-validate-test",
+      fetchImpl,
+      retries: 0,
+    });
+    assert.equal(requests.at(-1).url, "/api/commercial/drafts/draft-1/validate");
+    await assert.rejects(
+      () => postAdminJson("/api/commercial/releases/release-1/delete", { fetchImpl }),
+      TypeError,
+    );
+    await assert.rejects(
+      () => postAdminJson("/api/admin/overview", { fetchImpl }),
+      TypeError,
+    );
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
