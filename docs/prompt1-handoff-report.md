@@ -1,8 +1,27 @@
 # Prompt 1 — báo cáo bàn giao hoàn tất
 
 Phạm vi kỹ thuật của Prompt 1 đã hoàn tất và được xác minh cục bộ trên worktree
-hiện tại. Đây không phải xác nhận GitHub CI từ xa: patch chưa commit/push. Phát
-hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp lý bên ngoài như nêu dưới đây.
+hiện tại. Phát hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp lý bên ngoài
+như nêu dưới đây.
+
+## Cập nhật bằng chứng ngày 10/09/2026
+
+- Toàn bộ suite cô lập `-Suite all -Project all` đạt: smoke 49 passed/5 skipped,
+  sau đó auth shell, UI quality, authenticated UI matrix, auth roles, offline,
+  multi-assignee, joint venture, low-price conflict, CRUD, pairwise và lifecycle
+  đều exit 0. Lifecycle cuối là `E2E-1789041941003`.
+- CRUD đã sửa barrier của hộp thoại chọn phiên bản: modal cha tạm ẩn không còn bị
+  hiểu nhầm là persistence hoàn tất; create/update hợp đồng đều chờ đúng POST
+  canonical chứa bản ghi dự kiến trước khi reload. Regression harness đạt 44/44.
+- Cross-browser package conflict và landing đạt trên Chromium, Firefox, WebKit.
+  Ownership/generation regression của bảng gói thầu đạt 11/11.
+- `check:static`, JavaScript coverage, secure build, N+1 (25/25), SBOM,
+  dependency audit và package extracted-runtime đều đạt. Secure build có 163
+  bundle; package có 876 runtime files, 4.939.942 bytes.
+- Startup đạt cold/warm p95 1245/236 ms, longest task 71 ms. First-tab đạt sau
+  cô lập loopback khỏi host proxy; tất cả lượt đo dưới 100 ms, không runtime error.
+- Hai lượt review độc lập cuối không có finding. GitHub CI từ xa chỉ được coi là
+  xác nhận sau khi commit được push và các workflow của commit đó kết thúc xanh.
 
 ## Cập nhật bằng chứng ngày 09/09/2026
 

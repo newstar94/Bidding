@@ -3849,9 +3849,12 @@ a.landing-cta-login {
 /* Hallmark · conversion story · design-system: design.md
  * Pre-emit critique: P5 H5 E4 S5 R4 V5
  */
-html[data-bf-shell="landing"],
-html[data-bf-shell="landing"] body {
+html[data-bf-shell="landing"] {
   overflow-x: clip;
+}
+
+html[data-bf-shell="landing"] body {
+  overflow: visible;
 }
 
 .landing-proof {

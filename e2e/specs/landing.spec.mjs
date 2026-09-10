@@ -63,6 +63,33 @@ async function resetScroll(page) {
 async function expectHistoryPositionRestored(page) {
   await expect(page).toHaveURL(/#giai-phap$/u);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+  // The landing document intentionally uses smooth anchor navigation. A URL
+  // and non-zero offset can therefore be observable while the compositor is
+  // still restoring the history entry. Wait for the native scroll position to
+  // settle before issuing a new input; otherwise that pending restoration can
+  // overwrite the wheel movement being verified below.
+  await page.evaluate(() => new Promise((resolve) => {
+    let previous = window.scrollY;
+    let stableFrames = 0;
+    const observe = () => {
+      const current = window.scrollY;
+      stableFrames = Math.abs(current - previous) < 1 ? stableFrames + 1 : 0;
+      previous = current;
+      if (stableFrames >= 5) resolve();
+      else requestAnimationFrame(observe);
+    };
+    requestAnimationFrame(observe);
+  }));
+}
+
+async function expectStoredHistoryPositionRestored(page) {
+  await expect.poll(() => page.evaluate(() => {
+    const savedPosition = Number(history.state?.bfLandingScrollY);
+    return Number.isFinite(savedPosition)
+      ? Math.abs(window.scrollY - savedPosition)
+      : Number.POSITIVE_INFINITY;
+  })).toBeLessThanOrEqual(1);
+  return page.evaluate(() => Number(history.state.bfLandingScrollY));
 }
 
 async function expectPageScrolls(page, action) {
@@ -180,17 +207,21 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectHistoryPositionRestored(page);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
+  const savedHistoryPosition = await page.evaluate(() => window.scrollY);
   await page.goto("/dang-nhap", { waitUntil: "commit" });
   await expect(page.locator("#form-auth-login")).toBeVisible();
   await page.goBack({ waitUntil: "commit" });
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectHistoryPositionRestored(page);
+  const firstStoredHistoryPosition = await expectStoredHistoryPositionRestored(page);
+  expect(Math.abs(firstStoredHistoryPosition - savedHistoryPosition)).toBeLessThanOrEqual(1);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
   await page.goForward({ waitUntil: "commit" });
   await expect(page.locator("#form-auth-login")).toBeVisible();
   await page.goBack({ waitUntil: "commit" });
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
   await expectHistoryPositionRestored(page);
+  expect(await expectStoredHistoryPositionRestored(page)).toBeGreaterThan(100);
   await expectPageScrolls(page, async () => {
     await page.evaluate(() => {
       window.__bfWheelDiagnostics = [];
@@ -200,7 +231,10 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
         queueMicrotask(() => { entry.prevented = event.defaultPrevented; });
       }, { capture: true, passive: true, once: true });
     });
-    // Refresh Chromium's wheel target after the page is restored from history.
+    // Cross a real coordinate boundary so Chromium refreshes the compositor
+    // hit-test after history restoration even when a prior test left the
+    // browser-level pointer at the final coordinate.
+    await page.mouse.move(40, 450);
     await page.mouse.move(720, 450);
     await page.mouse.wheel(0, 500);
   });

@@ -24,6 +24,99 @@ import {
 } from "../shared/versionResolver.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
 
+const packageTableRenderGenerations = new WeakMap();
+const packageTableInteractionOwnershipInstalled = new WeakSet();
+const packageTableInteractionRefreshes = new WeakMap();
+const packageTableInteractionPending = new WeakSet();
+
+export function beginPackageTableRender(tableBody) {
+  const generation = (packageTableRenderGenerations.get(tableBody) || 0) + 1;
+  packageTableRenderGenerations.set(tableBody, generation);
+  return () => packageTableRenderGenerations.get(tableBody) === generation;
+}
+
+export function installPackageTableInteractionOwnership(tableBody, requestRender = () => {}) {
+  packageTableInteractionRefreshes.set(tableBody, requestRender);
+  if (packageTableInteractionOwnershipInstalled.has(tableBody)) return;
+  packageTableInteractionOwnershipInstalled.add(tableBody);
+  tableBody.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    // Once a user starts acting on a rendered row, an older background load
+    // must not replace that control before the same click can finish.
+    packageTableInteractionPending.add(tableBody);
+    beginPackageTableRender(tableBody);
+  }, { capture: true });
+  const finishInteraction = () => {
+    if (!packageTableInteractionPending.has(tableBody)) return;
+    packageTableInteractionPending.delete(tableBody);
+    queueMicrotask(() => packageTableInteractionRefreshes.get(tableBody)?.());
+  };
+  tableBody.ownerDocument.addEventListener("click", finishInteraction, { capture: true });
+  tableBody.ownerDocument.addEventListener("pointercancel", finishInteraction, { capture: true });
+  tableBody.ownerDocument.addEventListener("pointerup", () => {
+    // A normal click follows pointerup before the next frame. Waiting for that
+    // frame also completes primary-button drags that produce no click, without
+    // detaching an actionable target between pointerup and click.
+    tableBody.ownerDocument.defaultView.requestAnimationFrame(finishInteraction);
+  }, { capture: true });
+}
+
+function waitForPackageTableComboboxClose(tableBody) {
+  return new Promise((resolve) => {
+    const Observer = tableBody.ownerDocument?.defaultView?.MutationObserver
+      || globalThis.MutationObserver;
+    const observer = new Observer(() => {
+      if (tableBody.querySelector(".bf-combobox.open")) return;
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(tableBody, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+}
+
+export async function canPackageTableRenderOwnDom(tableBody, renderIsCurrent) {
+  if (!renderIsCurrent()) return false;
+  if (!tableBody.querySelector(".bf-combobox.open")) return true;
+
+  // A selection-triggered render starts inside the native select change event.
+  // The accessible combobox closes immediately after dispatching that event, so
+  // yield one microtask before distinguishing it from an unrelated background
+  // render that would detach the control while the user is still choosing.
+  await Promise.resolve();
+
+  if (!renderIsCurrent()) return false;
+  if (tableBody.querySelector(".bf-combobox.open")) {
+    await waitForPackageTableComboboxClose(tableBody);
+  }
+  return renderIsCurrent();
+}
+
+export function canPackageTableRenderCommit(ownershipAllowed, renderIsCurrent) {
+  return ownershipAllowed && renderIsCurrent();
+}
+
+export async function settlePackageTableRenderLoad(
+  renderIsCurrent,
+  loadPage,
+  onCurrentError = () => {},
+) {
+  try {
+    const data = await loadPage();
+    if (!renderIsCurrent()) return { current: false };
+    return { current: true, data };
+  } catch (error) {
+    if (error?.name === "AbortError" || !renderIsCurrent()) {
+      return { current: false };
+    }
+    onCurrentError(error);
+    return { current: true, error };
+  }
+}
+
 export function resolvePackageTableVersionState(model, authoritativeRow) {
   const state = model?.state || {};
   const root = versionRootId(authoritativeRow);
@@ -86,6 +179,10 @@ export async function renderGoiThauTable() {
   const cacheOwner = "package-list";
   beginWorkspaceRender(this.model, cacheOwner);
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
+  installPackageTableInteractionOwnership(tableBody, () => this.renderGoiThauTable());
+  const renderIsCurrent = beginPackageTableRender(tableBody);
+  const canStart = await canPackageTableRenderOwnDom(tableBody, renderIsCurrent);
+  if (!canPackageTableRenderCommit(canStart, renderIsCurrent)) return;
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
   const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
   const filterHinhThuc = document.getElementById("filter-goithau-hinhthuc").value;
@@ -117,20 +214,22 @@ export async function renderGoiThauTable() {
     if (!getCachedPaginatedRecords(this.model, "goithau", pageParams)) {
       renderTableLoading(tableBody, 8);
     }
-    try {
-      const data = await loadPaginatedRecords(this.model, "goithau", pageParams, {
+    const loadResult = await settlePackageTableRenderLoad(
+      renderIsCurrent,
+      () => loadPaginatedRecords(this.model, "goithau", pageParams, {
         cancellationOwner: "ui:package-list",
-      });
-      slicedData = data.items;
-      totalItems = data.totalItems;
-      tablePerf.dataComplete(data);
-    } catch (e) {
-      if (e?.name === "AbortError") return;
-      console.error("Failed to fetch paginated packages", e);
-      clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại.", onRetry: () => this.renderGoiThauTable() });
-      return;
-    }
+      }),
+      (error) => {
+        console.error("Failed to fetch paginated packages", error);
+        clearVirtualTable(tableBody);
+        renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại.", onRetry: () => this.renderGoiThauTable() });
+      },
+    );
+    if (!loadResult.current) return;
+    if (loadResult.error) return;
+    slicedData = loadResult.data.items;
+    totalItems = loadResult.data.totalItems;
+    tablePerf.dataComplete(loadResult.data);
   } else {
     const latestPackages = this.model.getFilteredGoiThau();
     const filtered = latestPackages.filter((gt) => {
@@ -148,6 +247,8 @@ export async function renderGoiThauTable() {
     slicedData = paginateRecords(filtered, currentPage, pageSize);
     tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
+  const canCommit = await canPackageTableRenderOwnDom(tableBody, renderIsCurrent);
+  if (!canPackageTableRenderCommit(canCommit, renderIsCurrent)) return;
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
     const pag = document.getElementById("goithau-pagination");

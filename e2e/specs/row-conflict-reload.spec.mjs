@@ -201,14 +201,10 @@ async function selectVisibleVersion(page, packageRow, label) {
   const option = nativeSelect.locator("option").filter({ hasText: label });
   await expect(option).toHaveCount(1);
   const selectedId = await option.getAttribute("value");
-  const previousSelect = await nativeSelect.elementHandle();
   expect(selectedId).toBeTruthy();
-  expect(previousSelect).toBeTruthy();
   // Exercise the same accessible control as a user. The native select is a
-  // hidden implementation detail. Selecting a version synchronously starts an
-  // asynchronous table render, so wait for the old row to be replaced before
-  // resolving the next control; otherwise a following selection can target a
-  // listbox that the pending render has already detached.
+  // hidden implementation detail. One user selection must be sufficient; the
+  // package table owns stale-render suppression in production code.
   const combobox = packageRow.getByRole("combobox", {
     name: /Chọn phiên bản gói thầu/i,
   });
@@ -218,8 +214,6 @@ async function selectVisibleVersion(page, packageRow, label) {
   await page.locator(`[id="${listboxId}"]`)
     .getByRole("option", { name: label, exact: true })
     .click();
-  await page.waitForFunction((select) => !select.isConnected, previousSelect);
-  await previousSelect.dispose();
   await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
     .toHaveValue(selectedId);
   await expect(packageRow.getByRole("combobox", {

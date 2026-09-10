@@ -178,7 +178,10 @@ function classifyVisit(item, visitKind) {
   };
 }
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  args: ["--no-proxy-server"],
+});
 const context = await browser.newContext();
 const page = await context.newPage();
 await page.addInitScript(() => {

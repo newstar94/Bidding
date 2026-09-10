@@ -92,11 +92,15 @@ async function submitModal(page, formSelector, modalSelector) {
   }, formSelector);
   await page.locator(`${formSelector} button[type="submit"]`).click();
   const modal = page.locator(`${modalSelector}.active`);
-  const outcome = await Promise.race([
-    modal.waitFor({ state: "hidden", timeout: 20_000 }).then(() => "closed").catch(() => null),
-    page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 20_000 })
-      .then(() => "confirm").catch(() => null),
-  ]);
+  const outcome = await page.waitForFunction(({ formSelector: formId, modalSelector: modalId }) => {
+    if (document.querySelector("#modal-custom-dialog.active")) return "confirm";
+    const form = document.querySelector(formId);
+    const modalElement = document.querySelector(modalId);
+    if (!modalElement?.classList.contains("active") && form?.dataset.submitState !== "saving") {
+      return "closed";
+    }
+    return false;
+  }, { formSelector, modalSelector }, { timeout: 20_000 }).then((handle) => handle.jsonValue());
   if (outcome === "confirm") {
     const confirmation = await page.locator("#modal-custom-dialog").innerText().catch(() => "");
     await page.locator("#btn-dialog-ok").click();
@@ -112,6 +116,19 @@ async function submitModal(page, formSelector, modalSelector) {
   if (outcome === "closed") return;
   await modal.waitFor({ state: "hidden", timeout: 100 }).catch(async (error) => {
     throw new Error(`${formSelector} did not close: ${JSON.stringify(await diagnostics())}; ${error.message}`);
+  });
+}
+
+function waitForCanonicalUpsert(page, table, matches) {
+  return page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    if (url.pathname !== "/api/sync" || response.request().method() !== "POST") return false;
+    const payload = response.request().postDataJSON();
+    return Array.isArray(payload?.[table]) && payload[table].some(matches);
+  }, { timeout: 20_000 }).then(async (response) => {
+    if (response.ok()) return response;
+    const body = await response.text().catch(() => "");
+    throw new Error(`${table} canonical sync returned ${response.status()}: ${body}`);
   });
 }
 
@@ -584,14 +601,26 @@ try {
   await page.locator('input[name="hd-goithau-checkbox"]:not([disabled])').first().check();
   await select(page, "#hd-nhanvienphutrach", { index: 1 });
   await select(page, "#hd-trangthai-hopdong", { label: "Đang thực hiện" });
+  const contractCreated = waitForCanonicalUpsert(
+    page,
+    "hopdong",
+    (contract) => contract.tenHopDong === `Hợp đồng CRUD ${runId}`,
+  );
   await submitModal(page, "#form-hopdong", "#modal-hopdong");
+  await contractCreated;
   await page.locator("#search-hopdong").fill(`Hợp đồng CRUD ${runId}`);
   let contractRow = page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng CRUD ${runId}` });
   await contractRow.locator('[data-bf-action="edit-contract"]').click();
   await page.locator("#modal-hopdong.active").waitFor({ state: "visible" });
   const contractUpdated = `Hợp đồng CRUD đã sửa ${runId}`;
   await page.locator("#hd-ten").fill(contractUpdated);
+  const contractSaved = waitForCanonicalUpsert(
+    page,
+    "hopdong",
+    (contract) => contract.tenHopDong === contractUpdated,
+  );
   await submitModal(page, "#form-hopdong", "#modal-hopdong");
+  await contractSaved;
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.locator("#search-hopdong").fill(contractUpdated);

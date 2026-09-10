@@ -1,5 +1,7 @@
 const LOGIN_PATH = "/dang-nhap";
 const WORKSPACE_PATH = "/tong-quan";
+const LANDING_HISTORY_SCROLL_KEY = "bfLandingScrollY";
+let landingHistoryCaptureInstalled = false;
 
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
@@ -236,6 +238,56 @@ export function isLandingPath(pathname = window.location.pathname) {
   return pathname === "/";
 }
 
+function landingNavigationType() {
+  return globalThis.performance?.getEntriesByType?.("navigation")?.[0]?.type || "";
+}
+
+export function installLandingHistoryScrollCapture() {
+  if (landingHistoryCaptureInstalled) return;
+  landingHistoryCaptureInstalled = true;
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  window.addEventListener("pagehide", () => {
+    const priorState = history.state && typeof history.state === "object"
+      ? history.state
+      : {};
+    history.replaceState({
+      ...priorState,
+      [LANDING_HISTORY_SCROLL_KEY]: window.scrollY,
+    }, "");
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    requestAnimationFrame(() => {
+      restoreLandingFragment({ navigationType: "back_forward" });
+    });
+  });
+}
+
+export function restoreLandingFragment({ navigationType = landingNavigationType() } = {}) {
+  const savedHistoryPosition = Number(history.state?.[LANDING_HISTORY_SCROLL_KEY]);
+  if (navigationType === "back_forward" && Number.isFinite(savedHistoryPosition)) {
+    window.scrollTo({ top: savedHistoryPosition, behavior: "instant" });
+    return true;
+  }
+  if (navigationType !== "reload") return false;
+  const encodedId = String(window.location.hash || "").slice(1);
+  if (!encodedId) return false;
+  let id;
+  try {
+    id = decodeURIComponent(encodedId);
+  } catch {
+    return false;
+  }
+  const target = document.getElementById(id);
+  if (!target) return false;
+  const root = document.documentElement;
+  const previousBehavior = root.style.scrollBehavior;
+  root.style.scrollBehavior = "auto";
+  target.scrollIntoView({ block: "start", inline: "nearest" });
+  root.style.scrollBehavior = previousBehavior;
+  return true;
+}
+
 export async function bootstrapLandingPage(session = { valid: false }) {
   const bundledShell = document.querySelector(
     'link[data-bf-shell-styles="landing"]',
@@ -251,6 +303,11 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   applySessionAwareLinks(session);
   installHeaderState();
   installMobileNavigation();
+  installLandingHistoryScrollCapture();
+  // WebKit resolves the fragment while the landing shell is still hidden and
+  // can therefore retain the URL at the top of the page after a reload. Once
+  // the shell is visible and laid out, restore the fragment exactly once.
+  restoreLandingFragment();
   if (document.documentElement.dataset.trialFullAccess !== "true") {
     void loadPublicPackages();
   }

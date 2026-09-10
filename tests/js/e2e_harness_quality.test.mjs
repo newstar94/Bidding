@@ -255,6 +255,29 @@ test("CRUD E2E isolates loopback traffic and Windows headless GPU state", () => 
   assert.match(source, /page\.setDefaultTimeout\(20_000\)/u);
 });
 
+test("CRUD modal submit does not mistake a version dialog for completed persistence", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "verify_crud_modules_e2e.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /#modal-custom-dialog\.active[\s\S]*return "confirm"/u);
+  assert.match(
+    source,
+    /!modalElement\?\.classList\.contains\("active"\)[\s\S]*form\?\.dataset\.submitState !== "saving"/u,
+  );
+  assert.match(source, /waitForCanonicalUpsert[\s\S]*contractUpdated/u);
+});
+
+test("first-tab performance isolates loopback traffic from the host proxy", () => {
+  const source = fs.readFileSync(
+    path.join(scriptsRoot, "measure_first_tab_loading.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /args: \["--no-proxy-server"\]/u);
+});
+
 test("low-price conflict E2E isolates loopback traffic from the host proxy", () => {
   const source = fs.readFileSync(
     path.join(scriptsRoot, "verify_low_price_conflict_e2e.mjs"),
