@@ -3853,11 +3853,13 @@ a.landing-cta-login {
  * Pre-emit critique: P5 H5 E4 S5 R4 V5
  */
 html[data-bf-shell="landing"] {
-  overflow-x: clip;
+  overflow-x: visible !important;
+  overflow-y: visible;
 }
 
 html[data-bf-shell="landing"] body {
-  overflow: visible;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .landing-proof {

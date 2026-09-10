@@ -215,7 +215,15 @@ test('historical landing icons render strokes and native scrolling remains avail
       .map(node => node.getBBox().width));
     assert.ok(visibleIcons.length >= 7);
     assert.ok(visibleIcons.every(width => width > 0));
-    assert.notEqual(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'hidden');
+    const rootOverflow = await page.evaluate(() => ({
+      htmlX: getComputedStyle(document.documentElement).overflowX,
+      htmlY: getComputedStyle(document.documentElement).overflowY,
+      bodyY: getComputedStyle(document.body).overflowY,
+    }));
+    assert.notEqual(rootOverflow.htmlX, 'clip');
+    assert.notEqual(rootOverflow.htmlY, 'clip');
+    assert.notEqual(rootOverflow.bodyY, 'hidden');
+    assert.notEqual(rootOverflow.bodyY, 'clip');
     for (const selector of ['.landing-hero', '.landing-product-window']) {
       assert.notEqual(
         await page.locator(selector).evaluate(node => getComputedStyle(node).overflowY),
