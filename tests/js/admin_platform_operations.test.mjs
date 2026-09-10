@@ -38,12 +38,20 @@ test("health view renders only allowlisted operational fields", () => {
     status: "ready",
     application: { startupComplete: true, ready: true, eventLoopLagMs: 3.5 },
     database: { status: "available", schemaVersion: 90, connectionUrl: "private-db" },
+    operations: {
+      documentWorker: { active: 1, waiting: 2, completed: 3, failed: 0, rejected: 0 },
+      websocket: { activeConnections: 4, pendingEvents: 5, oldestPendingSeconds: 6.5 },
+      backgroundJobs: [{ queue: "document", status: "pending", count: 2, oldestSeconds: 8 }],
+    },
     rawError: "do-not-render",
   });
 
   assert.match(markup, /Sẵn sàng/u);
   assert.match(markup, /3[.]5 ms/u);
   assert.match(markup, />90</u);
+  assert.match(markup, /Worker tài liệu/u);
+  assert.match(markup, /Kết nối WebSocket/u);
+  assert.match(markup, /document · pending: 2/u);
   assert.doesNotMatch(markup, /private-db|do-not-render/u);
   assert.match(healthMarkup(null), /data-admin-state="empty"/u);
 });

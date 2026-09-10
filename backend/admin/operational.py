@@ -21,6 +21,7 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
 from backend.shared.logging_utils import log_error
 from backend.observability.metrics import operational_status_snapshot
+from backend.observability.recording import snapshot_recorded_metrics
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -150,6 +151,11 @@ def _safe_read_operational_status() -> dict:
         log_error(exc, "admin_operational_snapshot", level="WARN")
         return {}
     disk = snapshot.get("disk") if isinstance(snapshot.get("disk"), dict) else {}
+    recorded = snapshot_recorded_metrics()
+    worker = recorded.document_worker
+    background_jobs = snapshot.get("background_jobs")
+    if not isinstance(background_jobs, dict):
+        background_jobs = {}
     return {
         "databaseBytes": int(snapshot.get("postgres_database_bytes") or 0),
         "waitingLocks": int(snapshot.get("postgres_waiting_locks") or 0),
@@ -169,6 +175,34 @@ def _safe_read_operational_status() -> dict:
             "restoreDrillAgeSeconds": snapshot.get("restore_age"),
             "checkedAt": snapshot.get("artifact_checked_at"),
         },
+        "documentWorker": {
+            "active": int(worker.get("active", 0)),
+            "waiting": int(worker.get("waiting", 0)),
+            "completed": int(worker.get("success", 0)),
+            "failed": int(worker.get("error", 0)),
+            "rejected": int(worker.get("rejected", 0)),
+        },
+        "websocket": {
+            "activeConnections": int(
+                snapshot.get("websocket_cluster_active_connections") or 0
+            ),
+            "pendingEvents": int(snapshot.get("websocket_outbox_rows") or 0),
+            "oldestPendingSeconds": float(
+                snapshot.get("websocket_outbox_oldest_seconds") or 0
+            ),
+        },
+        "backgroundJobs": [
+            {
+                "queue": str(queue),
+                "status": str(status),
+                "count": int(values.get("count") or 0),
+                "oldestSeconds": float(values.get("oldest_seconds") or 0),
+            }
+            for (queue, status), values in sorted(background_jobs.items())
+            if isinstance(queue, str)
+            and isinstance(status, str)
+            and isinstance(values, dict)
+        ],
     }
 
 

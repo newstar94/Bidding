@@ -87,6 +87,12 @@ export function healthMarkup(payload) {
   const operations = payload.operations && typeof payload.operations === "object" ? payload.operations : {};
   const storage = operations.storage && typeof operations.storage === "object" ? operations.storage : {};
   const backup = operations.backup && typeof operations.backup === "object" ? operations.backup : {};
+  const worker = operations.documentWorker && typeof operations.documentWorker === "object" ? operations.documentWorker : {};
+  const websocket = operations.websocket && typeof operations.websocket === "object" ? operations.websocket : {};
+  const backgroundJobs = Array.isArray(operations.backgroundJobs) ? operations.backgroundJobs : [];
+  const backgroundSummary = backgroundJobs.length
+    ? backgroundJobs.map((item) => `${text(item.queue)} · ${text(item.status)}: ${Number.isFinite(item.count) ? text(item.count) : "N/A"}`).join("<br>")
+    : "Chưa có tác vụ trong hàng đợi";
   return `<div class="row row-cards"><div class="col-lg-6">${detailsCard("Ứng dụng", [
     ["Trạng thái", statusBadge(payload.status)],
     ["Khởi động hoàn tất", text(yesNo(application.startupComplete))],
@@ -107,6 +113,17 @@ export function healthMarkup(payload) {
     ["Bản sao lưu đã xác minh gần nhất", timestamp(backup.lastVerifiedAt)],
     ["Lần diễn tập khôi phục gần nhất", timestamp(backup.lastRestoreDrillAt)],
     ["Lần kiểm tra trạng thái", timestamp(backup.checkedAt)],
+  ])}</div><div class="col-lg-6">${detailsCard("Worker tài liệu", [
+    ["Đang xử lý", Number.isFinite(worker.active) ? text(worker.active) : "N/A"],
+    ["Đang chờ", Number.isFinite(worker.waiting) ? text(worker.waiting) : "N/A"],
+    ["Hoàn tất", Number.isFinite(worker.completed) ? text(worker.completed) : "N/A"],
+    ["Lỗi", Number.isFinite(worker.failed) ? text(worker.failed) : "N/A"],
+    ["Bị từ chối", Number.isFinite(worker.rejected) ? text(worker.rejected) : "N/A"],
+  ])}</div><div class="col-lg-6">${detailsCard("Đồng bộ thời gian thực", [
+    ["Kết nối WebSocket", Number.isFinite(websocket.activeConnections) ? text(websocket.activeConnections) : "N/A"],
+    ["Sự kiện đang chờ", Number.isFinite(websocket.pendingEvents) ? text(websocket.pendingEvents) : "N/A"],
+    ["Tuổi sự kiện cũ nhất", Number.isFinite(websocket.oldestPendingSeconds) ? `${text(websocket.oldestPendingSeconds)} giây` : "N/A"],
+    ["Tác vụ nền", backgroundSummary],
   ])}</div></div>`;
 }
 

@@ -37,6 +37,20 @@ def _install_database_runner(monkeypatch, database_status=None):
                 "walBytes": 1024,
                 "storage": {"data": {"freeBytes": 100, "totalBytes": 200}},
                 "backup": {"lastVerifiedAt": 123, "ageSeconds": 10},
+                "documentWorker": {
+                    "active": 1, "waiting": 2, "completed": 3,
+                    "failed": 0, "rejected": 0,
+                },
+                "websocket": {
+                    "activeConnections": 4, "pendingEvents": 5,
+                    "oldestPendingSeconds": 6.5,
+                },
+                "backgroundJobs": [
+                    {
+                        "queue": "document", "status": "pending",
+                        "count": 2, "oldestSeconds": 8.0,
+                    }
+                ],
             }
         return function(*args)
 
@@ -143,6 +157,45 @@ def test_health_reports_real_application_and_database_state(monkeypatch):
     assert payload["database"] == {"status": "available", "schemaVersion": 90}
     assert payload["operations"]["databaseBytes"] == 4096
     assert payload["operations"]["storage"]["data"]["totalBytes"] == 200
+    assert payload["operations"]["documentWorker"]["waiting"] == 2
+    assert payload["operations"]["websocket"]["activeConnections"] == 4
+    assert payload["operations"]["backgroundJobs"][0]["queue"] == "document"
+
+
+def test_operational_projection_includes_bounded_worker_sync_and_job_health(monkeypatch):
+    monkeypatch.setattr(
+        operational,
+        "operational_status_snapshot",
+        lambda: {
+            "websocket_cluster_active_connections": 7,
+            "websocket_outbox_rows": 8,
+            "websocket_outbox_oldest_seconds": 9.5,
+            "background_jobs": {
+                ("document", "pending"): {"count": 3, "oldest_seconds": 12.0},
+            },
+            "private_path": "D:/must-not-leak",
+        },
+    )
+    monkeypatch.setattr(
+        operational,
+        "snapshot_recorded_metrics",
+        lambda: SimpleNamespace(document_worker={
+            "active": 1, "waiting": 2, "success": 4, "error": 1, "rejected": 1,
+        }),
+    )
+
+    payload = operational._safe_read_operational_status()
+
+    assert payload["documentWorker"] == {
+        "active": 1, "waiting": 2, "completed": 4, "failed": 1, "rejected": 1,
+    }
+    assert payload["websocket"] == {
+        "activeConnections": 7, "pendingEvents": 8, "oldestPendingSeconds": 9.5,
+    }
+    assert payload["backgroundJobs"] == [
+        {"queue": "document", "status": "pending", "count": 3, "oldestSeconds": 12.0}
+    ]
+    assert "private_path" not in payload
 
 
 def test_health_is_degraded_without_leaking_database_failure(monkeypatch):
