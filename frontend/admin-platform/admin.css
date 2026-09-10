@@ -8,4 +8,13 @@ body { min-height: 100vh; }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
 .bf-admin-metric .h1 { font-variant-numeric: tabular-nums; }
+.bf-admin-directory-table td { vertical-align: top; }
+.bf-admin-directory-table td > div + div { margin-top: .35rem; }
+@media (max-width: 767.98px) {
+  .bf-admin-directory-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .bf-admin-directory-table tbody, .bf-admin-directory-table tr, .bf-admin-directory-table td { display: block; width: 100%; }
+  .bf-admin-directory-table tr { padding: .75rem 1rem; border-bottom: var(--tblr-border-width) solid var(--tblr-border-color); }
+  .bf-admin-directory-table td { display: grid; grid-template-columns: minmax(7rem, 35%) 1fr; gap: .75rem; padding: .35rem 0; border: 0; overflow-wrap: anywhere; }
+  .bf-admin-directory-table td::before { content: attr(data-label); color: var(--tblr-secondary-color); font-weight: 600; }
+}
 @media (max-width: 991.98px) { .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; } }

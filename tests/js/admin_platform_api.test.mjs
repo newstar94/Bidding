@@ -35,3 +35,18 @@ test("admin API classifies permission denial", async () => {
     (error) => error instanceof AdminApiError && error.status === 403 && error.code === "FORBIDDEN",
   );
 });
+
+test("admin API encodes server-side directory query values", async () => {
+  let requestedUrl = "";
+  await getAdminJson("/api/admin/users", {
+    query: { page: 2, search: "Minh & An", status: "active" },
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assert.equal(requestedUrl, "/api/admin/users?page=2&search=Minh%20%26%20An&status=active");
+});

@@ -42,8 +42,18 @@ function errorMessage(status, payload) {
   return payload?.message || payload?.error || "Không thể tải dữ liệu quản trị.";
 }
 
-export async function getAdminJson(path, { signal, fetchImpl = globalThis.fetch } = {}) {
-  const url = assertAdminPath(path);
+function queryString(query) {
+  if (!query || typeof query !== "object") return "";
+  return Object.entries(query)
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+}
+
+export async function getAdminJson(path, { query, signal, fetchImpl = globalThis.fetch } = {}) {
+  const baseUrl = assertAdminPath(path);
+  const encodedQuery = queryString(query);
+  const url = encodedQuery ? `${baseUrl}?${encodedQuery}` : baseUrl;
   if (typeof fetchImpl !== "function") {
     throw new AdminApiError("Trình duyệt không hỗ trợ kết nối tới máy chủ.", { code: "FETCH_UNAVAILABLE" });
   }

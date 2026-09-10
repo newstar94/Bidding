@@ -1,0 +1,158 @@
+import { getAdminJson } from "./AdminApi.js";
+import {
+  adminLoadingMarkup,
+  adminStateMarkup,
+  renderAdminFailure,
+  renderAdminMarkup,
+} from "./AdminStateView.js";
+import { escapeHtml } from "../shared/view_helpers.js";
+
+const PAGE_SIZES = new Set([25, 50, 100]);
+
+export function createLatestAdminLoader() {
+  let activeController = null;
+  let sequence = 0;
+  return {
+    async run(operation, { signal, onSuccess, onError } = {}) {
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+      const current = ++sequence;
+      const cancel = () => controller.abort(signal?.reason);
+      if (signal?.aborted) cancel();
+      else signal?.addEventListener?.("abort", cancel, { once: true });
+      try {
+        const result = await operation(controller.signal);
+        if (current === sequence && !controller.signal.aborted) onSuccess?.(result);
+      } catch (error) {
+        if (current === sequence && !controller.signal.aborted) onError?.(error);
+      } finally {
+        signal?.removeEventListener?.("abort", cancel);
+      }
+    },
+    cancel() {
+      sequence += 1;
+      activeController?.abort();
+    },
+  };
+}
+
+function selected(value, expected) {
+  return value === expected ? " selected" : "";
+}
+
+function normalizeState(config, values = {}) {
+  const page = Math.max(1, Number.parseInt(values.page, 10) || 1);
+  const requestedSize = Number.parseInt(values.pageSize, 10) || 25;
+  const sortBy = config.sortKeys.includes(values.sortBy) ? values.sortBy : config.defaultSort;
+  return {
+    page,
+    pageSize: PAGE_SIZES.has(requestedSize) ? requestedSize : 25,
+    search: String(values.search || "").trim().slice(0, 100),
+    sortBy,
+    sortDir: values.sortDir === "desc" ? "desc" : "asc",
+    ...Object.fromEntries(config.filters.map((filter) => {
+      const value = String(values[filter.key] || "");
+      return [filter.key, filter.options.some(([option]) => option === value) ? value : ""];
+    })),
+  };
+}
+
+export function readDirectoryState(config, search = globalThis.location?.search || "") {
+  const params = new globalThis.URLSearchParams(search);
+  return normalizeState(config, Object.fromEntries(params.entries()));
+}
+
+export function directoryQuery(state, config) {
+  return Object.fromEntries([
+    ["page", state.page], ["pageSize", state.pageSize], ["search", state.search],
+    ["sortBy", state.sortBy], ["sortDir", state.sortDir],
+    ...config.filters.map((filter) => [filter.key, state[filter.key]]),
+  ].filter(([, value]) => value !== ""));
+}
+
+function filterMarkup(filter, state) {
+  const options = [["", filter.allLabel], ...filter.options]
+    .map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(state[filter.key], value)}>${escapeHtml(label)}</option>`)
+    .join("");
+  return `<label class="form-label mb-0"><span class="visually-hidden">${escapeHtml(filter.label)}</span><select class="form-select" name="${escapeHtml(filter.key)}" aria-label="${escapeHtml(filter.label)}">${options}</select></label>`;
+}
+
+function controlsMarkup(config, state) {
+  return `<form class="card card-body mb-3" data-admin-directory-form role="search"><div class="row g-2 align-items-center"><div class="col-12 col-lg"><label class="visually-hidden" for="admin-directory-search">Tìm kiếm</label><input id="admin-directory-search" class="form-control" type="search" name="search" value="${escapeHtml(state.search)}" maxlength="100" placeholder="${escapeHtml(config.searchPlaceholder)}"></div>${config.filters.map((filter) => `<div class="col-6 col-lg-auto">${filterMarkup(filter, state)}</div>`).join("")}<div class="col-12 col-lg-auto"><button class="btn btn-primary w-100" type="submit">Tìm kiếm</button></div></div></form><div data-admin-directory-results aria-live="polite"></div>`;
+}
+
+function sortHeader(column, state) {
+  if (!column.sortKey) return `<th scope="col">${escapeHtml(column.label)}</th>`;
+  const active = state.sortBy === column.sortKey;
+  const ariaSort = active ? (state.sortDir === "asc" ? "ascending" : "descending") : "none";
+  const nextDirection = active && state.sortDir === "asc" ? "desc" : "asc";
+  return `<th scope="col" aria-sort="${ariaSort}"><button class="btn btn-link p-0 text-reset" type="button" data-admin-sort="${escapeHtml(column.sortKey)}" data-admin-sort-dir="${nextDirection}">${escapeHtml(column.label)}</button></th>`;
+}
+
+function paginationMarkup(pagination) {
+  const page = Math.max(1, Number(pagination?.page) || 1);
+  const pages = Math.max(1, Number(pagination?.totalPages) || 1);
+  const total = Math.max(0, Number(pagination?.totalRows) || 0);
+  return `<footer class="card-footer d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2"><span class="text-secondary">${escapeHtml(total)} bản ghi · Trang ${escapeHtml(page)}/${escapeHtml(pages)}</span><div class="btn-list"><button class="btn btn-outline-secondary" type="button" data-admin-page="${page - 1}"${page <= 1 ? " disabled" : ""}>Trang trước</button><button class="btn btn-outline-secondary" type="button" data-admin-page="${page + 1}"${page >= pages ? " disabled" : ""}>Trang sau</button></div></footer>`;
+}
+
+export function directoryResultsMarkup(config, state, payload) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (!items.length) return adminStateMarkup("empty", { message: config.emptyMessage });
+  const headers = config.columns.map((column) => sortHeader(column, state)).join("");
+  const rows = items.map(config.rowMarkup).join("");
+  return `<section class="card" aria-label="${escapeHtml(config.title)}"><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
+}
+
+function replaceBrowserQuery(state, config) {
+  if (!globalThis.history?.replaceState || !globalThis.location) return;
+  const query = Object.entries(directoryQuery(state, config))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  globalThis.history.replaceState(globalThis.history.state, "", `${globalThis.location.pathname}?${query}`);
+}
+
+export function renderAdminDirectory(container, config, { fetchImpl, signal } = {}) {
+  let state = readDirectoryState(config);
+  const loader = createLatestAdminLoader();
+  renderAdminMarkup(container, controlsMarkup(config, state));
+  const results = container.querySelector("[data-admin-directory-results]");
+
+  const bindResultActions = () => {
+    results.querySelectorAll("[data-admin-sort]").forEach((button) => button.addEventListener("click", () => {
+      state = normalizeState(config, { ...state, page: 1, sortBy: button.dataset.adminSort, sortDir: button.dataset.adminSortDir });
+      void load();
+    }));
+    results.querySelectorAll("[data-admin-page]").forEach((button) => button.addEventListener("click", () => {
+      state = normalizeState(config, { ...state, page: button.dataset.adminPage });
+      void load();
+    }));
+  };
+  const load = async () => {
+    replaceBrowserQuery(state, config);
+    renderAdminMarkup(results, adminLoadingMarkup(`Đang tải ${config.title.toLowerCase()}…`), { busy: true });
+    await loader.run(
+      (requestSignal) => getAdminJson(config.endpoint, { query: directoryQuery(state, config), fetchImpl, signal: requestSignal }),
+      {
+        signal,
+        onSuccess(payload) {
+          renderAdminMarkup(results, directoryResultsMarkup(config, state, payload));
+          bindResultActions();
+        },
+        onError(error) {
+          renderAdminFailure(results, error, load);
+        },
+      },
+    );
+  };
+  container.querySelector("[data-admin-directory-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    state = normalizeState(config, { ...state, ...values, page: 1 });
+    void load();
+  });
+  signal?.addEventListener?.("abort", () => loader.cancel(), { once: true });
+  void load();
+  return { reload: load, cancel: () => loader.cancel() };
+}
