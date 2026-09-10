@@ -1,8 +1,25 @@
 # Prompt 1 — báo cáo bàn giao hoàn tất
 
-Phạm vi kỹ thuật của Prompt 1 đã hoàn tất và được xác minh cục bộ trên worktree
-hiện tại. Phát hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp lý bên ngoài
-như nêu dưới đây.
+Phạm vi kỹ thuật của Prompt 1 đã hoàn tất trên `main` và được xác minh lại tại
+`7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1` cả cục bộ lẫn
+trên GitHub Actions. Phát hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp
+lý bên ngoài như nêu dưới đây; đây là ngoại lệ được Prompt 1 cho phép và không
+được hợp thức hóa bằng dữ liệu giả.
+
+## Cập nhật bằng chứng ngày 11/09/2026
+
+- HEAD và `origin/main` cùng là `7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1`
+  tại lần audit hoàn tất Prompt 1 gần nhất.
+- Full CI run `34541273596` hoàn tất `success`, bao gồm static contracts,
+  PostgreSQL schema/FK, Python và JavaScript coverage, secure build, package,
+  startup performance, cross-browser matrix, full role/workflow E2E và product
+  analytics browser journey.
+- CodeQL run `34541273635`, N+1 run `34541273661` và Supply-chain Security run
+  `34541273577` đều hoàn tất `success` trên cùng SHA.
+- Regression cuối cho race thu hồi phân công chạy qua đúng luồng pull: snapshot
+  delta có thẩm quyền đã loại gói thầu vẫn đóng editor dù visibility token đã
+  được quan sát trước. Suite multi-assignee cô lập đạt cả biến thể delta 200 và
+  full-reset 409; không tăng timeout, retry hoặc thay đổi expectation.
 
 ## Cập nhật bằng chứng ngày 10/09/2026
 
@@ -65,10 +82,24 @@ và vi phạm nhà thầu, mỗi nhóm 3/3. Không đổi business contract đ�
 
 ## Baseline
 
-- HEAD và origin/main sau fetch: `1e06300eb3bb8508b770326e37e55f9d31278dcf`.
-- Branch: main; thay đổi chưa commit/push, cần giữ nguyên các thay đổi người dùng.
-- Full CI baseline: https://github.com/newstar94/Bidding/actions/runs/34008073708 — lỗi quality, package candidate và cross-browser matrix.
-- CodeQL baseline: https://github.com/newstar94/Bidding/actions/runs/34095272630 — Python và JavaScript/TypeScript đạt, không bao phủ diff chưa commit.
+- Baseline được prompt quan sát: `1e06300eb3bb8508b770326e37e55f9d31278dcf`.
+- Branch hoàn tất: `main`; HEAD và `origin/main`:
+  `7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1` tại lần audit gần nhất.
+- Full CI baseline: https://github.com/newstar94/Bidding/actions/runs/34008073708
+  — lỗi quality, package candidate và cross-browser matrix.
+- Full CI sau sửa: https://github.com/newstar94/Bidding/actions/runs/34541273596
+  — `success`.
+- CodeQL sau sửa: https://github.com/newstar94/Bidding/actions/runs/34541273635
+  — `success`.
+
+### Lịch sử Full CI và phân loại
+
+| Run / SHA | Kết quả | Phân loại |
+| --- | --- | --- |
+| `34008073708` / baseline `1e06300e` | Quality, package candidate và cross-browser lỗi | Nợ tồn tại trước Prompt 1 |
+| `34525868784` / `2d94b62e` đến `34529555036` / `36ea6fe8` | Full role/workflow E2E lỗi trong bốn commit tích hợp Tabler kế tiếp | Regression của phạm vi Prompt 2, được sửa trước khi chốt HEAD hiện tại; không đổi expectation hay quyền để làm xanh |
+| `34532286895` / `295115b8` | Toàn bộ engineering CI đạt | Mốc Prompt 1 hoàn tất ban đầu |
+| `34541273596` / `7bc7e968` | Toàn bộ engineering CI đạt lại | Xác minh không regression Prompt 1 trên HEAD audit hiện tại |
 
 ## Architecture/Call Flow
 
@@ -149,20 +180,20 @@ E2E hai tab dirty package/plan breakdown đạt trên bản token mới; các ta
 
 ## CI Before / After
 
-| Check | Baseline / hiện trạng local |
-| --- | --- |
-| Quality/static | Baseline lỗi; local đã pass, cần gắn lần cuối với source chốt |
-| Python coverage | Nguồn cuối: 2198 passed, 1 skipped, 1 deselected; 63.77%, 16 critical modules đạt |
-| JS coverage | 1740 passed, không skip; 53.63/65.32/67.63%, 14 critical modules; trước các thay đổi harness cuối |
-| Secure build | Artifact `903acc6beb91d9f4c1a431b6d1b8dfc7dda79992b16cac7d568c636ed1e7ebfe` đã pass |
-| DB/FK | 214 foreign keys, không thiếu index |
-| Playwright smoke | Lượt `prompt1-smoke-route-final.log`: 49 passed/5 skips, exit 0; procurement fixture riêng 3/3 |
-| Full lifecycle | Run E2E-1788923825487 đạt sau sửa ghi đè pending projection; trước tích hợp preload font backend |
-| Performance | Sau preload font: cold/warm p95 1325/236 ms, không ghi nhận long task; ngưỡng 100 ms, các lượt fail trước vẫn lưu |
-| N+1 | 25 passed |
-| Package | Sau preload font: 876 files, 4942547 bytes; extracted-runtime pass |
-| Dependency/SBOM | Audit không tìm thấy lỗ hổng ở lần chạy; SBOM sinh được, direct Python edges bổ sung |
-| Legal | BLOCKED, 27 unapproved facts và placeholders |
+| Check | Baseline | Sau sửa trên SHA `7bc7e968` |
+| --- | --- | --- |
+| Quality/static | Lỗi | Full CI `success` |
+| Python coverage | Chưa đạt gate tổng | Full CI `success`; critical coverage đạt |
+| JS coverage | Chưa đạt gate tổng | Full CI `success`; critical coverage đạt |
+| Secure build | Chưa có artifact chốt | Full CI `success` |
+| DB/FK | Chưa có bằng chứng chốt | Full CI `success` |
+| Playwright cross-browser | Lỗi | Chromium, Firefox và WebKit `success` |
+| Full role/workflow E2E | Lỗi | Full CI `success` |
+| Startup performance | Chưa có kết quả chốt | Full CI `success` theo ngưỡng đã duyệt |
+| N+1 | Cần xác minh | Run `34541273661` `success` |
+| Package/dependency/SBOM | Lỗi package candidate | Full CI và Supply-chain `success` |
+| CodeQL | Baseline cũ không phủ patch | Run `34541273635` `success` |
+| Legal production release | BLOCKED | Vẫn BLOCKED, 27 dữ kiện chưa duyệt; không giả mạo |
 
 ## Commands Actually Run
 
@@ -202,7 +233,9 @@ và không có leak. Quét toàn workspace không dùng làm gate vì đi vào 4
 runtime/log/`.env`; một finding trong `docs/ai/README.md` là ví dụ rỗng có sẵn,
 không thuộc patch.
 Các suite offline soak, pairwise, joint venture và auth-role đã có kết quả trong
-nhật ký bàn giao; cần gắn exact commands/artifact khi chốt báo cáo hoàn tất.
+nhật ký bàn giao. Full CI `34541273596` là bằng chứng từ xa chốt trên đúng SHA;
+các số liệu cục bộ bên trên được giữ như lịch sử chẩn đoán và không bị trình bày
+như thể tất cả được chạy lại trong cùng một lần.
 
 Các lệnh workflow bổ sung đã chạy trên nguồn tích hợp hiện tại:
 
@@ -231,13 +264,14 @@ Procurement đã chạy riêng đạt cả ba browser; contractor-violation ch�
 trong smoke tích hợp. Không có browser project bị bỏ. Tám skips trong các báo
 cáo trước là lịch sử, không phải số liệu hiện tại.
 
-- CodeQL local đã phân tích worktree: 5 cảnh báo Python và 5 JavaScript còn lại đã phân loại; xem `prompt1-codeql-triage.md`. Phân tích lại xác nhận 4 cảnh báo phản chiếu exception trong server test đã biến mất. Không có suppression; GitHub CI chưa chạy patch chưa commit.
+- Các finding CodeQL lịch sử đã được phân loại trong
+  `prompt1-codeql-triage.md`; GitHub CodeQL hiện đã xanh trên source đã push.
 - Từng có lỗi browser/input/transport gián đoạn; các lượt pass không xóa lịch sử lỗi.
 - Hai nhóm fixture đã có kết quả riêng 3/3 trên ba browser; violation đã chạy
   trong smoke chung. Procurement vẫn cần cấu hình fixture nên có thể skip ở
   smoke mặc định; kết quả riêng là bằng chứng thực thi, không phải discovery.
-- Worktree có phạm vi thay đổi lớn và chưa commit; khi tích hợp cần review theo
-  từng patch group, không gộp với phạm vi Tabler.
+- File prompt E2E do người dùng cung cấp vẫn được giữ ngoài commit; không phải
+  source hoặc artifact phát hành.
 
 ## Diff Review Notes
 
@@ -250,9 +284,8 @@ filtering, role/module/capability semantics hoặc grant ngoài ADR 0038/0040/00
 
 ## Recommended Next Steps
 
-1. Commit theo patch group và để GitHub chạy lại Full CI/CodeQL trên commit thực tế.
-2. Bổ sung/phê duyệt 27 dữ kiện pháp lý bên ngoài trước khi phát hành production.
-3. Giữ các finding CodeQL đã phân loại và ResourceWarning analytics trong backlog,
-   không dùng suppression hay thay đổi nghiệp vụ để làm xanh giả.
-4. Theo dõi lại ngưỡng startup long-task 100 ms trên runner CI thực tế.
-5. Bắt đầu Prompt 2 như phạm vi Tabler độc lập, không trộn vào patch Prompt 1.
+1. Bổ sung/phê duyệt 27 dữ kiện pháp lý bên ngoài trước khi phát hành production.
+2. Giữ lịch sử finding CodeQL và ResourceWarning analytics trong hồ sơ chẩn đoán;
+   không dùng suppression hoặc thay đổi nghiệp vụ để làm xanh giả.
+3. Theo dõi cold/warm startup p95 định kỳ; tối ưu thêm khi thực hiện mục tiêu
+   hiệu năng kế tiếp đã được chủ sản phẩm duyệt.
