@@ -55,6 +55,22 @@ class _TracingCursor:
             return _Result(row={"total_rows": self.scale})
         if "COUNT(*) AS total" in sql:
             return _Result(row={"total": self.scale})
+        if "FROM tai_khoan account" in sql and "AS active_session_count" in sql:
+            return _Result(row=self._user_detail())
+        if "FROM to_chuc organization" in sql and "subscription.plan_version_id" in sql:
+            return _Result(row=self._organization_detail())
+        if "SELECT COUNT(*) AS count FROM thanh_vien_to_chuc WHERE user_id" in sql:
+            return _Result(row={"count": self.scale})
+        if "FROM product_usage_hourly" in sql:
+            return _Result(row={"event_count": self.scale, "last_seen_at": 100})
+        if "FROM auth_sessions session" in sql and "COUNT(*) AS count" in sql:
+            return _Result(row={"count": self.scale})
+        if "FROM audit_log" in sql and "ORDER BY created_at DESC" in sql:
+            return _Result(rows=[self._detail_audit(index) for index in range(min(self.scale, 10))])
+        if "FROM thanh_vien_to_chuc membership" in sql and "MAX(session.last_seen_at)" in sql:
+            return _Result(rows=[self._organization_member(index) for index in range(min(self.scale, 20))])
+        if "FROM thanh_vien_to_chuc membership" in sql and "LIMIT ?" in sql:
+            return _Result(rows=[self._membership(index) for index in range(min(self.scale, 20))])
         if "FROM thanh_vien_to_chuc membership" in sql:
             return _Result(rows=[self._membership(index) for index in range(self.scale)])
         if "FROM tai_khoan account" in sql and "account.anh_dai_dien" in sql:
@@ -103,6 +119,48 @@ class _TracingCursor:
             "package_id": "business", "subscription_status": "active",
             "starts_at": 1, "expires_at": 4_102_444_800,
             "member_quota": 20, "revision": 1,
+        }
+
+    @staticmethod
+    def _user_detail():
+        return {
+            "id": "user-1", "username": "user1", "name": "User 1",
+            "email": "user1@example.test", "role": "user", "status": "active",
+            "created_at": "2026-01-01", "updated_at": "2026-01-01",
+            "package_id": "business", "plan_version_id": "plan-v1",
+            "subscription_status": "active", "subscription_source": "admin",
+            "starts_at": 1, "expires_at": 4_102_444_800, "member_quota": None,
+            "subscription_revision": 1, "last_active_at": 100,
+            "active_session_count": 1,
+        }
+
+    @staticmethod
+    def _organization_detail():
+        return {
+            "id": "org-1", "name": "Organization 1", "status": "active",
+            "created_at": "2026-01-01", "updated_at": "2026-01-01",
+            "package_id": "business", "plan_version_id": "plan-v1",
+            "subscription_status": "active", "subscription_source": "admin",
+            "starts_at": 1, "expires_at": 4_102_444_800, "member_quota": 20,
+            "subscription_revision": 1, "member_count": 1,
+        }
+
+    @staticmethod
+    def _organization_member(index):
+        return {
+            "id": f"user-{index}", "name": f"User {index}",
+            "email": f"user{index}@example.test",
+            "role": "owner" if index == 0 else "employee",
+            "membership_status": "active", "last_active_at": 100,
+        }
+
+    @staticmethod
+    def _detail_audit(index):
+        return {
+            "id": index + 1, "actor_user_id": "admin-1",
+            "organization_id": "org-1", "action": "admin.test",
+            "target_type": "test", "target_id": str(index),
+            "created_at": "2026-01-01",
         }
 
     @staticmethod
@@ -204,6 +262,11 @@ def _request():
     return SimpleNamespace(query_params={"page": "1", "pageSize": "100"})
 
 
+def _detail_request(kind):
+    key = "user_id" if kind == "user" else "organization_id"
+    return SimpleNamespace(query_params={}, path_params={key: f"{kind}-1"})
+
+
 def _allow(monkeypatch):
     allowed = lambda _request: (None, "super_admin")
     monkeypatch.setattr(platform_directory_routes, "_forbidden_or_role", allowed)
@@ -240,3 +303,31 @@ def test_platform_admin_query_count_is_constant_at_scale(
         observed.append(len(cursor.calls))
 
     assert observed == [query_budget] * len(SCALES), name
+
+
+@pytest.mark.parametrize(
+    ("kind", "operation", "collection_key"),
+    (
+        ("user", platform_directory_routes._user_detail, "organizations"),
+        ("organization", platform_directory_routes._organization_detail, "users"),
+    ),
+)
+def test_platform_admin_detail_queries_are_constant_and_collections_are_bounded(
+    monkeypatch, kind, operation, collection_key
+):
+    _allow(monkeypatch)
+    observed = []
+    for scale in SCALES:
+        cursor = _TracingCursor(scale)
+        monkeypatch.setattr(platform_directory_routes, "database", _Database(cursor))
+
+        response = operation(_detail_request(kind))
+        detail = json.loads(response.body)[kind]
+        observed.append(len(cursor.calls))
+
+        assert len(detail[collection_key]) <= 20
+        assert len(detail["recentAudit"]) <= 10
+        assert any(parameters and parameters[-1] == 20 for _, parameters in cursor.calls)
+        assert any(parameters and parameters[-1] == 10 for _, parameters in cursor.calls)
+
+    assert observed == [5] * len(SCALES)

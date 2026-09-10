@@ -1,6 +1,7 @@
 import { renderAdminDirectory } from "./AdminDirectory.js";
-import { deleteAdminJson, postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
+import { deleteAdminJson, getAdminJson, postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
 import { requestAdminValue } from "./AdminBilling.js";
+import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
@@ -22,6 +23,16 @@ function membershipsMarkup(organizations) {
     const employee = [organization.employeeName, organization.employeePhone].filter(Boolean).map(text).join(" · ");
     return `<div><strong>${text(organization.name)}</strong><div class="small text-secondary">${text(organization.role)}${employee ? ` · ${employee}` : ""}</div></div>`;
   }).join("");
+}
+
+function auditMarkup(items) {
+  if (!Array.isArray(items) || items.length === 0) return '<p class="text-secondary">Chưa có hoạt động gần đây.</p>';
+  return `<ul class="list-group list-group-flush">${items.map((item) => `<li class="list-group-item px-0"><strong>${text(item.action)}</strong><div class="small text-secondary">${formatDate(item.createdAt)} · ${text(item.targetType)} · ${text(item.targetId)}</div></li>`).join("")}</ul>`;
+}
+
+function linksMarkup(links) {
+  const labels = { sessions: "Phiên đăng nhập", subscription: "Đăng ký", usage: "Sử dụng", audit: "Nhật ký", users: "Người dùng", activity: "Hoạt động", security: "Bảo mật" };
+  return `<nav class="btn-list mb-4" aria-label="Liên kết chi tiết">${Object.entries(links || {}).map(([key, href]) => `<a class="btn btn-sm btn-outline-secondary" href="${text(href, "#")}">${text(labels[key] || key)}</a>`).join("")}</nav>`;
 }
 
 function idempotencyKey(action) {
@@ -117,13 +128,18 @@ export async function executeOrganizationDirectoryAction(action, organization, v
 }
 
 export function userDetailMarkup(user) {
-  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body"><dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Tổ chức và vai trò</h3>${membershipsMarkup(user?.organizations)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form><form data-admin-user-form="role" class="mb-3"><label class="form-label">Vai trò nền tảng<select class="form-select" name="value"><option value="user"${user?.role === "user" ? " selected" : ""}>Người dùng</option><option value="super_admin"${user?.role === "super_admin" ? " selected" : ""}>Quản trị nền tảng</option></select></label><button class="btn btn-outline-primary" type="submit">Cập nhật vai trò</button></form>${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
+  const subscription = user?.subscription;
+  const usage = user?.usage;
+  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(user?.links)}<dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Hoạt động gần nhất</dt><dd class="col-8">${formatDate(user?.lastActiveAt)}</dd><dt class="col-4">Phiên hoạt động</dt><dd class="col-8">${Number.isFinite(user?.activeSessionCount) ? escapeHtml(user.activeSessionCount) : "N/A"}</dd><dt class="col-4">Gói dịch vụ</dt><dd class="col-8">${text(subscription?.packageId)}</dd><dt class="col-4">Trạng thái đăng ký</dt><dd class="col-8">${text(subscription?.status)}</dd><dt class="col-4">Sự kiện sử dụng</dt><dd class="col-8">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Tổ chức và vai trò (${Number.isFinite(user?.organizationCount) ? escapeHtml(user.organizationCount) : "N/A"})</h3>${membershipsMarkup(user?.organizations)}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(user?.recentAudit)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form><form data-admin-user-form="role" class="mb-3"><label class="form-label">Vai trò nền tảng<select class="form-select" name="value"><option value="user"${user?.role === "user" ? " selected" : ""}>Người dùng</option><option value="super_admin"${user?.role === "super_admin" ? " selected" : ""}>Quản trị nền tảng</option></select></label><button class="btn btn-outline-primary" type="submit">Cập nhật vai trò</button></form>${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
 }
 
 export function organizationDetailMarkup(organization) {
   const subscription = organization?.subscription;
+  const primary = organization?.primaryContact;
+  const usage = organization?.usage;
   const action = organization?.status === "suspended" ? "unlock" : "lock";
-  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tổ chức ${text(organization?.id)}</div><h2 class="offcanvas-title">${text(organization?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body"><dl class="row"><dt class="col-5">Trạng thái</dt><dd class="col-7">${text(organization?.status)}</dd><dt class="col-5">Thành viên</dt><dd class="col-7">${Number.isFinite(organization?.memberCount) ? escapeHtml(organization.memberCount) : "N/A"}</dd><dt class="col-5">Gói dịch vụ</dt><dd class="col-7">${text(subscription?.packageId)}</dd><dt class="col-5">Đăng ký</dt><dd class="col-7">${text(subscription?.status)}</dd><dt class="col-5">Bắt đầu</dt><dd class="col-7">${formatDate(subscription?.startsAt)}</dd><dt class="col-5">Hết hạn</dt><dd class="col-7">${formatDate(subscription?.expiresAt)}</dd><dt class="col-5">Hạn mức</dt><dd class="col-7">${Number.isFinite(subscription?.memberQuota) ? escapeHtml(subscription.memberQuota) : "N/A"}</dd></dl>${subscription ? `<div class="btn-list mb-3"><button class="btn btn-outline-${action === "lock" ? "danger" : "primary"}" type="button" data-admin-organization-action="${action}">${action === "lock" ? "Khóa đăng ký" : "Mở khóa đăng ký"}</button><button class="btn btn-outline-primary" type="button" data-admin-organization-action="renew">Gia hạn theo chính sách hiện hành</button></div><form data-admin-organization-form="set_package"><label class="form-label">Mã gói dịch vụ<input class="form-control" name="value" value="${text(subscription?.packageId, "")}" required maxlength="128"></label><button class="btn btn-outline-primary" type="submit">Đổi gói</button></form>` : '<p class="text-secondary">Tổ chức chưa có đăng ký để thao tác.</p>'}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
+  const users = Array.isArray(organization?.users) ? organization.users : [];
+  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tổ chức ${text(organization?.id)}</div><h2 class="offcanvas-title">${text(organization?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(organization?.links)}<dl class="row"><dt class="col-5">Trạng thái</dt><dd class="col-7">${text(organization?.status)}</dd><dt class="col-5">Liên hệ chính</dt><dd class="col-7">${primary ? `${text(primary.name)}<div class="small text-secondary">${text(primary.email)}</div>` : "N/A"}</dd><dt class="col-5">Thành viên</dt><dd class="col-7">${Number.isFinite(organization?.memberCount) ? escapeHtml(organization.memberCount) : "N/A"}</dd><dt class="col-5">Phiên hoạt động</dt><dd class="col-7">${Number.isFinite(organization?.security?.activeSessionCount) ? escapeHtml(organization.security.activeSessionCount) : "N/A"}</dd><dt class="col-5">Hoạt động gần nhất</dt><dd class="col-7">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-5">Sự kiện sử dụng</dt><dd class="col-7">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-5">Gói dịch vụ</dt><dd class="col-7">${text(subscription?.packageId)}</dd><dt class="col-5">Đăng ký</dt><dd class="col-7">${text(subscription?.status)}</dd><dt class="col-5">Bắt đầu</dt><dd class="col-7">${formatDate(subscription?.startsAt)}</dd><dt class="col-5">Hết hạn</dt><dd class="col-7">${formatDate(subscription?.expiresAt)}</dd><dt class="col-5">Hạn mức</dt><dd class="col-7">${Number.isFinite(subscription?.memberQuota) ? escapeHtml(subscription.memberQuota) : "N/A"}</dd></dl><section class="mb-4"><h3 class="h4">Người dùng gần đây</h3>${users.length ? users.map((item) => `<div class="mb-2"><strong>${text(item.name)}</strong><div class="small text-secondary">${text(item.email)} · ${text(item.role)} · ${formatDate(item.lastActiveAt)}</div></div>`).join("") : '<p class="text-secondary">Chưa có thành viên.</p>'}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(organization?.recentAudit)}</section>${subscription ? `<div class="btn-list mb-3"><button class="btn btn-outline-${action === "lock" ? "danger" : "primary"}" type="button" data-admin-organization-action="${action}">${action === "lock" ? "Khóa đăng ký" : "Mở khóa đăng ký"}</button><button class="btn btn-outline-primary" type="button" data-admin-organization-action="renew">Gia hạn theo chính sách hiện hành</button></div><form data-admin-organization-form="set_package"><label class="form-label">Mã gói dịch vụ<input class="form-control" name="value" value="${text(subscription?.packageId, "")}" required maxlength="128"></label><button class="btn btn-outline-primary" type="submit">Đổi gói</button></form>` : '<p class="text-secondary">Tổ chức chưa có đăng ký để thao tác.</p>'}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
 }
 
 function openDetailDrawer(markup, bind) {
@@ -187,15 +203,35 @@ function bindOrganizationDetail(drawer, organization, options, close) {
   });
 }
 
+export async function loadDirectoryDetail(kind, id, { fetchImpl, signal } = {}) {
+  if (!["user", "organization"].includes(kind)) throw new TypeError("Unsupported directory detail kind");
+  const resource = kind === "user" ? "users" : "organizations";
+  const path = `/api/admin/${resource}/${encodeURIComponent(String(id || ""))}`;
+  const payload = await getAdminJson(path, { fetchImpl, signal });
+  const detail = payload?.[kind];
+  if (!detail) throw new Error("Máy chủ trả về dữ liệu chi tiết không hợp lệ.");
+  return detail;
+}
+
 function bindDirectoryDetails(root, items, options, kind) {
   const byId = new Map(items.map((item) => [String(item?.id || ""), item]));
   root.querySelectorAll("[data-admin-detail-id]").forEach((button) => button.addEventListener("click", () => {
     const item = byId.get(button.dataset.adminDetailId);
     if (!item) return;
     const isUser = kind === "user";
-    openDetailDrawer(isUser ? userDetailMarkup(item) : organizationDetailMarkup(item), (drawer, close) => {
-      if (isUser) bindUserDetail(drawer, item, options, close);
-      else bindOrganizationDetail(drawer, item, options, close);
+    const loading = `<div class="offcanvas-header"><h2 class="offcanvas-title">Đang tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${adminLoadingMarkup()}</div>`;
+    openDetailDrawer(loading, async (drawer, close) => {
+      try {
+        const detail = await loadDirectoryDetail(kind, item.id, options);
+        drawer.innerHTML = trustedHTML(isUser ? userDetailMarkup(detail) : organizationDetailMarkup(detail));
+        drawer.querySelector("[data-admin-close-detail]")?.addEventListener("click", close);
+        if (isUser) bindUserDetail(drawer, detail, options, close);
+        else bindOrganizationDetail(drawer, detail, options, close);
+      } catch (error) {
+        if (options.signal?.aborted) return close();
+        drawer.innerHTML = trustedHTML(`<div class="offcanvas-header"><h2 class="offcanvas-title">Không thể tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${adminStateMarkup(error?.status === 403 ? "permission" : "error", { message: error?.message })}</div>`);
+        drawer.querySelector("[data-admin-close-detail]")?.addEventListener("click", close);
+      }
     });
   }));
 }

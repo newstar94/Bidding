@@ -1,6 +1,8 @@
 # Dynamic SQL fragments come only from fixed allowlists; request values stay bound.
 # ruff: noqa: S608
 import math
+import time
+from urllib.parse import quote
 
 from starlette.responses import JSONResponse
 
@@ -363,8 +365,276 @@ async def list_admin_organizations_api(request):
         return response
 
 
+_DETAIL_MEMBER_LIMIT = 20
+_DETAIL_AUDIT_LIMIT = 10
+
+
+def _subscription(row, prefix=""):
+    package_id = row[f"{prefix}package_id"]
+    if package_id is None:
+        return None
+    return {
+        "packageId": package_id,
+        "planVersionId": row[f"{prefix}plan_version_id"],
+        "status": row[f"{prefix}subscription_status"],
+        "source": row[f"{prefix}subscription_source"],
+        "startsAt": _json_value(row[f"{prefix}starts_at"]),
+        "expiresAt": _json_value(row[f"{prefix}expires_at"]),
+        "memberQuota": (
+            int(row[f"{prefix}member_quota"])
+            if row[f"{prefix}member_quota"] is not None
+            else None
+        ),
+        "revision": int(row[f"{prefix}subscription_revision"] or 0),
+    }
+
+
+def _audit_items(rows):
+    return [
+        {
+            "id": row["id"],
+            "action": row["action"],
+            "actorUserId": row["actor_user_id"],
+            "organizationId": row["organization_id"],
+            "targetType": row["target_type"],
+            "targetId": row["target_id"],
+            "createdAt": _json_value(row["created_at"]),
+        }
+        for row in rows
+    ]
+
+
+def _user_detail(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    user_id = str(request.path_params.get("user_id") or "").strip()
+    if not user_id or len(user_id) > 200:
+        return _response({"error": "Người dùng không hợp lệ."}, status_code=400)
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        row = cursor.execute(
+            """SELECT account.id, account.ten_dang_nhap AS username,
+                      account.ho_ten AS name, account.email, account.vai_tro AS role,
+                      account.trang_thai AS status, account.created_at, account.updated_at,
+                      subscription.package_id, subscription.plan_version_id,
+                      subscription.status AS subscription_status,
+                      subscription.source AS subscription_source,
+                      subscription.starts_at, subscription.expires_at,
+                      NULL AS member_quota, subscription.revision AS subscription_revision,
+                      (SELECT MAX(last_seen_at) FROM auth_sessions WHERE user_id = account.id)
+                        AS last_active_at,
+                      (SELECT COUNT(*) FROM auth_sessions
+                        WHERE user_id = account.id AND revoked_at IS NULL
+                          AND idle_expires_at > ? AND absolute_expires_at > ?)
+                        AS active_session_count
+                 FROM tai_khoan account
+                 LEFT JOIN account_subscriptions subscription
+                   ON subscription.user_id = account.id
+                WHERE account.id = ? LIMIT 1""",
+            (now, now, user_id),
+        ).fetchone()
+        if not row:
+            return _response({"error": "Người dùng không tồn tại."}, status_code=404)
+        memberships = cursor.execute(
+            """SELECT organization.id, organization.ten_to_chuc AS name,
+                      membership.vai_tro_trong_to_chuc AS role,
+                      membership.ten_nhan_su AS employee_name,
+                      membership.so_dien_thoai AS employee_phone,
+                      membership.trang_thai_thanh_vien AS status
+                 FROM thanh_vien_to_chuc membership
+                 JOIN to_chuc organization ON organization.id = membership.organization_id
+                WHERE membership.user_id = ?
+                ORDER BY lower(organization.ten_to_chuc), organization.id
+                LIMIT ?""",
+            (user_id, _DETAIL_MEMBER_LIMIT),
+        ).fetchall()
+        membership_total = int(cursor.execute(
+            "SELECT COUNT(*) AS count FROM thanh_vien_to_chuc WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["count"])
+        usage = cursor.execute(
+            """SELECT COALESCE(SUM(event_count), 0) AS event_count,
+                      MAX(last_seen_at) AS last_seen_at
+                 FROM product_usage_hourly WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+        audit = cursor.execute(
+            """SELECT id, actor_user_id, organization_id, action,
+                      target_type, target_id, created_at
+                 FROM audit_log
+                WHERE actor_user_id = ? OR target_id = ?
+                ORDER BY created_at DESC, id DESC LIMIT ?""",
+            (user_id, user_id, _DETAIL_AUDIT_LIMIT),
+        ).fetchall()
+    finally:
+        connection.close()
+    encoded_user_id = quote(user_id, safe="")
+    return _response({
+        "user": {
+            "id": row["id"], "username": row["username"], "name": row["name"],
+            "email": row["email"], "role": row["role"], "status": row["status"],
+            "createdAt": _json_value(row["created_at"]),
+            "updatedAt": _json_value(row["updated_at"]),
+            "lastActiveAt": _json_value(row["last_active_at"]),
+            "activeSessionCount": int(row["active_session_count"] or 0),
+            "subscription": _subscription(row),
+            "organizations": [
+                {"id": item["id"], "name": item["name"], "role": item["role"],
+                 "employeeName": item["employee_name"], "employeePhone": item["employee_phone"],
+                 "status": item["status"]}
+                for item in memberships
+            ],
+            "organizationCount": membership_total,
+            "usage": {"eventCount": int(usage["event_count"] or 0),
+                      "lastSeenAt": _json_value(usage["last_seen_at"])},
+            "recentAudit": _audit_items(audit),
+            "links": {
+                "sessions": f"/admin/security?userId={encoded_user_id}",
+                "subscription": f"/admin/subscriptions?ownerKind=account&search={encoded_user_id}",
+                "usage": "/admin/analytics",
+                "audit": f"/admin/audit?actorUserId={encoded_user_id}",
+            },
+        },
+        "limits": {"organizations": _DETAIL_MEMBER_LIMIT, "audit": _DETAIL_AUDIT_LIMIT},
+    })
+
+
+def _organization_detail(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    organization_id = str(request.path_params.get("organization_id") or "").strip()
+    if not organization_id or len(organization_id) > 200:
+        return _response({"error": "Tổ chức không hợp lệ."}, status_code=400)
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        row = cursor.execute(
+            """SELECT organization.id, organization.ten_to_chuc AS name,
+                      organization.trang_thai AS status,
+                      organization.created_at, organization.updated_at,
+                      subscription.package_id, subscription.plan_version_id,
+                      subscription.status AS subscription_status,
+                      subscription.source AS subscription_source,
+                      subscription.starts_at, subscription.expires_at,
+                      subscription.member_quota, subscription.revision AS subscription_revision,
+                      (SELECT COUNT(*) FROM thanh_vien_to_chuc member
+                        WHERE member.organization_id = organization.id
+                          AND COALESCE(member.trang_thai_thanh_vien, 'active') = 'active')
+                        AS member_count
+                 FROM to_chuc organization
+                 LEFT JOIN organization_subscriptions subscription
+                   ON subscription.organization_id = organization.id
+                WHERE organization.id = ? LIMIT 1""",
+            (organization_id,),
+        ).fetchone()
+        if not row:
+            return _response({"error": "Tổ chức không tồn tại."}, status_code=404)
+        members = cursor.execute(
+            """SELECT account.id, account.ho_ten AS name, account.email,
+                      membership.vai_tro_trong_to_chuc AS role,
+                      membership.trang_thai_thanh_vien AS membership_status,
+                      MAX(session.last_seen_at) AS last_active_at
+                 FROM thanh_vien_to_chuc membership
+                 JOIN tai_khoan account ON account.id = membership.user_id
+                 LEFT JOIN auth_sessions session ON session.user_id = account.id
+                WHERE membership.organization_id = ?
+                GROUP BY account.id, account.ho_ten, account.email,
+                         membership.vai_tro_trong_to_chuc,
+                         membership.trang_thai_thanh_vien
+                ORDER BY CASE lower(trim(membership.vai_tro_trong_to_chuc))
+                              WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END,
+                         lower(COALESCE(account.ho_ten, account.email)), account.id
+                LIMIT ?""",
+            (organization_id, _DETAIL_MEMBER_LIMIT),
+        ).fetchall()
+        usage = cursor.execute(
+            """SELECT COALESCE(SUM(event_count), 0) AS event_count,
+                      MAX(last_seen_at) AS last_seen_at
+                 FROM product_usage_hourly WHERE organization_id = ?""",
+            (organization_id,),
+        ).fetchone()
+        active_sessions = int(cursor.execute(
+            """SELECT COUNT(*) AS count FROM auth_sessions session
+                JOIN thanh_vien_to_chuc membership ON membership.user_id = session.user_id
+                WHERE membership.organization_id = ? AND session.revoked_at IS NULL
+                  AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
+                  AND session.idle_expires_at > ? AND session.absolute_expires_at > ?""",
+            (organization_id, now, now),
+        ).fetchone()["count"])
+        audit = cursor.execute(
+            """SELECT id, actor_user_id, organization_id, action,
+                      target_type, target_id, created_at
+                 FROM audit_log WHERE organization_id = ?
+                ORDER BY created_at DESC, id DESC LIMIT ?""",
+            (organization_id, _DETAIL_AUDIT_LIMIT),
+        ).fetchall()
+    finally:
+        connection.close()
+    users = [
+        {"id": item["id"], "name": item["name"], "email": item["email"],
+         "role": item["role"], "status": item["membership_status"],
+         "lastActiveAt": _json_value(item["last_active_at"])}
+        for item in members
+    ]
+    primary_contact = next(
+        (item for item in users
+         if str(item["role"] or "").strip().lower() in {"owner", "manager"}),
+        None,
+    )
+    encoded_organization_id = quote(organization_id, safe="")
+    return _response({
+        "organization": {
+            "id": row["id"], "name": row["name"], "status": row["status"],
+            "createdAt": _json_value(row["created_at"]),
+            "updatedAt": _json_value(row["updated_at"]),
+            "memberCount": int(row["member_count"] or 0),
+            "primaryContact": primary_contact, "users": users,
+            "subscription": _subscription(row),
+            "usage": {"eventCount": int(usage["event_count"] or 0),
+                      "lastSeenAt": _json_value(usage["last_seen_at"])},
+            "security": {"activeSessionCount": active_sessions},
+            "recentAudit": _audit_items(audit),
+            "links": {
+                "users": f"/admin/users?organizationId={encoded_organization_id}",
+                "subscription": f"/admin/subscriptions?ownerKind=organization&search={encoded_organization_id}",
+                "usage": "/admin/analytics",
+                "activity": f"/admin/audit?organizationId={encoded_organization_id}",
+                "security": "/admin/security",
+            },
+        },
+        "limits": {"users": _DETAIL_MEMBER_LIMIT, "audit": _DETAIL_AUDIT_LIMIT},
+    })
+
+
+async def admin_user_detail_api(request):
+    try:
+        return await run_database_read(_user_detail, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _response({"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503)
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
+        log_error(exc, "platform_admin_user_detail")
+        return _response({"error": "Đã xảy ra lỗi tải chi tiết người dùng."}, status_code=500)
+
+
+async def admin_organization_detail_api(request):
+    try:
+        return await run_database_read(_organization_detail, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _response({"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503)
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
+        log_error(exc, "platform_admin_organization_detail")
+        return _response({"error": "Đã xảy ra lỗi tải chi tiết tổ chức."}, status_code=500)
+
+
 def platform_admin_directory_routes(Route):
     return [
         Route("/api/admin/users", list_admin_users_api, methods=["GET"]),
         Route("/api/admin/organizations", list_admin_organizations_api, methods=["GET"]),
+        Route("/api/admin/users/{user_id}", admin_user_detail_api, methods=["GET"]),
+        Route("/api/admin/organizations/{organization_id}", admin_organization_detail_api, methods=["GET"]),
     ]

@@ -5,6 +5,7 @@ import { createLatestAdminLoader, directoryQuery, directoryResultsMarkup, readDi
 import {
   executeOrganizationDirectoryAction,
   executeUserDirectoryAction,
+  loadDirectoryDetail,
   organizationDetailMarkup,
   ORGANIZATION_DIRECTORY,
   userDetailMarkup,
@@ -69,21 +70,71 @@ test("detail drawers preserve authoritative user, membership and subscription va
   const userMarkup = userDetailMarkup({
     id: "user-1", username: "minhan", name: "Minh An", email: "an@example.test",
     role: "user", status: "active", createdAt: "2026-01-02", updatedAt: "2026-02-03",
+    lastActiveAt: 200, activeSessionCount: 2, organizationCount: 1,
+    subscription: { packageId: "personal", status: "active" },
+    usage: { eventCount: 8, lastSeenAt: 210 },
+    recentAudit: [{ action: "user.updated", createdAt: "2026-03-01", targetType: "user", targetId: "user-1" }],
+    links: { sessions: "/admin/security?userId=user-1", audit: "/admin/audit?actorUserId=user-1" },
     organizations: [{ name: "Công ty An Bình", role: "manager", employeeName: "Nguyễn An", employeePhone: "0901" }],
   });
   assert.match(userMarkup, /an@example[.]test/u);
   assert.match(userMarkup, /Nguyễn An · 0901/u);
   assert.match(userMarkup, /data-admin-user-form="role"/u);
   assert.match(userMarkup, /data-admin-user-action="deactivate"/u);
+  assert.match(userMarkup, /Phiên hoạt động/u);
+  assert.match(userMarkup, />2</u);
+  assert.match(userMarkup, /personal/u);
+  assert.match(userMarkup, /user[.]updated/u);
+  assert.match(userMarkup, /href="\/admin\/security[?]userId=user-1"/u);
+  assert.doesNotMatch(userMarkup, /data-admin-link=/u);
 
   const organizationMarkup = organizationDetailMarkup({
     id: "org-1", name: "Công ty An Bình", status: "active", memberCount: 12,
+    primaryContact: { name: "Nguyễn Quản lý", email: "manager@example.test" },
+    users: [{ name: "Nhân viên", email: "employee@example.test", role: "employee", lastActiveAt: 250 }],
+    usage: { eventCount: 12, lastSeenAt: 250 }, security: { activeSessionCount: 3 },
+    recentAudit: [{ action: "subscription.changed", createdAt: "2026-03-02", targetType: "organization", targetId: "org-1" }],
+    links: { users: "/admin/users?organizationId=org-1", activity: "/admin/audit?organizationId=org-1", security: "/admin/security" },
     subscription: { packageId: "business", status: "active", startsAt: 100, expiresAt: 4102444800, memberQuota: 20 },
   });
   assert.match(organizationMarkup, /business/u);
   assert.match(organizationMarkup, />20</u);
   assert.match(organizationMarkup, /data-admin-organization-action="lock"/u);
   assert.match(organizationMarkup, /data-admin-organization-form="set_package"/u);
+  assert.match(organizationMarkup, /Nguyễn Quản lý/u);
+  assert.match(organizationMarkup, /employee@example[.]test/u);
+  assert.match(organizationMarkup, /subscription[.]changed/u);
+  assert.match(organizationMarkup, /Bảo mật/u);
+});
+
+test("detail drawers escape untrusted aggregate values and link attributes", () => {
+  const markup = userDetailMarkup({
+    id: '<img src=x onerror="alert(1)">',
+    name: '<script>alert(1)</script>',
+    links: { sessions: '" onmouseover="alert(1)' },
+    recentAudit: [{ action: "<svg/onload=alert(1)>", targetType: "user", targetId: "<bad>" }],
+  });
+  assert.doesNotMatch(markup, /<script>|<svg|data-admin-link=/u);
+  assert.match(markup, /&lt;script&gt;/u);
+  assert.match(markup, /&quot; onmouseover=&quot;/u);
+});
+
+test("directory details load from dedicated encoded aggregate endpoints", async () => {
+  const requests = [];
+  const fetchImpl = async (url) => {
+    requests.push(url);
+    const key = url.includes('/users/') ? 'user' : 'organization';
+    return new Response(JSON.stringify({ [key]: { id: `${key}-detail` } }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  assert.deepEqual(await loadDirectoryDetail('user', 'user/with space', { fetchImpl }), { id: 'user-detail' });
+  assert.deepEqual(await loadDirectoryDetail('organization', 'org&scope=all', { fetchImpl }), { id: 'organization-detail' });
+  assert.deepEqual(requests, [
+    '/api/admin/users/user%2Fwith%20space',
+    '/api/admin/organizations/org%26scope%3Dall',
+  ]);
 });
 
 test("user platform-role action uses the explicit authoritative scope", async () => {

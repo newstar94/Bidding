@@ -63,11 +63,46 @@ def _database():
         CREATE TABLE organization_subscriptions (
             organization_id TEXT PRIMARY KEY,
             package_id TEXT NOT NULL,
+            plan_version_id TEXT,
             status TEXT NOT NULL,
+            source TEXT NOT NULL,
             starts_at INTEGER,
             expires_at INTEGER,
             member_quota INTEGER NOT NULL,
             revision INTEGER NOT NULL
+        );
+        CREATE TABLE account_subscriptions (
+            user_id TEXT PRIMARY KEY,
+            package_id TEXT NOT NULL,
+            plan_version_id TEXT,
+            status TEXT NOT NULL,
+            source TEXT NOT NULL,
+            starts_at INTEGER,
+            expires_at INTEGER,
+            revision INTEGER NOT NULL
+        );
+        CREATE TABLE auth_sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            idle_expires_at INTEGER NOT NULL,
+            absolute_expires_at INTEGER NOT NULL,
+            revoked_at INTEGER
+        );
+        CREATE TABLE product_usage_hourly (
+            user_id TEXT NOT NULL,
+            organization_id TEXT NOT NULL,
+            event_count INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL
+        );
+        CREATE TABLE audit_log (
+            id INTEGER PRIMARY KEY,
+            actor_user_id TEXT,
+            organization_id TEXT,
+            action TEXT NOT NULL,
+            target_type TEXT,
+            target_id TEXT,
+            created_at TEXT NOT NULL
         );
         """
     )
@@ -95,10 +130,33 @@ def _database():
         ),
     )
     connection.executemany(
-        "INSERT INTO organization_subscriptions VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO organization_subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            ("org-a", "business", "active", 100, 4102444800, 20, 2),
-            ("org-b", "starter", "expired", 100, 200, 5, 1),
+            ("org-a", "business", "plan-v2", "active", "order", 100, 4102444800, 20, 2),
+            ("org-b", "starter", None, "expired", "legacy", 100, 200, 5, 1),
+        ),
+    )
+    connection.execute(
+        "INSERT INTO account_subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("user-2", "personal", "plan-v1", "active", "admin", 100, 4102444800, 3),
+    )
+    connection.executemany(
+        "INSERT INTO auth_sessions VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            ("session-active", "user-2", 200, 4102444800, 4102444800, None),
+            ("session-revoked", "user-2", 300, 4102444800, 4102444800, 301),
+            ("session-admin", "admin-1", 150, 4102444800, 4102444800, None),
+        ),
+    )
+    connection.executemany(
+        "INSERT INTO product_usage_hourly VALUES (?, ?, ?, ?)",
+        (("user-2", "org-a", 4, 240), ("user-2", "org-b", 6, 250)),
+    )
+    connection.executemany(
+        "INSERT INTO audit_log VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            (1, "user-2", "org-a", "user.updated", "user", "user-2", "2026-02-02"),
+            (2, "admin-1", "org-a", "subscription.changed", "organization", "org-a", "2026-02-03"),
         ),
     )
     connection.commit()
@@ -218,12 +276,16 @@ def test_directory_routes_require_server_side_super_admin(monkeypatch):
         with client:
             users = client.get("/api/admin/users")
             organizations = client.get("/api/admin/organizations")
+            user_detail = client.get("/api/admin/users/user-2")
+            organization_detail = client.get("/api/admin/organizations/org-a")
 
         assert users.status_code == 403
         assert organizations.status_code == 403
+        assert user_detail.status_code == 403
+        assert organization_detail.status_code == 403
         assert users.headers["cache-control"] == "private, no-store"
         assert organizations.headers["cache-control"] == "private, no-store"
-        assert calls == ["super_admin", "super_admin"]
+        assert calls == ["super_admin", "super_admin", "super_admin", "super_admin"]
     finally:
         connection.close()
 
@@ -241,5 +303,131 @@ def test_directory_query_allowlists_reject_unbounded_or_injected_values(monkeypa
         assert injected_sort.status_code == 400
         assert invalid_filter.status_code == 400
         assert connection.execute("SELECT count(*) FROM to_chuc").fetchone()[0] == 2
+    finally:
+        connection.close()
+
+
+def test_user_detail_returns_bounded_activity_subscription_usage_and_encoded_links(monkeypatch):
+    connection = _database()
+    try:
+        for index in range(25):
+            organization_id = f"extra-{index:02d}"
+            connection.execute(
+                "INSERT INTO to_chuc VALUES (?, ?, 'active', '2026-01-01', '2026-01-01')",
+                (organization_id, f"Extra {index:02d}"),
+            )
+            connection.execute(
+                "INSERT INTO thanh_vien_to_chuc VALUES (?, ?, 'employee', 'Bravo', NULL, 'active', '2026-01-01', '2026-01-01')",
+                ("user-2", organization_id),
+            )
+        for index in range(20):
+            connection.execute(
+                "INSERT INTO audit_log VALUES (?, 'user-2', 'org-a', ?, 'user', 'user-2', ?)",
+                (100 + index, f"user.event.{index}", f"2026-03-{index + 1:02d}"),
+            )
+        connection.commit()
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/users/user-2")
+
+        assert response.status_code == 200
+        payload = response.json()
+        user = payload["user"]
+        assert user["lastActiveAt"] == 300
+        assert user["activeSessionCount"] == 1
+        assert user["subscription"] == {
+            "packageId": "personal", "planVersionId": "plan-v1", "status": "active",
+            "source": "admin", "startsAt": 100, "expiresAt": 4102444800,
+            "memberQuota": None, "revision": 3,
+        }
+        assert user["organizationCount"] == 27
+        assert len(user["organizations"]) == 20
+        assert user["usage"] == {"eventCount": 10, "lastSeenAt": 250}
+        assert len(user["recentAudit"]) == 10
+        assert payload["limits"] == {"organizations": 20, "audit": 10}
+    finally:
+        connection.close()
+
+
+def test_organization_detail_returns_primary_contact_bounded_users_usage_and_security(monkeypatch):
+    connection = _database()
+    try:
+        connection.execute(
+            "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = 'owner' "
+            "WHERE user_id = 'admin-1' AND organization_id = 'org-a'"
+        )
+        for index in range(25):
+            user_id = f"member-{index:02d}"
+            connection.execute(
+                "INSERT INTO tai_khoan VALUES (?, ?, ?, 'user', ?, NULL, 'active', '2026-01-01', '2026-01-01')",
+                (user_id, user_id, f"Member {index:02d}", f"{user_id}@example.test"),
+            )
+            connection.execute(
+                "INSERT INTO thanh_vien_to_chuc VALUES (?, 'org-a', 'employee', ?, NULL, 'active', '2026-01-01', '2026-01-01')",
+                (user_id, f"Member {index:02d}"),
+            )
+        connection.commit()
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/organizations/org-a")
+
+        assert response.status_code == 200
+        payload = response.json()
+        organization = payload["organization"]
+        assert organization["primaryContact"]["id"] == "admin-1"
+        assert organization["primaryContact"]["role"] == "owner"
+        assert organization["memberCount"] == 27
+        assert len(organization["users"]) == 20
+        assert organization["users"][0]["role"] == "owner"
+        assert organization["subscription"]["planVersionId"] == "plan-v2"
+        assert organization["usage"] == {"eventCount": 4, "lastSeenAt": 240}
+        assert organization["security"] == {"activeSessionCount": 2}
+        assert len(organization["recentAudit"]) == 2
+        assert payload["limits"] == {"users": 20, "audit": 10}
+    finally:
+        connection.close()
+
+
+def test_detail_routes_return_not_found_and_encode_query_link_identifiers(monkeypatch):
+    connection = _database()
+    try:
+        connection.execute(
+            "INSERT INTO tai_khoan VALUES (?, 'encoded', 'Encoded', 'user', 'encoded@example.test', NULL, 'active', '2026-01-01', '2026-01-01')",
+            ("user&scope=all",),
+        )
+        connection.commit()
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            missing_user = client.get("/api/admin/users/missing")
+            missing_organization = client.get("/api/admin/organizations/missing")
+            encoded = client.get("/api/admin/users/user%26scope%3Dall")
+
+        assert missing_user.status_code == 404
+        assert missing_organization.status_code == 404
+        assert encoded.status_code == 200
+        assert encoded.json()["user"]["links"]["sessions"] == "/admin/security?userId=user%26scope%3Dall"
+        assert encoded.json()["user"]["links"]["audit"] == "/admin/audit?actorUserId=user%26scope%3Dall"
+    finally:
+        connection.close()
+
+
+def test_detail_routes_keep_unexpected_database_errors_private(monkeypatch):
+    connection = _database()
+    try:
+        client, _calls = _client(monkeypatch, connection)
+
+        async def fail_database_read(_function, *_args, **_kwargs):
+            raise RuntimeError("private database detail")
+
+        monkeypatch.setattr(platform_directory_routes, "run_database_read", fail_database_read)
+        monkeypatch.setattr(platform_directory_routes, "log_error", lambda *_args: None)
+        with client:
+            user = client.get("/api/admin/users/user-2")
+            organization = client.get("/api/admin/organizations/org-a")
+
+        assert user.status_code == 500
+        assert organization.status_code == 500
+        assert "private database detail" not in user.text
+        assert "private database detail" not in organization.text
     finally:
         connection.close()
