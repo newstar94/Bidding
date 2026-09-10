@@ -5,6 +5,7 @@ import { createE2ETestClock } from "../../scripts/e2e_test_clock.mjs";
 const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin");
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 const clock = createE2ETestClock();
+const FIREFOX_RESET_URL = "data:text/html,<meta charset=utf-8><title>BiddingFlow test reset</title>";
 
 test.use({ serviceWorkers: "block" });
 test.setTimeout(300_000);
@@ -92,10 +93,11 @@ async function gotoReady(page, route) {
     && await navigateWithinReadyApp(page, targetPath)
   ) return;
   // Firefox can let a late route/module callback from an existing application
-  // document abort the next top-level request. Only that engine needs the blank
-  // teardown; Chromium/WebKit retain the ready document and module cache above.
+  // document abort the next top-level request. A small data document provides a
+  // real commit signal; Firefox on Linux can render about:blank without emitting
+  // the commit Playwright waits for.
   if (browserName === "firefox" && currentPath !== null) {
-    await page.goto("about:blank", { waitUntil: "commit" });
+    await page.goto(FIREFOX_RESET_URL, { waitUntil: "commit" });
   }
   // Host-injected scripts can delay DOMContentLoaded independently of the app.
   // The two readiness checks below are the authoritative synchronization seam.
@@ -108,7 +110,7 @@ async function reloadReady(page) {
   const currentUrl = page.url();
   const browserName = page.context().browser()?.browserType().name();
   if (browserName === "firefox") {
-    await page.goto("about:blank", { waitUntil: "commit" });
+    await page.goto(FIREFOX_RESET_URL, { waitUntil: "commit" });
     await page.goto(currentUrl, { waitUntil: "commit" });
   } else {
     await page.reload({ waitUntil: "commit" });
