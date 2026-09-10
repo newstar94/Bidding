@@ -250,7 +250,7 @@ html[data-bf-shell="workspace"] .landing-page {
 .landing-hero {
   position: relative;
   overflow: visible;
-  clip-path: inset(0);
+  contain: paint;
   padding: 94px 0 104px;
   border-bottom: 1px solid var(--landing-line);
   background:
@@ -372,7 +372,7 @@ html[data-bf-shell="workspace"] .landing-page {
   position: relative;
   z-index: 1;
   overflow: visible;
-  clip-path: inset(0 round 16px);
+  contain: paint;
   border: 1px solid rgba(169, 183, 207, 0.72);
   border-radius: 16px;
   background: var(--landing-surface);
