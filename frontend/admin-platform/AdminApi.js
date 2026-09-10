@@ -30,10 +30,12 @@ function assertAdminPath(path, method = "GET") {
   const approvedOrganizationSubscription = verb === "POST"
     && value === "/api/organizations/subscription";
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
+  const approvedActiveRoleTransition = verb === "POST" && value === "/api/auth/active-role";
   const approved = platformPath || approvedCommercialPath || commercialDraftCollection
     || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
-    || approvedOrganizationSubscription || approvedReauthentication;
+    || approvedOrganizationSubscription || approvedReauthentication
+    || approvedActiveRoleTransition;
   if (!approved || /[?#]/u.test(value)) {
     throw new TypeError("Admin API requests require an approved internal platform path");
   }

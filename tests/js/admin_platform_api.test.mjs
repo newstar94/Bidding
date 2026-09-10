@@ -30,6 +30,25 @@ test("admin API rejects paths outside the platform boundary", async () => {
   await assert.rejects(() => getAdminJson("/api/commercial/drafts"), TypeError);
 });
 
+test("platform shell can confirm a workspace persona transition", async () => {
+  let request;
+  const result = await postAdminJson("/api/auth/active-role", {
+    body: { active_role: "manager" },
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify({ activeRole: "manager" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  assert.equal(request.url, "/api/auth/active-role");
+  assert.equal(request.options.method, "POST");
+  assert.deepEqual(JSON.parse(request.options.body), { active_role: "manager" });
+  assert.equal(result.activeRole, "manager");
+});
+
 test("admin API permits the exact read-only commercial overview endpoint", async () => {
   let request;
   await getAdminJson("/api/commercial/admin/overview", {

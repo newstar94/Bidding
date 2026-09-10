@@ -35,6 +35,12 @@ try {
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
   try {
+    await page.waitForURL((url) => url.pathname === "/admin", { timeout: 15_000 });
+    await page.waitForFunction(() => (
+      document.getElementById("admin-app")?.getAttribute("aria-busy") === "false"
+    ), null, { timeout: 15_000 });
+    await page.locator("[data-admin-workspace-link]").click();
+    await page.waitForURL((url) => url.pathname === "/tong-quan", { timeout: 15_000 });
     await page.waitForFunction(() => {
       const overlay = document.getElementById("auth-overlay");
       const loader = document.getElementById("system-init-loader");

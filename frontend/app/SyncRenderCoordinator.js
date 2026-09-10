@@ -74,10 +74,17 @@ const AUTHORIZATION_SCOPED_EDITORS = Object.freeze([
   ["modal-hopdong", "form-hopdong-id", "hopdong"],
 ]);
 
-export function dismissRevokedInteractiveState(controller, root = globalThis.document) {
+export function dismissRevokedInteractiveState(
+  controller,
+  root = globalThis.document,
+  reconciledStateKeys = null,
+) {
   if (!controller?.model?.state || !root) return [];
+  const shouldReconcile = (stateKey) => !reconciledStateKeys?.has
+    || reconciledStateKeys.has(stateKey);
   const dismissed = [];
   for (const [modalId, inputId, stateKey] of AUTHORIZATION_SCOPED_EDITORS) {
+    if (!shouldReconcile(stateKey)) continue;
     const modal = root.getElementById?.(modalId);
     if (!modal?.classList?.contains?.("active")) continue;
     const recordId = String(root.getElementById?.(inputId)?.value || "").trim();
@@ -96,7 +103,7 @@ export function dismissRevokedInteractiveState(controller, root = globalThis.doc
   }
 
   const activePackageId = String(controller.view?._currentWorkflowPackageId || "").trim();
-  if (activePackageId && !(controller.model.state.goithau || []).some(
+  if (shouldReconcile("goithau") && activePackageId && !(controller.model.state.goithau || []).some(
     (record) => String(record?.id || "") === activePackageId,
   )) {
     controller.view._currentWorkflowPackageId = "";

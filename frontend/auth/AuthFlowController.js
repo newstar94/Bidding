@@ -624,8 +624,10 @@ export function setupAuth() {
         localStorage.removeItem("bf_user_id");
       }
       selectActiveOrganization(data);
+      const activeRole = resolvePostLoginActiveRole(data);
       if (this._workspaceDeferredUntilReload) {
-        reloadWithInitLoader();
+        if (activeRole === "super_admin") window.location.assign("/admin");
+        else reloadWithInitLoader();
         return;
       }
       await initializeInteractiveLoginModel(this);
@@ -633,7 +635,6 @@ export function setupAuth() {
       if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
         await installAdminModule(this.constructor);
       }
-      const activeRole = resolvePostLoginActiveRole(data);
       this.model.state.activeuser = {
         ...this.model.state.activeuser || {}
       };

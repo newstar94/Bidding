@@ -256,10 +256,10 @@ async function loginAndSelectWorkspace(page, targetOrganizationId) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await page.waitForFunction(() => {
-    const overlay = document.getElementById("auth-overlay");
-    return overlay && getComputedStyle(overlay).display === "none";
-  }, null, { timeout: 20_000 });
+  await page.waitForURL((url) => url.pathname === "/admin", { timeout: 20_000 });
+  await page.waitForFunction(() => (
+    document.getElementById("admin-app")?.getAttribute("aria-busy") === "false"
+  ), null, { timeout: 20_000 });
   const roleResult = await page.evaluate(async (orgId) => {
     localStorage.setItem("bf_active_org", orgId);
     sessionStorage.setItem("bf_active_org", orgId);
@@ -283,7 +283,7 @@ async function loginAndSelectWorkspace(page, targetOrganizationId) {
   if (!roleResult.ok) {
     throw new Error(`Cannot activate manager role: ${JSON.stringify(roleResult)}`);
   }
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.goto(`${baseURL}/tong-quan`, { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.getByText("Chế độ: Quản lý", { exact: true }).waitFor({ state: "visible" });
 }

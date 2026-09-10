@@ -402,3 +402,26 @@ test("scope reconciliation preserves authorized editors and unsaved new-record f
     assert.equal(editor.dataset.bfUnsaved, "true");
   }
 });
+
+test("scope reconciliation leaves editors from untouched tables open", () => {
+  const editor = {
+    dataset: { bfUnsaved: "true" },
+    classList: { contains: () => true },
+  };
+  const controller = {
+    model: { state: { kehoach: [], goithau: [] } },
+    view: {
+      closeModal: () => assert.fail("an untouched table must not close its editor"),
+      showToast: () => assert.fail("an untouched table must not report revocation"),
+    },
+  };
+  const elements = new Map([
+    ["modal-kehoach", editor],
+    ["form-kehoach-id", { value: "plan-not-in-this-delta" }],
+  ]);
+
+  assert.deepEqual(dismissRevokedInteractiveState(controller, {
+    getElementById: (id) => elements.get(id) || null,
+  }, new Set(["goithau"])), []);
+  assert.equal(editor.dataset.bfUnsaved, "true");
+});

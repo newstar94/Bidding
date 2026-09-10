@@ -529,7 +529,8 @@ async function executeForceSyncData(
     reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys,
       visibilityScopeChanged ? deletionsByTable : {});
     await persistencePromise;
-    if (visibilityScopeChanged) dismissRevokedInteractiveState(this);
+    if (!pullIsCurrent()) return stalePullResult();
+    dismissRevokedInteractiveState(this, globalThis.document, changedKeys);
     const draftsReapplied = await reapplyCapturedPlanDraftSessions(
       this, pullResources, pullIsCurrent,
     );
