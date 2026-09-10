@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyticsResultsMarkup, buildAnalyticsQueries, normalizeAnalyticsFilters } from "../../frontend/admin-platform/AdminAnalytics.js";
+import {
+  ANALYTICS_VIEWS,
+  analyticsFilterMarkup,
+  analyticsPresetRange,
+  analyticsResultsMarkup,
+  buildAnalyticsQueries,
+  normalizeAnalyticsFilters,
+} from "../../frontend/admin-platform/AdminAnalytics.js";
 
 test("analytics filters accept valid ordered ISO dates and only supported buckets", () => {
   assert.deepEqual(normalizeAnalyticsFilters({ from: "2026-08-01", to: "2026-08-30", bucket: "hour" }), {
-    from: "2026-08-01", to: "2026-08-30", bucket: "hour",
+    from: "2026-08-01", to: "2026-08-30", bucket: "hour", view: "overview", preset: "custom",
   });
   assert.throws(() => normalizeAnalyticsFilters({ from: "2026-02-30" }), /không hợp lệ/u);
   assert.throws(() => normalizeAnalyticsFilters({ from: "2026-09-01", to: "2026-08-01" }), /Ngày bắt đầu/u);
@@ -13,10 +20,56 @@ test("analytics filters accept valid ordered ISO dates and only supported bucket
 });
 
 test("analytics builds bounded queries for both real aggregate endpoints", () => {
-  assert.deepEqual(buildAnalyticsQueries({ from: "2026-08-01", to: "2026-08-30", bucket: "day", secret: "no" }), {
+  assert.deepEqual(buildAnalyticsQueries({
+    from: "2026-08-01", to: "2026-08-30", bucket: "day", view: "retention", preset: "custom", secret: "no",
+  }), {
     usage: { from: "2026-08-01", to: "2026-08-30", bucket: "day" },
-    product: { from: "2026-08-01", to: "2026-08-30", view: "overview" },
+    product: { from: "2026-08-01", to: "2026-08-30", view: "retention" },
   });
+});
+
+test("analytics presets calculate inclusive local calendar ranges", () => {
+  const today = "2026-09-11";
+  assert.deepEqual(analyticsPresetRange("7d", today), { from: "2026-09-05", to: today });
+  assert.deepEqual(analyticsPresetRange("30d", today), { from: "2026-08-13", to: today });
+  assert.deepEqual(analyticsPresetRange("90d", today), { from: "2026-06-14", to: today });
+  assert.deepEqual(analyticsPresetRange("year", today), { from: "2026-01-01", to: today });
+  assert.equal(analyticsPresetRange("invalid", today), null);
+});
+
+test("analytics safely normalizes invalid preset and view", () => {
+  assert.deepEqual(normalizeAnalyticsFilters({
+    preset: "invalid", view: "raw-secrets", bucket: "minute",
+  }, { referenceDate: "2026-09-11" }), {
+    from: "2026-08-13", to: "2026-09-11", bucket: "day", view: "overview", preset: "30d",
+  });
+});
+
+test("analytics forwards every supported product view unchanged", () => {
+  for (const [view] of ANALYTICS_VIEWS) {
+    const queries = buildAnalyticsQueries({
+      from: "2026-08-01", to: "2026-08-30", preset: "custom", bucket: "hour", view, unknown: "no",
+    });
+    assert.equal(queries.product.view, view);
+    assert.deepEqual(queries.usage, { from: "2026-08-01", to: "2026-08-30", bucket: "hour" });
+    assert.equal(Object.hasOwn(queries.product, "bucket"), false);
+    assert.equal(Object.hasOwn(queries.product, "unknown"), false);
+    assert.equal(Object.hasOwn(queries.usage, "view"), false);
+  }
+});
+
+test("analytics filter renders all supported views and date presets", () => {
+  const markup = analyticsFilterMarkup(normalizeAnalyticsFilters({
+    from: "2026-08-01", to: "2026-08-30", preset: "custom", view: "features",
+  }));
+  for (const [view, label] of ANALYTICS_VIEWS) {
+    assert.ok(markup.includes(`value="${view}"`));
+    assert.ok(markup.includes(`>${label}</option>`));
+  }
+  for (const preset of ["7d", "30d", "90d", "year", "custom"]) {
+    assert.ok(markup.includes(`data-analytics-preset="${preset}"`));
+  }
+  assert.match(markup, /data-analytics-preset="custom"[^>]*aria-pressed="true"/u);
 });
 
 test("analytics renders real zeroes, missing values as N/A and no unknown payload fields", () => {
@@ -34,6 +87,31 @@ test("analytics renders real zeroes, missing values as N/A and no unknown payloa
   assert.match(markup, /Lượt xuất Word[\s\S]*>N\/A</u);
   assert.match(markup, /Gói thầu/u);
   assert.doesNotMatch(markup, /do-not-render|hidden-value/u);
+});
+
+test("analytics renders accessible series fallbacks and suppressed values", () => {
+  const markup = analyticsResultsMarkup(
+    { coverage: { hasData: true }, topFeatures: [] },
+    { dashboard: {
+      hasData: true,
+      kpis: [],
+      series: [{ key: "activity", label: "Hoạt động", points: [
+        { date: "2026-08-01", value: 12 },
+        { date: "2026-08-02", value: null, status: "insufficient_sample", raw: "hidden" },
+      ] }],
+      viewCharts: [{ key: "empty", label: "Chuỗi trống", series: [{ label: "Không có điểm", points: [] }] }],
+      segments: [{ segment: "Nhóm A", workspaceCount: 8, secret: "segment-secret" }],
+      table: [{ metric: "P50", value: 4, internal: "table-secret" }],
+      rawPayload: "dashboard-secret",
+    } },
+  );
+  assert.match(markup, /aria-labelledby="admin-chart-0"/u);
+  assert.match(markup, /<table[\s\S]*2026-08-01[\s\S]*12/u);
+  assert.match(markup, /2026-08-02[\s\S]*N\/A[\s\S]*Không đủ mẫu/u);
+  assert.match(markup, /Chuỗi trống[\s\S]*Chưa có điểm dữ liệu/u);
+  assert.match(markup, /Phân khúc[\s\S]*Nhóm A[\s\S]*8/u);
+  assert.match(markup, /Chi tiết[\s\S]*P50[\s\S]*4/u);
+  assert.doesNotMatch(markup, /raw|secret|hidden|dashboard-secret/u);
 });
 
 test("analytics renders an explicit empty state when both sources have no data", () => {
