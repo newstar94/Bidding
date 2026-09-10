@@ -249,7 +249,7 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-hero {
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   padding: 94px 0 104px;
   border-bottom: 1px solid var(--landing-line);
   background:
@@ -370,7 +370,7 @@ html[data-bf-shell="workspace"] .landing-page {
 .landing-product-window {
   position: relative;
   z-index: 1;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid rgba(169, 183, 207, 0.72);
   border-radius: 16px;
   background: var(--landing-surface);
@@ -2662,7 +2662,7 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-hero {
   min-height: 730px;
-  overflow: hidden;
+  overflow: clip;
   padding: 76px 0 90px;
   border-bottom: 0;
   background: var(--landing-literal-canvas);

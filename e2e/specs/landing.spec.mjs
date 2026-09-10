@@ -53,17 +53,24 @@ async function resetScroll(page) {
     document.documentElement.style.scrollBehavior = "auto";
     window.scrollTo(0, 0);
   });
-  // Chromium can report a stable 1–2px sub-pixel offset after restoring a
-  // hash-bearing history entry. That is not a scroll lock.
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(4);
+  // History restoration and the sticky header can leave a small, stable
+  // scroll-anchor offset. The next assertion measures native movement from
+  // that settled baseline instead of treating the offset as a scroll lock.
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(16);
+  return page.evaluate(() => window.scrollY);
+}
+
+async function expectHistoryPositionRestored(page) {
+  await expect(page).toHaveURL(/#giai-phap$/u);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
 }
 
 async function expectPageScrolls(page, action) {
   const previous = await page.evaluate(() => document.documentElement.style.scrollBehavior);
   try {
-    await resetScroll(page);
+    const baseline = await resetScroll(page);
     await action();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100).catch(async (error) => {
+    await expect.poll(() => page.evaluate((start) => window.scrollY - start, baseline)).toBeGreaterThan(100).catch(async (error) => {
       const state = await page.evaluate(() => ({
         path: location.pathname, hash: location.hash,
         scrollY, scrollHeight: document.scrollingElement?.scrollHeight,
@@ -171,16 +178,19 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
 
   await page.reload({ waitUntil: "commit" });
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
+  await expectHistoryPositionRestored(page);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
   await page.goto("/dang-nhap", { waitUntil: "commit" });
   await expect(page.locator("#form-auth-login")).toBeVisible();
   await page.goBack({ waitUntil: "commit" });
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
+  await expectHistoryPositionRestored(page);
   await expectPageScrolls(page, () => page.evaluate(() => window.scrollTo(0, 500)));
   await page.goForward({ waitUntil: "commit" });
   await expect(page.locator("#form-auth-login")).toBeVisible();
   await page.goBack({ waitUntil: "commit" });
   await expect(page.locator("body")).toHaveClass(/landing-ready/u);
+  await expectHistoryPositionRestored(page);
   await expectPageScrolls(page, async () => {
     await page.evaluate(() => {
       window.__bfWheelDiagnostics = [];

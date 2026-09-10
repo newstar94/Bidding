@@ -1107,7 +1107,25 @@ try {
     diagnostics: "contract create",
   });
   await waitForCanonicalSync(page, contractCreateSync, "Contract create");
+  const contractSearchResponse = page.waitForResponse((response) => {
+    if (response.request().method() !== "GET") return false;
+    const url = new URL(response.url());
+    return url.pathname === "/api/paginate"
+      && url.searchParams.get("table") === "hopdong"
+      && String(url.searchParams.get("search") || "").toLowerCase()
+        === `hợp đồng ${runId}`.toLowerCase();
+  });
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
+  const contractSearch = await contractSearchResponse;
+  const contractSearchBody = await contractSearch.json().catch(() => null);
+  if (!contractSearch.ok() || !(contractSearchBody?.items || []).some(
+    (contract) => contract.tenHopDong === `Hợp đồng ${runId}`,
+  )) {
+    throw new Error(`Contract search did not return the canonical record: ${JSON.stringify({
+      status: contractSearch.status(),
+      body: contractSearchBody,
+    })}`);
+  }
   const contractRow = () => page.locator("#hopdong-table tbody tr").filter({ hasText: `Hợp đồng ${runId}` });
   await contractRow().waitFor({ state: "visible", timeout: 15_000 });
   await contractRow().getByText("Đang thực hiện", { exact: true }).waitFor({ state: "visible", timeout: 15_000 });

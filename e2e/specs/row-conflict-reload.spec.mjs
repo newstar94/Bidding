@@ -201,25 +201,25 @@ async function selectVisibleVersion(page, packageRow, label) {
   const option = nativeSelect.locator("option").filter({ hasText: label });
   await expect(option).toHaveCount(1);
   const selectedId = await option.getAttribute("value");
+  const previousSelect = await nativeSelect.elementHandle();
   expect(selectedId).toBeTruthy();
+  expect(previousSelect).toBeTruthy();
   // Exercise the same accessible control as a user. The native select is a
-  // hidden implementation detail and can be transiently disabled while its
-  // replacement row is mounted, especially in WebKit. If a pending table
-  // response replaces the row during Playwright's actionability checks, the
-  // detached listbox receives no change event; re-resolve the current control
-  // once based on the observed native value instead of waiting or forcing it.
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const combobox = packageRow.getByRole("combobox", {
-      name: /Chọn phiên bản gói thầu/i,
-    });
-    await combobox.click();
-    const listboxId = await combobox.getAttribute("aria-controls");
-    expect(listboxId).toBeTruthy();
-    await page.locator(`[id="${listboxId}"]`)
-      .getByRole("option", { name: label, exact: true })
-      .click();
-    if (await nativeSelect.inputValue() === selectedId) break;
-  }
+  // hidden implementation detail. Selecting a version synchronously starts an
+  // asynchronous table render, so wait for the old row to be replaced before
+  // resolving the next control; otherwise a following selection can target a
+  // listbox that the pending render has already detached.
+  const combobox = packageRow.getByRole("combobox", {
+    name: /Chọn phiên bản gói thầu/i,
+  });
+  await combobox.click();
+  const listboxId = await combobox.getAttribute("aria-controls");
+  expect(listboxId).toBeTruthy();
+  await page.locator(`[id="${listboxId}"]`)
+    .getByRole("option", { name: label, exact: true })
+    .click();
+  await page.waitForFunction((select) => !select.isConnected, previousSelect);
+  await previousSelect.dispose();
   await expect(packageRow.locator('select[data-bf-change="change-package-version"]'))
     .toHaveValue(selectedId);
   await expect(packageRow.getByRole("combobox", {
