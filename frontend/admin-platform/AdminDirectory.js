@@ -108,8 +108,8 @@ export function directoryResultsMarkup(config, state, payload) {
     ? '<th scope="col" class="w-1"><input class="form-check-input" type="checkbox" data-admin-select-all aria-label="Chọn tất cả bản ghi trên trang"></th>'
     : "";
   const headers = selectionHeader + config.columns.map((column) => sortHeader(column, state)).join("");
-  const rows = items.map((item) => {
-    const markup = config.rowMarkup(item);
+  const rows = items.map((item, index) => {
+    const markup = config.rowMarkup(item, index);
     if (!config.selectable) return markup;
     const recordId = String(config.selectionKey?.(item) ?? item?.id ?? item?.publicId ?? item?.sessionId ?? "").trim();
     if (!recordId) return markup;
