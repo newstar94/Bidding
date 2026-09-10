@@ -6,6 +6,7 @@ import { renderAdminAnalytics } from "./AdminAnalytics.js";
 import { renderAdminPlans } from "./AdminPlans.js";
 import { renderAdminEnvironment, renderAdminHealth, renderAdminSystemVersion } from "./AdminOperations.js";
 import { renderAdminAudit, renderAdminSecurity } from "./AdminSecurity.js";
+import { renderAdminSystemJobs, renderAdminSystemSync } from "./AdminSystem.js";
 import { adminStateMarkup } from "./AdminStateView.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
@@ -43,6 +44,8 @@ function renderRoute() {
   else if (route.path === "/admin/health") void renderAdminHealth(content, { signal: routeController.signal });
   else if (route.path === "/admin/environment") void renderAdminEnvironment(content, { signal: routeController.signal });
   else if (route.path === "/admin/system/version") void renderAdminSystemVersion(content, { signal: routeController.signal });
+  else if (route.path === "/admin/system/jobs") renderAdminSystemJobs(content, { signal: routeController.signal });
+  else if (route.path === "/admin/system/sync") renderAdminSystemSync(content, { signal: routeController.signal });
   else content.innerHTML = trustedHTML(adminStateMarkup("empty", { message: "Chức năng này chưa có nguồn dữ liệu quản trị được xác thực." }));
   document.getElementById("admin-main")?.focus({ preventScroll: true });
 }

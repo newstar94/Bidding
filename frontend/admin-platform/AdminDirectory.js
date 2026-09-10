@@ -45,10 +45,11 @@ function normalizeState(config, values = {}) {
   const page = Math.max(1, Number.parseInt(values.page, 10) || 1);
   const requestedSize = Number.parseInt(values.pageSize, 10) || 25;
   const sortBy = config.sortKeys.includes(values.sortBy) ? values.sortBy : config.defaultSort;
+  const searchKey = config.searchQueryKey || "search";
   return {
     page,
     pageSize: PAGE_SIZES.has(requestedSize) ? requestedSize : 25,
-    search: String(values.search || "").trim().slice(0, 100),
+    [searchKey]: String(values[searchKey] || "").trim().slice(0, 100),
     sortBy,
     sortDir: values.sortDir === "desc" || (!values.sortDir && config.defaultSortDir === "desc") ? "desc" : "asc",
     ...Object.fromEntries(config.filters.map((filter) => {
@@ -64,8 +65,9 @@ export function readDirectoryState(config, search = globalThis.location?.search 
 }
 
 export function directoryQuery(state, config) {
+  const searchKey = config.searchQueryKey || "search";
   return Object.fromEntries([
-    ["page", state.page], ["pageSize", state.pageSize], ["search", state.search],
+    ["page", state.page], ["pageSize", state.pageSize], [searchKey, state[searchKey]],
     ["sortBy", state.sortBy], ["sortDir", state.sortDir],
     ...config.filters.map((filter) => [filter.key, state[filter.key]]),
   ].filter(([, value]) => value !== ""));
@@ -79,7 +81,9 @@ function filterMarkup(filter, state) {
 }
 
 function controlsMarkup(config, state) {
-  return `<form class="card card-body mb-3" data-admin-directory-form role="search"><div class="row g-2 align-items-center"><div class="col-12 col-lg"><label class="visually-hidden" for="admin-directory-search">Tìm kiếm</label><input id="admin-directory-search" class="form-control" type="search" name="search" value="${escapeHtml(state.search)}" maxlength="100" placeholder="${escapeHtml(config.searchPlaceholder)}"></div>${config.filters.map((filter) => `<div class="col-6 col-lg-auto">${filterMarkup(filter, state)}</div>`).join("")}<div class="col-12 col-lg-auto"><button class="btn btn-primary w-100" type="submit">Tìm kiếm</button></div></div></form><div data-admin-directory-results aria-live="polite"></div>`;
+  const searchKey = config.searchQueryKey || "search";
+  const searchControl = config.hideSearch ? "" : `<div class="col-12 col-lg"><label class="visually-hidden" for="admin-directory-search">Tìm kiếm</label><input id="admin-directory-search" class="form-control" type="search" name="${escapeHtml(searchKey)}" value="${escapeHtml(state[searchKey] || "")}" maxlength="100" placeholder="${escapeHtml(config.searchPlaceholder)}"></div>`;
+  return `<form class="card card-body mb-3" data-admin-directory-form role="search"><div class="row g-2 align-items-center">${searchControl}${config.filters.map((filter) => `<div class="col-6 col-lg-auto">${filterMarkup(filter, state)}</div>`).join("")}<div class="col-12 col-lg-auto"><button class="btn btn-primary w-100" type="submit">Áp dụng</button></div></div></form><div data-admin-directory-results aria-live="polite"></div>`;
 }
 
 function sortHeader(column, state) {
