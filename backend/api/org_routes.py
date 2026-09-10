@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 from backend.auth.security_notifications import build_security_notification_batch
 from backend.auth.auth_service import get_rate_limit_decision, rate_limit_response
 from backend.auth.identity import normalize_email
+from backend.auth.auth_helper import verify_session_in_transaction
 
 from backend.shared.helpers import (
     database,
@@ -335,6 +336,15 @@ async def update_organization_subscription_api(request):
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
+        role_or_err = current_actor
         acquire_idempotency_lock(
             cursor,
             "organization_subscription",
