@@ -44,5 +44,8 @@ def test_admin_shell_serves_authorized_deep_link(monkeypatch):
     assert 'id="bf-admin-session"' in response.text
     assert '"platform_role":"super_admin"' in response.text
     assert "/frontend/admin-platform/AdminApp.js" in response.text
+    assert "/vendor/tabler/tabler.min.css" in response.text
+    assert "/vendor/tabler/tabler.min.js" in response.text
+    assert "__BF_ADMIN_" not in response.text
     assert response.headers["x-robots-tag"] == "noindex, nofollow"
     assert response.headers["cache-control"] == "private, no-store"
