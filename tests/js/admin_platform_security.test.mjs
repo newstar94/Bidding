@@ -10,6 +10,8 @@ import {
 import {
   AUDIT_DIRECTORY,
   SESSION_DIRECTORY,
+  auditDetailMarkup,
+  sessionDetailMarkup,
 } from "../../frontend/admin-platform/AdminSecurity.js";
 
 test("audit controls stay bounded to server pagination search and allowlisted sorting", () => {
@@ -26,6 +28,8 @@ test("audit controls stay bounded to server pagination search and allowlisted so
     sortDir: "asc",
   });
   assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?sortBy=metadata_json").sortBy, "created_at");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.login_success").action, "auth.login_success");
+  assert.equal(readDirectoryState(AUDIT_DIRECTORY, "?action=auth.unknown").action, "");
 });
 
 test("audit table renders summary fields without raw metadata hashes or IP data", () => {
@@ -51,6 +55,7 @@ test("audit table renders summary fields without raw metadata hashes or IP data"
   assert.match(markup, /admin[.]user_updated/u);
   assert.match(markup, /admin-1/u);
   assert.match(markup, /user-2/u);
+  assert.match(markup, /data-admin-security-detail-index="0"/u);
   assert.doesNotMatch(markup, /raw-metadata-secret|raw-entry-hash|192[.]0[.]2[.]10/u);
 });
 
@@ -97,6 +102,7 @@ test("security table never renders session token device or privileged auth mater
   assert.match(markup, /Minh An/u);
   assert.match(markup, /an@example[.]test/u);
   assert.match(markup, /manager/u);
+  assert.match(markup, /data-admin-security-detail-index="0"/u);
   assert.doesNotMatch(markup, /session-internal-id|token-secret|raw-device-fingerprint|1900/u);
 });
 
@@ -117,4 +123,56 @@ test("security pages preserve empty state and cancel stale requests", async () =
   loader.cancel();
   await pending;
   assert.equal(applied, false);
+});
+
+test("audit detail renders safe login and target fields without raw internals", () => {
+  const markup = auditDetailMarkup({
+    id: 17,
+    action: "auth.login_success",
+    actorUserId: "admin-1",
+    organizationId: null,
+    targetType: "session",
+    targetId: "account-1",
+    chainId: "global",
+    sequence: 41,
+    createdAt: "2026-09-10T08:00:00Z",
+    metadata: { password: "raw-password", deviceFingerprint: "fingerprint-secret" },
+    ipAddress: "192.0.2.44",
+    entryHash: "audit-hash-secret",
+  });
+  assert.match(markup, /auth[.]login_success/u);
+  assert.match(markup, /account-1/u);
+  assert.match(markup, /Toàn nền tảng/u);
+  assert.doesNotMatch(markup, /raw-password|fingerprint-secret|192[.]0[.]2[.]44|audit-hash-secret/u);
+});
+
+test("session detail includes lifecycle dates but excludes identifiers and authentication material", () => {
+  const markup = sessionDetailMarkup({
+    sessionId: "session-internal-id",
+    user: {
+      id: "user-internal-id",
+      name: "Minh An",
+      username: "minhan",
+      email: "an@example.test",
+      platformRole: "user",
+      status: "active",
+    },
+    status: "active",
+    createdAt: 1_000,
+    lastSeenAt: 1_900,
+    idleExpiresAt: 2_500,
+    absoluteExpiresAt: 3_000,
+    revokedAt: null,
+    rememberMe: true,
+    activeRole: "manager",
+    activeRoleOrganizationId: "org-1",
+    tokenHash: "token-secret",
+    deviceInfo: "raw-device-fingerprint",
+    privilegedReauthAt: 1_850,
+  });
+  assert.match(markup, /Minh An/u);
+  assert.match(markup, /minhan/u);
+  assert.match(markup, /Hết hạn không hoạt động/u);
+  assert.match(markup, /manager/u);
+  assert.doesNotMatch(markup, /session-internal-id|user-internal-id|token-secret|raw-device-fingerprint|1850/u);
 });
