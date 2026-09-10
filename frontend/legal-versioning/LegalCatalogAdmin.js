@@ -17,17 +17,18 @@ function loadStyles(root) {
 }
 
 function field({ id, label, type = "text", required = false, value = "", hint = "" }) {
-  const wrapper = node("div", "legal-catalog-field");
-  const labelNode = node("label", "", label);
+  const wrapper = node("div", "legal-catalog-field mb-3");
+  const labelNode = node("label", "form-label", label);
   labelNode.htmlFor = id;
   const input = type === "textarea" ? node("textarea") : node("input");
   input.id = id;
   input.name = id;
   input.required = required;
   if (type !== "textarea") input.type = type;
+  input.className = "form-control";
   input.value = value;
   if (hint) {
-    const hintNode = node("small", "legal-catalog-hint", hint);
+    const hintNode = node("small", "legal-catalog-hint form-hint", hint);
     hintNode.id = `${id}-hint`;
     input.setAttribute("aria-describedby", hintNode.id);
     wrapper.append(labelNode, input, hintNode);
@@ -37,7 +38,7 @@ function field({ id, label, type = "text", required = false, value = "", hint = 
   return { wrapper, input };
 }
 
-function button(label, className = "btn btn-outline") {
+function button(label, className = "btn btn-outline-secondary") {
   const value = node("button", className, label);
   value.type = "button";
   return value;
@@ -83,7 +84,7 @@ function exactSourceArticle(source) {
 }
 
 function buildInstrumentForm() {
-  const form = node("form", "legal-catalog-form");
+  const form = node("form", "legal-catalog-form card card-body");
   form.setAttribute("aria-labelledby", "legal-instrument-form-title");
   const title = node("h3", "", "1. Văn bản nguồn bất biến");
   title.id = "legal-instrument-form-title";
@@ -110,7 +111,7 @@ function buildInstrumentForm() {
 }
 
 function buildProfileForm() {
-  const form = node("form", "legal-catalog-form");
+  const form = node("form", "legal-catalog-form card card-body");
   form.setAttribute("aria-labelledby", "legal-profile-form-title");
   const title = node("h3", "", "2. Hồ sơ nguồn áp dụng");
   title.id = "legal-profile-form-title";
@@ -143,8 +144,9 @@ export function isLegalCatalogEnabled(root = globalThis.document) {
 
 export async function mountLegalCatalogAdmin(container, {
   root = document, read = getJson, write = postJson,
+  enabled = isLegalCatalogEnabled(root),
 } = {}) {
-  if (!container || !isLegalCatalogEnabled(root)) return null;
+  if (!container || !enabled) return null;
   if (container.__legalCatalogAdmin) return container.__legalCatalogAdmin;
   const card = container.closest?.("#legal-catalog-admin-card") || container;
   loadStyles(root);
@@ -154,7 +156,7 @@ export async function mountLegalCatalogAdmin(container, {
   status.setAttribute("aria-live", "polite");
   const instrument = buildInstrumentForm();
   const profile = buildProfileForm();
-  const published = node("section", "legal-catalog-published");
+  const published = node("section", "legal-catalog-published card card-body");
   published.setAttribute("aria-labelledby", "legal-catalog-published-title");
   const publishedTitle = node("h3", "", "Hồ sơ đã xuất bản");
   publishedTitle.id = "legal-catalog-published-title";
@@ -179,7 +181,7 @@ export async function mountLegalCatalogAdmin(container, {
   const addAvailableSource = (source) => {
     if (!source?.id || availableSources.has(source.id)) return;
     availableSources.set(source.id, source);
-    const item = node("div", "legal-catalog-version");
+    const item = node("div", "legal-catalog-version border rounded");
     item.append(node("code", "", source.id), node("span", "", `${source.documentType || ""} ${source.documentNumber || source.title || ""}`.trim()));
     const add = button("Thêm vào hồ sơ", "btn btn-outline btn-sm");
     add.addEventListener("click", () => {
@@ -199,7 +201,7 @@ export async function mountLegalCatalogAdmin(container, {
       return;
     }
     profiles.forEach((item) => {
-      const article = node("article", "legal-catalog-profile");
+      const article = node("article", "legal-catalog-profile card card-body");
       article.append(
         node("h4", "", `${item.displayName} · v${item.versionNo}`),
         node("p", "", `Hiệu lực: ${item.effectiveFrom}${item.effectiveTo ? ` – ${item.effectiveTo}` : " trở đi"} · ưu tiên ${item.priority}`),

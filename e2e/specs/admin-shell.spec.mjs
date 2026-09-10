@@ -161,6 +161,18 @@ test("admin data surfaces expose loading, empty, error-retry, and permission sta
   await expect(page.locator('[data-admin-metric="organizations"]')).toHaveText("2");
 });
 
+test("legal catalog deep link mounts the existing immutable publication workflow", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  await context.route("**/api/legal-versioning/profiles", (route) => fulfillJson(route, []));
+
+  await page.goto("/admin/legal", { waitUntil: "commit" });
+  await expectAdminReady(page, "Danh mục pháp lý");
+  await expect(page.locator('[data-admin-link="/admin/legal"]')).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "Tạo bản nháp văn bản" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tạo bản nháp hồ sơ" })).toBeVisible();
+  await expect(page.getByText("Chưa có hồ sơ pháp lý nào được xuất bản.")).toBeVisible();
+});
+
 test("admin shell remains operable at desktop, tablet, and mobile widths", async ({ context, page }) => {
   await installAuthorizedShell(context);
   await context.route("**/api/admin/overview", (route) => fulfillJson(route, OVERVIEW_PAYLOAD));

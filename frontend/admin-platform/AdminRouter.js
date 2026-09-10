@@ -4,6 +4,7 @@ export const ADMIN_ROUTES = Object.freeze([
   ["/admin/plans", "Gói dịch vụ"], ["/admin/subscriptions", "Đăng ký"],
   ["/admin/invoices", "Hóa đơn"], ["/admin/payments", "Thanh toán"],
   ["/admin/settings", "Cài đặt"], ["/admin/environment", "Môi trường"],
+  ["/admin/legal", "Danh mục pháp lý"],
   ["/admin/audit", "Nhật ký"], ["/admin/health", "Vận hành"],
   ["/admin/security", "Bảo mật"], ["/admin/system/jobs", "Tác vụ"],
   ["/admin/system/sync", "Đồng bộ"], ["/admin/system/version", "Phiên bản"],
