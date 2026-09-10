@@ -2,6 +2,7 @@ import { ADMIN_ROUTES, getAdminRoute, navigateAdmin } from "./AdminRouter.js";
 import { renderAdminOverview } from "./AdminOverview.js";
 import { renderAdminOrganizations, renderAdminUsers } from "./AdminDirectories.js";
 import { renderAdminInvoicesUnavailable, renderAdminPayments, renderAdminSubscriptions } from "./AdminBilling.js";
+import { renderAdminAnalytics } from "./AdminAnalytics.js";
 import { renderAdminEnvironment, renderAdminHealth, renderAdminSystemVersion } from "./AdminOperations.js";
 import { adminStateMarkup } from "./AdminStateView.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
@@ -28,6 +29,7 @@ function renderRoute() {
   view.innerHTML = trustedHTML(`<div class="page-header"><div class="row align-items-center"><div class="col"><div class="page-pretitle">Quản trị nền tảng</div><h2 class="page-title">${escapeText(route.title)}</h2></div></div></div><div id="admin-route-content" class="mt-3"></div>`);
   const content = document.getElementById("admin-route-content");
   if (route.path === "/admin") void renderAdminOverview(content, { signal: routeController.signal });
+  else if (route.path === "/admin/analytics") renderAdminAnalytics(content, { signal: routeController.signal });
   else if (route.path === "/admin/users") renderAdminUsers(content, { signal: routeController.signal });
   else if (route.path === "/admin/organizations") renderAdminOrganizations(content, { signal: routeController.signal });
   else if (route.path === "/admin/subscriptions") renderAdminSubscriptions(content, { signal: routeController.signal });
