@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 
 APP_ENTRY = "frontend/app/app.js"
+ADMIN_ENTRY = "frontend/admin-platform/AdminApp.js"
 STYLE_ENTRY = "views/css/app.css"
 LANDING_STYLE_ENTRY = "views/css/landing-shell.css"
 HASHED_ASSET_PATH = re.compile(

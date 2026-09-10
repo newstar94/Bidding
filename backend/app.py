@@ -55,11 +55,13 @@ sys.path.insert(0, project_root)
 from backend.shared.client_ip import parse_ip_networks
 from backend.shared.origin_policy import get_allowed_websocket_origins
 from backend.frontend_assets import (
+    ADMIN_ENTRY,
     APP_ENTRY,
     LANDING_STYLE_ENTRY,
     FrontendAssetError,
     assert_production_frontend_ready,
     resolve_frontend_entry,
+    resolve_frontend_styles,
     resolve_font_preloads,
     resolve_preload_graph,
 )
@@ -763,6 +765,40 @@ async def index(request, *, not_found=False):
         }
     )
 
+def _compile_admin_shell(session_bootstrap):
+    template_path = os.path.join(project_root, "views", "admin", "index.html")
+    with open(template_path, "r", encoding="utf-8") as template_file:
+        content = template_file.read()
+    entry_src = "/frontend/admin-platform/AdminApp.js"
+    stylesheet_tags = ""
+    if _frontend_bundle_enabled():
+        manifest_path = Path(project_root) / "dist" / ".vite" / "manifest.json"
+        with manifest_path.open("r", encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+        dist_root = Path(project_root) / "dist"
+        entry_src = f'/dist/{resolve_frontend_entry(manifest, dist_root, ADMIN_ENTRY)}'
+        stylesheet_tags = "\n".join(
+            f'<link rel="stylesheet" href="/dist/{asset}">'
+            for asset in resolve_frontend_styles(manifest, dist_root, ADMIN_ENTRY)
+        )
+    safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+    return content.replace("__BF_ADMIN_STYLES__", stylesheet_tags).replace("__BF_ADMIN_ENTRY__", entry_src).replace("__BF_ADMIN_SESSION__", safe_bootstrap)
+
+
+async def admin_index(request):
+    """Serve the isolated platform console only after server authorization."""
+    is_valid, _role_or_error = verify_session(request, required_role="super_admin")
+    if not is_valid:
+        return Response("Không có quyền truy cập bảng quản trị nền tảng.", status_code=403, media_type="text/plain", headers={"Cache-Control": "private, no-store"})
+    try:
+        session_bootstrap = await run_database_read(build_session_bootstrap, request)
+        content = _compile_admin_shell(session_bootstrap)
+    except (OSError, ValueError, FrontendAssetError, DatabaseError, RuntimeError) as exc:
+        log_error(exc, "admin_shell")
+        return Response("Không thể tải bảng quản trị.", status_code=503)
+    return HTMLResponse(content, headers={"Cache-Control": "private, no-store", "Vary": "Cookie", "X-Robots-Tag": "noindex, nofollow"})
+
+
 from backend.shared.helpers import (
     log_error,
     ErrorLoggingMiddleware,
@@ -1317,6 +1353,8 @@ routes = [
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
     Route("/thuong-mai-thanh-toan", index, methods=["GET"]),
     Route("/phan-tich-su-dung", index, methods=["GET"]),
+    Route("/admin", admin_index, methods=["GET"]),
+    Route("/admin/{admin_path:path}", admin_index, methods=["GET"]),
     Route("/goi-va-thanh-toan", index, methods=["GET"]),
     Route("/nhan-su", index, methods=["GET"]),
     Route("/trang-thai-ho-so", index, methods=["GET"]),

@@ -1,0 +1,7 @@
+:root { --bf-admin-brand: #206bc4; }
+body { min-height: 100vh; }
+.navbar-brand span { color: #74c0fc; font-weight: 500; margin-left: .35rem; }
+.navbar-vertical .navbar-nav { gap: .125rem; }
+.navbar-vertical .nav-link.active { background: rgba(255, 255, 255, .1); }
+.page-header { margin-top: 1.5rem; }
+@media (max-width: 991.98px) { .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; } }

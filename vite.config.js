@@ -7,6 +7,7 @@ import { createFrontendAssetRetentionPlugin } from './scripts/frontend_asset_ret
 import { localSecureReleaseId } from './scripts/secure_release_id.mjs';
 
 const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
+const adminEntry = path.resolve(__dirname, 'frontend/admin-platform/AdminApp.js');
 const landingStylesEntry = path.resolve(__dirname, 'views/css/landing-shell.css');
 const stylesEntry = '/views/css/app.css';
 
@@ -277,6 +278,7 @@ export default defineConfig(({ mode }) => {
         },
         input: {
           app: appEntry,
+          admin: adminEntry,
           landingShell: landingStylesEntry
         },
         output: {
