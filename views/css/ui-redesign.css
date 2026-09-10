@@ -2528,8 +2528,8 @@ button:disabled {
 }
 
 /* Hallmark mobile hard floor: legacy landing rules must not reintroduce page-level overflow. */
-html,
-body {
+html:not([data-bf-shell="landing"]),
+html:not([data-bf-shell="landing"]) body {
   overflow-x: clip !important;
 }
 

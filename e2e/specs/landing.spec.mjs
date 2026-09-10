@@ -108,7 +108,7 @@ async function expectPageScrolls(page, action) {
         wheelEvents: window.__bfWheelDiagnostics || [],
         scrollAncestors: (() => {
           const items = [];
-          let node = document.elementFromPoint(720, 450);
+          let node = document.elementFromPoint(40, 450);
           while (node) {
             const style = getComputedStyle(node);
             items.push({ tag: node.tagName, className: node.getAttribute("class"),
@@ -118,7 +118,7 @@ async function expectPageScrolls(page, action) {
           }
           return items;
         })(),
-        wheelTarget: document.elementFromPoint(720, 450)?.outerHTML.slice(0, 400),
+        wheelTarget: document.elementFromPoint(40, 450)?.outerHTML.slice(0, 400),
       }));
       throw new Error(`Native scroll did not advance: ${JSON.stringify(state)}`, { cause: error });
     });
@@ -231,11 +231,11 @@ test("navigation lifecycle does not leak a scroll lock", async ({ page, context 
         queueMicrotask(() => { entry.prevented = event.defaultPrevented; });
       }, { capture: true, passive: true, once: true });
     });
-    // Cross a real coordinate boundary so Chromium refreshes the compositor
-    // hit-test after history restoration even when a prior test left the
-    // browser-level pointer at the final coordinate.
-    await page.mouse.move(40, 450);
+    // Target the page background instead of a composited product-preview
+    // descendant. This assertion verifies the root scroll container after
+    // history restoration, independent of preview hit-test caching.
     await page.mouse.move(720, 450);
+    await page.mouse.move(40, 450);
     await page.mouse.wheel(0, 500);
   });
 

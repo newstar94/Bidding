@@ -218,18 +218,21 @@ test('historical landing icons render strokes and native scrolling remains avail
     const rootOverflow = await page.evaluate(() => ({
       htmlX: getComputedStyle(document.documentElement).overflowX,
       htmlY: getComputedStyle(document.documentElement).overflowY,
+      bodyX: getComputedStyle(document.body).overflowX,
       bodyY: getComputedStyle(document.body).overflowY,
     }));
     assert.notEqual(rootOverflow.htmlX, 'clip');
     assert.notEqual(rootOverflow.htmlY, 'clip');
+    assert.notEqual(rootOverflow.bodyX, 'clip');
     assert.notEqual(rootOverflow.bodyY, 'hidden');
     assert.notEqual(rootOverflow.bodyY, 'clip');
     for (const selector of ['.landing-hero', '.landing-product-window']) {
-      assert.notEqual(
-        await page.locator(selector).evaluate(node => getComputedStyle(node).overflowY),
-        'clip',
-        `${selector} must preserve vertical wheel chaining`,
-      );
+      const overflow = await page.locator(selector).evaluate(node => ({
+        x: getComputedStyle(node).overflowX,
+        y: getComputedStyle(node).overflowY,
+      }));
+      assert.notEqual(overflow.x, 'clip', `${selector} must preserve wheel chaining`);
+      assert.notEqual(overflow.y, 'clip', `${selector} must preserve wheel chaining`);
     }
     await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, 0); });
     await page.mouse.move(150, 600);
