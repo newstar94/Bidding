@@ -216,6 +216,13 @@ test('historical landing icons render strokes and native scrolling remains avail
     assert.ok(visibleIcons.length >= 7);
     assert.ok(visibleIcons.every(width => width > 0));
     assert.notEqual(await page.evaluate(() => getComputedStyle(document.body).overflowY), 'hidden');
+    for (const selector of ['.landing-hero', '.landing-product-window']) {
+      assert.notEqual(
+        await page.locator(selector).evaluate(node => getComputedStyle(node).overflowY),
+        'clip',
+        `${selector} must preserve vertical wheel chaining`,
+      );
+    }
     await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; window.scrollTo(0, 0); });
     await page.mouse.move(150, 600);
     await page.mouse.wheel(0, 600);

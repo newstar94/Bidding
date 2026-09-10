@@ -371,7 +371,8 @@ html[data-bf-shell="workspace"] .landing-page {
 .landing-product-window {
   position: relative;
   z-index: 1;
-  overflow: clip;
+  overflow-x: clip;
+  overflow-y: visible;
   border: 1px solid rgba(169, 183, 207, 0.72);
   border-radius: 16px;
   background: var(--landing-surface);
