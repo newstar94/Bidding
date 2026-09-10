@@ -44,3 +44,19 @@ test("admin console uses one primary accent and semantic status colors", async (
   assert.doesNotMatch(admin, /gradient\s*\(/iu);
   assert.doesNotMatch(admin, /#(?:6d28d9|5b21b6|ae3ec9)\b/iu);
 });
+
+test("admin entry ships Tabler styles without the unused demo JavaScript bundle", async () => {
+  const entry = await readFile(
+    new URL("../../frontend/admin-platform/AdminEntry.js", import.meta.url),
+    "utf8",
+  );
+  const app = await readFile(
+    new URL("../../frontend/admin-platform/AdminApp.js", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(entry, /@tabler\/core\/dist\/css\/tabler\.min\.css/u);
+  assert.doesNotMatch(entry, /@tabler\/core\/dist\/js/u);
+  assert.match(app, /data-admin-nav-toggle/u);
+  assert.match(app, /navigation\.classList\.toggle\("show", !expanded\)/u);
+});

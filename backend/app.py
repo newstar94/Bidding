@@ -771,7 +771,7 @@ def _compile_admin_shell(session_bootstrap):
         content = template_file.read()
     entry_src = "/frontend/admin-platform/AdminApp.js"
     stylesheet_tags = '<link rel="stylesheet" href="/vendor/tabler/tabler.min.css">\n<link rel="stylesheet" href="/frontend/admin-platform/admin.css">'
-    vendor_script = '<script src="/vendor/tabler/tabler.min.js" defer></script>'
+    vendor_script = ""
     if _frontend_bundle_enabled():
         manifest_path = Path(project_root) / "dist" / ".vite" / "manifest.json"
         with manifest_path.open("r", encoding="utf-8") as manifest_file:

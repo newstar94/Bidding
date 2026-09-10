@@ -31,7 +31,17 @@ function escapeText(value) {
 function shellMarkup(session) {
   const name = escapeText(session.user?.name || session.user?.username || "Quản trị viên");
   const links = ADMIN_ROUTES.map(([path, title]) => `<li class="nav-item"><a class="nav-link" href="${path}" data-admin-link="${path}"><span class="nav-link-title">${escapeText(title)}</span></a></li>`).join("");
-  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#admin-navbar" aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl"><div class="navbar-nav flex-row order-md-last"><span class="nav-link">${name}</span><a class="nav-link" href="/tong-quan" data-admin-workspace-link>Không gian làm việc</a><span class="nav-link text-danger" id="admin-workspace-status" aria-live="polite"></span></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
+  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-admin-nav-toggle aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl"><div class="navbar-nav flex-row order-md-last"><span class="nav-link">${name}</span><a class="nav-link" href="/tong-quan" data-admin-workspace-link>Không gian làm việc</a><span class="nav-link text-danger" id="admin-workspace-status" aria-live="polite"></span></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
+}
+function bindNavigationToggle() {
+  const toggle = document.querySelector("[data-admin-nav-toggle]");
+  const navigation = document.getElementById("admin-navbar");
+  if (!toggle || !navigation) return;
+  toggle.addEventListener("click", () => {
+    const expanded = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", String(!expanded));
+    navigation.classList.toggle("show", !expanded);
+  });
 }
 async function selectWorkspaceRole(event) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -95,6 +105,7 @@ if (!session.valid || session.user?.platform_role !== "super_admin") app.innerHT
 else {
   window.performance?.mark?.("bf:init:start");
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
+  bindNavigationToggle();
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.querySelector("[data-admin-workspace-link]")?.addEventListener("click", selectWorkspaceRole);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });
