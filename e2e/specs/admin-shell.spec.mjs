@@ -3,11 +3,6 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN_DOCUMENT = /^https?:\/\/[^/]+\/admin(?:\/[^?]*)?(?:\?.*)?$/u;
 const ADMIN_TEMPLATE = await readFile(new URL("../../views/admin/index.html", import.meta.url), "utf8");
-const ADMIN_MANIFEST = JSON.parse(await readFile(
-  new URL("../../dist/.vite/manifest.json", import.meta.url),
-  "utf8",
-));
-const ADMIN_BUNDLE = ADMIN_MANIFEST["frontend/admin-platform/AdminEntry.js"];
 const ADMIN_SESSION = {
   valid: true,
   user: {
@@ -52,17 +47,23 @@ const ORGANIZATION_PAGE = {
   pagination: { page: 1, totalPages: 1, totalRows: 1 },
 };
 
-function authorizedShell() {
+async function authorizedShell() {
+  const manifest = JSON.parse(await readFile(
+    new URL("../../dist/.vite/manifest.json", import.meta.url),
+    "utf8",
+  ));
+  const adminBundle = manifest["frontend/admin-platform/AdminEntry.js"];
   return ADMIN_TEMPLATE
-    .replace("__BF_ADMIN_STYLES__", ADMIN_BUNDLE.css.map(
+    .replace("__BF_ADMIN_STYLES__", adminBundle.css.map(
       (asset) => `<link rel="stylesheet" href="/dist/${asset}">`,
     ).join("\n"))
     .replace("__BF_ADMIN_VENDOR_SCRIPT__", "")
-    .replace("__BF_ADMIN_ENTRY__", `/dist/${ADMIN_BUNDLE.file}`)
+    .replace("__BF_ADMIN_ENTRY__", `/dist/${adminBundle.file}`)
     .replace("__BF_ADMIN_SESSION__", JSON.stringify(ADMIN_SESSION).replaceAll("<", "\\u003c"));
 }
 
 async function installAuthorizedShell(context) {
+  const shell = await authorizedShell();
   await context.route(ADMIN_DOCUMENT, (route) => route.fulfill({
     status: 200,
     contentType: "text/html; charset=utf-8",
@@ -70,7 +71,7 @@ async function installAuthorizedShell(context) {
       "cache-control": "private, no-store",
       "x-robots-tag": "noindex, nofollow",
     },
-    body: authorizedShell(),
+    body: shell,
   }));
 }
 
