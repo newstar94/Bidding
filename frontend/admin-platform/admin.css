@@ -4,4 +4,8 @@ body { min-height: 100vh; }
 .navbar-vertical .navbar-nav { gap: .125rem; }
 .navbar-vertical .nav-link.active { background: rgba(255, 255, 255, .1); }
 .page-header { margin-top: 1.5rem; }
+.bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius-lg); }
+.bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
+.bf-admin-state { min-height: 12rem; justify-content: center; }
+.bf-admin-metric .h1 { font-variant-numeric: tabular-nums; }
 @media (max-width: 991.98px) { .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; } }
