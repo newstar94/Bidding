@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createLatestAdminLoader, directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
-import { ORGANIZATION_DIRECTORY, USER_DIRECTORY } from "../../frontend/admin-platform/AdminDirectories.js";
+import {
+  executeOrganizationDirectoryAction,
+  executeUserDirectoryAction,
+  organizationDetailMarkup,
+  ORGANIZATION_DIRECTORY,
+  userDetailMarkup,
+  USER_DIRECTORY,
+} from "../../frontend/admin-platform/AdminDirectories.js";
 
 test("directory query keeps only bounded server-side controls", () => {
   const state = readDirectoryState(USER_DIRECTORY, "?page=2&pageSize=50&search=an&role=user&status=active&sortBy=email&sortDir=desc&unknown=x");
@@ -53,4 +60,81 @@ test("organization directory renders real subscription values and an empty state
   assert.match(markup, /business/u);
   assert.match(markup, />12</u);
   assert.match(directoryResultsMarkup(ORGANIZATION_DIRECTORY, state, { items: [] }), /data-admin-state="empty"/u);
+});
+
+test("detail drawers preserve authoritative user, membership and subscription values", () => {
+  const userMarkup = userDetailMarkup({
+    id: "user-1", username: "minhan", name: "Minh An", email: "an@example.test",
+    role: "user", status: "active", createdAt: "2026-01-02", updatedAt: "2026-02-03",
+    organizations: [{ name: "Công ty An Bình", role: "manager", employeeName: "Nguyễn An", employeePhone: "0901" }],
+  });
+  assert.match(userMarkup, /an@example[.]test/u);
+  assert.match(userMarkup, /Nguyễn An · 0901/u);
+  assert.match(userMarkup, /data-admin-user-form="role"/u);
+  assert.match(userMarkup, /data-admin-user-action="deactivate"/u);
+
+  const organizationMarkup = organizationDetailMarkup({
+    id: "org-1", name: "Công ty An Bình", status: "active", memberCount: 12,
+    subscription: { packageId: "business", status: "active", startsAt: 100, expiresAt: 4102444800, memberQuota: 20 },
+  });
+  assert.match(organizationMarkup, /business/u);
+  assert.match(organizationMarkup, />20</u);
+  assert.match(organizationMarkup, /data-admin-organization-action="lock"/u);
+  assert.match(organizationMarkup, /data-admin-organization-form="set_package"/u);
+});
+
+test("user platform-role action uses the explicit authoritative scope", async () => {
+  const requests = [];
+  const result = await executeUserDirectoryAction("role", { id: "user-1", name: "Minh An" }, "super_admin", {
+    confirmImpl: async () => true,
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assert.equal(result.payload.success, true);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/api/auth/users/update-role");
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    user_id: "user-1", role: "super_admin", scope: "platform",
+  });
+  assert.equal(new Headers(requests[0].options.headers).has("X-Active-Org"), false);
+});
+
+test("organization command retains one idempotency key across privileged reauthentication", async () => {
+  const requests = [];
+  let organizationAttempts = 0;
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    if (url === "/api/organizations/subscription" && ++organizationAttempts === 1) {
+      return new Response(JSON.stringify({ error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." }), {
+        status: 403, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  const result = await executeOrganizationDirectoryAction("set_package", {
+    id: "org-1", name: "Công ty An Bình",
+  }, "business", {
+    fetchImpl,
+    confirmImpl: async () => true,
+    requestPassword: async () => "correct-password",
+    requestIdempotencyKey: "admin-org:set-package:stable-test",
+  });
+  assert.equal(result.payload.success, true);
+  const mutations = requests.filter((item) => item.url === "/api/organizations/subscription");
+  assert.deepEqual(mutations.map((item) => JSON.parse(item.options.body)), [
+    { organization_id: "org-1", action: "set_package", package_id: "business" },
+    { organization_id: "org-1", action: "set_package", package_id: "business" },
+  ]);
+  assert.deepEqual(mutations.map((item) => new Headers(item.options.headers).get("Idempotency-Key")), [
+    "admin-org:set-package:stable-test", "admin-org:set-package:stable-test",
+  ]);
+  assert.deepEqual(JSON.parse(requests.find((item) => item.url === "/api/auth/privileged-reauth").options.body), {
+    password: "correct-password",
+  });
 });

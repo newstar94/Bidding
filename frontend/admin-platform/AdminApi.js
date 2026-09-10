@@ -23,10 +23,17 @@ function assertAdminPath(path, method = "GET") {
     && /^\/api\/commercial\/releases\/[^/?#]+\/(?:clone|stop-sales)$/u.test(value);
   const approvedBillingAction = verb === "POST"
     && /^\/api\/billing\/admin\/orders\/[^/?#]+\/(?:review|reconcile|refund)$/u.test(value);
+  const approvedUserCommand = verb === "POST"
+    && ["/api/auth/users/update-role", "/api/auth/users/update-metadata"].includes(value);
+  const approvedUserDeactivation = verb === "DELETE"
+    && /^\/api\/auth\/users\/[^/?#]+$/u.test(value);
+  const approvedOrganizationSubscription = verb === "POST"
+    && value === "/api/organizations/subscription";
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
   const approved = platformPath || approvedCommercialPath || commercialDraftCollection
     || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
-    || approvedBillingAction || approvedReauthentication;
+    || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
+    || approvedOrganizationSubscription || approvedReauthentication;
   if (!approved || /[?#]/u.test(value)) {
     throw new TypeError("Admin API requests require an approved internal platform path");
   }
@@ -173,6 +180,29 @@ export async function patchAdminJson(path, {
   if (!response.ok) {
     throw adminError(response, payload);
   }
+  return payload;
+}
+
+export async function deleteAdminJson(path, {
+  signal,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const url = assertAdminPath(path, "DELETE");
+  let response;
+  try {
+    response = await apiFetch(url, {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+      signal,
+      handleHttpErrors: false,
+      retries: 0,
+    }, fetchImpl);
+  } catch (cause) {
+    if (signal?.aborted) throw cause;
+    throw new AdminApiError("Không thể kết nối tới máy chủ.", { code: "NETWORK_ERROR", cause });
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) throw adminError(response, payload);
   return payload;
 }
 

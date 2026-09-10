@@ -1719,6 +1719,35 @@ async def update_user_role_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin" if scope == "platform" else None,
+        )
+        if (
+            not authority_valid
+            or str(current_actor.user_id) != str(role_or_err.user_id)
+        ):
+            conn.rollback()
+            return JSONResponse(
+                {
+                    "error": (
+                        current_actor
+                        if not authority_valid
+                        else "Phiên quản trị đã thay đổi."
+                    )
+                },
+                status_code=403,
+            )
+        role_or_err = current_actor
+        actor_platform_admin = (
+            getattr(role_or_err, "active_role", None) == "super_admin"
+            or (
+                getattr(role_or_err, "active_role", None) is None
+                and getattr(role_or_err, "platform_role", str(role_or_err))
+                == "super_admin"
+            )
+        )
         if scope == "platform":
             if not actor_platform_admin:
                 conn.rollback()

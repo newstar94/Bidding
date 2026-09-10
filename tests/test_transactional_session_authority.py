@@ -143,6 +143,49 @@ def test_system_package_mutation_stops_when_step_up_is_revoked_in_write_lane(
     assert not any("UPDATE goi_dich_vu" in statement for statement, _ in cursor.statements)
 
 
+def test_platform_role_mutation_stops_when_authority_changes_in_write_lane(
+    monkeypatch,
+):
+    cursor = _Cursor()
+    connection = _Connection(cursor)
+    initial_actor = SimpleNamespace(
+        user_id="actor-1",
+        active_role=None,
+        platform_role="super_admin",
+    )
+
+    async def read_body(_request):
+        return {
+            "user_id": "target-1",
+            "role": "super_admin",
+            "scope": "platform",
+        }, None
+
+    monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(
+        auth_routes, "verify_session", lambda *_args, **_kwargs: (True, initial_actor)
+    )
+    monkeypatch.setattr(
+        auth_routes, "_load_user_by_session_token", lambda *_args: {}
+    )
+    monkeypatch.setattr(
+        auth_routes, "verify_super_admin_controls", lambda *_args, **_kwargs: (True, None)
+    )
+    monkeypatch.setattr(auth_routes, "read_json_object", read_body)
+    monkeypatch.setattr(auth_routes, "validate_or_response", lambda *_args: None)
+    monkeypatch.setattr(
+        auth_routes,
+        "verify_session_in_transaction",
+        lambda *_args, **_kwargs: (False, "authority changed"),
+    )
+
+    response = asyncio.run(auth_routes.update_user_role_api(_request(method="POST")))
+
+    assert response.status_code == 403
+    assert ("rollback",) in connection.events
+    assert not any("UPDATE tai_khoan" in statement for statement, _ in cursor.statements)
+
+
 def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp_path):
     read_connection = _Connection(_Cursor())
     read_connection.__class__.__enter__ = lambda self: self
