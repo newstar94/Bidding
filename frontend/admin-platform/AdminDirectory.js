@@ -132,7 +132,9 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
       state = normalizeState(config, { ...state, page: button.dataset.adminPage });
       void load();
     }));
+    config.bindResultActions?.(results, { fetchImpl, signal, reload: load, payload: currentPayload });
   };
+  let currentPayload = null;
   const load = async () => {
     replaceBrowserQuery(state, config);
     renderAdminMarkup(results, adminLoadingMarkup(`Đang tải ${config.title.toLowerCase()}…`), { busy: true });
@@ -141,6 +143,7 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
       {
         signal,
         onSuccess(payload) {
+          currentPayload = payload;
           renderAdminMarkup(results, directoryResultsMarkup(config, state, payload));
           bindResultActions();
         },

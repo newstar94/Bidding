@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AdminApiError, getAdminJson } from "../../frontend/admin-platform/AdminApi.js";
+import { AdminApiError, getAdminJson, postAdminJson } from "../../frontend/admin-platform/AdminApi.js";
 
 test("admin API uses same-origin credentials without workspace organization headers", async () => {
   let request;
@@ -65,4 +65,34 @@ test("admin API encodes server-side directory query values", async () => {
     },
   });
   assert.equal(requestedUrl, "/api/admin/users?page=2&search=Minh%20%26%20An&status=active");
+});
+
+test("admin API permits only approved billing mutations and sends CSRF and idempotency headers", async () => {
+  const requests = [];
+  const previousDocument = globalThis.document;
+  globalThis.document = { cookie: "csrf_token=csrf-test-token" };
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    return new Response(JSON.stringify({ replayed: false }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    await postAdminJson("/api/billing/admin/orders/order-public-1/refund", {
+      body: { amount: 1000, reason: "Đã kiểm tra" },
+      idempotencyKey: "admin-refund:test-1234",
+      fetchImpl,
+    });
+    const mutation = requests.at(-1);
+    assert.equal(mutation.url, "/api/billing/admin/orders/order-public-1/refund");
+    assert.equal(mutation.options.method, "POST");
+    assert.equal(new Headers(mutation.options.headers).get("X-CSRF-Token"), "csrf-test-token");
+    assert.equal(new Headers(mutation.options.headers).get("Idempotency-Key"), "admin-refund:test-1234");
+    assert.equal(new Headers(mutation.options.headers).has("X-Active-Org"), false);
+    await assert.rejects(() => postAdminJson("/api/billing/admin/orders/order-public-1/delete", { fetchImpl }), TypeError);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });

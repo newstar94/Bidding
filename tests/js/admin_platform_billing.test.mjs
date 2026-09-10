@@ -4,6 +4,7 @@ import test from "node:test";
 import { directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
 import {
   formatMinorMoney,
+  executePaymentAction,
   invoiceUnavailableMarkup,
   PAYMENT_DIRECTORY,
   SUBSCRIPTION_DIRECTORY,
@@ -23,6 +24,77 @@ test("billing directories emit only supported bounded server controls", () => {
     page: 1, pageSize: 25, sortBy: "created_at", sortDir: "desc",
     paymentState: "verified_paid", transactionStatus: "settled",
   });
+});
+
+test("payment action confirms and retries exactly once after privileged reauthentication", async () => {
+  const requests = [];
+  const prompts = ["Đã kiểm tra đối soát", "correct-password"];
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (url === "/api/auth/csrf-token") {
+      return new Response(JSON.stringify({ csrf_token: "csrf-test-token" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.endsWith("/reconcile") && requests.filter((item) => item.url.endsWith?.("/reconcile")).length === 1) {
+      return new Response(JSON.stringify({ error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm.", code: "FORBIDDEN" }), {
+        status: 403, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  let confirmations = 0;
+  const result = await executePaymentAction("reconcile", { publicId: "order-public-1" }, {
+    fetchImpl,
+    confirmImpl: async () => { confirmations += 1; return true; },
+    requestValue: async () => prompts.shift(),
+  });
+  assert.equal(confirmations, 1);
+  assert.match(result.message, /đối soát/u);
+  assert.deepEqual(requests.filter((item) => item.url.endsWith?.("/reconcile")).map((item) => JSON.parse(item.options.body)), [
+    { reason: "Đã kiểm tra đối soát" },
+    { reason: "Đã kiểm tra đối soát" },
+  ]);
+  assert.deepEqual(JSON.parse(requests.find((item) => item.url === "/api/auth/privileged-reauth").options.body), { password: "correct-password" });
+});
+
+test("refund action preserves minor-unit input and one idempotency key across privileged retry", async () => {
+  const requests = [];
+  const prompts = ["12500", "Hoàn thủ công đã xác minh", "correct-password"];
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (url === "/api/auth/csrf-token") {
+      return new Response(JSON.stringify({ csrf_token: "csrf-test-token" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.endsWith("/refund") && requests.filter((item) => item.url.endsWith?.("/refund")).length === 1) {
+      return new Response(JSON.stringify({ error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm.", code: "FORBIDDEN" }), {
+        status: 403, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ replayed: false }), {
+      status: 201, headers: { "Content-Type": "application/json" },
+    });
+  };
+  await executePaymentAction("refund", {
+    publicId: "order-public-1", amounts: { currency: "VND" }, paymentState: "verified_paid",
+  }, {
+    fetchImpl,
+    confirmImpl: async () => true,
+    requestValue: async () => prompts.shift(),
+    idempotencyKey: "admin-refund:stable-test",
+  });
+  const refunds = requests.filter((item) => item.url.endsWith?.("/refund"));
+  assert.deepEqual(refunds.map((item) => JSON.parse(item.options.body)), [
+    { amount: 12500, reason: "Hoàn thủ công đã xác minh" },
+    { amount: 12500, reason: "Hoàn thủ công đã xác minh" },
+  ]);
+  assert.deepEqual(refunds.map((item) => new Headers(item.options.headers).get("Idempotency-Key")), [
+    "admin-refund:stable-test", "admin-refund:stable-test",
+  ]);
 });
 
 test("subscription rows render real ownership and subscription values", () => {

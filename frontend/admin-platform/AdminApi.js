@@ -11,7 +11,9 @@ function assertAdminPath(path) {
   const value = String(path || "");
   const platformPath = /^\/api\/admin(?:\/|$)/u.test(value);
   const approvedCommercialPath = value === "/api/commercial/admin/overview";
-  if ((!platformPath && !approvedCommercialPath) || /[?#]/u.test(value)) {
+  const approvedBillingAction = /^\/api\/billing\/admin\/orders\/[^/?#]+\/(?:review|reconcile|refund)$/u.test(value);
+  const approvedReauthentication = value === "/api/auth/privileged-reauth";
+  if ((!platformPath && !approvedCommercialPath && !approvedBillingAction && !approvedReauthentication) || /[?#]/u.test(value)) {
     throw new TypeError("Admin API requests require an approved internal platform path");
   }
   return value;
@@ -39,7 +41,7 @@ async function readPayload(response) {
 
 function errorMessage(status, payload) {
   if (status === 401) return "Phiên đăng nhập đã hết hạn.";
-  if (status === 403) return "Bạn không có quyền xem dữ liệu quản trị này.";
+  if (status === 403) return payload?.message || payload?.error || "Bạn không có quyền xem dữ liệu quản trị này.";
   if (status === 429) return "Máy chủ đang giới hạn yêu cầu. Vui lòng thử lại sau.";
   return payload?.message || payload?.error || "Không thể tải dữ liệu quản trị.";
 }
@@ -80,3 +82,45 @@ export async function getAdminJson(path, { query, signal, fetchImpl = globalThis
   }
   return payload;
 }
+
+export async function postAdminJson(path, {
+  body = {},
+  idempotencyKey = "",
+  signal,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const url = assertAdminPath(path);
+  if (typeof fetchImpl !== "function") {
+    throw new AdminApiError("Trình duyệt không hỗ trợ kết nối tới máy chủ.", { code: "FETCH_UNAVAILABLE" });
+  }
+  const headers = { Accept: "application/json", "Content-Type": "application/json" };
+  if (idempotencyKey) headers["Idempotency-Key"] = String(idempotencyKey);
+  let response;
+  try {
+    response = await apiFetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+      handleHttpErrors: false,
+      retries: idempotencyKey ? 1 : 0,
+    }, fetchImpl);
+  } catch (cause) {
+    if (signal?.aborted) throw cause;
+    throw new AdminApiError("Không thể kết nối tới máy chủ.", { code: "NETWORK_ERROR", cause });
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) {
+    throw new AdminApiError(errorMessage(response.status, payload), {
+      status: response.status,
+      code: payload?.code || payload?.error_code || "HTTP_ERROR",
+    });
+  }
+  return payload;
+}
+
+export function requiresPrivilegedReauthentication(error) {
+  return error?.status === 403
+    && String(error?.message || "").startsWith("Cần xác thực lại mật khẩu");
+}
+import { apiFetch } from "../shared/apiClient.js";

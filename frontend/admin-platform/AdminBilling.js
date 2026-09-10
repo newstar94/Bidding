@@ -1,6 +1,8 @@
 import { renderAdminDirectory } from "./AdminDirectory.js";
+import { postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
 import { adminStateMarkup, renderAdminMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { trustedHTML } from "../shared/trustedTypes.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -40,6 +42,157 @@ function transactionMarkup(transactions) {
   return transactions.map((transaction) => (
     `<div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}<div class="small text-secondary">${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.createdAt)}</div></div>`
   )).join("");
+}
+
+const PAYMENT_ACTION_COPY = Object.freeze({
+  review: { label: "Chuyển kiểm tra", success: "Đã chuyển đơn hàng sang trạng thái cần kiểm tra." },
+  reconcile: { label: "Đối soát", success: "Đã gửi và xử lý yêu cầu đối soát." },
+  refund: { label: "Tạo yêu cầu hoàn", success: "Đã tạo yêu cầu hoàn tiền thủ công." },
+});
+
+function newIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `admin-refund:${globalThis.crypto.randomUUID()}`;
+  }
+  const bytes = new Uint32Array(4);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  return `admin-refund:${Array.from(bytes, (value) => value.toString(16).padStart(8, "0")).join("")}`;
+}
+
+export function requestAdminValue({ title, message, label, type = "text", inputMode = "text" }) {
+  if (!globalThis.document?.body) return Promise.resolve(null);
+  const modal = document.createElement("div");
+  modal.className = "modal modal-blur show";
+  modal.tabIndex = -1;
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "admin-prompt-title");
+  modal.style.display = "block";
+  modal.innerHTML = trustedHTML(`<div class="modal-dialog modal-dialog-centered" role="document"><form class="modal-content"><div class="modal-header"><h2 id="admin-prompt-title" class="modal-title">${escapeHtml(title)}</h2></div><div class="modal-body"><p class="text-secondary">${escapeHtml(message)}</p><label class="form-label">${escapeHtml(label)}<input class="form-control" name="value" type="${escapeHtml(type)}" inputmode="${escapeHtml(inputMode)}" required autocomplete="${type === "password" ? "current-password" : "off"}"></label></div><div class="modal-footer"><button class="btn btn-link link-secondary" type="button" data-admin-prompt-cancel>Hủy</button><button class="btn btn-primary" type="submit">Tiếp tục</button></div></form></div>`);
+  document.body.append(modal);
+  const input = modal.querySelector("input[name='value']");
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.remove();
+      resolve(value);
+    };
+    modal.querySelector("form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!event.currentTarget.reportValidity()) return;
+      finish(String(input?.value || ""));
+    });
+    modal.querySelector("[data-admin-prompt-cancel]")?.addEventListener("click", () => finish(null));
+    modal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+    });
+    input?.focus();
+  });
+}
+
+async function collectPaymentActionInput(action, payment, requestValue) {
+  if (action === "refund") {
+    const amount = await requestValue({
+      title: "Số tiền hoàn",
+      message: `Nhập số tiền theo đơn vị nhỏ nhất của ${String(payment?.amounts?.currency || "tiền tệ")}.`,
+      label: "Số tiền hoàn (minor unit)",
+      inputMode: "numeric",
+    });
+    if (amount === null) return null;
+    if (!/^[1-9]\d*$/u.test(amount) || !Number.isSafeInteger(Number(amount))) {
+      throw new Error("Số tiền hoàn phải là số nguyên dương theo đơn vị nhỏ nhất của tiền tệ.");
+    }
+    const reason = await requestValue({
+      title: "Lý do hoàn tiền",
+      message: "Lý do này được lưu cùng yêu cầu hoàn tiền và nhật ký kiểm toán.",
+      label: "Lý do",
+    });
+    if (reason === null) return null;
+    return { amount: Number(amount), reason: reason.trim() };
+  }
+  const reason = await requestValue({
+    title: PAYMENT_ACTION_COPY[action].label,
+    message: "Nhập lý do để lưu trong nhật ký kiểm toán.",
+    label: "Lý do",
+  });
+  return reason === null ? null : { reason: reason.trim() };
+}
+
+export async function executePaymentAction(action, payment, {
+  fetchImpl,
+  signal,
+  confirmImpl = (message) => globalThis.confirm?.(message) === true,
+  requestValue = requestAdminValue,
+  idempotencyKey = newIdempotencyKey(),
+} = {}) {
+  if (!Object.hasOwn(PAYMENT_ACTION_COPY, action)) throw new TypeError("Unsupported payment action");
+  const publicId = String(payment?.publicId || "").trim();
+  if (!publicId) throw new TypeError("Payment order public ID is required");
+  const body = await collectPaymentActionInput(action, payment, requestValue);
+  if (!body) return { cancelled: true };
+  if (action === "refund" && !body.reason) throw new Error("Lý do hoàn tiền không được để trống.");
+  const confirmed = await confirmImpl(`${PAYMENT_ACTION_COPY[action].label} cho đơn hàng ${publicId}?`);
+  if (!confirmed) return { cancelled: true };
+  const path = `/api/billing/admin/orders/${encodeURIComponent(publicId)}/${action}`;
+  const mutate = () => postAdminJson(path, {
+    body,
+    fetchImpl,
+    signal,
+    idempotencyKey: action === "refund" ? idempotencyKey : "",
+  });
+  try {
+    return { payload: await mutate(), message: PAYMENT_ACTION_COPY[action].success };
+  } catch (error) {
+    if (!requiresPrivilegedReauthentication(error)) throw error;
+    const password = await requestValue({
+      title: "Xác thực thao tác quản trị",
+      message: "Nhập lại mật khẩu để tiếp tục thao tác nhạy cảm.",
+      label: "Mật khẩu hiện tại",
+      type: "password",
+    });
+    if (password === null) return { cancelled: true };
+    await postAdminJson("/api/auth/privileged-reauth", {
+      body: { password }, fetchImpl, signal,
+    });
+    return { payload: await mutate(), message: PAYMENT_ACTION_COPY[action].success };
+  }
+}
+
+function paymentActionsMarkup(payment) {
+  const publicId = text(payment?.publicId, "");
+  const canRefund = ["verified_paid", "partially_refunded"].includes(payment?.paymentState);
+  return `<div class="btn-list flex-nowrap"><button class="btn btn-sm btn-outline-secondary" type="button" data-admin-payment-action="review" data-admin-payment-id="${publicId}">Kiểm tra</button><button class="btn btn-sm btn-outline-primary" type="button" data-admin-payment-action="reconcile" data-admin-payment-id="${publicId}">Đối soát</button><button class="btn btn-sm btn-outline-danger" type="button" data-admin-payment-action="refund" data-admin-payment-id="${publicId}"${canRefund ? "" : " disabled"}>Hoàn tiền</button></div><div class="small mt-2" role="status" aria-live="polite" data-admin-payment-status="${publicId}"></div>`;
+}
+
+export function bindPaymentActions(root, { fetchImpl, signal } = {}) {
+  const inFlight = new Set();
+  root.querySelectorAll("[data-admin-payment-action]").forEach((button) => button.addEventListener("click", async () => {
+    const publicId = String(button.dataset.adminPaymentId || "");
+    if (!publicId || inFlight.has(publicId)) return;
+    const payment = button._adminPayment;
+    const status = Array.from(root.querySelectorAll("[data-admin-payment-status]"))
+      .find((item) => item.dataset.adminPaymentStatus === publicId);
+    const peers = Array.from(root.querySelectorAll("[data-admin-payment-id]"))
+      .filter((item) => item.dataset.adminPaymentId === publicId);
+    inFlight.add(publicId);
+    peers.forEach((peer) => { peer.disabled = true; });
+    if (status) { status.textContent = "Đang xử lý…"; status.className = "small mt-2 text-secondary"; }
+    try {
+      const result = await executePaymentAction(button.dataset.adminPaymentAction, payment, { fetchImpl, signal });
+      if (status) {
+        status.textContent = result.cancelled ? "Đã hủy thao tác." : result.message;
+        status.className = `small mt-2 ${result.cancelled ? "text-secondary" : "text-success"}`;
+      }
+    } catch (error) {
+      if (signal?.aborted) return;
+      if (status) { status.textContent = error?.message || "Không thể thực hiện thao tác."; status.className = "small mt-2 text-danger"; }
+    } finally {
+      inFlight.delete(publicId);
+      peers.forEach((peer) => { peer.disabled = peer.dataset.adminPaymentAction === "refund" && !["verified_paid", "partially_refunded"].includes(payment?.paymentState); });
+    }
+  }));
 }
 
 export const SUBSCRIPTION_DIRECTORY = Object.freeze({
@@ -85,12 +238,19 @@ export const PAYMENT_DIRECTORY = Object.freeze({
     { label: "Số tiền", sortKey: "total_amount" },
     { label: "Thanh toán", sortKey: "payment_state" },
     { label: "Checkout", sortKey: "checkout_state" },
-    { label: "Giao dịch" }, { label: "Ngày tạo", sortKey: "created_at" },
+    { label: "Giao dịch" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Thao tác" },
   ],
   rowMarkup(payment) {
     const amount = payment?.amounts;
     const provider = payment?.provider;
-    return `<tr><td data-label="Đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div></td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td></tr>`;
+    return `<tr><td data-label="Đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div></td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td><td data-label="Thao tác">${paymentActionsMarkup(payment)}</td></tr>`;
+  },
+  bindResultActions(root, options) {
+    const payments = new Map((options.payload?.items || []).map((payment) => [String(payment?.publicId || ""), payment]));
+    root.querySelectorAll("[data-admin-payment-action]").forEach((button) => {
+      button._adminPayment = payments.get(button.dataset.adminPaymentId);
+    });
+    bindPaymentActions(root, options);
   },
 });
 
