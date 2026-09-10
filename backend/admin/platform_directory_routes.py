@@ -1,3 +1,5 @@
+# Dynamic SQL fragments come only from fixed allowlists; request values stay bound.
+# ruff: noqa: S608
 import math
 
 from starlette.responses import JSONResponse
@@ -218,7 +220,7 @@ def _list_admin_users_sync(request):
         )
     except _InvalidDirectoryQuery as exc:
         return _response({"error": str(exc)}, status_code=400)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "list_platform_admin_users")
         return _response({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
 
@@ -344,7 +346,7 @@ def _list_admin_organizations_sync(request):
         )
     except _InvalidDirectoryQuery as exc:
         return _response({"error": str(exc)}, status_code=400)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "list_platform_admin_organizations")
         return _response({"error": "Đã xảy ra lỗi tải danh sách tổ chức."}, status_code=500)
 

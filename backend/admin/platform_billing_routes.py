@@ -1,3 +1,5 @@
+# Dynamic SQL fragments come only from fixed allowlists; request values stay bound.
+# ruff: noqa: S608
 from starlette.responses import JSONResponse
 
 from backend.admin.platform_directory_routes import (
@@ -198,7 +200,7 @@ def _list_admin_subscriptions_sync(request):
         )
     except _InvalidDirectoryQuery as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "list_platform_admin_subscriptions")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách thuê bao."}, status_code=500)
 
@@ -387,7 +389,7 @@ def _list_admin_payments_sync(request):
         )
     except _InvalidDirectoryQuery as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "list_platform_admin_payments")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách thanh toán."}, status_code=500)
 

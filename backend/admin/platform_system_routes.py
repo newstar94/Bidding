@@ -1,3 +1,5 @@
+# Dynamic SQL fragments come only from fixed allowlists; request values stay bound.
+# ruff: noqa: S608
 import math
 import time
 
@@ -158,7 +160,7 @@ async def admin_system_jobs_api(request):
         return _error(str(exc), "ADMIN_QUERY_INVALID", 400)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _error("Hệ thống đang bận. Vui lòng thử lại sau.", "ADMIN_JOBS_UNAVAILABLE", 503)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "admin_system_jobs")
         return _error("Không thể tải trạng thái tác vụ.", "ADMIN_JOBS_FAILED", 500)
 
@@ -255,7 +257,7 @@ async def admin_system_sync_api(request):
         return _error(str(exc), "ADMIN_QUERY_INVALID", 400)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _error("Hệ thống đang bận. Vui lòng thử lại sau.", "ADMIN_SYNC_UNAVAILABLE", 503)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
         log_error(exc, "admin_system_sync")
         return _error("Không thể tải trạng thái đồng bộ.", "ADMIN_SYNC_FAILED", 500)
 
