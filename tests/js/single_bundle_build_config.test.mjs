@@ -7,7 +7,7 @@ test("secure build preserves reviewed code splitting and obfuscates every chunk"
   const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
   assert.match(
     config,
-    /input:\s*\{\s*app:\s*appEntry,\s*landingShell:\s*landingStylesEntry\s*\}/s,
+    /input:\s*\{\s*app:\s*appEntry,\s*admin:\s*adminEntry,\s*landingShell:\s*landingStylesEntry\s*\}/s,
   );
   assert.match(config, /codeSplitting:\s*(?:true|\{[\s\S]*?groups:\s*\[)/);
   assert.match(config, /singleBundleStylesPlugin\(\)/);
