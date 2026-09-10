@@ -7,7 +7,9 @@ import {
   healthMarkup,
   renderAdminEnvironment,
   renderAdminHealth,
+  renderAdminSettings,
   renderAdminSystemVersion,
+  settingsMarkup,
   versionMarkup,
 } from "../../frontend/admin-platform/AdminOperations.js";
 
@@ -94,6 +96,17 @@ test("version view renders release contract and ignores unrecognized fields", ()
   assert.match(versionMarkup(null), /data-admin-state="empty"/u);
 });
 
+test("settings view shows deployment-managed feature states without secret data", () => {
+  const markup = settingsMarkup({
+    features: { aiEnabled: true, legalVersioningEnabled: false },
+    secretStatus: { DATABASE_URL: { configured: true, value: "private" } },
+  });
+  assert.match(markup, /Trợ lý AI/u);
+  assert.match(markup, />Bật</u);
+  assert.match(markup, /môi trường triển khai quản lý/u);
+  assert.doesNotMatch(markup, /DATABASE_URL|private/u);
+});
+
 test("operation pages call their dedicated same-origin admin APIs", async () => {
   const requested = [];
   const fetchImpl = async (url) => {
@@ -109,10 +122,12 @@ test("operation pages call their dedicated same-origin admin APIs", async () => 
 
   await renderAdminHealth(container(), { fetchImpl });
   await renderAdminEnvironment(container(), { fetchImpl });
+  await renderAdminSettings(container(), { fetchImpl });
   await renderAdminSystemVersion(container(), { fetchImpl });
 
   assert.deepEqual(requested, [
     "/api/admin/health",
+    "/api/admin/environment",
     "/api/admin/environment",
     "/api/admin/system/version",
   ]);

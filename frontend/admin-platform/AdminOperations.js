@@ -131,6 +131,17 @@ export function environmentMarkup(payload) {
   ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("Tính năng", FEATURE_FIELDS.map(([key, label]) => [label, text(yesNo(features[key]))]))}</div><div class="col-12"><section class="card" aria-labelledby="secret-status-title"><div class="card-header"><div><h3 class="card-title" id="secret-status-title">Trạng thái bí mật</h3><p class="text-secondary small mb-0">Chỉ hiển thị đã cấu hình hoặc thiếu cấu hình.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${secretRows}</tbody></table></div></section></div></div>`;
 }
 
+export function settingsMarkup(payload) {
+  if (!payload || typeof payload !== "object" || !payload.features) {
+    return adminStateMarkup("empty", { message: "Chưa có dữ liệu cài đặt hệ thống." });
+  }
+  const features = payload.features;
+  return `<div class="row row-cards"><div class="col-lg-8">${detailsCard("Tính năng hệ thống", FEATURE_FIELDS.map(([key, label]) => [
+    label,
+    `<span class="badge bg-${features[key] === true ? "success" : "secondary"}-lt">${text(yesNo(features[key]))}</span>`,
+  ]), { subtitle: '<p class="text-secondary small mb-0">Cấu hình do môi trường triển khai quản lý; bảng này không ghi trực tiếp tệp môi trường.</p>' })}</div></div>`;
+}
+
 export function versionMarkup(payload) {
   if (!payload || typeof payload !== "object") {
     return adminStateMarkup("empty", { message: "Chưa có dữ liệu phiên bản hệ thống." });
@@ -162,6 +173,10 @@ export function renderAdminHealth(container, options) {
 
 export function renderAdminEnvironment(container, options) {
   return renderOperation(container, "/api/admin/environment", environmentMarkup, options);
+}
+
+export function renderAdminSettings(container, options) {
+  return renderOperation(container, "/api/admin/environment", settingsMarkup, options);
 }
 
 export function renderAdminSystemVersion(container, options) {

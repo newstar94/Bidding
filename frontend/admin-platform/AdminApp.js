@@ -4,7 +4,7 @@ import { renderAdminOrganizations, renderAdminUsers } from "./AdminDirectories.j
 import { renderAdminInvoicesUnavailable, renderAdminPayments, renderAdminSubscriptions } from "./AdminBilling.js";
 import { renderAdminAnalytics } from "./AdminAnalytics.js";
 import { renderAdminPlans } from "./AdminPlans.js";
-import { renderAdminEnvironment, renderAdminHealth, renderAdminSystemVersion } from "./AdminOperations.js";
+import { renderAdminEnvironment, renderAdminHealth, renderAdminSettings, renderAdminSystemVersion } from "./AdminOperations.js";
 import { renderAdminAudit, renderAdminSecurity } from "./AdminSecurity.js";
 import { renderAdminSystemJobs, renderAdminSystemSync } from "./AdminSystem.js";
 import { adminStateMarkup } from "./AdminStateView.js";
@@ -42,6 +42,7 @@ function renderRoute() {
   else if (route.path === "/admin/audit") renderAdminAudit(content, { signal: routeController.signal });
   else if (route.path === "/admin/security") renderAdminSecurity(content, { signal: routeController.signal });
   else if (route.path === "/admin/health") void renderAdminHealth(content, { signal: routeController.signal });
+  else if (route.path === "/admin/settings") void renderAdminSettings(content, { signal: routeController.signal });
   else if (route.path === "/admin/environment") void renderAdminEnvironment(content, { signal: routeController.signal });
   else if (route.path === "/admin/system/version") void renderAdminSystemVersion(content, { signal: routeController.signal });
   else if (route.path === "/admin/system/jobs") renderAdminSystemJobs(content, { signal: routeController.signal });
