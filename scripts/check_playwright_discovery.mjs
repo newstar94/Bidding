@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 const requiredSpecs = [
+  "admin-shell.spec.mjs",
   "contractor-violation.spec.mjs",
   "procurement-plan-import.spec.mjs",
 ];
