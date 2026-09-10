@@ -789,7 +789,15 @@ def _compile_admin_shell(session_bootstrap):
 
 async def admin_index(request):
     """Serve the isolated platform console only after server authorization."""
-    is_valid, _role_or_error = verify_session(request, required_role="super_admin")
+    try:
+        is_valid, _role_or_error = await run_database_read(
+            verify_session,
+            request,
+            "super_admin",
+            timeout_seconds=5,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return Response("Không thể xác thực quyền quản trị lúc này.", status_code=503, headers={"Cache-Control": "private, no-store"})
     if not is_valid:
         return Response("Không có quyền truy cập bảng quản trị nền tảng.", status_code=403, media_type="text/plain", headers={"Cache-Control": "private, no-store"})
     try:
@@ -811,7 +819,12 @@ from backend.shared.helpers import (
     get_active_org
 )
 from backend.shared.logging_utils import error_response, log_and_error
-from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    get_blocking_io_stats,
+    run_blocking_io,
+)
 from backend.shared.database_io import get_database_io_stats, run_database_read
 from backend.shared.cpu_io import get_cpu_io_stats
 from backend.observability.metrics import ObservabilityMiddleware, metrics_api

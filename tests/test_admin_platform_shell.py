@@ -16,7 +16,9 @@ def _client(monkeypatch, *, authorized):
     )
     monkeypatch.setattr(app_module, "_frontend_bundle_enabled", lambda: False)
 
-    async def run_database_read(_function, _request):
+    async def run_database_read(function, *args, **_kwargs):
+        if function is app_module.verify_session:
+            return function(*args)
         return {
             "valid": True,
             "user": {"id": "admin-1", "name": "Admin", "platform_role": "super_admin"},
