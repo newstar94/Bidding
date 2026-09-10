@@ -207,6 +207,18 @@ async function uiLogin(browser, accountData, expectedRole, contextOptions = {}) 
       { cause: error },
     );
   }
+  if (expectedRole === "super_admin") {
+    await page.waitForURL((url) => url.pathname === "/admin", { timeout: 20_000 });
+    await page.waitForFunction(() => document.getElementById("admin-app")?.getAttribute("aria-busy") === "false");
+    return { context, page };
+  }
+  await page.waitForFunction((role) => {
+    try {
+      return JSON.parse(sessionStorage.getItem("bf_active_role")) === role;
+    } catch {
+      return false;
+    }
+  }, expectedRole, { timeout: 20_000 });
   await page.waitForFunction((role) => {
     const profile = document.getElementById("header-profile-role")?.textContent || "";
     return role === "employee" ? /Chuyên viên/i.test(profile) : role === "manager" ? /Quản lý/i.test(profile) : /Super Admin/i.test(profile);
@@ -245,28 +257,36 @@ try {
   fixture("clear-rate-limits");
 
   const roleExpectations = [
-    ["superadmin", "super_admin", "btn-tab-superadmin", true, "btn-tab-managernhanvien", false],
-    ["manager", "manager", "btn-tab-managernhanvien", true, "btn-tab-superadmin", false],
-    ["employee", "employee", "btn-tab-managernhanvien", false, "btn-tab-superadmin", false],
+    ["superadmin", "super_admin", "[data-admin-workspace-link]", true, "#btn-tab-managernhanvien", false],
+    ["manager", "manager", "#btn-tab-managernhanvien", true, "[data-admin-workspace-link]", false],
+    ["employee", "employee", "#btn-tab-managernhanvien", false, "[data-admin-workspace-link]", false],
   ];
-  for (const [key, role, allowedId, allowedVisible, deniedId, deniedVisible] of roleExpectations) {
+  for (const [key, role, allowedSelector, allowedVisible, deniedSelector, deniedVisible] of roleExpectations) {
     const { context, page } = await uiLogin(browser, accounts[key], role);
     await page.waitForFunction(({ allowed, shouldAllow, denied, shouldDeny }) => {
-      const visible = (id) => {
-        const item = document.getElementById(id);
+      const visible = (selector) => {
+        const item = document.querySelector(selector);
         if (!item) return false;
         const style = getComputedStyle(item);
         return style.display !== "none" && style.visibility !== "hidden" && item.getClientRects().length > 0;
       };
       return visible(allowed) === shouldAllow && visible(denied) === shouldDeny;
     }, {
-      allowed: allowedId,
+      allowed: allowedSelector,
       shouldAllow: allowedVisible,
-      denied: deniedId,
+      denied: deniedSelector,
       shouldDeny: deniedVisible,
     }, { timeout: 10_000 });
-    assert(await page.locator(`#${allowedId}`).isVisible() === allowedVisible, `${role}: wrong allowed-menu visibility`);
-    assert(await page.locator(`#${deniedId}`).isVisible() === deniedVisible, `${role}: wrong denied-menu visibility`);
+    assert(await page.locator(allowedSelector).isVisible() === allowedVisible, `${role}: wrong allowed-menu visibility`);
+    assert(await page.locator(deniedSelector).isVisible() === deniedVisible, `${role}: wrong denied-menu visibility`);
+    if (key === "superadmin") {
+      await page.locator("[data-admin-workspace-link]").click();
+      await page.waitForURL((url) => url.pathname === "/tong-quan", { timeout: 20_000 });
+      await waitForApp(page);
+      await page.waitForFunction(() => /Quản lý/i.test(
+        document.getElementById("header-profile-role")?.textContent || "",
+      ), null, { timeout: 20_000 });
+    }
     await reloadReady(page);
     await page.locator("#auth-overlay").waitFor({ state: "hidden" });
     const secondTab = await context.newPage();
