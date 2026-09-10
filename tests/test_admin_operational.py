@@ -123,9 +123,11 @@ def test_environment_payload_exposes_only_allowlisted_values_and_secret_presence
     assert payload["features"]["aiEnabled"] is True
     assert payload["secretStatus"]["DATABASE_URL"] == {
         "configured": True, "writable": False, "restartRequired": True,
+        "source": "deployment_environment", "lastUpdated": None,
     }
     assert payload["secretStatus"]["TURNSTILE_SECRET_KEY"] == {
         "configured": False, "writable": False, "restartRequired": True,
+        "source": "deployment_environment", "lastUpdated": None,
     }
     assert payload["configuration"] == {
         "writable": False,
@@ -318,6 +320,8 @@ def test_environment_update_rechecks_authority_and_audits_only_key_names(monkeyp
     audits = []
     secret = "s" * 32
     monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.delenv("AI_ENABLED", raising=False)
+    monkeypatch.delenv("OTP_HMAC_KEY", raising=False)
     monkeypatch.setattr(operational, "_PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(operational.database, "get_connection", lambda: connection)
     monkeypatch.setattr(
@@ -350,6 +354,16 @@ def test_environment_update_rechecks_authority_and_audits_only_key_names(monkeyp
     assert audits[0][0] == "admin.environment_configuration_updated"
     assert audits[0][1]["metadata"] == {
         "updated_fields": ["AI_ENABLED", "OTP_HMAC_KEY"],
+        "changes": [
+            {
+                "key": "AI_ENABLED", "action": "update",
+                "old_state": "disabled", "new_state": "enabled",
+            },
+            {
+                "key": "OTP_HMAC_KEY", "action": "configure",
+                "old_state": "missing", "new_state": "configured",
+            },
+        ],
         "restartRequired": True,
     }
     assert secret not in serialized_audit

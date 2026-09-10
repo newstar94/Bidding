@@ -116,6 +116,7 @@ def build_environment_payload(environment=None) -> dict:
         environ.get("FRONTEND_ASSET_MODE"), _ASSET_MODES, "bundle"
     )
     writable = app_environment in {"development", "test"} and environment is None
+    configuration_source = "local_env" if writable else "deployment_environment"
     return {
         "generatedAt": _utc_now(),
         "runtime": {
@@ -139,13 +140,15 @@ def build_environment_payload(environment=None) -> dict:
                 "configured": bool(str(environ.get(name, "")).strip()),
                 "writable": writable,
                 "restartRequired": True,
+                "source": configuration_source,
+                "lastUpdated": None,
             }
             for name in _SECRET_STATUS_NAMES
         },
         "configuration": {
             "writable": writable,
             "restartRequired": True,
-            "source": "local_env" if writable else "deployment_environment",
+            "source": configuration_source,
         },
     }
 
@@ -174,6 +177,28 @@ def _validated_environment_updates(payload):
     if not updates:
         raise ValueError("Chưa có thay đổi cấu hình.")
     return updates
+
+
+def _environment_audit_changes(updates):
+    changes = []
+    feature_keys = set(_FEATURE_SETTING_KEYS.values())
+    for key in sorted(updates):
+        if key in feature_keys:
+            changes.append({
+                "key": key,
+                "action": "update",
+                "old_state": "enabled" if _enabled(os.environ, key) else "disabled",
+                "new_state": "enabled" if updates[key] == "true" else "disabled",
+            })
+        else:
+            was_configured = bool(str(os.environ.get(key, "")).strip())
+            changes.append({
+                "key": key,
+                "action": "replace" if was_configured else "configure",
+                "old_state": "configured" if was_configured else "missing",
+                "new_state": "configured",
+            })
+    return changes
 
 
 def _replace_local_env(updates, *, env_path=None):
@@ -234,6 +259,7 @@ def _update_environment_sync(request, payload):
         updates = _validated_environment_updates(payload)
     except ValueError as exc:
         return _error(str(exc), "INVALID_ADMIN_CONFIGURATION", 400)
+    audit_changes = _environment_audit_changes(updates)
     connection = database.get_connection()
     original_environment = None
     environment_replaced = False
@@ -257,6 +283,7 @@ def _update_environment_sync(request, payload):
             request=request,
             metadata={
                 "updated_fields": sorted(updates),
+                "changes": audit_changes,
                 "restartRequired": True,
             },
             cursor=cursor,

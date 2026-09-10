@@ -14,7 +14,7 @@ The online-only platform console is rooted at `/admin`, with a dedicated HTML sh
 | Usage and product analytics | `/phan-tich-su-dung` | `/api/admin/usage-analytics/summary`, `/api/admin/product-analytics/dashboard` | `/admin/analytics` | Migrated, aggregate APIs reused |
 | Plans, orders and payments | `/thuong-mai-thanh-toan` | `/api/commercial/admin/*`, `/api/admin/payments` | `/admin/plans`, `/admin/payments` | Migrated with versioned draft and payment actions |
 | Invoice management | None | No authoritative invoice model | `/admin/invoices` | N/A until an approved model exists |
-| Settings and safe environment status | None | `/api/admin/environment` | `/admin/settings`, `/admin/environment` | Migrated as safe deployment-managed status |
+| Settings and safe environment configuration | None | `GET/POST /api/admin/environment` | `/admin/settings`, `/admin/environment` | Migrated; allowlisted local changes and deployment-managed read-only state |
 | Audit and security | None | `/api/admin/audit`, `/api/admin/security/sessions` | `/admin/audit`, `/admin/security` | Migrated with server pagination and sanitized detail views |
 | Legal source catalog | Legacy workspace admin card | Existing immutable legal catalog APIs | `/admin/legal` | Migrated by reusing the approved immutable workflow |
 | Health, storage, backup and database | Hard-coded overview labels | `/api/admin/health` | `/admin/health` | Migrated, sanitized real status |
@@ -34,6 +34,12 @@ The console bundles pinned `@tabler/core` 1.4.0 through Vite. Runtime assets are
 Platform list APIs use fixed page-size limits, request-field allowlists, bound query parameters, stable secondary sorting and `private, no-store` responses. Browser requests use same-origin session credentials and never attach workspace organization headers. The server remains authoritative for the platform role on every request; sensitive writes additionally recheck authority inside their database transaction.
 
 No admin payload contains raw environment values, secret values, database URLs, filesystem paths, session tokens, device fingerprints, privileged reauthentication state or raw audit metadata. Missing domain models are returned as unavailable rather than synthesized.
+
+## Configuration and secret management
+
+`GET /api/admin/environment` exposes only allowlisted runtime values, feature states, and secret presence/source metadata. Development and test deployments may update the four existing feature flags or replace an allowlisted secret through `POST /api/admin/environment`. Production and staging remain deployment-managed and read-only.
+
+Every write requires the existing Super Admin network boundary, recent privileged reauthentication, CSRF validation, and a transactional authority recheck. The local `.env` replacement is serialized and atomic; a failed required audit write restores the prior file. Audit metadata contains only key names, configured/enabled state transitions, and restart status. Raw secret values are never returned, read back into the form, stored in browser persistence, logged, or written to audit metadata. The UI reports server persistence separately from activation and always marks these changes as requiring an application restart.
 
 ## Theme and responsive policy
 
