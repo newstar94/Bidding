@@ -1,6 +1,7 @@
 import { ADMIN_ROUTES, getAdminRoute, navigateAdmin } from "./AdminRouter.js";
 import { renderAdminOverview } from "./AdminOverview.js";
 import { renderAdminOrganizations, renderAdminUsers } from "./AdminDirectories.js";
+import { renderAdminInvoicesUnavailable, renderAdminPayments, renderAdminSubscriptions } from "./AdminBilling.js";
 import { adminStateMarkup } from "./AdminStateView.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 
@@ -28,6 +29,9 @@ function renderRoute() {
   if (route.path === "/admin") void renderAdminOverview(content, { signal: routeController.signal });
   else if (route.path === "/admin/users") renderAdminUsers(content, { signal: routeController.signal });
   else if (route.path === "/admin/organizations") renderAdminOrganizations(content, { signal: routeController.signal });
+  else if (route.path === "/admin/subscriptions") renderAdminSubscriptions(content, { signal: routeController.signal });
+  else if (route.path === "/admin/payments") renderAdminPayments(content, { signal: routeController.signal });
+  else if (route.path === "/admin/invoices") renderAdminInvoicesUnavailable(content);
   else content.innerHTML = trustedHTML(adminStateMarkup("empty", { message: "Chức năng này chưa có nguồn dữ liệu quản trị được xác thực." }));
   document.getElementById("admin-main")?.focus({ preventScroll: true });
 }

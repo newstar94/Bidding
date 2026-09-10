@@ -50,7 +50,7 @@ function normalizeState(config, values = {}) {
     pageSize: PAGE_SIZES.has(requestedSize) ? requestedSize : 25,
     search: String(values.search || "").trim().slice(0, 100),
     sortBy,
-    sortDir: values.sortDir === "desc" ? "desc" : "asc",
+    sortDir: values.sortDir === "desc" || (!values.sortDir && config.defaultSortDir === "desc") ? "desc" : "asc",
     ...Object.fromEntries(config.filters.map((filter) => {
       const value = String(values[filter.key] || "");
       return [filter.key, filter.options.some(([option]) => option === value) ? value : ""];
