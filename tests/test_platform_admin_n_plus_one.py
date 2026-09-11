@@ -55,6 +55,16 @@ class _TracingCursor:
             return _Result(row={"total_rows": self.scale})
         if "COUNT(*) AS total" in sql:
             return _Result(row={"total": self.scale})
+        if "ten_goi AS name FROM goi_dich_vu" in sql:
+            return _Result(rows=[{"id": "business", "name": "Business"}])
+        if "FROM tai_khoan" in sql and "AS title" in sql:
+            return _Result(rows=[self._search_user(index) for index in range(min(self.scale, 5))])
+        if "ten_to_chuc AS title" in sql:
+            return _Result(rows=[self._search_organization(index) for index in range(min(self.scale, 5))])
+        if "SELECT subscription.* FROM (" in sql and "LIKE" in sql:
+            return _Result(rows=[self._subscription(index) for index in range(min(self.scale, 5))])
+        if "FROM billing_invoice_requests invoice" in sql:
+            return _Result(rows=[self._search_invoice(index) for index in range(min(self.scale, 5))])
         if "FROM tai_khoan account" in sql and "AS active_session_count" in sql:
             return _Result(row=self._user_detail())
         if "FROM to_chuc organization" in sql and "subscription.plan_version_id" in sql:
@@ -112,6 +122,11 @@ class _TracingCursor:
             "name": f"Organization {index}", "role": "employee",
             "employee_name": f"User {index}", "employee_phone": None,
             "status": "active",
+            "organization_status": "active", "package_id": "business",
+            "subscription_status": "active", "starts_at": 1,
+            "expires_at": 4_102_444_800, "member_quota": 20,
+            "subscription_revision": 1, "package_status": "active",
+            "export_financial": 1, "export_identity": 0, "export_signature": 1,
         }
 
     @staticmethod
@@ -189,6 +204,27 @@ class _TracingCursor:
             "starts_at": 1, "expires_at": 4_102_444_800,
             "member_quota": None, "revision": 1,
             "created_at": "2026-01-01", "updated_at": "2026-01-01",
+        }
+
+    @staticmethod
+    def _search_user(index):
+        return {
+            "id": f"user-{index}", "title": f"User {index}",
+            "description": f"user{index}@example.test", "status": "active",
+        }
+
+    @staticmethod
+    def _search_organization(index):
+        return {
+            "id": f"org-{index}", "title": f"Organization {index}",
+            "description": "Tổ chức", "status": "active",
+        }
+
+    @staticmethod
+    def _search_invoice(index):
+        return {
+            "id": f"invoice-{index}", "status": "issued",
+            "public_id": f"order-{index}", "owner_name": f"User {index}",
         }
 
     @staticmethod
@@ -280,6 +316,10 @@ def _detail_request(kind):
     return SimpleNamespace(query_params={}, path_params={key: f"{kind}-1"})
 
 
+def _search_request():
+    return SimpleNamespace(query_params={"q": "user", "limit": "5"})
+
+
 def _allow(monkeypatch):
     allowed = lambda _request: (None, "super_admin")
     monkeypatch.setattr(platform_directory_routes, "_forbidden_or_role", allowed)
@@ -318,15 +358,32 @@ def test_platform_admin_query_count_is_constant_at_scale(
     assert observed == [query_budget] * len(SCALES), name
 
 
+def test_platform_admin_global_search_uses_four_bounded_queries_at_scale(monkeypatch):
+    _allow(monkeypatch)
+    observed = []
+    for scale in SCALES:
+        cursor = _TracingCursor(scale)
+        monkeypatch.setattr(platform_directory_routes, "database", _Database(cursor))
+
+        response = platform_directory_routes._global_search_sync(_search_request())
+        payload = json.loads(response.body)
+        observed.append(len(cursor.calls))
+
+        assert len(payload["items"]) <= 20
+        assert all(parameters[-1] == 5 for _, parameters in cursor.calls)
+
+    assert observed == [4] * len(SCALES)
+
+
 @pytest.mark.parametrize(
-    ("kind", "operation", "collection_key"),
+    ("kind", "operation", "collection_key", "query_budget"),
     (
-        ("user", platform_directory_routes._user_detail, "organizations"),
-        ("organization", platform_directory_routes._organization_detail, "users"),
+        ("user", platform_directory_routes._user_detail, "organizations", 6),
+        ("organization", platform_directory_routes._organization_detail, "users", 5),
     ),
 )
 def test_platform_admin_detail_queries_are_constant_and_collections_are_bounded(
-    monkeypatch, kind, operation, collection_key
+    monkeypatch, kind, operation, collection_key, query_budget
 ):
     _allow(monkeypatch)
     observed = []
@@ -343,4 +400,4 @@ def test_platform_admin_detail_queries_are_constant_and_collections_are_bounded(
         assert any(parameters and parameters[-1] == 20 for _, parameters in cursor.calls)
         assert any(parameters and parameters[-1] == 10 for _, parameters in cursor.calls)
 
-    assert observed == [5] * len(SCALES)
+    assert observed == [query_budget] * len(SCALES)

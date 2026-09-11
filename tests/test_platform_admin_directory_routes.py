@@ -117,6 +117,19 @@ def _database():
             target_id TEXT,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE billing_orders (
+            id TEXT PRIMARY KEY,
+            public_id TEXT NOT NULL,
+            account_user_id TEXT,
+            organization_id TEXT,
+            owner_kind TEXT NOT NULL
+        );
+        CREATE TABLE billing_invoice_requests (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            provider_reference TEXT
+        );
         """
     )
     connection.executemany(
@@ -180,6 +193,14 @@ def _database():
             (1, "user-2", "org-a", "user.updated", "user", "user-2", "2026-02-02"),
             (2, "admin-1", "org-a", "subscription.changed", "organization", "org-a", "2026-02-03"),
         ),
+    )
+    connection.execute(
+        "INSERT INTO billing_orders VALUES (?, ?, ?, ?, ?)",
+        ("order-bravo", "order-public-bravo", None, "org-b", "organization"),
+    )
+    connection.execute(
+        "INSERT INTO billing_invoice_requests VALUES (?, ?, ?, ?)",
+        ("invoice-bravo", "order-bravo", "requested", "provider-bravo"),
     )
     connection.commit()
     return connection
@@ -370,14 +391,63 @@ def test_directory_routes_require_server_side_super_admin(monkeypatch):
             organizations = client.get("/api/admin/organizations")
             user_detail = client.get("/api/admin/users/user-2")
             organization_detail = client.get("/api/admin/organizations/org-a")
+            search = client.get("/api/admin/search?q=bravo")
 
         assert users.status_code == 403
         assert organizations.status_code == 403
         assert user_detail.status_code == 403
         assert organization_detail.status_code == 403
+        assert search.status_code == 403
         assert users.headers["cache-control"] == "private, no-store"
         assert organizations.headers["cache-control"] == "private, no-store"
-        assert calls == ["super_admin", "super_admin", "super_admin", "super_admin"]
+        assert calls == ["super_admin", "super_admin", "super_admin", "super_admin", "super_admin"]
+    finally:
+        connection.close()
+
+
+def test_global_search_is_server_authorized_parameterized_and_bounded(monkeypatch):
+    connection = _database()
+    try:
+        client, calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/search?q=bravo&limit=3")
+
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
+        assert calls == ["super_admin"]
+        payload = response.json()
+        assert payload["query"] == "bravo"
+        assert payload["limitPerType"] == 3
+        assert [item["kind"] for item in payload["items"]] == [
+            "user", "organization", "subscription", "subscription", "invoice",
+        ]
+        assert payload["items"][0] == {
+            "kind": "user", "id": "user-2", "title": "Bravo",
+            "description": "bravo@example.test", "status": "active",
+            "href": "/admin/users?search=user-2",
+        }
+        assert payload["items"][1]["href"] == "/admin/organizations?search=org-b"
+        assert payload["items"][-1] == {
+            "kind": "invoice", "id": "invoice-bravo", "title": "invoice-bravo",
+            "description": "Bravo Org · order-public-bravo", "status": "requested",
+            "href": "/admin/invoices/invoice-bravo",
+        }
+    finally:
+        connection.close()
+
+
+def test_global_search_rejects_unbounded_or_ambiguous_queries(monkeypatch):
+    connection = _database()
+    try:
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            too_short = client.get("/api/admin/search?q=b")
+            too_large = client.get("/api/admin/search?q=bravo&limit=11")
+            unknown = client.get("/api/admin/search?q=bravo&page=1")
+
+        assert too_short.status_code == 400
+        assert too_large.status_code == 400
+        assert unknown.status_code == 400
     finally:
         connection.close()
 

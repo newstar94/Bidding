@@ -15,6 +15,8 @@ from backend.shared.helpers import database, log_error, verify_session
 _DEFAULT_PAGE_SIZE = 25
 _MAX_PAGE_SIZE = 100
 _MAX_SEARCH_LENGTH = 100
+_DEFAULT_GLOBAL_SEARCH_LIMIT = 5
+_MAX_GLOBAL_SEARCH_LIMIT = 10
 
 _USER_SORT_COLUMNS = {
     "name": "lower(COALESCE(account.ho_ten, ''))",
@@ -112,6 +114,149 @@ def _forbidden_or_role(request):
     if not valid:
         return _response({"error": role_or_error}, status_code=403), None
     return None, role_or_error
+
+
+def _global_search_query(request):
+    unknown = sorted(set(request.query_params.keys()) - {"q", "limit"})
+    if unknown:
+        raise _InvalidDirectoryQuery("Tham số tìm kiếm không được hỗ trợ.")
+    query = str(request.query_params.get("q") or "").strip()
+    if len(query) < 2 or len(query) > _MAX_SEARCH_LENGTH:
+        raise _InvalidDirectoryQuery("Từ khóa tìm kiếm phải có từ 2 đến 100 ký tự.")
+    try:
+        limit = int(request.query_params.get("limit") or _DEFAULT_GLOBAL_SEARCH_LIMIT)
+    except (TypeError, ValueError) as exc:
+        raise _InvalidDirectoryQuery("Giới hạn kết quả không hợp lệ.") from exc
+    if limit < 1 or limit > _MAX_GLOBAL_SEARCH_LIMIT:
+        raise _InvalidDirectoryQuery("Giới hạn kết quả không hợp lệ.")
+    escaped = query.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return query, f"%{escaped}%", limit
+
+
+def _global_search_sync(request):
+    denied, _role = _forbidden_or_role(request)
+    if denied:
+        return denied
+    try:
+        query, term, limit = _global_search_query(request)
+        connection = database.get_connection()
+        try:
+            cursor = connection.cursor()
+            users = cursor.execute(
+                """SELECT id, COALESCE(ho_ten, ten_dang_nhap, email) AS title,
+                          email AS description, trang_thai AS status
+                     FROM tai_khoan
+                    WHERE lower(id) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(ho_ten, '')) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(ten_dang_nhap, '')) LIKE ? ESCAPE '\\'
+                       OR lower(email) LIKE ? ESCAPE '\\'
+                    ORDER BY lower(COALESCE(ho_ten, ten_dang_nhap, email)), id
+                    LIMIT ?""",
+                (term, term, term, term, limit),
+            ).fetchall()
+            organizations = cursor.execute(
+                """SELECT id, ten_to_chuc AS title, 'Tổ chức' AS description,
+                          trang_thai AS status
+                     FROM to_chuc
+                    WHERE lower(id) LIKE ? ESCAPE '\\'
+                       OR lower(ten_to_chuc) LIKE ? ESCAPE '\\'
+                    ORDER BY lower(ten_to_chuc), id
+                    LIMIT ?""",
+                (term, term, limit),
+            ).fetchall()
+            subscriptions = cursor.execute(
+                """SELECT subscription.* FROM (
+                       SELECT 'account' AS owner_kind, account_subscription.user_id AS owner_id,
+                              COALESCE(account.ho_ten, account.ten_dang_nhap, account.email) AS owner_name,
+                              account.email AS owner_email, account_subscription.package_id,
+                              account_subscription.status
+                         FROM account_subscriptions account_subscription
+                         JOIN tai_khoan account ON account.id = account_subscription.user_id
+                       UNION ALL
+                       SELECT 'organization' AS owner_kind,
+                              organization_subscription.organization_id AS owner_id,
+                              organization.ten_to_chuc AS owner_name, NULL AS owner_email,
+                              organization_subscription.package_id, organization_subscription.status
+                         FROM organization_subscriptions organization_subscription
+                         JOIN to_chuc organization
+                           ON organization.id = organization_subscription.organization_id
+                     ) subscription
+                    WHERE lower(subscription.owner_id) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(subscription.owner_name, '')) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(subscription.owner_email, '')) LIKE ? ESCAPE '\\'
+                       OR lower(subscription.package_id) LIKE ? ESCAPE '\\'
+                    ORDER BY lower(COALESCE(subscription.owner_name, subscription.owner_id)),
+                             subscription.owner_kind, subscription.owner_id
+                    LIMIT ?""",
+                (term, term, term, term, limit),
+            ).fetchall()
+            invoices = cursor.execute(
+                """SELECT invoice.id, invoice.status, orders.public_id,
+                          COALESCE(account.ho_ten, account.ten_dang_nhap, account.email,
+                                   organization.ten_to_chuc, orders.public_id) AS owner_name
+                     FROM billing_invoice_requests invoice
+                     JOIN billing_orders orders ON orders.id = invoice.order_id
+                     LEFT JOIN tai_khoan account ON account.id = orders.account_user_id
+                     LEFT JOIN to_chuc organization ON organization.id = orders.organization_id
+                    WHERE lower(invoice.id) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(invoice.provider_reference, '')) LIKE ? ESCAPE '\\'
+                       OR lower(orders.public_id) LIKE ? ESCAPE '\\'
+                       OR lower(COALESCE(account.ho_ten, account.ten_dang_nhap,
+                                         account.email, organization.ten_to_chuc, '')) LIKE ? ESCAPE '\\'
+                    ORDER BY lower(invoice.id)
+                    LIMIT ?""",
+                (term, term, term, term, limit),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        items = []
+        for row in users:
+            encoded = quote(str(row["id"]), safe="")
+            items.append({
+                "kind": "user", "id": row["id"], "title": row["title"],
+                "description": row["description"], "status": row["status"],
+                "href": f"/admin/users?search={encoded}",
+            })
+        for row in organizations:
+            encoded = quote(str(row["id"]), safe="")
+            items.append({
+                "kind": "organization", "id": row["id"], "title": row["title"],
+                "description": row["description"], "status": row["status"],
+                "href": f"/admin/organizations?search={encoded}",
+            })
+        for row in subscriptions:
+            encoded = quote(str(row["owner_id"]), safe="")
+            owner_label = "Tài khoản" if row["owner_kind"] == "account" else "Tổ chức"
+            items.append({
+                "kind": "subscription",
+                "id": f'{row["owner_kind"]}:{row["owner_id"]}',
+                "title": row["owner_name"],
+                "description": f'{owner_label} · Gói {row["package_id"]}',
+                "status": row["status"],
+                "href": f"/admin/subscriptions?search={encoded}",
+            })
+        for row in invoices:
+            encoded = quote(str(row["id"]), safe="")
+            items.append({
+                "kind": "invoice", "id": row["id"], "title": row["id"],
+                "description": f'{row["owner_name"]} · {row["public_id"]}',
+                "status": row["status"],
+                "href": f"/admin/invoices/{encoded}",
+            })
+        return _response({"query": query, "limitPerType": limit, "items": items})
+    except _InvalidDirectoryQuery as exc:
+        return _response({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001 - keep database details private.
+        log_error(exc, "platform_admin_global_search")
+        return _response({"error": "Đã xảy ra lỗi tìm kiếm dữ liệu quản trị."}, status_code=500)
+
+
+async def admin_global_search_api(request):
+    try:
+        return await run_database_read(_global_search_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _response({"error": "Hệ thống đang bận. Vui lòng thử lại sau."}, status_code=503)
 
 
 def _list_admin_users_sync(request):
@@ -802,6 +947,7 @@ async def admin_organization_detail_api(request):
 
 def platform_admin_directory_routes(Route):
     return [
+        Route("/api/admin/search", admin_global_search_api, methods=["GET"]),
         Route("/api/admin/users", list_admin_users_api, methods=["GET"]),
         Route("/api/admin/organizations", list_admin_organizations_api, methods=["GET"]),
         Route("/api/admin/users/{user_id}", admin_user_detail_api, methods=["GET"]),

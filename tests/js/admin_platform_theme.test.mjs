@@ -71,3 +71,11 @@ test("admin entry ships Tabler styles without the unused demo JavaScript bundle"
   assert.match(app, /data-admin-nav-toggle/u);
   assert.match(app, /navigation\.classList\.toggle\("show", !expanded\)/u);
 });
+
+test("admin grouped navigation and global search have responsive shell styling", async () => {
+  const admin = await readFile(new URL("../../frontend/admin-platform/admin.css", import.meta.url), "utf8");
+  assert.match(admin, /\.admin-nav-section-title\s*\{[^}]*text-transform:\s*uppercase/su);
+  assert.match(admin, /\.bf-admin-global-search\s*\{[^}]*position:\s*relative/su);
+  assert.match(admin, /\.bf-admin-search-results\s*\{[^}]*position:\s*absolute/su);
+  assert.match(admin, /@media \(max-width: 767\.98px\)[^{]*\{[\s\S]*\.bf-admin-global-search/su);
+});

@@ -18,10 +18,13 @@ test("every admin sidebar route has a code-owned accessible decorative icon", ()
 });
 
 test("admin shell renders icons for sidebar and top navigation", async () => {
-  const source = await readFile(new URL("../../frontend/admin-platform/AdminApp.js", import.meta.url), "utf8");
-  assert.match(source, /adminIconMarkup\(ADMIN_ROUTE_ICONS\[path\]\)/u);
-  assert.match(source, /adminIconMarkup\("account"\)/u);
-  assert.match(source, /adminIconMarkup\("workspace"\)/u);
+  const [appSource, navigationSource] = await Promise.all([
+    readFile(new URL("../../frontend/admin-platform/AdminApp.js", import.meta.url), "utf8"),
+    readFile(new URL("../../frontend/admin-platform/AdminNavigation.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(navigationSource, /adminIconMarkup\(ADMIN_ROUTE_ICONS\[path\]\)/u);
+  assert.match(appSource, /adminIconMarkup\("account"\)/u);
+  assert.match(appSource, /adminIconMarkup\("workspace"\)/u);
 });
 
 test("unknown admin icon names fail closed", () => {

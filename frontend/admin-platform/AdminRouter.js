@@ -9,6 +9,24 @@ export const ADMIN_ROUTES = Object.freeze([
   ["/admin/security", "Bảo mật"], ["/admin/system/jobs", "Tác vụ"],
   ["/admin/system/sync", "Đồng bộ"], ["/admin/system/version", "Phiên bản"],
 ]);
+export const ADMIN_NAV_GROUPS = Object.freeze([
+  Object.freeze({ label: "Tổng quan", paths: Object.freeze(["/admin"]) }),
+  Object.freeze({ label: "Phân tích", paths: Object.freeze(["/admin/analytics"]) }),
+  Object.freeze({ label: "Khách hàng", paths: Object.freeze(["/admin/organizations", "/admin/users"]) }),
+  Object.freeze({
+    label: "Thương mại",
+    paths: Object.freeze(["/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments"]),
+  }),
+  Object.freeze({
+    label: "Hệ thống",
+    paths: Object.freeze(["/admin/settings", "/admin/legal", "/admin/system/jobs", "/admin/system/sync"]),
+  }),
+  Object.freeze({ label: "Bảo mật", paths: Object.freeze(["/admin/audit", "/admin/security"]) }),
+  Object.freeze({
+    label: "DevOps",
+    paths: Object.freeze(["/admin/environment", "/admin/health", "/admin/system/version"]),
+  }),
+]);
 const ROUTE_MAP = new Map(ADMIN_ROUTES);
 const INVOICE_DETAIL = /^\/admin\/invoices\/([A-Za-z0-9][A-Za-z0-9._:-]{0,199})$/u;
 export function normalizeAdminPath(pathname) {

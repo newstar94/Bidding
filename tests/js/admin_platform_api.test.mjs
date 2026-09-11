@@ -199,6 +199,29 @@ test("admin API encodes server-side directory query values", async () => {
   assert.equal(requestedUrl, "/api/admin/users?page=2&search=Minh%20%26%20An&status=active");
 });
 
+test("admin API searches only through the isolated platform endpoint", async () => {
+  const previousSessionStorage = globalThis.sessionStorage;
+  globalThis.sessionStorage = { getItem: () => "workspace-org" };
+  let request;
+  try {
+    await getAdminJson("/api/admin/search", {
+      query: { q: "Minh & An", limit: 5 },
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+    assert.equal(request.url, "/api/admin/search?q=Minh%20%26%20An&limit=5");
+    assert.equal(request.options.credentials, "same-origin");
+    assert.equal(new Headers(request.options.headers).has("X-Active-Org"), false);
+  } finally {
+    if (previousSessionStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousSessionStorage;
+  }
+});
+
 test("admin API permits only approved billing mutations and sends CSRF and idempotency headers", async () => {
   const requests = [];
   const previousDocument = globalThis.document;

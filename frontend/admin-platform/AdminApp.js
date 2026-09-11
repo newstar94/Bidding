@@ -1,4 +1,4 @@
-import { ADMIN_ROUTES, getAdminRoute, navigateAdmin } from "./AdminRouter.js";
+import { getAdminRoute, navigateAdmin } from "./AdminRouter.js";
 import { renderAdminOverview } from "./AdminOverview.js";
 import { renderAdminOrganizations, renderAdminUsers } from "./AdminDirectories.js";
 import { renderAdminInvoicesUnavailable, renderAdminPayments, renderAdminSubscriptions } from "./AdminBilling.js";
@@ -11,7 +11,9 @@ import { renderAdminLegalCatalog } from "./AdminLegalCatalog.js";
 import { adminStateMarkup } from "./AdminStateView.js";
 import { postAdminJson } from "./AdminApi.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
-import { ADMIN_ROUTE_ICONS, adminIconMarkup } from "./AdminIcons.js";
+import { adminIconMarkup } from "./AdminIcons.js";
+import { adminNavigationMarkup } from "./AdminNavigation.js";
+import { adminSearchMarkup, bindAdminSearch } from "./AdminSearch.js";
 
 window.performance?.mark?.("bf:app-module-start");
 
@@ -31,8 +33,8 @@ function escapeText(value) {
 }
 function shellMarkup(session) {
   const name = escapeText(session.user?.name || session.user?.username || "Quản trị viên");
-  const links = ADMIN_ROUTES.map(([path, title]) => `<li class="nav-item"><a class="nav-link" href="${path}" data-admin-link="${path}">${adminIconMarkup(ADMIN_ROUTE_ICONS[path])}<span class="nav-link-title">${escapeText(title)}</span></a></li>`).join("");
-  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-admin-nav-toggle aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl"><div class="navbar-nav flex-row order-md-last"><span class="nav-link">${adminIconMarkup("account")}<span>${name}</span></span><a class="nav-link" href="/tong-quan" data-admin-workspace-link>${adminIconMarkup("workspace")}<span>Không gian làm việc</span></a><span class="nav-link text-danger" id="admin-workspace-status" aria-live="polite"></span></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
+  const links = adminNavigationMarkup();
+  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-admin-nav-toggle aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl bf-admin-header">${adminSearchMarkup()}<div class="navbar-nav flex-row order-md-last"><span class="nav-link">${adminIconMarkup("account")}<span>${name}</span></span><a class="nav-link" href="/tong-quan" data-admin-workspace-link>${adminIconMarkup("workspace")}<span>Không gian làm việc</span></a><span class="nav-link text-danger" id="admin-workspace-status" aria-live="polite"></span></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
 }
 function bindNavigationToggle() {
   const toggle = document.querySelector("[data-admin-nav-toggle]");
@@ -116,6 +118,7 @@ else {
   window.performance?.mark?.("bf:init:start");
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
   bindNavigationToggle();
+  bindAdminSearch(document);
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.querySelector("[data-admin-workspace-link]")?.addEventListener("click", selectWorkspaceRole);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });
