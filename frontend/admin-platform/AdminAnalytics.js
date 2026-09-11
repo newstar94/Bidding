@@ -190,6 +190,25 @@ function featureMarkup(features) {
   return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Tính năng</th><th class="text-end">Lượt dùng</th><th class="text-end">Người dùng</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function seriesVisualMarkup(points, label, headingId) {
+  const numeric = points
+    .map((point, index) => ({ index, value: Number.isFinite(point?.value) ? point.value : null }))
+    .filter((point) => point.value !== null);
+  if (!numeric.length) return "";
+  const values = numeric.map((point) => point.value);
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const range = maximum - minimum || 1;
+  const x = (index) => points.length <= 1 ? 50 : 4 + (index / (points.length - 1)) * 92;
+  const y = (value) => 35 - ((value - minimum) / range) * 29;
+  const coordinates = numeric.map((point) => `${x(point.index).toFixed(2)},${y(point.value).toFixed(2)}`);
+  const visual = numeric.length === 1
+    ? `<circle cx="${x(numeric[0].index).toFixed(2)}" cy="${y(numeric[0].value).toFixed(2)}" r="2.5" fill="currentColor"></circle>`
+    : `<polyline points="${coordinates.join(" ")}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>${numeric.map((point) => `<circle cx="${x(point.index).toFixed(2)}" cy="${y(point.value).toFixed(2)}" r="1.4" fill="currentColor"></circle>`).join("")}`;
+  const description = `${label}: ${numeric.length} điểm có dữ liệu; nhỏ nhất ${displayNumber(minimum)}, lớn nhất ${displayNumber(maximum)}.`;
+  return `<div class="px-3 pt-3"><svg class="w-100 text-primary" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-labelledby="${headingId}" aria-label="${escapeHtml(description)}"><line x1="4" y1="35" x2="96" y2="35" stroke="currentColor" opacity="0.2" vector-effect="non-scaling-stroke"></line>${visual}</svg></div>`;
+}
+
 function seriesTableMarkup(series, chartIndex, seriesIndex) {
   const points = Array.isArray(series?.points) ? series.points.slice(0, MAX_POINTS) : [];
   const headingId = `admin-chart-${chartIndex}-${seriesIndex}`;
@@ -201,7 +220,7 @@ function seriesTableMarkup(series, chartIndex, seriesIndex) {
     const dimension = point?.date || point?.label || "N/A";
     return `<tr><td>${escapeHtml(dimension)}</td><td class="text-end">${escapeHtml(displayValue(point?.value, point?.status))}</td><td>${escapeHtml(STATUS_LABELS[point?.status] || point?.status || "")}</td></tr>`;
   }).join("");
-  return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4><div class="table-responsive"><table class="table table-sm table-vcenter mb-0"><thead><tr><th>Thời điểm / nhóm</th><th class="text-end">Giá trị</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4>${seriesVisualMarkup(points, label, headingId)}<div class="table-responsive mt-2"><table class="table table-sm table-vcenter mb-0"><caption class="visually-hidden">Dữ liệu dạng bảng cho ${escapeHtml(label)}</caption><thead><tr><th>Thời điểm / nhóm</th><th class="text-end">Giá trị</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function chartMarkup(chart, chartIndex) {

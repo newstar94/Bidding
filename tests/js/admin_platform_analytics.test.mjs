@@ -89,7 +89,7 @@ test("analytics renders real zeroes, missing values as N/A and no unknown payloa
   assert.doesNotMatch(markup, /do-not-render|hidden-value/u);
 });
 
-test("analytics renders accessible series fallbacks and suppressed values", () => {
+test("analytics renders responsive accessible charts with tabular fallbacks and suppressed values", () => {
   const markup = analyticsResultsMarkup(
     { coverage: { hasData: true }, topFeatures: [] },
     { dashboard: {
@@ -106,12 +106,15 @@ test("analytics renders accessible series fallbacks and suppressed values", () =
     } },
   );
   assert.match(markup, /aria-labelledby="admin-chart-0"/u);
+  assert.match(markup, /<svg[^>]*role="img"[^>]*aria-label="Hoạt động: 1 điểm có dữ liệu/u);
+  assert.match(markup, /<polyline|<circle/u);
+  assert.match(markup, /<caption class="visually-hidden">Dữ liệu dạng bảng cho Hoạt động/u);
   assert.match(markup, /<table[\s\S]*2026-08-01[\s\S]*12/u);
   assert.match(markup, /2026-08-02[\s\S]*N\/A[\s\S]*Không đủ mẫu/u);
   assert.match(markup, /Chuỗi trống[\s\S]*Chưa có điểm dữ liệu/u);
   assert.match(markup, /Phân khúc[\s\S]*Nhóm A[\s\S]*8/u);
   assert.match(markup, /Chi tiết[\s\S]*P50[\s\S]*4/u);
-  assert.doesNotMatch(markup, /raw|secret|hidden|dashboard-secret/u);
+  assert.doesNotMatch(markup, /rawPayload|segment-secret|table-secret|hidden-value|dashboard-secret/u);
 });
 
 test("analytics renders an explicit empty state when both sources have no data", () => {
