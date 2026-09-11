@@ -118,9 +118,111 @@ function validationReady(validation) {
   );
 }
 
+function offerField(index, name, value, { type = "text", readonly = false, min = null } = {}) {
+  const minAttribute = min === null ? "" : ` min="${escapeHtml(min)}"`;
+  return `<input class="form-control" type="${escapeHtml(type)}" data-admin-offer-field="${escapeHtml(name)}" value="${escapeHtml(value ?? "")}"${readonly ? " readonly" : ""}${minAttribute} data-offer-index="${index}">`;
+}
+
+function offerSelect(index, name, value, options) {
+  return `<select class="form-select" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}">${options.map(([optionValue, label]) => `<option value="${escapeHtml(optionValue)}"${value === optionValue ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`;
+}
+
+function offerCheckbox(index, name, checked, label) {
+  return `<label class="form-check"><input class="form-check-input" type="checkbox" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}"${checked ? " checked" : ""}><span class="form-check-label">${escapeHtml(label)}</span></label>`;
+}
+
+function offerEditorMarkup(offer, index) {
+  const display = offer?.display && typeof offer.display === "object" ? offer.display : {};
+  const price = offer?.price && typeof offer.price === "object" ? offer.price : {};
+  const capabilities = offer?.exportCapabilities;
+  const capabilityFields = capabilities === null
+    ? '<div class="alert alert-warning mb-0" role="status">Quyền xuất của gói này đang ở trạng thái ánh xạ cũ chưa xác định và sẽ được giữ nguyên.</div>'
+    : Object.entries(CAPABILITY_LABELS).map(([key, label]) => offerCheckbox(index, `capability:${key}`, capabilities?.[key] === true, label)).join("");
+  return `<article class="card mb-3" data-admin-offer-editor data-offer-index="${index}"><div class="card-header"><div><h4 class="card-title">${text(display.name, offer?.code)}</h4><div class="text-secondary small">${text(offer?.code)}</div></div></div><div class="card-body"><div class="row g-3"><div class="col-md-4"><label class="form-label">Mã gói</label>${offerField(index, "code", offer?.code, { readonly: true })}</div><div class="col-md-4"><label class="form-label">Tên hiển thị</label>${offerField(index, "display.name", display.name)}</div><div class="col-md-4"><label class="form-label">Thứ tự hiển thị</label>${offerField(index, "display.order", display.order, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Hạng gói</label>${offerField(index, "tier", offer?.tier, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Biến thể</label>${offerField(index, "variant", offer?.variant, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Chủ thể</label>${offerField(index, "ownerKind", offer?.ownerKind, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Chu kỳ</label>${offerField(index, "price.period", price.period, { readonly: true })}</div><div class="col-12"><label class="form-label">Mô tả</label><textarea class="form-control" rows="2" data-admin-offer-field="display.description" data-offer-index="${index}">${escapeHtml(display.description ?? "")}</textarea></div><div class="col-md-3"><label class="form-label">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Thuế</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Tổng tiền</label>${offerField(index, "price.total", price.total, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Hạn mức thành viên</label>${offerField(index, "memberQuota", offer?.memberQuota, { type: "number", min: 1 })}</div><div class="col-md-3"><label class="form-label">Lượt Mua Sắm Công</label>${offerField(index, "includedProcurementQuota", offer?.includedProcurementQuota, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Trạng thái bán</label>${offerSelect(index, "salesState", offer?.salesState, [["sellable", "Đang bán"], ["stopped", "Đã dừng bán"], ["non_sellable", "Không bán"]])}</div><div class="col-md-3"><label class="form-label">Phạm vi hiển thị</label>${offerSelect(index, "display.visibility", display.visibility ?? "", [["", "Theo cấu hình hiện có"], ["public", "Công khai"], ["hidden", "Ẩn"]])}</div><div class="col-md-6"><label class="form-label d-block">Quyền xuất</label>${capabilityFields}</div><div class="col-md-6"><label class="form-label d-block">Tùy chọn</label>${offerCheckbox(index, "violationCheckEnabled", offer?.violationCheckEnabled === true, "Kiểm tra vi phạm nhà thầu")}${offerCheckbox(index, "display.recommended", display.recommended === true, "Gói được đề xuất")}</div><div class="col-12"><label class="form-label">Quyền lợi (mỗi dòng một nội dung)</label><textarea class="form-control" rows="4" data-admin-offer-field="display.benefits" data-offer-index="${index}">${escapeHtml(Array.isArray(display.benefits) ? display.benefits.join("\n") : "")}</textarea></div></div></div></article>`;
+}
+
+function cloneJson(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function parseIntegerField(field, label, { optional = false } = {}) {
+  const raw = String(field?.value ?? "").trim();
+  if (optional && raw === "") return undefined;
+  if (!/^(0|[1-9]\d*)$/u.test(raw)) {
+    const error = new TypeError(`${label} phải là số nguyên không âm.`);
+    error.field = field;
+    throw error;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    const error = new TypeError(`${label} vượt quá giới hạn số nguyên an toàn.`);
+    error.field = field;
+    throw error;
+  }
+  return value;
+}
+
+export function serializeDraftDocument(root, originalDocument) {
+  const advancedField = root.querySelector?.("#admin-plan-advanced-document");
+  let advanced;
+  try {
+    advanced = JSON.parse(advancedField?.value || "");
+  } catch {
+    const error = new TypeError("JSON cấu hình nâng cao không hợp lệ.");
+    error.field = advancedField;
+    throw error;
+  }
+  if (!advanced || Array.isArray(advanced) || typeof advanced !== "object") {
+    const error = new TypeError("Cấu hình nâng cao phải là một object JSON.");
+    error.field = advancedField;
+    throw error;
+  }
+  delete advanced.offers;
+  const originalOffers = Array.isArray(originalDocument?.offers) ? originalDocument.offers : [];
+  const editors = [...(root.querySelectorAll?.("[data-admin-offer-editor]") || [])];
+  if (editors.length !== originalOffers.length) throw new TypeError("Danh sách gói không khớp tài liệu gốc.");
+  const offers = editors.map((editor, index) => {
+    const offer = cloneJson(originalOffers[index]);
+    const field = (name) => editor.querySelector?.(`[data-admin-offer-field="${name}"]`);
+    const display = offer.display && typeof offer.display === "object" ? offer.display : (offer.display = {});
+    const price = offer.price && typeof offer.price === "object" ? offer.price : (offer.price = {});
+    display.name = String(field("display.name")?.value ?? "");
+    const description = String(field("display.description")?.value ?? "");
+    if (description === "") delete display.description; else display.description = description;
+    const order = parseIntegerField(field("display.order"), "Thứ tự hiển thị", { optional: true });
+    if (order === undefined) delete display.order; else display.order = order;
+    const recommended = Boolean(field("display.recommended")?.checked);
+    if (Object.hasOwn(display, "recommended") || recommended) display.recommended = recommended;
+    else delete display.recommended;
+    const visibility = String(field("display.visibility")?.value ?? "");
+    if (visibility === "") delete display.visibility; else display.visibility = visibility;
+    const benefits = String(field("display.benefits")?.value ?? "").split(/\r?\n/u).map((item) => item.trim()).filter(Boolean);
+    if (Object.hasOwn(display, "benefits") || benefits.length) display.benefits = benefits;
+    else delete display.benefits;
+    price.subtotal = parseIntegerField(field("price.subtotal"), "Giá trước thuế");
+    price.tax = parseIntegerField(field("price.tax"), "Thuế");
+    price.total = parseIntegerField(field("price.total"), "Tổng tiền");
+    offer.memberQuota = parseIntegerField(field("memberQuota"), "Hạn mức thành viên");
+    offer.includedProcurementQuota = parseIntegerField(field("includedProcurementQuota"), "Lượt Mua Sắm Công");
+    offer.violationCheckEnabled = Boolean(field("violationCheckEnabled")?.checked);
+    offer.salesState = String(field("salesState")?.value ?? "");
+    if (offer.exportCapabilities !== null) {
+      for (const key of Object.keys(CAPABILITY_LABELS)) {
+        offer.exportCapabilities[key] = Boolean(field(`capability:${key}`)?.checked);
+      }
+    }
+    return offer;
+  });
+  return { ...advanced, offers };
+}
+
 export function draftEditorMarkup(draft, validation = null) {
   if (!draft) return "";
-  return `<section class="card" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><h3 class="card-title">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Revision ${text(draft.revision)} · thay đổi chỉ có hiệu lực sau khi lưu, kiểm tra và xuất bản.</p></div></div><div class="card-body"><div id="admin-plan-validation">${validationMarkup(validation)}</div><label class="form-label" for="admin-plan-document">Tài liệu chính sách thương mại (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-document" rows="18" spellcheck="false">${escapeHtml(JSON.stringify(draft.document, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div><div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực (để trống = ngay)</label><input class="form-control" id="admin-plan-effective" type="datetime-local"></div></div></div><div class="card-footer d-flex flex-wrap gap-2"><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary ms-auto" type="button" data-admin-plan-action="close">Đóng</button></div></section>`;
+  const documentValue = draft.document && typeof draft.document === "object" ? draft.document : {};
+  const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
+  const advanced = cloneJson(documentValue) || {};
+  delete advanced.offers;
+  return `<section class="card" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><h3 class="card-title">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Revision ${text(draft.revision)} · thay đổi chỉ có hiệu lực sau khi lưu, kiểm tra và xuất bản.</p></div></div><div class="card-body"><div id="admin-plan-validation">${validationMarkup(validation)}</div><h4 class="mb-3">Các gói đăng ký</h4>${offers.map(offerEditorMarkup).join("")}<details class="mt-4"><summary class="fw-bold">Cấu hình chính sách nâng cao</summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực (để trống = ngay)</label><input class="form-control" id="admin-plan-effective" type="datetime-local"></div></div></div><div class="card-footer d-flex flex-wrap gap-2"><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary ms-auto" type="button" data-admin-plan-action="close">Đóng</button></div></section>`;
 }
 
 export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
@@ -185,7 +287,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   const execute = async (action, operation, success, { keepDraft = false } = {}) => {
     if (busy) return;
     busy = true;
-    container.querySelectorAll?.("button, textarea, input").forEach((node) => { node.disabled = true; });
+    container.querySelectorAll?.("button, textarea, input, select").forEach((node) => { node.disabled = true; });
     try {
       const result = await runWithStepUp(operation, { fetchImpl, signal });
       if (result?.document) draft = result;
@@ -200,14 +302,13 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     }
   };
   const readDocument = () => {
-    const field = container.querySelector?.("#admin-plan-document");
     try {
-      const documentValue = JSON.parse(field?.value || "");
-      if (!documentValue || Array.isArray(documentValue) || typeof documentValue !== "object") throw new TypeError();
-      field?.classList.remove("is-invalid");
+      const documentValue = serializeDraftDocument(container, draft?.document);
+      container.querySelectorAll?.(".is-invalid").forEach((field) => field.classList.remove("is-invalid"));
       return documentValue;
-    } catch {
-      field?.classList.add("is-invalid");
+    } catch (error) {
+      error?.field?.classList?.add("is-invalid");
+      setStatus(container, error?.message || "Dữ liệu bản nháp không hợp lệ.", "danger");
       return null;
     }
   };

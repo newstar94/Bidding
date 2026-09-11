@@ -1,7 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { catalogMarkup, draftEditorMarkup, plansMarkup } from "../../frontend/admin-platform/AdminPlans.js";
+import {
+  catalogMarkup,
+  draftEditorMarkup,
+  plansMarkup,
+  serializeDraftDocument,
+} from "../../frontend/admin-platform/AdminPlans.js";
+
+function field(value = "", checked = false) {
+  return { value: String(value), checked, classList: { add() {}, remove() {} } };
+}
+
+function editor(values) {
+  return {
+    querySelector(selector) {
+      const name = selector.match(/data-admin-offer-field="([^"]+)"/u)?.[1];
+      return values[name];
+    },
+  };
+}
+
+function draftRoot(advanced, offerValues) {
+  return {
+    querySelector(selector) {
+      return selector === "#admin-plan-advanced-document" ? field(JSON.stringify(advanced)) : null;
+    },
+    querySelectorAll(selector) {
+      return selector === "[data-admin-offer-editor]" ? offerValues.map(editor) : [];
+    },
+  };
+}
 
 test("plans catalog renders authoritative offers prices benefits and entitlement values", () => {
   const markup = catalogMarkup({
@@ -96,10 +125,23 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
   const draft = {
     id: "draft-1",
     revision: 3,
-    document: { offers: [{ code: "<script>alert(1)</script>" }] },
+    document: { offers: [{
+      code: "<script>alert(1)</script>",
+      tier: "gold",
+      variant: "connected",
+      ownerKind: "organization",
+      price: { period: "yearly", currency: "VND", subtotal: 1, tax: 0, total: 1 },
+      display: { name: "<img src=x onerror=alert(2)>", description: "</textarea><script>x</script>", benefits: ["<svg onload=x>"] },
+    }] },
   };
   const blocked = draftEditorMarkup(draft, { errors: [{ path: "offers[0]", message: "Sai dữ liệu" }] });
   assert.match(blocked, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/u);
+  assert.match(blocked, /&lt;img src=x onerror=alert\(2\)&gt;/u);
+  assert.match(blocked, /&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;/u);
+  assert.match(blocked, /&lt;svg onload=x&gt;/u);
+  assert.match(blocked, /Các gói đăng ký/u);
+  assert.match(blocked, /Cấu hình chính sách nâng cao/u);
+  assert.doesNotMatch(blocked, /id="admin-plan-document"/u);
   assert.match(blocked, /data-admin-plan-action="publish" disabled/u);
   assert.match(blocked, /offers\[0\]/u);
 
@@ -113,4 +155,130 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
     errors: [], validationDigest: "a".repeat(64), readinessExpiresAt: 1,
   });
   assert.match(expired, /data-admin-plan-action="publish" disabled/u);
+});
+
+test("structured draft serialization updates modeled fields and preserves unknown fields", () => {
+  const original = {
+    schemaVersion: 7,
+    rollout: { mode: "shadow", unknownRolloutKey: "keep" },
+    unknownTopLevel: { keep: true },
+    offers: [{
+      code: "gold.connected.yearly",
+      tier: "gold",
+      variant: "connected",
+      ownerKind: "organization",
+      memberQuota: 10,
+      includedProcurementQuota: 100,
+      price: { period: "yearly", currency: "VND", subtotal: 1000, tax: 100, total: 1100, unknownPriceKey: "keep" },
+      exportCapabilities: {
+        "document.export.word": true,
+        "document.export.excel": false,
+        "document.export.award_result_excel": false,
+      },
+      violationCheckEnabled: false,
+      salesState: "sellable",
+      display: { name: "Vàng", description: "Cũ", badge: "hot", order: 1, recommended: false, visibility: "public", benefits: ["Cũ"] },
+      unknownOfferKey: { keep: true },
+    }],
+  };
+  const root = draftRoot({
+    schemaVersion: 7,
+    rollout: { mode: "shadow", unknownRolloutKey: "keep" },
+    unknownTopLevel: { keep: true },
+    offers: [{ code: "must-not-override" }],
+  }, [{
+    "display.name": field("Vàng mới"),
+    "display.description": field("Mô tả mới"),
+    "display.order": field("5"),
+    "display.recommended": field("", true),
+    "display.visibility": field("hidden"),
+    "display.benefits": field("Quyền lợi 1\n\n Quyền lợi 2 "),
+    "price.subtotal": field("2000"),
+    "price.tax": field("200"),
+    "price.total": field("2201"),
+    memberQuota: field("20"),
+    includedProcurementQuota: field("300"),
+    violationCheckEnabled: field("", true),
+    salesState: field("stopped"),
+    "capability:document.export.word": field("", false),
+    "capability:document.export.excel": field("", true),
+    "capability:document.export.award_result_excel": field("", true),
+  }]);
+
+  const result = serializeDraftDocument(root, original);
+  const offer = result.offers[0];
+  assert.deepEqual(result.unknownTopLevel, { keep: true });
+  assert.equal(result.rollout.unknownRolloutKey, "keep");
+  assert.equal(offer.code, "gold.connected.yearly");
+  assert.equal(offer.tier, "gold");
+  assert.equal(offer.variant, "connected");
+  assert.equal(offer.ownerKind, "organization");
+  assert.equal(offer.price.period, "yearly");
+  assert.equal(offer.price.currency, "VND");
+  assert.equal(offer.price.unknownPriceKey, "keep");
+  assert.deepEqual(offer.unknownOfferKey, { keep: true });
+  assert.equal(offer.price.total, 2201, "total remains the explicitly entered authoritative candidate");
+  assert.equal(offer.display.name, "Vàng mới");
+  assert.equal(offer.display.description, "Mô tả mới");
+  assert.equal(offer.display.order, 5);
+  assert.equal(offer.display.recommended, true);
+  assert.equal(offer.display.visibility, "hidden");
+  assert.deepEqual(offer.display.benefits, ["Quyền lợi 1", "Quyền lợi 2"]);
+  assert.equal(offer.memberQuota, 20);
+  assert.equal(offer.includedProcurementQuota, 300);
+  assert.equal(offer.violationCheckEnabled, true);
+  assert.equal(offer.salesState, "stopped");
+  assert.deepEqual(offer.exportCapabilities, {
+    "document.export.word": false,
+    "document.export.excel": true,
+    "document.export.award_result_excel": true,
+  });
+});
+
+test("structured draft serialization preserves unresolved capability mapping", () => {
+  const original = {
+    policies: { keep: true },
+    offers: [{
+      code: "legacy.internal.yearly",
+      price: { period: "yearly", currency: "VND", subtotal: 1, tax: 0, total: 1 },
+      memberQuota: 1,
+      includedProcurementQuota: 0,
+      exportCapabilities: null,
+      violationCheckEnabled: false,
+      salesState: "non_sellable",
+      display: { name: "Legacy", benefits: [] },
+    }],
+  };
+  const result = serializeDraftDocument(draftRoot({ policies: { keep: true } }, [{
+    "display.name": field("Legacy"),
+    "display.description": field(""),
+    "display.order": field(""),
+    "display.recommended": field("", false),
+    "display.visibility": field(""),
+    "display.benefits": field(""),
+    "price.subtotal": field("1"),
+    "price.tax": field("0"),
+    "price.total": field("1"),
+    memberQuota: field("1"),
+    includedProcurementQuota: field("0"),
+    violationCheckEnabled: field("", false),
+    salesState: field("non_sellable"),
+  }]), original);
+  assert.equal(result.offers[0].exportCapabilities, null);
+});
+
+test("structured draft serialization rejects malformed advanced JSON and integers", () => {
+  const original = { offers: [{}] };
+  const badJson = draftRoot({}, []);
+  badJson.querySelector = () => field("{");
+  assert.throws(() => serializeDraftDocument(badJson, { offers: [] }), /JSON cấu hình nâng cao/u);
+
+  const values = {
+    "display.name": field("Tên"), "display.description": field(""), "display.order": field(""),
+    "display.recommended": field("", false), "display.visibility": field(""), "display.benefits": field(""),
+    "price.subtotal": field("1.5"), "price.tax": field("0"), "price.total": field("1"),
+    memberQuota: field("1"), includedProcurementQuota: field("0"),
+    violationCheckEnabled: field("", false), salesState: field("sellable"),
+  };
+  assert.throws(() => serializeDraftDocument(draftRoot({}, [values]), original), /Giá trước thuế phải là số nguyên/u);
 });
