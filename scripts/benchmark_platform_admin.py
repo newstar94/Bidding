@@ -22,16 +22,17 @@ if str(ROOT) not in sys.path:
 
 import psycopg
 
-from backend.admin import platform_directory_routes, security_routes
+from backend.admin import platform_billing_routes, platform_directory_routes, security_routes
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 
 
 USER_COUNT = 10_000
 ORGANIZATION_COUNT = 1_000
 AUDIT_COUNT = 50_000
+INVOICE_REQUEST_COUNT = 25_000
 PAGE_SIZE = 100
 MAX_RESPONSE_BYTES = 256_000
-QUERY_BUDGETS = {"users": 3, "organizations": 3, "audit": 2}
+QUERY_BUDGETS = {"users": 3, "organizations": 3, "audit": 2, "invoices": 2}
 
 
 def _test_database_url() -> str:
@@ -137,6 +138,30 @@ def _create_fixture(connection) -> None:
                 actor_user_id TEXT, organization_id TEXT, action TEXT NOT NULL,
                 target_type TEXT, target_id TEXT, created_at TIMESTAMPTZ NOT NULL,
                 metadata_json TEXT
+            ) ON COMMIT DROP;
+            CREATE TEMP TABLE payment_provider_profiles (
+                id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+                environment TEXT NOT NULL
+            ) ON COMMIT DROP;
+            CREATE TEMP TABLE billing_orders (
+                id TEXT PRIMARY KEY, public_id TEXT NOT NULL,
+                account_user_id TEXT, organization_id TEXT,
+                owner_kind TEXT NOT NULL, total_amount BIGINT NOT NULL,
+                currency TEXT NOT NULL, provider_profile_id TEXT
+            ) ON COMMIT DROP;
+            CREATE TEMP TABLE payment_transactions (
+                id TEXT PRIMARY KEY, order_id TEXT NOT NULL,
+                provider_transaction_id TEXT NOT NULL, status TEXT NOT NULL,
+                verified_paid_amount BIGINT NOT NULL,
+                provider_occurred_at BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            ) ON COMMIT DROP;
+            CREATE TEMP TABLE billing_invoice_requests (
+                id TEXT PRIMARY KEY, order_id TEXT NOT NULL,
+                payment_transaction_id TEXT NOT NULL, status TEXT NOT NULL,
+                provider_reference TEXT, attempt_count INTEGER NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
             ) ON COMMIT DROP
             """
         )
@@ -203,24 +228,73 @@ def _create_fixture(connection) -> None:
             (USER_COUNT, ORGANIZATION_COUNT, AUDIT_COUNT),
         )
         cursor.execute(
+            "INSERT INTO payment_provider_profiles VALUES ('bench-provider', 'payos', 'test')"
+        )
+        cursor.execute(
+            """
+            INSERT INTO billing_orders
+            SELECT 'bench-order-' || n, 'BENCH-' || lpad(n::text, 8, '0'),
+                   CASE WHEN n %% 2 = 1
+                        THEN 'bench-user-' || (((n - 1) %% %s) + 1) END,
+                   CASE WHEN n %% 2 = 0
+                        THEN 'bench-org-' || (((n - 1) %% %s) + 1) END,
+                   CASE WHEN n %% 2 = 1 THEN 'account' ELSE 'organization' END,
+                   100000 + n, 'VND', 'bench-provider'
+              FROM generate_series(1, %s) AS n
+            """,
+            (USER_COUNT, ORGANIZATION_COUNT, INVOICE_REQUEST_COUNT),
+        )
+        cursor.execute(
+            """
+            INSERT INTO payment_transactions
+            SELECT 'bench-transaction-' || n, 'bench-order-' || n,
+                   'bench-provider-transaction-' || n, 'settled', 100000 + n,
+                   1800000000 + n,
+                   TIMESTAMPTZ '2026-02-01 00:00:00+00' + n * INTERVAL '1 second'
+              FROM generate_series(1, %s) AS n
+            """,
+            (INVOICE_REQUEST_COUNT,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO billing_invoice_requests
+            SELECT 'bench-invoice-request-' || n, 'bench-order-' || n,
+                   'bench-transaction-' || n,
+                   CASE n %% 3 WHEN 0 THEN 'requested'
+                               WHEN 1 THEN 'issued' ELSE 'failed' END,
+                   CASE WHEN n %% 5 = 0 THEN NULL ELSE 'bench-invoice-ref-' || n END,
+                   n %% 4,
+                   TIMESTAMPTZ '2026-02-01 00:00:00+00' + n * INTERVAL '1 second',
+                   TIMESTAMPTZ '2026-02-02 00:00:00+00' + n * INTERVAL '1 second'
+              FROM generate_series(1, %s) AS n
+            """,
+            (INVOICE_REQUEST_COUNT,),
+        )
+        cursor.execute(
             """
             CREATE INDEX ON thanh_vien_to_chuc (user_id, organization_id);
             CREATE INDEX ON thanh_vien_to_chuc (organization_id, user_id);
             CREATE INDEX ON auth_sessions (user_id, last_seen_at DESC);
             CREATE INDEX ON product_usage_hourly (organization_id, last_seen_at DESC);
             CREATE INDEX ON audit_log (created_at DESC, id DESC);
+            CREATE INDEX ON billing_invoice_requests (created_at DESC, id);
+            CREATE INDEX ON billing_invoice_requests (order_id, payment_transaction_id);
+            CREATE INDEX ON payment_transactions (order_id, id);
             ANALYZE tai_khoan; ANALYZE to_chuc; ANALYZE thanh_vien_to_chuc;
-            ANALYZE auth_sessions; ANALYZE product_usage_hourly; ANALYZE audit_log
+            ANALYZE auth_sessions; ANALYZE product_usage_hourly; ANALYZE audit_log;
+            ANALYZE billing_orders; ANALYZE payment_transactions;
+            ANALYZE billing_invoice_requests
             """
         )
         counts = cursor.execute(
             """SELECT (SELECT COUNT(*) FROM tai_khoan) AS users,
                       (SELECT COUNT(*) FROM to_chuc) AS organizations,
-                      (SELECT COUNT(*) FROM audit_log) AS audit"""
+                      (SELECT COUNT(*) FROM audit_log) AS audit,
+                      (SELECT COUNT(*) FROM billing_invoice_requests) AS invoices"""
         ).fetchone()
     assert (
-        counts["users"], counts["organizations"], counts["audit"]
-    ) == (USER_COUNT, ORGANIZATION_COUNT, AUDIT_COUNT)
+        counts["users"], counts["organizations"], counts["audit"], counts["invoices"]
+    ) == (USER_COUNT, ORGANIZATION_COUNT, AUDIT_COUNT, INVOICE_REQUEST_COUNT)
 
 
 def _request():
@@ -261,16 +335,20 @@ def _measure(name, operation, database, repetitions):
 def run(repetitions: int = 5) -> dict:
     connection = psycopg.connect(_test_database_url(), row_factory=compat_row_factory)
     original_directory_database = platform_directory_routes.database
+    original_billing_database = platform_billing_routes.database
     original_security_database = security_routes.database
     original_directory_auth = platform_directory_routes._forbidden_or_role
+    original_billing_auth = platform_billing_routes._forbidden_or_role
     original_security_auth = security_routes._forbidden_or_role
     try:
         _create_fixture(connection)
         database = _BorrowedDatabase(connection)
         allow = lambda _request: (None, "super_admin")
         platform_directory_routes.database = database
+        platform_billing_routes.database = database
         security_routes.database = database
         platform_directory_routes._forbidden_or_role = allow
+        platform_billing_routes._forbidden_or_role = allow
         security_routes._forbidden_or_role = allow
         results = {
             "users": _measure(
@@ -285,6 +363,10 @@ def run(repetitions: int = 5) -> dict:
                 "audit", security_routes._list_admin_audit_sync,
                 database, repetitions,
             ),
+            "invoices": _measure(
+                "invoices", platform_billing_routes._list_admin_invoice_requests_sync,
+                database, repetitions,
+            ),
         }
         return {
             "status": "PASS",
@@ -292,6 +374,7 @@ def run(repetitions: int = 5) -> dict:
                 "users": USER_COUNT,
                 "organizations": ORGANIZATION_COUNT,
                 "auditRows": AUDIT_COUNT,
+                "invoiceRequests": INVOICE_REQUEST_COUNT,
                 "isolation": "temporary tables in one rolled-back transaction",
             },
             "budgets": {
@@ -303,8 +386,10 @@ def run(repetitions: int = 5) -> dict:
         }
     finally:
         platform_directory_routes.database = original_directory_database
+        platform_billing_routes.database = original_billing_database
         security_routes.database = original_security_database
         platform_directory_routes._forbidden_or_role = original_directory_auth
+        platform_billing_routes._forbidden_or_role = original_billing_auth
         security_routes._forbidden_or_role = original_security_auth
         connection.rollback()
         connection.close()

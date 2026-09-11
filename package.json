@@ -54,6 +54,7 @@
     "benchmark:persistence": "node scripts/benchmark_explicit_persistence.mjs",
     "benchmark:n-plus-one": "python scripts/benchmark_n_plus_one.py",
     "benchmark:aggregate-version": "python scripts/benchmark_aggregate_versioning.py",
+    "benchmark:platform-admin-frontend": "node scripts/verify_platform_admin_frontend_budget.mjs",
     "benchmark:excel": "node scripts/benchmark_excel_parsing.mjs",
     "benchmark:excel-server": "python scripts/benchmark_server_excel_import.py --assert",
     "benchmark:tables": "node scripts/profile_table_virtualization.mjs",

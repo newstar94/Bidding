@@ -82,9 +82,11 @@ Every write requires the existing Super Admin network boundary, recent privilege
 
 The overview is a bounded aggregate endpoint. List screens perform server pagination, allowlisted filtering/sorting and latest-request-wins cancellation. Detail drawers use dedicated aggregate endpoints rather than one request per row. Python N+1 regression tests assert fixed query counts for the relevant list/detail paths.
 
-`python scripts/benchmark_platform_admin.py` uses only `TEST_DATABASE_URL` (including the local `.env` value) and deliberately refuses to fall back to `DATABASE_URL`. It creates transaction-local temporary PostgreSQL tables, seeds 10,000 users, 1,000 organizations and 50,000 audit rows, calls the production Platform Admin list handlers, then rolls back in all outcomes.
+`python scripts/benchmark_platform_admin.py` uses only `TEST_DATABASE_URL` (including the local `.env` value) and deliberately refuses to fall back to `DATABASE_URL`. It creates transaction-local temporary PostgreSQL tables, seeds 10,000 users, 1,000 organizations, 50,000 audit rows, and 25,000 authoritative invoice-request rows with their order and payment facts, calls the production Platform Admin list handlers, then rolls back in all outcomes.
 
-The executable contract requires page size 100, response bodies no larger than 256 KB, and fixed query counts of three for users, three for organizations and two for audit. Timings are reported as environment evidence but are not disguised as a portable latency guarantee. Synthetic accounting-invoice volume is not included because the repository has only the invoice-request resource described above.
+The executable contract requires page size 100, response bodies no larger than 256 KB, and fixed query counts of three for users, three for organizations, two for audit, and two for invoice requests. Timings are reported as environment evidence but are not disguised as a portable latency guarantee. The invoice fixture models only the existing invoice-request resource described above; it does not invent accounting invoices or documents.
+
+`npm run benchmark:platform-admin-frontend` measures the secure manifest's reachable admin JavaScript and CSS bytes, actual initial browser requests, and navigation-to-rendered-overview time against an isolated loopback harness. The committed limits and reproducible method are documented in `docs/performance/platform-admin-budget.md`.
 
 ## Theme, responsive and accessibility policy
 
