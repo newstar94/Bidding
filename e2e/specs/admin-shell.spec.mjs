@@ -248,7 +248,7 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/admin\/users\?/u);
   await expect(page.getByRole("heading", { level: 2, name: "Người dùng" })).toBeVisible();
-  await expect(page.getByRole("search")).toBeVisible();
+  await expect(page.locator("[data-admin-directory-form]")).toBeVisible();
 });
 
 test("user and organization details keep keyboard focus and execute authoritative mutations", async ({ context, page }) => {
@@ -312,6 +312,8 @@ test("user and organization details keep keyboard focus and execute authoritativ
     path: "/api/auth/users/update-metadata",
     body: { user_id: "user-e2e", field: "name", value: "Tên đã cập nhật" },
   });
+  await page.getByRole("button", { name: "Xem và thao tác" }).click();
+  await expect(userDrawer).toBeVisible();
   await userDrawer.getByLabel("Gói dịch vụ cá nhân").selectOption("business");
   await userDrawer.getByRole("button", { name: "Lưu thiết lập" }).click();
   await expect.poll(() => mutations.length).toBe(2);
@@ -461,7 +463,7 @@ test("operational admin routes render sanitized data and safe detail focus", asy
     ["/admin/system/sync", "Đồng bộ", "broadcast"],
     ["/admin/settings", "Cài đặt", "Tính năng hệ thống"],
     ["/admin/environment", "Môi trường", "Cấu hình bí mật"],
-    ["/admin/health", "Vận hành", "Cơ sở dữ liệu"],
+    ["/admin/health", "Vận hành", "PostgreSQL"],
     ["/admin/system/version", "Phiên bản", "release-safe"],
   ];
   for (const [path, title, evidence] of checks) {
@@ -472,8 +474,10 @@ test("operational admin routes render sanitized data and safe detail focus", asy
 
   await page.goto("/admin/audit", { waitUntil: "commit" });
   await page.getByRole("button", { name: "Xem" }).click();
-  await expect(page.locator("[data-admin-security-detail]")).toBeFocused();
-  await expect(page.locator("[data-admin-security-detail]")).not.toContainText("DATABASE_URL=");
+  const auditDrawer = page.locator("[data-admin-audit-detail-drawer]");
+  await expect(auditDrawer).toBeVisible();
+  await expect(auditDrawer.getByLabel("Đóng")).toBeFocused();
+  await expect(auditDrawer).not.toContainText("DATABASE_URL=");
 });
 
 test("local admin settings save through privileged reauthentication", async ({ context, page }) => {
@@ -793,7 +797,7 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
     .analyze();
   expect(accessibility.violations).toEqual([]);
 
-  await page.locator('[data-admin-link="/admin/environment"]').click();
+  await page.getByRole("link", { name: "Môi trường", exact: true }).click();
   await expectAdminReady(page, "Môi trường");
   await expect(page.getByRole("heading", { name: /Tính năng/u })).toHaveCount(0);
   for (const feature of ["Trợ lý AI", "Phiên bản pháp lý", "So sánh phiên bản", "Thanh toán trực tuyến"]) {

@@ -218,8 +218,8 @@ export function operationalAnalyticsMarkup(payload) {
 }
 
 export function unsupportedAnalyticsMarkup() {
-  const metricItems = UNSUPPORTED_ANALYTICS_METRICS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-metric="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt">Chưa hỗ trợ</span></li>`).join("");
-  const chartItems = UNSUPPORTED_ANALYTICS_CHARTS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-chart="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt">Chưa hỗ trợ</span></li>`).join("");
+  const metricItems = UNSUPPORTED_ANALYTICS_METRICS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-metric="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt text-dark">Chưa hỗ trợ</span></li>`).join("");
+  const chartItems = UNSUPPORTED_ANALYTICS_CHARTS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-chart="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt text-dark">Chưa hỗ trợ</span></li>`).join("");
   return `<section class="card mt-3" aria-labelledby="admin-analytics-future-seams"><div class="card-header"><div><h2 class="card-title" id="admin-analytics-future-seams">Chỉ số và biểu đồ chưa hỗ trợ</h2><p class="text-secondary small mb-0">Chưa có nguồn dữ liệu tổng hợp có thẩm quyền. Các mục này là điểm mở rộng trong tương lai và không chứa giá trị suy diễn.</p></div></div><div class="row g-0"><div class="col-12 col-xl-6 border-end"><h3 class="h4 px-3 pt-3">Chỉ số</h3><ul class="list-group list-group-flush">${metricItems}</ul></div><div class="col-12 col-xl-6"><h3 class="h4 px-3 pt-3">Biểu đồ</h3><ul class="list-group list-group-flush">${chartItems}</ul></div></div></section>`;
 }
 
