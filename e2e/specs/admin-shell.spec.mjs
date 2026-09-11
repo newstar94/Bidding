@@ -795,6 +795,10 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
 
   await page.locator('[data-admin-link="/admin/environment"]').click();
   await expectAdminReady(page, "Môi trường");
+  await expect(page.getByRole("heading", { name: /Tính năng/u })).toHaveCount(0);
+  for (const feature of ["Trợ lý AI", "Phiên bản pháp lý", "So sánh phiên bản", "Thanh toán trực tuyến"]) {
+    await expect(page.getByText(feature, { exact: true })).toHaveCount(0);
+  }
   await expect(page.locator('[data-admin-secret-status="DATABASE_URL"]')).toHaveText("Đã cấu hình");
   await expect(page.locator('[data-admin-secret-status="PAYOS_API_KEY"]')).toHaveText("Thiếu cấu hình");
   await expect(page.getByRole("button", { name: "Thay thế" })).toHaveCount(0);

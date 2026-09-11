@@ -202,8 +202,17 @@ test("analytics renders responsive accessible charts with tabular fallbacks and 
       kpis: [],
       series: [{ key: "activity", label: "Hoạt động", points: [
         { date: "2026-08-01", value: 12 },
+        { date: "2026-08-01", value: 14 },
         { date: "2026-08-02", value: null, status: "insufficient_sample", raw: "hidden" },
       ] }],
+      overviewCharts: [{
+        key: "subscription_distribution",
+        label: "Phân bố đăng ký",
+        series: [{ label: "Đăng ký", points: [
+          { label: "Hoạt động", value: 8 },
+          { label: "Hết hạn", value: 3 },
+        ] }],
+      }],
       viewCharts: [{ key: "empty", label: "Chuỗi trống", series: [{ label: "Không có điểm", points: [] }] }],
       segments: [{ segment: "Nhóm A", workspaceCount: 8, secret: "segment-secret" }],
       table: [{ metric: "P50", value: 4, internal: "table-secret" }],
@@ -211,8 +220,11 @@ test("analytics renders responsive accessible charts with tabular fallbacks and 
     } },
   );
   assert.match(markup, /aria-labelledby="admin-chart-0"/u);
-  assert.match(markup, /<svg[^>]*role="img"[^>]*aria-label="Hoạt động: 1 điểm có dữ liệu/u);
-  assert.match(markup, /<polyline|<circle/u);
+  assert.match(markup, /<svg[^>]*role="img"[^>]*aria-label="Hoạt động: 2 điểm có dữ liệu/u);
+  assert.match(markup, /data-admin-chart-kind="line"/u);
+  assert.match(markup, /data-admin-chart-area=/u);
+  assert.match(markup, /data-admin-chart-kind="bar"/u);
+  assert.match(markup, /data-admin-chart-bar=/u);
   assert.match(markup, /<caption class="visually-hidden">Dữ liệu dạng bảng cho Hoạt động/u);
   assert.match(markup, /<table[\s\S]*2026-08-01[\s\S]*12/u);
   assert.match(markup, /2026-08-02[\s\S]*N\/A[\s\S]*Không đủ mẫu/u);

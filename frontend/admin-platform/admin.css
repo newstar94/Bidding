@@ -98,6 +98,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-analytics-scroll thead th { color: var(--bf-admin-muted); }
 .bf-admin-analytics-scroll:focus-visible { outline: 2px solid var(--bf-admin-brand); outline-offset: 2px; }
 .alert-primary { --tblr-alert-color: var(--bf-admin-brand-strong); --tblr-alert-bg: var(--bf-admin-brand-soft); --tblr-alert-border-color: var(--bf-admin-brand-line); }
+.bg-secondary-lt { color: var(--bf-admin-muted) !important; }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
@@ -120,10 +121,20 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-legend-dot { width: .65rem; height: .65rem; border-radius: 50%; background: var(--bf-admin-line-strong); }
 .bf-admin-legend-dot.is-primary { background: var(--bf-admin-brand); }
 .bf-admin-chart-legend .bf-admin-chart-total { grid-template-columns: 1fr auto; margin-top: .25rem; padding-top: .85rem; border-top: 1px solid var(--bf-admin-line); }
+.bf-admin-series-visual { min-height: 11rem; padding: 1rem 1.25rem .25rem; color: var(--bf-admin-brand); }
+.bf-admin-series-chart { display: block; width: 100%; height: 11rem; overflow: visible; }
+.bf-admin-chart-grid { stroke: var(--bf-admin-line); stroke-width: 1; }
+.bf-admin-chart-axis { stroke: var(--bf-admin-line-strong); stroke-width: 1; }
+.bf-admin-chart-area { fill: var(--bf-admin-brand-soft); }
+.bf-admin-chart-line { fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.bf-admin-chart-point { fill: var(--bf-admin-surface); stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.bf-admin-chart-bars { fill: currentColor; }
 .bf-admin-directory-table td { vertical-align: top; }
 .bf-admin-directory-table td > div + div { margin-top: .35rem; }
 .bf-admin-operation-table th { width: 55%; color: var(--bf-admin-muted); font-weight: 600; }
 .bf-admin-operation-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.bf-admin-section-title { display: inline-flex; align-items: center; gap: .55rem; }
+.bf-admin-section-icon { width: 1.15rem; height: 1.15rem; color: var(--bf-admin-brand); stroke-width: 1.8; }
 .bf-admin-settings-list { display: grid; gap: 0; padding-block: .25rem; }
 .bf-admin-setting-row { align-items: center; justify-content: space-between; min-height: 3.5rem; margin: 0; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bf-admin-line); }
 .bf-admin-setting-row:last-child { border-bottom: 0; }

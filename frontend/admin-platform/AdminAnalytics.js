@@ -311,21 +311,53 @@ function featureMarkup(features) {
 
 function seriesVisualMarkup(points, label, headingId) {
   const numeric = points
-    .map((point, index) => ({ index, value: Number.isFinite(point?.value) ? point.value : null }))
+    .map((point, index) => ({
+      index,
+      value: Number.isFinite(point?.value) ? point.value : null,
+      dimension: point?.date || point?.label || "N/A",
+    }))
     .filter((point) => point.value !== null);
   if (!numeric.length) return "";
   const values = numeric.map((point) => point.value);
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
-  const range = maximum - minimum || 1;
-  const x = (index) => points.length <= 1 ? 50 : 4 + (index / (points.length - 1)) * 92;
-  const y = (value) => 35 - ((value - minimum) / range) * 29;
-  const coordinates = numeric.map((point) => `${x(point.index).toFixed(2)},${y(point.value).toFixed(2)}`);
-  const visual = numeric.length === 1
-    ? `<circle cx="${x(numeric[0].index).toFixed(2)}" cy="${y(numeric[0].value).toFixed(2)}" r="2.5" fill="currentColor"></circle>`
-    : `<polyline points="${coordinates.join(" ")}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>${numeric.map((point) => `<circle cx="${x(point.index).toFixed(2)}" cy="${y(point.value).toFixed(2)}" r="1.4" fill="currentColor"></circle>`).join("")}`;
   const description = `${label}: ${numeric.length} điểm có dữ liệu; nhỏ nhất ${displayNumber(minimum)}, lớn nhất ${displayNumber(maximum)}.`;
-  return `<div class="px-3 pt-3"><svg class="w-100 text-primary" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-labelledby="${headingId}" aria-label="${escapeHtml(description)}"><line x1="4" y1="35" x2="96" y2="35" stroke="currentColor" opacity="0.2" vector-effect="non-scaling-stroke"></line>${visual}</svg></div>`;
+  const grid = [8, 22, 36].map((position) => `<line x1="5" y1="${position}" x2="95" y2="${position}" class="bf-admin-chart-grid" vector-effect="non-scaling-stroke"></line>`).join("");
+  const categorical = numeric.every((point) => !points[point.index]?.date && points[point.index]?.label);
+  if (categorical) {
+    const lower = Math.min(0, minimum);
+    const upper = Math.max(0, maximum);
+    const range = upper - lower || 1;
+    const y = (value) => 36 - ((value - lower) / range) * 28;
+    const baseline = y(0);
+    const slot = 90 / numeric.length;
+    const width = Math.min(16, Math.max(3, slot * 0.58));
+    const bars = numeric.map((point, index) => {
+      const valueY = y(point.value);
+      const top = Math.min(valueY, baseline);
+      const height = Math.max(1, Math.abs(baseline - valueY));
+      const x = 5 + (slot * index) + ((slot - width) / 2);
+      return `<rect data-admin-chart-bar="${escapeHtml(point.dimension)}" x="${x.toFixed(2)}" y="${top.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" rx="1.5"><title>${escapeHtml(point.dimension)}: ${escapeHtml(displayNumber(point.value))}</title></rect>`;
+    }).join("");
+    return `<div class="bf-admin-series-visual"><svg class="bf-admin-series-chart" data-admin-chart-kind="bar" viewBox="0 0 100 44" preserveAspectRatio="none" role="img" aria-labelledby="${headingId}" aria-label="${escapeHtml(description)}">${grid}<line x1="5" y1="${baseline.toFixed(2)}" x2="95" y2="${baseline.toFixed(2)}" class="bf-admin-chart-axis" vector-effect="non-scaling-stroke"></line><g class="bf-admin-chart-bars">${bars}</g></svg></div>`;
+  }
+  const lower = Math.min(0, minimum);
+  const upper = Math.max(0, maximum);
+  const range = upper - lower || 1;
+  const x = (index) => points.length <= 1 ? 50 : 5 + (index / (points.length - 1)) * 90;
+  const y = (value) => 36 - ((value - lower) / range) * 28;
+  const coordinates = numeric.map((point) => `${x(point.index).toFixed(2)},${y(point.value).toFixed(2)}`);
+  const linePath = numeric.length === 1
+    ? ""
+    : `M ${coordinates.join(" L ")}`;
+  const baseline = y(0);
+  const firstX = x(numeric[0].index).toFixed(2);
+  const lastX = x(numeric[numeric.length - 1].index).toFixed(2);
+  const areaPath = numeric.length === 1
+    ? ""
+    : `M ${firstX} ${baseline.toFixed(2)} L ${coordinates.join(" L ")} L ${lastX} ${baseline.toFixed(2)} Z`;
+  const visual = `${areaPath ? `<path data-admin-chart-area="" d="${areaPath}" class="bf-admin-chart-area"></path>` : ""}${linePath ? `<path d="${linePath}" class="bf-admin-chart-line" vector-effect="non-scaling-stroke"></path>` : ""}${numeric.map((point) => `<circle cx="${x(point.index).toFixed(2)}" cy="${y(point.value).toFixed(2)}" r="1.7" class="bf-admin-chart-point"><title>${escapeHtml(point.dimension)}: ${escapeHtml(displayNumber(point.value))}</title></circle>`).join("")}`;
+  return `<div class="bf-admin-series-visual"><svg class="bf-admin-series-chart" data-admin-chart-kind="line" viewBox="0 0 100 44" preserveAspectRatio="none" role="img" aria-labelledby="${headingId}" aria-label="${escapeHtml(description)}">${grid}<line x1="5" y1="${baseline.toFixed(2)}" x2="95" y2="${baseline.toFixed(2)}" class="bf-admin-chart-axis" vector-effect="non-scaling-stroke"></line>${visual}</svg></div>`;
 }
 
 function seriesTableMarkup(series, chartIndex, seriesIndex) {

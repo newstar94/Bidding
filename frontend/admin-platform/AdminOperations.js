@@ -11,6 +11,7 @@ import {
   renderAdminMarkup,
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { adminIconMarkup } from "./AdminIcons.js";
 
 const SECRET_FIELDS = Object.freeze([
   ["DATABASE_URL", "Kết nối cơ sở dữ liệu"],
@@ -91,9 +92,10 @@ function generatedAtMarkup(value) {
   return `<p class="text-secondary small mb-0">Cập nhật: ${escapeHtml(date.toLocaleString("vi-VN"))}</p>`;
 }
 
-function detailsCard(title, rows, { subtitle = "" } = {}) {
+function detailsCard(title, rows, { subtitle = "", icon = "" } = {}) {
   const content = rows.map(([label, value]) => `<tr><th scope="row">${escapeHtml(label)}</th><td>${value}</td></tr>`).join("");
-  return `<section class="card" aria-label="${escapeHtml(title)}"><div class="card-header"><div><h3 class="card-title">${escapeHtml(title)}</h3>${subtitle}</div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${content}</tbody></table></div></section>`;
+  const heading = `${icon ? adminIconMarkup(icon, "bf-admin-section-icon") : ""}<span>${escapeHtml(title)}</span>`;
+  return `<section class="card" aria-label="${escapeHtml(title)}"><div class="card-header"><div><h3 class="card-title bf-admin-section-title">${heading}</h3>${subtitle}</div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${content}</tbody></table></div></section>`;
 }
 
 export function healthMarkup(payload) {
@@ -205,7 +207,7 @@ export function environmentMarkup(payload) {
     ["Chế độ tài nguyên giao diện", text(runtime.frontendAssetMode)],
     ["Chế độ gỡ lỗi", text(yesNo(runtime.debugEnabled))],
     ["Cookie bảo mật", text(yesNo(runtime.secureCookies))],
-  ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-12"><section class="card" aria-labelledby="secret-status-title"><div class="card-header"><div><h3 class="card-title" id="secret-status-title">Cấu hình bí mật</h3><p class="text-secondary small mb-0">Chỉ hiển thị trạng thái; không đọc lại hoặc điền sẵn giá trị bí mật.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${secretRows}</tbody></table></div><div class="card-footer"><div class="small" role="status" aria-live="polite" data-admin-environment-status></div></div></section></div></div>`;
+  ], { subtitle: generatedAtMarkup(payload.generatedAt), icon: "environment" })}</div><div class="col-12"><section class="card" aria-labelledby="secret-status-title"><div class="card-header"><div><h3 class="card-title bf-admin-section-title" id="secret-status-title">${adminIconMarkup("security", "bf-admin-section-icon")}<span>Cấu hình bí mật</span></h3><p class="text-secondary small mb-0">Chỉ hiển thị trạng thái; không đọc lại hoặc điền sẵn giá trị bí mật.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${secretRows}</tbody></table></div><div class="card-footer"><div class="small" role="status" aria-live="polite" data-admin-environment-status></div></div></section></div></div>`;
 }
 
 export function settingsMarkup(payload) {
@@ -238,7 +240,7 @@ export function settingsMarkup(payload) {
     sync: `Mã hóa bản nháp xung đột: ${configured("CONFLICT_DRAFT_ENCRYPTION_KEY")}`,
   };
   const categories = SETTINGS_CATEGORIES.map(([key, title, description, support]) => `<div class="col-12 col-lg-6"><section class="card h-100" data-admin-settings-category="${escapeHtml(key)}" data-admin-category-state="read-only"><div class="card-body"><div class="d-flex justify-content-between gap-3"><div><h3 class="card-title">${escapeHtml(title)}</h3><p class="text-secondary small mb-2">${escapeHtml(description)}</p></div><span class="badge bg-secondary-lt align-self-start">${support === "unsupported" ? "Chưa hỗ trợ" : "Chỉ đọc"}</span></div><div>${categoryDetails[key]}</div><p class="text-secondary small mb-0 mt-2">${support === "unsupported" ? "Chưa có runtime store; đây là điểm mở rộng trong tương lai." : "Do cấu hình triển khai quản lý; không chỉnh sửa tại trang này."}</p></div></section></div>`).join("");
-  const featureFlags = `<div class="col-12"><section class="card bf-admin-settings-card" data-admin-settings-category="feature-flags" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Feature Flags · Tính năng hệ thống</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div>`;
+  const featureFlags = `<div class="col-12"><section class="card bf-admin-settings-card" data-admin-settings-category="feature-flags" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title bf-admin-section-title" id="feature-settings-title">${adminIconMarkup("settings", "bf-admin-section-icon")}<span>Feature Flags · Tính năng hệ thống</span></h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div>`;
   return `<div class="alert alert-info" role="note">Chỉ Feature Flags có kho cấu hình ghi được. Các nhóm khác phản ánh trạng thái triển khai hoặc điểm mở rộng chưa được hỗ trợ.</div><div class="row row-cards">${categories}${featureFlags}</div>`;
 }
 
