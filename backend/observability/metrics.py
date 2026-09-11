@@ -165,6 +165,38 @@ def http_request_log_failed() -> None:
         _http_request_log_failures += 1
 
 
+def admin_operational_metrics_snapshot() -> dict:
+    """Return a label-free, process-lifetime projection for the admin UI."""
+
+    with _lock:
+        requests = _http_requests.copy()
+        duration_count = _http_duration_count.copy()
+        duration_sum = _http_duration_sum.copy()
+        active_requests = int(_active_http_requests)
+    total_requests = sum(int(value) for value in requests.values())
+    client_errors = sum(
+        int(value) for (_method, _route, status), value in requests.items()
+        if str(status).startswith("4")
+    )
+    server_errors = sum(
+        int(value) for (_method, _route, status), value in requests.items()
+        if str(status).startswith("5")
+    )
+    measured_requests = sum(int(value) for value in duration_count.values())
+    measured_seconds = sum(float(value) for value in duration_sum.values())
+    return {
+        "scope": "current_process",
+        "requests": total_requests,
+        "clientErrors": client_errors,
+        "serverErrors": server_errors,
+        "activeRequests": active_requests,
+        "averageLatencyMs": (
+            round((measured_seconds / measured_requests) * 1_000, 1)
+            if measured_requests else None
+        ),
+    }
+
+
 def record_turnstile_validation(action: object, outcome: object) -> None:
     """Record one low-cardinality bot-challenge outcome."""
 

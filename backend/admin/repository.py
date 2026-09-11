@@ -7,6 +7,7 @@ class AdminOverviewRepository:
     """Load the overview with a fixed number of database queries."""
 
     RECENT_ORGANIZATION_LIMIT = 8
+    ACTIVITY_FEED_LIMIT = 20
 
     def __init__(self, cursor):
         self.cursor = cursor
@@ -70,3 +71,76 @@ class AdminOverviewRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def load_activity_feed(self) -> list[dict]:
+        """Return a bounded, newest-first feed from authoritative platform facts."""
+
+        rows = self.cursor.execute(
+            """
+            SELECT activity_id, kind, title, occurred_at, status, detail
+              FROM (
+                SELECT organization.id || ':created' AS activity_id,
+                       'organization.created' AS kind,
+                       organization.ten_to_chuc AS title,
+                       organization.created_at AS occurred_at,
+                       organization.trang_thai AS status,
+                       NULL AS detail
+                  FROM to_chuc organization
+                UNION ALL
+                SELECT 'organization:' || subscription.organization_id || ':subscription',
+                       'subscription.created', organization.ten_to_chuc,
+                       subscription.created_at, subscription.status,
+                       subscription.package_id
+                  FROM organization_subscriptions subscription
+                  JOIN to_chuc organization
+                    ON organization.id = subscription.organization_id
+                UNION ALL
+                SELECT 'account:' || subscription.user_id || ':subscription',
+                       'subscription.created',
+                       COALESCE(account.ho_ten, account.email, account.id),
+                       subscription.created_at, subscription.status,
+                       subscription.package_id
+                  FROM account_subscriptions subscription
+                  JOIN tai_khoan account ON account.id = subscription.user_id
+                UNION ALL
+                SELECT invoice.id || ':payment', 'invoice.payment_verified',
+                       COALESCE(invoice.provider_reference, orders.public_id),
+                       transaction.created_at, transaction.status,
+                       orders.public_id
+                  FROM billing_invoice_requests invoice
+                  JOIN payment_transactions transaction
+                    ON transaction.id = invoice.payment_transaction_id
+                  JOIN billing_orders orders ON orders.id = invoice.order_id
+                 WHERE transaction.transaction_type = 'payment'
+                   AND transaction.status IN ('verified', 'settled')
+                UNION ALL
+                SELECT 'audit:' || CAST(audit.id AS TEXT),
+                       CASE
+                         WHEN lower(audit.action) LIKE '%%subscription%%'
+                           THEN 'subscription.changed'
+                         ELSE 'admin.security'
+                       END,
+                       audit.action, audit.created_at,
+                       CASE
+                         WHEN lower(audit.action) LIKE '%%failed%%'
+                           OR lower(audit.action) LIKE '%%denied%%'
+                           OR lower(audit.action) LIKE '%%rejected%%'
+                           OR lower(audit.action) LIKE '%%forbidden%%'
+                           THEN 'attention'
+                         ELSE 'recorded'
+                       END,
+                       COALESCE(audit.target_id, audit.target_type)
+                  FROM audit_log audit
+                 WHERE lower(audit.action) LIKE 'admin.%%'
+                    OR lower(audit.action) LIKE '%%subscription%%'
+                    OR lower(audit.action) LIKE '%%login_failed%%'
+                    OR lower(audit.action) LIKE '%%reauth_failed%%'
+                    OR lower(audit.action) LIKE '%%suspicious%%'
+                    OR lower(audit.action) LIKE '%%denied%%'
+                    OR lower(audit.action) LIKE '%%forbidden%%'
+              ) activity
+             ORDER BY occurred_at DESC, activity_id DESC
+             LIMIT ?
+            """,
+            (self.ACTIVITY_FEED_LIMIT,),
+        ).fetchall()
+        return [dict(row) for row in rows]

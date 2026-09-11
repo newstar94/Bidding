@@ -39,6 +39,15 @@ class _Cursor:
                     "period_revenue": 1_250_000,
                 }
             )
+        if "activity_id" in statement:
+            return _Result(many=[{
+                "activity_id": "invoice-request-1:payment",
+                "kind": "invoice.payment_verified",
+                "title": "invoice-provider-ref",
+                "occurred_at": "2026-09-02 08:00:00",
+                "status": "settled",
+                "detail": "order-public-1",
+            }])
         return _Result(
             many=[
                 {
@@ -90,13 +99,12 @@ def test_overview_service_returns_real_aggregates_and_explicit_unavailable_metri
         }
     ]
     assert payload["activityFeed"] == [{
-        "id": "org-1",
-        "kind": "organization.created",
-        "title": "Organization One",
-        "occurredAt": "2026-09-01 08:00:00",
-        "status": "active",
-        "memberCount": 3,
-        "subscriptionStatus": "active",
+        "id": "invoice-request-1:payment",
+        "kind": "invoice.payment_verified",
+        "title": "invoice-provider-ref",
+        "occurredAt": "2026-09-02 08:00:00",
+        "status": "settled",
+        "detail": "order-public-1",
     }]
     assert payload["alerts"] == [
         {
@@ -116,8 +124,9 @@ def test_overview_service_returns_real_aggregates_and_explicit_unavailable_metri
             "href": "/admin/users?status=inactive",
         },
     ]
-    assert len(cursor.calls) == 2
+    assert len(cursor.calls) == 3
     assert cursor.calls[1][1] == (AdminOverviewRepository.RECENT_ORGANIZATION_LIMIT,)
+    assert cursor.calls[2][1] == (AdminOverviewRepository.ACTIVITY_FEED_LIMIT,)
 
 
 def test_overview_api_denies_non_super_admin_before_reading_data(monkeypatch):

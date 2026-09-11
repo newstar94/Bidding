@@ -34,6 +34,17 @@ class AdminOverviewService:
             }
             for row in self.repository.load_recent_organizations()
         ]
+        activity_feed = [
+            {
+                "id": row["activity_id"],
+                "kind": row["kind"],
+                "title": row["title"],
+                "occurredAt": row["occurred_at"],
+                "status": row["status"],
+                "detail": row["detail"],
+            }
+            for row in self.repository.load_activity_feed()
+        ]
         organization_total = int(metrics["organization_total"])
         organization_active = int(metrics["organization_active"])
         user_total = int(metrics["user_total"])
@@ -82,17 +93,6 @@ class AdminOverviewService:
                 "pendingJobs": None,
             },
             "recentOrganizations": recent_organizations,
-            "activityFeed": [
-                {
-                    "id": item["id"],
-                    "kind": "organization.created",
-                    "title": item["name"],
-                    "occurredAt": item["createdAt"],
-                    "status": item["status"],
-                    "memberCount": item["memberCount"],
-                    "subscriptionStatus": item["subscriptionStatus"],
-                }
-                for item in recent_organizations
-            ],
+            "activityFeed": activity_feed,
             "alerts": alerts,
         }

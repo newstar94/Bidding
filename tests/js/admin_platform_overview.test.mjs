@@ -53,8 +53,9 @@ test("overview includes accessible charts, activity feed and actionable alerts",
     generatedAt: "2026-09-11T00:00:00Z",
     metrics: { organizations: 10, activeOrganizations: 8, users: 20, activeAccounts: 17 },
     activityFeed: [{
-      id: "org-1", title: "Công ty Minh An", occurredAt: "2026-09-10T08:00:00Z",
-      memberCount: 4, subscriptionStatus: "active",
+      id: "invoice-1:payment", kind: "invoice.payment_verified",
+      title: "INV-001", occurredAt: "2026-09-10T08:00:00Z",
+      status: "settled", detail: "ORDER-001",
     }],
     alerts: [{
       title: "Tổ chức cần rà soát", message: "Tổ chức không hoạt động.", count: 2,
@@ -64,7 +65,9 @@ test("overview includes accessible charts, activity feed and actionable alerts",
   });
   assert.equal((markup.match(/role="img"/gu) || []).length, 2);
   assert.equal((markup.match(/<caption class="visually-hidden">/gu) || []).length, 2);
-  assert.match(markup, /Công ty Minh An/u);
+  assert.match(markup, /INV-001/u);
+  assert.match(markup, /Thanh toán gắn yêu cầu hóa đơn đã xác minh/u);
+  assert.match(markup, /ORDER-001/u);
   assert.match(markup, /href="\/admin\/organizations[?]status=suspended"/u);
   assert.match(markup, /Cảnh báo cần xử lý/u);
 });

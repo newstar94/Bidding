@@ -5,10 +5,30 @@ from types import SimpleNamespace
 import pytest
 
 from backend.admin import operational
+from backend.observability import metrics as observability_metrics
 
 
 def _payload(response):
     return json.loads(response.body)
+
+
+def test_admin_operational_http_projection_is_label_free_and_exact():
+    observability_metrics._reset_metrics_for_tests()
+    try:
+        observability_metrics.http_request_finished("GET", "health", 200, 0.01)
+        observability_metrics.http_request_finished("GET", "private-route", 404, 0.02)
+        observability_metrics.http_request_finished("POST", "private-route", 503, 0.03)
+
+        assert observability_metrics.admin_operational_metrics_snapshot() == {
+            "scope": "current_process",
+            "requests": 3,
+            "clientErrors": 1,
+            "serverErrors": 1,
+            "activeRequests": 0,
+            "averageLatencyMs": 20.0,
+        }
+    finally:
+        observability_metrics._reset_metrics_for_tests()
 
 
 def _request(*, startup_complete=True, ready=True, lag=4.25):
@@ -212,6 +232,12 @@ def test_operational_projection_includes_bounded_worker_sync_and_job_health(monk
 
     assert payload["documentWorker"] == {
         "active": 1, "waiting": 2, "completed": 4, "failed": 1, "rejected": 1,
+        "averageQueueWaitMs": None,
+    }
+    assert payload["analytics"]["http"]["scope"] == "current_process"
+    assert payload["analytics"]["database"] == {
+        "scope": "current_process", "requests": 0,
+        "failures": 0, "averageLatencyMs": None,
     }
     assert payload["websocket"] == {
         "activeConnections": 7, "pendingEvents": 8, "oldestPendingSeconds": 9.5,

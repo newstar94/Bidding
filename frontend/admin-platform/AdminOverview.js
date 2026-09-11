@@ -56,7 +56,14 @@ function comparisonChart({ id, title, total, active, activeLabel, otherLabel }) 
 
 function activityFeedMarkup(items) {
   if (!items.length) return adminStateMarkup("empty", { message: "Chưa có hoạt động nền tảng gần đây." });
-  return `<ol class="list-group list-group-flush" aria-label="Hoạt động nền tảng gần đây">${items.map((item) => `<li class="list-group-item px-0"><div class="d-flex justify-content-between gap-3"><div><strong>${escapeHtml(item?.title || "Tổ chức chưa có tên")}</strong><div class="small text-secondary">Tổ chức được ghi nhận · ${escapeHtml(String(item?.memberCount ?? "N/A"))} thành viên · Đăng ký: ${escapeHtml(item?.subscriptionStatus || "N/A")}</div></div><time class="small text-secondary text-nowrap" datetime="${escapeHtml(item?.occurredAt || "")}">${escapeHtml(formatDateTime(item?.occurredAt))}</time></div></li>`).join("")}</ol>`;
+  const labels = {
+    "organization.created": "Tổ chức mới",
+    "subscription.created": "Đăng ký mới",
+    "subscription.changed": "Thay đổi đăng ký",
+    "invoice.payment_verified": "Thanh toán gắn yêu cầu hóa đơn đã xác minh",
+    "admin.security": "Sự kiện quản trị / bảo mật",
+  };
+  return `<ol class="list-group list-group-flush" aria-label="Hoạt động nền tảng gần đây">${items.map((item) => `<li class="list-group-item px-0"><div class="d-flex justify-content-between gap-3"><div><strong>${escapeHtml(item?.title || "Hoạt động chưa có tên")}</strong><div class="small text-secondary">${escapeHtml(labels[item?.kind] || item?.kind || "Hoạt động nền tảng")} · ${escapeHtml(item?.status || "N/A")}${item?.detail ? ` · ${escapeHtml(item.detail)}` : ""}</div></div><time class="small text-secondary text-nowrap" datetime="${escapeHtml(item?.occurredAt || "")}">${escapeHtml(formatDateTime(item?.occurredAt))}</time></div></li>`).join("")}</ol>`;
 }
 
 function alertsMarkup(alerts) {

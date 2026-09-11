@@ -24,7 +24,10 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_audit, log_error
 from backend.shared.request_validation import read_json_object
-from backend.observability.metrics import operational_status_snapshot
+from backend.observability.metrics import (
+    admin_operational_metrics_snapshot,
+    operational_status_snapshot,
+)
 from backend.observability.recording import snapshot_recorded_metrics
 
 
@@ -354,6 +357,12 @@ def _safe_read_operational_status() -> dict:
     disk = snapshot.get("disk") if isinstance(snapshot.get("disk"), dict) else {}
     recorded = snapshot_recorded_metrics()
     worker = recorded.document_worker
+    database_duration_count = getattr(recorded, "database_duration_count", {})
+    database_duration_sum = getattr(recorded, "database_duration_sum", {})
+    database_operations = getattr(recorded, "database_operations", {})
+    database_operation_count = sum(database_duration_count.values())
+    database_operation_seconds = sum(database_duration_sum.values())
+    submitted_documents = int(worker.get("submitted", 0))
     background_jobs = snapshot.get("background_jobs")
     if not isinstance(background_jobs, dict):
         background_jobs = {}
@@ -391,6 +400,26 @@ def _safe_read_operational_status() -> dict:
             "completed": int(worker.get("success", 0)),
             "failed": int(worker.get("error", 0)),
             "rejected": int(worker.get("rejected", 0)),
+            "averageQueueWaitMs": (
+                round(getattr(recorded, "document_worker_queue_wait_seconds", 0) * 1_000 / submitted_documents, 1)
+                if submitted_documents else None
+            ),
+        },
+        "analytics": {
+            "http": admin_operational_metrics_snapshot(),
+            "database": {
+                "scope": "current_process",
+                "requests": int(database_operation_count),
+                "failures": sum(
+                    int(value)
+                    for (_lane, outcome), value in database_operations.items()
+                    if outcome != "ok"
+                ),
+                "averageLatencyMs": (
+                    round(database_operation_seconds * 1_000 / database_operation_count, 1)
+                    if database_operation_count else None
+                ),
+            },
         },
         "websocket": {
             "activeConnections": int(
