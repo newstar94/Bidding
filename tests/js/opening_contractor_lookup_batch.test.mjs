@@ -276,6 +276,36 @@ test("saved-opening violation refresh is also concurrency bounded", async () => 
   assert.ok(maxActive <= 3, `expected at most 3 active checks, received ${maxActive}`);
 });
 
+test("saved joint-venture member checks serialize per opening while preserving cross-opening concurrency", async () => {
+  const bids = Array.from({ length: 4 }, (_, index) => ({
+    id: `opening-${index}`,
+    maDinhDanh: `lead-${index}`,
+    loaiNhaThau: "Liên danh",
+    thanhVienLienDanh: [
+      { id: `member-${index}-a`, maNhaThau: `member-a-${index}` },
+      { id: `member-${index}-b`, maNhaThau: `member-b-${index}` },
+    ],
+  }));
+  const activeByOpening = new Map();
+  let overlapWithinOpening = false;
+
+  await withLookupFetch(async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    const openingId = payload.bidOpeningRecordId;
+    const active = (activeByOpening.get(openingId) || 0) + 1;
+    activeByOpening.set(openingId, active);
+    if (active > 1) overlapWithinOpening = true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    activeByOpening.set(openingId, active - 1);
+    return new Response(JSON.stringify({ violationStatus: "NO_ACTIVE_VIOLATION" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }, () => refreshSavedOpeningViolationChecks("package-1", bids));
+
+  assert.equal(overlapWithinOpening, false);
+});
+
 
 test("post-commit opening checks stay nonblocking without replacing an active detail workflow", () => {
   const source = fs.readFileSync("frontend/packages/BidProcessWorkflow.js", "utf8");

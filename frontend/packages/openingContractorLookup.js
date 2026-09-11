@@ -107,15 +107,27 @@ async function runWithConcurrency(items, concurrency, worker) {
 }
 
 export async function refreshSavedOpeningViolationChecks(packageId, bids) {
-  const tasks = [];
+  // Requests belonging to the same opening must be serialized. The server
+  // deliberately locks the opening row while persisting each member snapshot;
+  // issuing all members concurrently makes PostgreSQL lock waiters exceed the
+  // statement deadline and surfaces as CONTRACTOR_RISK_LOOKUP_FAILED. Keep
+  // concurrency across independent openings, but never race one opening's
+  // member snapshots against each other.
+  const tasksByOpening = new Map();
   const jointVentureBids = [];
+  const enqueue = (openingKey, task) => {
+    const key = String(openingKey || `opening-${tasksByOpening.size}`);
+    const queue = tasksByOpening.get(key) || [];
+    queue.push(task);
+    tasksByOpening.set(key, queue);
+  };
   for (const bid of bids || []) {
     const isJointVenture = String(bid?.loaiNhaThau || "").trim().toLocaleLowerCase("vi-VN") === "liên danh";
     // A joint-venture bid whose member rows are not loaded locally still has to
     // be checked. Resolving it per member only would silently report
     // NO_ACTIVE_VIOLATION for an empty member list.
     if (!isJointVenture || (bid.thanhVienLienDanh || []).length === 0) {
-      tasks.push(async () => {
+      enqueue(bid.id, async () => {
         try {
           const result = await resolveBidOpeningContractor({
             packageId,
@@ -136,7 +148,7 @@ export async function refreshSavedOpeningViolationChecks(packageId, bids) {
     }
     jointVentureBids.push(bid);
     for (const member of bid.thanhVienLienDanh || []) {
-      tasks.push(async () => {
+      enqueue(bid.id, async () => {
         try {
           const result = await resolveBidOpeningContractor({
             packageId,
@@ -156,7 +168,13 @@ export async function refreshSavedOpeningViolationChecks(packageId, bids) {
       });
     }
   }
-  await runWithConcurrency(tasks, OPENING_VIOLATION_CONCURRENCY, (task) => task());
+  await runWithConcurrency(
+    tasksByOpening.values(),
+    OPENING_VIOLATION_CONCURRENCY,
+    async (queue) => {
+      for (const task of queue) await task();
+    },
+  );
   for (const bid of jointVentureBids) {
     bid.violationStatus = (bid.thanhVienLienDanh || []).some(
       (member) => isViolationConfirmed(member.violationStatus)
