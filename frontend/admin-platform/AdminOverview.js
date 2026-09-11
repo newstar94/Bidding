@@ -7,6 +7,7 @@ import {
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { chartsMarkup } from "./AdminAnalytics.js";
+import { adminIconMarkup } from "./AdminIcons.js";
 
 const METRICS = Object.freeze([
   ["organizations", "Tổ chức", (metrics) => metrics.organizations?.total ?? metrics.organizations],
@@ -24,6 +25,12 @@ const METRICS = Object.freeze([
   ["overdueInvoices", "Hóa đơn quá hạn", (metrics) => metrics.overdueInvoices],
   ["pendingJobs", "Tác vụ đang chờ", (metrics) => metrics.pendingJobs],
 ]);
+const METRIC_ICONS = Object.freeze({
+  organizations: "organizations", activeOrganizations: "organizations", newOrganizations30Days: "organizations",
+  users: "users", activeAccounts: "users", activeUsers: "users", newUsers30Days: "users",
+  activeSubscriptions: "subscriptions", verifiedRevenue: "payments", mrr: "payments", arr: "payments",
+  unpaidInvoices: "invoices", overdueInvoices: "invoices", pendingJobs: "jobs",
+});
 
 function displayMetric(value, format = "number") {
   if (!Number.isFinite(value)) return "N/A";
@@ -83,7 +90,7 @@ function overviewMarkup(payload) {
   const activityFeed = Array.isArray(payload?.activityFeed) ? payload.activityFeed : [];
   const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
   const charts = Array.isArray(payload?.charts) ? payload.charts : [];
-  const cards = METRICS.map(([key, label, read, format]) => `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric h-100"><div class="card-body"><div class="text-secondary">${escapeHtml(label)}</div><div class="h2 mb-0 mt-2" data-admin-metric="${key}">${escapeHtml(displayMetric(read(metrics), format))}</div></div></article></div>`).join("");
+  const cards = METRICS.map(([key, label, read, format]) => `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric h-100"><div class="card-body"><div class="d-flex align-items-center justify-content-between gap-2"><div class="text-secondary">${escapeHtml(label)}</div>${adminIconMarkup(METRIC_ICONS[key] || "overview", "bf-admin-metric-icon")}</div><div class="h2 mb-0 mt-2" data-admin-metric="${key}">${escapeHtml(displayMetric(read(metrics), format))}</div></div></article></div>`).join("");
   const rows = organizations.map((organization) => {
     const name = organization?.name || organization?.organizationName || "Không có tên";
     const status = organization?.status || "N/A";

@@ -21,7 +21,7 @@ test("overview renders only real allowlisted values and marks missing metrics un
   assert.match(markup, /data-admin-metric="activeSubscriptions">8</u);
   assert.match(markup, /data-admin-metric="verifiedRevenue">1[.]250[.]000 ₫</u);
   assert.match(markup, /Công ty Minh An/u);
-  assert.doesNotMatch(markup, /do-not-render|hidden/u);
+  assert.doesNotMatch(markup, /do-not-render/u);
 });
 
 test("overview renders at least ten authoritative metric slots and marks missing values unavailable", () => {

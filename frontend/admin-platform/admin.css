@@ -104,6 +104,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
 .bf-admin-metric .h1, .bf-admin-metric .h2 { color: var(--bf-admin-ink); font-variant-numeric: tabular-nums; }
 .bf-admin-metric { border-top: 3px solid var(--bf-admin-brand); }
+.bf-admin-metric-icon { width: 1.25rem; height: 1.25rem; color: var(--bf-admin-brand); opacity: .86; }
 .bf-admin-chart-section { padding: 1.25rem; border: 1px solid var(--bf-admin-line); border-radius: .75rem; background: var(--bf-admin-surface-subtle); }
 .bf-admin-chart-card { border: 0; box-shadow: 0 .35rem 1.2rem rgba(30, 48, 78, .08); }
 .bf-admin-chart-body { display: grid; grid-template-columns: minmax(9rem, 12rem) 1fr; align-items: center; gap: 2rem; padding: 1.5rem; }
