@@ -32,6 +32,17 @@ const FEATURE_FIELDS = Object.freeze([
   ["paymentCheckoutEnabled", "Thanh toán trực tuyến"],
 ]);
 
+const SETTINGS_CATEGORIES = Object.freeze([
+  ["application", "Application", "Cấu hình triển khai và vòng đời ứng dụng", "deployment"],
+  ["registration", "Registration", "Đăng ký và xác minh người dùng", "deployment"],
+  ["localization", "Localization", "Ngôn ngữ, múi giờ và định dạng vùng", "unsupported"],
+  ["billing", "Billing", "Nhà cung cấp và chính sách thanh toán", "deployment"],
+  ["documents", "Documents", "Worker và chính sách tạo tài liệu", "unsupported"],
+  ["notifications", "Notifications", "Kênh gửi thông báo và hộp thư đi", "deployment"],
+  ["storage", "Storage", "Kết nối và lưu trữ dữ liệu", "deployment"],
+  ["sync", "Sync", "Đồng bộ, xung đột và thời gian thực", "deployment"],
+]);
+
 function text(value, fallback = "N/A") {
   const normalized = typeof value === "string" || typeof value === "number"
     ? String(value).trim()
@@ -202,6 +213,8 @@ export function settingsMarkup(payload) {
     return adminStateMarkup("empty", { message: "Chưa có dữ liệu cài đặt hệ thống." });
   }
   const features = payload.features;
+  const runtime = payload.runtime && typeof payload.runtime === "object" ? payload.runtime : {};
+  const secrets = payload.secretStatus && typeof payload.secretStatus === "object" ? payload.secretStatus : {};
   const writable = payload.configuration?.writable === true;
   const descriptions = {
     aiEnabled: "Cho phép sử dụng trợ lý AI trong các nghiệp vụ được hỗ trợ.",
@@ -213,7 +226,20 @@ export function settingsMarkup(payload) {
   const notice = writable
     ? "Thay đổi được lưu vào cấu hình cục bộ trên máy chủ và có hiệu lực sau khi khởi động lại."
     : "Môi trường này chỉ đọc; tính năng do hệ thống cấu hình triển khai quản lý.";
-  return `<section class="card bf-admin-settings-card" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Tính năng hệ thống</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section>`;
+  const configured = (key) => secrets[key]?.configured === true ? "Đã cấu hình" : "Chưa cấu hình";
+  const categoryDetails = {
+    application: `Môi trường ${text(runtime.environment, "chưa xác định")} · tài nguyên ${text(runtime.frontendAssetMode, "chưa xác định")}`,
+    registration: `Turnstile: ${configured("TURNSTILE_SECRET_KEY")}`,
+    localization: "Chưa có kho cấu hình runtime có thẩm quyền",
+    billing: `payOS: ${configured("PAYOS_API_KEY")}`,
+    documents: "Chưa có kho cấu hình runtime có thẩm quyền",
+    notifications: `Hộp thư đi: ${configured("EMAIL_OUTBOX_ENCRYPTION_KEY")}`,
+    storage: `Database: ${configured("DATABASE_URL")}`,
+    sync: `Mã hóa bản nháp xung đột: ${configured("CONFLICT_DRAFT_ENCRYPTION_KEY")}`,
+  };
+  const categories = SETTINGS_CATEGORIES.map(([key, title, description, support]) => `<div class="col-12 col-lg-6"><section class="card h-100" data-admin-settings-category="${escapeHtml(key)}" data-admin-category-state="read-only"><div class="card-body"><div class="d-flex justify-content-between gap-3"><div><h3 class="card-title">${escapeHtml(title)}</h3><p class="text-secondary small mb-2">${escapeHtml(description)}</p></div><span class="badge bg-secondary-lt align-self-start">${support === "unsupported" ? "Chưa hỗ trợ" : "Chỉ đọc"}</span></div><div>${categoryDetails[key]}</div><p class="text-secondary small mb-0 mt-2">${support === "unsupported" ? "Chưa có runtime store; đây là điểm mở rộng trong tương lai." : "Do cấu hình triển khai quản lý; không chỉnh sửa tại trang này."}</p></div></section></div>`).join("");
+  const featureFlags = `<div class="col-12"><section class="card bf-admin-settings-card" data-admin-settings-category="feature-flags" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Feature Flags · Tính năng hệ thống</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div>`;
+  return `<div class="alert alert-info" role="note">Chỉ Feature Flags có kho cấu hình ghi được. Các nhóm khác phản ánh trạng thái triển khai hoặc điểm mở rộng chưa được hỗ trợ.</div><div class="row row-cards">${categories}${featureFlags}</div>`;
 }
 
 function updateStatus(element, message, tone = "secondary") {

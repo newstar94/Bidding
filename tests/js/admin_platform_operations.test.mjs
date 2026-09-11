@@ -140,10 +140,19 @@ test("settings view renders writable feature controls without secret data", () =
   });
   assert.match(markup, /Trợ lý AI/u);
   assert.match(markup, /Tính năng hệ thống/u);
-  assert.doesNotMatch(markup, /Phân loại cấu hình hệ thống|Registration|Localization|Notifications/u);
+  assert.doesNotMatch(markup, /Phân loại cấu hình hệ thống/u);
   assert.match(markup, /data-admin-feature="aiEnabled" checked/u);
   assert.match(markup, /data-admin-settings-save>Lưu cấu hình/u);
   assert.doesNotMatch(markup, /DATABASE_URL|private/u);
+  const categories = [...markup.matchAll(/data-admin-settings-category="([^"]+)"/gu)].map((match) => match[1]);
+  assert.deepEqual(categories, [
+    "application", "registration", "localization", "billing", "documents",
+    "notifications", "storage", "sync", "feature-flags",
+  ]);
+  assert.equal((markup.match(/data-admin-feature=/gu) || []).length, 4);
+  assert.equal((markup.match(/data-admin-category-state="read-only"/gu) || []).length, 8);
+  assert.match(markup, /Chưa có kho cấu hình runtime có thẩm quyền/u);
+  assert.match(markup, /Chỉ đọc/u);
 });
 
 test("settings view remains explicitly read-only for deployment-managed environments", () => {
@@ -169,7 +178,7 @@ test("settings and environment keep feature controls, runtime metadata and secre
   assert.match(settings, /data-admin-feature="aiEnabled"/u);
   assert.doesNotMatch(settings, /DATABASE_URL|Môi trường chạy|Cấu hình bí mật/u);
   assert.match(environment, /Môi trường chạy|DATABASE_URL|Cấu hình bí mật/u);
-  assert.doesNotMatch(environment, /data-admin-feature=|Trợ lý AI|So sánh phiên bản/u);
+  assert.doesNotMatch(environment, /data-admin-feature=|data-admin-settings-category=|Trợ lý AI|So sánh phiên bản/u);
 });
 
 test("environment update reauthenticates and retries once without retaining secret data", async () => {

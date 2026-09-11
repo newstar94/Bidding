@@ -9,7 +9,28 @@ import {
   operationalAnalyticsMarkup,
   buildAnalyticsQueries,
   normalizeAnalyticsFilters,
+  unsupportedAnalyticsMarkup,
 } from "../../frontend/admin-platform/AdminAnalytics.js";
+
+test("analytics publishes explicit unsupported metric and chart extension seams", () => {
+  const markup = unsupportedAnalyticsMarkup();
+  for (const key of [
+    "mrr", "arr", "arpu", "upgrade", "downgrade", "cancellation", "churn",
+    "trial-conversion", "dau", "wau", "mau", "plans-created", "packages-created",
+    "contracts-created", "contractors-created", "sync-mutations", "row-version-conflicts",
+    "sync-failures", "storage-usage",
+  ]) {
+    assert.match(markup, new RegExp(`data-admin-unsupported-metric="${key}"`, "u"));
+  }
+  for (const key of [
+    "revenue-over-time", "mrr-growth", "product-activity",
+    "document-generation", "sync-activity",
+  ]) {
+    assert.match(markup, new RegExp(`data-admin-unsupported-chart="${key}"`, "u"));
+  }
+  assert.match(markup, /Chưa có nguồn dữ liệu tổng hợp có thẩm quyền/u);
+  assert.doesNotMatch(markup, /data-admin-unsupported-(?:metric|chart)="[^"]+"[^>]*data-value=/u);
+});
 
 test("operational analytics renders authoritative process metrics and explicit unavailable coverage", () => {
   const markup = operationalAnalyticsMarkup({ operations: {

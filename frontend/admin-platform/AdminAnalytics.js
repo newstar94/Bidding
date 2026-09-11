@@ -15,6 +15,30 @@ const MAX_CHARTS = 16;
 const MAX_SERIES = 8;
 const MAX_POINTS = 100;
 
+const UNSUPPORTED_ANALYTICS_METRICS = Object.freeze([
+  ["mrr", "MRR"], ["arr", "ARR"], ["arpu", "ARPU"],
+  ["upgrade", "Nâng gói"], ["downgrade", "Hạ gói"],
+  ["cancellation", "Hủy đăng ký"], ["churn", "Churn"],
+  ["trial-conversion", "Chuyển đổi dùng thử"],
+  ["dau", "DAU"], ["wau", "WAU"], ["mau", "MAU"],
+  ["plans-created", "Kế hoạch được tạo"],
+  ["packages-created", "Gói thầu được tạo"],
+  ["contracts-created", "Hợp đồng được tạo"],
+  ["contractors-created", "Nhà thầu được tạo"],
+  ["sync-mutations", "Mutation đồng bộ theo thời gian"],
+  ["row-version-conflicts", "Xung đột phiên bản theo thời gian"],
+  ["sync-failures", "Lỗi đồng bộ theo thời gian"],
+  ["storage-usage", "Dung lượng lưu trữ theo thời gian"],
+]);
+
+const UNSUPPORTED_ANALYTICS_CHARTS = Object.freeze([
+  ["revenue-over-time", "Doanh thu theo thời gian"],
+  ["mrr-growth", "Tăng trưởng MRR"],
+  ["product-activity", "Hoạt động sản phẩm tổng hợp"],
+  ["document-generation", "Tạo tài liệu theo thời gian"],
+  ["sync-activity", "Hoạt động đồng bộ theo thời gian"],
+]);
+
 export const ANALYTICS_VIEWS = Object.freeze([
   ["overview", "Tổng quan"],
   ["operations", "Vận hành"],
@@ -190,7 +214,13 @@ export function operationalAnalyticsMarkup(payload) {
     ["Chờ worker trung bình", worker.averageQueueWaitMs, " ms"],
     ["Độ trễ DB trung bình", database.averageLatencyMs, " ms"],
   ].map(([label, value, suffix]) => metricCard(label, value, suffix)).join("");
-  return `<div class="alert alert-info" role="note">Số liệu cộng dồn trong tiến trình máy chủ hiện tại; không phải lịch sử dài hạn.</div><div class="row row-cards">${cards}</div><section class="card mt-3" aria-labelledby="operational-coverage-title"><div class="card-header"><h2 class="card-title" id="operational-coverage-title">Phạm vi dữ liệu</h2></div><div class="card-body"><dl class="row mb-0"><dt class="col-sm-4">Lỗi đồng bộ theo thời gian</dt><dd class="col-sm-8">N/A — hệ thống chưa lưu chuỗi thời gian tổng hợp có thẩm quyền.</dd><dt class="col-sm-4">Phạm vi API và DB</dt><dd class="col-sm-8">${escapeHtml(http.scope || database.scope || "N/A")}</dd></dl></div></section>`;
+  return `<div class="alert alert-info" role="note">Số liệu cộng dồn trong tiến trình máy chủ hiện tại; không phải lịch sử dài hạn.</div><div class="row row-cards">${cards}</div><section class="card mt-3" aria-labelledby="operational-coverage-title"><div class="card-header"><h2 class="card-title" id="operational-coverage-title">Phạm vi dữ liệu</h2></div><div class="card-body"><dl class="row mb-0"><dt class="col-sm-4">Lỗi đồng bộ theo thời gian</dt><dd class="col-sm-8">N/A — hệ thống chưa lưu chuỗi thời gian tổng hợp có thẩm quyền.</dd><dt class="col-sm-4">Phạm vi API và DB</dt><dd class="col-sm-8">${escapeHtml(http.scope || database.scope || "N/A")}</dd></dl></div></section>${unsupportedAnalyticsMarkup()}`;
+}
+
+export function unsupportedAnalyticsMarkup() {
+  const metricItems = UNSUPPORTED_ANALYTICS_METRICS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-metric="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt">Chưa hỗ trợ</span></li>`).join("");
+  const chartItems = UNSUPPORTED_ANALYTICS_CHARTS.map(([key, label]) => `<li class="list-group-item d-flex justify-content-between gap-3" data-admin-unsupported-chart="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="badge bg-secondary-lt">Chưa hỗ trợ</span></li>`).join("");
+  return `<section class="card mt-3" aria-labelledby="admin-analytics-future-seams"><div class="card-header"><div><h2 class="card-title" id="admin-analytics-future-seams">Chỉ số và biểu đồ chưa hỗ trợ</h2><p class="text-secondary small mb-0">Chưa có nguồn dữ liệu tổng hợp có thẩm quyền. Các mục này là điểm mở rộng trong tương lai và không chứa giá trị suy diễn.</p></div></div><div class="row g-0"><div class="col-12 col-xl-6 border-end"><h3 class="h4 px-3 pt-3">Chỉ số</h3><ul class="list-group list-group-flush">${metricItems}</ul></div><div class="col-12 col-xl-6"><h3 class="h4 px-3 pt-3">Biểu đồ</h3><ul class="list-group list-group-flush">${chartItems}</ul></div></div></section>`;
 }
 
 function readInitialFilters() {
@@ -376,9 +406,9 @@ export function analyticsResultsMarkup(usagePayload, productPayload) {
   const product = productDashboard(productPayload);
   const kpis = Array.isArray(product.kpis) ? product.kpis : [];
   if (usage.hasData === false && product.hasData === false) {
-    return adminStateMarkup("empty", { message: product.message || "Chưa có dữ liệu phân tích trong khoảng thời gian này." });
+    return `${adminStateMarkup("empty", { message: product.message || "Chưa có dữ liệu phân tích trong khoảng thời gian này." })}${unsupportedAnalyticsMarkup()}`;
   }
-  return `<div class="row row-cards">${metricCard("Đang trực tuyến", usage.onlineNow)}${metricCard("Người dùng hoạt động", usage.activeUsers)}${metricCard("Hoạt động công việc", usage.workActivityCount)}${metricCard("Lượt xuất Word", usage.wordExportCount)}</div>${usageDetailsMarkup(usage)}<div class="row row-cards mt-1"><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-product-kpis"><div class="card-header"><h3 class="card-title" id="admin-product-kpis">Chỉ số sản phẩm</h3></div>${productKpisMarkup(kpis)}</section></div><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-top-features"><div class="card-header"><h3 class="card-title" id="admin-top-features">Tính năng được sử dụng</h3></div>${featureMarkup(usage.topFeatures)}</section></div></div>${chartsMarkup(product)}${detailTablesMarkup(product)}`;
+  return `<div class="row row-cards">${metricCard("Đang trực tuyến", usage.onlineNow)}${metricCard("Người dùng hoạt động", usage.activeUsers)}${metricCard("Hoạt động công việc", usage.workActivityCount)}${metricCard("Lượt xuất Word", usage.wordExportCount)}</div>${usageDetailsMarkup(usage)}<div class="row row-cards mt-1"><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-product-kpis"><div class="card-header"><h3 class="card-title" id="admin-product-kpis">Chỉ số sản phẩm</h3></div>${productKpisMarkup(kpis)}</section></div><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-top-features"><div class="card-header"><h3 class="card-title" id="admin-top-features">Tính năng được sử dụng</h3></div>${featureMarkup(usage.topFeatures)}</section></div></div>${chartsMarkup(product)}${detailTablesMarkup(product)}${unsupportedAnalyticsMarkup()}`;
 }
 
 const ANALYTICS_FILTER_CONTROLS = Object.freeze([
