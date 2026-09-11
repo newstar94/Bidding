@@ -125,9 +125,8 @@ test("settings view renders writable feature controls without secret data", () =
     configuration: { writable: true },
   });
   assert.match(markup, /Trợ lý AI/u);
-  assert.match(markup, /Registration/u);
-  assert.match(markup, /Localization/u);
-  assert.match(markup, /Notifications/u);
+  assert.match(markup, /Tính năng hệ thống/u);
+  assert.doesNotMatch(markup, /Phân loại cấu hình hệ thống|Registration|Localization|Notifications/u);
   assert.match(markup, /data-admin-feature="aiEnabled" checked/u);
   assert.match(markup, /data-admin-settings-save>Lưu cấu hình/u);
   assert.doesNotMatch(markup, /DATABASE_URL|private/u);

@@ -64,7 +64,9 @@ test("overview includes accessible charts, activity feed and actionable alerts",
     recentOrganizations: [],
   });
   assert.equal((markup.match(/role="img"/gu) || []).length, 2);
-  assert.equal((markup.match(/<caption class="visually-hidden">/gu) || []).length, 2);
+  assert.equal((markup.match(/<caption>/gu) || []).length, 2);
+  assert.match(markup, /Phân bố nền tảng/u);
+  assert.match(markup, />80%</u);
   assert.match(markup, /INV-001/u);
   assert.match(markup, /Thanh toán gắn yêu cầu hóa đơn đã xác minh/u);
   assert.match(markup, /ORDER-001/u);

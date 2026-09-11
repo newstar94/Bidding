@@ -94,7 +94,25 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
-.bf-admin-metric .h1 { color: var(--bf-admin-ink); font-variant-numeric: tabular-nums; }
+.bf-admin-metric .h1, .bf-admin-metric .h2 { color: var(--bf-admin-ink); font-variant-numeric: tabular-nums; }
+.bf-admin-metric { border-top: 3px solid var(--bf-admin-brand); }
+.bf-admin-chart-section { padding: 1.25rem; border: 1px solid var(--bf-admin-line); border-radius: .75rem; background: var(--bf-admin-surface-subtle); }
+.bf-admin-chart-card { border: 0; box-shadow: 0 .35rem 1.2rem rgba(30, 48, 78, .08); }
+.bf-admin-chart-body { display: grid; grid-template-columns: minmax(9rem, 12rem) 1fr; align-items: center; gap: 2rem; padding: 1.5rem; }
+.bf-admin-donut { position: relative; width: 100%; max-width: 11rem; margin-inline: auto; aspect-ratio: 1; }
+.bf-admin-donut svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.bf-admin-donut circle { fill: none; stroke-width: 13; }
+.bf-admin-donut-track { stroke: var(--bf-admin-line); }
+.bf-admin-donut-value { stroke: var(--bf-admin-brand); stroke-linecap: round; }
+.bf-admin-donut-label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.bf-admin-donut-label strong { color: var(--bf-admin-ink); font-size: 1.65rem; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.bf-admin-donut-label span { margin-top: .25rem; color: var(--bf-admin-muted); font-size: .75rem; }
+.bf-admin-chart-legend { display: grid; gap: .85rem; }
+.bf-admin-chart-legend > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .65rem; }
+.bf-admin-chart-legend strong { font-variant-numeric: tabular-nums; }
+.bf-admin-legend-dot { width: .65rem; height: .65rem; border-radius: 50%; background: var(--bf-admin-line-strong); }
+.bf-admin-legend-dot.is-primary { background: var(--bf-admin-brand); }
+.bf-admin-chart-legend .bf-admin-chart-total { grid-template-columns: 1fr auto; margin-top: .25rem; padding-top: .85rem; border-top: 1px solid var(--bf-admin-line); }
 .bf-admin-directory-table td { vertical-align: top; }
 .bf-admin-directory-table td > div + div { margin-top: .35rem; }
 .bf-admin-operation-table th { width: 55%; color: var(--bf-admin-muted); font-weight: 600; }
@@ -104,6 +122,8 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-setting-row:last-child { border-bottom: 0; }
 .bf-admin-setting-row .form-check-input { order: 2; margin: 0; }
 .bf-admin-setting-row .form-check-label { color: var(--bf-admin-ink); font-weight: 600; }
+.bf-admin-setting-copy { display: grid; gap: .2rem; max-width: 44rem; padding-right: 1rem; }
+.bf-admin-settings-card { max-width: 58rem; }
 .bf-admin-plan-card { position: relative; overflow: hidden; }
 .bf-admin-plan-card.is-recommended { border-color: var(--bf-admin-brand-line); }
 .bf-admin-plan-price { color: var(--bf-admin-ink); font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -112,6 +132,8 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-plan-meta { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr); gap: .5rem 1rem; }
 .bf-admin-plan-meta > div { min-width: 0; }
 @media (max-width: 767.98px) {
+  .bf-admin-chart-body { grid-template-columns: 1fr; gap: 1rem; }
+  .bf-admin-chart-section { padding: 1rem; }
   .bf-admin-directory-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .bf-admin-directory-table tbody, .bf-admin-directory-table tr, .bf-admin-directory-table td { display: block; width: 100%; }
   .bf-admin-directory-table tr { padding: .75rem 1rem; border-bottom: var(--tblr-border-width) solid var(--bf-admin-line); }

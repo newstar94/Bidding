@@ -113,7 +113,9 @@ test("an expired admin session stops privileged calls and redirects once for rea
   await context.route("**/dang-nhap?**", (route) => route.fulfill({
     status: 200,
     contentType: "text/html; charset=utf-8",
-    body: "<!doctype html><html lang=\"vi\"><title>Đăng nhập lại</title><body><h1>Đăng nhập lại</h1></body></html>",
+    // Keep the synthetic fixture ASCII-only because Playwright WebKit on
+    // Windows can decode intercepted string bodies through the system codepage.
+    body: "<!doctype html><html lang=\"vi\"><title>&#272;&#259;ng nh&#7853;p l&#7841;i</title><body><h1>&#272;&#259;ng nh&#7853;p l&#7841;i</h1></body></html>",
   }));
 
   await page.goto("/admin", { waitUntil: "commit" });
@@ -422,7 +424,7 @@ test("operational admin routes render sanitized data and safe detail focus", asy
     ["/admin/security", "Bảo mật", "Quản trị E2E"],
     ["/admin/system/jobs", "Tác vụ", "job-e2e"],
     ["/admin/system/sync", "Đồng bộ", "broadcast"],
-    ["/admin/settings", "Cài đặt", "Feature Flags"],
+    ["/admin/settings", "Cài đặt", "Tính năng hệ thống"],
     ["/admin/environment", "Môi trường", "Cấu hình bí mật"],
     ["/admin/health", "Vận hành", "Cơ sở dữ liệu"],
     ["/admin/system/version", "Phiên bản", "release-safe"],
@@ -561,10 +563,11 @@ test("overview renders authoritative charts, table fallbacks, activity, and acti
 
   await page.goto("/admin", { waitUntil: "commit" });
   await expectAdminReady(page, "Tổng quan");
+  await expect(page.getByRole("heading", { name: "Phân bố nền tảng" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Hoạt động: 9 trên tổng số 12/u })).toBeVisible();
   const organizationFallback = page.getByRole("table", { name: "Dữ liệu dạng bảng của Tình trạng tổ chức" });
-  await expect(organizationFallback.getByRole("rowheader", { name: "Hoạt động", exact: true })).toBeVisible();
-  await expect(organizationFallback.getByRole("cell", { name: "9" })).toBeVisible();
+  await expect(organizationFallback).toContainText("Hoạt động");
+  await expect(organizationFallback).toContainText("9");
   await expect(page.getByRole("list", { name: "Hoạt động nền tảng gần đây" })).toContainText("Công ty Sao Mai");
   const alert = page.locator("article.alert-warning").filter({ hasText: "Hóa đơn quá hạn" });
   await expect(alert).toContainText("Có 1 mục cần rà soát");
@@ -700,7 +703,7 @@ test("invoice and failed-job journeys load sanitized details and require explici
   expect(retryBodies[0]).toEqual({});
 });
 
-test("settings categories, secret masking, charts, and primary journeys meet automated accessibility checks", async ({ context, page }) => {
+test("settings, secret masking, charts, and primary journeys meet automated accessibility checks", async ({ context, page }) => {
   await installAuthorizedShell(context);
   await context.route("**/api/admin/environment", (route) => fulfillJson(route, {
     runtime: { environment: "production", frontendAssetMode: "manifest", debugEnabled: false, secureCookies: true },
@@ -733,9 +736,10 @@ test("settings categories, secret masking, charts, and primary journeys meet aut
 
   await page.goto("/admin/settings", { waitUntil: "commit" });
   await expectAdminReady(page, "Cài đặt");
-  for (const category of ["Application", "Registration", "Localization", "Billing", "Documents", "Notifications", "Storage", "Sync"]) {
-    await expect(page.getByRole("rowheader", { name: category })).toBeVisible();
+  for (const feature of ["Trợ lý AI", "Phiên bản pháp lý", "So sánh phiên bản", "Thanh toán trực tuyến"]) {
+    await expect(page.getByText(feature, { exact: true })).toBeVisible();
   }
+  await expect(page.getByText("Phân loại cấu hình hệ thống")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Lưu cấu hình" })).toBeDisabled();
   let accessibility = await new AxeBuilder({ page })
     .include("#admin-app")

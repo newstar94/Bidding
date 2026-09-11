@@ -144,7 +144,6 @@ export function environmentMarkup(payload) {
     return adminStateMarkup("empty", { message: "Chưa có dữ liệu cấu hình môi trường." });
   }
   const runtime = payload.runtime;
-  const features = payload.features && typeof payload.features === "object" ? payload.features : {};
   const secretStatus = payload.secretStatus;
   const writable = payload.configuration?.writable === true;
   const secretRows = SECRET_FIELDS.map(([key, label]) => {
@@ -168,12 +167,12 @@ export function environmentMarkup(payload) {
   const configurationNotice = writable
     ? '<div class="alert alert-info" role="note">Có thể thay thế bí mật trong môi trường cục bộ. Giá trị hiện tại không bao giờ được hiển thị. Mọi thay đổi cần khởi động lại ứng dụng.</div>'
     : '<div class="alert alert-secondary" role="note">Môi trường này chỉ đọc. Hãy cập nhật bí mật bằng hệ thống cấu hình triển khai.</div>';
-  return `${configurationNotice}<div class="row row-cards"><div class="col-lg-6">${detailsCard("Môi trường chạy", [
+  return `${configurationNotice}<div class="row row-cards"><div class="col-12">${detailsCard("Môi trường chạy", [
     ["Môi trường", text(runtime.environment)],
     ["Chế độ tài nguyên giao diện", text(runtime.frontendAssetMode)],
     ["Chế độ gỡ lỗi", text(yesNo(runtime.debugEnabled))],
     ["Cookie bảo mật", text(yesNo(runtime.secureCookies))],
-  ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("Tính năng", FEATURE_FIELDS.map(([key, label]) => [label, text(yesNo(features[key]))]))}</div><div class="col-12"><section class="card" aria-labelledby="secret-status-title"><div class="card-header"><div><h3 class="card-title" id="secret-status-title">Cấu hình bí mật</h3><p class="text-secondary small mb-0">Chỉ hiển thị trạng thái; không đọc lại hoặc điền sẵn giá trị bí mật.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${secretRows}</tbody></table></div><div class="card-footer"><div class="small" role="status" aria-live="polite" data-admin-environment-status></div></div></section></div></div>`;
+  ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-12"><section class="card" aria-labelledby="secret-status-title"><div class="card-header"><div><h3 class="card-title" id="secret-status-title">Cấu hình bí mật</h3><p class="text-secondary small mb-0">Chỉ hiển thị trạng thái; không đọc lại hoặc điền sẵn giá trị bí mật.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody>${secretRows}</tbody></table></div><div class="card-footer"><div class="small" role="status" aria-live="polite" data-admin-environment-status></div></div></section></div></div>`;
 }
 
 export function settingsMarkup(payload) {
@@ -181,27 +180,18 @@ export function settingsMarkup(payload) {
     return adminStateMarkup("empty", { message: "Chưa có dữ liệu cài đặt hệ thống." });
   }
   const features = payload.features;
-  const runtime = payload.runtime && typeof payload.runtime === "object" ? payload.runtime : {};
-  const secretStatus = payload.secretStatus && typeof payload.secretStatus === "object"
-    ? payload.secretStatus
-    : {};
   const writable = payload.configuration?.writable === true;
-  const controls = FEATURE_FIELDS.map(([key, label]) => `<label class="form-check form-switch bf-admin-setting-row"><input class="form-check-input" type="checkbox" data-admin-feature="${escapeHtml(key)}"${features[key] === true ? " checked" : ""}${writable ? "" : " disabled"}><span class="form-check-label">${escapeHtml(label)}</span></label>`).join("");
+  const descriptions = {
+    aiEnabled: "Cho phép sử dụng trợ lý AI trong các nghiệp vụ được hỗ trợ.",
+    legalVersioningEnabled: "Bật quy trình quản lý phiên bản căn cứ pháp lý.",
+    versionComparisonEnabled: "Cho phép đối chiếu thay đổi giữa các phiên bản.",
+    paymentCheckoutEnabled: "Cho phép bắt đầu luồng thanh toán trực tuyến.",
+  };
+  const controls = FEATURE_FIELDS.map(([key, label]) => `<label class="form-check form-switch bf-admin-setting-row"><span class="bf-admin-setting-copy"><span class="form-check-label">${escapeHtml(label)}</span><span class="text-secondary small">${escapeHtml(descriptions[key])}</span></span><input class="form-check-input" type="checkbox" data-admin-feature="${escapeHtml(key)}"${features[key] === true ? " checked" : ""}${writable ? "" : " disabled"}></label>`).join("");
   const notice = writable
     ? "Thay đổi được lưu vào cấu hình cục bộ trên máy chủ và có hiệu lực sau khi khởi động lại."
     : "Môi trường này chỉ đọc; tính năng do hệ thống cấu hình triển khai quản lý.";
-  const configured = (key) => secretStatus?.[key]?.configured === true ? "Đã cấu hình" : "Chưa cấu hình";
-  const deploymentRows = [
-    ["Application", `Môi trường ${text(runtime.environment, "không xác định")}; tài nguyên ${text(runtime.frontendAssetMode, "không xác định")}`],
-    ["Registration", `Turnstile: ${configured("TURNSTILE_SECRET_KEY")}`],
-    ["Localization", "Chưa có kho cấu hình runtime có thẩm quyền"],
-    ["Billing", `Thanh toán: ${text(yesNo(features.paymentCheckoutEnabled))}; payOS: ${configured("PAYOS_API_KEY")}`],
-    ["Documents", `Mã hóa worker: ${configured("EMAIL_OUTBOX_ENCRYPTION_KEY")}`],
-    ["Notifications", `Hộp thư đi: ${configured("EMAIL_OUTBOX_ENCRYPTION_KEY")}`],
-    ["Storage", `Database: ${configured("DATABASE_URL")}`],
-    ["Sync", `Bản nháp xung đột: ${configured("CONFLICT_DRAFT_ENCRYPTION_KEY")}`],
-  ];
-  return `<div class="row row-cards"><div class="col-lg-8"><section class="card" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Feature Flags</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div><div class="col-lg-8">${detailsCard("Phân loại cấu hình hệ thống", deploymentRows, { subtitle: '<p class="text-secondary small mb-0">Các mục chưa có persistent runtime store được hiển thị rõ, không giả lập khả năng ghi.</p>' })}</div></div>`;
+  return `<section class="card bf-admin-settings-card" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title" id="feature-settings-title">Tính năng hệ thống</h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section>`;
 }
 
 function updateStatus(element, message, tone = "secondary") {
