@@ -61,11 +61,13 @@ function timestamp(value) {
 function statusBadge(status) {
   const normalized = String(status || "").trim().toLowerCase();
   const statusMap = {
+    healthy: ["Khỏe mạnh", "success"],
     ready: ["Sẵn sàng", "success"],
     available: ["Khả dụng", "success"],
     degraded: ["Suy giảm", "warning"],
     incompatible: ["Không tương thích", "danger"],
     unavailable: ["Không khả dụng", "danger"],
+    unknown: ["Chưa xác định", "secondary"],
   };
   const [label, tone] = statusMap[normalized] || ["N/A", "secondary"];
   return `<span class="badge bg-${tone}-lt">${label}</span>`;
@@ -97,45 +99,65 @@ export function healthMarkup(payload) {
   const backup = operations.backup && typeof operations.backup === "object" ? operations.backup : {};
   const worker = operations.documentWorker && typeof operations.documentWorker === "object" ? operations.documentWorker : {};
   const websocket = operations.websocket && typeof operations.websocket === "object" ? operations.websocket : {};
+  const analytics = operations.analytics && typeof operations.analytics === "object" ? operations.analytics : {};
+  const databaseAnalytics = analytics.database && typeof analytics.database === "object" ? analytics.database : {};
+  const syncAnalytics = analytics.sync && typeof analytics.sync === "object" ? analytics.sync : {};
+  const resources = payload.resources && typeof payload.resources === "object" ? payload.resources : {};
   const backgroundJobs = Array.isArray(operations.backgroundJobs) ? operations.backgroundJobs : [];
   const backgroundSummary = backgroundJobs.length
     ? backgroundJobs.map((item) => `${text(item.queue)} · ${text(item.status)}: ${Number.isFinite(item.count) ? text(item.count) : "N/A"}`).join("<br>")
     : "Chưa có tác vụ trong hàng đợi";
+  const resourceStatus = (name) => statusBadge(resources[name]?.status);
   return `<div class="row row-cards"><div class="col-lg-6">${detailsCard("Ứng dụng", [
-    ["Trạng thái", statusBadge(payload.status)],
+    ["Trạng thái", resourceStatus("application")],
     ["Khởi động hoàn tất", text(yesNo(application.startupComplete))],
     ["Sẵn sàng phục vụ", text(yesNo(application.ready))],
     ["Độ trễ event loop", Number.isFinite(application.eventLoopLagMs) ? `${text(application.eventLoopLagMs)} ms` : "N/A"],
-  ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("Cơ sở dữ liệu", [
-    ["Trạng thái", statusBadge(database.status)],
+  ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("PostgreSQL", [
+    ["Trạng thái", resourceStatus("postgresql")],
+    ["Phiên bản PostgreSQL", database.version ? `PostgreSQL ${text(database.version)}` : "N/A"],
     ["Phiên bản schema", text(database.schemaVersion)],
     ["Độ trễ truy vấn trạng thái", Number.isFinite(database.latencyMs) ? `${text(database.latencyMs)} ms` : "N/A"],
+    ["Yêu cầu DB", Number.isFinite(databaseAnalytics.requests) ? text(databaseAnalytics.requests) : "N/A"],
+    ["Lỗi DB", Number.isFinite(databaseAnalytics.failures) ? text(databaseAnalytics.failures) : "N/A"],
+    ["Độ trễ DB trung bình", Number.isFinite(databaseAnalytics.averageLatencyMs) ? `${text(databaseAnalytics.averageLatencyMs)} ms` : "N/A"],
     ["Dung lượng database", text(bytes(operations.databaseBytes))],
     ["Kết nối pool đang dùng", Number.isFinite(databasePool.pool_size) && Number.isFinite(databasePool.pool_available) ? text(Math.max(0, databasePool.pool_size - databasePool.pool_available)) : "N/A"],
     ["Kết nối pool khả dụng", Number.isFinite(databasePool.pool_available) ? text(databasePool.pool_available) : "N/A"],
     ["Yêu cầu chờ pool", Number.isFinite(databasePool.requests_waiting) ? text(databasePool.requests_waiting) : "N/A"],
     ["Khóa đang chờ", Number.isFinite(operations.waitingLocks) ? text(operations.waitingLocks) : "N/A"],
     ["WAL", text(bytes(operations.walBytes))],
-  ])}</div><div class="col-lg-6">${detailsCard("Lưu trữ", [
-    ["Data còn trống", text(bytes(storage.data?.freeBytes))],
-    ["Tổng dung lượng data", text(bytes(storage.data?.totalBytes))],
-    ["Backup còn trống", text(bytes(storage.backup?.freeBytes))],
-    ["Tổng dung lượng backup", text(bytes(storage.backup?.totalBytes))],
-  ])}</div><div class="col-lg-6">${detailsCard("Sao lưu và khôi phục", [
-    ["Bản sao lưu đã xác minh gần nhất", timestamp(backup.lastVerifiedAt)],
-    ["Lần diễn tập khôi phục gần nhất", timestamp(backup.lastRestoreDrillAt)],
-    ["Lần kiểm tra trạng thái", timestamp(backup.checkedAt)],
   ])}</div><div class="col-lg-6">${detailsCard("Worker tài liệu", [
+    ["Trạng thái", resourceStatus("documentWorker")],
     ["Đang xử lý", Number.isFinite(worker.active) ? text(worker.active) : "N/A"],
     ["Đang chờ", Number.isFinite(worker.waiting) ? text(worker.waiting) : "N/A"],
     ["Hoàn tất", Number.isFinite(worker.completed) ? text(worker.completed) : "N/A"],
     ["Lỗi", Number.isFinite(worker.failed) ? text(worker.failed) : "N/A"],
     ["Bị từ chối", Number.isFinite(worker.rejected) ? text(worker.rejected) : "N/A"],
-  ])}</div><div class="col-lg-6">${detailsCard("Đồng bộ thời gian thực", [
-    ["Kết nối WebSocket", Number.isFinite(websocket.activeConnections) ? text(websocket.activeConnections) : "N/A"],
+  ])}</div><div class="col-lg-6">${detailsCard("Lưu trữ", [
+    ["Trạng thái", resourceStatus("storage")],
+    ["Data còn trống", text(bytes(storage.data?.freeBytes))],
+    ["Tổng dung lượng data", text(bytes(storage.data?.totalBytes))],
+    ["Backup còn trống", text(bytes(storage.backup?.freeBytes))],
+    ["Tổng dung lượng backup", text(bytes(storage.backup?.totalBytes))],
+  ])}</div><div class="col-lg-6">${detailsCard("WebSocket", [
+    ["Trạng thái", resourceStatus("websocket")],
+    ["Kết nối hoạt động", Number.isFinite(websocket.activeConnections) ? text(websocket.activeConnections) : "N/A"],
     ["Sự kiện đang chờ", Number.isFinite(websocket.pendingEvents) ? text(websocket.pendingEvents) : "N/A"],
     ["Tuổi sự kiện cũ nhất", Number.isFinite(websocket.oldestPendingSeconds) ? `${text(websocket.oldestPendingSeconds)} giây` : "N/A"],
-    ["Tác vụ nền", backgroundSummary],
+  ])}</div><div class="col-lg-6">${detailsCard("Đồng bộ", [
+    ["Trạng thái", resourceStatus("sync")],
+    ["Yêu cầu đồng bộ", Number.isFinite(syncAnalytics.syncRequests) ? text(syncAnalytics.syncRequests) : "N/A"],
+    ["Yêu cầu lỗi", Number.isFinite(syncAnalytics.failedSyncs) ? text(syncAnalytics.failedSyncs) : "N/A"],
+    ["Yêu cầu toàn phần", Number.isFinite(syncAnalytics.fullSyncRequests) ? text(syncAnalytics.fullSyncRequests) : "N/A"],
+  ])}</div><div class="col-lg-6">${detailsCard("Tác vụ nền", [
+    ["Trạng thái", resourceStatus("backgroundJobs")],
+    ["Tổng hợp hàng đợi", backgroundSummary],
+  ])}</div><div class="col-lg-6">${detailsCard("Sao lưu", [
+    ["Trạng thái", resourceStatus("backup")],
+    ["Bản sao lưu đã xác minh gần nhất", timestamp(backup.lastVerifiedAt)],
+    ["Lần diễn tập khôi phục gần nhất", timestamp(backup.lastRestoreDrillAt)],
+    ["Lần kiểm tra trạng thái", timestamp(backup.checkedAt)],
   ])}</div></div>`;
 }
 

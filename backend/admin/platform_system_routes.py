@@ -15,6 +15,7 @@ from backend.documents.document_worker import (
     DocumentWorkerError,
     retry_failed_durable_document_job,
 )
+from backend.observability.metrics import admin_sync_metrics_snapshot
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.logging_utils import log_audit, log_error, redact_log_value
@@ -391,6 +392,7 @@ def _read_sync(request):
         active_connections = int(cursor.fetchone()["count"])
         cursor.execute("SELECT COUNT(*) AS count FROM sync_mutations")
         recorded_mutations = int(cursor.fetchone()["count"])
+        sync_metrics = admin_sync_metrics_snapshot()
         cursor.execute(
             f"SELECT COUNT(*) AS total FROM websocket_events{where_sql}", tuple(values)
         )
@@ -414,10 +416,13 @@ def _read_sync(request):
             "eventsByStatus": event_counts,
             "activeConnections": active_connections,
             "recordedMutations": recorded_mutations,
+            "syncRequests": sync_metrics["syncRequests"],
+            "failedSyncs": sync_metrics["failedSyncs"],
             "rowVersionConflicts": None,
             "visibilityResets": None,
-            "fullSyncs": None,
-            "outboxFailures": None,
+            "fullSyncs": sync_metrics["fullSyncRequests"],
+            "outboxFailures": int(event_counts.get("retry", 0)) + int(event_counts.get("dead_letter", 0)),
+            "metricsScope": sync_metrics["scope"],
         },
         "items": [
             {

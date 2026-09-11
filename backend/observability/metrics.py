@@ -197,6 +197,32 @@ def admin_operational_metrics_snapshot() -> dict:
     }
 
 
+def admin_sync_metrics_snapshot() -> dict:
+    """Return fixed-cardinality sync request counters for the admin UI."""
+
+    with _lock:
+        requests = _http_requests.copy()
+    sync_statuses = {
+        status: int(value)
+        for (method, route, status), value in requests.items()
+        if method == "POST" and route == "sync_api"
+    }
+    full_sync_requests = sum(
+        int(value)
+        for (method, route, _status), value in requests.items()
+        if method == "GET" and route == "get_all_data_api"
+    )
+    return {
+        "scope": "current_process",
+        "syncRequests": sum(sync_statuses.values()),
+        "failedSyncs": sum(
+            value for status, value in sync_statuses.items()
+            if not status.startswith("2")
+        ),
+        "fullSyncRequests": full_sync_requests,
+    }
+
+
 def record_turnstile_validation(action: object, outcome: object) -> None:
     """Record one low-cardinality bot-challenge outcome."""
 

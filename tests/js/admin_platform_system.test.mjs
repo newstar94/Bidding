@@ -126,9 +126,14 @@ test("job and sync summary cards expose real aggregates and explicit unavailable
   const sync = syncSummaryMarkup({
     eventsTotal: 20, eventsByStatus: { retry: 2, dead_letter: 1 },
     activeConnections: 4, recordedMutations: 12,
-    rowVersionConflicts: null, visibilityResets: null, fullSyncs: null, outboxFailures: null,
+    syncRequests: 12, failedSyncs: 3,
+    rowVersionConflicts: null, visibilityResets: null, fullSyncs: 2, outboxFailures: 3,
+    metricsScope: "current_process",
   });
+  assert.match(sync, /data-admin-system-metric="sync-requests">12/u);
   assert.match(sync, /data-admin-system-metric="sync-failed">3/u);
-  assert.equal((sync.match(/>N\/A</gu) || []).length, 4);
-  assert.match(sync, /không được hệ thống lưu có thẩm quyền/u);
+  assert.match(sync, /data-admin-system-metric="sync-full-resets">2/u);
+  assert.match(sync, /data-admin-system-metric="sync-outbox-failures">3/u);
+  assert.equal((sync.match(/>N\/A</gu) || []).length, 2);
+  assert.match(sync, /phạm vi tiến trình hiện tại/u);
 });

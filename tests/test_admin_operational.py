@@ -31,6 +31,25 @@ def test_admin_operational_http_projection_is_label_free_and_exact():
         observability_metrics._reset_metrics_for_tests()
 
 
+def test_admin_sync_projection_uses_only_code_owned_route_and_status_counters():
+    observability_metrics._reset_metrics_for_tests()
+    try:
+        observability_metrics.http_request_finished("POST", "sync_api", 200, 0.01)
+        observability_metrics.http_request_finished("POST", "sync_api", 409, 0.02)
+        observability_metrics.http_request_finished("POST", "sync_api", 503, 0.03)
+        observability_metrics.http_request_finished("GET", "get_all_data_api", 200, 0.04)
+        observability_metrics.http_request_finished("GET", "private-route", 500, 0.05)
+
+        assert observability_metrics.admin_sync_metrics_snapshot() == {
+            "scope": "current_process",
+            "syncRequests": 3,
+            "failedSyncs": 2,
+            "fullSyncRequests": 1,
+        }
+    finally:
+        observability_metrics._reset_metrics_for_tests()
+
+
 def _request(*, startup_complete=True, ready=True, lag=4.25):
     state = SimpleNamespace(
         startup_complete=startup_complete,
@@ -44,6 +63,7 @@ def _install_database_runner(monkeypatch, database_status=None):
     calls = []
     status = database_status or {
         "status": "available", "schemaVersion": 90, "latencyMs": 1.2,
+        "version": "16.4",
     }
 
     async def database_read(function, *args, **kwargs):
@@ -54,6 +74,7 @@ def _install_database_runner(monkeypatch, database_status=None):
             return status
         if function is operational._safe_read_operational_status:
             return {
+                "collectionAvailable": True,
                 "databaseBytes": 4096,
                 "waitingLocks": 0,
                 "walBytes": 1024,
@@ -77,6 +98,16 @@ def _install_database_runner(monkeypatch, database_status=None):
                         "count": 2, "oldestSeconds": 8.0,
                     }
                 ],
+                "analytics": {
+                    "database": {
+                        "scope": "current_process", "requests": 4,
+                        "failures": 0, "averageLatencyMs": 2.5,
+                    },
+                    "sync": {
+                        "scope": "current_process", "syncRequests": 0,
+                        "failedSyncs": 0, "fullSyncRequests": 0,
+                    },
+                },
             }
         return function(*args)
 
@@ -193,12 +224,23 @@ def test_health_reports_real_application_and_database_state(monkeypatch):
     }
     assert payload["database"] == {
         "status": "available", "schemaVersion": 90, "latencyMs": 1.2,
+        "version": "16.4",
     }
     assert payload["operations"]["databaseBytes"] == 4096
     assert payload["operations"]["storage"]["data"]["totalBytes"] == 200
     assert payload["operations"]["documentWorker"]["waiting"] == 2
     assert payload["operations"]["websocket"]["activeConnections"] == 4
     assert payload["operations"]["backgroundJobs"][0]["queue"] == "document"
+    assert payload["resources"] == {
+        "application": {"status": "healthy"},
+        "postgresql": {"status": "healthy"},
+        "documentWorker": {"status": "healthy"},
+        "storage": {"status": "healthy"},
+        "websocket": {"status": "healthy"},
+        "sync": {"status": "unknown"},
+        "backgroundJobs": {"status": "healthy"},
+        "backup": {"status": "healthy"},
+    }
 
 
 def test_operational_projection_includes_bounded_worker_sync_and_job_health(monkeypatch):

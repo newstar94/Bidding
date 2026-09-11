@@ -157,19 +157,17 @@ function bindJobActions(root, jobs, options) {
 }
 
 export function syncSummaryMarkup(summary) {
-  const byStatus = summary?.eventsByStatus && typeof summary.eventsByStatus === "object"
-    ? summary.eventsByStatus
-    : {};
   return `${summaryCards([
     ["sync-events", "Tổng sự kiện", summary?.eventsTotal],
-    ["sync-failed", "Sự kiện lỗi", (byStatus.retry || 0) + (byStatus.dead_letter || 0)],
+    ["sync-requests", "Yêu cầu đồng bộ", summary?.syncRequests],
+    ["sync-failed", "Yêu cầu đồng bộ lỗi", summary?.failedSyncs],
     ["sync-connections", "Kết nối hoạt động", summary?.activeConnections],
     ["sync-mutations", "Mutation đã ghi nhận", summary?.recordedMutations],
     ["sync-row-conflicts", "Xung đột phiên bản", summary?.rowVersionConflicts],
     ["sync-visibility-resets", "Thu hồi hiển thị", summary?.visibilityResets],
     ["sync-full-resets", "Đồng bộ toàn phần", summary?.fullSyncs],
     ["sync-outbox-failures", "Lỗi outbox", summary?.outboxFailures],
-  ])}<p class="text-secondary small">Các chỉ số không được hệ thống lưu có thẩm quyền hiển thị N/A; không suy diễn từ log hoặc dữ liệu riêng tư.</p>`;
+  ])}<p class="text-secondary small">Chỉ số yêu cầu thuộc phạm vi tiến trình hiện tại. Các chỉ số không được hệ thống lưu có thẩm quyền hiển thị N/A; không suy diễn từ log hoặc dữ liệu riêng tư.</p>`;
 }
 
 export const JOB_DIRECTORY = Object.freeze({

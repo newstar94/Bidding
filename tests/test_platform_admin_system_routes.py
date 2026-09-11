@@ -84,6 +84,14 @@ def _client(monkeypatch, db, allowed=True):
     monkeypatch.setattr(operational, "run_database_read", run_database_read)
     monkeypatch.setattr(platform_system_routes, "run_database_read", run_database_read)
     monkeypatch.setattr(platform_system_routes, "database", _Database(db))
+    monkeypatch.setattr(
+        platform_system_routes,
+        "admin_sync_metrics_snapshot",
+        lambda: {
+            "scope": "current_process", "syncRequests": 7,
+            "failedSyncs": 2, "fullSyncRequests": 3,
+        },
+    )
     return TestClient(Starlette(routes=platform_system_routes.platform_admin_system_routes(Route))), calls
 
 
@@ -119,10 +127,13 @@ def test_sync_uses_real_event_lease_and_mutation_aggregates_without_payloads(mon
           "eventsByStatus": {"dispatched": 1, "pending": 1},
           "activeConnections": 1,
           "recordedMutations": 1,
+          "syncRequests": 7,
+          "failedSyncs": 2,
           "rowVersionConflicts": None,
           "visibilityResets": None,
-          "fullSyncs": None,
-          "outboxFailures": None,
+          "fullSyncs": 3,
+          "outboxFailures": 0,
+          "metricsScope": "current_process",
         }
         assert payload["pagination"]["totalRows"] == 1
         assert payload["items"][0]["eventType"] == "broadcast"

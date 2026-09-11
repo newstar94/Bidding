@@ -26,6 +26,7 @@ from backend.shared.logging_utils import log_audit, log_error
 from backend.shared.request_validation import read_json_object
 from backend.observability.metrics import (
     admin_operational_metrics_snapshot,
+    admin_sync_metrics_snapshot,
     operational_status_snapshot,
 )
 from backend.observability.recording import snapshot_recorded_metrics
@@ -322,19 +323,29 @@ def _read_database_status() -> dict:
     connection = database.get_connection()
     try:
         row = connection.execute(
-            "SELECT schema_version FROM database_metadata WHERE id = 1"
+            """SELECT schema_version, current_setting('server_version_num')
+                 FROM database_metadata WHERE id = 1"""
         ).fetchone()
         if row is None:
             return {
                 "status": "unavailable", "schemaVersion": None,
                 "latencyMs": round((time.perf_counter() - started_at) * 1000, 1),
+                "version": None,
             }
         version = int(row[0])
+        server_version_number = int(row[1])
+        postgres_major = server_version_number // 10_000
+        postgres_minor = (
+            server_version_number % 10_000
+            if postgres_major >= 10
+            else (server_version_number // 100) % 100
+        )
         compatible = DB_RUNTIME_MIN_SCHEMA_VERSION <= version <= DB_RUNTIME_MAX_SCHEMA_VERSION
         return {
             "status": "available" if compatible else "incompatible",
             "schemaVersion": version,
             "latencyMs": round((time.perf_counter() - started_at) * 1000, 1),
+            "version": f"{postgres_major}.{postgres_minor}",
         }
     finally:
         connection.close()
@@ -345,7 +356,10 @@ def _safe_read_database_status() -> dict:
         return _read_database_status()
     except Exception as exc:  # noqa: BLE001 - details must not cross the API boundary.
         log_error(exc, "admin_operational_database", level="WARN")
-        return {"status": "unavailable", "schemaVersion": None, "latencyMs": None}
+        return {
+            "status": "unavailable", "schemaVersion": None,
+            "latencyMs": None, "version": None,
+        }
 
 
 def _safe_read_operational_status() -> dict:
@@ -367,6 +381,7 @@ def _safe_read_operational_status() -> dict:
     if not isinstance(background_jobs, dict):
         background_jobs = {}
     return {
+        "collectionAvailable": snapshot.get("_collection_success") is True,
         "databaseBytes": int(snapshot.get("postgres_database_bytes") or 0),
         "waitingLocks": int(snapshot.get("postgres_waiting_locks") or 0),
         "walBytes": int(snapshot.get("postgres_wal_bytes") or 0),
@@ -407,6 +422,7 @@ def _safe_read_operational_status() -> dict:
         },
         "analytics": {
             "http": admin_operational_metrics_snapshot(),
+            "sync": admin_sync_metrics_snapshot(),
             "database": {
                 "scope": "current_process",
                 "requests": int(database_operation_count),
@@ -442,6 +458,59 @@ def _safe_read_operational_status() -> dict:
             and isinstance(status, str)
             and isinstance(values, dict)
         ],
+    }
+
+
+def _resource_states(application: dict, database_status: dict, operations: dict) -> dict:
+    collection_available = operations.get("collectionAvailable") is True
+    worker = operations.get("documentWorker") if isinstance(operations.get("documentWorker"), dict) else {}
+    storage = operations.get("storage") if isinstance(operations.get("storage"), dict) else {}
+    backup = operations.get("backup") if isinstance(operations.get("backup"), dict) else {}
+    jobs = operations.get("backgroundJobs") if isinstance(operations.get("backgroundJobs"), list) else []
+    analytics = operations.get("analytics") if isinstance(operations.get("analytics"), dict) else {}
+    sync = analytics.get("sync") if isinstance(analytics.get("sync"), dict) else {}
+
+    database_state = {
+        "available": "healthy", "incompatible": "degraded",
+        "unavailable": "unavailable",
+    }.get(str(database_status.get("status") or ""), "unknown")
+    worker_failures = sum(
+        int(worker.get(key) or 0) for key in ("failed", "rejected")
+        if isinstance(worker.get(key), (int, float))
+    )
+    job_failures = sum(
+        int(item.get("count") or 0) for item in jobs
+        if isinstance(item, dict) and item.get("status") in {"failed", "retry"}
+    )
+    sync_requests = sync.get("syncRequests")
+    sync_failures = sync.get("failedSyncs")
+    sync_state = "unknown"
+    if isinstance(sync_requests, int) and sync_requests > 0:
+        sync_state = "degraded" if isinstance(sync_failures, int) and sync_failures > 0 else "healthy"
+
+    return {
+        "application": {
+            "status": "healthy" if application.get("startupComplete") and application.get("ready") else "degraded"
+        },
+        "postgresql": {"status": database_state},
+        "documentWorker": {
+            "status": ("degraded" if worker_failures else "healthy") if collection_available else "unknown"
+        },
+        "storage": {
+            "status": "healthy" if collection_available and storage else "unknown"
+        },
+        "websocket": {"status": "healthy" if collection_available else "unknown"},
+        "sync": {"status": sync_state},
+        "backgroundJobs": {
+            "status": ("degraded" if job_failures else "healthy") if collection_available else "unknown"
+        },
+        "backup": {
+            "status": (
+                "healthy"
+                if collection_available and backup.get("lastVerifiedAt")
+                else "unknown"
+            )
+        },
     }
 
 
@@ -498,7 +567,10 @@ async def admin_health_api(request):
             timeout_seconds=5,
         )
     except (BlockingIOBusyError, BlockingIOTimeoutError):
-        database_status = {"status": "unavailable", "schemaVersion": None}
+        database_status = {
+            "status": "unavailable", "schemaVersion": None,
+            "latencyMs": None, "version": None,
+        }
     try:
         operations = await run_database_read(
             _safe_read_operational_status,
@@ -511,17 +583,19 @@ async def admin_health_api(request):
     lag = getattr(request.app.state, "event_loop_lag_ms", None)
     event_loop_lag_ms = round(float(lag), 1) if isinstance(lag, (int, float)) else None
     overall_ready = startup_complete and ready and database_status["status"] == "available"
+    application = {
+        "startupComplete": startup_complete,
+        "ready": ready,
+        "eventLoopLagMs": event_loop_lag_ms,
+    }
     return JSONResponse(
         {
             "generatedAt": _utc_now(),
             "status": "ready" if overall_ready else "degraded",
-            "application": {
-                "startupComplete": startup_complete,
-                "ready": ready,
-                "eventLoopLagMs": event_loop_lag_ms,
-            },
+            "application": application,
             "database": database_status,
             "operations": operations,
+            "resources": _resource_states(application, database_status, operations),
         },
         headers={"Cache-Control": "private, no-store"},
     )
