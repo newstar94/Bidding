@@ -1,17 +1,17 @@
 # BiddingFlow Tabler Admin Migration — Completion Report
 
-This report audits the implementation state at `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`. The documentation-only commit containing this refreshed report necessarily has a later SHA. Exhaustive local migration evidence gathered at `d8fd08cb` is distinguished from current-SHA local reruns and exact-SHA GitHub evidence.
+This report audits the implementation state through `ede1d71a1e6f348e880f3ce2ef719922f4bcabf1`. Earlier migration evidence is retained where noted, while final current-SHA reruns and GitHub evidence are recorded below.
 
 ## 1. Baseline
 
 | Item | Value |
 | --- | --- |
 | Migration baseline | `c0d8ebfc699258c28662f7d03e7bbadd507a9305` (parent of first Tabler-shell commit) |
-| Implementation SHA audited | `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` |
+| Implementation SHA audited | `ede1d71a1e6f348e880f3ce2ef719922f4bcabf1` |
 | Branch | `main` |
-| `origin/main` at current completion audit | `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` |
+| `origin/main` at current completion audit | `ede1d71a1e6f348e880f3ce2ef719922f4bcabf1` |
 | Baseline CI | No single terminal baseline run was reconstructed for this report; historical prompt evidence recorded failures before the migration |
-| Latest implementation remote CI | Full CI `34562145518`, CodeQL `34562145458`, N+1 `34562145445`, Supply-chain `34562145450`: all terminal `success` on `dcb788b5` |
+| Latest implementation remote CI | Full CI `34576829765`, CodeQL `34576829832`, N+1 `34576829777`, Supply-chain `34576829795`: all terminal `success` on `ede1d71a` |
 | Legal production release | Blocked by 27 external legal facts; no approval or production-public artifact is claimed |
 
 ## 2. Legacy Dashboard Inventory
@@ -169,6 +169,10 @@ The exhaustive migration verification below was executed on `d8fd08cb`. The two 
 | `python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45` | Exit 0; 2281 passed, 1 skipped; backend coverage 64.34% |
 | `python scripts/check_critical_coverage.py coverage.json` | Exit 0; all 16 critical modules passed |
 | `npm run test:js:coverage` | Exit 0; lines 54.45%, branches 65.91%, functions 68.46%; all 14 critical modules passed |
+| Current-SHA Python suite | Exit 0; `2286 passed, 1 skipped` |
+| Current-SHA JavaScript suite | Exit 0; `1862 passed` |
+| Current-SHA admin browser matrix | Exit 0; `48 passed` across Chromium, Firefox and WebKit |
+| Current-SHA frontend budget | Exit 0; admin JS 370,782 bytes, CSS 540,077 bytes, 8 initial requests, 884.1 ms maximum |
 | `npx playwright test e2e/specs/admin-shell.spec.mjs --config=playwright.config.mjs` | Exit 0; Chromium 16/16, Firefox 16/16, WebKit 16/16 |
 | `npm run test:e2e:smoke` through the isolated audit runner | Exit 0; 97 passed, 5 conditionally skipped across Chromium, Firefox and WebKit |
 | `npm run test:ui-quality-e2e` | Exit 0; 5/5 viewports passed overflow, accessible-name, keyboard, validation and network-state checks |
@@ -196,7 +200,7 @@ The existing workflow suite passed locally for auth shell/roles, bidder goods, C
 | N+1 / large data | No dedicated Tabler evidence | Exact-SHA N+1 workflow passes; current-SHA large-data benchmark passes fixed query counts and 256,000-byte response cap |
 | DB/FK/schema | No migration-specific change | Exact-SHA PostgreSQL schema/FK job passes |
 | Dependency/security | No Tabler-final evidence | Exact-SHA package/dependency, Supply-chain and CodeQL workflows pass |
-| GitHub exact-final-SHA | No final migration commit | All four workflows are terminal `success` on `dcb788b5` |
+| GitHub exact-final-SHA | No final migration commit | All four workflows are terminal `success` on `ede1d71a` |
 | Production legal release | Blocked | Still blocked by 27 external facts; correctly not bypassed |
 
 ## 12. Performance
@@ -227,7 +231,7 @@ The generic organization/account controller remains because it serves workspace 
 
 ## 14. Remaining Risks
 
-1. This report refresh creates a later documentation-only SHA; the implementation evidence remains pinned to `dcb788b5` and must not be described as evidence for unrelated later source changes.
+1. Final implementation and CI evidence is pinned to `ede1d71a`; older historical measurements remain labeled with their original SHA.
 2. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
 3. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
 4. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
