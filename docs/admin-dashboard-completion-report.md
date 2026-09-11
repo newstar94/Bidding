@@ -233,10 +233,11 @@ The generic organization/account controller remains because it serves workspace 
 ## 14. Remaining Risks
 
 1. Final production UI/CI implementation is `98ad2688`; exact-SHA remote CI is successful. Older historical measurements remain labeled with their original SHA.
-2. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
-3. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
-4. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
-5. Production publication remains blocked by 27 external legal facts; engineering completion cannot approve them.
+2. A later evidence-only CI run (`34624603137`, branch head `8089e87f`) failed once in the cross-browser step after 8m42s; no source files changed. The same 102-test isolated smoke command then completed locally with 97 passed and 5 documented skips, while the preceding exact-source run (`34613035176`) was green. This is recorded as transient CI evidence, not hidden or converted into a retry policy.
+3. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
+4. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
+5. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
+6. Production publication remains blocked by 27 external legal facts; engineering completion cannot approve them.
 
 ## 15. Recommended Next Steps
 
