@@ -376,6 +376,11 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
       hasData: true,
       kpis: [{ label: "Kế hoạch đã tạo", value: 5, change: 1 }],
       series: [{ label: "Kế hoạch", points: [{ date: "2026-09-10", value: 5, status: "available" }] }],
+      overviewCharts: [{
+        key: "revenue_cost",
+        label: "Doanh thu và chi phí",
+        series: [{ label: "Doanh thu", points: [{ date: "2026-09-10", value: 1_250_000, status: "available" }] }],
+      }],
       viewCharts: [{ label: "Không có chuỗi", series: [] }],
       table: [{ metric: "sync_mutations", value: 12, status: "available" }],
     },
@@ -387,8 +392,15 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
   await expectAdminReady(page, "Phân tích");
   await expect(page.getByText("Kế hoạch đã tạo", { exact: true })).toBeVisible();
   await expect(page.locator("#admin-chart-0")).toHaveText("Kế hoạch");
+  await expect(page.getByRole("heading", { name: "Doanh thu và chi phí" })).toBeVisible();
+  const revenueChart = page.getByRole("heading", { name: "Doanh thu và chi phí" })
+    .locator("xpath=ancestor::article[1]")
+    .locator('svg[role="img"]');
+  await expect(revenueChart).toBeVisible();
+  await expect(revenueChart).toHaveAttribute("aria-label", /Doanh thu: 1 điểm có dữ liệu/u);
+  await expect(page.getByRole("cell", { name: "1.250.000" })).toBeVisible();
   await expect(page.getByText("Chưa có chuỗi dữ liệu cho biểu đồ này.")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "2026-09-10" })).toBeVisible();
+  await expect(page.getByLabel("Bảng dữ liệu cuộn cho Kế hoạch").getByRole("cell", { name: "2026-09-10" })).toBeVisible();
   await page.getByRole("button", { name: "90 ngày" }).click();
   await expect(page).toHaveURL(/preset=90d/u);
   await expect(page.getByRole("button", { name: "90 ngày" })).toHaveAttribute("aria-pressed", "true");
