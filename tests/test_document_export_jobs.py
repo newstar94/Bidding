@@ -569,6 +569,16 @@ def test_retry_reauthorizes_and_only_one_concurrent_request_wins(
     connection = database.get_connection()
     job_id = None
     organization_id = None
+    audited_retries = []
+    authorization_context = object()
+
+    def authorize_retry(_cursor):
+        return authorization_context
+
+    def audit_retry(_cursor, job, context):
+        assert context is authorization_context
+        audited_retries.append(job["id"])
+
     try:
         (
             organization_id,
@@ -598,11 +608,17 @@ def test_retry_reauthorizes_and_only_one_concurrent_request_wins(
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             results = list(
                 executor.map(
-                    lambda _index: retry_failed_durable_document_job(database, job_id),
+                    lambda _index: retry_failed_durable_document_job(
+                        database,
+                        job_id,
+                        authorize_retry=authorize_retry,
+                        audit_retry=audit_retry,
+                    ),
                     range(2),
                 )
             )
         assert sorted(results) == [False, True]
+        assert audited_retries == [job_id]
 
         connection.execute(
             """UPDATE document_jobs SET status = 'failed' WHERE id = ?""",

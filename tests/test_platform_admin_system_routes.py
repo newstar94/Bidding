@@ -8,10 +8,15 @@ from backend.admin import operational, platform_system_routes
 from backend.auth.auth_helper import SessionRole
 
 
+JOB_PENDING = "a" * 32
+JOB_FAILED = "b" * 32
+
+
 class _Connection:
     def __init__(self, connection): self.connection = connection
     def cursor(self): return self.connection.cursor()
     def close(self): pass
+    def __getattr__(self, name): return getattr(self.connection, name)
 
 
 class _Database:
@@ -29,7 +34,8 @@ def _database():
           updated_at INTEGER, completed_at INTEGER, cancelled_at INTEGER, expires_at INTEGER,
           progress_phase TEXT, progress_completed_items INTEGER,
           progress_total_items INTEGER, last_error_code TEXT,
-          filename TEXT, locked_by TEXT, last_error_message TEXT, policy_json TEXT
+          filename TEXT, locked_by TEXT, last_error_message TEXT, policy_json TEXT,
+          user_id TEXT, package_id TEXT, record_id TEXT, policy_hash TEXT
         );
         CREATE TABLE websocket_events (
           id INTEGER, organization_id TEXT, user_id TEXT, event_type TEXT, status TEXT,
@@ -46,10 +52,10 @@ def _database():
         );
     """)
     db.executemany(
-        "INSERT INTO document_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO document_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-          ("job-1", "org-a", "render", "goi_thau", "pending", 0, 20, 10, 10, None, None, 1000, "queued", 0, 1, None, "private.docx", "C:/secret/worker", None, '{"secret":"x"}'),
-          ("job-2", "org-b", "render", "ke_hoach_lcnt", "failed", 2, 30, 20, 30, None, None, 1000, "failed", 0, 1, "RENDER_FAILED", "other.docx", "worker-2", "private path", '{}'),
+          (JOB_PENDING, "org-a", "render", "goi_thau", "pending", 0, 20, 10, 10, None, None, 1000, "queued", 0, 1, None, "private.docx", "C:/secret/worker", None, '{"secret":"x"}', "user-a", "package-a", "record-a", "hash-a"),
+          (JOB_FAILED, "org-b", "render", "ke_hoach_lcnt", "failed", 2, 30, 20, 30, None, None, 1000, "failed", 0, 1, "RENDER_FAILED", "other.docx", "worker-2", "Failed at C:/secret/worker/input.docx password=hunter2", '{}', "user-b", None, "record-b", "hash-b"),
         ),
     )
     db.executemany(
@@ -126,6 +132,83 @@ def test_sync_uses_real_event_lease_and_mutation_aggregates_without_payloads(mon
     finally: db.close()
 
 
+def test_job_detail_is_bounded_and_sanitizes_worker_error(monkeypatch):
+    db = _database()
+    try:
+        client, calls = _client(monkeypatch, db)
+        with client:
+            response = client.get(f"/api/admin/system/jobs/{JOB_FAILED}")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
+        assert calls == ["super_admin"]
+        job = response.json()["job"]
+        assert job["id"] == JOB_FAILED
+        assert job["retryAllowed"] is True
+        assert job["error"]["code"] == "RENDER_FAILED"
+        assert "[REDACTED_PATH]" in job["error"]["message"]
+        for private in (
+            "hunter2", "input.docx", "other.docx", "worker-2", "policy_json"
+        ):
+            assert private not in response.text
+        with client:
+            assert client.get("/api/admin/system/jobs/not-a-job").status_code == 400
+    finally:
+        db.close()
+
+
+def test_job_retry_rechecks_admin_policy_and_audits(monkeypatch):
+    db = _database()
+    audit = []
+    worker_calls = []
+    role = SessionRole("super_admin", "admin", platform_role="super_admin")
+    try:
+        client, calls = _client(monkeypatch, db)
+        monkeypatch.setattr(
+            platform_system_routes,
+            "verify_session_in_transaction",
+            lambda _cursor, _request, required_role=None: (True, role),
+        )
+        monkeypatch.setattr(
+            platform_system_routes,
+            "log_audit",
+            lambda action, **kwargs: audit.append((action, kwargs)),
+        )
+        def retry_job(target_database, job_id, *, authorize_retry, audit_retry):
+            worker_calls.append(job_id)
+            connection = target_database.get_connection()
+            cursor = connection.cursor()
+            actor = authorize_retry(cursor)
+            job = dict(cursor.execute(
+                """SELECT id, organization_id, operation, record_type,
+                          last_error_code FROM document_jobs WHERE id = ?""",
+                (job_id,),
+            ).fetchone())
+            audit_retry(cursor, job, actor)
+            return True
+        monkeypatch.setattr(
+            platform_system_routes,
+            "retry_failed_durable_document_job",
+            retry_job,
+        )
+        async def run_database_write(function, *args, **kwargs):
+            kwargs.pop("timeout_seconds", None)
+            return function(*args, **kwargs)
+        monkeypatch.setattr(platform_system_routes, "run_database_write", run_database_write)
+
+        with client:
+            response = client.post(f"/api/admin/system/jobs/{JOB_FAILED}/retry", json={})
+        assert response.status_code == 202
+        assert response.json() == {"jobId": JOB_FAILED, "status": "retry"}
+        assert calls == ["super_admin"]
+        assert worker_calls == [JOB_FAILED]
+        assert audit[0][0] == "admin.document_job_retried"
+        assert audit[0][1]["target_id"] == JOB_FAILED
+        assert audit[0][1]["required"] is True
+        assert audit[0][1]["cursor"] is not None
+    finally:
+        db.close()
+
+
 def test_system_routes_require_super_admin_and_reject_unbounded_queries(monkeypatch):
     db = _database()
     try:
@@ -133,7 +216,9 @@ def test_system_routes_require_super_admin_and_reject_unbounded_queries(monkeypa
         with denied:
             assert denied.get("/api/admin/system/jobs").status_code == 403
             assert denied.get("/api/admin/system/sync").status_code == 403
-        assert calls == ["super_admin", "super_admin"]
+            assert denied.get(f"/api/admin/system/jobs/{JOB_FAILED}").status_code == 403
+            assert denied.post(f"/api/admin/system/jobs/{JOB_FAILED}/retry", json={}).status_code == 403
+        assert calls == ["super_admin", "super_admin", "super_admin", "super_admin"]
         allowed, _calls = _client(monkeypatch, db)
         with allowed:
             assert allowed.get("/api/admin/system/jobs?pageSize=500").status_code == 400

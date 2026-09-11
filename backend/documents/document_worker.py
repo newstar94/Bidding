@@ -1120,7 +1120,13 @@ def _delete_consumed_completed_document_job(database, job_id: str) -> bool:
     return False
 
 
-def retry_failed_durable_document_job(database, job_id: str) -> bool:
+def retry_failed_durable_document_job(
+    database,
+    job_id: str,
+    *,
+    authorize_retry=None,
+    audit_retry=None,
+) -> bool:
     """Schedule one failed immutable job for another operator-approved attempt.
 
     The conditional update is the idempotency guard: only the first caller can
@@ -1145,17 +1151,27 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
     connection = database.get_connection()
     try:
         connection.execute("BEGIN")
+        authorization_context = (
+            authorize_retry(connection.cursor())
+            if callable(authorize_retry)
+            else None
+        )
         job_row = connection.execute(
             """SELECT id, organization_id, user_id, package_id,
                       record_type, record_id,
-                      policy_json, policy_hash
+                      policy_json, policy_hash, operation, status,
+                      cancelled_at, last_error_code
                  FROM document_jobs WHERE id = ? FOR UPDATE""",
             (job_id,),
         ).fetchone()
         if job_row is None:
             connection.commit()
             return False
-        verify_document_job_policy(connection.cursor(), dict(job_row))
+        job = dict(job_row)
+        if job["status"] != "failed" or job["cancelled_at"] is not None:
+            connection.commit()
+            return False
+        verify_document_job_policy(connection.cursor(), job)
         updated = connection.execute(
             """UPDATE document_jobs
                SET status = 'retry', attempt_count = 0, available_at = ?,
@@ -1167,6 +1183,8 @@ def retry_failed_durable_document_job(database, job_id: str) -> bool:
             (now, now + retention_seconds, now, job_id, operation),
         )
         updated_count = int(updated.rowcount or 0)
+        if updated_count == 1 and callable(audit_retry):
+            audit_retry(connection.cursor(), job, authorization_context)
         connection.commit()
     except Exception:
         connection.rollback()
