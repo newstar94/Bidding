@@ -514,10 +514,11 @@ async function executeForceSyncData(
     // committing a workspace-wide snapshot. Compare the committed cursor too,
     // so its full successor still performs authorization-reset reconciliation.
     const visibilityScopeChanged = reconcileVisibilityScopeChanged(this, dbData, storage);
-    if (visibilityScopeChanged && dbData?.partial) {
-      // A route-only snapshot cannot remove rows from other modules. Once its
-      // visibility fingerprint changes, reconcile the whole workspace before
-      // accepting any part of that snapshot as authoritative.
+    if (visibilityScopeChanged && (dbData?.partial || useVersionDelta)) {
+      // A partial snapshot cannot remove rows from other modules. An empty
+      // delta can also carry a visibility fingerprint already advanced by a
+      // sibling tab, while this tab still holds the predecessor projection.
+      // Reconcile the whole workspace before accepting either as authoritative.
       return this.forceSyncData(isBackground, true, false);
     }
     const draftLocalState = captureActivePlanBreakdownState(this);

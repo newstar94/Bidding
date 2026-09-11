@@ -221,6 +221,104 @@ test("authoritative delta closes an editor revoked after its visibility token wa
   }
 });
 
+test("cross-tab visibility cursor advance forces this tab to reconcile its stale editor", async () => {
+  const previousAnimationFrame = globalThis.requestAnimationFrame;
+  const storage = memoryStorage();
+  storage.setItem("bf_last_sync_version", "13");
+  storage.setItem("bf_last_sync_timestamp", "v13");
+  storage.setItem("bf_visibility_token", "scope-new");
+  storage.setItem("bf_sync_active_role", "manager");
+  const modalClasses = new Set(["active"]);
+  const modal = {
+    dataset: { bfUnsaved: "true" },
+    classList: {
+      contains: (name) => modalClasses.has(name),
+      remove: (name) => modalClasses.delete(name),
+    },
+  };
+  const elements = new Map([
+    ["modal-goithau", modal],
+    ["form-goithau-id", { value: "package-revoked" }],
+  ]);
+  const responses = [
+    {
+      deletions: [],
+      throughVersion: 13,
+      syncVersion: 13,
+      visibilityToken: "scope-new",
+      partial: false,
+    },
+    {
+      goithau: [],
+      syncVersion: 13,
+      timestamp: "v13",
+      visibilityToken: "scope-new",
+      partial: false,
+    },
+  ];
+  const requestedUrls = [];
+  const restore = installPullGlobals(async (url) => {
+    requestedUrls.push(String(url));
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  globalThis.document = {
+    getElementById: (id) => elements.get(id) || null,
+    querySelector: () => null,
+  };
+  globalThis.requestAnimationFrame = (callback) => { callback(); return 1; };
+  const model = {
+    workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+    workspaceStorage: storage,
+    state: { activerole: "manager", goithau: [{ id: "package-revoked", rowVersion: 1 }] },
+    _paginatedProjectionVisibility: Object.freeze({
+      workspaceKey: "user:org-a@1",
+      token: "scope-old",
+      persistedToken: "scope-old",
+    }),
+    getWorkspaceToken: () => "user:org-a@1",
+    isWorkspaceCurrent: (token) => token === "user:org-a@1",
+    normalizeRecordKeys: (record) => structuredClone(record),
+    getMutationQueue: () => null,
+    suspendMutationTracking: (callback) => callback(),
+    buildMutationSyncPayload: () => null,
+    rebaseMutationBatch() {},
+    db: { async applySyncChanges() {} },
+  };
+  const controller = {
+    model,
+    view: {
+      closeModal(id) {
+        assert.equal(id, "modal-goithau");
+        modalClasses.delete("active");
+      },
+      showToast() {},
+    },
+    routeMap: {},
+    updateSyncState() {},
+    hasLocalWorkspaceData: () => true,
+  };
+  controller.forceSyncData = (...args) => forceSyncData.call(controller, ...args);
+
+  try {
+    const result = await controller.forceSyncData(true, false, false);
+
+    assert.equal(result.ok, true);
+    assert.equal(requestedUrls.length, 2);
+    assert.match(requestedUrls[0], /^\/api\/sync\/delta\?/u);
+    assert.match(requestedUrls[1], /^\/api\/get-all-data\?/u);
+    assert.deepEqual(model.state.goithau, []);
+    assert.equal(modalClasses.has("active"), false);
+    assert.equal(modal.dataset.bfUnsaved, undefined);
+  } finally {
+    if (previousAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = previousAnimationFrame;
+    restore();
+  }
+});
+
 test("workspace_change_during_outbox_settle_cannot_touch_new_workspace_cursor", async () => {
   const flush = deferred();
   const storageA = memoryStorage();
