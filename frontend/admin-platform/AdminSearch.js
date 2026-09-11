@@ -17,7 +17,7 @@ function safeAdminHref(value) {
 }
 
 export function adminSearchMarkup() {
-  return `<form class="bf-admin-global-search" role="search" autocomplete="off" data-admin-global-search><label class="visually-hidden" for="admin-global-search-input">Tìm kiếm quản trị</label><div class="input-icon"><span class="input-icon-addon" aria-hidden="true">⌕</span><input id="admin-global-search-input" class="form-control" type="search" name="admin_global_search" minlength="2" maxlength="100" placeholder="Tìm tổ chức, người dùng, đăng ký, hóa đơn…" aria-controls="admin-global-search-results" aria-expanded="false"></div><div id="admin-global-search-results" class="bf-admin-search-results card" role="status" aria-live="polite" hidden></div></form>`;
+  return `<form class="bf-admin-global-search" role="search" autocomplete="off" data-admin-global-search><label class="visually-hidden" for="admin-global-search-input">Tìm kiếm quản trị</label><div class="input-icon"><span class="input-icon-addon" aria-hidden="true">⌕</span><input id="admin-global-search-input" class="form-control" type="search" name="admin_global_search" minlength="2" maxlength="100" placeholder="Tìm tổ chức, người dùng, đăng ký, hóa đơn…" aria-controls="admin-global-search-results"></div><div id="admin-global-search-results" class="bf-admin-search-results card" role="status" aria-live="polite" hidden></div></form>`;
 }
 
 export function adminSearchResultsMarkup(payload) {
@@ -92,8 +92,8 @@ export function bindAdminSearch(root, { fetchImpl = globalThis.fetch } = {}) {
   const input = form?.querySelector?.('[name="admin_global_search"]');
   const results = form?.querySelector?.("#admin-global-search-results");
   if (!form || !input || !results) return () => {};
-  const show = () => { results.hidden = false; input.setAttribute("aria-expanded", "true"); };
-  const hide = () => { results.hidden = true; input.setAttribute("aria-expanded", "false"); };
+  const show = () => { results.hidden = false; };
+  const hide = () => { results.hidden = true; };
   const controller = createAdminSearchController({
     search: (query, { signal }) => getAdminJson("/api/admin/search", {
       query: { q: query, limit: 5 }, signal, fetchImpl,

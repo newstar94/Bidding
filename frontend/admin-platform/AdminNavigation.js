@@ -10,6 +10,6 @@ export function adminNavigationMarkup({ groups = ADMIN_NAV_GROUPS, routes = ADMI
       if (!title) return "";
       return `<li class="nav-item"><a class="nav-link" href="${escapeHtml(path)}" data-admin-link="${escapeHtml(path)}">${adminIconMarkup(ADMIN_ROUTE_ICONS[path])}<span class="nav-link-title">${escapeHtml(title)}</span></a></li>`;
     }).join("");
-    return `<li class="nav-item admin-nav-section-title" role="presentation">${escapeHtml(group.label)}</li>${links}`;
+    return `<li class="nav-item admin-nav-section-title">${escapeHtml(group.label)}</li>${links}`;
   }).join("");
 }

@@ -14,6 +14,7 @@ test("admin global search renders an accessible bounded result surface", () => {
   assert.match(markup, /minlength="2"/u);
   assert.match(markup, /maxlength="100"/u);
   assert.match(markup, /aria-controls="admin-global-search-results"/u);
+  assert.doesNotMatch(markup, /aria-expanded=/u);
 
   const results = adminSearchResultsMarkup({ items: [{
     kind: "user", title: '<script>alert("x")</script>',
