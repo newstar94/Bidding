@@ -115,6 +115,11 @@ test("plans view renders real release versions, status and draft revisions", () 
       base_release_id: "release-1", updated_at: "2026-09-10T00:00:00Z",
       document: "hidden-document",
     }],
+    releaseHistory: [{
+      id: "release-0", versionLabel: "2026.08", mode: "shadow", scopeKey: "global",
+      effectiveFrom: 1786000000, nonSellable: true, baseReleaseId: "release-base",
+      createdAt: "2026-08-01T00:00:00Z", internalSnapshot: "never-render",
+    }],
   });
   assert.match(markup, /2026[.]09/u);
   assert.match(markup, /2026[.]10/u);
@@ -122,7 +127,12 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, />7</u);
   assert.match(markup, /Có thể bán/u);
   assert.match(markup, /Không bán/u);
-  assert.doesNotMatch(markup, /do-not-render|hidden-document/u);
+  assert.match(markup, /Lịch sử phát hành thương mại/u);
+  assert.match(markup, /2026[.]08/u);
+  assert.match(markup, /release-base/u);
+  assert.match(markup, /Giá theo tháng[\s\S]*N\/A/u);
+  assert.match(markup, /Hạn mức lưu trữ[\s\S]*N\/A/u);
+  assert.doesNotMatch(markup, /do-not-render|hidden-document|never-render/u);
 });
 
 test("plans view does not invent releases or plans when commercial data is absent", () => {

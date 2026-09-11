@@ -163,6 +163,10 @@ async def commercial_admin_overview_api(request):
         return JSONResponse({
             "currentRelease": _release_payload(current),
             "scheduledRelease": _release_payload(dict(scheduled) if scheduled else None),
+            "releaseHistory": [
+                _release_payload(release)
+                for release in repository.list_recent_releases(limit=20)
+            ],
             "drafts": repository.list_drafts(),
             "money": {
                 "verifiedCollected": int(collected[0] or 0),

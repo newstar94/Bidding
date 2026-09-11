@@ -158,3 +158,31 @@ def test_release_projection_uses_validated_display_order_instead_of_loop_positio
         if "INSERT INTO billing_skus" in statement
     ]
     assert sku_inserts[0][-1] == 42
+
+
+def test_recent_release_history_is_bounded_and_excludes_snapshot_documents():
+    row = {
+        "id": "release-1", "version_label": "v1", "checksum": "checksum-1",
+        "mode": "shadow", "scope_key": "global", "effective_from": 1_800_000_000,
+        "non_sellable": 0, "base_release_id": None, "published_by": "admin-1",
+        "reason": "approved", "created_at": "2026-09-11T00:00:00Z",
+    }
+
+    class Result:
+        def fetchall(self):
+            return [row]
+
+    class Cursor:
+        def __init__(self):
+            self.call = None
+
+        def execute(self, statement, parameters=()):
+            self.call = (statement, parameters)
+            return Result()
+
+    cursor = Cursor()
+    releases = CommercialRepository(cursor).list_recent_releases(limit=999)
+
+    assert releases == [row]
+    assert cursor.call[1] == (50,)
+    assert "snapshot_json" not in cursor.call[0]

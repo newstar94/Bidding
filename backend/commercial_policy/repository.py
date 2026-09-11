@@ -156,6 +156,22 @@ class CommercialRepository:
         result["snapshot"] = json.loads(result.pop("snapshot_json"))
         return result
 
+    def list_recent_releases(self, *, limit=20):
+        """Return bounded release metadata for the platform-admin history view."""
+
+        safe_limit = min(50, max(1, int(limit)))
+        return [
+            _dict(row) for row in self.cursor.execute(
+                """SELECT id, version_label, checksum, mode, scope_key,
+                          effective_from, non_sellable, base_release_id,
+                          published_by, reason, created_at
+                     FROM commercial_releases
+                    ORDER BY effective_from DESC, created_at DESC, id DESC
+                    LIMIT ?""",
+                (safe_limit,),
+            ).fetchall()
+        ]
+
     def effective_release(self, at=None, *, scope_key="global", include_shadow=False):
         at = int(self.clock() if at is None else at)
         statement = """SELECT release.id, release.version_label, release.schema_version,

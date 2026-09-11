@@ -51,6 +51,16 @@ function draftTable(drafts) {
   return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Bản nháp</th><th>Trạng thái</th><th class="text-end">Lần sửa</th><th>Phiên bản gốc</th><th>Cập nhật</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function releaseHistoryMarkup(releases) {
+  if (!releases.length) return adminStateMarkup("empty", { message: "Chưa có lịch sử phát hành thương mại." });
+  const rows = releases.map((release) => `<tr><td><strong>${text(release?.versionLabel)}</strong><div class="small text-secondary">${text(release?.id)}</div></td><td>${text(release?.mode)}</td><td>${text(release?.scopeKey)}</td><td>${formatDate(release?.effectiveFrom)}</td><td>${release?.nonSellable === true ? "Đã dừng bán" : (release?.nonSellable === false ? "Có thể bán" : "N/A")}</td><td>${text(release?.baseReleaseId)}</td><td>${formatDate(release?.createdAt)}</td></tr>`).join("");
+  return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Phiên bản</th><th>Chế độ</th><th>Phạm vi</th><th>Hiệu lực</th><th>Tình trạng bán</th><th>Phiên bản gốc</th><th>Được tạo</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function planModelMarkup() {
+  return `<section class="card mt-3" aria-labelledby="admin-plan-model-title"><div class="card-header"><div><h3 class="card-title" id="admin-plan-model-title">Khả năng cấu hình gói hiện hành</h3><p class="text-secondary small mb-0">Chỉ những trường được commercial policy hiện tại xác thực mới có thể chỉnh sửa.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody><tr><th scope="row">Giá theo năm</th><td><span class="badge bg-success-lt">Được hỗ trợ</span></td></tr><tr><th scope="row">Giá theo tháng</th><td>N/A · policy hiện tại chỉ hỗ trợ chu kỳ năm</td></tr><tr><th scope="row">Số ngày dùng thử</th><td>N/A · chưa có hợp đồng thương mại</td></tr><tr><th scope="row">Hạn mức lưu trữ</th><td>N/A · chưa có nguồn dữ liệu có thẩm quyền</td></tr><tr><th scope="row">Hạn mức tài liệu</th><td>N/A · hiện chỉ có quyền xuất tài liệu, không có quota</td></tr></tbody></table></div></section>`;
+}
+
 const CAPABILITY_LABELS = Object.freeze({
   "document.export.word": "Xuất Word",
   "document.export.excel": "Xuất Excel",
@@ -230,12 +240,14 @@ export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
   const current = payload?.currentRelease || null;
   const scheduled = payload?.scheduledRelease || null;
   const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
+  const releaseHistory = Array.isArray(payload?.releaseHistory) ? payload.releaseHistory : [];
   const empty = !current && !scheduled && drafts.length === 0;
   const currentActions = current
     ? `<button class="btn btn-sm btn-outline-primary" type="button" data-admin-plan-action="clone" data-release-id="${text(current.id)}">Nhân bản</button> <button class="btn btn-sm btn-outline-danger" type="button" data-admin-plan-action="stop-sales" data-release-id="${text(current.id)}"${current.nonSellable ? " disabled" : ""}>Dừng bán</button>`
     : "";
   const releaseManagement = empty ? adminStateMarkup("empty", { message: "Chưa có phiên bản gói dịch vụ hoặc bản nháp thương mại." }) : `<div class="row row-cards"><div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div><div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mọi thay đổi dùng quy trình versioned policy hiện hành.</p></div></div>${draftTable(drafts)}</section></div>${editor ? `<div class="col-12">${editor}</div>` : ""}</div>`;
-  return `<div class="d-flex justify-content-end mb-3"><button class="btn btn-primary" type="button" data-admin-plan-action="create">Tạo bản nháp</button></div>${catalog ? `${catalogMarkup(catalog)}<hr class="my-4"><h3 class="h2 mb-3">Quản lý phiên bản</h3>` : ""}${releaseManagement}<div class="mt-3" id="admin-plan-status" aria-live="polite"></div>`;
+  const history = `<section class="card mt-3" aria-labelledby="commercial-release-history-title"><div class="card-header"><div><h3 class="card-title" id="commercial-release-history-title">Lịch sử phát hành thương mại</h3><p class="text-secondary small mb-0">Tối đa 20 bản gần nhất từ kho phát hành bất biến.</p></div></div>${releaseHistoryMarkup(releaseHistory)}</section>`;
+  return `<div class="d-flex justify-content-end mb-3"><button class="btn btn-primary" type="button" data-admin-plan-action="create">Tạo bản nháp</button></div>${catalog ? `${catalogMarkup(catalog)}<hr class="my-4"><h3 class="h2 mb-3">Quản lý phiên bản</h3>` : ""}${releaseManagement}${planModelMarkup()}${history}<div class="mt-3" id="admin-plan-status" aria-live="polite"></div>`;
 }
 
 function mutationKey(action) {
