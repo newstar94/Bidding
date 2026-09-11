@@ -260,7 +260,11 @@ test("user and organization details keep keyboard focus and execute authoritativ
       ...DIRECTORY_PAGE.items[0],
       activeSessionCount: 1,
       organizationCount: 0,
-      subscription: null,
+      subscription: { packageId: "personal", status: "active" },
+      availablePackages: [
+        { id: "personal", name: "Cá nhân" },
+        { id: "business", name: "Doanh nghiệp" },
+      ],
       usage: null,
       recentAudit: [],
       links: { sessions: "/admin/security?userId=user-e2e", audit: "/admin/audit?actorUserId=user-e2e" },
@@ -280,6 +284,10 @@ test("user and organization details keep keyboard focus and execute authoritativ
   await context.route("**/api/auth/users/update-metadata", async (route) => {
     mutations.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
     await fulfillJson(route, { ok: true });
+  });
+  await context.route("**/api/auth/users/access-settings", async (route) => {
+    mutations.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    await fulfillJson(route, { success: true });
   });
   await context.route("**/api/organizations/subscription", async (route) => {
     mutations.push({
@@ -304,6 +312,21 @@ test("user and organization details keep keyboard focus and execute authoritativ
     path: "/api/auth/users/update-metadata",
     body: { user_id: "user-e2e", field: "name", value: "Tên đã cập nhật" },
   });
+  await userDrawer.getByLabel("Gói dịch vụ cá nhân").selectOption("business");
+  await userDrawer.getByRole("button", { name: "Lưu thiết lập" }).click();
+  await expect.poll(() => mutations.length).toBe(2);
+  expect(mutations[1]).toEqual({
+    path: "/api/auth/users/access-settings",
+    body: {
+      user_id: "user-e2e",
+      platform_role: "user",
+      account_package_id: "business",
+      organization_id: null,
+      organization_role: null,
+      organization_package_id: null,
+      document_capabilities: null,
+    },
+  });
 
   await page.locator('[data-admin-link="/admin/organizations"]').click();
   await expectAdminReady(page, "Tổ chức");
@@ -311,10 +334,10 @@ test("user and organization details keep keyboard focus and execute authoritativ
   const organizationDrawer = page.locator("[data-admin-detail-drawer]");
   await expect(organizationDrawer.getByLabel("Đóng")).toBeFocused();
   await organizationDrawer.getByRole("button", { name: "Khóa đăng ký" }).click();
-  await expect.poll(() => mutations.length).toBe(2);
-  expect(mutations[1].path).toBe("/api/organizations/subscription");
-  expect(mutations[1].body).toEqual({ organization_id: "org-e2e", action: "lock" });
-  expect(mutations[1].idempotencyKey).toMatch(/^admin-org:lock:/u);
+  await expect.poll(() => mutations.length).toBe(3);
+  expect(mutations[2].path).toBe("/api/organizations/subscription");
+  expect(mutations[2].body).toEqual({ organization_id: "org-e2e", action: "lock" });
+  expect(mutations[2].idempotencyKey).toMatch(/^admin-org:lock:/u);
 });
 
 test("commercial plans and payments send versioned and audited mutations", async ({ context, page }) => {
@@ -570,6 +593,15 @@ test("overview renders authoritative charts, table fallbacks, activity, and acti
       title: "Hóa đơn quá hạn", message: "Có 1 mục cần rà soát.", count: 1,
       href: "/admin/organizations?subscriptionStatus=expired",
     }],
+    charts: [{
+      key: "newOrganizations",
+      label: "Tổ chức mới",
+      series: [{
+        key: "newOrganizations",
+        label: "Tổ chức mới",
+        points: [{ date: "2026-09-09", value: 1 }, { date: "2026-09-10", value: 2 }],
+      }],
+    }],
     generatedAt: "2026-09-10T08:00:00Z",
   }));
 
@@ -580,6 +612,8 @@ test("overview renders authoritative charts, table fallbacks, activity, and acti
   const organizationFallback = page.getByRole("table", { name: "Dữ liệu dạng bảng của Tình trạng tổ chức" });
   await expect(organizationFallback).toContainText("Hoạt động");
   await expect(organizationFallback).toContainText("9");
+  await expect(page.getByRole("heading", { name: "Xu hướng và phân bố" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Tổ chức mới", exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Hoạt động nền tảng gần đây" })).toContainText("Công ty Sao Mai");
   const alert = page.locator("article.alert-warning").filter({ hasText: "Hóa đơn quá hạn" });
   await expect(alert).toContainText("Có 1 mục cần rà soát");
