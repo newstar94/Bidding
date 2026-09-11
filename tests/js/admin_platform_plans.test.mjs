@@ -5,8 +5,32 @@ import {
   catalogMarkup,
   draftEditorMarkup,
   plansMarkup,
+  requestPlanActionInput,
   serializeDraftDocument,
 } from "../../frontend/admin-platform/AdminPlans.js";
+
+test("plan mutations use the shared accessible dialog and preserve required reasons", async () => {
+  const requests = [];
+  const requestValue = async (options) => {
+    requests.push(options);
+    return options.label ? "  Lý do đã duyệt  " : "";
+  };
+
+  assert.equal(await requestPlanActionInput("clone", { requestValue }), true);
+  assert.equal(await requestPlanActionInput("stop-sales", { requestValue }), "Lý do đã duyệt");
+  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Lý do đã duyệt");
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].label, null);
+  assert.match(requests[1].message, /Quyền lợi đã áp dụng không thay đổi/u);
+  assert.equal(requests[2].label, "Lý do xuất bản (bắt buộc)");
+});
+
+test("plan mutations stop cleanly when the shared dialog is cancelled", async () => {
+  const requestValue = async () => null;
+  assert.equal(await requestPlanActionInput("clone", { requestValue }), false);
+  assert.equal(await requestPlanActionInput("stop-sales", { requestValue }), null);
+  assert.equal(await requestPlanActionInput("publish", { requestValue }), null);
+});
 
 function field(value = "", checked = false) {
   return { value: String(value), checked, classList: { add() {}, remove() {} } };

@@ -197,39 +197,55 @@ function newIdempotencyKey() {
   return `admin-refund:${Array.from(bytes, (value) => value.toString(16).padStart(8, "0")).join("")}`;
 }
 
+export function adminValueDialogMarkup({
+  title, message, label, type = "text", inputMode = "text", autocomplete = null,
+  confirmLabel = "Tiếp tục",
+}) {
+  const autocompleteValue = autocomplete || (type === "password" ? "current-password" : "off");
+  const field = label === null
+    ? ""
+    : `<label class="form-label">${escapeHtml(label)}<input class="form-control" name="value" type="${escapeHtml(type)}" inputmode="${escapeHtml(inputMode)}" required autocomplete="${escapeHtml(autocompleteValue)}"></label>`;
+  return `<div class="modal-dialog modal-dialog-centered" role="document"><form class="modal-content"><div class="modal-header"><h2 id="admin-prompt-title" class="modal-title">${escapeHtml(title)}</h2></div><div class="modal-body"><p class="text-secondary" id="admin-prompt-description">${escapeHtml(message)}</p>${field}</div><div class="modal-footer"><button class="btn btn-link link-secondary" type="button" data-admin-prompt-cancel>Hủy</button><button class="btn btn-primary" type="submit">${escapeHtml(confirmLabel)}</button></div></form></div>`;
+}
+
 export function requestAdminValue({
   title, message, label, type = "text", inputMode = "text", autocomplete = null,
+  confirmLabel = "Tiếp tục",
 }) {
   if (!globalThis.document?.body) return Promise.resolve(null);
+  const opener = document.activeElement;
   const modal = document.createElement("div");
   modal.className = "modal modal-blur show";
   modal.tabIndex = -1;
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
   modal.setAttribute("aria-labelledby", "admin-prompt-title");
+  modal.setAttribute("aria-describedby", "admin-prompt-description");
   modal.style.display = "block";
-  const autocompleteValue = autocomplete || (type === "password" ? "current-password" : "off");
-  modal.innerHTML = trustedHTML(`<div class="modal-dialog modal-dialog-centered" role="document"><form class="modal-content"><div class="modal-header"><h2 id="admin-prompt-title" class="modal-title">${escapeHtml(title)}</h2></div><div class="modal-body"><p class="text-secondary">${escapeHtml(message)}</p><label class="form-label">${escapeHtml(label)}<input class="form-control" name="value" type="${escapeHtml(type)}" inputmode="${escapeHtml(inputMode)}" required autocomplete="${escapeHtml(autocompleteValue)}"></label></div><div class="modal-footer"><button class="btn btn-link link-secondary" type="button" data-admin-prompt-cancel>Hủy</button><button class="btn btn-primary" type="submit">Tiếp tục</button></div></form></div>`);
+  modal.innerHTML = trustedHTML(adminValueDialogMarkup({
+    title, message, label, type, inputMode, autocomplete, confirmLabel,
+  }));
   document.body.append(modal);
   const input = modal.querySelector("input[name='value']");
   return new Promise((resolve) => {
     let settled = false;
+    let releaseFocusTrap = () => {};
     const finish = (value) => {
       if (settled) return;
       settled = true;
+      releaseFocusTrap();
       modal.remove();
+      opener?.focus?.();
       resolve(value);
     };
     modal.querySelector("form")?.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!event.currentTarget.reportValidity()) return;
-      finish(String(input?.value || ""));
+      finish(input ? String(input.value || "") : "");
     });
     modal.querySelector("[data-admin-prompt-cancel]")?.addEventListener("click", () => finish(null));
-    modal.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") finish(null);
-    });
-    input?.focus();
+    releaseFocusTrap = trapAdminDialogFocus(modal, { onEscape: () => finish(null) });
+    (input || modal.querySelector("button[type='submit']"))?.focus();
   });
 }
 

@@ -7,6 +7,8 @@ import {
   renderAdminMarkup,
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { trustedHTML } from "../shared/trustedTypes.js";
+import { trapAdminDialogFocus } from "./AdminFocusTrap.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -49,7 +51,7 @@ export function auditDetailMarkup(item) {
   const details = item?.details && typeof item.details === "object"
     ? Object.entries(item.details).map(([key, value]) => detailRow(key, Array.isArray(value) ? value.join(", ") : value))
     : [];
-  return detailCard("Chi tiết sự kiện nhật ký", [
+  const rows = [
     detailRow("Thời gian", formatDateTime(item?.createdAt)),
     detailRow("Hành động", item?.action),
     detailRow("Người thực hiện", item?.actorUserId, "Hệ thống"),
@@ -61,7 +63,8 @@ export function auditDetailMarkup(item) {
     detailRow("Chuỗi nhật ký", item?.chainId),
     detailRow("Thứ tự", item?.sequence),
     ...details,
-  ].join(""));
+  ].join("");
+  return `<div class="offcanvas-header"><h2 class="offcanvas-title" id="admin-audit-detail-title">Chi tiết sự kiện nhật ký</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-security-detail-close></button></div><div class="offcanvas-body"><div class="table-responsive"><table class="table table-vcenter bf-admin-operation-table"><tbody>${rows}</tbody></table></div></div>`;
 }
 
 export function sessionDetailMarkup(item) {
@@ -105,6 +108,44 @@ function bindSafeDetails(results, payload, markup) {
   });
 }
 
+function bindAuditDetails(results, payload) {
+  results.querySelectorAll("[data-admin-security-detail-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelector("[data-admin-audit-detail-drawer]")?.remove();
+      document.querySelector("[data-admin-audit-detail-backdrop]")?.remove();
+      const item = payload?.items?.[Number(button.dataset.adminSecurityDetailIndex)];
+      if (!item) return;
+      const drawer = document.createElement("aside");
+      drawer.className = "offcanvas offcanvas-end show";
+      drawer.tabIndex = -1;
+      drawer.setAttribute("role", "dialog");
+      drawer.setAttribute("aria-modal", "true");
+      drawer.setAttribute("aria-labelledby", "admin-audit-detail-title");
+      drawer.setAttribute("data-admin-audit-detail-drawer", "");
+      drawer.style.visibility = "visible";
+      drawer.innerHTML = trustedHTML(auditDetailMarkup(item));
+      const backdrop = document.createElement("div");
+      backdrop.className = "offcanvas-backdrop fade show";
+      backdrop.setAttribute("data-admin-audit-detail-backdrop", "");
+      let closed = false;
+      let releaseFocusTrap = () => {};
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        releaseFocusTrap();
+        drawer.remove();
+        backdrop.remove();
+        button.focus();
+      };
+      drawer.querySelector("[data-admin-security-detail-close]")?.addEventListener("click", close);
+      backdrop.addEventListener("click", close);
+      releaseFocusTrap = trapAdminDialogFocus(drawer, { onEscape: close });
+      document.body.append(drawer, backdrop);
+      drawer.querySelector("button")?.focus();
+    });
+  });
+}
+
 export const AUDIT_DIRECTORY = Object.freeze({
   endpoint: "/api/admin/audit",
   title: "Nhật ký quản trị",
@@ -142,7 +183,7 @@ export const AUDIT_DIRECTORY = Object.freeze({
   rowMarkup(item, index) {
     return `<tr><td data-label="Thời gian">${formatDateTime(item?.createdAt)}</td><td data-label="Hành động"><strong>${text(item?.action)}</strong></td><td data-label="Đối tượng">${auditTarget(item)}</td><td data-label="Người thực hiện">${text(item?.actorUserId, "Hệ thống")}</td><td data-label="Tổ chức">${text(item?.organizationId, "Toàn nền tảng")}</td><td data-label="Kết quả">${escapeHtml(outcomeText(item?.result))}</td><td data-label="Request ID">${text(item?.requestId)}</td><td data-label="Chuỗi / thứ tự"><div>${text(item?.chainId)}</div><div class="small text-secondary">#${text(item?.sequence)}</div></td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-secondary" type="button" data-admin-security-detail-index="${index}">Xem</button></td></tr>`;
   },
-  bindResultActions(results, { payload }) { bindSafeDetails(results, payload, auditDetailMarkup); },
+  bindResultActions(results, { payload }) { bindAuditDetails(results, payload); },
 });
 
 export const SESSION_DIRECTORY = Object.freeze({

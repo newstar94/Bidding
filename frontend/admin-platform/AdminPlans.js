@@ -12,6 +12,7 @@ import {
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { requestAdminValue } from "./AdminBilling.js";
 import {
   classifyPublicCommercialResponse,
   formatCommercialMoney,
@@ -242,12 +243,50 @@ function mutationKey(action) {
   return `admin-plan-${action}-${suffix}`;
 }
 
-async function runWithStepUp(operation, { fetchImpl, signal } = {}) {
+export async function requestPlanActionInput(action, { requestValue = requestAdminValue } = {}) {
+  if (action === "clone") {
+    const confirmed = await requestValue({
+      title: "Nhân bản bản phát hành",
+      message: "Tạo bản nháp mới từ bản đang hiệu lực?",
+      label: null,
+      confirmLabel: "Nhân bản",
+    });
+    return confirmed !== null;
+  }
+  if (action === "stop-sales") {
+    const reason = await requestValue({
+      title: "Dừng bán bản phát hành",
+      message: "Dừng giao dịch mới của bản phát hành này? Quyền lợi đã áp dụng không thay đổi.",
+      label: "Lý do dừng bán (bắt buộc)",
+      confirmLabel: "Dừng bán",
+    });
+    return reason === null ? null : String(reason).trim() || null;
+  }
+  if (action === "publish") {
+    const reason = await requestValue({
+      title: "Xuất bản gói dịch vụ",
+      message: "Xuất bản toàn bộ bản nháp này?",
+      label: "Lý do xuất bản (bắt buộc)",
+      confirmLabel: "Xuất bản",
+    });
+    return reason === null ? null : String(reason).trim() || null;
+  }
+  return null;
+}
+
+async function runWithStepUp(operation, { fetchImpl, signal, requestValue = requestAdminValue } = {}) {
   try {
     return await operation();
   } catch (error) {
     if (!requiresPrivilegedReauthentication(error)) throw error;
-    const password = globalThis.prompt?.("Nhập lại mật khẩu để xác thực thao tác quản trị:", "");
+    const password = await requestValue({
+      title: "Xác thực thao tác quản trị",
+      message: "Nhập lại mật khẩu để tiếp tục thao tác nhạy cảm.",
+      label: "Mật khẩu",
+      type: "password",
+      autocomplete: "current-password",
+      confirmLabel: "Xác thực",
+    });
     if (!password) throw error;
     await postAdminJson("/api/auth/privileged-reauth", {
       body: { password }, fetchImpl, signal, retries: 0,
@@ -333,14 +372,13 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "clone") {
-          if (!globalThis.confirm?.("Tạo bản nháp mới từ bản đang hiệu lực?")) return;
+          if (!await requestPlanActionInput(action)) return;
           const key = mutationKey(action);
           await execute(action, () => postAdminJson(`/api/commercial/releases/${encodeURIComponent(button.dataset.releaseId)}/clone`, { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp từ bản đang hiệu lực.", { keepDraft: true });
           return;
         }
         if (action === "stop-sales") {
-          if (!globalThis.confirm?.("Dừng giao dịch mới của bản phát hành này? Quyền lợi đã áp dụng không thay đổi.")) return;
-          const reason = globalThis.prompt?.("Lý do dừng bán (bắt buộc):", "")?.trim();
+          const reason = await requestPlanActionInput(action);
           if (!reason) return;
           const key = mutationKey(action);
           await execute(action, () => postAdminJson(`/api/commercial/releases/${encodeURIComponent(button.dataset.releaseId)}/stop-sales`, { body: { reason, scope: { kind: "global" } }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã ghi sự kiện dừng bán.");
@@ -367,8 +405,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         }
         if (action === "publish") {
           if (!validationReady(validation)) return;
-          if (!globalThis.confirm?.("Xuất bản toàn bộ bản nháp này?")) return;
-          const reason = globalThis.prompt?.("Lý do xuất bản (bắt buộc):", "")?.trim();
+          const reason = await requestPlanActionInput(action);
           if (!reason) return;
           const local = container.querySelector?.("#admin-plan-effective")?.value || "";
           const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);

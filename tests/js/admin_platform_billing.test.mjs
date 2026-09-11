@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 import { directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
 import {
+  adminValueDialogMarkup,
   formatMinorMoney,
   executePaymentAction,
   invoiceRequestDetailMarkup,
@@ -10,9 +12,77 @@ import {
   INVOICE_DIRECTORY,
   paymentDetailMarkup,
   PAYMENT_DIRECTORY,
+  requestAdminValue,
   subscriptionDetailMarkup,
   SUBSCRIPTION_DIRECTORY,
 } from "../../frontend/admin-platform/AdminBilling.js";
+
+test("admin value dialog supports input and confirmation-only modes", () => {
+  const inputMarkup = adminValueDialogMarkup({
+    title: "Lý do", message: "Nhập lý do", label: "Lý do",
+  });
+  assert.match(inputMarkup, /<input[^>]+name="value"/u);
+  assert.match(inputMarkup, /id="admin-prompt-title"/u);
+
+  const confirmMarkup = adminValueDialogMarkup({
+    title: "Nhân bản", message: "Tạo bản nháp?", label: null, confirmLabel: "Nhân bản",
+  });
+  assert.doesNotMatch(confirmMarkup, /<input/u);
+  assert.match(confirmMarkup, />Nhân bản<\/button>/u);
+});
+
+test("admin value dialog closes on Escape and restores opener focus", async () => {
+  const previousDocument = globalThis.document;
+  const previousIsSupported = DOMPurify.isSupported;
+  const previousSanitize = DOMPurify.sanitize;
+  const opener = { focused: false, focus() { this.focused = true; } };
+  const listeners = new Map();
+  const form = {
+    addEventListener(type, listener) { listeners.set(`form:${type}`, listener); },
+    reportValidity() { return true; },
+  };
+  const input = { value: "", focus() {} };
+  const cancel = { addEventListener(type, listener) { listeners.set(`cancel:${type}`, listener); } };
+  const submit = { focus() {} };
+  const modal = {
+    style: {},
+    removed: false,
+    setAttribute() {},
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    removeEventListener(type) { listeners.delete(type); },
+    querySelector(selector) {
+      if (selector === "form") return form;
+      if (selector === "input[name='value']") return input;
+      if (selector === "[data-admin-prompt-cancel]") return cancel;
+      if (selector === "button[type='submit']") return submit;
+      return null;
+    },
+    querySelectorAll() { return [cancel, submit]; },
+    contains() { return false; },
+    remove() { this.removed = true; },
+  };
+  globalThis.document = {
+    activeElement: opener,
+    body: { append(node) { assert.equal(node, modal); } },
+    createElement() { return modal; },
+  };
+  DOMPurify.isSupported = true;
+  DOMPurify.sanitize = (value) => String(value);
+  try {
+    const pending = requestAdminValue({ title: "Xác nhận", message: "Tiếp tục?", label: null });
+    let prevented = false;
+    listeners.get("keydown")({ key: "Escape", preventDefault() { prevented = true; } });
+    assert.equal(await pending, null);
+    assert.equal(prevented, true);
+    assert.equal(modal.removed, true);
+    assert.equal(opener.focused, true);
+    assert.equal(listeners.has("keydown"), false);
+  } finally {
+    globalThis.document = previousDocument;
+    DOMPurify.isSupported = previousIsSupported;
+    DOMPurify.sanitize = previousSanitize;
+  }
+});
 
 test("billing directories emit only supported bounded server controls", () => {
   const subscriptions = readDirectoryState(

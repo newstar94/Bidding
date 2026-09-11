@@ -177,6 +177,8 @@ test("audit detail renders safe login and target fields without raw internals", 
   assert.match(markup, /Toàn nền tảng/u);
   assert.match(markup, /req-login-1|invalid_password/u);
   assert.doesNotMatch(markup, /raw-password|fingerprint-secret|192[.]0[.]2[.]44|audit-hash-secret/u);
+  assert.match(markup, /class="offcanvas-header"/u);
+  assert.match(markup, /data-admin-security-detail-close/u);
 });
 
 test("session detail includes lifecycle dates but excludes identifiers and authentication material", () => {
