@@ -1,15 +1,15 @@
 # BiddingFlow Tabler Admin Migration — Completion Report
 
-This report audits the implementation state reviewed at `8b54d941f61288b4630606ba218a7a2c68b320af`. The documentation-only commit containing this report necessarily has a later SHA. Results are separated into current local evidence, inherited earlier-SHA CI evidence and pending latest-SHA evidence; they are not merged into a broader claim than they prove.
+This report audits the implementation state reviewed at `d8fd08cb6abc103dc5ea35a853c0be8ed7b679e9`. The documentation-only commit containing this report necessarily has a later SHA. Local exact-HEAD evidence is separated from pending remote evidence; no earlier green run is treated as proof for a later commit.
 
 ## 1. Baseline
 
 | Item | Value |
 | --- | --- |
 | Migration baseline | `c0d8ebfc699258c28662f7d03e7bbadd507a9305` (parent of first Tabler-shell commit) |
-| Implementation SHA audited | `8b54d941f61288b4630606ba218a7a2c68b320af` |
+| Implementation SHA audited | `d8fd08cb6abc103dc5ea35a853c0be8ed7b679e9` |
 | Branch | `main` |
-| `origin/main` when documentation work began | `8b54d941f61288b4630606ba218a7a2c68b320af` |
+| `origin/main` when final verification began | `4ccb49913946fa612138b4124c90f2c849a5e8fe` |
 | Baseline CI | No single terminal baseline run was reconstructed for this report; historical prompt evidence recorded failures before the migration |
 | Latest implementation remote CI | Pending confirmation on the latest implementation SHA; do not infer it from earlier green runs |
 | Legal production release | Blocked by 27 external legal facts; no approval or production-public artifact is claimed |
@@ -33,7 +33,7 @@ The full codebase map, including frontend entry, backend service, DB tables and 
 - Entry: server-authorized `/admin` HTML shell in `views/admin/index.html`.
 - Frontend: vanilla ES modules under `frontend/admin-platform/`; `AdminApp.js` composes the shell and 17 declared routes.
 - Assets: locally bundled, pinned Tabler 1.4.0 CSS plus BiddingFlow theme CSS; no production CDN or demo application.
-- Backend: focused modules under `backend/admin/` for overview, directories, billing reads, security, operations and jobs/sync. Existing commercial, billing, analytics, legal and organization services are reused.
+- Backend: focused modules under `backend/admin/` for overview, authoritative activity, directories, billing reads, security, operational/process metrics and jobs/sync. Existing commercial, billing, analytics, legal and organization services are reused.
 - Authorization: every shell/API request is checked server-side for existing platform `super_admin`; organization-manager scope is not accepted as platform authority.
 - Data: dedicated online-only admin APIs; platform users, billing, invoice requests and secrets are not inserted into workspace offline sync/IndexedDB.
 - Database: existing normalized tables and aggregate facts are queried with bound parameters, allowlisted sort/filter mappings and bounded pagination.
@@ -42,20 +42,20 @@ The full codebase map, including frontend entry, backend service, DB tables and 
 
 | Route | Working scope |
 | --- | --- |
-| `/admin` | Authoritative KPI slots, accessible charts, recent activity and operational alerts; unsupported billing facts show unavailable |
-| `/admin/analytics` | Usage and product/commercial analytics with date presets/custom range, filters, charts and table fallback |
+| `/admin` | Authoritative KPI slots, prominent organization/account status charts with table fallback, mixed-source recent activity and operational alerts; unsupported billing facts show unavailable |
+| `/admin/analytics` | Usage, product/commercial and operational analytics with date presets/custom range, filters, charts, table fallback and explicit `N/A` for unavailable time series |
 | `/admin/organizations` | Server-paginated directory, filters, details, subscription/usage/activity links and supported lifecycle actions |
 | `/admin/users` | Server-paginated directory, filters, details, memberships/sessions/usage/audit and supported account actions |
 | `/admin/plans` | Authoritative public offers, releases, prices, benefits/capabilities, credit packs and structured versioned draft workflow |
 | `/admin/subscriptions` | Existing account/organization subscriptions, statuses, source and timeline |
-| `/admin/invoices` | Real invoice-request records and details; explicitly not a fabricated invoice ledger/document store |
+| `/admin/invoices` | Real invoice-request records, direct `/admin/invoices/{id}` links and back/forward-safe details; explicitly not a fabricated invoice ledger/document store |
 | `/admin/payments` | Billing orders, verified transaction history and supported reconcile/review/refund actions |
-| `/admin/settings` | Writable allowlisted feature switches in development/test; deployment-managed read-only state elsewhere |
-| `/admin/environment` | Allowlisted runtime status and configured/missing secret replacement; no secret readback |
+| `/admin/settings` | Writable allowlisted feature switches and their descriptions in development/test; no duplicated runtime/environment inventory |
+| `/admin/environment` | Allowlisted runtime/deployment metadata and configured/missing secret replacement; no duplicated feature-status card and no secret readback |
 | `/admin/legal` | Existing immutable/versioned legal catalog workflow |
 | `/admin/audit` | Bounded audit search/filter/sort/page and sanitized detail |
 | `/admin/security` | Failed-login, session, suspicious/authorization/admin-action summaries and sanitized session detail |
-| `/admin/health` | Application, PostgreSQL, storage, backup, sync/jobs and related sanitized operational state |
+| `/admin/health` | Application, PostgreSQL, storage, backup, sync/jobs, process/API/DB latency, 4xx/5xx, DB failure and worker/queue metrics in sanitized form |
 | `/admin/system/jobs` | Bounded job list/detail and eligible document-job retry |
 | `/admin/system/sync` | Bounded WebSocket/sync-event operations view |
 | `/admin/system/version` | Application, release, SHA/build, environment, schema and frontend asset identity |
@@ -67,17 +67,22 @@ The full codebase map, including frontend entry, backend service, DB tables and 
 | Platform-admin landing and navigation | Workspace tabs | Isolated `/admin` Tabler shell | `test_admin_platform_shell.py`, `admin_platform_router.test.mjs`, `admin-shell.spec.mjs` | Migrated |
 | Platform authorization | Workspace role/UI gating | Server-authorized shell and each API | Backend route tests and browser unauthorized-access case | Migrated without role-semantics change |
 | Overview KPIs | Static cards populated by legacy flow | Bounded aggregate endpoint; real/missing states | `test_admin_overview.py`, `admin_platform_overview.test.mjs` | Migrated |
+| Overview charts | No equivalent operational visualization | Real organization/account status distributions with accessible table fallback | `admin_platform_overview.test.mjs`, `admin-shell.spec.mjs` | Newly added and verified |
 | Recent organizations | Legacy overview table | `/admin/organizations`, overview activity | Directory/overview backend and JS tests | Migrated |
 | User search/list/detail | Legacy system-user table/modal | Paginated user page and detail drawer | Directory route/JS/E2E tests | Migrated |
 | Account status and metadata actions | Legacy modal/controller | Detail-drawer forms using existing mutation endpoints | Directory JS tests plus existing auth/organization suites | Migrated where backend already supports action |
 | Organization detail/lifecycle | Legacy dashboard/modal | Paginated organization page and detail drawer | Directory route/JS/E2E tests | Migrated |
 | Usage analytics | Legacy usage tab | Unified analytics center | Usage/product analytics tests and admin analytics tests | Migrated |
 | Product analytics views and filters | Legacy commercial-intelligence panel | Unified analytics center | `admin_platform_analytics.test.mjs`, existing product analytics tests | Migrated |
+| Operational analytics | Hard-coded or scattered status | Authoritative process/API/database/error/worker metrics with explicit unavailable states | Operational backend, analytics JS and browser tests | Newly added and verified |
 | Commercial catalog and versions | Legacy commercial control center | Plans page and structured draft editor | `admin_platform_plans.test.mjs`, commercial-policy backend tests | Migrated |
 | Draft validate/publish/clone/stop sales | Legacy commercial editor | Existing APIs from plans page | Plan/API JS tests and commercial-policy tests | Migrated |
 | Payment review/reconcile/refund | Legacy recent-order controls | Payment directory/detail/actions | Billing backend/JS tests | Migrated |
+| Invoice direct navigation | No dedicated route contract | `/admin/invoices/{id}` with reload and browser-history support | Router, operations and admin browser tests | Newly added and verified |
 | Legal catalog | Legacy overview card | Dedicated `/admin/legal` route | `admin_platform_legal.test.mjs` and legal versioning tests | Migrated |
 | Loading/empty/error/retry behavior | Per-view legacy behavior | Shared states and latest-request cancellation | State, directory, analytics and operations JS tests | Migrated and standardized |
+| Drawer keyboard behavior | Inconsistent legacy modals | Focus trap, Escape close and trigger-focus restoration | Admin accessibility/browser tests | Standardized and verified |
+| Settings/environment separation | Feature state appeared in both views | Settings owns editable flags; Environment owns runtime/deployment metadata and secrets | Operations JS and admin browser tests | De-duplicated and verified |
 | Legacy production entry points | Four workspace routes/tabs | Authorized redirects to Tabler destinations | `admin_legacy_removal.test.mjs`, `test_admin_platform_shell.py` | Legacy UI removed; redirects retained for compatibility |
 
 No legacy invoice ledger, invoice PDF download, arbitrary SQL console or admin impersonation existed. These are therefore not reported as silently migrated features.
@@ -86,14 +91,15 @@ No legacy invoice ledger, invoice PDF download, arbitrary SQL console or admin i
 
 | Classification | Functionality | Source / reason | Verification status |
 | --- | --- | --- | --- |
-| Migrated legacy | Overview, user/account administration, organization visibility/actions, usage analytics, product analytics, versioned commercial plans, payment actions and legal catalog | Replaces the four legacy platform tabs and their legacy-only view modules | Focused backend/JS tests pass; latest full CI pending |
+| Migrated legacy | Overview, user/account administration, organization visibility/actions, usage analytics, product analytics, versioned commercial plans, payment actions and legal catalog | Replaces the four legacy platform tabs and their legacy-only view modules | Focused and full local exact-HEAD gates pass; exact-final-SHA remote CI pending |
 | Newly added | Dedicated organization/user aggregate details and consistent server pagination | Required for the standalone operations console and large-data behavior | Focused directory and N+1 tests pass |
 | Newly added | Subscription directory | Makes existing account/organization subscription facts directly operable without changing lifecycle policy | Focused billing tests pass |
-| Newly added | Invoice-request directory/detail | Exposes the existing `billing_invoice_requests` workflow; explicitly not a fabricated invoice ledger | Focused billing tests pass |
-| Newly added | Settings/environment controls | Provides safe allowlisted development/test configuration and deployment-managed read-only production state | Focused operational and JS tests pass |
+| Newly added | Invoice-request directory/detail and deep link | Exposes the existing `billing_invoice_requests` workflow; explicitly not a fabricated invoice ledger | Focused billing plus router/browser deep-link tests pass |
+| Newly added | Settings/environment controls | Provides safe allowlisted development/test feature configuration separately from runtime/deployment metadata and secrets | Focused operational, JS and browser tests pass |
 | Newly added | Audit/security center | Operational visibility over existing sanitized audit/session facts | Focused security tests pass |
 | Newly added | Health/database/storage/backup/version pages | Replaces hard-coded labels with sanitized live status where measurable | Focused operational tests pass |
 | Newly added | Jobs/sync views and guarded document-job retry | Uses existing job and WebSocket event models; no outbox or document-content mutation | Focused system tests pass |
+| Quality gates | Large-data and frontend budgets | Enforces fixed query counts, bounded response sizes, asset/request budgets and maximum dashboard load | Exact-HEAD benchmark and frontend-budget gates pass |
 | Intentionally not added | Impersonation, arbitrary SQL, destructive entity deletion, fake invoice document, unsupported subscription mutation | Explicitly prohibited or unsupported by current authoritative services | Absence/security contracts covered by source review and focused tests |
 
 ## 6. Security Model
@@ -122,7 +128,7 @@ There is no raw environment-dump API and the client cannot submit arbitrary keys
 
 | Route | Permission | Service | Authoritative tables/source |
 | --- | --- | --- | --- |
-| `GET /api/admin/overview` | `super_admin` | `AdminOverviewService` / repository | Account, organization, subscriptions, orders and transactions |
+| `GET /api/admin/overview` | `super_admin` | `AdminOverviewService` / repository | Accounts, organizations, subscriptions, orders, transactions and mixed organization/payment/audit activity facts |
 | `GET /api/admin/users[/{id}]` | `super_admin` | `platform_directory_routes.py` | Accounts, memberships, organizations, subscriptions, sessions, usage, audit |
 | `GET /api/admin/organizations[/{id}]` | `super_admin` | `platform_directory_routes.py` | Organizations, memberships, accounts, subscriptions, sessions, usage, audit |
 | `GET /api/admin/subscriptions` | `super_admin` | `platform_billing_routes.py` | Account and organization subscriptions plus owners |
@@ -134,11 +140,17 @@ There is no raw environment-dump API and the client cannot submit arbitrary keys
 | `GET /api/admin/system/jobs[/{id}]` | `super_admin` | `platform_system_routes.py` | `document_jobs` |
 | `POST /api/admin/system/jobs/{id}/retry` | `super_admin` + CSRF + step-up + transactional recheck | `platform_system_routes.py` and existing job policy | `document_jobs`, audit |
 | `GET /api/admin/system/sync` | `super_admin` | `platform_system_routes.py` | `websocket_events` |
-| `GET /api/admin/health` | `super_admin` | `operational.py` | Sanitized live probes |
+| `GET /api/admin/health` | `super_admin` | `operational.py` and observability metrics | Sanitized live probes plus process, API/DB latency, response/error, worker and queue aggregates |
 | `GET/POST /api/admin/environment` | `super_admin`; POST also CSRF + step-up + transactional recheck | `operational.py` | Server allowlist/deployment config and audit |
 | `GET /api/admin/system/version` | `super_admin` | `operational.py` | Sanitized build/schema metadata |
+| `GET /api/admin/usage-analytics/summary` | `super_admin` | `usage_analytics/routes.py` / service | Aggregated usage facts |
+| `GET/POST /api/admin/product-analytics/{dashboard,refresh}` | `super_admin`; refresh retains mutation guards | `product_analytics/routes.py` / service | Aggregated product, commercial and operational analytics facts |
+| `GET /api/commercial/admin/overview`; draft/release mutations | Existing platform-commercial admin authority; mutations retain CSRF/audit contracts | `commercial_policy/routes.py` / service | Versioned commercial drafts, releases, SKUs, prices and benefits |
+| `POST /api/billing/admin/orders/{id}/{review,reconcile,refund}` | `super_admin` plus each existing billing mutation's step-up/idempotency/audit contract | `billing/routes.py` / service | Orders, transactions, provider state and audit |
+| `GET/POST /api/legal-versioning/*` used by the catalog | Existing legal platform authority; mutations retain CSRF/audit contracts | `legal_versioning/routes.py` / service | Immutable instruments, drafts, profiles, sources and bindings |
+| Existing account/organization mutation routes invoked from admin details | Their existing server-side platform/record authorization; no client-only grant | Auth and organization route services | Accounts, memberships, organizations, subscriptions and audit |
 
-Existing `/api/commercial/*`, `/api/billing/admin/*`, analytics, legal-versioning and account/organization mutation routes are reused rather than duplicated.
+The standalone admin read APIs are new focused seams; existing commercial, billing, analytics, legal and account/organization mutation routes are reused rather than duplicated. The route-to-table inventory is also maintained in `docs/admin-dashboard-architecture.md`.
 
 ## 9. Database Changes
 
@@ -148,30 +160,43 @@ The invoice page’s resource is the existing `billing_invoice_requests` table. 
 
 ## 10. Tests
 
-Commands executed on implementation SHA `8b54d941` during this documentation audit:
+Commands executed on implementation SHA `d8fd08cb` during final local verification:
 
 | Exact command | Exit / result |
 | --- | --- |
-| `python -m pytest -q tests/test_admin_platform_shell.py tests/test_admin_overview.py tests/test_admin_operational.py tests/test_admin_security_routes.py tests/test_platform_admin_directory_routes.py tests/test_platform_admin_billing_routes.py tests/test_platform_admin_system_routes.py tests/test_platform_admin_n_plus_one.py tests/test_benchmark_platform_admin.py` | Exit 0; 70 passed |
-| `node --test --test-concurrency=1 --test-timeout=60000 tests/js/admin_platform_*.test.mjs tests/js/admin_legacy_removal.test.mjs tests/js/admin_interaction_latency.test.mjs` | Exit 0; 101 passed |
+| `npm run check:static` | Exit 0 |
+| `npm run build:secure` | Exit 0 |
+| `python -m pytest -q --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json --cov-fail-under=45` | Exit 0; 2281 passed, 1 skipped; backend coverage 64.34% |
+| `python scripts/check_critical_coverage.py coverage.json` | Exit 0; all 16 critical modules passed |
+| `npm run test:js:coverage` | Exit 0; lines 54.45%, branches 65.91%, functions 68.46%; all 14 critical modules passed |
+| `npx playwright test e2e/specs/admin-shell.spec.mjs --config=playwright.config.mjs` | Exit 0; Chromium 16/16, Firefox 16/16, WebKit 16/16 |
+| `npm run test:e2e:smoke` through the isolated audit runner | Exit 0; 97 passed, 5 conditionally skipped across Chromium, Firefox and WebKit |
+| `npm run test:ui-quality-e2e` | Exit 0; 5/5 viewports passed overflow, accessible-name, keyboard, validation and network-state checks |
+| `python -m pytest -q -m browser_e2e tests/test_product_analytics_e2e.py` | Exit 0; 1 passed |
+| `npm run test:lifecycle` through the isolated audit runner with Google auth disabled as in CI | Exit 0; full lifecycle completed through historical-plan-package-frozen with no HTTP/console/page error |
+| `npm run test:performance` through the isolated audit runner | Exit 0; cold p95 1,015/2,100 ms, warm p95 129/450 ms, longest task 100/100 ms |
+| `python scripts/benchmark_platform_admin.py` | Exit 0; 10k users, 1k organizations, 25k invoice requests and 50k audit rows passed fixed-query and response-size budgets |
+| `npm run benchmark:platform-admin-frontend` | Exit 0; asset, initial-request and dashboard-load budgets passed |
+| `python scripts/audit_fk_indexes.py` | Exit 0; 214 foreign keys, none missing a usable child index |
+| `python scripts/package_production.py --check` | Exit 0; 870 files, 5,142,098 bytes; runtime smoke passed |
+| `npm audit && npm audit --omit=dev && pip-audit -r requirements.txt` | Exit 0; no known vulnerabilities reported |
 
-Earlier repository evidence on SHA `7bc7e968` records the full Python suite (2265 passed, 1 skipped), JS/critical coverage, secure build, static checks, 30/30 cross-browser admin checks and terminal green GitHub CI run `34541273596`. Those results predate later admin commits and are historical evidence only; they are not represented as a final run on `8b54d941` or on the documentation commit.
-
-The latest-SHA full Python/JS coverage, secure build, Playwright matrix, N+1, DB/FK and dependency/security gates remain pending in this report until their terminal outputs are observed by the integration owner.
+The existing workflow suite also passed locally on this SHA for auth shell/roles, bidder goods, CRUD modules, multi-assignee activity, joint venture, low-price conflict, five-run offline-sync soak and all 15 package pairs. Full lifecycle and startup performance passed in isolated CI-like runs. Exact-final-SHA remote GitHub CI is recorded only after its terminal outcome is observed.
 
 ## 11. CI Before / After
 
 | Check | Before | After / current evidence |
 | --- | --- | --- |
-| Static/quality | Historical Prompt 1 baseline had failures | Green on earlier SHA `7bc7e968`; latest implementation SHA pending |
-| Python and critical coverage | Historical baseline incomplete | Green on `7bc7e968`; 70 focused backend tests pass on `8b54d941`; latest full coverage pending |
-| JS coverage | Historical baseline incomplete | Green on `7bc7e968`; 101 focused JS tests pass on `8b54d941`; latest full coverage pending |
-| Secure build / CSP / vendor | No migration-final evidence | Green on `7bc7e968`; latest implementation SHA pending |
-| Admin E2E | Legacy workspace UI | 30/30 across Chromium/Firefox/WebKit on `7bc7e968`; later admin commits require final rerun |
-| Existing workflow E2E | Historical failures | Green on `7bc7e968`; latest implementation SHA pending |
-| N+1 / large data | No dedicated Tabler evidence | Fixed-query-count tests pass locally; PostgreSQL benchmark script exists; current live benchmark result pending unless separately recorded |
-| DB/FK/schema | No migration-specific change | Green on `7bc7e968`; latest full gate pending |
-| Dependency/security | No Tabler-final evidence | Green on `7bc7e968`; latest full gate pending |
+| Static/quality | Historical Prompt 1 baseline had failures | Exact-HEAD static and secure-build gates pass locally |
+| Python and critical coverage | Historical baseline incomplete | Exact-HEAD full suite: 2281 passed, 1 skipped, 64.34%; 16/16 critical modules pass |
+| JS coverage | Historical baseline incomplete | Exact-HEAD lines 54.45%, branches 65.91%, functions 68.46%; 14/14 critical modules pass |
+| Secure build / CSP / vendor | No migration-final evidence | Exact-HEAD secure build and production package/runtime smoke pass |
+| Admin E2E | Legacy workspace UI | Exact-HEAD 48/48 checks pass across Chromium, Firefox and WebKit; UI quality passes five responsive viewports |
+| Existing workflow E2E | Historical failures | Exact-HEAD auth, business workflow, lifecycle, offline soak and package-pairwise suites pass locally |
+| N+1 / large data | No dedicated Tabler evidence | Exact-HEAD benchmark passes fixed query counts and 256,000-byte response cap at required dataset sizes |
+| DB/FK/schema | No migration-specific change | Exact-HEAD FK audit passes for all 214 foreign keys; package/runtime schema smoke passes |
+| Dependency/security | No Tabler-final evidence | Exact-HEAD npm full/production and Python dependency audits report no known vulnerabilities |
+| GitHub exact-final-SHA | No final migration commit | Pending until documentation commit is pushed and its terminal checks are observed |
 | Production legal release | Blocked | Still blocked by 27 external facts; correctly not bypassed |
 
 ## 12. Performance
@@ -180,8 +205,11 @@ The latest-SHA full Python/JS coverage, secure build, Playwright matrix, N+1, DB
 - Overview: a bounded aggregate endpoint avoids serial page startup calls.
 - Queries: directory, billing, audit, jobs and sync screens use server-side pagination, bounded page size, allowlisted filters/sorts and stable ordering.
 - N+1: list/detail regressions assert constant query counts; focused backend tests passed in the current audit.
-- Large data: `scripts/benchmark_platform_admin.py` transactionally seeds 10,000 users, 1,000 organizations and 50,000 audit rows in `TEST_DATABASE_URL`, requires fixed query counts and caps response size. A fresh live PostgreSQL benchmark timing is not claimed here without a captured run.
-- Request races: shared directory/system loaders abort stale requests so older search results cannot overwrite newer results.
+- Large data: the isolated PostgreSQL benchmark passed with 100 rows/page and a 256,000-byte response cap. Users (10,000) used 3 queries, median 29.79 ms, max 33.94 ms, max 45,843 bytes; organizations (1,000) used 3 queries, median 22.48 ms, max 28.90 ms, max 33,873 bytes; invoice requests (25,000) used 2 queries, median 160.72 ms, max 195.97 ms, max 67,891 bytes; audit rows (50,000) used 2 queries, median 9.36 ms, max 12.17 ms, max 28,867 bytes.
+- Frontend budget: admin JavaScript 382,163/425,000 bytes, admin CSS 538,298/575,000 bytes, 10/12 initial requests and 848.9/1,500 ms maximum dashboard load; all limits passed.
+- Startup: the isolated 30-run gate passed with cold p95 1,015/2,100 ms, warm p95 129/450 ms and longest task 100/100 ms; no runtime failures were recorded.
+- Request races: shared directory, system, invoice and detail loaders abort stale requests so older responses cannot overwrite newer results.
+- Limitation: no numeric pre-migration performance capture was available, so this report does not invent a before/after delta.
 
 ## 13. Legacy Removal
 
@@ -199,16 +227,16 @@ The generic organization/account controller remains because it serves workspace 
 
 ## 14. Remaining Risks
 
-1. Terminal full CI has not yet been observed on the latest implementation/documentation SHA; focused local success is not a substitute.
+1. Terminal GitHub CI has not yet been observed on the exact final documentation SHA; complete local success is not a substitute.
 2. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
 3. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
-4. The live 10k/1k/50k PostgreSQL benchmark must be run in an isolated `TEST_DATABASE_URL` environment before attaching environment-specific timing evidence.
+4. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
 5. Production publication remains blocked by 27 external legal facts; engineering completion cannot approve them.
 
 ## 15. Recommended Next Steps
 
-1. Run and observe the repository’s complete current-SHA CI matrix, including all three browsers and representative 1440, 1280, tablet and mobile admin viewports.
-2. Run `python scripts/benchmark_platform_admin.py` against an isolated PostgreSQL test database and retain its query-count/body-size/timing output.
+1. Push the final documentation commit and observe terminal GitHub checks on that exact SHA.
+2. Retain the exact-HEAD local gate outputs and benchmark artifacts as release evidence.
 3. If product requires fiscal invoice documents rather than invoice requests, approve an invoice-domain contract before designing schema, provider workflow or mutation UI.
 4. Decide whether finer platform roles are commercially required; do not alias organization roles into platform authority.
 5. Resolve the 27 external legal facts independently before any production-public release.

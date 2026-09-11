@@ -6,6 +6,7 @@ const username = String(process.env.E2E_USERNAME || process.env.ADMIN_USERNAME |
 const password = String(process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || "");
 const clock = createE2ETestClock();
 const FIREFOX_RESET_URL = "data:text/html,<meta charset=utf-8><title>BiddingFlow test reset</title>";
+const PLAN_BREAKDOWN_SAVE_TIMEOUT_MS = 30_000;
 
 test.use({ serviceWorkers: "block" });
 test.setTimeout(300_000);
@@ -192,7 +193,7 @@ async function dismissOptionalDialog(page) {
   await expect(dialog).toBeHidden();
 }
 
-async function savePlanBreakdown(page, timeout = 30_000) {
+async function savePlanBreakdown(page, timeout = PLAN_BREAKDOWN_SAVE_TIMEOUT_MS) {
   await page.locator("#btn-save-plan-breakdown").click();
   await expect(page.locator("#modal-plan-breakdown.active")).toBeHidden({ timeout });
   await dismissOptionalDialog(page);
@@ -470,10 +471,13 @@ async function createPlan01(page, { planCode }) {
   await page.locator("#kh-thoigiandang").fill(clock.dateTime(-30, "08:00"));
   await page.locator("#form-kehoach button[type='submit']").click();
   await expect(page.locator("#modal-plan-breakdown.active")).toBeVisible();
+  // Version creation starts after the editor finishes loading the package
+  // aggregate. Keep the network assertion on the same operation budget as the
+  // semantic modal-close assertion instead of Playwright's shorter default.
   const versionResponsePromise = page.waitForResponse((response) => (
     response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/versioning/aggregate"
-  ));
+  ), { timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS });
   const latestPlanResponse = waitForPlanSearchResponse(page, planCode, {
     expectedVersion: 1,
   });
