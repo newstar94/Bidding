@@ -548,12 +548,28 @@ def _user_detail(request):
             return _response({"error": "Người dùng không tồn tại."}, status_code=404)
         memberships = cursor.execute(
             """SELECT organization.id, organization.ten_to_chuc AS name,
+                      organization.trang_thai AS organization_status,
                       membership.vai_tro_trong_to_chuc AS role,
                       membership.ten_nhan_su AS employee_name,
                       membership.so_dien_thoai AS employee_phone,
-                      membership.trang_thai_thanh_vien AS status
+                      membership.trang_thai_thanh_vien AS status,
+                      subscription.package_id,
+                      subscription.status AS subscription_status,
+                      subscription.starts_at, subscription.expires_at,
+                      subscription.member_quota,
+                      subscription.revision AS subscription_revision,
+                      package.trang_thai AS package_status,
+                      capabilities.financial AS export_financial,
+                      capabilities.identity AS export_identity,
+                      capabilities.signature AS export_signature
                  FROM thanh_vien_to_chuc membership
                  JOIN to_chuc organization ON organization.id = membership.organization_id
+                 LEFT JOIN organization_subscriptions subscription
+                   ON subscription.organization_id = organization.id
+                 LEFT JOIN goi_dich_vu package ON package.id = subscription.package_id
+                 LEFT JOIN document_export_capabilities capabilities
+                   ON capabilities.organization_id = organization.id
+                  AND capabilities.user_id = membership.user_id
                 WHERE membership.user_id = ?
                 ORDER BY lower(organization.ten_to_chuc), organization.id
                 LIMIT ?""",
@@ -577,6 +593,11 @@ def _user_detail(request):
                 ORDER BY created_at DESC, id DESC LIMIT ?""",
             (user_id, user_id, _DETAIL_AUDIT_LIMIT),
         ).fetchall()
+        available_packages = cursor.execute(
+            """SELECT id, ten_goi AS name FROM goi_dich_vu
+               WHERE trang_thai = 'active'
+               ORDER BY lower(ten_goi), id"""
+        ).fetchall()
     finally:
         connection.close()
     encoded_user_id = quote(user_id, safe="")
@@ -589,13 +610,12 @@ def _user_detail(request):
             "lastActiveAt": _json_value(row["last_active_at"]),
             "activeSessionCount": int(row["active_session_count"] or 0),
             "subscription": _subscription(row),
-            "organizations": [
-                {"id": item["id"], "name": item["name"], "role": item["role"],
-                 "employeeName": item["employee_name"], "employeePhone": item["employee_phone"],
-                 "status": item["status"]}
-                for item in memberships
-            ],
+            "organizations": [_user_membership_detail(item, now) for item in memberships],
             "organizationCount": membership_total,
+            "availablePackages": [
+                {"id": item["id"], "name": item["name"]}
+                for item in available_packages
+            ],
             "usage": {"eventCount": int(usage["event_count"] or 0),
                       "lastSeenAt": _json_value(usage["last_seen_at"])},
             "recentAudit": _audit_items(audit),
@@ -608,6 +628,42 @@ def _user_detail(request):
         },
         "limits": {"organizations": _DETAIL_MEMBER_LIMIT, "audit": _DETAIL_AUDIT_LIMIT},
     })
+
+
+def _user_membership_detail(row, now):
+    package_id = row["package_id"]
+    subscription_status = (
+        str(row["subscription_status"] or "missing").strip().lower()
+        if package_id is not None
+        else None
+    )
+    expires_at = int(row["expires_at"]) if row["expires_at"] is not None else None
+    if subscription_status and expires_at is not None and expires_at <= now:
+        subscription_status = "expired"
+    word_export = bool(
+        row["organization_status"] == "active"
+        and subscription_status == "active"
+        and row["package_status"] == "active"
+    )
+    return {
+        "id": row["id"], "name": row["name"], "role": row["role"],
+        "employeeName": row["employee_name"],
+        "employeePhone": row["employee_phone"], "status": row["status"],
+        "subscription": ({
+            "packageId": package_id,
+            "status": subscription_status,
+            "startsAt": _json_value(row["starts_at"]),
+            "expiresAt": _json_value(row["expires_at"]),
+            "memberQuota": int(row["member_quota"] or 0),
+            "revision": int(row["subscription_revision"] or 0),
+        } if package_id is not None else None),
+        "entitlements": {"wordExport": word_export},
+        "documentCapabilities": {
+            "financial": bool(row["export_financial"]),
+            "identity": bool(row["export_identity"]),
+            "signature": bool(row["export_signature"]),
+        },
+    }
 
 
 def _organization_detail(request):

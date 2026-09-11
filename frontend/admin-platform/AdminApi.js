@@ -29,6 +29,8 @@ function assertAdminPath(path, method = "GET") {
     && /^\/api\/billing\/admin\/orders\/[^/?#]+\/(?:review|reconcile|refund)$/u.test(value);
   const approvedUserCommand = verb === "POST"
     && ["/api/auth/users/update-role", "/api/auth/users/update-metadata"].includes(value);
+  const approvedUserAccessSettings = verb === "PUT"
+    && value === "/api/auth/users/access-settings";
   const approvedUserDeactivation = verb === "DELETE"
     && /^\/api\/auth\/users\/[^/?#]+$/u.test(value);
   const approvedOrganizationSubscription = verb === "POST"
@@ -38,6 +40,7 @@ function assertAdminPath(path, method = "GET") {
   const approved = platformPath || approvedEnvironmentUpdate || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
     || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
+    || approvedUserAccessSettings
     || approvedOrganizationSubscription || approvedReauthentication
     || approvedActiveRoleTransition;
   if (!approved || /[?#]/u.test(value)) {
@@ -153,6 +156,33 @@ export async function postAdminJson(path, {
   if (!response.ok) {
     throw adminError(response, payload);
   }
+  return payload;
+}
+
+export async function putAdminJson(path, {
+  body = {}, signal, fetchImpl = globalThis.fetch,
+} = {}) {
+  const url = assertAdminPath(path, "PUT");
+  if (typeof fetchImpl !== "function") {
+    throw new AdminApiError("Trình duyệt không hỗ trợ kết nối tới máy chủ.", { code: "FETCH_UNAVAILABLE" });
+  }
+  let response;
+  try {
+    response = await apiFetch(url, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+      handleHttpErrors: false,
+      workspaceContext: false,
+      retries: 0,
+    }, fetchImpl);
+  } catch (cause) {
+    if (signal?.aborted) throw cause;
+    throw new AdminApiError("Không thể kết nối tới máy chủ.", { code: "NETWORK_ERROR", cause });
+  }
+  const payload = await readPayload(response);
+  if (!response.ok) throw adminError(response, payload);
   return payload;
 }
 

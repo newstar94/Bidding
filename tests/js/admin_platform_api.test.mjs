@@ -6,6 +6,7 @@ import {
   getAdminJson,
   patchAdminJson,
   postAdminJson,
+  putAdminJson,
 } from "../../frontend/admin-platform/AdminApi.js";
 
 test("admin API uses same-origin credentials without workspace organization headers", async () => {
@@ -42,6 +43,49 @@ test("admin API never inherits the workspace organization stored by the main app
         });
       },
     });
+    assert.equal(new Headers(request.options.headers).has("X-Active-Org"), false);
+  } finally {
+    if (previousSessionStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousSessionStorage;
+    if (previousLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousLocalStorage;
+  }
+});
+
+test("user access settings PUT never inherits the active workspace organization", async () => {
+  const previousSessionStorage = globalThis.sessionStorage;
+  const previousLocalStorage = globalThis.localStorage;
+  globalThis.sessionStorage = { getItem: (key) => key === "bf_active_org" ? "workspace-session" : null };
+  globalThis.localStorage = { getItem: (key) => key === "bf_active_org" ? "workspace-local" : null };
+  const body = {
+    user_id: "user-1",
+    platform_role: "user",
+    account_package_id: "personal",
+    organization_id: "org-1",
+    organization_role: "employee",
+    organization_package_id: "business",
+    document_capabilities: {
+      financial: true,
+      identity: false,
+      signature: true,
+    },
+  };
+  let request;
+  try {
+    await putAdminJson("/api/auth/users/access-settings", {
+      body,
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+    assert.equal(request.url, "/api/auth/users/access-settings");
+    assert.equal(request.options.method, "PUT");
+    assert.equal(request.options.credentials, "same-origin");
+    assert.deepEqual(JSON.parse(request.options.body), body);
     assert.equal(new Headers(request.options.headers).has("X-Active-Org"), false);
   } finally {
     if (previousSessionStorage === undefined) delete globalThis.sessionStorage;

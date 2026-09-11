@@ -103,11 +103,27 @@ test("detail drawers preserve authoritative user, membership and subscription va
     usage: { eventCount: 8, lastSeenAt: 210 },
     recentAudit: [{ action: "user.updated", createdAt: "2026-03-01", targetType: "user", targetId: "user-1" }],
     links: { sessions: "/admin/security?userId=user-1", audit: "/admin/audit?actorUserId=user-1" },
-    organizations: [{ name: "Công ty An Bình", role: "manager", employeeName: "Nguyễn An", employeePhone: "0901" }],
+    availablePackages: [{ id: "personal", name: "Cá nhân" }, { id: "business", name: "Doanh nghiệp" }],
+    organizations: [{
+      id: "org-1", name: "Công ty An Bình", role: "manager",
+      employeeName: "Nguyễn An", employeePhone: "0901",
+      subscription: { packageId: "business", status: "active" },
+      entitlements: { wordExport: true },
+      documentCapabilities: { financial: true, identity: true, signature: true },
+    }],
   });
   assert.match(userMarkup, /an@example[.]test/u);
   assert.match(userMarkup, /Nguyễn An · 0901/u);
-  assert.match(userMarkup, /data-admin-user-form="role"/u);
+  assert.match(userMarkup, /data-admin-user-form="access_settings"/u);
+  assert.match(userMarkup, /name="platform_role"/u);
+  assert.match(userMarkup, /name="account_package_id"/u);
+  assert.match(userMarkup, /name="organization_id"/u);
+  assert.match(userMarkup, /name="organization_role"/u);
+  assert.match(userMarkup, /name="organization_package_id"/u);
+  assert.match(userMarkup, /name="document_capability_financial"/u);
+  assert.match(userMarkup, /name="document_capability_identity"/u);
+  assert.match(userMarkup, /name="document_capability_signature"/u);
+  assert.match(userMarkup, />Doanh nghiệp</u);
   assert.match(userMarkup, /data-admin-user-action="deactivate"/u);
   assert.match(userMarkup, /Phiên hoạt động/u);
   assert.match(userMarkup, />2</u);
@@ -190,6 +206,39 @@ test("user platform-role action uses the explicit authoritative scope", async ()
     user_id: "user-1", role: "super_admin", scope: "platform",
   });
   assert.equal(new Headers(requests[0].options.headers).has("X-Active-Org"), false);
+});
+
+test("user access-settings action preserves the legacy authoritative contract", async () => {
+  const requests = [];
+  const value = {
+    platform_role: "user",
+    account_package_id: "personal",
+    organization_id: "org-1",
+    organization_role: "employee",
+    organization_package_id: "business",
+    document_capabilities: { financial: true, identity: false, signature: true },
+  };
+  const result = await executeUserDirectoryAction(
+    "access_settings",
+    { id: "user-1", name: "Minh An" },
+    value,
+    {
+      confirmImpl: async () => true,
+      fetchImpl: async (url, options) => {
+        requests.push({ url, options });
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      },
+    },
+  );
+
+  assert.equal(result.payload.success, true);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/api/auth/users/access-settings");
+  assert.equal(requests[0].options.method, "PUT");
+  assert.deepEqual(JSON.parse(requests[0].options.body), { user_id: "user-1", ...value });
+  assert.equal(Object.hasOwn(JSON.parse(requests[0].options.body), "permissions"), false);
 });
 
 test("organization command retains one idempotency key across privileged reauthentication", async () => {

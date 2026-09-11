@@ -81,6 +81,19 @@ def _database():
             expires_at INTEGER,
             revision INTEGER NOT NULL
         );
+        CREATE TABLE goi_dich_vu (
+            id TEXT PRIMARY KEY,
+            ten_goi TEXT NOT NULL,
+            trang_thai TEXT NOT NULL
+        );
+        CREATE TABLE document_export_capabilities (
+            organization_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            financial INTEGER NOT NULL,
+            identity INTEGER NOT NULL,
+            signature INTEGER NOT NULL,
+            PRIMARY KEY (organization_id, user_id)
+        );
         CREATE TABLE auth_sessions (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -139,6 +152,15 @@ def _database():
     connection.execute(
         "INSERT INTO account_subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         ("user-2", "personal", "plan-v1", "active", "admin", 100, 4102444800, 3),
+    )
+    connection.executemany(
+        "INSERT INTO goi_dich_vu VALUES (?, ?, ?)",
+        (("personal", "Cá nhân", "active"), ("business", "Doanh nghiệp", "active"),
+         ("retired", "Ngừng bán", "inactive")),
+    )
+    connection.execute(
+        "INSERT INTO document_export_capabilities VALUES (?, ?, ?, ?, ?)",
+        ("org-a", "user-2", 1, 0, 1),
     )
     connection.executemany(
         "INSERT INTO auth_sessions VALUES (?, ?, ?, ?, ?, ?)",
@@ -420,6 +442,19 @@ def test_user_detail_returns_bounded_activity_subscription_usage_and_encoded_lin
         }
         assert user["organizationCount"] == 27
         assert len(user["organizations"]) == 20
+        assert user["availablePackages"] == [
+            {"id": "personal", "name": "Cá nhân"},
+            {"id": "business", "name": "Doanh nghiệp"},
+        ]
+        alpha = next(item for item in user["organizations"] if item["id"] == "org-a")
+        assert alpha["subscription"] == {
+            "packageId": "business", "status": "active", "startsAt": 100,
+            "expiresAt": 4102444800, "memberQuota": 20, "revision": 2,
+        }
+        assert alpha["entitlements"] == {"wordExport": True}
+        assert alpha["documentCapabilities"] == {
+            "financial": True, "identity": False, "signature": True,
+        }
         assert user["usage"] == {"eventCount": 10, "lastSeenAt": 250}
         assert len(user["recentAudit"]) == 10
         assert payload["limits"] == {"organizations": 20, "audit": 10}

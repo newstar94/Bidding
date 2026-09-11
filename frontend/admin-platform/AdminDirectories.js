@@ -1,5 +1,5 @@
 import { renderAdminDirectory } from "./AdminDirectory.js";
-import { deleteAdminJson, getAdminJson, postAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
+import { deleteAdminJson, getAdminJson, postAdminJson, putAdminJson, requiresPrivilegedReauthentication } from "./AdminApi.js";
 import { requestAdminValue } from "./AdminBilling.js";
 import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -41,6 +41,26 @@ function idempotencyKey(action) {
   return `admin-org:${action}:${random}`;
 }
 
+function packageOptionsMarkup(packages, selectedValue) {
+  const selected = String(selectedValue || "none");
+  const noneSelected = selected === "none" ? " selected" : "";
+  const items = Array.isArray(packages) ? packages : [];
+  return `<option value="none"${noneSelected}>Không có gói trả phí</option>${items.map((item) => {
+    const id = String(item?.id || "");
+    return `<option value="${text(id, "")}"${id === selected ? " selected" : ""}>${text(item?.name, id)}</option>`;
+  }).join("")}`;
+}
+
+function accessSettingsMarkup(user) {
+  const organizations = Array.isArray(user?.organizations) ? user.organizations : [];
+  const organization = organizations[0] || null;
+  const packages = user?.availablePackages;
+  const capabilities = organization?.documentCapabilities || {};
+  const checked = (value) => value ? " checked" : "";
+  const organizationControls = organization ? `<fieldset class="mt-3" data-admin-organization-access><legend class="h4">Quyền trong tổ chức</legend><label class="form-label">Tổ chức<select class="form-select" name="organization_id">${organizations.map((item) => `<option value="${text(item?.id, "")}">${text(item?.name)}</option>`).join("")}</select></label><div class="row g-3"><label class="form-label col-md-6">Vai trò trong tổ chức<select class="form-select" name="organization_role"><option value="manager"${organization?.role === "manager" ? " selected" : ""}>Quản lý</option><option value="employee"${organization?.role === "employee" ? " selected" : ""}>Chuyên viên</option></select></label><label class="form-label col-md-6">Gói dịch vụ của tổ chức<select class="form-select" name="organization_package_id">${packageOptionsMarkup(packages, organization?.subscription?.packageId)}</select></label></div><fieldset><legend class="form-label">Quyền xuất Word</legend><div class="row g-2"><label class="form-check col-md-4"><input class="form-check-input" type="checkbox" name="document_capability_financial"${checked(capabilities.financial)}> <span class="form-check-label">Thông tin tài chính</span></label><label class="form-check col-md-4"><input class="form-check-input" type="checkbox" name="document_capability_identity"${checked(capabilities.identity)}> <span class="form-check-label">Thông tin định danh</span></label><label class="form-check col-md-4"><input class="form-check-input" type="checkbox" name="document_capability_signature"${checked(capabilities.signature)}> <span class="form-check-label">Chữ ký và con dấu</span></label></div><div class="form-hint" data-admin-word-entitlement>${organization?.entitlements?.wordExport ? "Gói tổ chức hiện cho phép xuất Word." : "Gói tổ chức hiện chưa cho phép xuất Word."}</div></fieldset></fieldset>` : '<p class="text-secondary mt-3">Tài khoản chưa thuộc tổ chức nào.</p>';
+  return `<form data-admin-user-form="access_settings" class="mb-3"><h3 class="h4">Thiết lập quyền và gói</h3><div class="row g-3"><label class="form-label col-md-6">Vai trò nền tảng<select class="form-select" name="platform_role"><option value="user"${user?.role === "user" ? " selected" : ""}>Người dùng</option><option value="super_admin"${user?.role === "super_admin" ? " selected" : ""}>Quản trị nền tảng</option></select></label><label class="form-label col-md-6">Gói dịch vụ cá nhân<select class="form-select" name="account_package_id">${packageOptionsMarkup(packages, user?.subscription?.packageId)}</select></label></div>${organizationControls}<button class="btn btn-primary mt-3" type="submit">Lưu thiết lập</button></form>`;
+}
+
 async function runPrivilegedMutation(mutate, { fetchImpl, signal, requestPassword }) {
   try {
     return await mutate();
@@ -71,6 +91,7 @@ export async function executeUserDirectoryAction(action, user, value, {
   const descriptions = {
     role: `Thay đổi vai trò nền tảng của ${user?.name || userId}?`,
     name: `Cập nhật tên hiển thị của ${user?.name || userId}?`,
+    access_settings: `Lưu thiết lập quyền và gói dịch vụ của ${user?.name || userId}?`,
     deactivate: `Ngừng hoạt động tài khoản ${user?.name || userId}? Các phiên đăng nhập sẽ bị thu hồi.`,
   };
   if (!Object.hasOwn(descriptions, action)) throw new TypeError("Unsupported user action");
@@ -87,6 +108,37 @@ export async function executeUserDirectoryAction(action, user, value, {
     if (!name) throw new Error("Tên hiển thị không được để trống.");
     mutate = () => postAdminJson("/api/auth/users/update-metadata", {
       body: { user_id: userId, field: "name", value: name }, fetchImpl, signal,
+    });
+  } else if (action === "access_settings") {
+    const settings = value && typeof value === "object" ? value : {};
+    const platformRole = String(settings.platform_role || "").trim();
+    const organizationId = String(settings.organization_id || "").trim();
+    const organizationRole = String(settings.organization_role || "").trim();
+    if (!["super_admin", "user"].includes(platformRole)) throw new Error("Vai trò nền tảng không hợp lệ.");
+    if (organizationId && !["manager", "employee"].includes(organizationRole)) {
+      throw new Error("Vai trò trong tổ chức không hợp lệ.");
+    }
+    const capabilities = settings.document_capabilities;
+    if (organizationId && (!capabilities || ["financial", "identity", "signature"].some(
+      (field) => typeof capabilities[field] !== "boolean",
+    ))) throw new Error("Cấu hình quyền xuất Word không hợp lệ.");
+    const body = {
+      user_id: userId,
+      platform_role: platformRole,
+      account_package_id: String(settings.account_package_id || "none").trim(),
+      organization_id: organizationId || null,
+      organization_role: organizationId ? organizationRole : null,
+      organization_package_id: organizationId
+        ? String(settings.organization_package_id || "none").trim()
+        : null,
+      document_capabilities: organizationId ? {
+        financial: capabilities.financial,
+        identity: capabilities.identity,
+        signature: capabilities.signature,
+      } : null,
+    };
+    mutate = () => putAdminJson("/api/auth/users/access-settings", {
+      body, fetchImpl, signal,
     });
   } else {
     mutate = () => deleteAdminJson(`/api/auth/users/${encodeURIComponent(userId)}`, { fetchImpl, signal });
@@ -130,7 +182,7 @@ export async function executeOrganizationDirectoryAction(action, organization, v
 export function userDetailMarkup(user) {
   const subscription = user?.subscription;
   const usage = user?.usage;
-  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(user?.links)}<dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Hoạt động gần nhất</dt><dd class="col-8">${formatDate(user?.lastActiveAt)}</dd><dt class="col-4">Phiên hoạt động</dt><dd class="col-8">${Number.isFinite(user?.activeSessionCount) ? escapeHtml(user.activeSessionCount) : "N/A"}</dd><dt class="col-4">Gói dịch vụ</dt><dd class="col-8">${text(subscription?.packageId)}</dd><dt class="col-4">Trạng thái đăng ký</dt><dd class="col-8">${text(subscription?.status)}</dd><dt class="col-4">Bắt đầu đăng ký</dt><dd class="col-8">${formatDate(subscription?.startsAt)}</dd><dt class="col-4">Hết hạn đăng ký</dt><dd class="col-8">${formatDate(subscription?.expiresAt)}</dd><dt class="col-4">Sự kiện sử dụng</dt><dd class="col-8">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-4">Sử dụng gần nhất</dt><dd class="col-8">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Tổ chức và vai trò (${Number.isFinite(user?.organizationCount) ? escapeHtml(user.organizationCount) : "N/A"})</h3>${membershipsMarkup(user?.organizations)}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(user?.recentAudit)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form><form data-admin-user-form="role" class="mb-3"><label class="form-label">Vai trò nền tảng<select class="form-select" name="value"><option value="user"${user?.role === "user" ? " selected" : ""}>Người dùng</option><option value="super_admin"${user?.role === "super_admin" ? " selected" : ""}>Quản trị nền tảng</option></select></label><button class="btn btn-outline-primary" type="submit">Cập nhật vai trò</button></form>${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
+  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(user?.links)}<dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Hoạt động gần nhất</dt><dd class="col-8">${formatDate(user?.lastActiveAt)}</dd><dt class="col-4">Phiên hoạt động</dt><dd class="col-8">${Number.isFinite(user?.activeSessionCount) ? escapeHtml(user.activeSessionCount) : "N/A"}</dd><dt class="col-4">Gói dịch vụ</dt><dd class="col-8">${text(subscription?.packageId)}</dd><dt class="col-4">Trạng thái đăng ký</dt><dd class="col-8">${text(subscription?.status)}</dd><dt class="col-4">Bắt đầu đăng ký</dt><dd class="col-8">${formatDate(subscription?.startsAt)}</dd><dt class="col-4">Hết hạn đăng ký</dt><dd class="col-8">${formatDate(subscription?.expiresAt)}</dd><dt class="col-4">Sự kiện sử dụng</dt><dd class="col-8">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-4">Sử dụng gần nhất</dt><dd class="col-8">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Tổ chức và vai trò (${Number.isFinite(user?.organizationCount) ? escapeHtml(user.organizationCount) : "N/A"})</h3>${membershipsMarkup(user?.organizations)}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(user?.recentAudit)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form>${accessSettingsMarkup(user)}${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
 }
 
 export function organizationDetailMarkup(organization) {
@@ -201,9 +253,60 @@ function openDetailDrawer(markup, bind, { trigger = null, onClose } = {}) {
 
 function setActionState(drawer, busy, message = "", failed = false) {
   drawer.setAttribute("aria-busy", String(busy));
-  drawer.querySelectorAll("button, input, select").forEach((control) => { control.disabled = busy; });
+  drawer.querySelectorAll("button, input, select").forEach((control) => {
+    if (busy) {
+      control.dataset.adminWasDisabled = String(control.disabled);
+      control.disabled = true;
+    } else {
+      control.disabled = control.dataset.adminWasDisabled === "true";
+      delete control.dataset.adminWasDisabled;
+    }
+  });
   const status = drawer.querySelector("[data-admin-detail-status]");
   if (status) { status.textContent = message; status.className = `mt-3 ${failed ? "text-danger" : "text-success"}`; }
+}
+
+function synchronizeUserAccessForm(form, user, organizationId) {
+  const organizations = Array.isArray(user?.organizations) ? user.organizations : [];
+  const organization = organizations.find((item) => String(item?.id) === String(organizationId))
+    || organizations[0]
+    || null;
+  const role = form.querySelector('[name="organization_role"]');
+  const packageSelect = form.querySelector('[name="organization_package_id"]');
+  if (role) role.value = organization?.role || "employee";
+  if (packageSelect) packageSelect.value = organization?.subscription?.packageId || "none";
+  const isManager = role?.value === "manager";
+  const wordExport = Boolean(organization?.entitlements?.wordExport);
+  for (const field of ["financial", "identity", "signature"]) {
+    const input = form.querySelector(`[name="document_capability_${field}"]`);
+    if (!input) continue;
+    input.checked = isManager || Boolean(organization?.documentCapabilities?.[field]);
+    input.disabled = isManager || !wordExport;
+  }
+  const hint = form.querySelector("[data-admin-word-entitlement]");
+  if (hint) hint.textContent = wordExport
+    ? "Gói tổ chức hiện cho phép xuất Word."
+    : "Gói tổ chức hiện chưa cho phép xuất Word.";
+}
+
+function accessSettingsValue(form) {
+  const organizationId = String(form.querySelector('[name="organization_id"]')?.value || "").trim();
+  return {
+    platform_role: form.querySelector('[name="platform_role"]')?.value || "user",
+    account_package_id: form.querySelector('[name="account_package_id"]')?.value || "none",
+    organization_id: organizationId,
+    organization_role: organizationId
+      ? form.querySelector('[name="organization_role"]')?.value || "employee"
+      : null,
+    organization_package_id: organizationId
+      ? form.querySelector('[name="organization_package_id"]')?.value || "none"
+      : null,
+    document_capabilities: organizationId ? Object.fromEntries(
+      ["financial", "identity", "signature"].map((field) => [
+        field, Boolean(form.querySelector(`[name="document_capability_${field}"]`)?.checked),
+      ]),
+    ) : null,
+  };
 }
 
 function bindUserDetail(drawer, user, options, close) {
@@ -215,8 +318,47 @@ function bindUserDetail(drawer, user, options, close) {
       close(); await options.reload?.();
     } catch (error) { setActionState(drawer, false, error?.message || "Không thể thực hiện thao tác.", true); }
   };
+  const accessForm = drawer.querySelector('[data-admin-user-form="access_settings"]');
+  if (accessForm) {
+    const platformRole = accessForm.querySelector('[name="platform_role"]');
+    const accountPackage = accessForm.querySelector('[name="account_package_id"]');
+    const syncPersonalPackage = () => { if (accountPackage) accountPackage.disabled = platformRole?.value === "super_admin"; };
+    syncPersonalPackage();
+    platformRole?.addEventListener("change", syncPersonalPackage);
+    const organizationSelect = accessForm.querySelector('[name="organization_id"]');
+    synchronizeUserAccessForm(accessForm, user, organizationSelect?.value || "");
+    organizationSelect?.addEventListener("change", () => {
+      synchronizeUserAccessForm(accessForm, user, organizationSelect.value);
+    });
+    accessForm.querySelector('[name="organization_role"]')?.addEventListener("change", (event) => {
+      const isManager = event.currentTarget.value === "manager";
+      const enabled = accessForm.querySelector('[name="organization_package_id"]')?.value !== "none";
+      for (const field of ["financial", "identity", "signature"]) {
+        const input = accessForm.querySelector(`[name="document_capability_${field}"]`);
+        if (!input) continue;
+        input.disabled = isManager || !enabled;
+        if (isManager) input.checked = true;
+      }
+    });
+    accessForm.querySelector('[name="organization_package_id"]')?.addEventListener("change", (event) => {
+      const enabled = event.currentTarget.value !== "none";
+      const isManager = accessForm.querySelector('[name="organization_role"]')?.value === "manager";
+      for (const field of ["financial", "identity", "signature"]) {
+        const input = accessForm.querySelector(`[name="document_capability_${field}"]`);
+        if (input) input.disabled = isManager || !enabled;
+      }
+      const hint = accessForm.querySelector("[data-admin-word-entitlement]");
+      if (hint) hint.textContent = enabled
+        ? "Sau khi lưu, gói tổ chức cho phép sử dụng chức năng xuất Word."
+        : "Sau khi lưu, chức năng xuất Word của tổ chức bị khóa.";
+    });
+  }
   drawer.querySelectorAll("[data-admin-user-form]").forEach((form) => form.addEventListener("submit", (event) => {
-    event.preventDefault(); void run(form.dataset.adminUserForm, new FormData(form).get("value"));
+    event.preventDefault();
+    const value = form.dataset.adminUserForm === "access_settings"
+      ? accessSettingsValue(form)
+      : new FormData(form).get("value");
+    void run(form.dataset.adminUserForm, value);
   }));
   drawer.querySelector("[data-admin-user-action='deactivate']")?.addEventListener("click", () => void run("deactivate"));
 }
