@@ -267,8 +267,18 @@ function chartsMarkup(product) {
   const baseCharts = (Array.isArray(product.series) ? product.series : []).map((series) => ({
     key: series?.key, label: series?.label, series: [series],
   }));
+  const overviewCharts = Array.isArray(product.overviewCharts) ? product.overviewCharts : [];
   const viewCharts = Array.isArray(product.viewCharts) ? product.viewCharts : [];
-  const charts = [...baseCharts, ...viewCharts].slice(0, MAX_CHARTS);
+  const seen = new Set();
+  const charts = [...baseCharts, ...overviewCharts, ...viewCharts]
+    .filter((chart) => {
+      if (!chart || typeof chart !== "object") return false;
+      const key = String(chart.key || chart.label || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, MAX_CHARTS);
   if (!charts.length) return "";
   return `<section class="mt-3" aria-labelledby="admin-product-charts"><h2 class="h3 mb-3" id="admin-product-charts">Xu hướng và phân bố</h2><div class="row row-cards">${charts.map(chartMarkup).join("")}</div></section>`;
 }

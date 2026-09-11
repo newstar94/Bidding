@@ -142,3 +142,30 @@ test("analytics renders an explicit empty state when both sources have no data",
   assert.match(markup, /data-admin-state="empty"/u);
   assert.match(markup, /Chưa đủ mẫu/u);
 });
+
+test("analytics overview renders every authoritative overview chart returned by the backend", () => {
+  const markup = analyticsResultsMarkup(
+    { coverage: { hasData: false } },
+    { dashboard: {
+      hasData: true,
+      series: [],
+      overviewCharts: [
+        {
+          key: "revenue_cost",
+          label: "Doanh thu và chi phí",
+          series: [{ key: "revenue", label: "Doanh thu", points: [{ date: "2026-09-01", value: 1_250_000 }] }],
+        },
+        {
+          key: "plan_distribution",
+          label: "Phân phối gói",
+          series: [{ key: "connected", label: "Kết nối", points: [{ label: "Kết nối", value: 8 }] }],
+        },
+      ],
+      viewCharts: [],
+    } },
+  );
+  assert.match(markup, /Doanh thu và chi phí/u);
+  assert.match(markup, /Phân phối gói/u);
+  assert.match(markup, /1[.]250[.]000/u);
+  assert.match(markup, /<svg[^>]*role="img"/u);
+});

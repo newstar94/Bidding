@@ -142,6 +142,22 @@ test("settings view remains explicitly read-only for deployment-managed environm
   assert.match(markup, /Chỉ đọc/u);
 });
 
+test("settings and environment keep feature controls, runtime metadata and secrets in one place each", () => {
+  const settings = settingsMarkup({
+    features: { aiEnabled: true },
+    configuration: { writable: true },
+  });
+  const environment = environmentMarkup({
+    runtime: { environment: "development", frontendAssetMode: "source" },
+    secretStatus: {},
+    configuration: { writable: true },
+  });
+  assert.match(settings, /data-admin-feature="aiEnabled"/u);
+  assert.doesNotMatch(settings, /DATABASE_URL|Môi trường chạy|Cấu hình bí mật/u);
+  assert.match(environment, /Môi trường chạy|DATABASE_URL|Cấu hình bí mật/u);
+  assert.doesNotMatch(environment, /data-admin-feature=|Trợ lý AI|So sánh phiên bản/u);
+});
+
 test("environment update reauthenticates and retries once without retaining secret data", async () => {
   const requests = [];
   const secret = "new-secret-value-that-must-not-be-retained";
