@@ -1,6 +1,6 @@
 # BiddingFlow Tabler Admin Migration — Completion Report
 
-This report audits the implementation state through `98ad2688` (current HEAD). Earlier migration evidence is retained where noted; evidence from older SHAs is historical. The latest UI correction adds visible overview charts, invoice-request KPI placeholders, canonical settings destinations, and updated analytics documentation.
+This report audits the production implementation state through `98ad2688`. Later commits may update this evidence document without changing production code; the exact branch head remains authoritative in Git history and GitHub Actions. Earlier migration evidence is retained where noted; evidence from older SHAs is historical. The latest UI correction adds visible overview charts, invoice-request KPI placeholders, canonical settings destinations, and updated analytics documentation.
 
 ## 1. Baseline
 
@@ -9,7 +9,7 @@ This report audits the implementation state through `98ad2688` (current HEAD). E
 | Migration baseline | `c0d8ebfc699258c28662f7d03e7bbadd507a9305` (parent of first Tabler-shell commit) |
 | Implementation SHA audited | `98ad2688` |
 | Branch | `main` |
-| `origin/main` at current completion audit | `98ad2688` |
+| `origin/main` at implementation audit | `98ad2688` |
 | Baseline CI | No single terminal baseline run was reconstructed for this report; historical prompt evidence recorded failures before the migration |
 | Latest implementation remote CI | Full CI `34610312708`, CodeQL `34610312684`, N+1 `34610312703`, Supply-chain `34610312701`: success on `98ad2688` |
 | Legal production release | Blocked by 27 external legal facts; no approval or production-public artifact is claimed |
@@ -160,7 +160,7 @@ The invoice page’s resource is the existing `billing_invoice_requests` table. 
 
 ## 10. Tests
 
-The exhaustive migration verification below began on `d8fd08cb`; those rows are retained as historical evidence. On current local SHA `395e5cfe`, the focused Platform Admin JavaScript/Python suites, `check:static`, `build:secure`, the three-browser Admin matrix and both Platform Admin budgets were rerun successfully. Remote CI for `395e5cfe` is pending and must replace the `6caa6651` evidence after push.
+The exhaustive migration verification below began on `d8fd08cb`; those rows are retained as historical evidence. On final production-source SHA `98ad2688`, the focused Platform Admin JavaScript/Python suites, `check:static`, `build:secure`, the three-browser Admin matrix and both Platform Admin budgets were rerun successfully. GitHub Full CI, CodeQL, N+1 and Supply-chain workflows all completed successfully on that exact SHA.
 
 | Exact command | Exit / result |
 | --- | --- |
@@ -201,7 +201,7 @@ The existing workflow suite passed locally for auth shell/roles, bidder goods, C
 | N+1 / large data | No dedicated Tabler evidence | Exact-SHA N+1 workflow passes; current-SHA large-data benchmark passes fixed query counts and 256,000-byte response cap |
 | DB/FK/schema | No migration-specific change | Exact-SHA PostgreSQL schema/FK job passes |
 | Dependency/security | No Tabler-final evidence | Exact-SHA package/dependency, Supply-chain and CodeQL workflows pass |
-| GitHub exact-final-SHA | `395e5cfe` exists locally | Pending push and exact-SHA workflow completion; latest prior all-green evidence is `6caa6651` |
+| GitHub exact-final-source-SHA | Historical implementation checkpoints | Full CI `34610312708`, CodeQL `34610312684`, N+1 `34610312703` and Supply-chain `34610312701` all succeeded on `98ad2688` |
 | Production legal release | Blocked | Still blocked by 27 external facts; correctly not bypassed |
 
 ## 12. Performance
@@ -232,7 +232,7 @@ The generic organization/account controller remains because it serves workspace 
 
 ## 14. Remaining Risks
 
-1. Current UI implementation is `395e5cfe`; remote exact-SHA CI is pending. Older historical measurements remain labeled with their original SHA.
+1. Final production UI/CI implementation is `98ad2688`; exact-SHA remote CI is successful. Older historical measurements remain labeled with their original SHA.
 2. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
 3. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
 4. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
@@ -241,7 +241,7 @@ The generic organization/account controller remains because it serves workspace 
 ## 15. Recommended Next Steps
 
 1. Retain the exact implementation-SHA GitHub run links and current-SHA benchmark outputs as release evidence.
-2. Re-run the full matrix after any later production-source change; do not extend `dcb788b5` evidence to it.
+2. Re-run the full matrix after any later production-source change; do not extend historical benchmark measurements to changed production code.
 3. If product requires fiscal invoice documents rather than invoice requests, approve an invoice-domain contract before designing schema, provider workflow or mutation UI.
 4. Decide whether finer platform roles are commercially required; do not alias organization roles into platform authority.
 5. Resolve the 27 external legal facts independently before any production-public release.
