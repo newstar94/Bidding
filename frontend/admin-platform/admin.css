@@ -88,6 +88,8 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .pagination { --tblr-pagination-active-bg: var(--bf-admin-brand); --tblr-pagination-active-border-color: var(--bf-admin-brand); --tblr-pagination-color: var(--bf-admin-brand); --tblr-pagination-hover-color: var(--bf-admin-brand-strong); }
 .nav-tabs { --tblr-nav-tabs-link-active-color: var(--bf-admin-brand-strong); }
 .table { --tblr-table-striped-bg: var(--bf-admin-surface-subtle); --tblr-table-hover-bg: var(--bf-admin-brand-soft); }
+.bf-admin-analytics-scroll thead th { color: var(--bf-admin-muted); }
+.bf-admin-analytics-scroll:focus-visible { outline: 2px solid var(--bf-admin-brand); outline-offset: 2px; }
 .alert-primary { --tblr-alert-color: var(--bf-admin-brand-strong); --tblr-alert-bg: var(--bf-admin-brand-soft); --tblr-alert-border-color: var(--bf-admin-brand-line); }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }

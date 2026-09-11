@@ -17,6 +17,7 @@ const MAX_POINTS = 100;
 
 export const ANALYTICS_VIEWS = Object.freeze([
   ["overview", "Tổng quan"],
+  ["operations", "Vận hành"],
   ["activation", "Kích hoạt"],
   ["features", "Tính năng"],
   ["seats", "Chỗ ngồi"],
@@ -137,6 +138,36 @@ export function buildAnalyticsQueries(filters) {
   };
 }
 
+function operationalValue(value, suffix = "") {
+  return Number.isFinite(value) ? `${NUMBER_FORMAT.format(value)}${suffix}` : "N/A";
+}
+
+export function operationalAnalyticsMarkup(payload) {
+  const operations = payload?.operations || {};
+  const analytics = operations.analytics || {};
+  const http = analytics.http || {};
+  const database = analytics.database || {};
+  const worker = operations.documentWorker || {};
+  const jobs = Array.isArray(operations.backgroundJobs) ? operations.backgroundJobs : [];
+  const queued = jobs.reduce((total, item) => (
+    ["pending", "retry"].includes(item?.status) && Number.isFinite(item?.count)
+      ? total + item.count : total
+  ), 0);
+  const workerFailures = Number.isFinite(worker.failed) && Number.isFinite(worker.rejected)
+    ? worker.failed + worker.rejected : null;
+  const cards = [
+    ["Yêu cầu API", http.requests],
+    ["Lỗi API 4xx", http.clientErrors],
+    ["Lỗi API 5xx", http.serverErrors],
+    ["Độ trễ API trung bình", http.averageLatencyMs, " ms"],
+    ["Lỗi worker", workerFailures],
+    ["Tác vụ trong hàng đợi", jobs.length ? queued : null],
+    ["Chờ worker trung bình", worker.averageQueueWaitMs, " ms"],
+    ["Độ trễ DB trung bình", database.averageLatencyMs, " ms"],
+  ].map(([label, value, suffix]) => metricCard(label, value, suffix)).join("");
+  return `<div class="alert alert-info" role="note">Số liệu cộng dồn trong tiến trình máy chủ hiện tại; không phải lịch sử dài hạn.</div><div class="row row-cards">${cards}</div><section class="card mt-3" aria-labelledby="operational-coverage-title"><div class="card-header"><h2 class="card-title" id="operational-coverage-title">Phạm vi dữ liệu</h2></div><div class="card-body"><dl class="row mb-0"><dt class="col-sm-4">Lỗi đồng bộ theo thời gian</dt><dd class="col-sm-8">N/A — hệ thống chưa lưu chuỗi thời gian tổng hợp có thẩm quyền.</dd><dt class="col-sm-4">Phạm vi API và DB</dt><dd class="col-sm-8">${escapeHtml(http.scope || database.scope || "N/A")}</dd></dl></div></section>`;
+}
+
 function readInitialFilters() {
   const params = new URLSearchParams(globalThis.location?.search || "");
   try {
@@ -174,8 +205,8 @@ function productDashboard(payload) {
   return payload?.dashboard && typeof payload.dashboard === "object" ? payload.dashboard : {};
 }
 
-function metricCard(label, value) {
-  return `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric"><div class="card-body"><div class="text-secondary">${escapeHtml(label)}</div><div class="h1 mb-0">${escapeHtml(displayNumber(value))}</div></div></article></div>`;
+function metricCard(label, value, suffix = "") {
+  return `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric"><div class="card-body"><div class="text-secondary">${escapeHtml(label)}</div><div class="h1 mb-0">${escapeHtml(operationalValue(value, suffix))}</div></div></article></div>`;
 }
 
 function productKpisMarkup(kpis) {
@@ -220,7 +251,7 @@ function seriesTableMarkup(series, chartIndex, seriesIndex) {
     const dimension = point?.date || point?.label || "N/A";
     return `<tr><td>${escapeHtml(dimension)}</td><td class="text-end">${escapeHtml(displayValue(point?.value, point?.status))}</td><td>${escapeHtml(STATUS_LABELS[point?.status] || point?.status || "")}</td></tr>`;
   }).join("");
-  return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4>${seriesVisualMarkup(points, label, headingId)}<div class="table-responsive mt-2"><table class="table table-sm table-vcenter mb-0"><caption class="visually-hidden">Dữ liệu dạng bảng cho ${escapeHtml(label)}</caption><thead><tr><th>Thời điểm / nhóm</th><th class="text-end">Giá trị</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4>${seriesVisualMarkup(points, label, headingId)}<div class="table-responsive bf-admin-analytics-scroll mt-2" tabindex="0" aria-label="Bảng dữ liệu cuộn cho ${escapeHtml(label)}"><table class="table table-sm table-vcenter mb-0"><caption class="visually-hidden">Dữ liệu dạng bảng cho ${escapeHtml(label)}</caption><thead><tr><th>Thời điểm / nhóm</th><th class="text-end">Giá trị</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function chartMarkup(chart, chartIndex) {
@@ -319,6 +350,17 @@ export function renderAdminAnalytics(container, { fetchImpl, signal } = {}) {
     validation.hidden = true;
     syncBrowserQuery(filters);
     renderAdminMarkup(results, adminLoadingMarkup("Đang tải dữ liệu phân tích…"), { busy: true });
+    if (filters.view === "operations") {
+      await loader.run(
+        (requestSignal) => getAdminJson("/api/admin/health", { fetchImpl, signal: requestSignal }),
+        {
+          signal,
+          onSuccess: (health) => renderAdminMarkup(results, operationalAnalyticsMarkup(health)),
+          onError: (error) => renderAdminFailure(results, error, load),
+        },
+      );
+      return;
+    }
     const queries = buildAnalyticsQueries(filters);
     await loader.run(
       (requestSignal) => Promise.all([

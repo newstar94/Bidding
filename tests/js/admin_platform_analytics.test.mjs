@@ -6,9 +6,26 @@ import {
   analyticsFilterMarkup,
   analyticsPresetRange,
   analyticsResultsMarkup,
+  operationalAnalyticsMarkup,
   buildAnalyticsQueries,
   normalizeAnalyticsFilters,
 } from "../../frontend/admin-platform/AdminAnalytics.js";
+
+test("operational analytics renders authoritative process metrics and explicit unavailable coverage", () => {
+  const markup = operationalAnalyticsMarkup({ operations: {
+    analytics: {
+      http: { scope: "current_process", requests: 120, clientErrors: 4, serverErrors: 2, averageLatencyMs: 12.5 },
+      database: { scope: "current_process", averageLatencyMs: 8.2 },
+    },
+    documentWorker: { failed: 3, rejected: 1, averageQueueWaitMs: 7.5 },
+    backgroundJobs: [{ status: "pending", count: 5 }, { status: "retry", count: 2 }],
+  } });
+  for (const value of ["120", "4", "2", "12,5 ms", "7", "8,2 ms"]) assert.match(markup, new RegExp(value, "u"));
+  assert.match(markup, /Lỗi worker/u);
+  assert.match(markup, /Lỗi đồng bộ theo thời gian/u);
+  assert.match(markup, /N\/A/u);
+  assert.doesNotMatch(markup, /private-route|DATABASE_URL/u);
+});
 
 test("analytics filters accept valid ordered ISO dates and only supported buckets", () => {
   assert.deepEqual(normalizeAnalyticsFilters({ from: "2026-08-01", to: "2026-08-30", bucket: "hour" }), {

@@ -4,6 +4,7 @@ import { requestAdminValue } from "./AdminBilling.js";
 import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { trapAdminDialogFocus } from "./AdminFocusTrap.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -89,7 +90,7 @@ export async function executeJobRetry(jobId, {
   }
 }
 
-function openJobDetail() {
+function openJobDetail(opener) {
   document.querySelector("[data-admin-job-detail]")?.remove();
   document.querySelector("[data-admin-job-detail-backdrop]")?.remove();
   const drawer = document.createElement("aside");
@@ -104,8 +105,16 @@ function openJobDetail() {
   backdrop.className = "offcanvas-backdrop fade show";
   backdrop.setAttribute("data-admin-job-detail-backdrop", "");
   document.body.append(drawer, backdrop);
-  const close = () => { drawer.remove(); backdrop.remove(); };
+  let closed = false;
+  let releaseFocusTrap = () => {};
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    releaseFocusTrap();
+    drawer.remove(); backdrop.remove(); opener?.focus?.();
+  };
   backdrop.addEventListener("click", close);
+  releaseFocusTrap = trapAdminDialogFocus(drawer, { onEscape: close });
   return { drawer, close };
 }
 
@@ -113,7 +122,7 @@ function bindJobActions(root, jobs, options) {
   root.querySelectorAll("[data-admin-job-detail-id]").forEach((button) => button.addEventListener("click", async () => {
     const jobId = String(button.dataset.adminJobDetailId || "");
     if (!jobs.some((job) => job?.id === jobId)) return;
-    const detail = openJobDetail();
+    const detail = openJobDetail(button);
     detail.drawer.innerHTML = trustedHTML(`<div class="offcanvas-header"><h2 class="offcanvas-title">Đang tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-job-detail-close></button></div><div class="offcanvas-body">${adminLoadingMarkup("Đang tải chi tiết tác vụ…")}</div>`);
     detail.drawer.querySelector("[data-admin-job-detail-close]")?.addEventListener("click", detail.close);
     try {

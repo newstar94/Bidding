@@ -88,7 +88,16 @@ function renderRoute() {
   else if (route.path === "/admin/plans") void renderAdminPlans(content, { signal: routeController.signal });
   else if (route.path === "/admin/subscriptions") renderAdminSubscriptions(content, { signal: routeController.signal });
   else if (route.path === "/admin/payments") renderAdminPayments(content, { signal: routeController.signal });
-  else if (route.path === "/admin/invoices") renderAdminInvoicesUnavailable(content, { signal: routeController.signal });
+  else if (route.path === "/admin/invoices") renderAdminInvoicesUnavailable(content, {
+    signal: routeController.signal,
+    initialDetailId: route.detailId || "",
+    setDetail(detailId, { push = false } = {}) {
+      const path = detailId
+        ? `/admin/invoices/${encodeURIComponent(String(detailId))}`
+        : "/admin/invoices";
+      history[push ? "pushState" : "replaceState"]({ adminPath: "/admin/invoices" }, "", path);
+    },
+  });
   else if (route.path === "/admin/legal") void renderAdminLegalCatalog(content, { signal: routeController.signal });
   else if (route.path === "/admin/audit") renderAdminAudit(content, { signal: routeController.signal });
   else if (route.path === "/admin/security") renderAdminSecurity(content, { signal: routeController.signal });

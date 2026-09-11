@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 const ADMIN_DOCUMENT = /^https?:\/\/[^/]+\/admin(?:\/[^?]*)?(?:\?.*)?$/u;
@@ -85,7 +86,7 @@ async function fulfillJson(route, payload, status = 200) {
 
 async function expectAdminReady(page, title) {
   await expect(page.locator("#admin-app")).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
   await expect(page.locator("#admin-main")).toBeFocused();
 }
 
@@ -100,6 +101,27 @@ test("server denies a direct admin deep link before returning the shell", async 
   expect(response.status()).toBe(403);
   expect(response.headers()["cache-control"]).toBe("private, no-store");
   expect(await response.text()).not.toContain("bf-admin-session");
+});
+
+test("an expired admin session stops privileged calls and redirects once for reauthentication", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  let privilegedCalls = 0;
+  await context.route("**/api/admin/overview", async (route) => {
+    privilegedCalls += 1;
+    await fulfillJson(route, { code: "SESSION_EXPIRED", message: "Phiên đăng nhập đã hết hạn." }, 401);
+  });
+  await context.route("**/dang-nhap?**", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    body: "<!doctype html><html lang=\"vi\"><title>Đăng nhập lại</title><body><h1>Đăng nhập lại</h1></body></html>",
+  }));
+
+  await page.goto("/admin", { waitUntil: "commit" });
+  await expect(page).toHaveURL(/\/dang-nhap\?next=%2Fadmin/u);
+  await expect(page.getByRole("heading", { name: "Đăng nhập lại" })).toBeVisible();
+  expect(privilegedCalls).toBe(1);
+  await page.waitForTimeout(250);
+  expect(privilegedCalls).toBe(1);
 });
 
 test("deep links preserve query state and back-forward navigation", async ({ context, page }) => {
@@ -400,7 +422,7 @@ test("operational admin routes render sanitized data and safe detail focus", asy
     ["/admin/security", "Bảo mật", "Quản trị E2E"],
     ["/admin/system/jobs", "Tác vụ", "job-e2e"],
     ["/admin/system/sync", "Đồng bộ", "broadcast"],
-    ["/admin/settings", "Cài đặt", "Tính năng hệ thống"],
+    ["/admin/settings", "Cài đặt", "Feature Flags"],
     ["/admin/environment", "Môi trường", "Cấu hình bí mật"],
     ["/admin/health", "Vận hành", "Cơ sở dữ liệu"],
     ["/admin/system/version", "Phiên bản", "release-safe"],
@@ -483,9 +505,17 @@ test("local environment replaces a secret only after explicit confirmation and r
   await page.goto("/admin/environment", { waitUntil: "commit" });
   await expectAdminReady(page, "Môi trường");
   await page.getByRole("button", { name: "Thay thế" }).click();
+  await page.getByLabel("Nhập OTP_HMAC_KEY để xác nhận").fill("SAI_KHOA");
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.locator("[data-admin-environment-status]")).toContainText("Đã hủy thao tác");
+  expect(mutations).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Thay thế" }).click();
   await page.getByLabel("Nhập OTP_HMAC_KEY để xác nhận").fill("OTP_HMAC_KEY");
   await page.getByRole("button", { name: "Tiếp tục" }).click();
-  await page.getByLabel("Khóa xác thực OTP").fill("s".repeat(32));
+  const secretInput = page.getByLabel("Khóa xác thực OTP");
+  await expect(secretInput).toHaveAttribute("type", "password");
+  await secretInput.fill("s".repeat(32));
   await page.getByRole("button", { name: "Tiếp tục" }).click();
   await page.getByLabel("Mật khẩu hiện tại").fill("correct-password");
   await page.getByRole("button", { name: "Tiếp tục" }).click();
@@ -494,4 +524,246 @@ test("local environment replaces a secret only after explicit confirmation and r
   expect(mutations).toHaveLength(2);
   expect(mutations[1]).toEqual({ secrets: { OTP_HMAC_KEY: "s".repeat(32) } });
   await expect(page.locator("body")).not.toContainText("s".repeat(32));
+});
+
+test("overview renders authoritative charts, table fallbacks, activity, and actionable alerts", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  await context.route("**/api/admin/overview", (route) => fulfillJson(route, {
+    metrics: {
+      organizations: 12,
+      activeOrganizations: 9,
+      newOrganizations30Days: 2,
+      users: 40,
+      activeAccounts: 31,
+      activeUsers: 8,
+      newUsers30Days: 5,
+      activeSubscriptions: 10,
+      verifiedRevenue: 1250000,
+      mrr: 3000000,
+      arr: 36000000,
+      unpaidInvoices: 1,
+      overdueInvoices: 1,
+      pendingJobs: 2,
+    },
+    recentOrganizations: [{
+      name: "Công ty Sao Mai", memberCount: 4, status: "active", subscriptionStatus: "active",
+    }],
+    activityFeed: [{
+      title: "Công ty Sao Mai", memberCount: 4, subscriptionStatus: "active",
+      occurredAt: "2026-09-10T08:00:00Z",
+    }],
+    alerts: [{
+      title: "Hóa đơn quá hạn", message: "Có 1 mục cần rà soát.", count: 1,
+      href: "/admin/organizations?subscriptionStatus=expired",
+    }],
+    generatedAt: "2026-09-10T08:00:00Z",
+  }));
+
+  await page.goto("/admin", { waitUntil: "commit" });
+  await expectAdminReady(page, "Tổng quan");
+  await expect(page.getByRole("img", { name: /Hoạt động: 9 trên tổng số 12/u })).toBeVisible();
+  const organizationFallback = page.getByRole("table", { name: "Dữ liệu dạng bảng của Tình trạng tổ chức" });
+  await expect(organizationFallback.getByRole("rowheader", { name: "Hoạt động", exact: true })).toBeVisible();
+  await expect(organizationFallback.getByRole("cell", { name: "9" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Hoạt động nền tảng gần đây" })).toContainText("Công ty Sao Mai");
+  const alert = page.locator("article.alert-warning").filter({ hasText: "Hóa đơn quá hạn" });
+  await expect(alert).toContainText("Có 1 mục cần rà soát");
+  await expect(alert.getByRole("link", { name: "Xem 1" })).toHaveAttribute(
+    "href", "/admin/organizations?subscriptionStatus=expired",
+  );
+});
+
+test("user and organization query deep links hydrate drawers and preserve focus containment", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  await context.route("**/api/admin/users?**", (route) => fulfillJson(route, DIRECTORY_PAGE));
+  await context.route("**/api/admin/users/user-e2e", (route) => fulfillJson(route, {
+    user: {
+      ...DIRECTORY_PAGE.items[0], activeSessionCount: 1, organizationCount: 0,
+      organizations: [], recentAudit: [], subscription: null, usage: null, links: {},
+    },
+  }));
+  await context.route("**/api/admin/organizations?**", (route) => fulfillJson(route, ORGANIZATION_PAGE));
+  await context.route("**/api/admin/organizations/org-e2e", (route) => fulfillJson(route, {
+    organization: {
+      ...ORGANIZATION_PAGE.items[0], users: [], recentAudit: [], usage: null, links: {},
+      security: { activeSessionCount: 0 },
+    },
+  }));
+
+  await page.goto("/admin/users?detail=user-e2e", { waitUntil: "commit" });
+  await expect(page.getByRole("heading", { level: 2, name: "Người dùng", exact: true })).toBeVisible();
+  const userDrawer = page.locator("[data-admin-detail-drawer]");
+  await expect(userDrawer).toHaveAttribute("role", "dialog");
+  await expect(userDrawer).toHaveAttribute("aria-modal", "true");
+  await expect(userDrawer.getByRole("heading", { name: "Người dùng kiểm thử" })).toBeVisible();
+  await expect(userDrawer.getByLabel("Đóng")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(userDrawer.getByRole("button", { name: "Ngừng hoạt động tài khoản" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(userDrawer).toHaveCount(0);
+  await expect(page).not.toHaveURL(/detail=user-e2e/u);
+
+  await page.goto("/admin/organizations?detail=org-e2e", { waitUntil: "commit" });
+  await expect(page.getByRole("heading", { level: 2, name: "Tổ chức", exact: true })).toBeVisible();
+  const organizationDrawer = page.locator("[data-admin-detail-drawer]");
+  await expect(organizationDrawer.getByRole("heading", { name: "Tổ chức kiểm thử" })).toBeVisible();
+  await expect(organizationDrawer.getByLabel("Đóng")).toBeFocused();
+});
+
+test("invoice and failed-job journeys load sanitized details and require explicit retry confirmation", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  const jobId = "0123456789abcdef0123456789abcdef";
+  const retryBodies = [];
+  const invoice = {
+    id: "invoice-e2e", status: "issued", attemptCount: 1,
+    owner: { kind: "organization", id: "org-e2e", name: "Tổ chức kiểm thử" },
+    orderPublicId: "ORDER-E2E",
+    amounts: { orderTotalMinor: 1250000, verifiedPaidMinor: 1250000, currency: "VND" },
+    paymentTransaction: { id: "txn-e2e", providerTransactionId: "safe-provider-id", status: "verified", createdAt: "2026-09-10T00:00:00Z" },
+    provider: { name: "payOS", environment: "production", invoiceReference: "INV-SAFE" },
+    documentAvailable: false, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T01:00:00Z",
+  };
+  await context.route("**/api/admin/invoices?**", (route) => fulfillJson(route, directoryPage([invoice])));
+  await context.route("**/api/admin/invoices/invoice-e2e", (route) => fulfillJson(route, {
+    invoiceRequest: invoice,
+    notice: "Yêu cầu có thẩm quyền; không phải tài liệu hóa đơn được tạo giả.",
+  }));
+  await context.route("**/api/admin/subscriptions?**", (route) => fulfillJson(route, directoryPage([{
+    owner: { kind: "organization", id: "org-e2e", name: "Tổ chức kiểm thử" },
+    packageId: "internal", planVersionId: "plan-v1", status: "active", source: "order",
+    sourceOrderPublicId: "ORDER-E2E", memberQuota: 20, revision: 2,
+    createdAt: "2026-09-01T00:00:00Z", startsAt: "2026-09-01T00:00:00Z",
+    expiresAt: "2027-09-01T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z",
+  }])));
+  const failedJob = {
+    id: jobId, operation: "document", recordType: "export", organizationId: "org-e2e",
+    status: "failed", retryAllowed: true, attemptCount: 2,
+    progress: { completedItems: 0, totalItems: 1, phase: "failed" },
+    error: { code: "RENDER_FAILED", message: "Lỗi dựng tài liệu đã khử nhạy cảm." },
+    lastErrorCode: "RENDER_FAILED", createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T01:00:00Z",
+  };
+  await context.route("**/api/admin/system/jobs?**", (route) => fulfillJson(route, {
+    ...directoryPage([failedJob]), summary: { total: 1, byStatus: { failed: 1 } },
+  }));
+  await context.route(`**/api/admin/system/jobs/${jobId}`, (route) => fulfillJson(route, { job: failedJob }));
+  await context.route(`**/api/admin/system/jobs/${jobId}/retry`, async (route) => {
+    retryBodies.push(route.request().postDataJSON());
+    await fulfillJson(route, { success: true });
+  });
+
+  await page.goto("/admin/invoices/invoice-e2e", { waitUntil: "commit" });
+  await expect(page.getByRole("heading", { level: 2, name: "Hóa đơn", exact: true })).toBeVisible();
+  const invoiceDrawer = page.locator("[data-admin-billing-detail-drawer]");
+  await expect(invoiceDrawer.getByRole("heading", { name: "invoice-e2e" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/invoices\/invoice-e2e(?:\?|$)/u);
+  await expect(invoiceDrawer).toContainText("INV-SAFE");
+  await expect(invoiceDrawer).toContainText("Chưa có mô hình tài liệu hóa đơn");
+  await expect(invoiceDrawer).not.toContainText("DATABASE_URL=");
+  await invoiceDrawer.getByLabel("Đóng").click();
+  await expect(page).toHaveURL(/\/admin\/invoices(?:\?|$)/u);
+
+  await page.getByRole("button", { name: "Xem" }).click();
+  await expect(page).toHaveURL(/\/admin\/invoices\/invoice-e2e(?:\?|$)/u);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/invoices(?:\?|$)/u);
+  await expect(invoiceDrawer).toHaveCount(0);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/admin\/invoices\/invoice-e2e(?:\?|$)/u);
+  await expect(page.locator("[data-admin-billing-detail-drawer]")).toContainText("INV-SAFE");
+  await page.locator("[data-admin-billing-detail-drawer]").getByLabel("Đóng").click();
+
+  await page.locator('[data-admin-link="/admin/subscriptions"]').click();
+  await expectAdminReady(page, "Đăng ký");
+  await page.getByRole("button", { name: "Xem" }).click();
+  const subscriptionDrawer = page.locator("[data-admin-billing-detail-drawer]");
+  await expect(subscriptionDrawer.getByRole("heading", { name: "Tổ chức kiểm thử" })).toBeVisible();
+  await expect(subscriptionDrawer).toContainText("plan-v1");
+  await expect(subscriptionDrawer).toContainText("ORDER-E2E");
+  await page.keyboard.press("Shift+Tab");
+  await expect(subscriptionDrawer.getByLabel("Đóng")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(subscriptionDrawer).toHaveCount(0);
+
+  await page.locator('[data-admin-link="/admin/system/jobs"]').click();
+  await expectAdminReady(page, "Tác vụ");
+  await page.getByRole("button", { name: "Xem và thao tác" }).click();
+  const jobDrawer = page.locator("[data-admin-job-detail]");
+  await expect(jobDrawer.getByLabel("Đóng")).toBeFocused();
+  await expect(jobDrawer).toContainText("Lỗi dựng tài liệu đã khử nhạy cảm");
+  await page.keyboard.press("Shift+Tab");
+  await expect(jobDrawer.getByRole("button", { name: "Chạy lại tác vụ" })).toBeFocused();
+  await jobDrawer.getByRole("button", { name: "Chạy lại tác vụ" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Xác nhận chạy lại tác vụ" });
+  await confirmation.getByLabel(`Nhập ${jobId} để xác nhận`).fill(jobId);
+  await confirmation.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect.poll(() => retryBodies.length).toBe(1);
+  expect(retryBodies[0]).toEqual({});
+});
+
+test("settings categories, secret masking, charts, and primary journeys meet automated accessibility checks", async ({ context, page }) => {
+  await installAuthorizedShell(context);
+  await context.route("**/api/admin/environment", (route) => fulfillJson(route, {
+    runtime: { environment: "production", frontendAssetMode: "manifest", debugEnabled: false, secureCookies: true },
+    features: { aiEnabled: true, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: true },
+    secretStatus: {
+      DATABASE_URL: { configured: true, writable: false, source: "deployment" },
+      PAYOS_API_KEY: { configured: false, writable: false, source: "deployment" },
+    },
+    configuration: { writable: false, source: "deployment" },
+  }));
+  await context.route("**/api/admin/usage-analytics/summary?**", (route) => fulfillJson(route, {
+    summary: { coverage: { hasData: true }, onlineNow: 3, activeUsers: 9, workActivityCount: 12, wordExportCount: 4, topFeatures: [] },
+  }));
+  await context.route("**/api/admin/product-analytics/dashboard?**", (route) => fulfillJson(route, {
+    dashboard: {
+      hasData: true, kpis: [], table: [],
+      series: [{ label: "Kế hoạch", points: [{ date: "2026-09-10", value: 5, status: "available" }] }],
+    },
+  }));
+  await context.route("**/api/admin/health", (route) => fulfillJson(route, {
+    operations: {
+      analytics: {
+        http: { scope: "current_process", requests: 120, clientErrors: 4, serverErrors: 2, averageLatencyMs: 12.5 },
+        database: { scope: "current_process", requests: 80, failures: 1, averageLatencyMs: 8.2 },
+      },
+      documentWorker: { failed: 3, rejected: 1, averageQueueWaitMs: 7.5 },
+      backgroundJobs: [{ status: "pending", count: 5 }, { status: "retry", count: 2 }],
+    },
+  }));
+
+  await page.goto("/admin/settings", { waitUntil: "commit" });
+  await expectAdminReady(page, "Cài đặt");
+  for (const category of ["Application", "Registration", "Localization", "Billing", "Documents", "Notifications", "Storage", "Sync"]) {
+    await expect(page.getByRole("rowheader", { name: category })).toBeVisible();
+  }
+  await expect(page.getByRole("button", { name: "Lưu cấu hình" })).toBeDisabled();
+  let accessibility = await new AxeBuilder({ page })
+    .include("#admin-app")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.locator('[data-admin-link="/admin/environment"]').click();
+  await expectAdminReady(page, "Môi trường");
+  await expect(page.locator('[data-admin-secret-status="DATABASE_URL"]')).toHaveText("Đã cấu hình");
+  await expect(page.locator('[data-admin-secret-status="PAYOS_API_KEY"]')).toHaveText("Thiếu cấu hình");
+  await expect(page.getByRole("button", { name: "Thay thế" })).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/postgres(?:ql)?:\/\//u);
+
+  await page.locator('[data-admin-link="/admin/analytics"]').click();
+  await expectAdminReady(page, "Phân tích");
+  const chart = page.getByRole("img", { name: "Kế hoạch", exact: true });
+  await expect(chart).toBeVisible();
+  await expect(page.getByRole("table", { name: "Dữ liệu dạng bảng cho Kế hoạch" })).toContainText("2026-09-10");
+  accessibility = await new AxeBuilder({ page })
+    .include("#admin-app")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByLabel("Chế độ xem").selectOption("operations");
+  await page.getByRole("button", { name: "Áp dụng" }).click();
+  await expect(page.getByText("Yêu cầu API")).toBeVisible();
+  await expect(page.getByText("120", { exact: true })).toBeVisible();
+  await expect(page.getByText(/N\/A — hệ thống chưa lưu chuỗi thời gian/u)).toBeVisible();
 });

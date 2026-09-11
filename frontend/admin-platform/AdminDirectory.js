@@ -156,7 +156,8 @@ function writeBrowserQuery(state, config, { push = false } = {}) {
   );
 }
 
-export function renderAdminDirectory(container, config, { fetchImpl, signal } = {}) {
+export function renderAdminDirectory(container, config, options = {}) {
+  const { fetchImpl, signal } = options;
   let state = readDirectoryState(config);
   const selectedIds = new Set();
   const loader = createLatestAdminLoader();
@@ -204,7 +205,13 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
       void load();
     }));
     config.bindResultActions?.(results, {
-      fetchImpl, signal, reload: load, payload: currentPayload, state, setDetail,
+      ...options,
+      fetchImpl,
+      signal,
+      reload: load,
+      payload: currentPayload,
+      state,
+      setDetail: config.detailKind ? setDetail : options.setDetail,
     });
   };
   let currentPayload = null;

@@ -3,6 +3,7 @@ import { getAdminJson, postAdminJson, requiresPrivilegedReauthentication } from 
 import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { trapAdminDialogFocus } from "./AdminFocusTrap.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -96,7 +97,7 @@ export function invoiceRequestDetailMarkup(payload) {
   ])}`);
 }
 
-function openBillingDetail(button, markup) {
+function openBillingDetail(button, markup, { onClose } = {}) {
   document.querySelector("[data-admin-billing-detail-drawer]")?.remove();
   document.querySelector("[data-admin-billing-detail-backdrop]")?.remove();
   const drawer = document.createElement("aside");
@@ -111,11 +112,32 @@ function openBillingDetail(button, markup) {
   const backdrop = document.createElement("div");
   backdrop.className = "offcanvas-backdrop fade show";
   backdrop.setAttribute("data-admin-billing-detail-backdrop", "");
-  const close = () => { drawer.remove(); backdrop.remove(); button?.focus?.(); };
+  let closed = false;
+  let releaseFocusTrap = () => {};
+  const remove = () => {
+    releaseFocusTrap();
+    drawer.remove(); backdrop.remove();
+    window.removeEventListener("popstate", dismissForNavigation);
+    window.removeEventListener("admin:navigate", dismissForNavigation);
+  };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    remove();
+    onClose?.();
+    button?.focus?.();
+  };
+  const dismissForNavigation = () => {
+    if (closed) return;
+    closed = true;
+    remove();
+  };
   const bindClose = () => drawer.querySelector("[data-admin-close-billing-detail]")?.addEventListener("click", close);
   bindClose();
   backdrop.addEventListener("click", close);
-  drawer.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+  releaseFocusTrap = trapAdminDialogFocus(drawer, { onEscape: close });
+  window.addEventListener("popstate", dismissForNavigation);
+  window.addEventListener("admin:navigate", dismissForNavigation);
   document.body.append(drawer, backdrop);
   drawer.querySelector("button")?.focus();
   return { drawer, close, bindClose };
@@ -124,10 +146,11 @@ function openBillingDetail(button, markup) {
 function bindBillingDetails(root, items, options, kind) {
   const idFor = (item) => String(kind === "invoice" ? item?.id : kind === "payment" ? item?.publicId : `${item?.owner?.kind}:${item?.owner?.id}`);
   const byId = new Map(items.map((item) => [idFor(item), item]));
-  root.querySelectorAll("[data-admin-billing-detail]").forEach((button) => button.addEventListener("click", async () => {
-    const id = String(button.dataset.adminBillingDetail || "");
+  const open = async (id, { button = null, push = false } = {}) => {
+    id = String(id || "");
     const item = byId.get(id);
-    if (!item) return;
+    if (!item && kind !== "invoice") return;
+    if (kind === "invoice" && push) options.setDetail?.(id, { push: true });
     if (kind === "subscription") {
       openBillingDetail(button, subscriptionDetailMarkup(item));
       return;
@@ -136,7 +159,11 @@ function bindBillingDetails(root, items, options, kind) {
       openBillingDetail(button, paymentDetailMarkup(item));
       return;
     }
-    const detail = openBillingDetail(button, detailShell("Yêu cầu phát hành hóa đơn", id, adminLoadingMarkup("Đang tải yêu cầu hóa đơn…")));
+    const detail = openBillingDetail(
+      button,
+      detailShell("Yêu cầu phát hành hóa đơn", id, adminLoadingMarkup("Đang tải yêu cầu hóa đơn…")),
+      { onClose: () => options.setDetail?.("", { push: false }) },
+    );
     try {
       const payload = await getAdminJson(`/api/admin/invoices/${encodeURIComponent(id)}`, options);
       detail.drawer.innerHTML = trustedHTML(invoiceRequestDetailMarkup(payload));
@@ -148,7 +175,11 @@ function bindBillingDetails(root, items, options, kind) {
       detail.bindClose();
       detail.drawer.querySelector("button")?.focus();
     }
+  };
+  root.querySelectorAll("[data-admin-billing-detail]").forEach((button) => button.addEventListener("click", () => {
+    void open(button.dataset.adminBillingDetail, { button, push: kind === "invoice" });
   }));
+  if (kind === "invoice" && options.initialDetailId) void open(options.initialDetailId);
 }
 
 const PAYMENT_ACTION_COPY = Object.freeze({
@@ -403,5 +434,6 @@ export function invoiceUnavailableMarkup() {
 }
 
 export function renderAdminInvoicesUnavailable(container, options) {
-  return renderAdminDirectory(container, INVOICE_DIRECTORY, options);
+  const result = renderAdminDirectory(container, INVOICE_DIRECTORY, options);
+  return result;
 }

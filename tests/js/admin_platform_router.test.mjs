@@ -16,6 +16,14 @@ test("admin router recognizes every required deep link", () => {
 
 test("admin router normalizes trailing slash and rejects unknown routes", () => {
   assert.equal(normalizeAdminPath("/admin/users/"), "/admin/users");
+  assert.equal(normalizeAdminPath("/admin/invoices/invoice-request-1/"), "/admin/invoices/invoice-request-1");
+  assert.deepEqual(getAdminRoute("/admin/invoices/invoice-request-1"), {
+    path: "/admin/invoices",
+    href: "/admin/invoices/invoice-request-1",
+    title: "Hóa đơn",
+    detailId: "invoice-request-1",
+  });
+  assert.equal(getAdminRoute("/admin/invoices/a%2Fb"), null);
   assert.equal(normalizeAdminPath("/admin/not-real"), null);
   assert.equal(normalizeAdminPath("/tong-quan-admin"), null);
 });
