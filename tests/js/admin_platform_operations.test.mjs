@@ -39,11 +39,12 @@ test("health view renders only allowlisted operational fields", () => {
     generatedAt: "2026-09-10T00:00:00Z",
     status: "ready",
     application: { startupComplete: true, ready: true, eventLoopLagMs: 3.5 },
-    database: { status: "available", schemaVersion: 90, connectionUrl: "private-db" },
+    database: { status: "available", schemaVersion: 90, latencyMs: 1.4, connectionUrl: "private-db" },
     operations: {
       documentWorker: { active: 1, waiting: 2, completed: 3, failed: 0, rejected: 0 },
       websocket: { activeConnections: 4, pendingEvents: 5, oldestPendingSeconds: 6.5 },
       backgroundJobs: [{ queue: "document", status: "pending", count: 2, oldestSeconds: 8 }],
+      databasePool: { pool_size: 5, pool_available: 3, requests_waiting: 1 },
     },
     rawError: "do-not-render",
   });
@@ -51,6 +52,8 @@ test("health view renders only allowlisted operational fields", () => {
   assert.match(markup, /Sẵn sàng/u);
   assert.match(markup, /3[.]5 ms/u);
   assert.match(markup, />90</u);
+  assert.match(markup, /1[.]4 ms/u);
+  assert.match(markup, /Kết nối pool đang dùng[\s\S]*>2</u);
   assert.match(markup, /Worker tài liệu/u);
   assert.match(markup, /Kết nối WebSocket/u);
   assert.match(markup, /document · pending: 2/u);

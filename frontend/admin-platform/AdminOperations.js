@@ -90,6 +90,9 @@ export function healthMarkup(payload) {
   const application = payload.application;
   const database = payload.database;
   const operations = payload.operations && typeof payload.operations === "object" ? payload.operations : {};
+  const databasePool = operations.databasePool && typeof operations.databasePool === "object"
+    ? operations.databasePool
+    : {};
   const storage = operations.storage && typeof operations.storage === "object" ? operations.storage : {};
   const backup = operations.backup && typeof operations.backup === "object" ? operations.backup : {};
   const worker = operations.documentWorker && typeof operations.documentWorker === "object" ? operations.documentWorker : {};
@@ -106,7 +109,11 @@ export function healthMarkup(payload) {
   ], { subtitle: generatedAtMarkup(payload.generatedAt) })}</div><div class="col-lg-6">${detailsCard("Cơ sở dữ liệu", [
     ["Trạng thái", statusBadge(database.status)],
     ["Phiên bản schema", text(database.schemaVersion)],
+    ["Độ trễ truy vấn trạng thái", Number.isFinite(database.latencyMs) ? `${text(database.latencyMs)} ms` : "N/A"],
     ["Dung lượng database", text(bytes(operations.databaseBytes))],
+    ["Kết nối pool đang dùng", Number.isFinite(databasePool.pool_size) && Number.isFinite(databasePool.pool_available) ? text(Math.max(0, databasePool.pool_size - databasePool.pool_available)) : "N/A"],
+    ["Kết nối pool khả dụng", Number.isFinite(databasePool.pool_available) ? text(databasePool.pool_available) : "N/A"],
+    ["Yêu cầu chờ pool", Number.isFinite(databasePool.requests_waiting) ? text(databasePool.requests_waiting) : "N/A"],
     ["Khóa đang chờ", Number.isFinite(operations.waitingLocks) ? text(operations.waitingLocks) : "N/A"],
     ["WAL", text(bytes(operations.walBytes))],
   ])}</div><div class="col-lg-6">${detailsCard("Lưu trữ", [

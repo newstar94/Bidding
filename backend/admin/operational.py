@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import tempfile
 import threading
+import time
 
 from starlette.responses import JSONResponse
 
@@ -314,18 +315,23 @@ def _update_environment_sync(request, payload):
 
 
 def _read_database_status() -> dict:
+    started_at = time.perf_counter()
     connection = database.get_connection()
     try:
         row = connection.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()
         if row is None:
-            return {"status": "unavailable", "schemaVersion": None}
+            return {
+                "status": "unavailable", "schemaVersion": None,
+                "latencyMs": round((time.perf_counter() - started_at) * 1000, 1),
+            }
         version = int(row[0])
         compatible = DB_RUNTIME_MIN_SCHEMA_VERSION <= version <= DB_RUNTIME_MAX_SCHEMA_VERSION
         return {
             "status": "available" if compatible else "incompatible",
             "schemaVersion": version,
+            "latencyMs": round((time.perf_counter() - started_at) * 1000, 1),
         }
     finally:
         connection.close()
@@ -336,7 +342,7 @@ def _safe_read_database_status() -> dict:
         return _read_database_status()
     except Exception as exc:  # noqa: BLE001 - details must not cross the API boundary.
         log_error(exc, "admin_operational_database", level="WARN")
-        return {"status": "unavailable", "schemaVersion": None}
+        return {"status": "unavailable", "schemaVersion": None, "latencyMs": None}
 
 
 def _safe_read_operational_status() -> dict:
@@ -355,6 +361,15 @@ def _safe_read_operational_status() -> dict:
         "databaseBytes": int(snapshot.get("postgres_database_bytes") or 0),
         "waitingLocks": int(snapshot.get("postgres_waiting_locks") or 0),
         "walBytes": int(snapshot.get("postgres_wal_bytes") or 0),
+        "databasePool": {
+            key: int(value)
+            for key, value in (snapshot.get("postgres_pool") or {}).items()
+            if key in {
+                "pool_min", "pool_max", "pool_size", "pool_available",
+                "requests_waiting", "requests_errors",
+            }
+            and isinstance(value, (int, float))
+        },
         "storage": {
             volume: {
                 "freeBytes": int(values.get("free") or 0),

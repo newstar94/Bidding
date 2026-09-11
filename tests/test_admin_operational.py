@@ -22,7 +22,9 @@ def _request(*, startup_complete=True, ready=True, lag=4.25):
 
 def _install_database_runner(monkeypatch, database_status=None):
     calls = []
-    status = database_status or {"status": "available", "schemaVersion": 90}
+    status = database_status or {
+        "status": "available", "schemaVersion": 90, "latencyMs": 1.2,
+    }
 
     async def database_read(function, *args, **kwargs):
         calls.append((function, args, kwargs))
@@ -35,6 +37,10 @@ def _install_database_runner(monkeypatch, database_status=None):
                 "databaseBytes": 4096,
                 "waitingLocks": 0,
                 "walBytes": 1024,
+                "databasePool": {
+                    "pool_size": 5, "pool_available": 3,
+                    "requests_waiting": 0,
+                },
                 "storage": {"data": {"freeBytes": 100, "totalBytes": 200}},
                 "backup": {"lastVerifiedAt": 123, "ageSeconds": 10},
                 "documentWorker": {
@@ -165,7 +171,9 @@ def test_health_reports_real_application_and_database_state(monkeypatch):
         "ready": True,
         "eventLoopLagMs": 4.2,
     }
-    assert payload["database"] == {"status": "available", "schemaVersion": 90}
+    assert payload["database"] == {
+        "status": "available", "schemaVersion": 90, "latencyMs": 1.2,
+    }
     assert payload["operations"]["databaseBytes"] == 4096
     assert payload["operations"]["storage"]["data"]["totalBytes"] == 200
     assert payload["operations"]["documentWorker"]["waiting"] == 2
@@ -183,6 +191,11 @@ def test_operational_projection_includes_bounded_worker_sync_and_job_health(monk
             "websocket_outbox_oldest_seconds": 9.5,
             "background_jobs": {
                 ("document", "pending"): {"count": 3, "oldest_seconds": 12.0},
+            },
+            "postgres_pool": {
+                "pool_min": 2, "pool_max": 12, "pool_size": 4,
+                "pool_available": 3, "requests_waiting": 1,
+                "private_stat": 999,
             },
             "private_path": "D:/must-not-leak",
         },
@@ -206,17 +219,21 @@ def test_operational_projection_includes_bounded_worker_sync_and_job_health(monk
     assert payload["backgroundJobs"] == [
         {"queue": "document", "status": "pending", "count": 3, "oldestSeconds": 12.0}
     ]
+    assert payload["databasePool"] == {
+        "pool_min": 2, "pool_max": 12, "pool_size": 4,
+        "pool_available": 3, "requests_waiting": 1,
+    }
     assert "private_path" not in payload
 
 
 def test_health_is_degraded_without_leaking_database_failure(monkeypatch):
     _install_database_runner(
-        monkeypatch, {"status": "unavailable", "schemaVersion": None}
+        monkeypatch, {"status": "unavailable", "schemaVersion": None, "latencyMs": None}
     )
     response = asyncio.run(operational.admin_health_api(_request()))
 
     assert _payload(response)["status"] == "degraded"
-    assert set(_payload(response)["database"]) == {"status", "schemaVersion"}
+    assert set(_payload(response)["database"]) == {"status", "schemaVersion", "latencyMs"}
 
 
 def test_system_version_uses_sanitized_release_and_installed_schema(monkeypatch):
