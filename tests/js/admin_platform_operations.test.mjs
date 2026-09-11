@@ -146,13 +146,16 @@ test("settings view renders writable feature controls without secret data", () =
   assert.doesNotMatch(markup, /DATABASE_URL|private/u);
   const categories = [...markup.matchAll(/data-admin-settings-category="([^"]+)"/gu)].map((match) => match[1]);
   assert.deepEqual(categories, [
-    "application", "registration", "localization", "billing", "documents",
-    "notifications", "storage", "sync", "feature-flags",
+    "feature-flags", "application", "registration", "localization", "billing",
+    "documents", "notifications", "storage", "sync",
   ]);
   assert.equal((markup.match(/data-admin-feature=/gu) || []).length, 4);
-  assert.equal((markup.match(/data-admin-category-state="read-only"/gu) || []).length, 8);
-  assert.match(markup, /Chưa có kho cấu hình runtime có thẩm quyền/u);
-  assert.match(markup, /Chỉ đọc/u);
+  assert.equal((markup.match(/data-admin-category-state="read-only"/gu) || []).length, 0);
+  assert.match(markup, /Danh mục cấu hình/u);
+  for (const path of [
+    "/admin/environment", "/admin/users", "/admin/plans",
+    "/admin/system/jobs", "/admin/health", "/admin/system/sync",
+  ]) assert.match(markup, new RegExp(`data-admin-link="${path}"`, "u"));
 });
 
 test("settings view remains explicitly read-only for deployment-managed environments", () => {

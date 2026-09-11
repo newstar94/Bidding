@@ -6,7 +6,7 @@ import { adminNavigationMarkup } from "../../frontend/admin-platform/AdminNaviga
 test("admin sidebar renders grouped IA with every destination once", () => {
   const markup = adminNavigationMarkup();
   for (const label of [
-    "Tổng quan", "Phân tích", "Khách hàng", "Thương mại",
+    "Điều hành", "Tổng quan", "Phân tích", "Khách hàng", "Thương mại",
     "Hệ thống", "Bảo mật", "DevOps",
   ]) assert.match(markup, new RegExp(`>${label}<`, "u"));
 

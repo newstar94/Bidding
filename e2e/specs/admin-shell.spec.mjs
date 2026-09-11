@@ -22,6 +22,18 @@ const OVERVIEW_PAYLOAD = {
   },
   recentOrganizations: [{ name: "Tổ chức kiểm thử", status: "active" }],
   generatedAt: "2026-09-10T08:00:00Z",
+  charts: [{
+    key: "newOrganizations",
+    label: "Tổ chức mới theo thời gian",
+    series: [{
+      key: "newOrganizations",
+      label: "Tổ chức mới",
+      points: [
+        { date: "2026-09-09", value: 1 },
+        { date: "2026-09-10", value: 2 },
+      ],
+    }],
+  }],
 };
 const DIRECTORY_PAGE = {
   items: [{
@@ -215,6 +227,8 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
   await context.route("**/api/admin/users?**", (route) => fulfillJson(route, DIRECTORY_PAGE));
   await page.goto("/admin", { waitUntil: "commit" });
   await expect(page.locator('[data-admin-metric="organizations"]')).toHaveText("2");
+  await expect(page.getByRole("heading", { name: "Xu hướng và phân bố", exact: true })).toBeVisible();
+  await expect(page.locator('svg[data-admin-chart-kind="line"]')).toBeVisible();
 
   for (const viewport of [
     { width: 1440, height: 900 },
@@ -611,7 +625,7 @@ test("overview renders authoritative charts, table fallbacks, activity, and acti
 
   await page.goto("/admin", { waitUntil: "commit" });
   await expectAdminReady(page, "Tổng quan");
-  await expect(page.getByRole("heading", { name: "Phân bố nền tảng" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Biểu đồ tổng quan" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Hoạt động: 9 trên tổng số 12/u })).toBeVisible();
   const organizationFallback = page.getByRole("table", { name: "Dữ liệu dạng bảng của Tình trạng tổ chức" });
   await expect(organizationFallback).toContainText("Hoạt động");
@@ -676,7 +690,13 @@ test("invoice and failed-job journeys load sanitized details and require explici
     provider: { name: "payOS", environment: "production", invoiceReference: "INV-SAFE" },
     documentAvailable: false, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T01:00:00Z",
   };
-  await context.route("**/api/admin/invoices?**", (route) => fulfillJson(route, directoryPage([invoice])));
+  await context.route("**/api/admin/invoices?**", (route) => fulfillJson(route, {
+    ...directoryPage([invoice]),
+    summary: {
+      requestCount: 1, totalRequestedMinor: 1250000, currency: "VND",
+      requestedCount: 0, issuedCount: 1, failedCount: 0,
+    },
+  }));
   await context.route("**/api/admin/invoices/invoice-e2e", (route) => fulfillJson(route, {
     invoiceRequest: invoice,
     notice: "Yêu cầu có thẩm quyền; không phải tài liệu hóa đơn được tạo giả.",
@@ -706,6 +726,8 @@ test("invoice and failed-job journeys load sanitized details and require explici
 
   await page.goto("/admin/invoices/invoice-e2e", { waitUntil: "commit" });
   await expect(page.getByRole("heading", { level: 2, name: "Hóa đơn", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tổng hợp yêu cầu hóa đơn" })).toBeVisible();
+  await expect(page.getByText("Tổng giá trị yêu cầu").locator("..")).toContainText("1.250.000");
   const invoiceDrawer = page.locator("[data-admin-billing-detail-drawer]");
   await expect(invoiceDrawer.getByRole("heading", { name: "invoice-e2e" })).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/invoices\/invoice-e2e(?:\?|$)/u);

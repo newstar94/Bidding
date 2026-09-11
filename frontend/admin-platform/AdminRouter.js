@@ -10,8 +10,7 @@ export const ADMIN_ROUTES = Object.freeze([
   ["/admin/system/sync", "Đồng bộ"], ["/admin/system/version", "Phiên bản"],
 ]);
 export const ADMIN_NAV_GROUPS = Object.freeze([
-  Object.freeze({ label: "Tổng quan", paths: Object.freeze(["/admin"]) }),
-  Object.freeze({ label: "Phân tích", paths: Object.freeze(["/admin/analytics"]) }),
+  Object.freeze({ label: "Điều hành", paths: Object.freeze(["/admin", "/admin/analytics"]) }),
   Object.freeze({ label: "Khách hàng", paths: Object.freeze(["/admin/organizations", "/admin/users"]) }),
   Object.freeze({
     label: "Thương mại",

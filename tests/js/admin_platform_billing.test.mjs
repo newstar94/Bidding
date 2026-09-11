@@ -8,6 +8,7 @@ import {
   formatMinorMoney,
   executePaymentAction,
   invoiceRequestDetailMarkup,
+  invoiceRequestSummaryMarkup,
   invoiceUnavailableMarkup,
   INVOICE_DIRECTORY,
   paymentDetailMarkup,
@@ -254,12 +255,21 @@ test("invoice directory and detail render authoritative request facts without in
   };
   const state = readDirectoryState(INVOICE_DIRECTORY, "");
   const markup = directoryResultsMarkup(INVOICE_DIRECTORY, state, {
-    items: [request], pagination: { page: 1, totalPages: 1, totalRows: 1 },
+    items: [request],
+    summary: {
+      requestCount: 1, totalRequestedMinor: 110000, currency: "VND",
+      requestedCount: 0, issuedCount: 1, failedCount: 0,
+    },
+    pagination: { page: 1, totalPages: 1, totalRows: 1 },
   });
   assert.match(markup, /invoice-request-1/u);
   assert.match(markup, /provider-invoice-ref/u);
   assert.match(markup, /110[.]000/u);
   assert.match(markup, /data-admin-billing-detail="invoice-request-1"/u);
+  assert.match(markup, /Tổng hợp yêu cầu hóa đơn/u);
+  assert.match(markup, /Tổng yêu cầu[\s\S]*>1</u);
+  assert.match(markup, /Đã phát hành[\s\S]*>1</u);
+  assert.match(markup, /không suy diễn công nợ, quá hạn hoặc hoàn tiền/u);
   const detail = invoiceRequestDetailMarkup({
     invoiceRequest: request,
     notice: "Đây là dữ liệu yêu cầu phát hành hóa đơn; chưa có tài liệu tải xuống.",
@@ -271,4 +281,6 @@ test("invoice directory and detail render authoritative request facts without in
   assert.doesNotMatch(detail, /PDF|Số hóa đơn/u);
   const noticeMarkup = invoiceUnavailableMarkup();
   assert.match(noticeMarkup, /không phải tài liệu hóa đơn được tạo giả/u);
+  const unavailable = invoiceRequestSummaryMarkup();
+  assert.equal((unavailable.match(/>N\/A</gu) || []).length, 5);
 });

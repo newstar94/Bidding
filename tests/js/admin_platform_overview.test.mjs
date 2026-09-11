@@ -74,7 +74,7 @@ test("overview includes accessible charts, activity feed and actionable alerts",
   });
   assert.equal((markup.match(/role="img"/gu) || []).length, 3);
   assert.equal((markup.match(/<caption/gu) || []).length, 3);
-  assert.match(markup, /Phân bố nền tảng/u);
+  assert.match(markup, /Biểu đồ tổng quan/u);
   assert.match(markup, /Xu hướng và phân bố/u);
   assert.match(markup, /Tổ chức mới/u);
   assert.match(markup, />80%</u);

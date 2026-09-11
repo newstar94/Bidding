@@ -34,14 +34,14 @@ const FEATURE_FIELDS = Object.freeze([
 ]);
 
 const SETTINGS_CATEGORIES = Object.freeze([
-  ["application", "Application", "Cấu hình triển khai và vòng đời ứng dụng", "deployment"],
-  ["registration", "Registration", "Đăng ký và xác minh người dùng", "deployment"],
-  ["localization", "Localization", "Ngôn ngữ, múi giờ và định dạng vùng", "unsupported"],
-  ["billing", "Billing", "Nhà cung cấp và chính sách thanh toán", "deployment"],
-  ["documents", "Documents", "Worker và chính sách tạo tài liệu", "unsupported"],
-  ["notifications", "Notifications", "Kênh gửi thông báo và hộp thư đi", "deployment"],
-  ["storage", "Storage", "Kết nối và lưu trữ dữ liệu", "deployment"],
-  ["sync", "Sync", "Đồng bộ, xung đột và thời gian thực", "deployment"],
+  ["application", "Application", "Môi trường và vòng đời ứng dụng", "/admin/environment", "Mở môi trường"],
+  ["registration", "Registration", "Tài khoản và trạng thái đăng ký", "/admin/users", "Quản lý người dùng"],
+  ["localization", "Localization", "Ngôn ngữ, múi giờ và định dạng vùng", null, null],
+  ["billing", "Billing", "Gói dịch vụ và chính sách thương mại", "/admin/plans", "Quản lý gói dịch vụ"],
+  ["documents", "Documents", "Tác vụ và worker tạo tài liệu", "/admin/system/jobs", "Mở tác vụ"],
+  ["notifications", "Notifications", "Kênh gửi thông báo và hộp thư đi", null, null],
+  ["storage", "Storage", "Cơ sở dữ liệu, lưu trữ và sao lưu", "/admin/health", "Mở vận hành"],
+  ["sync", "Sync", "Đồng bộ và sự kiện thời gian thực", "/admin/system/sync", "Mở đồng bộ"],
 ]);
 
 function text(value, fallback = "N/A") {
@@ -226,17 +226,14 @@ export function settingsMarkup(payload) {
   const notice = writable
     ? "Thay đổi được lưu vào cấu hình cục bộ trên máy chủ và có hiệu lực sau khi khởi động lại."
     : "Môi trường này chỉ đọc; tính năng do hệ thống cấu hình triển khai quản lý.";
-  // Keep deployment-managed configuration in the Environment screen. The
-  // Settings screen is intentionally limited to feature flags so each control
-  // has one canonical location and cannot drift from the runtime source.
-  const categoryIcons = {
-    application: "overview", registration: "security", localization: "settings",
-    billing: "payments", documents: "invoices", notifications: "audit",
-    storage: "environment", sync: "sync",
-  };
-  const categories = SETTINGS_CATEGORIES.map(([key, title, description, support]) => `<div class="col-12 col-lg-6"><section class="card h-100" data-admin-settings-category="${escapeHtml(key)}" data-admin-category-state="read-only"><div class="card-body"><div class="d-flex justify-content-between gap-3"><div><h3 class="card-title bf-admin-section-title">${adminIconMarkup(categoryIcons[key] || "settings", "bf-admin-section-icon")}<span>${escapeHtml(title)}</span></h3><p class="text-secondary small mb-2">${escapeHtml(description)}</p></div><span class="badge bg-secondary-lt text-dark align-self-start">${support === "unsupported" ? "Chưa hỗ trợ" : "Chỉ đọc"}</span></div><p class="text-secondary small mb-0">${support === "unsupported" ? "Chưa có kho cấu hình runtime có thẩm quyền." : "Do cấu hình triển khai quản lý; không chỉnh sửa tại trang này."}</p></div></section></div>`).join("");
   const featureFlags = `<div class="col-12"><section class="card bf-admin-settings-card" data-admin-settings-category="feature-flags" aria-labelledby="feature-settings-title"><form data-admin-settings-form><div class="card-header"><div><h3 class="card-title bf-admin-section-title" id="feature-settings-title">${adminIconMarkup("settings", "bf-admin-section-icon")}<span>Feature Flags · Tính năng hệ thống</span></h3><p class="text-secondary small mb-0">${escapeHtml(notice)}</p></div></div><div class="card-body bf-admin-settings-list">${controls}</div><div class="card-footer d-flex flex-wrap align-items-center gap-3"><button class="btn btn-primary" type="submit" data-admin-settings-save${writable ? "" : " disabled"}>Lưu cấu hình</button><div class="small" role="status" aria-live="polite" data-admin-settings-status>${writable ? "" : "Chỉ đọc"}</div></div></form></section></div>`;
-  return `<div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-3" role="note"><span>Chỉ Feature Flags có kho cấu hình ghi được. Các nhóm khác phản ánh trạng thái triển khai hoặc điểm mở rộng chưa được hỗ trợ.</span><a class="btn btn-sm btn-outline-primary" href="/admin/environment" data-admin-link="/admin/environment">Quản lý biến môi trường</a></div><div class="row row-cards">${categories}${featureFlags}</div>`;
+  const categories = SETTINGS_CATEGORIES.map(([key, title, description, href, action]) => {
+    const destination = href
+      ? `<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(href)}" data-admin-link="${escapeHtml(href)}">${escapeHtml(action)}</a>`
+      : '<span class="badge bg-secondary-lt text-dark">Chưa có kho cấu hình</span>';
+    return `<div class="col-12 col-md-6 col-xl-3"><section class="card h-100" data-admin-settings-category="${escapeHtml(key)}"><div class="card-body d-flex flex-column"><h3 class="card-title">${escapeHtml(title)}</h3><p class="text-secondary small flex-grow-1">${escapeHtml(description)}</p><div>${destination}</div></div></section></div>`;
+  }).join("");
+  return `<div class="alert alert-info" role="note">Mỗi chức năng chỉ có một màn hình quản lý. Trang này chỉnh Feature Flags và dẫn đến màn hình sở hữu các cấu hình còn lại.</div><div class="row row-cards">${featureFlags}<div class="col-12"><section aria-labelledby="settings-directory-title"><h2 class="h3 mb-3" id="settings-directory-title">Danh mục cấu hình</h2><div class="row row-cards">${categories}</div></section></div></div>`;
 }
 
 function updateStatus(element, message, tone = "secondary") {

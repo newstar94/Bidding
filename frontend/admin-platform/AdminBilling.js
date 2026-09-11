@@ -421,6 +421,15 @@ export const PAYMENT_DIRECTORY = Object.freeze({
   },
 });
 
+export function invoiceRequestSummaryMarkup(summary = {}) {
+  const metric = (label, value) => `<div class="col-sm-6 col-xl"><article class="card h-100"><div class="card-body"><div class="text-secondary small">${escapeHtml(label)}</div><div class="h3 mb-0 mt-2">${escapeHtml(value)}</div></div></article></div>`;
+  const number = (value) => Number.isFinite(value)
+    ? new Intl.NumberFormat("vi-VN").format(value)
+    : "N/A";
+  const total = formatMinorMoney(summary?.totalRequestedMinor, summary?.currency);
+  return `${invoiceUnavailableMarkup()}<section class="mb-3" aria-labelledby="invoice-request-summary-title"><div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-2"><div><h2 class="h3 mb-1" id="invoice-request-summary-title">Tổng hợp yêu cầu hóa đơn</h2><p class="text-secondary small mb-0">Số liệu có thẩm quyền của quy trình yêu cầu phát hành; không suy diễn công nợ, quá hạn hoặc hoàn tiền.</p></div></div><div class="row row-cards">${metric("Tổng yêu cầu", number(summary?.requestCount))}${metric("Tổng giá trị yêu cầu", total)}${metric("Đang chờ", number(summary?.requestedCount))}${metric("Đã phát hành", number(summary?.issuedCount))}${metric("Thất bại", number(summary?.failedCount))}</div></section>`;
+}
+
 export const INVOICE_DIRECTORY = Object.freeze({
   endpoint: "/api/admin/invoices",
   title: "Yêu cầu hóa đơn",
@@ -438,6 +447,7 @@ export const INVOICE_DIRECTORY = Object.freeze({
     { label: "Số tiền" }, { label: "Trạng thái", sortKey: "status" },
     { label: "Nhà cung cấp" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
   ],
+  summaryMarkup: invoiceRequestSummaryMarkup,
   rowMarkup(request) {
     return `<tr><td data-label="Yêu cầu"><strong>${text(request?.id)}</strong><div class="small text-secondary">Yêu cầu phát hành hóa đơn</div></td><td data-label="Chủ thanh toán">${ownerMarkup(request?.owner)}</td><td data-label="Đơn hàng">${text(request?.orderPublicId)}<div class="small text-secondary">${text(request?.paymentTransaction?.providerTransactionId)}</div></td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(request?.amounts?.orderTotalMinor, request?.amounts?.currency))}</strong><div class="small text-secondary">${text(request?.amounts?.currency)}</div></td><td data-label="Trạng thái">${text(request?.status)}<div class="small text-secondary">${Number.isFinite(request?.attemptCount) ? `${escapeHtml(request.attemptCount)} lần thử` : "N/A"}</div></td><td data-label="Nhà cung cấp">${text(request?.provider?.name)}<div class="small text-secondary">${text(request?.provider?.invoiceReference, "Chưa có tham chiếu")}</div></td><td data-label="Ngày tạo">${formatDate(request?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${text(request?.id, "")}">Xem</button></td></tr>`;
   },

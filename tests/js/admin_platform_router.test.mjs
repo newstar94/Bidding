@@ -35,7 +35,7 @@ test("admin router normalizes trailing slash and rejects unknown routes", () => 
 
 test("admin information architecture groups every route exactly once", () => {
   assert.deepEqual(ADMIN_NAV_GROUPS.map((group) => group.label), [
-    "Tổng quan", "Phân tích", "Khách hàng", "Thương mại",
+    "Điều hành", "Khách hàng", "Thương mại",
     "Hệ thống", "Bảo mật", "DevOps",
   ]);
   const groupedPaths = ADMIN_NAV_GROUPS.flatMap((group) => group.paths);
