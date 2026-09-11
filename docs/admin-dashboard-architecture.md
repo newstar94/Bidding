@@ -35,6 +35,12 @@ Platform list APIs use fixed page-size limits, request-field allowlists, bound q
 
 No admin payload contains raw environment values, secret values, database URLs, filesystem paths, session tokens, device fingerprints, privileged reauthentication state or raw audit metadata. Missing domain models are returned as unavailable rather than synthesized.
 
+## Large-data evidence
+
+`python scripts/benchmark_platform_admin.py` uses only `TEST_DATABASE_URL` (including the local `.env` value) and deliberately refuses to fall back to `DATABASE_URL`. It creates transaction-local temporary PostgreSQL tables, seeds 10,000 users, 1,000 organizations and 50,000 audit rows, calls the production Platform Admin list handlers, then rolls back in all outcomes.
+
+The executable contract requires page size 100, response bodies no larger than 256 KB, and fixed query counts of three for users, three for organizations and two for audit. Timings are reported as environment evidence but are not disguised as a portable latency guarantee. Synthetic invoice volume is not included because the current architecture has no authoritative invoice model.
+
 ## Configuration and secret management
 
 `GET /api/admin/environment` exposes only allowlisted runtime values, feature states, and secret presence/source metadata. Development and test deployments may update the four existing feature flags or replace an allowlisted secret through `POST /api/admin/environment`. Production and staging remain deployment-managed and read-only.
