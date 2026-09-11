@@ -1,17 +1,17 @@
 # BiddingFlow Tabler Admin Migration — Completion Report
 
-This report audits the implementation state through `395e5cfe` (current HEAD). Earlier migration evidence is retained where noted; evidence from older SHAs is historical. The latest UI correction adds visible overview charts, invoice-request KPI placeholders, canonical settings destinations, and updated analytics documentation.
+This report audits the implementation state through `98ad2688` (current HEAD). Earlier migration evidence is retained where noted; evidence from older SHAs is historical. The latest UI correction adds visible overview charts, invoice-request KPI placeholders, canonical settings destinations, and updated analytics documentation.
 
 ## 1. Baseline
 
 | Item | Value |
 | --- | --- |
 | Migration baseline | `c0d8ebfc699258c28662f7d03e7bbadd507a9305` (parent of first Tabler-shell commit) |
-| Implementation SHA audited | `395e5cfe` |
+| Implementation SHA audited | `98ad2688` |
 | Branch | `main` |
-| `origin/main` at current completion audit | `6caa66512207a35a2c274df450f8f23edfb8d57d` before this local commit; remote CI pending |
+| `origin/main` at current completion audit | `98ad2688` |
 | Baseline CI | No single terminal baseline run was reconstructed for this report; historical prompt evidence recorded failures before the migration |
-| Latest implementation remote CI | Full CI `34586538439`, CodeQL `34586538448`, N+1 `34586538419`, Supply-chain `34586538443`: success on `6caa6651`; `395e5cfe` requires a fresh remote run |
+| Latest implementation remote CI | Full CI `34610312708`, CodeQL `34610312684`, N+1 `34610312703`, Supply-chain `34610312701`: success on `98ad2688` |
 | Legal production release | Blocked by 27 external legal facts; no approval or production-public artifact is claimed |
 
 ## 2. Legacy Dashboard Inventory
