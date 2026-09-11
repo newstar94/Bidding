@@ -46,12 +46,16 @@ function normalizeState(config, values = {}) {
   const requestedSize = Number.parseInt(values.pageSize, 10) || 25;
   const sortBy = config.sortKeys.includes(values.sortBy) ? values.sortBy : config.defaultSort;
   const searchKey = config.searchQueryKey || "search";
+  const detail = config.detailKind
+    ? String(values.detail || "").trim().slice(0, 200)
+    : "";
   return {
     page,
     pageSize: PAGE_SIZES.has(requestedSize) ? requestedSize : 25,
     [searchKey]: String(values[searchKey] || "").trim().slice(0, 100),
     sortBy,
     sortDir: values.sortDir === "desc" || (!values.sortDir && config.defaultSortDir === "desc") ? "desc" : "asc",
+    ...(config.detailKind ? { detail } : {}),
     ...Object.fromEntries(config.filters.map((filter) => {
       const value = String(values[filter.key] || "");
       if (Array.isArray(filter.options)) {
@@ -75,6 +79,13 @@ export function directoryQuery(state, config) {
     ["sortBy", state.sortBy], ["sortDir", state.sortDir],
     ...config.filters.map((filter) => [filter.key, state[filter.key]]),
   ].filter(([, value]) => value !== ""));
+}
+
+export function directoryBrowserQuery(state, config) {
+  return {
+    ...directoryQuery(state, config),
+    ...(config.detailKind && state.detail ? { detail: state.detail } : {}),
+  };
 }
 
 function filterMarkup(filter, state) {
@@ -111,7 +122,10 @@ function paginationMarkup(pagination) {
 
 export function directoryResultsMarkup(config, state, payload) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
-  if (!items.length) return adminStateMarkup("empty", { message: config.emptyMessage });
+  const summary = typeof config.summaryMarkup === "function"
+    ? String(config.summaryMarkup(payload?.summary) || "")
+    : "";
+  if (!items.length) return `${summary}${adminStateMarkup("empty", { message: config.emptyMessage })}`;
   const selectionHeader = config.selectable
     ? '<th scope="col" class="w-1"><input class="form-check-input" type="checkbox" data-admin-select-all aria-label="Chọn tất cả bản ghi trên trang"></th>'
     : "";
@@ -127,15 +141,19 @@ export function directoryResultsMarkup(config, state, payload) {
   const selectionStatus = config.selectable
     ? '<div class="card-header py-2"><span class="text-secondary" data-admin-selection-status aria-live="polite">Chưa chọn bản ghi</span></div>'
     : "";
-  return `<section class="card" aria-label="${escapeHtml(config.title)}">${selectionStatus}<div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
+  return `${summary}<section class="card" aria-label="${escapeHtml(config.title)}">${selectionStatus}<div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
 }
 
-function replaceBrowserQuery(state, config) {
+function writeBrowserQuery(state, config, { push = false } = {}) {
   if (!globalThis.history?.replaceState || !globalThis.location) return;
-  const query = Object.entries(directoryQuery(state, config))
+  const query = Object.entries(directoryBrowserQuery(state, config))
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join("&");
-  globalThis.history.replaceState(globalThis.history.state, "", `${globalThis.location.pathname}?${query}`);
+  globalThis.history[push ? "pushState" : "replaceState"](
+    globalThis.history.state,
+    "",
+    `${globalThis.location.pathname}?${query}`,
+  );
 }
 
 export function renderAdminDirectory(container, config, { fetchImpl, signal } = {}) {
@@ -144,6 +162,10 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
   const loader = createLatestAdminLoader();
   renderAdminMarkup(container, controlsMarkup(config, state));
   const results = container.querySelector("[data-admin-directory-results]");
+  const setDetail = (detail, { push = false } = {}) => {
+    state = normalizeState(config, { ...state, detail });
+    writeBrowserQuery(state, config, { push });
+  };
 
   const bindResultActions = () => {
     const selectionStatus = results.querySelector("[data-admin-selection-status]");
@@ -181,11 +203,13 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
       state = normalizeState(config, { ...state, page: button.dataset.adminPage });
       void load();
     }));
-    config.bindResultActions?.(results, { fetchImpl, signal, reload: load, payload: currentPayload });
+    config.bindResultActions?.(results, {
+      fetchImpl, signal, reload: load, payload: currentPayload, state, setDetail,
+    });
   };
   let currentPayload = null;
   const load = async () => {
-    replaceBrowserQuery(state, config);
+    writeBrowserQuery(state, config);
     renderAdminMarkup(results, adminLoadingMarkup(`Đang tải ${config.title.toLowerCase()}…`), { busy: true });
     await loader.run(
       (requestSignal) => getAdminJson(config.endpoint, { query: directoryQuery(state, config), fetchImpl, signal: requestSignal }),
@@ -205,7 +229,7 @@ export function renderAdminDirectory(container, config, { fetchImpl, signal } = 
   container.querySelector("[data-admin-directory-form]")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    state = normalizeState(config, { ...state, ...values, page: 1 });
+    state = normalizeState(config, { ...state, ...values, page: 1, detail: "" });
     void load();
   });
   signal?.addEventListener?.("abort", () => loader.cancel(), { once: true });

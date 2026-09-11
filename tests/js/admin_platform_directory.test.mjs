@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLatestAdminLoader, directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
+import { createLatestAdminLoader, directoryBrowserQuery, directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
 import {
   executeOrganizationDirectoryAction,
   executeUserDirectoryAction,
@@ -23,6 +23,16 @@ test("directory query keeps only bounded server-side controls", () => {
   });
 });
 
+test("directory deep-link state stays in browser URL and never reaches list API", () => {
+  const state = readDirectoryState(USER_DIRECTORY, "?detail=user-1&organizationId=org-1&packageId=business");
+  assert.equal(state.detail, "user-1");
+  assert.equal(directoryQuery(state, USER_DIRECTORY).detail, undefined);
+  assert.deepEqual(directoryBrowserQuery(state, USER_DIRECTORY), {
+    page: 1, pageSize: 25, sortBy: "name", sortDir: "asc",
+    organizationId: "org-1", packageId: "business", detail: "user-1",
+  });
+});
+
 test("latest directory request aborts and cannot overwrite newer data", async () => {
   const loader = createLatestAdminLoader();
   let releaseFirst;
@@ -35,12 +45,27 @@ test("latest directory request aborts and cannot overwrite newer data", async ()
   assert.deepEqual(applied, ["new"]);
 });
 
+test("directory renders an optional authoritative summary for populated and empty pages", () => {
+  const config = {
+    ...USER_DIRECTORY,
+    summaryMarkup: (summary) => `<aside data-summary>${summary?.total ?? "N/A"}</aside>`,
+  };
+  const state = readDirectoryState(config, "");
+  assert.match(directoryResultsMarkup(config, state, {
+    summary: { total: 12 }, items: [], pagination: {},
+  }), /data-summary>12/u);
+  assert.match(directoryResultsMarkup(config, state, {
+    summary: { total: 12 }, items: [{ id: "user-1" }], pagination: {},
+  }), /data-summary>12/u);
+});
+
 test("user directory renders authorized fields in an accessible responsive table", () => {
   const state = readDirectoryState(USER_DIRECTORY, "");
   const markup = directoryResultsMarkup(USER_DIRECTORY, state, {
     items: [{
       id: "user-1", username: "minhan", name: "Minh An", email: "an@example.test",
       role: "user", status: "active", createdAt: "2026-01-02",
+      lastActiveAt: 4102444800, subscription: { packageId: "personal" },
       organizations: [{ name: "Công ty An Bình", role: "manager", employeeName: "Nguyễn An", employeePhone: "0901" }],
     }],
     pagination: { page: 1, totalPages: 2, totalRows: 26 },
@@ -49,6 +74,8 @@ test("user directory renders authorized fields in an accessible responsive table
   assert.match(markup, /aria-sort="ascending"/u);
   assert.match(markup, /an@example[.]test/u);
   assert.match(markup, /Nguyễn An · 0901/u);
+  assert.match(markup, /personal/u);
+  assert.match(markup, /Hoạt động gần nhất/u);
   assert.match(markup, /data-admin-page="2"/u);
   assert.match(markup, /data-admin-select-all/u);
   assert.match(markup, /data-admin-select-row="user-1"/u);
@@ -58,11 +85,12 @@ test("user directory renders authorized fields in an accessible responsive table
 test("organization directory renders real subscription values and an empty state", () => {
   const state = readDirectoryState(ORGANIZATION_DIRECTORY, "");
   const markup = directoryResultsMarkup(ORGANIZATION_DIRECTORY, state, {
-    items: [{ id: "org-1", name: "Minh An", status: "active", memberCount: 12, subscription: { packageId: "business", status: "active", expiresAt: 4102444800 } }],
+    items: [{ id: "org-1", name: "Minh An", status: "active", memberCount: 12, lastActiveAt: 4102444800, primaryContact: { name: "Chủ sở hữu", email: "owner@example.test" }, subscription: { packageId: "business", status: "active", expiresAt: 4102444800 } }],
     pagination: { page: 1, totalPages: 1, totalRows: 1 },
   });
   assert.match(markup, /business/u);
   assert.match(markup, />12</u);
+  assert.match(markup, /owner@example[.]test/u);
   assert.match(directoryResultsMarkup(ORGANIZATION_DIRECTORY, state, { items: [] }), /data-admin-state="empty"/u);
 });
 
@@ -105,6 +133,13 @@ test("detail drawers preserve authoritative user, membership and subscription va
   assert.match(organizationMarkup, /employee@example[.]test/u);
   assert.match(organizationMarkup, /subscription[.]changed/u);
   assert.match(organizationMarkup, /Bảo mật/u);
+
+  const suspendedSubscription = organizationDetailMarkup({
+    id: "org-2", name: "Tổ chức 2", status: "active",
+    subscription: { packageId: "business", status: "suspended" },
+  });
+  assert.match(suspendedSubscription, /data-admin-organization-action="unlock"/u);
+  assert.doesNotMatch(suspendedSubscription, /data-admin-organization-action="lock"/u);
 });
 
 test("detail drawers escape untrusted aggregate values and link attributes", () => {

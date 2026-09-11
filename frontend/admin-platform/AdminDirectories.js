@@ -137,12 +137,18 @@ export function organizationDetailMarkup(organization) {
   const subscription = organization?.subscription;
   const primary = organization?.primaryContact;
   const usage = organization?.usage;
-  const action = organization?.status === "suspended" ? "unlock" : "lock";
+  const action = subscription?.status === "suspended" ? "unlock" : "lock";
   const users = Array.isArray(organization?.users) ? organization.users : [];
   return `<div class="offcanvas-header"><div><div class="text-secondary small">Tổ chức ${text(organization?.id)}</div><h2 class="offcanvas-title">${text(organization?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(organization?.links)}<dl class="row"><dt class="col-5">Trạng thái</dt><dd class="col-7">${text(organization?.status)}</dd><dt class="col-5">Liên hệ chính</dt><dd class="col-7">${primary ? `${text(primary.employeeName, primary.name)}<div class="small text-secondary">${[primary.email, primary.employeePhone].filter(Boolean).map((value) => text(value)).join(" · ") || "N/A"}</div>` : "N/A"}</dd><dt class="col-5">Thành viên</dt><dd class="col-7">${Number.isFinite(organization?.memberCount) ? escapeHtml(organization.memberCount) : "N/A"}</dd><dt class="col-5">Phiên hoạt động</dt><dd class="col-7">${Number.isFinite(organization?.security?.activeSessionCount) ? escapeHtml(organization.security.activeSessionCount) : "N/A"}</dd><dt class="col-5">Hoạt động gần nhất</dt><dd class="col-7">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-5">Sự kiện sử dụng</dt><dd class="col-7">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-5">Gói dịch vụ</dt><dd class="col-7">${text(subscription?.packageId)}</dd><dt class="col-5">Đăng ký</dt><dd class="col-7">${text(subscription?.status)}</dd><dt class="col-5">Bắt đầu</dt><dd class="col-7">${formatDate(subscription?.startsAt)}</dd><dt class="col-5">Hết hạn</dt><dd class="col-7">${formatDate(subscription?.expiresAt)}</dd><dt class="col-5">Hạn mức</dt><dd class="col-7">${Number.isFinite(subscription?.memberQuota) ? escapeHtml(subscription.memberQuota) : "N/A"}</dd></dl><section class="mb-4"><h3 class="h4">Người dùng gần đây</h3>${users.length ? users.map((item) => `<div class="mb-2"><strong>${text(item.employeeName, item.name)}</strong><div class="small text-secondary">${text(item.email)} · ${text(item.role)} · ${formatDate(item.lastActiveAt)}</div></div>`).join("") : '<p class="text-secondary">Chưa có thành viên.</p>'}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(organization?.recentAudit)}</section>${subscription ? `<div class="btn-list mb-3"><button class="btn btn-outline-${action === "lock" ? "danger" : "primary"}" type="button" data-admin-organization-action="${action}">${action === "lock" ? "Khóa đăng ký" : "Mở khóa đăng ký"}</button><button class="btn btn-outline-primary" type="button" data-admin-organization-action="renew">Gia hạn theo chính sách hiện hành</button></div><form data-admin-organization-form="set_package"><label class="form-label">Mã gói dịch vụ<input class="form-control" name="value" value="${text(subscription?.packageId, "")}" required maxlength="128"></label><button class="btn btn-outline-primary" type="submit">Đổi gói</button></form>` : '<p class="text-secondary">Tổ chức chưa có đăng ký để thao tác.</p>'}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
 }
 
-function openDetailDrawer(markup, bind) {
+function drawerFocusableElements(drawer) {
+  return Array.from(drawer.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+}
+
+function openDetailDrawer(markup, bind, { trigger = null, onClose } = {}) {
   document.querySelector("[data-admin-detail-drawer]")?.remove();
   document.querySelector("[data-admin-detail-backdrop]")?.remove();
   const drawer = document.createElement("aside");
@@ -157,10 +163,37 @@ function openDetailDrawer(markup, bind) {
   const backdrop = document.createElement("div");
   backdrop.className = "offcanvas-backdrop fade show";
   backdrop.setAttribute("data-admin-detail-backdrop", "");
-  const close = () => { drawer.remove(); backdrop.remove(); };
+  let closed = false;
+  const remove = () => {
+    drawer.remove(); backdrop.remove();
+    window.removeEventListener("popstate", dismissForNavigation);
+    window.removeEventListener("admin:navigate", dismissForNavigation);
+  };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    remove();
+    onClose?.();
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  };
+  const dismissForNavigation = () => {
+    if (closed) return;
+    closed = true;
+    remove();
+  };
+  window.addEventListener("popstate", dismissForNavigation);
+  window.addEventListener("admin:navigate", dismissForNavigation);
   drawer.querySelector("[data-admin-close-detail]")?.addEventListener("click", close);
   backdrop.addEventListener("click", close);
-  drawer.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+  drawer.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { event.preventDefault(); close(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = drawerFocusableElements(drawer);
+    if (!focusable.length) { event.preventDefault(); drawer.focus(); return; }
+    const first = focusable[0]; const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
   document.body.append(drawer, backdrop);
   bind(drawer, close);
   drawer.querySelector("button, input, select")?.focus();
@@ -215,14 +248,16 @@ export async function loadDirectoryDetail(kind, id, { fetchImpl, signal } = {}) 
 
 function bindDirectoryDetails(root, items, options, kind) {
   const byId = new Map(items.map((item) => [String(item?.id || ""), item]));
-  root.querySelectorAll("[data-admin-detail-id]").forEach((button) => button.addEventListener("click", () => {
-    const item = byId.get(button.dataset.adminDetailId);
-    if (!item) return;
+  const open = (id, { trigger = null, push = false } = {}) => {
+    const item = byId.get(String(id || ""));
+    const detailId = String(item?.id || id || "").trim();
+    if (!detailId) return;
+    if (push) options.setDetail?.(detailId, { push: true });
     const isUser = kind === "user";
     const loading = `<div class="offcanvas-header"><h2 class="offcanvas-title">Đang tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${adminLoadingMarkup()}</div>`;
     openDetailDrawer(loading, async (drawer, close) => {
       try {
-        const detail = await loadDirectoryDetail(kind, item.id, options);
+        const detail = await loadDirectoryDetail(kind, detailId, options);
         drawer.innerHTML = trustedHTML(isUser ? userDetailMarkup(detail) : organizationDetailMarkup(detail));
         const closeButton = drawer.querySelector("[data-admin-close-detail]");
         closeButton?.addEventListener("click", close);
@@ -236,53 +271,75 @@ function bindDirectoryDetails(root, items, options, kind) {
         closeButton?.addEventListener("click", close);
         closeButton?.focus();
       }
+    }, {
+      trigger,
+      onClose: () => options.setDetail?.(""),
     });
+  };
+  root.querySelectorAll("[data-admin-detail-id]").forEach((button) => button.addEventListener("click", () => {
+    open(button.dataset.adminDetailId, { trigger: button, push: true });
   }));
+  if (options.state?.detail) open(options.state.detail);
 }
 
 export const USER_DIRECTORY = Object.freeze({
   selectable: true,
+  detailKind: "user",
   endpoint: "/api/admin/users",
   title: "Người dùng",
   searchPlaceholder: "Tên, tài khoản hoặc email",
   emptyMessage: "Không có người dùng phù hợp với bộ lọc.",
   defaultSort: "name",
-  sortKeys: ["name", "username", "email", "role", "status", "created_at", "updated_at"],
+  sortKeys: ["name", "username", "email", "role", "status", "created_at", "updated_at", "last_active_at"],
   filters: [
     { key: "role", label: "Vai trò", allLabel: "Mọi vai trò", options: [["super_admin", "Quản trị nền tảng"], ["user", "Người dùng"]] },
     { key: "status", label: "Trạng thái", allLabel: "Mọi trạng thái", options: [["active", "Hoạt động"], ["inactive", "Không hoạt động"]] },
+    { key: "organizationId", label: "Tổ chức", placeholder: "ID tổ chức", maxLength: 200 },
+    { key: "packageId", label: "Gói dịch vụ", placeholder: "Mã gói", maxLength: 200 },
+    { key: "createdFrom", label: "Tạo từ ngày", type: "date" },
+    { key: "createdTo", label: "Tạo đến ngày", type: "date" },
+    { key: "lastActiveFrom", label: "Hoạt động từ ngày", type: "date" },
+    { key: "lastActiveTo", label: "Hoạt động đến ngày", type: "date" },
   ],
   columns: [
     { label: "Người dùng", sortKey: "name" }, { label: "Email", sortKey: "email" },
     { label: "Vai trò", sortKey: "role" }, { label: "Trạng thái", sortKey: "status" },
-    { label: "Tổ chức" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
+    { label: "Tổ chức" }, { label: "Gói dịch vụ" },
+    { label: "Hoạt động gần nhất", sortKey: "last_active_at" },
+    { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
   ],
   rowMarkup(user) {
-    return `<tr><td data-label="Người dùng"><strong>${text(user?.name)}</strong><div class="small text-secondary">${text(user?.username)}</div></td><td data-label="Email">${text(user?.email)}</td><td data-label="Vai trò">${text(user?.role)}</td><td data-label="Trạng thái">${text(user?.status)}</td><td data-label="Tổ chức">${membershipsMarkup(user?.organizations)}</td><td data-label="Ngày tạo">${formatDate(user?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(user?.id, "")}">Xem và thao tác</button></td></tr>`;
+    return `<tr><td data-label="Người dùng"><strong>${text(user?.name)}</strong><div class="small text-secondary">${text(user?.username)}</div></td><td data-label="Email">${text(user?.email)}</td><td data-label="Vai trò">${text(user?.role)}</td><td data-label="Trạng thái">${text(user?.status)}</td><td data-label="Tổ chức">${membershipsMarkup(user?.organizations)}</td><td data-label="Gói dịch vụ">${text(user?.subscription?.packageId)}</td><td data-label="Hoạt động gần nhất">${formatDate(user?.lastActiveAt)}</td><td data-label="Ngày tạo">${formatDate(user?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(user?.id, "")}">Xem và thao tác</button></td></tr>`;
   },
   bindResultActions(root, options) { bindDirectoryDetails(root, options.payload?.items || [], options, "user"); },
 });
 
 export const ORGANIZATION_DIRECTORY = Object.freeze({
   selectable: true,
+  detailKind: "organization",
   endpoint: "/api/admin/organizations",
   title: "Tổ chức",
   searchPlaceholder: "Tên hoặc mã tổ chức",
   emptyMessage: "Không có tổ chức phù hợp với bộ lọc.",
   defaultSort: "name",
-  sortKeys: ["name", "status", "member_count", "created_at", "updated_at"],
+  sortKeys: ["name", "status", "member_count", "created_at", "updated_at", "last_active_at"],
   filters: [
     { key: "status", label: "Trạng thái", allLabel: "Mọi trạng thái", options: [["active", "Hoạt động"], ["suspended", "Tạm dừng"]] },
     { key: "subscriptionStatus", label: "Đăng ký", allLabel: "Mọi đăng ký", options: [["active", "Hoạt động"], ["expired", "Hết hạn"], ["suspended", "Tạm dừng"], ["cancelled", "Đã hủy"]] },
+    { key: "packageId", label: "Gói dịch vụ", placeholder: "Mã gói", maxLength: 200 },
   ],
   columns: [
-    { label: "Tổ chức", sortKey: "name" }, { label: "Trạng thái", sortKey: "status" },
+    { label: "Tổ chức", sortKey: "name" }, { label: "Liên hệ chính" }, { label: "Trạng thái", sortKey: "status" },
     { label: "Thành viên", sortKey: "member_count" }, { label: "Gói dịch vụ" },
-    { label: "Trạng thái đăng ký" }, { label: "Hết hạn" }, { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
+    { label: "Trạng thái đăng ký" }, { label: "Hết hạn" },
+    { label: "Hoạt động gần nhất", sortKey: "last_active_at" },
+    { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
   ],
   rowMarkup(organization) {
     const subscription = organization?.subscription;
-    return `<tr><td data-label="Tổ chức"><strong>${text(organization?.name)}</strong><div class="small text-secondary">${text(organization?.id)}</div></td><td data-label="Trạng thái">${text(organization?.status)}</td><td data-label="Thành viên">${Number.isFinite(organization?.memberCount) ? escapeHtml(organization.memberCount) : "N/A"}</td><td data-label="Gói dịch vụ">${text(subscription?.packageId)}</td><td data-label="Trạng thái đăng ký">${text(subscription?.status)}</td><td data-label="Hết hạn">${formatDate(subscription?.expiresAt)}</td><td data-label="Ngày tạo">${formatDate(organization?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(organization?.id, "")}">Xem và thao tác</button></td></tr>`;
+    const contact = organization?.primaryContact;
+    const contactMarkup = contact ? `<strong>${text(contact.name)}</strong><div class="small text-secondary">${text(contact.email)}</div>` : "N/A";
+    return `<tr><td data-label="Tổ chức"><strong>${text(organization?.name)}</strong><div class="small text-secondary">${text(organization?.id)}</div></td><td data-label="Liên hệ chính">${contactMarkup}</td><td data-label="Trạng thái">${text(organization?.status)}</td><td data-label="Thành viên">${Number.isFinite(organization?.memberCount) ? escapeHtml(organization.memberCount) : "N/A"}</td><td data-label="Gói dịch vụ">${text(subscription?.packageId)}</td><td data-label="Trạng thái đăng ký">${text(subscription?.status)}</td><td data-label="Hết hạn">${formatDate(subscription?.expiresAt)}</td><td data-label="Hoạt động gần nhất">${formatDate(organization?.lastActiveAt)}</td><td data-label="Ngày tạo">${formatDate(organization?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(organization?.id, "")}">Xem và thao tác</button></td></tr>`;
   },
   bindResultActions(root, options) { bindDirectoryDetails(root, options.payload?.items || [], options, "organization"); },
 });

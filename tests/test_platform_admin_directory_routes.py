@@ -205,6 +205,12 @@ def test_users_are_server_paginated_filtered_sorted_and_include_memberships(monk
                     "status": "active",
                     "createdAt": "2026-01-02",
                     "updatedAt": "2026-01-02",
+                    "lastActiveAt": 300,
+                    "subscription": {
+                        "packageId": "personal",
+                        "planVersionId": "plan-v1",
+                        "status": "active",
+                    },
                     "organizationCount": 2,
                     "organizations": [
                         {
@@ -228,7 +234,37 @@ def test_users_are_server_paginated_filtered_sorted_and_include_memberships(monk
             ],
             "pagination": {"page": 1, "pageSize": 1, "totalRows": 1, "totalPages": 1},
             "sort": {"by": "name", "direction": "desc"},
-            "filters": {"search": "", "role": "user", "status": "active", "organizationId": ""},
+            "filters": {
+                "search": "", "role": "user", "status": "active",
+                "organizationId": "", "packageId": "", "createdFrom": "",
+                "createdTo": "", "lastActiveFrom": "", "lastActiveTo": "",
+            },
+        }
+    finally:
+        connection.close()
+
+
+def test_users_apply_authoritative_package_and_date_filters(monkeypatch):
+    connection = _database()
+    try:
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get(
+                "/api/admin/users?packageId=personal&createdFrom=2026-01-02"
+                "&createdTo=2026-01-02&lastActiveFrom=1970-01-01"
+                "&lastActiveTo=1970-01-01&sortBy=last_active_at&sortDir=desc"
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert [item["id"] for item in payload["items"]] == ["user-2"]
+        assert payload["items"][0]["subscription"]["packageId"] == "personal"
+        assert payload["items"][0]["lastActiveAt"] == 300
+        assert payload["filters"] == {
+            "search": "", "role": "", "status": "", "organizationId": "",
+            "packageId": "personal", "createdFrom": "2026-01-02",
+            "createdTo": "2026-01-02", "lastActiveFrom": "1970-01-01",
+            "lastActiveTo": "1970-01-01",
         }
     finally:
         connection.close()
@@ -255,6 +291,12 @@ def test_organizations_are_server_paginated_and_expose_real_subscription(monkeyp
                 "createdAt": "2026-01-01",
                 "updatedAt": "2026-01-01",
                 "memberCount": 2,
+                "lastActiveAt": 240,
+                "primaryContact": {
+                    "id": "admin-1", "name": "Admin",
+                    "email": "admin@example.test", "phone": "0901",
+                    "role": "manager",
+                },
                 "subscription": {
                     "packageId": "business",
                     "status": "active",
@@ -265,6 +307,34 @@ def test_organizations_are_server_paginated_and_expose_real_subscription(monkeyp
                 },
             }
         ]
+    finally:
+        connection.close()
+
+
+def test_organization_primary_contact_prefers_owner_then_stable_email(monkeypatch):
+    connection = _database()
+    try:
+        connection.executemany(
+            "INSERT INTO tai_khoan VALUES (?, ?, ?, 'user', ?, NULL, 'active', '2026-01-01', '2026-01-01')",
+            (
+                ("owner-z", "owner-z", "Owner Z", "zulu@example.test"),
+                ("owner-a", "owner-a", "Owner A", "alpha@example.test"),
+            ),
+        )
+        connection.executemany(
+            "INSERT INTO thanh_vien_to_chuc VALUES (?, 'org-a', 'owner', ?, NULL, 'active', '2026-01-01', '2026-01-01')",
+            (("owner-z", "Owner Z"), ("owner-a", "Owner A")),
+        )
+        connection.commit()
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/organizations?search=alpha")
+
+        assert response.status_code == 200
+        assert response.json()["items"][0]["primaryContact"] == {
+            "id": "owner-a", "name": "Owner A", "email": "alpha@example.test",
+            "phone": None, "role": "owner",
+        }
     finally:
         connection.close()
 
@@ -298,10 +368,18 @@ def test_directory_query_allowlists_reject_unbounded_or_injected_values(monkeypa
             oversized = client.get("/api/admin/users?pageSize=101")
             injected_sort = client.get("/api/admin/organizations?sortBy=name%20DESC%3B%20DROP%20TABLE%20to_chuc")
             invalid_filter = client.get("/api/admin/users?role=manager")
+            unknown_filter = client.get("/api/admin/users?tenantId=tenant-1")
+            malformed_date = client.get("/api/admin/users?createdFrom=2026-02-30")
+            reversed_dates = client.get(
+                "/api/admin/users?lastActiveFrom=2026-02-02&lastActiveTo=2026-02-01"
+            )
 
         assert oversized.status_code == 400
         assert injected_sort.status_code == 400
         assert invalid_filter.status_code == 400
+        assert unknown_filter.status_code == 400
+        assert malformed_date.status_code == 400
+        assert reversed_dates.status_code == 400
         assert connection.execute("SELECT count(*) FROM to_chuc").fetchone()[0] == 2
     finally:
         connection.close()

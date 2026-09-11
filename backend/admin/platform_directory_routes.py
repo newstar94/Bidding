@@ -2,6 +2,7 @@
 # ruff: noqa: S608
 import math
 import time
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
 from starlette.responses import JSONResponse
@@ -23,6 +24,7 @@ _USER_SORT_COLUMNS = {
     "status": "account.trang_thai",
     "created_at": "account.created_at",
     "updated_at": "account.updated_at",
+    "last_active_at": "last_active_at",
 }
 _ORGANIZATION_SORT_COLUMNS = {
     "name": "lower(organization.ten_to_chuc)",
@@ -30,6 +32,7 @@ _ORGANIZATION_SORT_COLUMNS = {
     "member_count": "COALESCE(member_counts.member_count, 0)",
     "created_at": "organization.created_at",
     "updated_at": "organization.updated_at",
+    "last_active_at": "last_active_at",
 }
 
 
@@ -87,6 +90,23 @@ def _pagination(page, page_size, total_rows):
     }
 
 
+def _date_boundary(value, label, *, next_day=False):
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    try:
+        parsed = date.fromisoformat(normalized)
+    except ValueError as exc:
+        raise _InvalidDirectoryQuery(f"{label} không hợp lệ.") from exc
+    if next_day:
+        parsed += timedelta(days=1)
+    return parsed.isoformat()
+
+
+def _date_epoch(value):
+    return int(datetime.combine(date.fromisoformat(value), datetime.min.time(), tzinfo=timezone.utc).timestamp())
+
+
 def _forbidden_or_role(request):
     valid, role_or_error = verify_session(request, required_role="super_admin")
     if not valid:
@@ -103,17 +123,29 @@ def _list_admin_users_sync(request):
             request,
             sort_columns=_USER_SORT_COLUMNS,
             default_sort="name",
-            allowed_filters={"role", "status", "organizationId"},
+            allowed_filters={
+                "role", "status", "organizationId", "packageId",
+                "createdFrom", "createdTo", "lastActiveFrom", "lastActiveTo",
+            },
         )
         role_filter = str(request.query_params.get("role") or "").strip().lower()
         status_filter = str(request.query_params.get("status") or "").strip().lower()
         organization_id = str(request.query_params.get("organizationId") or "").strip()
+        package_id = str(request.query_params.get("packageId") or "").strip()
+        created_from = _date_boundary(request.query_params.get("createdFrom"), "Ngày tạo bắt đầu")
+        created_to = _date_boundary(request.query_params.get("createdTo"), "Ngày tạo kết thúc", next_day=True)
+        last_active_from = _date_boundary(request.query_params.get("lastActiveFrom"), "Ngày hoạt động bắt đầu")
+        last_active_to = _date_boundary(request.query_params.get("lastActiveTo"), "Ngày hoạt động kết thúc", next_day=True)
         if role_filter not in {"", "super_admin", "user"}:
             raise _InvalidDirectoryQuery("Vai trò lọc không hợp lệ.")
         if status_filter not in {"", "active", "inactive"}:
             raise _InvalidDirectoryQuery("Trạng thái lọc không hợp lệ.")
-        if len(organization_id) > 200:
-            raise _InvalidDirectoryQuery("Tổ chức lọc không hợp lệ.")
+        if len(organization_id) > 200 or len(package_id) > 200:
+            raise _InvalidDirectoryQuery("Tổ chức hoặc gói dịch vụ lọc không hợp lệ.")
+        if created_from and created_to and created_from >= created_to:
+            raise _InvalidDirectoryQuery("Khoảng ngày tạo không hợp lệ.")
+        if last_active_from and last_active_to and last_active_from >= last_active_to:
+            raise _InvalidDirectoryQuery("Khoảng hoạt động không hợp lệ.")
 
         predicates = []
         values = []
@@ -138,20 +170,45 @@ def _list_admin_users_sync(request):
                 "AND filtered_membership.organization_id = ?)"
             )
             values.append(organization_id)
+        if package_id:
+            predicates.append("subscription.package_id = ?")
+            values.append(package_id)
+        if created_from:
+            predicates.append("account.created_at >= ?")
+            values.append(created_from)
+        if created_to:
+            predicates.append("account.created_at < ?")
+            values.append(created_to)
+        if last_active_from:
+            predicates.append("COALESCE(session_activity.last_active_at, 0) >= ?")
+            values.append(_date_epoch(last_active_from))
+        if last_active_to:
+            predicates.append("COALESCE(session_activity.last_active_at, 0) < ?")
+            values.append(_date_epoch(last_active_to))
         where_sql = f" WHERE {' AND '.join(predicates)}" if predicates else ""
+        joins = """
+            LEFT JOIN account_subscriptions subscription ON subscription.user_id = account.id
+            LEFT JOIN (
+                SELECT user_id, MAX(last_seen_at) AS last_active_at
+                  FROM auth_sessions GROUP BY user_id
+            ) session_activity ON session_activity.user_id = account.id
+        """
 
         connection = database.get_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute(f"SELECT COUNT(*) AS total_rows FROM tai_khoan account{where_sql}", tuple(values))
+            cursor.execute(f"SELECT COUNT(*) AS total_rows FROM tai_khoan account{joins}{where_sql}", tuple(values))
             total_rows = int(cursor.fetchone()["total_rows"])
             cursor.execute(
                 f"""SELECT account.id, account.ten_dang_nhap AS username,
                            account.ho_ten AS name, account.vai_tro AS role,
                            account.email, account.anh_dai_dien AS avatar,
                            account.trang_thai AS status,
-                           account.created_at, account.updated_at
-                      FROM tai_khoan account{where_sql}
+                           account.created_at, account.updated_at,
+                           subscription.package_id, subscription.plan_version_id,
+                           subscription.status AS subscription_status,
+                           session_activity.last_active_at
+                      FROM tai_khoan account{joins}{where_sql}
                      ORDER BY {_USER_SORT_COLUMNS[sort_by]} {sort_direction.upper()}, account.id ASC
                      LIMIT ? OFFSET ?""",
                 (*values, page_size, (page - 1) * page_size),
@@ -203,6 +260,12 @@ def _list_admin_users_sync(request):
                     "status": row["status"],
                     "createdAt": _json_value(row["created_at"]),
                     "updatedAt": _json_value(row["updated_at"]),
+                    "lastActiveAt": _json_value(row["last_active_at"]),
+                    "subscription": ({
+                        "packageId": row["package_id"],
+                        "planVersionId": row["plan_version_id"],
+                        "status": row["subscription_status"],
+                    } if row["package_id"] is not None else None),
                     "organizationCount": len(organizations),
                     "organizations": organizations,
                 }
@@ -217,6 +280,11 @@ def _list_admin_users_sync(request):
                     "role": role_filter,
                     "status": status_filter,
                     "organizationId": organization_id,
+                    "packageId": package_id,
+                    "createdFrom": created_from,
+                    "createdTo": request.query_params.get("createdTo") or "",
+                    "lastActiveFrom": last_active_from,
+                    "lastActiveTo": request.query_params.get("lastActiveTo") or "",
                 },
             }
         )
@@ -293,7 +361,8 @@ def _list_admin_organizations_sync(request):
                            COALESCE(member_counts.member_count, 0) AS member_count,
                            subscription.package_id, subscription.status AS subscription_status,
                            subscription.starts_at, subscription.expires_at,
-                           subscription.member_quota, subscription.revision
+                           subscription.member_quota, subscription.revision,
+                           activity.last_active_at
                       FROM to_chuc organization
                       LEFT JOIN (
                           SELECT organization_id, COUNT(*) AS member_count
@@ -301,12 +370,49 @@ def _list_admin_organizations_sync(request):
                            WHERE COALESCE(trang_thai_thanh_vien, 'active') = 'active'
                            GROUP BY organization_id
                       ) member_counts ON member_counts.organization_id = organization.id
+                      LEFT JOIN (
+                          SELECT organization_id, MAX(last_seen_at) AS last_active_at
+                            FROM product_usage_hourly GROUP BY organization_id
+                      ) activity ON activity.organization_id = organization.id
                       {joins}{where_sql}
                      ORDER BY {_ORGANIZATION_SORT_COLUMNS[sort_by]} {sort_direction.upper()}, organization.id ASC
                      LIMIT ? OFFSET ?""",
                 (*values, page_size, (page - 1) * page_size),
             )
             rows = cursor.fetchall()
+            organization_ids = [row["id"] for row in rows]
+            contacts_by_organization = {}
+            if organization_ids:
+                placeholders = ",".join("?" for _ in organization_ids)
+                cursor.execute(
+                    f"""SELECT membership.organization_id, membership.user_id,
+                               COALESCE(membership.ten_nhan_su, account.ho_ten,
+                                        account.ten_dang_nhap, account.email) AS name,
+                               account.email, membership.so_dien_thoai AS phone,
+                               membership.vai_tro_trong_to_chuc AS role
+                          FROM thanh_vien_to_chuc membership
+                          JOIN tai_khoan account ON account.id = membership.user_id
+                         WHERE membership.organization_id IN ({placeholders})
+                           AND membership.vai_tro_trong_to_chuc IN ('owner', 'manager')
+                           AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
+                           AND account.trang_thai = 'active'
+                         ORDER BY membership.organization_id,
+                                  CASE membership.vai_tro_trong_to_chuc
+                                    WHEN 'owner' THEN 0 ELSE 1 END,
+                                  lower(account.email), account.id""",
+                    tuple(organization_ids),
+                )
+                for contact in cursor.fetchall():
+                    contacts_by_organization.setdefault(
+                        contact["organization_id"],
+                        {
+                            "id": contact["user_id"],
+                            "name": contact["name"],
+                            "email": contact["email"],
+                            "phone": contact["phone"],
+                            "role": contact["role"],
+                        },
+                    )
         finally:
             connection.close()
 
@@ -330,6 +436,8 @@ def _list_admin_organizations_sync(request):
                     "createdAt": _json_value(row["created_at"]),
                     "updatedAt": _json_value(row["updated_at"]),
                     "memberCount": int(row["member_count"] or 0),
+                    "lastActiveAt": _json_value(row["last_active_at"]),
+                    "primaryContact": contacts_by_organization.get(row["id"]),
                     "subscription": subscription,
                 }
             )

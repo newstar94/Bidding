@@ -113,6 +113,10 @@ def test_sync_uses_real_event_lease_and_mutation_aggregates_without_payloads(mon
           "eventsByStatus": {"dispatched": 1, "pending": 1},
           "activeConnections": 1,
           "recordedMutations": 1,
+          "rowVersionConflicts": None,
+          "visibilityResets": None,
+          "fullSyncs": None,
+          "outboxFailures": None,
         }
         assert payload["pagination"]["totalRows"] == 1
         assert payload["items"][0]["eventType"] == "broadcast"

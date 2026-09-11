@@ -61,14 +61,14 @@ class _TracingCursor:
             return _Result(row=self._organization_detail())
         if "SELECT COUNT(*) AS count FROM thanh_vien_to_chuc WHERE user_id" in sql:
             return _Result(row={"count": self.scale})
-        if "FROM product_usage_hourly" in sql:
-            return _Result(row={"event_count": self.scale, "last_seen_at": 100})
         if "FROM auth_sessions session" in sql and "COUNT(*) AS count" in sql:
             return _Result(row={"count": self.scale})
         if "FROM audit_log" in sql and "ORDER BY created_at DESC" in sql:
             return _Result(rows=[self._detail_audit(index) for index in range(min(self.scale, 10))])
         if "FROM thanh_vien_to_chuc membership" in sql and "MAX(session.last_seen_at)" in sql:
             return _Result(rows=[self._organization_member(index) for index in range(min(self.scale, 20))])
+        if "membership.vai_tro_trong_to_chuc IN ('owner', 'manager')" in sql:
+            return _Result(rows=[self._organization_contact(index) for index in range(self.scale)])
         if "FROM thanh_vien_to_chuc membership" in sql and "LIMIT ?" in sql:
             return _Result(rows=[self._membership(index) for index in range(min(self.scale, 20))])
         if "FROM thanh_vien_to_chuc membership" in sql:
@@ -77,6 +77,8 @@ class _TracingCursor:
             return _Result(rows=[self._user(index) for index in range(self.scale)])
         if "FROM to_chuc organization" in sql and "member_counts.member_count" in sql:
             return _Result(rows=[self._organization(index) for index in range(self.scale)])
+        if "FROM product_usage_hourly" in sql:
+            return _Result(row={"event_count": self.scale, "last_seen_at": 100})
         if "SELECT subscription.*" in sql:
             return _Result(rows=[self._subscription(index) for index in range(self.scale)])
         if "FROM payment_transactions" in sql:
@@ -98,7 +100,9 @@ class _TracingCursor:
             "name": f"User {index}", "role": "user",
             "email": f"user{index}@example.test", "avatar": None,
             "status": "active", "created_at": "2026-01-01",
-            "updated_at": "2026-01-01",
+            "updated_at": "2026-01-01", "last_active_at": 100,
+            "package_id": "business", "plan_version_id": "plan-v1",
+            "subscription_status": "active",
         }
 
     @staticmethod
@@ -118,7 +122,15 @@ class _TracingCursor:
             "updated_at": "2026-01-01", "member_count": 1,
             "package_id": "business", "subscription_status": "active",
             "starts_at": 1, "expires_at": 4_102_444_800,
-            "member_quota": 20, "revision": 1,
+            "member_quota": 20, "revision": 1, "last_active_at": 100,
+        }
+
+    @staticmethod
+    def _organization_contact(index):
+        return {
+            "organization_id": f"org-{index}", "user_id": f"user-{index}",
+            "name": f"User {index}", "email": f"user{index}@example.test",
+            "phone": None, "role": "owner",
         }
 
     @staticmethod
@@ -277,7 +289,7 @@ def _allow(monkeypatch):
 
 CASES = (
     ("users", platform_directory_routes, platform_directory_routes._list_admin_users_sync, 3),
-    ("organizations", platform_directory_routes, platform_directory_routes._list_admin_organizations_sync, 2),
+    ("organizations", platform_directory_routes, platform_directory_routes._list_admin_organizations_sync, 3),
     ("subscriptions", platform_billing_routes, platform_billing_routes._list_admin_subscriptions_sync, 2),
     ("payments", platform_billing_routes, platform_billing_routes._list_admin_payments_sync, 3),
     ("audit", security_routes, security_routes._list_admin_audit_sync, 2),

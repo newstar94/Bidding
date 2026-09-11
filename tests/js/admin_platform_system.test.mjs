@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createLatestAdminLoader, directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
-import { JOB_DIRECTORY, SYNC_DIRECTORY } from "../../frontend/admin-platform/AdminSystem.js";
+import {
+  JOB_DIRECTORY, SYNC_DIRECTORY, jobSummaryMarkup, syncSummaryMarkup,
+} from "../../frontend/admin-platform/AdminSystem.js";
 
 test("jobs use bounded server-side operation, status, sorting and pagination", () => {
   const state = readDirectoryState(JOB_DIRECTORY, "?page=2&pageSize=50&operation=render&status=failed&sortBy=attempt_count&sortDir=asc&unknown=x");
@@ -50,4 +52,17 @@ test("shared latest-wins loader cancels stale jobs or sync requests", async () =
   release("old");
   await Promise.all([oldRequest, newRequest]);
   assert.deepEqual(applied, ["new"]);
+});
+
+test("job and sync summary cards expose real aggregates and explicit unavailable metrics", () => {
+  const jobs = jobSummaryMarkup({ total: 9, byStatus: { pending: 2, processing: 1, failed: 3 } });
+  assert.match(jobs, /data-admin-system-metric="jobs-failed">3/u);
+  const sync = syncSummaryMarkup({
+    eventsTotal: 20, eventsByStatus: { retry: 2, dead_letter: 1 },
+    activeConnections: 4, recordedMutations: 12,
+    rowVersionConflicts: null, visibilityResets: null, fullSyncs: null, outboxFailures: null,
+  });
+  assert.match(sync, /data-admin-system-metric="sync-failed">3/u);
+  assert.equal((sync.match(/>N\/A</gu) || []).length, 4);
+  assert.match(sync, /không được hệ thống lưu có thẩm quyền/u);
 });

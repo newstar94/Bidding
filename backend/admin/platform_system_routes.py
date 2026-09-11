@@ -224,6 +224,10 @@ def _read_sync(request):
             "eventsByStatus": event_counts,
             "activeConnections": active_connections,
             "recordedMutations": recorded_mutations,
+            "rowVersionConflicts": None,
+            "visibilityResets": None,
+            "fullSyncs": None,
+            "outboxFailures": None,
         },
         "items": [
             {
