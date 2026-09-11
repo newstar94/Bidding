@@ -39,6 +39,18 @@ export const ANALYTICS_PRESETS = Object.freeze([
 
 const VIEW_KEYS = new Set(ANALYTICS_VIEWS.map(([key]) => key));
 const PRESET_KEYS = new Set(ANALYTICS_PRESETS.map(([key]) => key));
+const ANALYTICS_FILTER_VALUES = Object.freeze({
+  ownerKind: new Set(["account", "organization"]),
+  variant: new Set(["internal", "connected"]),
+  releaseMode: new Set(["shadow", "live"]),
+  sizeBucket: new Set(["1", "2_5", "6_15", "16_50", "over_50"]),
+  paidState: new Set(["paid", "free"]),
+  cohortKind: new Set(["signup", "first_value", "paid_activation"]),
+  procurementIntensity: new Set(["none", "low", "high"]),
+  collaborationIntensity: new Set(["none", "active"]),
+  aiAdoption: new Set(["not_adopted", "adopted"]),
+});
+const IDENTIFIER_FILTERS = Object.freeze(["releaseId", "plan"]);
 const STATUS_LABELS = Object.freeze({
   available: "Có dữ liệu",
   insufficient_sample: "Không đủ mẫu",
@@ -122,7 +134,18 @@ export function normalizeAnalyticsFilters(values = {}, { referenceDate } = {}) {
   if (from && !validDate(from)) throw new TypeError("Ngày bắt đầu không hợp lệ.");
   if (to && !validDate(to)) throw new TypeError("Ngày kết thúc không hợp lệ.");
   if (from && to && from > to) throw new TypeError("Ngày bắt đầu phải trước hoặc trùng ngày kết thúc.");
-  return { from, to, bucket, view, preset };
+  const optional = {};
+  for (const [key, allowed] of Object.entries(ANALYTICS_FILTER_VALUES)) {
+    const value = String(values[key] || "").trim();
+    if (allowed.has(value)) optional[key] = value;
+  }
+  for (const key of IDENTIFIER_FILTERS) {
+    const value = String(values[key] || "").trim();
+    if (!value) continue;
+    if (value.length > 128 || /[\r\n]/u.test(value)) throw new TypeError("Bộ lọc định danh không hợp lệ.");
+    optional[key] = value;
+  }
+  return { from, to, bucket, view, preset, ...optional };
 }
 
 export function buildAnalyticsQueries(filters) {
@@ -134,7 +157,9 @@ export function buildAnalyticsQueries(filters) {
     usage: range,
     product: Object.fromEntries([
       ["from", normalized.from], ["to", normalized.to], ["view", normalized.view],
-    ].filter(([, value]) => value !== "")),
+      ...Object.keys(ANALYTICS_FILTER_VALUES).map((key) => [key, normalized[key]]),
+      ...IDENTIFIER_FILTERS.map((key) => [key, normalized[key]]),
+    ].filter(([, value]) => value !== "" && value !== undefined)),
   };
 }
 
@@ -191,12 +216,31 @@ function displayValue(value, status = "") {
 function usageSummary(payload) {
   const root = payload?.summary || payload?.data?.summary || payload?.data || payload || {};
   const coverage = root.coverage || {};
+  const peak = root.peakConcurrency || root.peak_concurrency || {};
+  const averages = root.averages || root.average || {};
+  const rawConcurrencySeries = Array.isArray(root.concurrencySeries)
+    ? root.concurrencySeries
+    : (Array.isArray(root.concurrency_series) ? root.concurrency_series : []);
   return {
     hasData: coverage.hasData ?? coverage.has_data ?? null,
     onlineNow: root.onlineNow ?? root.online_now ?? null,
     activeUsers: root.activeUsers ?? root.active_users ?? null,
     workActivityCount: root.workActivityCount ?? root.work_activity_count ?? null,
     wordExportCount: root.wordExportCount ?? root.word_export_count ?? null,
+    eventCount: root.eventCount ?? root.event_count ?? null,
+    peakConcurrency: {
+      count: peak.count ?? peak.value ?? null,
+      start: peak.start ?? peak.startAt ?? peak.start_at ?? peak.timestamp ?? null,
+      end: peak.end ?? peak.endAt ?? peak.end_at ?? null,
+    },
+    averages: {
+      jobsPerActiveUser: averages.jobsPerActiveUser ?? averages.jobs_per_active_user ?? root.jobsPerActiveUser ?? null,
+      wordExportsPerActiveUser: averages.wordExportsPerActiveUser ?? averages.word_exports_per_active_user ?? root.wordExportsPerActiveUser ?? null,
+    },
+    concurrencySeries: rawConcurrencySeries.slice(0, MAX_POINTS).map((point) => ({
+      date: point?.timestamp ?? point?.time ?? point?.bucketStart ?? point?.bucket_start ?? "N/A",
+      value: point?.count ?? point?.value ?? point?.activeUsers ?? null,
+    })),
     topFeatures: Array.isArray(root.topFeatures) ? root.topFeatures : (Array.isArray(root.top_features) ? root.top_features : []),
   };
 }
@@ -207,6 +251,20 @@ function productDashboard(payload) {
 
 function metricCard(label, value, suffix = "") {
   return `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric"><div class="card-body"><div class="text-secondary">${escapeHtml(label)}</div><div class="h1 mb-0">${escapeHtml(operationalValue(value, suffix))}</div></div></article></div>`;
+}
+
+function usageDetailsMarkup(usage) {
+  const peakRange = usage.peakConcurrency.start || usage.peakConcurrency.end
+    ? `${usage.peakConcurrency.start || "N/A"} – ${usage.peakConcurrency.end || "N/A"}`
+    : "Chưa xác định khung thời gian";
+  const peak = `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric h-100"><div class="card-body"><div class="text-secondary">Cao điểm</div><div class="h1 mb-1">${escapeHtml(operationalValue(usage.peakConcurrency.count))}</div><div class="small text-secondary">${escapeHtml(peakRange)}</div></div></article></div>`;
+  const metrics = `${peak}${metricCard("Hoạt động công việc / người", usage.averages.jobsPerActiveUser)}${metricCard("Lượt xuất Word / người", usage.averages.wordExportsPerActiveUser)}${metricCard("Tổng hoạt động được đo", usage.eventCount)}`;
+  const timeline = chartMarkup({
+    key: "usage-concurrency",
+    label: "Người hoạt động theo thời gian",
+    series: [{ key: "active-users", label: "Người hoạt động", points: usage.concurrencySeries }],
+  }, "usage");
+  return `<section class="mt-3" aria-labelledby="admin-usage-details"><h2 class="h3 mb-3" id="admin-usage-details">Mức độ sử dụng</h2><div class="row row-cards">${metrics}</div><div class="row row-cards mt-1">${timeline}</div></section>`;
 }
 
 function productKpisMarkup(kpis) {
@@ -320,13 +378,31 @@ export function analyticsResultsMarkup(usagePayload, productPayload) {
   if (usage.hasData === false && product.hasData === false) {
     return adminStateMarkup("empty", { message: product.message || "Chưa có dữ liệu phân tích trong khoảng thời gian này." });
   }
-  return `<div class="row row-cards">${metricCard("Đang trực tuyến", usage.onlineNow)}${metricCard("Người dùng hoạt động", usage.activeUsers)}${metricCard("Hoạt động công việc", usage.workActivityCount)}${metricCard("Lượt xuất Word", usage.wordExportCount)}</div><div class="row row-cards mt-1"><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-product-kpis"><div class="card-header"><h3 class="card-title" id="admin-product-kpis">Chỉ số sản phẩm</h3></div>${productKpisMarkup(kpis)}</section></div><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-top-features"><div class="card-header"><h3 class="card-title" id="admin-top-features">Tính năng được sử dụng</h3></div>${featureMarkup(usage.topFeatures)}</section></div></div>${chartsMarkup(product)}${detailTablesMarkup(product)}`;
+  return `<div class="row row-cards">${metricCard("Đang trực tuyến", usage.onlineNow)}${metricCard("Người dùng hoạt động", usage.activeUsers)}${metricCard("Hoạt động công việc", usage.workActivityCount)}${metricCard("Lượt xuất Word", usage.wordExportCount)}</div>${usageDetailsMarkup(usage)}<div class="row row-cards mt-1"><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-product-kpis"><div class="card-header"><h3 class="card-title" id="admin-product-kpis">Chỉ số sản phẩm</h3></div>${productKpisMarkup(kpis)}</section></div><div class="col-12 col-xl-6"><section class="card h-100" aria-labelledby="admin-top-features"><div class="card-header"><h3 class="card-title" id="admin-top-features">Tính năng được sử dụng</h3></div>${featureMarkup(usage.topFeatures)}</section></div></div>${chartsMarkup(product)}${detailTablesMarkup(product)}`;
+}
+
+const ANALYTICS_FILTER_CONTROLS = Object.freeze([
+  ["ownerKind", "Loại chủ thể", [["", "Tất cả"], ["account", "Cá nhân"], ["organization", "Tổ chức"]]],
+  ["variant", "Biến thể", [["", "Tất cả"], ["internal", "Nội bộ"], ["connected", "Kết nối Mua Sắm Công"]]],
+  ["releaseMode", "Chế độ phát hành", [["", "Tất cả"], ["shadow", "Shadow"], ["live", "Pilot / production"]]],
+  ["sizeBucket", "Quy mô", [["", "Tất cả"], ["1", "1"], ["2_5", "2–5"], ["6_15", "6–15"], ["16_50", "16–50"], ["over_50", ">50"]]],
+  ["paidState", "Trạng thái trả phí", [["", "Tất cả"], ["paid", "Đã trả phí"], ["free", "Miễn phí / chưa gán"]]],
+  ["cohortKind", "Loại cohort", [["", "Tất cả"], ["signup", "Đăng ký"], ["first_value", "Giá trị đầu tiên"], ["paid_activation", "Kích hoạt trả phí"]]],
+  ["procurementIntensity", "Mức dùng Mua Sắm Công", [["", "Tất cả"], ["none", "Không dùng"], ["low", "Thấp"], ["high", "Cao"]]],
+  ["collaborationIntensity", "Mức cộng tác", [["", "Tất cả"], ["none", "Không có"], ["active", "Đang hoạt động"]]],
+  ["aiAdoption", "Mức dùng AI", [["", "Tất cả"], ["not_adopted", "Chưa sử dụng"], ["adopted", "Đã sử dụng"]]],
+]);
+
+function analyticsSelectMarkup(key, label, options, selected) {
+  const choices = options.map(([value, optionLabel]) => `<option value="${escapeHtml(value)}"${selected === value ? " selected" : ""}>${escapeHtml(optionLabel)}</option>`).join("");
+  return `<div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-${key}">${escapeHtml(label)}</label><select class="form-select" id="admin-analytics-${key}" name="${escapeHtml(key)}">${choices}</select></div>`;
 }
 
 export function analyticsFilterMarkup(filters) {
   const buttons = ANALYTICS_PRESETS.map(([key, label]) => `<button class="btn btn-outline-primary${filters.preset === key ? " active" : ""}" type="button" data-analytics-preset="${key}" aria-pressed="${filters.preset === key}">${escapeHtml(label)}</button>`).join("");
   const options = ANALYTICS_VIEWS.map(([key, label]) => `<option value="${key}"${filters.view === key ? " selected" : ""}>${escapeHtml(label)}</option>`).join("");
-  return `<form class="card card-body mb-3" data-admin-analytics-form><div class="mb-3"><span class="form-label" id="admin-analytics-preset-label">Khoảng thời gian</span><div class="btn-group flex-wrap" role="group" aria-labelledby="admin-analytics-preset-label">${buttons}</div><input type="hidden" name="preset" value="${escapeHtml(filters.preset)}" data-admin-analytics-preset-value></div><div class="row g-2 align-items-end"><div class="col-12 col-md"><label class="form-label" for="admin-analytics-from">Từ ngày</label><input class="form-control" id="admin-analytics-from" name="from" type="date" value="${escapeHtml(filters.from)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-to">Đến ngày</label><input class="form-control" id="admin-analytics-to" name="to" type="date" value="${escapeHtml(filters.to)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-bucket">Độ chi tiết</label><select class="form-select" id="admin-analytics-bucket" name="bucket"><option value="day"${filters.bucket === "day" ? " selected" : ""}>Theo ngày</option><option value="hour"${filters.bucket === "hour" ? " selected" : ""}>Theo giờ</option></select></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-view">Chế độ xem</label><select class="form-select" id="admin-analytics-view" name="view">${options}</select></div><div class="col-12 col-md-auto"><button class="btn btn-primary w-100" type="submit">Áp dụng</button></div></div><p class="text-danger small mt-2 mb-0" data-admin-analytics-validation role="alert" hidden></p></form><div data-admin-analytics-results aria-live="polite"></div>`;
+  const commercialControls = ANALYTICS_FILTER_CONTROLS.map(([key, label, choices]) => analyticsSelectMarkup(key, label, choices, filters[key] || "")).join("");
+  return `<form class="card card-body mb-3" data-admin-analytics-form><div class="mb-3"><span class="form-label" id="admin-analytics-preset-label">Khoảng thời gian</span><div class="btn-group flex-wrap" role="group" aria-labelledby="admin-analytics-preset-label">${buttons}</div><input type="hidden" name="preset" value="${escapeHtml(filters.preset)}" data-admin-analytics-preset-value></div><div class="row g-2 align-items-end"><div class="col-12 col-md"><label class="form-label" for="admin-analytics-from">Từ ngày</label><input class="form-control" id="admin-analytics-from" name="from" type="date" value="${escapeHtml(filters.from)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-to">Đến ngày</label><input class="form-control" id="admin-analytics-to" name="to" type="date" value="${escapeHtml(filters.to)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-bucket">Độ chi tiết</label><select class="form-select" id="admin-analytics-bucket" name="bucket"><option value="day"${filters.bucket === "day" ? " selected" : ""}>Theo ngày</option><option value="hour"${filters.bucket === "hour" ? " selected" : ""}>Theo giờ</option></select></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-view">Chế độ xem</label><select class="form-select" id="admin-analytics-view" name="view">${options}</select></div></div><details class="mt-3"${Object.keys(ANALYTICS_FILTER_VALUES).some((key) => filters[key]) || IDENTIFIER_FILTERS.some((key) => filters[key]) ? " open" : ""}><summary class="fw-semibold">Bộ lọc phân khúc và thương mại</summary><div class="row g-2 align-items-end mt-1">${commercialControls}<div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-releaseId">Mã bản phát hành</label><input class="form-control" id="admin-analytics-releaseId" name="releaseId" maxlength="128" value="${escapeHtml(filters.releaseId || "")}"></div><div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-plan">Mã gói</label><input class="form-control" id="admin-analytics-plan" name="plan" maxlength="128" value="${escapeHtml(filters.plan || "")}"></div></div></details><div class="mt-3"><button class="btn btn-primary" type="submit">Áp dụng</button></div><p class="text-danger small mt-2 mb-0" data-admin-analytics-validation role="alert" hidden></p></form><div data-admin-analytics-results aria-live="polite"></div>`;
 }
 
 function syncBrowserQuery(filters) {

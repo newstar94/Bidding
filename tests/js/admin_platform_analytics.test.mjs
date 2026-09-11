@@ -45,6 +45,35 @@ test("analytics builds bounded queries for both real aggregate endpoints", () =>
   });
 });
 
+test("analytics preserves every supported commercial filter and excludes unknown values", () => {
+  const filters = normalizeAnalyticsFilters({
+    from: "2026-08-01", to: "2026-08-30", bucket: "day", view: "retention", preset: "custom",
+    ownerKind: "organization", variant: "connected", releaseId: "release-2026-09",
+    releaseMode: "live", plan: "business", sizeBucket: "6_15", paidState: "paid",
+    cohortKind: "first_value", procurementIntensity: "high",
+    collaborationIntensity: "active", aiAdoption: "adopted", secret: "no",
+  });
+  assert.deepEqual(buildAnalyticsQueries(filters), {
+    usage: { from: "2026-08-01", to: "2026-08-30", bucket: "day" },
+    product: {
+      from: "2026-08-01", to: "2026-08-30", view: "retention",
+      ownerKind: "organization", variant: "connected", releaseId: "release-2026-09",
+      releaseMode: "live", plan: "business", sizeBucket: "6_15", paidState: "paid",
+      cohortKind: "first_value", procurementIntensity: "high",
+      collaborationIntensity: "active", aiAdoption: "adopted",
+    },
+  });
+  const invalid = buildAnalyticsQueries({
+    from: "2026-08-01", to: "2026-08-30", preset: "custom",
+    ownerKind: "workspace", variant: "all", releaseMode: "production",
+    sizeBucket: "huge", paidState: "trial", cohortKind: "raw",
+    procurementIntensity: "medium", collaborationIntensity: "busy", aiAdoption: "maybe",
+  });
+  for (const key of ["ownerKind", "variant", "releaseMode", "sizeBucket", "paidState", "cohortKind", "procurementIntensity", "collaborationIntensity", "aiAdoption"]) {
+    assert.equal(Object.hasOwn(invalid.product, key), false);
+  }
+});
+
 test("analytics presets calculate inclusive local calendar ranges", () => {
   const today = "2026-09-11";
   assert.deepEqual(analyticsPresetRange("7d", today), { from: "2026-09-05", to: today });
@@ -89,6 +118,22 @@ test("analytics filter renders all supported views and date presets", () => {
   assert.match(markup, /data-analytics-preset="custom"[^>]*aria-pressed="true"/u);
 });
 
+test("analytics filter exposes the complete legacy commercial segmentation contract", () => {
+  const markup = analyticsFilterMarkup(normalizeAnalyticsFilters({
+    from: "2026-08-01", to: "2026-08-30", preset: "custom",
+    ownerKind: "organization", variant: "connected", releaseId: "release-1",
+    releaseMode: "live", plan: "gold", sizeBucket: "6_15", paidState: "paid",
+    cohortKind: "first_value", procurementIntensity: "high",
+    collaborationIntensity: "active", aiAdoption: "adopted",
+  }));
+  for (const name of ["ownerKind", "variant", "releaseId", "releaseMode", "plan", "sizeBucket", "paidState", "cohortKind", "procurementIntensity", "collaborationIntensity", "aiAdoption"]) {
+    assert.match(markup, new RegExp(`name="${name}"`, "u"));
+  }
+  assert.match(markup, /name="ownerKind"[\s\S]*value="organization" selected/u);
+  assert.match(markup, /name="releaseId"[^>]*maxlength="128"[^>]*value="release-1"/u);
+  assert.match(markup, /name="aiAdoption"[\s\S]*value="adopted" selected/u);
+});
+
 test("analytics renders real zeroes, missing values as N/A and no unknown payload fields", () => {
   const markup = analyticsResultsMarkup({
     coverage: { hasData: true }, onlineNow: 0, activeUsers: 7,
@@ -104,6 +149,28 @@ test("analytics renders real zeroes, missing values as N/A and no unknown payloa
   assert.match(markup, /Lượt xuất Word[\s\S]*>N\/A</u);
   assert.match(markup, /Gói thầu/u);
   assert.doesNotMatch(markup, /do-not-render|hidden-value/u);
+});
+
+test("analytics restores authoritative usage peak averages event total and concurrency series", () => {
+  const markup = analyticsResultsMarkup({
+    coverage: { hasData: true }, onlineNow: 4, activeUsers: 12,
+    workActivityCount: 30, wordExportCount: 9, eventCount: 58,
+    peakConcurrency: { count: 7, start: "2026-08-02T08:00:00Z", end: "2026-08-02T09:00:00Z" },
+    averages: { jobsPerActiveUser: 2.5, wordExportsPerActiveUser: 0.75 },
+    concurrencySeries: [
+      { timestamp: "2026-08-02T08:00:00Z", count: 7 },
+      { timestamp: "2026-08-02T09:00:00Z", count: 4 },
+    ],
+    secretUsageField: "do-not-render",
+  }, { dashboard: { hasData: false } });
+  assert.match(markup, /Cao điểm[\s\S]*>7</u);
+  assert.match(markup, /Hoạt động công việc \/ người[\s\S]*>2,5</u);
+  assert.match(markup, /Lượt xuất Word \/ người[\s\S]*>0,75</u);
+  assert.match(markup, /Tổng hoạt động được đo[\s\S]*>58</u);
+  assert.match(markup, /Người hoạt động theo thời gian/u);
+  assert.match(markup, /2026-08-02T08:00:00Z[\s\S]*>7</u);
+  assert.match(markup, /<svg[^>]*role="img"/u);
+  assert.doesNotMatch(markup, /do-not-render|secretUsageField/u);
 });
 
 test("analytics renders responsive accessible charts with tabular fallbacks and suppressed values", () => {
