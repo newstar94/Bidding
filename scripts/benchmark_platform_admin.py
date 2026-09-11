@@ -147,6 +147,7 @@ def _create_fixture(connection) -> None:
                 id TEXT PRIMARY KEY, public_id TEXT NOT NULL,
                 account_user_id TEXT, organization_id TEXT,
                 owner_kind TEXT NOT NULL, total_amount BIGINT NOT NULL,
+                subtotal_amount BIGINT NOT NULL, tax_amount BIGINT NOT NULL,
                 currency TEXT NOT NULL, provider_profile_id TEXT
             ) ON COMMIT DROP;
             CREATE TEMP TABLE payment_transactions (
@@ -239,7 +240,7 @@ def _create_fixture(connection) -> None:
                    CASE WHEN n %% 2 = 0
                         THEN 'bench-org-' || (((n - 1) %% %s) + 1) END,
                    CASE WHEN n %% 2 = 1 THEN 'account' ELSE 'organization' END,
-                   100000 + n, 'VND', 'bench-provider'
+                   100000 + n, 90000 + n, 10000, 'VND', 'bench-provider'
               FROM generate_series(1, %s) AS n
             """,
             (USER_COUNT, ORGANIZATION_COUNT, INVOICE_REQUEST_COUNT),

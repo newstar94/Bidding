@@ -16,7 +16,7 @@ try {
   await page.locator("#admin-analytics-from").fill("2026-08-30");
   await page.locator("#admin-analytics-to").fill("2026-08-30");
   await page.locator("[data-admin-analytics-form]").press("Enter");
-  await page.getByText("Kế hoạch").waitFor({ state: "visible" });
+  await page.getByRole("cell", { name: "Kế hoạch", exact: true }).waitFor({ state: "visible" });
 
   await context.clearCookies();
   const denied = await page.request.get(`${baseUrl}/api/admin/product-analytics/dashboard`, {
