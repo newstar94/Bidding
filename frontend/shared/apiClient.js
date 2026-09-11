@@ -200,6 +200,7 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
   }
   const {
     csrf = true,
+    workspaceContext = true,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     retries = 1,
     handleHttpErrors = true,
@@ -221,7 +222,9 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
     const headers = new Headers(baseHeaders);
     if (path) {
       headers.delete("X-Active-Org");
-      const activeOrganization = clientConfiguration.activeOrganization?.();
+      const activeOrganization = workspaceContext
+        ? clientConfiguration.activeOrganization?.()
+        : "";
       if (activeOrganization) {
         headers.set("X-Active-Org", encodeURIComponent(activeOrganization));
       }

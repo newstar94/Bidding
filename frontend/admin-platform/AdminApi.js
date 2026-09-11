@@ -103,12 +103,13 @@ export async function getAdminJson(path, { query, signal, fetchImpl = globalThis
   }
   let response;
   try {
-    response = await fetchImpl(url, {
+    response = await apiFetch(url, {
       method: "GET",
-      credentials: "same-origin",
       headers: { Accept: "application/json" },
       signal,
-    });
+      handleHttpErrors: false,
+      workspaceContext: false,
+    }, fetchImpl);
   } catch (cause) {
     if (signal?.aborted) throw cause;
     throw new AdminApiError("Không thể kết nối tới máy chủ.", { code: "NETWORK_ERROR", cause });
@@ -141,6 +142,7 @@ export async function postAdminJson(path, {
       body: JSON.stringify(body),
       signal,
       handleHttpErrors: false,
+      workspaceContext: false,
       retries,
     }, fetchImpl);
   } catch (cause) {
@@ -176,6 +178,7 @@ export async function patchAdminJson(path, {
       body: JSON.stringify(body),
       signal,
       handleHttpErrors: false,
+      workspaceContext: false,
       retries: idempotencyKey ? 1 : 0,
     }, fetchImpl);
   } catch (cause) {
@@ -201,6 +204,7 @@ export async function deleteAdminJson(path, {
       headers: { Accept: "application/json" },
       signal,
       handleHttpErrors: false,
+      workspaceContext: false,
       retries: 0,
     }, fetchImpl);
   } catch (cause) {

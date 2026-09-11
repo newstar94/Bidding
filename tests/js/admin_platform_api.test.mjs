@@ -25,6 +25,32 @@ test("admin API uses same-origin credentials without workspace organization head
   assert.equal(new Headers(request.options.headers).has("X-Active-Org"), false);
 });
 
+test("admin API never inherits the workspace organization stored by the main application", async () => {
+  const previousSessionStorage = globalThis.sessionStorage;
+  const previousLocalStorage = globalThis.localStorage;
+  globalThis.sessionStorage = { getItem: (key) => key === "bf_active_org" ? "workspace-session" : null };
+  globalThis.localStorage = { getItem: (key) => key === "bf_active_org" ? "workspace-local" : null };
+  let request;
+  try {
+    await postAdminJson("/api/admin/environment", {
+      body: { features: { aiEnabled: true } },
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+    assert.equal(new Headers(request.options.headers).has("X-Active-Org"), false);
+  } finally {
+    if (previousSessionStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousSessionStorage;
+    if (previousLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousLocalStorage;
+  }
+});
+
 test("admin API rejects paths outside the platform boundary", async () => {
   await assert.rejects(() => getAdminJson("/api/auth/users"), TypeError);
   await assert.rejects(() => getAdminJson("/api/commercial/drafts"), TypeError);
