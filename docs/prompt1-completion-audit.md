@@ -1,24 +1,29 @@
 # Prompt 1 — completion audit
 
-Status: **complete for Prompt 1 engineering scope**. Production publication is
+Status: **complete for Prompt 1 engineering scope on committed HEAD `6caa6651`**.
+The current follow-up commit `395e5cfe` is a Prompt 2 UI correction and requires
+fresh remote CI before extending Prompt 1 evidence. Production publication is
 still **BLOCKED — external legal facts missing** under the explicit section-49
-exception. Exact implementation SHA `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`
-has terminal-success Full CI, CodeQL, N+1 and Supply-chain workflows. Older
+exception. Exact Prompt 1 implementation SHA
+`6caa66512207a35a2c274df450f8f23edfb8d57d` has terminal-success Full CI,
+CodeQL, N+1 and Supply-chain workflows. Older
 in-progress and local-only statements below are chronological evidence, not the
 current verdict.
 Evidence details and historical failures are in `prompt1-verification-progress.md`.
 
 ## Latest verification checkpoint — 2026-09-11
 
-Current final evidence: HEAD equals `origin/main` at `dcb788b5`. Full CI
-`34562145518`, CodeQL `34562145458`, N+1 `34562145445` and Supply-chain
-`34562145450` are terminal `success`. Full CI includes all eight engineering
+Current Prompt 1 evidence: `6caa6651` equals `origin/main` before the
+unpublished UI correction. Full CI `34586538439`, CodeQL `34586538448`, N+1
+`34586538419` and Supply-chain `34586538443` are terminal `success`. Full CI
+includes all eight engineering
 jobs and the cross-browser/full workflow stages. The final regression covers a
 tab whose shared visibility cursor was advanced by another tab while its own
 in-memory projection remained stale; it escalates an empty delta to a complete
 authoritative snapshot before editor reconciliation. Current local static,
 1,842-test JavaScript suite, secure build and Platform Admin scale/frontend
-budgets pass. The user-supplied cross-browser prompt remains untracked.
+budgets pass. The cross-browser prompt is tracked. The current UI commit is not
+covered by these remote runs until pushed and rebuilt by CI.
 
 The remaining entries retain the diagnostic sequence and superseded checkpoints.
 

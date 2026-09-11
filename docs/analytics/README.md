@@ -56,7 +56,7 @@ Gap analysis này là cổng bắt buộc trước migration.
 
 ## Dashboard Information Architecture
 
-Khu vực hiện hữu `/phan-tich-su-dung` được mở rộng thành Analytics / Commercial Intelligence để giữ route shell và code-splitting hiện tại. State filter được phản ánh vào URL query.
+Khu vực Platform Admin hiện hành `/admin/analytics` là Analytics / Commercial Intelligence trong shell Tabler tách biệt. URL cũ `/phan-tich-su-dung` chỉ còn là redirect tương thích có kiểm tra quyền. State filter được phản ánh vào URL query.
 
 | View | Primary decision |
 | --- | --- |
@@ -83,7 +83,7 @@ Mỗi view theo thứ tự: global filters → KPI → main trend → distributi
 - `backend/product_analytics/query_service.py`: bounded/filterable aggregate-only dashboard reads, small-cohort suppression.
 - `backend/product_analytics/routes.py`: Super Admin aggregate API, refresh API và event collector.
 - `scripts/refresh_product_analytics.py`: scheduler/diagnostics/retention command.
-- `frontend/admin/ProductAnalyticsView.js` và CSS: lazy dashboard workspace, URL filters, formatters và accessible chart/table fallback.
+- `frontend/admin-platform/AdminAnalytics.js` và `admin.css`: dashboard Platform Admin, URL filters, formatters và accessible chart/table fallback.
 - `views/tabs/tab_usage_analytics.html`: semantic shell/loading/error/empty regions.
 - `frontend/commercial-policy/CommercialStorefront.js`: minimal approved funnel events only.
 - `tests/test_product_analytics.py`, `tests/test_product_analytics_migration.py`, `tests/test_product_analytics_e2e.py`, `tests/js/product_analytics.test.mjs`: contract, real PostgreSQL/API migration, frontend seams và backend-backed browser journey.

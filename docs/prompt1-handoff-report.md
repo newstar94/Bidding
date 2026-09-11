@@ -1,20 +1,20 @@
 # Prompt 1 — báo cáo bàn giao hoàn tất
 
 Phạm vi kỹ thuật của Prompt 1 đã hoàn tất trên `main` và được xác minh lại tại
-`dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` cả cục bộ lẫn
+`6caa66512207a35a2c274df450f8f23edfb8d57d` cả cục bộ lẫn
 trên GitHub Actions. Phát hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp
 lý bên ngoài như nêu dưới đây; đây là ngoại lệ được Prompt 1 cho phép và không
 được hợp thức hóa bằng dữ liệu giả.
 
 ## Cập nhật bằng chứng ngày 11/09/2026
 
-- HEAD và `origin/main` cùng là `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`
-  tại lần audit hoàn tất hiện tại.
-- Full CI run `34562145518` hoàn tất `success`; cả tám job kỹ thuật đạt, gồm
+- Prompt 1 HEAD và `origin/main` cùng là `6caa66512207a35a2c274df450f8f23edfb8d57d`
+  trước thay đổi UI Prompt 2 tiếp theo.
+- Full CI run `34586538439` hoàn tất `success`; cả tám job kỹ thuật đạt, gồm
   PostgreSQL schema/FK, static, secure build, Python/JavaScript coverage,
   startup performance, package/dependency và cross-browser/full workflow E2E.
-- CodeQL `34562145458`, N+1 `34562145445` và Supply-chain Security
-  `34562145450` đều hoàn tất `success` trên cùng SHA.
+- CodeQL `34586538448`, N+1 `34586538419` và Supply-chain Security
+  `34586538443` đều hoàn tất `success` trên cùng SHA.
 - Regression cuối xử lý race khi một tab đã ghi visibility cursor mới vào
   storage dùng chung nhưng tab còn lại vẫn giữ projection cũ: delta rỗng phải
   nâng thành full authoritative reconciliation trước khi chấp nhận scope mới.
