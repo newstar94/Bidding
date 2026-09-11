@@ -101,6 +101,10 @@ test("detail drawers preserve authoritative user, membership and subscription va
     lastActiveAt: 200, activeSessionCount: 2, organizationCount: 1,
     subscription: { packageId: "personal", status: "active" },
     usage: { eventCount: 8, lastSeenAt: 210 },
+    recentSessions: [{
+      status: "active", createdAt: 100, lastSeenAt: 200,
+      activeRole: "employee", activeRoleOrganizationId: "org-1", rememberMe: true,
+    }],
     recentAudit: [{ action: "user.updated", createdAt: "2026-03-01", targetType: "user", targetId: "user-1" }],
     links: { sessions: "/admin/security?userId=user-1", audit: "/admin/audit?actorUserId=user-1" },
     availablePackages: [{ id: "personal", name: "Cá nhân" }, { id: "business", name: "Doanh nghiệp" }],
@@ -129,6 +133,9 @@ test("detail drawers preserve authoritative user, membership and subscription va
   assert.match(userMarkup, />2</u);
   assert.match(userMarkup, /personal/u);
   assert.match(userMarkup, /user[.]updated/u);
+  assert.match(userMarkup, /Hoạt động đăng nhập/u);
+  assert.match(userMarkup, /employee · org-1/u);
+  assert.match(userMarkup, /Ghi nhớ đăng nhập/u);
   assert.match(userMarkup, /href="\/admin\/security[?]userId=user-1"/u);
   assert.doesNotMatch(userMarkup, /data-admin-link=/u);
 
@@ -138,7 +145,12 @@ test("detail drawers preserve authoritative user, membership and subscription va
     users: [{ name: "Nhân viên", email: "employee@example.test", role: "employee", lastActiveAt: 250 }],
     usage: { eventCount: 12, lastSeenAt: 250 }, security: { activeSessionCount: 3 },
     recentAudit: [{ action: "subscription.changed", createdAt: "2026-03-02", targetType: "organization", targetId: "org-1" }],
-    links: { users: "/admin/users?organizationId=org-1", activity: "/admin/audit?organizationId=org-1", security: "/admin/security" },
+    invoices: [{
+      id: "invoice-1", status: "issued", providerReference: "provider-1",
+      orderPublicId: "order-1", amounts: { totalMinor: 330000, currency: "VND" },
+      createdAt: "2026-02-03", href: "/admin/invoices/invoice-1",
+    }],
+    links: { users: "/admin/users?organizationId=org-1", invoices: "/admin/invoices?ownerKind=organization&search=org-1", activity: "/admin/audit?organizationId=org-1", security: "/admin/security" },
     subscription: { packageId: "business", status: "active", startsAt: 100, expiresAt: 4102444800, memberQuota: 20 },
   });
   assert.match(organizationMarkup, /business/u);
@@ -148,6 +160,10 @@ test("detail drawers preserve authoritative user, membership and subscription va
   assert.match(organizationMarkup, /Nguyễn Quản lý/u);
   assert.match(organizationMarkup, /employee@example[.]test/u);
   assert.match(organizationMarkup, /subscription[.]changed/u);
+  assert.match(organizationMarkup, /Hóa đơn gần đây/u);
+  assert.match(organizationMarkup, /invoice-1/u);
+  assert.match(organizationMarkup, /330[.]000/u);
+  assert.match(organizationMarkup, /href="\/admin\/invoices\/invoice-1"/u);
   assert.match(organizationMarkup, /Bảo mật/u);
 
   const suspendedSubscription = organizationDetailMarkup({

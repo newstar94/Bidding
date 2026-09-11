@@ -215,7 +215,7 @@ test("payment rows preserve minor-unit currency semantics and real transaction s
       operation: "purchase", amounts: { totalMinor: 110000, currency: "VND" },
       paymentState: "verified_paid", activationState: "applied", checkoutState: "open",
       provider: { name: "payos", reference: "provider-ref" }, createdAt: "2026-01-02",
-      transactions: [{ type: "payment", status: "settled", verifiedPaidAmountMinor: 110000, currency: "VND", createdAt: "2026-01-02" }],
+      transactions: [{ id: "tx-1", type: "payment", status: "settled", verifiedPaidAmountMinor: 110000, currency: "VND", createdAt: "2026-01-02", invoiceRequest: { id: "invoice-1", status: "issued" } }],
     }],
     pagination: { page: 1, totalPages: 1, totalRows: 1 },
   });
@@ -223,6 +223,8 @@ test("payment rows preserve minor-unit currency semantics and real transaction s
   assert.match(markup, /110[.]000/u);
   assert.match(markup, /verified_paid/u);
   assert.match(markup, /settled/u);
+  assert.match(markup, /Mã thanh toán:[\s\S]*tx-1/u);
+  assert.match(markup, /Hóa đơn:[\s\S]*invoice-1/u);
   assert.match(markup, /data-admin-billing-detail="order-public-1"/u);
   const detail = paymentDetailMarkup({
     publicId: "order-public-1", owner: { kind: "account", id: "user-a", name: "Alpha" },
@@ -230,11 +232,13 @@ test("payment rows preserve minor-unit currency semantics and real transaction s
     paymentState: "verified_paid", activationState: "applied", checkoutState: "open",
     provider: { name: "payos", environment: "live", reference: "provider-ref" },
     createdAt: "2026-01-01", updatedAt: "2026-01-02", checkoutExpiresAt: 4102444800,
-    transactions: [{ id: "tx-1", providerTransactionId: "provider-tx", type: "payment", status: "settled", verifiedPaidAmountMinor: 110000, currency: "VND", providerOccurredAt: 1500, createdAt: "2026-01-02" }],
+    transactions: [{ id: "tx-1", providerTransactionId: "provider-tx", type: "payment", status: "settled", verifiedPaidAmountMinor: 110000, currency: "VND", providerOccurredAt: 1500, createdAt: "2026-01-02", invoiceRequest: { id: "invoice-1", status: "issued" } }],
   });
   assert.match(detail, /Dòng thời gian đơn hàng/u);
   assert.match(detail, /Giao dịch thanh toán/u);
   assert.match(detail, /provider-tx/u);
+  assert.match(detail, /Mã đơn hàng[\s\S]*order-public-1/u);
+  assert.match(detail, /Hóa đơn[\s\S]*invoice-1/u);
   assert.match(detail, /110[.]000/u);
 });
 

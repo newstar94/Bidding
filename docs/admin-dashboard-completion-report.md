@@ -1,17 +1,17 @@
 # BiddingFlow Tabler Admin Migration — Completion Report
 
-This report audits the implementation state reviewed at `d8fd08cb6abc103dc5ea35a853c0be8ed7b679e9`. The documentation-only commit containing this report necessarily has a later SHA. Local exact-HEAD evidence is separated from pending remote evidence; no earlier green run is treated as proof for a later commit.
+This report audits the implementation state at `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`. The documentation-only commit containing this refreshed report necessarily has a later SHA. Exhaustive local migration evidence gathered at `d8fd08cb` is distinguished from current-SHA local reruns and exact-SHA GitHub evidence.
 
 ## 1. Baseline
 
 | Item | Value |
 | --- | --- |
 | Migration baseline | `c0d8ebfc699258c28662f7d03e7bbadd507a9305` (parent of first Tabler-shell commit) |
-| Implementation SHA audited | `d8fd08cb6abc103dc5ea35a853c0be8ed7b679e9` |
+| Implementation SHA audited | `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` |
 | Branch | `main` |
-| `origin/main` when final verification began | `4ccb49913946fa612138b4124c90f2c849a5e8fe` |
+| `origin/main` at current completion audit | `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` |
 | Baseline CI | No single terminal baseline run was reconstructed for this report; historical prompt evidence recorded failures before the migration |
-| Latest implementation remote CI | Pending confirmation on the latest implementation SHA; do not infer it from earlier green runs |
+| Latest implementation remote CI | Full CI `34562145518`, CodeQL `34562145458`, N+1 `34562145445`, Supply-chain `34562145450`: all terminal `success` on `dcb788b5` |
 | Legal production release | Blocked by 27 external legal facts; no approval or production-public artifact is claimed |
 
 ## 2. Legacy Dashboard Inventory
@@ -91,7 +91,7 @@ No legacy invoice ledger, invoice PDF download, arbitrary SQL console or admin i
 
 | Classification | Functionality | Source / reason | Verification status |
 | --- | --- | --- | --- |
-| Migrated legacy | Overview, user/account administration, organization visibility/actions, usage analytics, product analytics, versioned commercial plans, payment actions and legal catalog | Replaces the four legacy platform tabs and their legacy-only view modules | Focused and full local exact-HEAD gates pass; exact-final-SHA remote CI pending |
+| Migrated legacy | Overview, user/account administration, organization visibility/actions, usage analytics, product analytics, versioned commercial plans, payment actions and legal catalog | Replaces the four legacy platform tabs and their legacy-only view modules | Focused migration gates pass; exact implementation-SHA GitHub CI is terminal `success` |
 | Newly added | Dedicated organization/user aggregate details and consistent server pagination | Required for the standalone operations console and large-data behavior | Focused directory and N+1 tests pass |
 | Newly added | Subscription directory | Makes existing account/organization subscription facts directly operable without changing lifecycle policy | Focused billing tests pass |
 | Newly added | Invoice-request directory/detail and deep link | Exposes the existing `billing_invoice_requests` workflow; explicitly not a fabricated invoice ledger | Focused billing plus router/browser deep-link tests pass |
@@ -160,7 +160,7 @@ The invoice page’s resource is the existing `billing_invoice_requests` table. 
 
 ## 10. Tests
 
-Commands executed on implementation SHA `d8fd08cb` during final local verification:
+The exhaustive migration verification below was executed on `d8fd08cb`. The two later commits changed an E2E response budget and cross-tab workspace reconciliation, not the Platform Admin feature surface. On final implementation SHA `dcb788b5`, `check:static`, all 1,842 JavaScript tests, `build:secure`, both Platform Admin benchmarks and the isolated multi-assignee workflow were rerun successfully; GitHub then ran the complete exact-SHA matrix.
 
 | Exact command | Exit / result |
 | --- | --- |
@@ -181,22 +181,22 @@ Commands executed on implementation SHA `d8fd08cb` during final local verificati
 | `python scripts/package_production.py --check` | Exit 0; 870 files, 5,142,098 bytes; runtime smoke passed |
 | `npm audit && npm audit --omit=dev && pip-audit -r requirements.txt` | Exit 0; no known vulnerabilities reported |
 
-The existing workflow suite also passed locally on this SHA for auth shell/roles, bidder goods, CRUD modules, multi-assignee activity, joint venture, low-price conflict, five-run offline-sync soak and all 15 package pairs. Full lifecycle and startup performance passed in isolated CI-like runs. Exact-final-SHA remote GitHub CI is recorded only after its terminal outcome is observed.
+The existing workflow suite passed locally for auth shell/roles, bidder goods, CRUD modules, multi-assignee activity, joint venture, low-price conflict, five-run offline-sync soak and all 15 package pairs. Full lifecycle and startup performance passed in isolated CI-like runs. Exact implementation-SHA GitHub Full CI subsequently passed all eight engineering jobs, including the cross-browser and full role/workflow stages.
 
 ## 11. CI Before / After
 
 | Check | Before | After / current evidence |
 | --- | --- | --- |
-| Static/quality | Historical Prompt 1 baseline had failures | Exact-HEAD static and secure-build gates pass locally |
-| Python and critical coverage | Historical baseline incomplete | Exact-HEAD full suite: 2281 passed, 1 skipped, 64.34%; 16/16 critical modules pass |
-| JS coverage | Historical baseline incomplete | Exact-HEAD lines 54.45%, branches 65.91%, functions 68.46%; 14/14 critical modules pass |
-| Secure build / CSP / vendor | No migration-final evidence | Exact-HEAD secure build and production package/runtime smoke pass |
-| Admin E2E | Legacy workspace UI | Exact-HEAD 48/48 checks pass across Chromium, Firefox and WebKit; UI quality passes five responsive viewports |
-| Existing workflow E2E | Historical failures | Exact-HEAD auth, business workflow, lifecycle, offline soak and package-pairwise suites pass locally |
-| N+1 / large data | No dedicated Tabler evidence | Exact-HEAD benchmark passes fixed query counts and 256,000-byte response cap at required dataset sizes |
-| DB/FK/schema | No migration-specific change | Exact-HEAD FK audit passes for all 214 foreign keys; package/runtime schema smoke passes |
-| Dependency/security | No Tabler-final evidence | Exact-HEAD npm full/production and Python dependency audits report no known vulnerabilities |
-| GitHub exact-final-SHA | No final migration commit | Pending until documentation commit is pushed and its terminal checks are observed |
+| Static/quality | Historical Prompt 1 baseline had failures | Local current-SHA rerun and Full CI job both pass |
+| Python and critical coverage | Historical baseline incomplete | Exhaustive local migration suite passed; exact-SHA Full CI Python coverage job passes |
+| JS coverage | Historical baseline incomplete | Exhaustive local migration coverage passed; exact-SHA Full CI JS coverage job passes; current-SHA `test:js` passes 1,842/1,842 |
+| Secure build / CSP / vendor | No migration-final evidence | Local current-SHA secure build and exact-SHA Full CI secure-build job pass |
+| Admin E2E | Legacy workspace UI | Migration evidence: 48/48 across Chromium, Firefox and WebKit plus five responsive viewports; exact-SHA cross-browser matrix passes |
+| Existing workflow E2E | Historical failures | Exact-SHA Full CI role/workflow stage passes |
+| N+1 / large data | No dedicated Tabler evidence | Exact-SHA N+1 workflow passes; current-SHA large-data benchmark passes fixed query counts and 256,000-byte response cap |
+| DB/FK/schema | No migration-specific change | Exact-SHA PostgreSQL schema/FK job passes |
+| Dependency/security | No Tabler-final evidence | Exact-SHA package/dependency, Supply-chain and CodeQL workflows pass |
+| GitHub exact-final-SHA | No final migration commit | All four workflows are terminal `success` on `dcb788b5` |
 | Production legal release | Blocked | Still blocked by 27 external facts; correctly not bypassed |
 
 ## 12. Performance
@@ -205,8 +205,8 @@ The existing workflow suite also passed locally on this SHA for auth shell/roles
 - Overview: a bounded aggregate endpoint avoids serial page startup calls.
 - Queries: directory, billing, audit, jobs and sync screens use server-side pagination, bounded page size, allowlisted filters/sorts and stable ordering.
 - N+1: list/detail regressions assert constant query counts; focused backend tests passed in the current audit.
-- Large data: the isolated PostgreSQL benchmark passed with 100 rows/page and a 256,000-byte response cap. Users (10,000) used 3 queries, median 29.79 ms, max 33.94 ms, max 45,843 bytes; organizations (1,000) used 3 queries, median 22.48 ms, max 28.90 ms, max 33,873 bytes; invoice requests (25,000) used 2 queries, median 160.72 ms, max 195.97 ms, max 67,891 bytes; audit rows (50,000) used 2 queries, median 9.36 ms, max 12.17 ms, max 28,867 bytes.
-- Frontend budget: admin JavaScript 382,163/425,000 bytes, admin CSS 538,298/575,000 bytes, 10/12 initial requests and 848.9/1,500 ms maximum dashboard load; all limits passed.
+- Large data on `dcb788b5`: the isolated PostgreSQL benchmark passed with 100 rows/page and a 256,000-byte response cap. Users (10,000) used 3 queries, median 23.82 ms, max 28.67 ms, max 45,843 bytes; organizations (1,000) used 3 queries, median 14.86 ms, max 44.65 ms, max 33,873 bytes; invoice requests (25,000) used 2 queries, median 144.28 ms, max 203.41 ms, max 67,891 bytes; audit rows (50,000) used 2 queries, median 9.27 ms, max 11.66 ms, max 28,867 bytes.
+- Frontend budget on `dcb788b5`: admin JavaScript 381,180/425,000 bytes, admin CSS 538,298/575,000 bytes, 10/12 initial requests and 626.2/1,500 ms maximum dashboard load; all limits passed.
 - Startup: the isolated 30-run gate passed with cold p95 1,015/2,100 ms, warm p95 129/450 ms and longest task 100/100 ms; no runtime failures were recorded.
 - Request races: shared directory, system, invoice and detail loaders abort stale requests so older responses cannot overwrite newer results.
 - Limitation: no numeric pre-migration performance capture was available, so this report does not invent a before/after delta.
@@ -227,7 +227,7 @@ The generic organization/account controller remains because it serves workspace 
 
 ## 14. Remaining Risks
 
-1. Terminal GitHub CI has not yet been observed on the exact final documentation SHA; complete local success is not a substitute.
+1. This report refresh creates a later documentation-only SHA; the implementation evidence remains pinned to `dcb788b5` and must not be described as evidence for unrelated later source changes.
 2. The repository has an invoice-request workflow, not an authoritative accounting invoice ledger or invoice-document store. Totals such as open/overdue and downloadable invoice documents therefore remain unavailable by design, not fabricated.
 3. The current schema has only `super_admin` and `user`; finer platform roles require separate product authorization design and approval.
 4. No reproducible numeric pre-migration performance capture exists, so only current bounded performance evidence is claimed.
@@ -235,8 +235,8 @@ The generic organization/account controller remains because it serves workspace 
 
 ## 15. Recommended Next Steps
 
-1. Push the final documentation commit and observe terminal GitHub checks on that exact SHA.
-2. Retain the exact-HEAD local gate outputs and benchmark artifacts as release evidence.
+1. Retain the exact implementation-SHA GitHub run links and current-SHA benchmark outputs as release evidence.
+2. Re-run the full matrix after any later production-source change; do not extend `dcb788b5` evidence to it.
 3. If product requires fiscal invoice documents rather than invoice requests, approve an invoice-domain contract before designing schema, provider workflow or mutation UI.
 4. Decide whether finer platform roles are commercially required; do not alias organization roles into platform authority.
 5. Resolve the 27 external legal facts independently before any production-public release.

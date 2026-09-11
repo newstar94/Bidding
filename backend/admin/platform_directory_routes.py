@@ -619,6 +619,8 @@ async def list_admin_organizations_api(request):
 
 
 _DETAIL_MEMBER_LIMIT = 20
+_DETAIL_SESSION_LIMIT = 10
+_DETAIL_INVOICE_LIMIT = 10
 _DETAIL_AUDIT_LIMIT = 10
 
 
@@ -655,6 +657,14 @@ def _audit_items(rows):
         }
         for row in rows
     ]
+
+
+def _detail_session_status(row, now):
+    if row["revoked_at"] is not None:
+        return "revoked"
+    if int(row["idle_expires_at"]) <= now or int(row["absolute_expires_at"]) <= now:
+        return "expired"
+    return "active"
 
 
 def _user_detail(request):
@@ -730,6 +740,15 @@ def _user_detail(request):
                  FROM product_usage_hourly WHERE user_id = ?""",
             (user_id,),
         ).fetchone()
+        sessions = cursor.execute(
+            """SELECT created_at, last_seen_at, idle_expires_at,
+                      absolute_expires_at, revoked_at, remember_me,
+                      active_role, active_role_organization_id
+                 FROM auth_sessions
+                WHERE user_id = ?
+                ORDER BY last_seen_at DESC, id DESC LIMIT ?""",
+            (user_id, _DETAIL_SESSION_LIMIT),
+        ).fetchall()
         audit = cursor.execute(
             """SELECT id, actor_user_id, organization_id, action,
                       target_type, target_id, created_at
@@ -763,6 +782,20 @@ def _user_detail(request):
             ],
             "usage": {"eventCount": int(usage["event_count"] or 0),
                       "lastSeenAt": _json_value(usage["last_seen_at"])},
+            "recentSessions": [
+                {
+                    "status": _detail_session_status(item, now),
+                    "createdAt": _json_value(item["created_at"]),
+                    "lastSeenAt": _json_value(item["last_seen_at"]),
+                    "idleExpiresAt": _json_value(item["idle_expires_at"]),
+                    "absoluteExpiresAt": _json_value(item["absolute_expires_at"]),
+                    "revokedAt": _json_value(item["revoked_at"]),
+                    "rememberMe": bool(item["remember_me"]),
+                    "activeRole": item["active_role"],
+                    "activeRoleOrganizationId": item["active_role_organization_id"],
+                }
+                for item in sessions
+            ],
             "recentAudit": _audit_items(audit),
             "links": {
                 "sessions": f"/admin/security?userId={encoded_user_id}",
@@ -771,7 +804,11 @@ def _user_detail(request):
                 "audit": f"/admin/audit?actorUserId={encoded_user_id}",
             },
         },
-        "limits": {"organizations": _DETAIL_MEMBER_LIMIT, "audit": _DETAIL_AUDIT_LIMIT},
+        "limits": {
+            "organizations": _DETAIL_MEMBER_LIMIT,
+            "sessions": _DETAIL_SESSION_LIMIT,
+            "audit": _DETAIL_AUDIT_LIMIT,
+        },
     })
 
 
@@ -885,6 +922,17 @@ def _organization_detail(request):
                 ORDER BY created_at DESC, id DESC LIMIT ?""",
             (organization_id, _DETAIL_AUDIT_LIMIT),
         ).fetchall()
+        invoices = cursor.execute(
+            """SELECT invoice.id, invoice.status, invoice.provider_reference,
+                      invoice.attempt_count, invoice.created_at, invoice.updated_at,
+                      orders.public_id AS order_public_id,
+                      orders.total_amount, orders.currency
+                 FROM billing_invoice_requests invoice
+                 JOIN billing_orders orders ON orders.id = invoice.order_id
+                WHERE orders.organization_id = ? AND orders.owner_kind = 'organization'
+                ORDER BY invoice.created_at DESC, invoice.id DESC LIMIT ?""",
+            (organization_id, _DETAIL_INVOICE_LIMIT),
+        ).fetchall()
     finally:
         connection.close()
     users = [
@@ -912,16 +960,37 @@ def _organization_detail(request):
             "usage": {"eventCount": int(usage["event_count"] or 0),
                       "lastSeenAt": _json_value(usage["last_seen_at"])},
             "security": {"activeSessionCount": active_sessions},
+            "invoices": [
+                {
+                    "id": item["id"], "status": item["status"],
+                    "providerReference": item["provider_reference"],
+                    "attemptCount": int(item["attempt_count"] or 0),
+                    "orderPublicId": item["order_public_id"],
+                    "amounts": {
+                        "totalMinor": int(item["total_amount"]),
+                        "currency": item["currency"],
+                    },
+                    "createdAt": _json_value(item["created_at"]),
+                    "updatedAt": _json_value(item["updated_at"]),
+                    "href": f'/admin/invoices/{quote(str(item["id"]), safe="")}',
+                }
+                for item in invoices
+            ],
             "recentAudit": _audit_items(audit),
             "links": {
                 "users": f"/admin/users?organizationId={encoded_organization_id}",
                 "subscription": f"/admin/subscriptions?ownerKind=organization&search={encoded_organization_id}",
+                "invoices": f"/admin/invoices?ownerKind=organization&search={encoded_organization_id}",
                 "usage": "/admin/analytics",
                 "activity": f"/admin/audit?organizationId={encoded_organization_id}",
                 "security": "/admin/security",
             },
         },
-        "limits": {"users": _DETAIL_MEMBER_LIMIT, "audit": _DETAIL_AUDIT_LIMIT},
+        "limits": {
+            "users": _DETAIL_MEMBER_LIMIT,
+            "invoices": _DETAIL_INVOICE_LIMIT,
+            "audit": _DETAIL_AUDIT_LIMIT,
+        },
     })
 
 

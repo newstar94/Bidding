@@ -218,9 +218,13 @@ def test_payments_return_orders_and_transactions_with_minor_unit_amounts(monkeyp
                 "paymentTiming": "on_time",
                 "providerOccurredAt": 1500,
                 "createdAt": "2026-01-02",
+                "invoiceRequest": {
+                    "id": "invoice-request-a",
+                    "status": "issued",
+                    "providerReference": "invoice-provider-ref",
+                },
             }
         ]
-        assert "invoice" not in item
     finally:
         connection.close()
 
@@ -252,6 +256,14 @@ def test_invoice_requests_are_bounded_authoritative_facts_with_detail(monkeypatc
         assert payload["pagination"] == {
             "page": 1, "pageSize": 25, "totalRows": 1, "totalPages": 1,
         }
+        assert payload["summary"] == {
+            "requestCount": 1,
+            "totalRequestedMinor": 110000,
+            "currency": "VND",
+            "requestedCount": 0,
+            "issuedCount": 1,
+            "failedCount": 0,
+        }
         item = payload["items"][0]
         assert item == {
             "id": "invoice-request-a",
@@ -262,6 +274,8 @@ def test_invoice_requests_are_bounded_authoritative_facts_with_detail(monkeypatc
             },
             "orderPublicId": "order-public-account",
             "amounts": {
+                "subtotalMinor": 100000,
+                "taxMinor": 10000,
                 "orderTotalMinor": 110000,
                 "verifiedPaidMinor": 110000,
                 "currency": "VND",

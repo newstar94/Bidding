@@ -262,9 +262,16 @@ def _list_admin_payments_sync(request):
             predicates.append(
                 "(lower(orders.public_id) LIKE ? OR lower(orders.provider_reference) LIKE ? "
                 "OR lower(COALESCE(account.ho_ten, account.email, '')) LIKE ? "
-                "OR lower(COALESCE(organization.ten_to_chuc, '')) LIKE ?)"
+                "OR lower(COALESCE(organization.ten_to_chuc, '')) LIKE ? "
+                "OR EXISTS (SELECT 1 FROM payment_transactions search_transaction "
+                "WHERE search_transaction.order_id = orders.id "
+                "AND (lower(search_transaction.id) LIKE ? "
+                "OR lower(search_transaction.provider_transaction_id) LIKE ?)) "
+                "OR EXISTS (SELECT 1 FROM billing_invoice_requests search_invoice "
+                "WHERE search_invoice.order_id = orders.id "
+                "AND lower(search_invoice.id) LIKE ?))"
             )
-            values.extend((term, term, term, term))
+            values.extend((term, term, term, term, term, term, term))
         for column, value in (
             ("owner_kind", owner_kind), ("operation", operation),
             ("checkout_state", checkout_state), ("payment_state", payment_state),
@@ -318,18 +325,25 @@ def _list_admin_payments_sync(request):
             if order_ids:
                 placeholders = ",".join("?" for _ in order_ids)
                 cursor.execute(
-                    f"""SELECT id, order_id, provider_transaction_id,
-                               transaction_type, status, verified_paid_amount,
-                               fee_amount, net_settled_amount, currency,
-                               payment_timing, provider_occurred_at, created_at
-                          FROM payment_transactions
-                         WHERE order_id IN ({placeholders})
-                         ORDER BY created_at, id""",
+                    f"""SELECT tx.id, tx.order_id,
+                               tx.provider_transaction_id,
+                               tx.transaction_type, tx.status,
+                               tx.verified_paid_amount,
+                               tx.fee_amount, tx.net_settled_amount,
+                               tx.currency, tx.payment_timing,
+                               tx.provider_occurred_at, tx.created_at,
+                               invoice.id AS invoice_request_id,
+                               invoice.status AS invoice_request_status,
+                               invoice.provider_reference AS invoice_provider_reference
+                          FROM payment_transactions tx
+                          LEFT JOIN billing_invoice_requests invoice
+                            ON invoice.payment_transaction_id = tx.id
+                         WHERE tx.order_id IN ({placeholders})
+                         ORDER BY tx.created_at, tx.id""",
                     tuple(order_ids),
                 )
                 for transaction in cursor.fetchall():
-                    transactions_by_order[transaction["order_id"]].append(
-                        {
+                    item = {
                             "id": transaction["id"],
                             "providerTransactionId": transaction["provider_transaction_id"],
                             "type": transaction["transaction_type"],
@@ -342,7 +356,13 @@ def _list_admin_payments_sync(request):
                             "providerOccurredAt": _json_value(transaction["provider_occurred_at"]),
                             "createdAt": _json_value(transaction["created_at"]),
                         }
-                    )
+                    if transaction["invoice_request_id"] is not None:
+                        item["invoiceRequest"] = {
+                            "id": transaction["invoice_request_id"],
+                            "status": transaction["invoice_request_status"],
+                            "providerReference": transaction["invoice_provider_reference"],
+                        }
+                    transactions_by_order[transaction["order_id"]].append(item)
         finally:
             connection.close()
 
@@ -417,6 +437,7 @@ def _invoice_request_select_sql():
                invoice_requests.created_at, invoice_requests.updated_at,
                orders.public_id AS order_public_id, orders.owner_kind,
                orders.account_user_id, orders.organization_id,
+               orders.subtotal_amount, orders.tax_amount,
                orders.total_amount, orders.currency,
                COALESCE(account.ho_ten, account.ten_dang_nhap, account.email)
                    AS account_name,
@@ -463,6 +484,8 @@ def _invoice_request_item(row):
         },
         "orderPublicId": row["order_public_id"],
         "amounts": {
+            "subtotalMinor": int(row["subtotal_amount"]),
+            "taxMinor": int(row["tax_amount"]),
             "orderTotalMinor": int(row["total_amount"]),
             "verifiedPaidMinor": int(row["verified_paid_amount"]),
             "currency": row["currency"],
@@ -532,7 +555,16 @@ def _list_admin_invoice_requests_sync(request):
         try:
             cursor = connection.cursor()
             cursor.execute(
-                f"""SELECT COUNT(*) AS total_rows
+                f"""SELECT COUNT(*) AS total_rows,
+                              COALESCE(SUM(orders.total_amount), 0) AS total_requested,
+                              MIN(orders.currency) AS minimum_currency,
+                              MAX(orders.currency) AS maximum_currency,
+                              SUM(CASE WHEN invoice_requests.status = 'requested' THEN 1 ELSE 0 END)
+                                  AS requested_count,
+                              SUM(CASE WHEN invoice_requests.status = 'issued' THEN 1 ELSE 0 END)
+                                  AS issued_count,
+                              SUM(CASE WHEN invoice_requests.status = 'failed' THEN 1 ELSE 0 END)
+                                  AS failed_count
                        FROM billing_invoice_requests invoice_requests
                        JOIN billing_orders orders ON orders.id = invoice_requests.order_id
                        JOIN payment_transactions transactions
@@ -543,7 +575,8 @@ def _list_admin_invoice_requests_sync(request):
                        {where_sql}""",
                 tuple(values),
             )
-            total_rows = int(cursor.fetchone()["total_rows"])
+            summary_row = cursor.fetchone()
+            total_rows = int(summary_row["total_rows"])
             cursor.execute(
                 f"""{select_sql}{where_sql}
                      ORDER BY {_INVOICE_SORT_COLUMNS[sort_by]} {sort_direction.upper()},
@@ -564,6 +597,19 @@ def _list_admin_invoice_requests_sync(request):
                     "search": search,
                     "ownerKind": owner_kind,
                     "status": status,
+                },
+                "summary": {
+                    "requestCount": total_rows,
+                    "totalRequestedMinor": int(summary_row["total_requested"]),
+                    "currency": (
+                        summary_row["minimum_currency"]
+                        if summary_row["minimum_currency"]
+                        == summary_row["maximum_currency"]
+                        else None
+                    ),
+                    "requestedCount": int(summary_row["requested_count"] or 0),
+                    "issuedCount": int(summary_row["issued_count"] or 0),
+                    "failedCount": int(summary_row["failed_count"] or 0),
                 },
                 "resource": "invoice_request",
             },

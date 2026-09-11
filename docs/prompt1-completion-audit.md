@@ -2,11 +2,25 @@
 
 Status: **complete for Prompt 1 engineering scope**. Production publication is
 still **BLOCKED — external legal facts missing** under the explicit section-49
-exception. Local results do not claim remote GitHub CI success for this
-uncommitted worktree.
+exception. Exact implementation SHA `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`
+has terminal-success Full CI, CodeQL, N+1 and Supply-chain workflows. Older
+in-progress and local-only statements below are chronological evidence, not the
+current verdict.
 Evidence details and historical failures are in `prompt1-verification-progress.md`.
 
-## Latest verification checkpoint — 2026-09-09
+## Latest verification checkpoint — 2026-09-11
+
+Current final evidence: HEAD equals `origin/main` at `dcb788b5`. Full CI
+`34562145518`, CodeQL `34562145458`, N+1 `34562145445` and Supply-chain
+`34562145450` are terminal `success`. Full CI includes all eight engineering
+jobs and the cross-browser/full workflow stages. The final regression covers a
+tab whose shared visibility cursor was advanced by another tab while its own
+in-memory projection remained stale; it escalates an empty delta to a complete
+authoritative snapshot before editor reconciliation. Current local static,
+1,842-test JavaScript suite, secure build and Platform Admin scale/frontend
+budgets pass. The user-supplied cross-browser prompt remains untracked.
+
+The remaining entries retain the diagnostic sequence and superseded checkpoints.
 
 2026-09-10: authenticated-socket revocation session 40509 completed exit 0.
 Both sockets authenticate before manager transfer; both receive db_changed at
@@ -804,6 +818,7 @@ plain performance gate passed at 100 ms with prior failures retained.
 
 Production release: **BLOCKED — external legal facts missing**.
 Do not invent approvals or publish a production-public artifact.
-Tabler dashboard research, memory note and implementation remain pending until
-Prompt 1 is genuinely complete under its legal-gate exception. Prompt 2 may now
-begin, while remaining isolated from this worktree scope.
+Prompt 1 is complete under its legal-gate exception. The subsequent Tabler
+Platform Admin migration is implemented and audited separately in
+`admin-dashboard-completion-report.md`; its code and evidence remain a distinct
+scope even though the final integrated CI verifies both together.

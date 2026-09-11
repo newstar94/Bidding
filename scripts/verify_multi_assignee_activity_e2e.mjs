@@ -588,7 +588,20 @@ try {
     });
     await revokedPage.waitForFunction((code) => !document.querySelector("#goithau-table")?.textContent.includes(code), data.packageCode);
     process.stdout.write("[E2E] revoked-open-package-editor-closed\n");
-    await breakdownPage.locator("#modal-plan-breakdown.active").waitFor({ state: "hidden", timeout: pollingRevocation ? 50_000 : 20_000 });
+    await breakdownPage.locator("#modal-plan-breakdown.active").waitFor({ state: "hidden", timeout: pollingRevocation ? 50_000 : 20_000 }).catch(async (error) => {
+      const diagnostic = await breakdownPage.evaluate(() => ({
+        path: location.pathname,
+        visibility: document.visibilityState,
+        sync: { ...document.getElementById("btn-force-sync")?.dataset },
+        breakdownPlanId: document.getElementById("breakdown-plan-id")?.value || "",
+        planFormId: document.getElementById("form-kehoach-id")?.value || "",
+        activeModals: [...document.querySelectorAll(".modal-overlay.active")].map((item) => item.id),
+        toasts: [...document.querySelectorAll(".bf-toast")].map((item) => item.innerText),
+      }));
+      throw new Error(`Revoked plan breakdown remains visible: ${JSON.stringify({
+        transferStartedAt, transferCompletedAt, diagnostic, revocationTraffic, revocationSockets,
+      })}`, { cause: error });
+    });
     await breakdownPage.waitForFunction((id) => !document.querySelector("#kehoach-table")?.textContent.includes(id), runId);
     process.stdout.write("[E2E] revoked-dirty-plan-breakdown-closed\n");
     if (pollingRevocation) {

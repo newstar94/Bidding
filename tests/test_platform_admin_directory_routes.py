@@ -97,10 +97,14 @@ def _database():
         CREATE TABLE auth_sessions (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
             last_seen_at INTEGER NOT NULL,
             idle_expires_at INTEGER NOT NULL,
             absolute_expires_at INTEGER NOT NULL,
-            revoked_at INTEGER
+            revoked_at INTEGER,
+            remember_me INTEGER NOT NULL,
+            active_role TEXT,
+            active_role_organization_id TEXT
         );
         CREATE TABLE product_usage_hourly (
             user_id TEXT NOT NULL,
@@ -122,13 +126,18 @@ def _database():
             public_id TEXT NOT NULL,
             account_user_id TEXT,
             organization_id TEXT,
-            owner_kind TEXT NOT NULL
+            owner_kind TEXT NOT NULL,
+            total_amount INTEGER NOT NULL,
+            currency TEXT NOT NULL
         );
         CREATE TABLE billing_invoice_requests (
             id TEXT PRIMARY KEY,
             order_id TEXT NOT NULL,
             status TEXT NOT NULL,
-            provider_reference TEXT
+            provider_reference TEXT,
+            attempt_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
         """
     )
@@ -176,11 +185,11 @@ def _database():
         ("org-a", "user-2", 1, 0, 1),
     )
     connection.executemany(
-        "INSERT INTO auth_sessions VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO auth_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            ("session-active", "user-2", 200, 4102444800, 4102444800, None),
-            ("session-revoked", "user-2", 300, 4102444800, 4102444800, 301),
-            ("session-admin", "admin-1", 150, 4102444800, 4102444800, None),
+            ("session-active", "user-2", 100, 200, 4102444800, 4102444800, None, 1, "employee", "org-a"),
+            ("session-revoked", "user-2", 120, 300, 4102444800, 4102444800, 301, 0, "manager", "org-b"),
+            ("session-admin", "admin-1", 100, 150, 4102444800, 4102444800, None, 1, "manager", "org-a"),
         ),
     )
     connection.executemany(
@@ -195,12 +204,20 @@ def _database():
         ),
     )
     connection.execute(
-        "INSERT INTO billing_orders VALUES (?, ?, ?, ?, ?)",
-        ("order-bravo", "order-public-bravo", None, "org-b", "organization"),
+        "INSERT INTO billing_orders VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("order-bravo", "order-public-bravo", None, "org-b", "organization", 220000, "VND"),
     )
     connection.execute(
-        "INSERT INTO billing_invoice_requests VALUES (?, ?, ?, ?)",
-        ("invoice-bravo", "order-bravo", "requested", "provider-bravo"),
+        "INSERT INTO billing_invoice_requests VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("invoice-bravo", "order-bravo", "requested", "provider-bravo", 1, "2026-01-03", "2026-01-04"),
+    )
+    connection.execute(
+        "INSERT INTO billing_orders VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("order-alpha", "order-public-alpha", None, "org-a", "organization", 330000, "VND"),
+    )
+    connection.execute(
+        "INSERT INTO billing_invoice_requests VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("invoice-alpha", "order-alpha", "issued", "provider-alpha", 2, "2026-02-03", "2026-02-04"),
     )
     connection.commit()
     return connection
@@ -526,8 +543,22 @@ def test_user_detail_returns_bounded_activity_subscription_usage_and_encoded_lin
             "financial": True, "identity": False, "signature": True,
         }
         assert user["usage"] == {"eventCount": 10, "lastSeenAt": 250}
+        assert user["recentSessions"] == [
+            {
+                "status": "revoked", "createdAt": 120, "lastSeenAt": 300,
+                "idleExpiresAt": 4102444800, "absoluteExpiresAt": 4102444800,
+                "revokedAt": 301, "rememberMe": False,
+                "activeRole": "manager", "activeRoleOrganizationId": "org-b",
+            },
+            {
+                "status": "active", "createdAt": 100, "lastSeenAt": 200,
+                "idleExpiresAt": 4102444800, "absoluteExpiresAt": 4102444800,
+                "revokedAt": None, "rememberMe": True,
+                "activeRole": "employee", "activeRoleOrganizationId": "org-a",
+            },
+        ]
         assert len(user["recentAudit"]) == 10
-        assert payload["limits"] == {"organizations": 20, "audit": 10}
+        assert payload["limits"] == {"organizations": 20, "sessions": 10, "audit": 10}
     finally:
         connection.close()
 
@@ -565,8 +596,19 @@ def test_organization_detail_returns_primary_contact_bounded_users_usage_and_sec
         assert organization["subscription"]["planVersionId"] == "plan-v2"
         assert organization["usage"] == {"eventCount": 4, "lastSeenAt": 240}
         assert organization["security"] == {"activeSessionCount": 2}
+        assert organization["invoices"] == [
+            {
+                "id": "invoice-alpha", "status": "issued",
+                "providerReference": "provider-alpha", "attemptCount": 2,
+                "orderPublicId": "order-public-alpha",
+                "amounts": {"totalMinor": 330000, "currency": "VND"},
+                "createdAt": "2026-02-03", "updatedAt": "2026-02-04",
+                "href": "/admin/invoices/invoice-alpha",
+            }
+        ]
         assert len(organization["recentAudit"]) == 2
-        assert payload["limits"] == {"users": 20, "audit": 10}
+        assert organization["links"]["invoices"] == "/admin/invoices?ownerKind=organization&search=org-a"
+        assert payload["limits"] == {"users": 20, "invoices": 10, "audit": 10}
     finally:
         connection.close()
 

@@ -41,8 +41,13 @@ function transactionMarkup(transactions) {
     return '<span class="text-secondary">Chưa có giao dịch xác thực</span>';
   }
   return transactions.map((transaction) => (
-    `<div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}<div class="small text-secondary">${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.createdAt)}</div></div>`
+    `<div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}<div class="small text-secondary">Mã thanh toán: <code>${text(transaction.id, transaction.providerTransactionId)}</code> · ${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.createdAt)}</div>${transaction.invoiceRequest ? `<div class="small text-secondary">Hóa đơn: ${text(transaction.invoiceRequest.id)} · ${text(transaction.invoiceRequest.status)}</div>` : ""}</div>`
   )).join("");
+}
+
+function transactionIdsMarkup(transactions) {
+  if (!Array.isArray(transactions) || transactions.length === 0) return '<span class="text-secondary">Chưa có mã thanh toán</span>';
+  return transactions.map((transaction) => `<div class="small text-secondary">Mã thanh toán: <code>${text(transaction.id, transaction.providerTransactionId)}</code></div>`).join("");
 }
 
 function timelineMarkup(entries) {
@@ -77,7 +82,9 @@ export function paymentDetailMarkup(payment) {
   const transactionTimeline = transactions.length
     ? transactions.map((transaction) => `<li class="list-group-item"><div><strong>${text(transaction.status)}</strong> · ${text(transaction.type)}</div><div class="small text-secondary">${escapeHtml(formatMinorMoney(transaction.verifiedPaidAmountMinor, transaction.currency))} · ${formatDate(transaction.providerOccurredAt || transaction.createdAt)}</div><div class="small text-secondary">${text(transaction.providerTransactionId, transaction.id)}</div></li>`).join("")
     : '<li class="list-group-item text-secondary">Chưa có giao dịch thanh toán.</li>';
-  return detailShell("Chi tiết thanh toán", payment?.publicId, `<dl class="row"><dt class="col-5">Chủ thanh toán</dt><dd class="col-7">${ownerMarkup(payment?.owner)}</dd><dt class="col-5">Nghiệp vụ</dt><dd class="col-7">${text(payment?.operation)}</dd><dt class="col-5">Tổng đơn hàng</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</dd><dt class="col-5">Tạm tính</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.subtotalMinor, amount?.currency))}</dd><dt class="col-5">Thuế</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.taxMinor, amount?.currency))}</dd><dt class="col-5">Thanh toán</dt><dd class="col-7">${text(payment?.paymentState)}</dd><dt class="col-5">Kích hoạt</dt><dd class="col-7">${text(payment?.activationState)}</dd><dt class="col-5">Checkout</dt><dd class="col-7">${text(payment?.checkoutState)}</dd><dt class="col-5">Nhà cung cấp</dt><dd class="col-7">${text(provider?.name)} · ${text(provider?.environment)}</dd><dt class="col-5">Tham chiếu</dt><dd class="col-7">${text(provider?.reference)}</dd></dl><h3 class="h4">Dòng thời gian đơn hàng</h3>${timelineMarkup([
+  const invoiceLinks = transactions.flatMap((transaction) => transaction?.invoiceRequest ? [transaction.invoiceRequest] : []);
+  const invoiceMarkup = invoiceLinks.length ? invoiceLinks.map((invoice) => `<dt class="col-5">Hóa đơn</dt><dd class="col-7">${text(invoice.id)} · ${text(invoice.status)}</dd>`).join("") : "<dt class=\"col-5\">Hóa đơn</dt><dd class=\"col-7\">Chưa có yêu cầu hóa đơn</dd>";
+  return detailShell("Chi tiết thanh toán", payment?.publicId, `<dl class="row"><dt class="col-5">Mã đơn hàng</dt><dd class="col-7">${text(payment?.publicId)}</dd><dt class="col-5">Chủ thanh toán</dt><dd class="col-7">${ownerMarkup(payment?.owner)}</dd><dt class="col-5">Nghiệp vụ</dt><dd class="col-7">${text(payment?.operation)}</dd><dt class="col-5">Tổng đơn hàng</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</dd><dt class="col-5">Tạm tính</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.subtotalMinor, amount?.currency))}</dd><dt class="col-5">Thuế</dt><dd class="col-7">${escapeHtml(formatMinorMoney(amount?.taxMinor, amount?.currency))}</dd><dt class="col-5">Thanh toán</dt><dd class="col-7">${text(payment?.paymentState)}</dd><dt class="col-5">Kích hoạt</dt><dd class="col-7">${text(payment?.activationState)}</dd><dt class="col-5">Checkout</dt><dd class="col-7">${text(payment?.checkoutState)}</dd><dt class="col-5">Nhà cung cấp</dt><dd class="col-7">${text(provider?.name)} · ${text(provider?.environment)}</dd><dt class="col-5">Tham chiếu</dt><dd class="col-7">${text(provider?.reference)}</dd>${invoiceMarkup}</dl><h3 class="h4">Dòng thời gian đơn hàng</h3>${timelineMarkup([
     { label: "Tạo đơn hàng", value: payment?.createdAt },
     { label: "Cập nhật đơn hàng", value: payment?.updatedAt },
     { label: "Checkout hết hạn", value: payment?.checkoutExpiresAt },
@@ -393,7 +400,7 @@ export const PAYMENT_DIRECTORY = Object.freeze({
     { key: "transactionStatus", label: "Giao dịch", allLabel: "Mọi giao dịch", options: [["verified", "Đã xác minh"], ["settled", "Đã quyết toán"], ["failed", "Thất bại"]] },
   ],
   columns: [
-    { label: "Đơn hàng" }, { label: "Chủ thanh toán" },
+    { label: "Thanh toán / đơn hàng" }, { label: "Chủ thanh toán" },
     { label: "Số tiền", sortKey: "total_amount" },
     { label: "Thanh toán", sortKey: "payment_state" },
     { label: "Checkout", sortKey: "checkout_state" },
@@ -402,7 +409,7 @@ export const PAYMENT_DIRECTORY = Object.freeze({
   rowMarkup(payment) {
     const amount = payment?.amounts;
     const provider = payment?.provider;
-    return `<tr><td data-label="Đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div></td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${text(payment?.publicId, "")}">Xem</button></td><td data-label="Thao tác">${paymentActionsMarkup(payment)}</td></tr>`;
+    return `<tr><td data-label="Thanh toán / đơn hàng"><strong>${text(payment?.publicId)}</strong><div class="small text-secondary">${text(payment?.operation)} · ${text(provider?.name)}</div>${transactionIdsMarkup(payment?.transactions)}</td><td data-label="Chủ thanh toán">${ownerMarkup(payment?.owner)}</td><td data-label="Số tiền"><strong>${escapeHtml(formatMinorMoney(amount?.totalMinor, amount?.currency))}</strong><div class="small text-secondary">${text(amount?.currency)}</div></td><td data-label="Thanh toán">${text(payment?.paymentState)}<div class="small text-secondary">${text(payment?.activationState)}</div></td><td data-label="Checkout">${text(payment?.checkoutState)}<div class="small text-secondary">${text(provider?.reference)}</div></td><td data-label="Giao dịch">${transactionMarkup(payment?.transactions)}</td><td data-label="Ngày tạo">${formatDate(payment?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-billing-detail="${text(payment?.publicId, "")}">Xem</button></td><td data-label="Thao tác">${paymentActionsMarkup(payment)}</td></tr>`;
   },
   bindResultActions(root, options) {
     const payments = new Map((options.payload?.items || []).map((payment) => [String(payment?.publicId || ""), payment]));

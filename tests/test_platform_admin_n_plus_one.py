@@ -52,6 +52,16 @@ class _TracingCursor:
         if "sync_mutations" in sql and "COUNT(*) AS count" in sql:
             return _Result(row={"count": self.scale})
         if "COUNT(*) AS total_rows" in sql:
+            if "total_requested" in sql:
+                return _Result(row={
+                    "total_rows": self.scale,
+                    "total_requested": self.scale * 100,
+                    "minimum_currency": "VND",
+                    "maximum_currency": "VND",
+                    "requested_count": self.scale,
+                    "issued_count": 0,
+                    "failed_count": 0,
+                })
             return _Result(row={"total_rows": self.scale})
         if "COUNT(*) AS total" in sql:
             return _Result(row={"total": self.scale})
@@ -63,6 +73,10 @@ class _TracingCursor:
             return _Result(rows=[self._search_organization(index) for index in range(min(self.scale, 5))])
         if "SELECT subscription.* FROM (" in sql and "LIKE" in sql:
             return _Result(rows=[self._subscription(index) for index in range(min(self.scale, 5))])
+        if sql.startswith("SELECT created_at, last_seen_at") and "FROM auth_sessions" in sql:
+            return _Result(rows=[self._session(index) for index in range(min(self.scale, 10))])
+        if "FROM billing_invoice_requests invoice" in sql and "orders.organization_id = ?" in sql:
+            return _Result(rows=[self._detail_invoice(index) for index in range(min(self.scale, 10))])
         if "FROM billing_invoice_requests invoice" in sql:
             return _Result(rows=[self._search_invoice(index) for index in range(min(self.scale, 5))])
         if "FROM tai_khoan account" in sql and "AS active_session_count" in sql:
@@ -92,7 +106,15 @@ class _TracingCursor:
         if "SELECT subscription.*" in sql:
             return _Result(rows=[self._subscription(index) for index in range(self.scale)])
         if "FROM payment_transactions" in sql:
-            return _Result(rows=[self._transaction(index) for index in range(self.scale)])
+            rows = [self._transaction(index) for index in range(self.scale)]
+            if "invoice_request_id" in sql:
+                for row in rows:
+                    row.update({
+                        "invoice_request_id": None,
+                        "invoice_request_status": None,
+                        "invoice_provider_reference": None,
+                    })
+            return _Result(rows=rows)
         if "FROM billing_orders orders" in sql and "orders.subtotal_amount" in sql:
             return _Result(rows=[self._payment(index) for index in range(self.scale)])
         if "FROM audit_log audit" in sql and "audit.chain_id" in sql:
@@ -225,6 +247,26 @@ class _TracingCursor:
         return {
             "id": f"invoice-{index}", "status": "issued",
             "public_id": f"order-{index}", "owner_name": f"User {index}",
+        }
+
+    @staticmethod
+    def _session(index):
+        return {
+            "created_at": 1, "last_seen_at": 100 + index,
+            "idle_expires_at": 4_102_444_800,
+            "absolute_expires_at": 4_102_444_800, "revoked_at": None,
+            "remember_me": 1, "active_role": "employee",
+            "active_role_organization_id": "org-1",
+        }
+
+    @staticmethod
+    def _detail_invoice(index):
+        return {
+            "id": f"invoice-{index}", "status": "issued",
+            "provider_reference": f"provider-{index}", "attempt_count": 1,
+            "order_public_id": f"order-{index}", "total_amount": 100,
+            "currency": "VND", "created_at": "2026-01-01",
+            "updated_at": "2026-01-01",
         }
 
     @staticmethod
@@ -378,8 +420,8 @@ def test_platform_admin_global_search_uses_four_bounded_queries_at_scale(monkeyp
 @pytest.mark.parametrize(
     ("kind", "operation", "collection_key", "query_budget"),
     (
-        ("user", platform_directory_routes._user_detail, "organizations", 6),
-        ("organization", platform_directory_routes._organization_detail, "users", 5),
+        ("user", platform_directory_routes._user_detail, "organizations", 7),
+        ("organization", platform_directory_routes._organization_detail, "users", 6),
     ),
 )
 def test_platform_admin_detail_queries_are_constant_and_collections_are_bounded(
@@ -397,7 +439,11 @@ def test_platform_admin_detail_queries_are_constant_and_collections_are_bounded(
 
         assert len(detail[collection_key]) <= 20
         assert len(detail["recentAudit"]) <= 10
+        if kind == "user":
+            assert len(detail["recentSessions"]) <= 10
+        else:
+            assert len(detail["invoices"]) <= 10
         assert any(parameters and parameters[-1] == 20 for _, parameters in cursor.calls)
-        assert any(parameters and parameters[-1] == 10 for _, parameters in cursor.calls)
+        assert sum(bool(parameters) and parameters[-1] == 10 for _, parameters in cursor.calls) >= 2
 
     assert observed == [query_budget] * len(SCALES)

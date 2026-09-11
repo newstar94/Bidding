@@ -1,12 +1,28 @@
 # Prompt 1 — báo cáo bàn giao hoàn tất
 
 Phạm vi kỹ thuật của Prompt 1 đã hoàn tất trên `main` và được xác minh lại tại
-`7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1` cả cục bộ lẫn
+`dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` cả cục bộ lẫn
 trên GitHub Actions. Phát hành production vẫn bị chặn hợp lệ bởi dữ kiện pháp
 lý bên ngoài như nêu dưới đây; đây là ngoại lệ được Prompt 1 cho phép và không
 được hợp thức hóa bằng dữ liệu giả.
 
 ## Cập nhật bằng chứng ngày 11/09/2026
+
+- HEAD và `origin/main` cùng là `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11`
+  tại lần audit hoàn tất hiện tại.
+- Full CI run `34562145518` hoàn tất `success`; cả tám job kỹ thuật đạt, gồm
+  PostgreSQL schema/FK, static, secure build, Python/JavaScript coverage,
+  startup performance, package/dependency và cross-browser/full workflow E2E.
+- CodeQL `34562145458`, N+1 `34562145445` và Supply-chain Security
+  `34562145450` đều hoàn tất `success` trên cùng SHA.
+- Regression cuối xử lý race khi một tab đã ghi visibility cursor mới vào
+  storage dùng chung nhưng tab còn lại vẫn giữ projection cũ: delta rỗng phải
+  nâng thành full authoritative reconciliation trước khi chấp nhận scope mới.
+  `test:js` đạt 1.842/1.842, static/build secure đạt và multi-assignee WebSocket
+  workflow đạt; không đổi role, scope, masking hay entitlement.
+
+Mốc `7bc7e968` bên dưới là checkpoint hoàn tất Prompt 1 trước khi tích hợp đầy
+đủ Prompt 2; nó được giữ làm lịch sử, không phải HEAD hiện tại.
 
 - HEAD và `origin/main` cùng là `7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1`
   tại lần audit hoàn tất Prompt 1 gần nhất.
@@ -84,12 +100,12 @@ và vi phạm nhà thầu, mỗi nhóm 3/3. Không đổi business contract đ�
 
 - Baseline được prompt quan sát: `1e06300eb3bb8508b770326e37e55f9d31278dcf`.
 - Branch hoàn tất: `main`; HEAD và `origin/main`:
-  `7bc7e968ccd76cad28d1fb23ccbce51c0dccd3a1` tại lần audit gần nhất.
+  `dcb788b59bfe15d85cd2438ed0984c9dfdd31c11` tại lần audit hiện tại.
 - Full CI baseline: https://github.com/newstar94/Bidding/actions/runs/34008073708
   — lỗi quality, package candidate và cross-browser matrix.
-- Full CI sau sửa: https://github.com/newstar94/Bidding/actions/runs/34541273596
+- Full CI sau sửa và tích hợp cuối: https://github.com/newstar94/Bidding/actions/runs/34562145518
   — `success`.
-- CodeQL sau sửa: https://github.com/newstar94/Bidding/actions/runs/34541273635
+- CodeQL sau sửa và tích hợp cuối: https://github.com/newstar94/Bidding/actions/runs/34562145458
   — `success`.
 
 ### Lịch sử Full CI và phân loại
@@ -100,6 +116,7 @@ và vi phạm nhà thầu, mỗi nhóm 3/3. Không đổi business contract đ�
 | `34525868784` / `2d94b62e` đến `34529555036` / `36ea6fe8` | Full role/workflow E2E lỗi trong bốn commit tích hợp Tabler kế tiếp | Regression của phạm vi Prompt 2, được sửa trước khi chốt HEAD hiện tại; không đổi expectation hay quyền để làm xanh |
 | `34532286895` / `295115b8` | Toàn bộ engineering CI đạt | Mốc Prompt 1 hoàn tất ban đầu |
 | `34541273596` / `7bc7e968` | Toàn bộ engineering CI đạt lại | Xác minh không regression Prompt 1 trên HEAD audit hiện tại |
+| `34562145518` / `dcb788b5` | Toàn bộ engineering CI đạt | Xác minh cuối sau Tabler và bản sửa race visibility liên tab |
 
 ## Architecture/Call Flow
 
@@ -180,7 +197,7 @@ E2E hai tab dirty package/plan breakdown đạt trên bản token mới; các ta
 
 ## CI Before / After
 
-| Check | Baseline | Sau sửa trên SHA `7bc7e968` |
+| Check | Baseline | Sau sửa trên SHA `dcb788b5` |
 | --- | --- | --- |
 | Quality/static | Lỗi | Full CI `success` |
 | Python coverage | Chưa đạt gate tổng | Full CI `success`; critical coverage đạt |
@@ -190,9 +207,9 @@ E2E hai tab dirty package/plan breakdown đạt trên bản token mới; các ta
 | Playwright cross-browser | Lỗi | Chromium, Firefox và WebKit `success` |
 | Full role/workflow E2E | Lỗi | Full CI `success` |
 | Startup performance | Chưa có kết quả chốt | Full CI `success` theo ngưỡng đã duyệt |
-| N+1 | Cần xác minh | Run `34541273661` `success` |
+| N+1 | Cần xác minh | Run `34562145445` `success` |
 | Package/dependency/SBOM | Lỗi package candidate | Full CI và Supply-chain `success` |
-| CodeQL | Baseline cũ không phủ patch | Run `34541273635` `success` |
+| CodeQL | Baseline cũ không phủ patch | Run `34562145458` `success` |
 | Legal production release | BLOCKED | Vẫn BLOCKED, 27 dữ kiện chưa duyệt; không giả mạo |
 
 ## Commands Actually Run
@@ -233,7 +250,7 @@ và không có leak. Quét toàn workspace không dùng làm gate vì đi vào 4
 runtime/log/`.env`; một finding trong `docs/ai/README.md` là ví dụ rỗng có sẵn,
 không thuộc patch.
 Các suite offline soak, pairwise, joint venture và auth-role đã có kết quả trong
-nhật ký bàn giao. Full CI `34541273596` là bằng chứng từ xa chốt trên đúng SHA;
+nhật ký bàn giao. Full CI `34562145518` là bằng chứng từ xa chốt trên đúng SHA;
 các số liệu cục bộ bên trên được giữ như lịch sử chẩn đoán và không bị trình bày
 như thể tất cả được chạy lại trong cùng một lần.
 
@@ -281,6 +298,10 @@ scoped metadata/regrant; draft backup pruning; multi-tab tokens; lazy workflow
 readiness; font preload; package/SBOM và legal release dependencies. `git diff
 --check` đạt. Không phát hiện thay đổi masking, Word-entitlement-based read
 filtering, role/module/capability semantics hoặc grant ngoài ADR 0038/0040/0041.
+Lịch sử commit đã push có một patch tích hợp lớn (`14fe8a81`, 125 tệp), không
+đúng khuyến nghị chia patch ở mục 45. Không rewrite lịch sử để che sai lệch quy
+trình này; các commit Prompt 2 về sau được tách theo shell, feature, test, docs và
+bản sửa race để giữ phần còn lại có thể review.
 
 ## Recommended Next Steps
 
