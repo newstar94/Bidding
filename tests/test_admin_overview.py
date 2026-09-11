@@ -48,6 +48,14 @@ class _Cursor:
                 "status": "settled",
                 "detail": "order-public-1",
             }])
+        if "series_key" in statement:
+            return _Result(many=[
+                {"series_key": "revenue", "bucket": "2026-09-02", "value": 1250000},
+                {"series_key": "newOrganizations", "bucket": "2026-09-01", "value": 1},
+                {"series_key": "newUsers", "bucket": "2026-09-01", "value": 2},
+                {"series_key": "subscriptionDistribution", "bucket": "active", "value": 9},
+                {"series_key": "invoiceStatus", "bucket": "issued", "value": 3},
+            ])
         return _Result(
             many=[
                 {
@@ -106,6 +114,53 @@ def test_overview_service_returns_real_aggregates_and_explicit_unavailable_metri
         "status": "settled",
         "detail": "order-public-1",
     }]
+    assert payload["charts"] == [
+        {
+            "key": "revenue",
+            "label": "Doanh thu theo thời gian",
+            "series": [{
+                "key": "revenue",
+                "label": "Doanh thu đã xác minh",
+                "points": [{"date": "2026-09-02", "value": 1250000}],
+            }],
+        },
+        {
+            "key": "newOrganizations",
+            "label": "Tổ chức mới",
+            "series": [{
+                "key": "newOrganizations",
+                "label": "Tổ chức mới",
+                "points": [{"date": "2026-09-01", "value": 1}],
+            }],
+        },
+        {
+            "key": "newUsers",
+            "label": "Người dùng mới",
+            "series": [{
+                "key": "newUsers",
+                "label": "Người dùng mới",
+                "points": [{"date": "2026-09-01", "value": 2}],
+            }],
+        },
+        {
+            "key": "subscriptionDistribution",
+            "label": "Phân bố đăng ký",
+            "series": [{
+                "key": "subscriptionDistribution",
+                "label": "Đăng ký theo trạng thái",
+                "points": [{"label": "active", "value": 9}],
+            }],
+        },
+        {
+            "key": "invoiceStatus",
+            "label": "Trạng thái hóa đơn",
+            "series": [{
+                "key": "invoiceStatus",
+                "label": "Hóa đơn theo trạng thái",
+                "points": [{"label": "issued", "value": 3}],
+            }],
+        },
+    ]
     assert payload["alerts"] == [
         {
             "code": "INACTIVE_ORGANIZATIONS",
@@ -124,9 +179,14 @@ def test_overview_service_returns_real_aggregates_and_explicit_unavailable_metri
             "href": "/admin/users?status=inactive",
         },
     ]
-    assert len(cursor.calls) == 3
+    assert len(cursor.calls) == 4
     assert cursor.calls[1][1] == (AdminOverviewRepository.RECENT_ORGANIZATION_LIMIT,)
     assert cursor.calls[2][1] == (AdminOverviewRepository.ACTIVITY_FEED_LIMIT,)
+    assert cursor.calls[3][1] == (
+        "2026-08-11 01:02:03",
+        "2026-08-11 01:02:03",
+        "2026-08-11 01:02:03",
+    )
 
 
 def test_overview_api_denies_non_super_admin_before_reading_data(monkeypatch):

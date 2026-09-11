@@ -144,3 +144,44 @@ class AdminOverviewRepository:
             (self.ACTIVITY_FEED_LIMIT,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def load_chart_points(self, *, since: str) -> list[dict]:
+        """Return bounded chart aggregates without exposing row-level records."""
+
+        rows = self.cursor.execute(
+            """
+            SELECT series_key, bucket, SUM(value) AS value
+              FROM (
+                SELECT 'newOrganizations' AS series_key,
+                       SUBSTR(CAST(created_at AS TEXT), 1, 10) AS bucket,
+                       1 AS value
+                  FROM to_chuc
+                 WHERE created_at >= ?
+                UNION ALL
+                SELECT 'newUsers', SUBSTR(CAST(created_at AS TEXT), 1, 10), 1
+                  FROM tai_khoan
+                 WHERE created_at >= ?
+                UNION ALL
+                SELECT 'revenue', SUBSTR(CAST(created_at AS TEXT), 1, 10),
+                       verified_paid_amount
+                  FROM payment_transactions
+                 WHERE transaction_type = 'payment'
+                   AND status IN ('verified', 'settled')
+                   AND created_at >= ?
+                UNION ALL
+                SELECT 'subscriptionDistribution', status, 1
+                  FROM organization_subscriptions
+                UNION ALL
+                SELECT 'subscriptionDistribution', status, 1
+                  FROM account_subscriptions
+                UNION ALL
+                SELECT 'invoiceStatus', status, 1
+                  FROM billing_invoice_requests
+              ) chart_points
+             WHERE bucket IS NOT NULL AND bucket <> ''
+             GROUP BY series_key, bucket
+             ORDER BY series_key ASC, bucket ASC
+            """,
+            (since, since, since),
+        ).fetchall()
+        return [dict(row) for row in rows]

@@ -62,10 +62,21 @@ test("overview includes accessible charts, activity feed and actionable alerts",
       href: "/admin/organizations?status=suspended",
     }],
     recentOrganizations: [],
+    charts: [{
+      key: "newOrganizations",
+      label: "Tổ chức mới",
+      series: [{
+        key: "newOrganizations",
+        label: "Tổ chức mới",
+        points: [{ date: "2026-09-10", value: 2 }, { date: "2026-09-11", value: 3 }],
+      }],
+    }],
   });
-  assert.equal((markup.match(/role="img"/gu) || []).length, 2);
-  assert.equal((markup.match(/<caption>/gu) || []).length, 2);
+  assert.equal((markup.match(/role="img"/gu) || []).length, 3);
+  assert.equal((markup.match(/<caption/gu) || []).length, 3);
   assert.match(markup, /Phân bố nền tảng/u);
+  assert.match(markup, /Xu hướng và phân bố/u);
+  assert.match(markup, /Tổ chức mới/u);
   assert.match(markup, />80%</u);
   assert.match(markup, /INV-001/u);
   assert.match(markup, /Thanh toán gắn yêu cầu hóa đơn đã xác minh/u);

@@ -6,6 +6,7 @@ import {
   renderAdminMarkup,
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { chartsMarkup } from "./AdminAnalytics.js";
 
 const METRICS = Object.freeze([
   ["organizations", "Tổ chức", (metrics) => metrics.organizations?.total ?? metrics.organizations],
@@ -81,6 +82,7 @@ function overviewMarkup(payload) {
   const organizations = Array.isArray(payload?.recentOrganizations) ? payload.recentOrganizations : [];
   const activityFeed = Array.isArray(payload?.activityFeed) ? payload.activityFeed : [];
   const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+  const charts = Array.isArray(payload?.charts) ? payload.charts : [];
   const cards = METRICS.map(([key, label, read, format]) => `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric h-100"><div class="card-body"><div class="text-secondary">${escapeHtml(label)}</div><div class="h2 mb-0 mt-2" data-admin-metric="${key}">${escapeHtml(displayMetric(read(metrics), format))}</div></div></article></div>`).join("");
   const rows = organizations.map((organization) => {
     const name = organization?.name || organization?.organizationName || "Không có tên";
@@ -97,7 +99,7 @@ function overviewMarkup(payload) {
   const accountTotal = metrics.users?.total ?? metrics.users;
   const organizationChart = comparisonChart({ id: "organization-status", title: "Tình trạng tổ chức", total: organizationTotal, active: metrics.activeOrganizations, activeLabel: "Hoạt động", otherLabel: "Không hoạt động" });
   const accountChart = comparisonChart({ id: "account-status", title: "Tình trạng tài khoản", total: accountTotal, active: metrics.activeAccounts, activeLabel: "Hoạt động", otherLabel: "Không hoạt động" });
-  return `<div class="row row-cards">${cards}</div><section class="bf-admin-chart-section mt-4" aria-labelledby="platform-distribution-title"><div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3"><div><h2 class="h3 mb-1" id="platform-distribution-title">Phân bố nền tảng</h2><p class="text-secondary mb-0">Số liệu tổng hợp trực tiếp từ trạng thái hiện tại.</p></div>${generatedAt}</div><div class="row row-cards"><div class="col-lg-6">${organizationChart}</div><div class="col-lg-6">${accountChart}</div></div></section><div class="row row-cards mt-1"><div class="col-xl-7"><section class="card h-100" aria-labelledby="recent-activity-title"><div class="card-header"><div><h3 class="card-title" id="recent-activity-title">Hoạt động gần đây</h3></div></div><div class="card-body">${activityFeedMarkup(activityFeed)}</div></section></div><div class="col-xl-5"><section class="card h-100" aria-labelledby="overview-alerts-title"><div class="card-header"><h3 class="card-title" id="overview-alerts-title">Cảnh báo cần xử lý</h3></div><div class="card-body">${alertsMarkup(alerts)}</div></section></div></div><section class="card mt-4" aria-labelledby="recent-organizations-title"><div class="card-header"><h3 class="card-title" id="recent-organizations-title">Tổ chức gần đây</h3></div>${organizationContent}</section>`;
+  return `<div class="row row-cards">${cards}</div><section class="bf-admin-chart-section mt-4" aria-labelledby="platform-distribution-title"><div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3"><div><h2 class="h3 mb-1" id="platform-distribution-title">Phân bố nền tảng</h2><p class="text-secondary mb-0">Số liệu tổng hợp trực tiếp từ trạng thái hiện tại.</p></div>${generatedAt}</div><div class="row row-cards"><div class="col-lg-6">${organizationChart}</div><div class="col-lg-6">${accountChart}</div></div></section>${chartsMarkup({ overviewCharts: charts })}<div class="row row-cards mt-1"><div class="col-xl-7"><section class="card h-100" aria-labelledby="recent-activity-title"><div class="card-header"><div><h3 class="card-title" id="recent-activity-title">Hoạt động gần đây</h3></div></div><div class="card-body">${activityFeedMarkup(activityFeed)}</div></section></div><div class="col-xl-5"><section class="card h-100" aria-labelledby="overview-alerts-title"><div class="card-header"><h3 class="card-title" id="overview-alerts-title">Cảnh báo cần xử lý</h3></div><div class="card-body">${alertsMarkup(alerts)}</div></section></div></div><section class="card mt-4" aria-labelledby="recent-organizations-title"><div class="card-header"><h3 class="card-title" id="recent-organizations-title">Tổ chức gần đây</h3></div>${organizationContent}</section>`;
 }
 
 export async function renderAdminOverview(container, { fetchImpl, signal } = {}) {

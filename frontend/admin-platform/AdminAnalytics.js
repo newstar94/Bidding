@@ -321,7 +321,7 @@ function chartMarkup(chart, chartIndex) {
   return `<div class="col-12 col-xl-6"><article class="card h-100" aria-labelledby="${chartId}"><div class="card-header"><h3 class="card-title" id="${chartId}">${escapeHtml(chart?.label || chart?.key || "Biểu đồ")}</h3></div>${body}</article></div>`;
 }
 
-function chartsMarkup(product) {
+export function chartsMarkup(product) {
   const baseCharts = (Array.isArray(product.series) ? product.series : []).map((series) => ({
     key: series?.key, label: series?.label, series: [series],
   }));

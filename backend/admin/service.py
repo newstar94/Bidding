@@ -45,6 +45,43 @@ class AdminOverviewService:
             }
             for row in self.repository.load_activity_feed()
         ]
+        chart_rows = self.repository.load_chart_points(
+            since=new_since.strftime("%Y-%m-%d %H:%M:%S")
+        )
+        chart_definitions = (
+            ("revenue", "Doanh thu theo thời gian", "Doanh thu đã xác minh", "date"),
+            ("newOrganizations", "Tổ chức mới", "Tổ chức mới", "date"),
+            ("newUsers", "Người dùng mới", "Người dùng mới", "date"),
+            (
+                "subscriptionDistribution",
+                "Phân bố đăng ký",
+                "Đăng ký theo trạng thái",
+                "label",
+            ),
+            ("invoiceStatus", "Trạng thái hóa đơn", "Hóa đơn theo trạng thái", "label"),
+        )
+        points_by_key = {key: [] for key, *_rest in chart_definitions}
+        dimensions = {key: dimension for key, *_labels, dimension in chart_definitions}
+        for row in chart_rows:
+            key = row["series_key"]
+            if key not in points_by_key:
+                continue
+            points_by_key[key].append({
+                dimensions[key]: row["bucket"],
+                "value": int(row["value"]),
+            })
+        charts = [
+            {
+                "key": key,
+                "label": label,
+                "series": [{
+                    "key": key,
+                    "label": series_label,
+                    "points": points_by_key[key],
+                }],
+            }
+            for key, label, series_label, _dimension in chart_definitions
+        ]
         organization_total = int(metrics["organization_total"])
         organization_active = int(metrics["organization_active"])
         user_total = int(metrics["user_total"])
@@ -94,5 +131,6 @@ class AdminOverviewService:
             },
             "recentOrganizations": recent_organizations,
             "activityFeed": activity_feed,
+            "charts": charts,
             "alerts": alerts,
         }
