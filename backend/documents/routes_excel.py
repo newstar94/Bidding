@@ -8,6 +8,7 @@ from backend.shared.helpers import (
     clean_id,
     get_active_org,
     OrgPermissionError,
+    OrgScopeRequiredError,
     log_audit,
 )
 from backend.shared.access_policy import can_read_record
@@ -53,6 +54,8 @@ ALLOWED_EXCEL_MIME_TYPES = {
 
 def _excel_error(request, exception, context, *, value_status=400):
     if isinstance(exception, OrgPermissionError):
+        if isinstance(exception, OrgScopeRequiredError):
+            return error_response(request, exception.code, str(exception), status_code=exception.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

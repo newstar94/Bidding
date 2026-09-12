@@ -359,11 +359,11 @@ async def list_package_documents_api(request):
             )
     except PackageDocumentNotFoundError as exc:
         return _document_error(str(exc), exc.code, 404)
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         return _document_error(
             "Không có quyền truy cập tổ chức.",
-            "ORG_ACCESS_DENIED",
-            403,
+            scope_error.code,
+            scope_error.status_code,
         )
     except Exception as exc:
         return log_and_error(
@@ -670,13 +670,13 @@ async def upload_package_document_api(request):
             "Dịch vụ kiểm tra tài liệu tạm thời không khả dụng.",
             status_code=503,
         )
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         if connection:
             connection.rollback()
         return _document_error(
             "Không có quyền truy cập tổ chức.",
-            "ORG_ACCESS_DENIED",
-            403,
+            scope_error.code,
+            scope_error.status_code,
         )
     except Exception as exc:
         if connection:
@@ -803,13 +803,13 @@ async def download_package_document_api(request):
         if connection:
             connection.rollback()
         return _document_error(str(exc), exc.code, 409)
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         if connection:
             connection.rollback()
         return _document_error(
             "Không có quyền truy cập tổ chức.",
-            "ORG_ACCESS_DENIED",
-            403,
+            scope_error.code,
+            scope_error.status_code,
         )
     except Exception as exc:
         if connection:
@@ -980,13 +980,13 @@ async def delete_package_document_api(request):
         if connection:
             connection.rollback()
         return _document_error(str(exc), exc.code, 409)
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         if connection:
             connection.rollback()
         return _document_error(
             "Không có quyền truy cập tổ chức.",
-            "ORG_ACCESS_DENIED",
-            403,
+            scope_error.code,
+            scope_error.status_code,
         )
     except Exception as exc:
         if connection:

@@ -29,6 +29,7 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.helpers import (
     OrgPermissionError,
+    OrgScopeRequiredError,
     database,
     get_active_org,
     verify_session,
@@ -1027,6 +1028,8 @@ def _handle(request, error, context):
             fields=payload_fields,
         )
     if isinstance(error, OrgPermissionError):
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request, "ORG_ACCESS_DENIED", "Không có quyền truy cập tổ chức này.",
             status_code=403,

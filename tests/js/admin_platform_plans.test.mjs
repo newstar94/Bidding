@@ -130,6 +130,9 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, /Lịch sử phát hành thương mại/u);
   assert.match(markup, /2026[.]08/u);
   assert.match(markup, /release-base/u);
+  assert.match(markup, /bf-admin-workflow-guide/u);
+  assert.match(markup, /2[.] Phiên bản và xuất bản/u);
+  assert.match(markup, /3[.] Mô hình quyền lợi/u);
   assert.match(markup, /Giá theo tháng[\s\S]*N\/A/u);
   assert.match(markup, /Hạn mức lưu trữ[\s\S]*N\/A/u);
   assert.doesNotMatch(markup, /do-not-render|hidden-document|never-render/u);
@@ -174,6 +177,7 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
   assert.match(blocked, /&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;/u);
   assert.match(blocked, /&lt;svg onload=x&gt;/u);
   assert.match(blocked, /Các gói đăng ký/u);
+  assert.match(blocked, /bf-admin-editor-group[\s\S]*Thông tin hiển thị[\s\S]*Giá và hạn mức[\s\S]*Quyền và tính năng/u);
   assert.match(blocked, /Cấu hình chính sách nâng cao/u);
   assert.doesNotMatch(blocked, /id="admin-plan-document"/u);
   assert.match(blocked, /data-admin-plan-action="publish" disabled/u);

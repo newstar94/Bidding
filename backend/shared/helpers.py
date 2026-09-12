@@ -46,7 +46,8 @@ from backend.auth.email_utils import (
 
 from backend.auth.session_utils import (
     get_active_org,
-    OrgPermissionError
+    OrgPermissionError,
+    OrgScopeRequiredError,
 )
 
 from backend.shared.logging_utils import (
@@ -64,6 +65,6 @@ __all__ = [
     "SCHEMA_DINH_NGHIA", "to_snake_case", "to_camel_case", "clean_id",
     "VietnameseFloat", "safe_float", "safe_int", "recalculate_is_latest",
     "recalculate_tong_muc_dau_tu", "khoi_tao_va_di_tru_he_thong",
-    "_assert_safe_table", "gui_email", "get_active_org", "OrgPermissionError",
+    "_assert_safe_table", "gui_email", "get_active_org", "OrgPermissionError", "OrgScopeRequiredError",
     "log_error", "log_audit", "ErrorLoggingMiddleware", "RequestIdMiddleware",
 ]

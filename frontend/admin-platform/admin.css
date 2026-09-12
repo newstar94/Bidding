@@ -95,6 +95,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .pagination { --tblr-pagination-active-bg: var(--bf-admin-brand); --tblr-pagination-active-border-color: var(--bf-admin-brand); --tblr-pagination-color: var(--bf-admin-brand); --tblr-pagination-hover-color: var(--bf-admin-brand-strong); }
 .nav-tabs { --tblr-nav-tabs-link-active-color: var(--bf-admin-brand-strong); }
 .table { --tblr-table-striped-bg: var(--bf-admin-surface-subtle); --tblr-table-hover-bg: var(--bf-admin-brand-soft); }
+.table thead th { color: var(--bf-admin-muted); }
 .bf-admin-analytics-scroll thead th { color: var(--bf-admin-muted); }
 .bf-admin-analytics-scroll:focus-visible { outline: 2px solid var(--bf-admin-brand); outline-offset: 2px; }
 .alert-primary { --tblr-alert-color: var(--bf-admin-brand-strong); --tblr-alert-bg: var(--bf-admin-brand-soft); --tblr-alert-border-color: var(--bf-admin-brand-line); }
@@ -150,7 +151,57 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-plan-benefits li + li { margin-top: .35rem; }
 .bf-admin-plan-meta { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr); gap: .5rem 1rem; }
 .bf-admin-plan-meta > div { min-width: 0; }
+.admin-plans-page { max-width: 92rem; margin-inline: auto; }
+.bf-admin-page-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--bf-admin-line); }
+.bf-admin-page-section { margin-top: 2rem; }
+.bf-admin-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }
+.bf-admin-workflow-guide { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: .75rem; padding: .85rem 1rem; margin-bottom: 1.75rem; border: 1px solid var(--bf-admin-brand-line); border-radius: .75rem; background: var(--bf-admin-brand-soft); }
+.bf-admin-workflow-step { display: flex; align-items: flex-start; gap: .65rem; min-width: 0; color: var(--bf-admin-muted); }
+.bf-admin-workflow-step > span { display: grid; flex: 0 0 1.65rem; place-items: center; width: 1.65rem; height: 1.65rem; border-radius: 50%; background: var(--bf-admin-surface); color: var(--bf-admin-brand); font-weight: 700; }
+.bf-admin-workflow-step.is-active { color: var(--bf-admin-ink); }
+.bf-admin-workflow-step.is-active > span { background: var(--bf-admin-brand); color: var(--bf-admin-surface); }
+.bf-admin-workflow-step strong, .bf-admin-workflow-step small { display: block; }
+.bf-admin-workflow-step strong { font-size: .85rem; }
+.bf-admin-workflow-step small { margin-top: .15rem; color: inherit; font-size: .72rem; line-height: 1.35; }
+.bf-admin-workflow-line { height: 1px; min-width: 1.25rem; background: var(--bf-admin-brand-line); }
+.bf-admin-release-card { overflow: hidden; }
+.bf-admin-release-card.is-live { border-top: 3px solid var(--bf-admin-success); }
+.bf-admin-release-card.is-stopped { border-top: 3px solid var(--bf-admin-line-strong); }
+.bf-admin-release-card.is-unknown { border-top: 3px solid var(--bf-admin-warning); }
+.bf-admin-release-card.is-empty { border-top: 3px solid var(--bf-admin-line-strong); }
+.bf-admin-release-heading { display: flex; align-items: flex-start; gap: .65rem; }
+.bf-admin-release-dot { display: block; flex: 0 0 .65rem; width: .65rem; height: .65rem; margin-top: .4rem; border-radius: 50%; background: var(--bf-admin-line-strong); }
+.is-live .bf-admin-release-dot { background: var(--bf-admin-success); }
+.bf-admin-release-version { display: grid; gap: .15rem; padding-bottom: .9rem; border-bottom: 1px solid var(--bf-admin-line); }
+.bf-admin-release-version strong { font-size: 1.35rem; letter-spacing: -.02em; }
+.bf-admin-release-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0 0; }
+.bf-admin-release-facts dt { color: var(--bf-admin-muted); font-size: .75rem; }
+.bf-admin-release-facts dd { margin: .25rem 0 0; font-weight: 600; }
+.bf-admin-editor-shell { border-top: 3px solid var(--bf-admin-brand); }
+.bf-admin-editor-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding-bottom: .85rem; border-bottom: 1px solid var(--bf-admin-line); }
+.bf-admin-offer-editor { box-shadow: var(--tblr-box-shadow-sm); }
+.bf-admin-offer-editor > .card-header { background: var(--bf-admin-surface-subtle); }
+.bf-admin-editor-group + .bf-admin-editor-group { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--bf-admin-line); }
+.bf-admin-editor-group h5 { margin-bottom: .25rem; font-size: .95rem; }
+.bf-admin-editor-group > p { margin-bottom: 1rem; }
+.bf-admin-check-grid { display: grid; gap: .6rem; padding: .75rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; background: var(--bf-admin-surface-subtle); }
+.bf-admin-validation-panel:empty { display: none; }
+.bf-admin-advanced { border: 1px solid var(--bf-admin-line); border-radius: .6rem; }
+.bf-admin-advanced summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; cursor: pointer; list-style: none; }
+.bf-admin-advanced summary::-webkit-details-marker { display: none; }
+.bf-admin-advanced summary small { display: block; margin-top: .2rem; color: var(--bf-admin-muted); font-weight: 400; }
+.bf-admin-advanced[open] summary { border-bottom: 1px solid var(--bf-admin-line); }
+.bf-admin-advanced > :not(summary) { margin-inline: 1rem; }
+.bf-admin-advanced > textarea { width: calc(100% - 2rem); margin-bottom: 1rem; }
+.bf-admin-effective-date { max-width: 32rem; margin-top: 1.25rem; }
+.bf-admin-effective-date small { display: block; margin-top: .35rem; }
+.bf-admin-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.bf-admin-editor-actions > div { display: flex; flex-wrap: wrap; gap: .5rem; }
 @media (max-width: 767.98px) {
+  .bf-admin-page-intro, .bf-admin-section-heading, .bf-admin-editor-intro, .bf-admin-editor-actions { align-items: stretch; flex-direction: column; }
+  .bf-admin-workflow-guide { grid-template-columns: 1fr; gap: .6rem; }
+  .bf-admin-workflow-line { display: none; }
+  .bf-admin-release-facts { grid-template-columns: 1fr; gap: .75rem; }
   .bf-admin-header { flex-wrap: wrap; padding-block: .5rem; }
   .bf-admin-global-search { order: 2; width: 100%; }
   .bf-admin-search-results { width: 100%; }

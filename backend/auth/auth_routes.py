@@ -21,6 +21,7 @@ from backend.shared.helpers import (
     log_audit,
     get_active_org,
     OrgPermissionError,
+    OrgScopeRequiredError,
     gui_email,
 )
 from backend.auth.auth_helper import (
@@ -1859,9 +1860,11 @@ async def update_user_role_api(request):
         return JSONResponse(
             {"success": True, "message": "Cập nhật vai trò thành công!"}
         )
-    except OrgPermissionError:
+    except OrgPermissionError as error:
         if conn:
             conn.rollback()
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

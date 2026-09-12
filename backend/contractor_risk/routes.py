@@ -14,7 +14,14 @@ from backend.integrations.vneps.fake_provider import FixtureViolationProvider
 from backend.shared.access_policy import authorize_record_write
 from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
-from backend.shared.helpers import OrgPermissionError, clean_id, database, get_active_org, verify_session
+from backend.shared.helpers import (
+    OrgPermissionError,
+    OrgScopeRequiredError,
+    clean_id,
+    database,
+    get_active_org,
+    verify_session,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 
@@ -165,7 +172,9 @@ async def resolve_bid_opening_contractor(request):
             error.message,
             status_code=error.status_code,
         )
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORGANIZATION_ACCESS_DENIED",

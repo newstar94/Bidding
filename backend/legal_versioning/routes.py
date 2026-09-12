@@ -11,7 +11,7 @@ from backend.db.db_helper import DatabaseError
 from backend.shared.access_policy import can_read_record
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
-from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.helpers import OrgPermissionError, OrgScopeRequiredError, database, get_active_org, verify_session
 from backend.shared.logging_utils import error_response, log_and_error
 
 from .repository import LegalVersioningRepository
@@ -317,6 +317,8 @@ def _handle(request, error, context):
             status_code=error.status_code, fields=fields,
         )
     if isinstance(error, OrgPermissionError):
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(request, "ORG_ACCESS_DENIED", "Không có quyền truy cập.", status_code=403)
     if isinstance(error, (BlockingIOBusyError, BlockingIOTimeoutError)):
         return error_response(request, "DATABASE_BUSY", "Hệ thống đang bận.", status_code=503)

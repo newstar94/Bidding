@@ -758,7 +758,6 @@ def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, s
 def _save_member_children(cursor, child_table, parent_col, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     if not _has_child_key(item, CHILD_MEMBER_KEY):
         return
-    cursor.execute(f"DELETE FROM {child_table} WHERE organization_id = ? AND {parent_col} = ?", (organization_id, parent_id))
     rows = []
     for index, row in enumerate(_parse_child_list(item.get(CHILD_MEMBER_KEY))):
         contractor_id = clean_id(_first_value(
@@ -790,6 +789,41 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, orga
             sync_version,
             updated_at,
         ))
+    if child_table == "thong_tin_mo_thau_lien_danh_thanh_vien":
+        existing = cursor.execute(
+            """SELECT id, thanh_vien_nha_thau_id, ma_nha_thau, ma_so_thue
+               FROM thong_tin_mo_thau_lien_danh_thanh_vien
+               WHERE organization_id = ? AND thong_tin_mo_thau_id = ? FOR UPDATE""",
+            (organization_id, parent_id),
+        ).fetchall()
+        incoming = {row[0]: row for row in rows}
+        retained = set()
+        for old in existing:
+            candidate = incoming.get(old[0])
+            if candidate and tuple(str(old[index] or "") for index in (1, 2, 3)) == tuple(
+                str(candidate[index] or "") for index in (4, 6, 7)
+            ):
+                retained.add(old[0])
+            else:
+                cursor.execute(
+                    """DELETE FROM thong_tin_mo_thau_lien_danh_thanh_vien
+                       WHERE organization_id = ? AND thong_tin_mo_thau_id = ? AND id = ?""",
+                    (organization_id, parent_id, old[0]),
+                )
+        for row in rows:
+            if row[0] in retained:
+                cursor.execute(
+                    """UPDATE thong_tin_mo_thau_lien_danh_thanh_vien SET
+                       owner_type = ?, ten_nha_thau = ?, vai_tro = ?, nguoi_dai_dien = ?,
+                       danh_xung = ?, so_dien_thoai = ?, email = ?, dia_chi = ?,
+                       dia_chi_goc = ?, so_tai_khoan = ?, noi_mo_tai_khoan = ?,
+                       ma_ngan_hang = ?, sort_order = ?, sync_version = ?, updated_at = ?
+                       WHERE organization_id = ? AND thong_tin_mo_thau_id = ? AND id = ?""",
+                    (row[2], row[5], *row[8:21], organization_id, parent_id, row[0]),
+                )
+        rows = [row for row in rows if row[0] not in retained]
+    else:
+        cursor.execute(f"DELETE FROM {child_table} WHERE organization_id = ? AND {parent_col} = ?", (organization_id, parent_id))
     if rows:
         cursor.executemany(f"""
             INSERT INTO {child_table} (

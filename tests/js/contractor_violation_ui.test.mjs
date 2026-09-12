@@ -95,6 +95,17 @@ test("a failed lookup is retried while human verdicts are preserved", () => {
   assert.equal(shouldRefreshSavedOpeningViolationCheck(row("VIOLATION_CONFIRMED")), false);
 });
 
+test("saved venture can resume unchecked member verification after interrupted navigation", () => {
+  const bid = {
+    id: "opening", maDinhDanh: "vn000000002", loaiNhaThau: "Liên danh",
+    violationStatus: "VIOLATION_CONFIRMED",
+    thanhVienLienDanh: [{ id: "member", maNhaThau: "vn000000003", violationStatus: "NOT_CHECKED" }],
+  };
+  assert.equal(shouldRefreshSavedOpeningViolationCheck(bid), true);
+  assert.equal(shouldRefreshSavedOpeningViolationCheck({ ...bid, violationStatus: "REVIEW_REQUIRED" }), false);
+  assert.equal(shouldRefreshSavedOpeningViolationCheck({ ...bid, violationStatus: "IDENTITY_CONFLICT" }), false);
+});
+
 test("a stored confirmed violation is never downgraded by unchecked members", () => {
   const ventureName = { classList: fakeClassList() };
   const type = { value: "Liên danh" };

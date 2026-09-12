@@ -38,9 +38,13 @@ const RETRYABLE_VIOLATION_STATUSES = new Set([
 ]);
 
 export function shouldRefreshSavedOpeningViolationCheck(bidData, contractorCode = "") {
+  const pendingMembers = [VIOLATION_CONFIRMED, "NO_ACTIVE_VIOLATION"].includes(bidData?.violationStatus)
+    && String(bidData?.loaiNhaThau || "").trim() === "Liên danh"
+    && (bidData.thanhVienLienDanh || []).some(member => member.id
+      && (!member.violationStatus || RETRYABLE_VIOLATION_STATUSES.has(member.violationStatus)));
   return Boolean(
     bidData?.id
-    && (!bidData?.violationStatus || RETRYABLE_VIOLATION_STATUSES.has(bidData.violationStatus))
+    && (!bidData?.violationStatus || RETRYABLE_VIOLATION_STATUSES.has(bidData.violationStatus) || pendingMembers)
     && (bidData?.maDinhDanh || contractorCode)
   );
 }
@@ -106,7 +110,7 @@ async function runWithConcurrency(items, concurrency, worker) {
   }));
 }
 
-export async function refreshSavedOpeningViolationChecks(packageId, bids) {
+export async function refreshSavedOpeningViolationChecks(packageId, bids, { pendingMembersOnly = false } = {}) {
   // Requests belonging to the same opening must be serialized. The server
   // deliberately locks the opening row while persisting each member snapshot;
   // issuing all members concurrently makes PostgreSQL lock waiters exceed the
@@ -148,6 +152,7 @@ export async function refreshSavedOpeningViolationChecks(packageId, bids) {
     }
     jointVentureBids.push(bid);
     for (const member of bid.thanhVienLienDanh || []) {
+      if (pendingMembersOnly && member.violationStatus && !RETRYABLE_VIOLATION_STATUSES.has(member.violationStatus)) continue;
       enqueue(bid.id, async () => {
         try {
           const result = await resolveBidOpeningContractor({
@@ -176,6 +181,7 @@ export async function refreshSavedOpeningViolationChecks(packageId, bids) {
     },
   );
   for (const bid of jointVentureBids) {
+    if (pendingMembersOnly && isViolationConfirmed(bid.violationStatus)) continue;
     bid.violationStatus = (bid.thanhVienLienDanh || []).some(
       (member) => isViolationConfirmed(member.violationStatus)
     ) ? VIOLATION_CONFIRMED : (

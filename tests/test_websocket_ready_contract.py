@@ -1,5 +1,6 @@
 import asyncio
 import json
+import pytest
 
 from starlette.websockets import WebSocketDisconnect
 
@@ -63,5 +64,42 @@ def test_authenticated_websocket_announces_ready_workspace(monkeypatch):
     assert [json.loads(payload) for payload in socket.sent] == [
         {"type": "ready", "organizationId": "org-1"},
     ]
+    assert websocket_module.active_connections == {}
+    assert websocket_module.active_connections_by_ip == {}
+
+
+@pytest.mark.parametrize("scope", [None, "", "foreign-org"])
+def test_invalid_workspace_never_announces_ready_and_releases_lease(monkeypatch, scope):
+    socket = _AuthenticatedSocket()
+    writes = []
+    resolved = []
+
+    async def receive():
+        return json.dumps({"action": "auth", "organizationId": scope})
+
+    async def write(operation, *args, **kwargs):
+        writes.append(operation.__name__)
+        return True
+
+    async def read(operation, user_id, organization_id, **kwargs):
+        resolved.append((user_id, organization_id))
+        return None
+
+    async def blocking(operation, *args, **kwargs):
+        return {"id": "user-1"}
+
+    socket.receive_text = receive
+    monkeypatch.setattr(websocket_module, "is_websocket_origin_allowed", lambda _: True)
+    monkeypatch.setattr(websocket_module, "get_client_ip", lambda _: "127.0.0.1")
+    monkeypatch.setattr(websocket_module, "run_database_write", write)
+    monkeypatch.setattr(websocket_module, "run_database_read", read)
+    monkeypatch.setattr(websocket_module, "run_blocking_io", blocking)
+    monkeypatch.setattr(websocket_module, "session_invalid_reason", lambda _: None)
+    asyncio.run(websocket_module.sync_websocket_endpoint(socket))
+    assert resolved == [("user-1", scope)]
+    assert socket.closed == [4003]
+    assert socket.sent == []
+    assert "_attach_cluster_user_lease" not in writes
+    assert "_release_cluster_lease" in writes
     assert websocket_module.active_connections == {}
     assert websocket_module.active_connections_by_ip == {}

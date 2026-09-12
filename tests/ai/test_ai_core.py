@@ -9,7 +9,7 @@ import pytest
 from backend.ai.client import ResponsesProvider, _iter_sse
 from backend.ai.configuration import get_ai_config
 from backend.ai.errors import AiError, ai_error
-from backend.ai.redaction import redact_json
+from backend.ai.redaction import redact_json, redact_value
 from backend.ai.tool_registry import tool_definitions, validate_tool_arguments
 from backend.analytics.semantic_registry import get_metric, supported_metrics
 from backend.analytics.aggregation_engine import aggregate_entity, list_entity
@@ -91,6 +91,41 @@ def test_redaction_removes_secrets_and_keeps_bounded_shape():
     assert "hidden" not in value
     assert "secret" not in value
     assert "data" in value
+
+
+def test_redaction_covers_embedded_secrets_in_free_text_and_nested_payloads():
+    payload = {
+        "message": "Contact user@example.com or +84 912 345 678; Bearer abc.def; https://x.test?a=1&token=secret",
+        "arguments": [{"query": "eyJhbGciOiJIUzI1NiJ9.payload.signature"}],
+    }
+    redacted = redact_value(payload)
+    rendered = redact_json(redacted)
+    assert "user@example.com" not in rendered
+    assert "912 345 678" not in rendered
+    assert "Bearer abc.def" not in rendered
+    assert "token=secret" not in rendered
+    assert "eyJhbGciOiJIUzI1NiJ9" not in rendered
+    assert "[REDACTED_EMAIL]" in rendered
+
+
+@pytest.mark.parametrize(
+    "secret_text",
+    [
+        "Cookie: session_id=very-secret-cookie",
+        "api_key=sk_test_12345678901234567890",
+        "access_token: abcdefghijklmnopqrstuvwxyz",
+        "https://name:password123@example.test/path",
+        "github_pat_1234567890abcdefghijklmnop",
+    ],
+)
+def test_redaction_removes_common_inline_credentials(secret_text):
+    redacted = redact_json({"content": f"Dữ liệu Unicode: {secret_text}"})
+    assert "very-secret-cookie" not in redacted
+    assert "sk_test_12345678901234567890" not in redacted
+    assert "abcdefghijklmnopqrstuvwxyz" not in redacted
+    assert "password123" not in redacted
+    assert "github_pat_1234567890abcdefghijklmnop" not in redacted
+    assert "Dữ liệu Unicode" in redacted
 
 
 def test_fake_provider_streams_without_network(monkeypatch):

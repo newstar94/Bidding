@@ -375,6 +375,38 @@ def test_edge_rule_template_covers_public_expensive_and_websocket_surfaces():
     assert "escalation-only" in rules
 
 
+def test_http_error_ratio_separates_denominator_guard_from_traffic_floor():
+    document = yaml.safe_load(
+        (ROOT / "deploy/monitoring/security-alerts.yml.example").read_text(encoding="utf-8")
+    )
+    rule = next(rule for group in document["groups"] for rule in group["rules"]
+                if rule["alert"] == "BiddingFlowHttp5xxRatio")
+    assert "clamp_min(sum(rate(biddingflow_http_requests_total[5m])), 0.000001)" in rule["expr"]
+    assert "sum(increase(biddingflow_http_requests_total[5m])) >= 20" in rule["expr"]
+    assert rule["for"] == "10m"
+
+
+def test_ai_provider_alert_references_an_emitted_metric():
+    from backend.ai.metrics import render_prometheus_lines
+
+    document = yaml.safe_load(
+        (ROOT / "deploy/monitoring/security-alerts.yml.example").read_text(
+            encoding="utf-8"
+        )
+    )
+    rule = next(
+        rule for group in document["groups"] for rule in group["rules"]
+        if rule["alert"] == "BiddingFlowAiProviderErrors"
+    )
+    metric = rule["expr"].split("(", 1)[1].split("[", 1)[0]
+    emitted = {
+        line.split()[0] for line in render_prometheus_lines()
+        if not line.startswith("#")
+    }
+    assert metric in emitted
+    assert rule["for"] == "5m"
+
+
 def test_monitoring_and_runbook_cover_security_failure_modes():
     alerts = (ROOT / "deploy/monitoring/security-alerts.yml.example").read_text(
         encoding="utf-8"
@@ -386,6 +418,15 @@ def test_monitoring_and_runbook_cover_security_failure_modes():
     assert "biddingflow_turnstile_validations_total" in alerts
     assert "biddingflow_http_rate_limited_total" in alerts
     assert 'status="503"' in alerts
+    for metric in (
+        "biddingflow_http_request_duration_seconds_bucket",
+        "biddingflow_document_worker_failed_total",
+        "biddingflow_websocket_authentication_failures_total",
+        "ai_provider_errors_total",
+        "biddingflow_audit_chain_valid",
+        "biddingflow_backup_age_seconds",
+    ):
+        assert metric in alerts
     for scenario in ("Volumetric", "Credential stuffing", "Siteverify", "false positive"):
         assert scenario.casefold() in runbook.casefold()
 

@@ -89,12 +89,12 @@ def _read_current_sync_version(request):
                 "json_serialize",
                 time.perf_counter() - json_started_at,
             )
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         return error_response(
             request,
-            "ORG_ACCESS_DENIED",
+            scope_error.code,
             "Không có quyền truy cập tổ chức này.",
-            status_code=403,
+            status_code=scope_error.status_code,
         )
     finally:
         if connection is not None:

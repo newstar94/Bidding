@@ -1314,7 +1314,7 @@ def execute_sync_mutation(
             str(validation_error),
             status_code=400,
         )
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         if conn:
             try:
                 conn.rollback()
@@ -1322,9 +1322,9 @@ def execute_sync_mutation(
                 pass
         return error_response(
             request,
-            "ORG_ACCESS_DENIED",
+            scope_error.code,
             "Không có quyền truy cập tổ chức này.",
-            status_code=403,
+            status_code=scope_error.status_code,
         )
     except Exception as e:
         if conn:

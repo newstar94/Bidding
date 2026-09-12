@@ -15,7 +15,8 @@ from backend.shared.helpers import (
     get_effective_roles,
     get_active_org,
     log_audit,
-    OrgPermissionError
+    OrgPermissionError,
+    OrgScopeRequiredError,
 )
 from backend.sync.websocket import enqueue_websocket_event
 from backend.sync.repository import next_sync_version
@@ -620,9 +621,11 @@ def _lookup_membership_candidate_sync(request, role_or_err):
         )
         conn.commit()
         return JSONResponse({"candidate": candidate})
-    except OrgPermissionError:
+    except OrgPermissionError as error:
         if conn:
             conn.rollback()
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -833,7 +836,9 @@ def _add_user_to_org_sync(request, role_or_err, data):
         conn.commit()
 
         return JSONResponse({"success": True, "message": success_message})
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -1200,7 +1205,9 @@ async def remove_user_from_org_api(request):
             "message": "Gỡ nhân sự khỏi tổ chức thành công!",
             "deleteImpact": impact,
         })
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -1365,7 +1372,9 @@ async def get_document_export_capabilities_api(request):
                 cursor, organization_id, target_user_id, target[0]
             )
         )
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -1503,9 +1512,11 @@ async def update_document_export_capabilities_api(request):
         )
         conn.commit()
         return JSONResponse(payload)
-    except OrgPermissionError:
+    except OrgPermissionError as error:
         if conn:
             conn.rollback()
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

@@ -17,6 +17,7 @@ from backend.shared.helpers import (
     clean_id,
     get_active_org,
     OrgPermissionError,
+    OrgScopeRequiredError,
     log_audit,
 )
 from backend.shared.access_policy import (
@@ -150,6 +151,8 @@ def _docx_error(request, exception, context):
             headers={"X-Request-ID": request_id},
         )
     if isinstance(exception, OrgPermissionError):
+        if isinstance(exception, OrgScopeRequiredError):
+            return error_response(request, exception.code, str(exception), status_code=exception.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

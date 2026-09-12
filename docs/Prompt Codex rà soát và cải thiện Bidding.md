@@ -17,13 +17,22 @@ Hãy kiểm tra **code mới nhất của nhánh `main`**, xác minh lại toàn
 
 Không được chỉ viết báo cáo hoặc đề xuất. Hãy **thực hiện thay đổi code thực tế**, thêm migration nếu thực sự cần, bổ sung tests, chạy test/lint/build và sửa đến khi đạt yêu cầu.
 
+## Thứ tự ưu tiên và giới hạn bắt buộc
+
+1. `AGENTS.md` và business contract hiện hành có ưu tiên cao nhất.
+2. Phải bảo toàn tenant isolation, module permission, assignment scope, record-level authorization, role, capability, entitlement và API/UI behavior hiện có.
+3. Không tự ý thay đổi masking, redaction, ẩn trường, lọc response hoặc rút gọn dữ liệu trong màn hình/API đọc bản ghi mà người dùng đã có quyền truy cập đầy đủ. Redaction chỉ áp dụng cho log, audit, telemetry, prompt context, tool payload hoặc dữ liệu nội bộ được chỉ định.
+4. Không dùng “least privilege”, “fail closed” hoặc “an toàn hơn” làm lý do đủ để thay đổi business behavior chưa được phê duyệt.
+5. Không thực hiện mega-refactor; chỉ xử lý phase hoặc nhóm thay đổi có phạm vi và tiêu chí nghiệm thu rõ ràng.
+6. Nếu contract chưa rõ, phải ghi nhận `deferred`/`blocked` và không tự suy luận để sửa production code, schema, UI hoặc test expectation.
+
 ---
 
 # I. QUY TẮC BẮT BUỘC TRƯỚC KHI SỬA
 
 Trước tiên:
 
-- Pull/fetch code mới nhất của `main`.
+- Kiểm tra branch, HEAD và working tree trước. Không tự ý pull, merge, reset, checkout hoặc ghi đè thay đổi chưa commit; chỉ fetch khi cần xác minh remote mà không làm thay đổi working tree.
 - Đọc:
   - `README`
   - cấu trúc backend/frontend
@@ -41,11 +50,13 @@ Trước tiên:
 - Kiểm tra CI gần nhất trên GitHub nếu môi trường cho phép.
 - Không được giả định rằng các line/function/path trong prompt này còn giống hệt phiên bản trước.
 - Nếu một vấn đề đã được sửa trong code mới, KHÔNG sửa lại một cách không cần thiết; ghi nhận là đã được xử lý và chuyển sang vấn đề tiếp theo.
+- Mỗi finding phải được phân loại: `confirmed`, `already fixed`, `not reproducible`, `deferred`, `fixed` hoặc `unverified`. Chỉ gọi là `fixed` khi có bằng chứng code và regression test phù hợp.
 - Không downgrade security hoặc nới quality gate chỉ để làm CI xanh.
 - Không xóa test failing để che regression.
 - Không dùng broad exception / `# noqa` / eslint-disable / coverage exclusion chỉ để qua gate nếu có thể sửa nguyên nhân thực tế.
 - Không thay đổi API contract công khai nếu không thật sự cần thiết.
 - Nếu bắt buộc thay API contract, phải có backward compatibility hoặc migration rõ ràng.
+- Không tự commit hoặc push nếu chưa được yêu cầu; commit plan ở cuối chỉ là đề xuất.
 
 ---
 
@@ -186,6 +197,8 @@ Nếu kiến trúc hoặc thời lượng CI khiến target trên chưa thực t
 - nâng coverage tối đa một cách hợp lý;
 - nhưng phải thiết lập ratchet để coverage không bao giờ giảm;
 - ghi rõ phần còn thiếu.
+
+Phải ghi baseline coverage trước thay đổi tại cùng scope và cùng công cụ. Không coi coverage tăng là đạt nếu test không kiểm tra kết quả, quyền, side effect hoặc failure mode thực tế.
 
 Không viết test vô nghĩa chỉ để execute line.
 
@@ -876,6 +889,20 @@ Task chỉ hoàn thành khi:
 - Monitoring rules hợp lệ.
 - CI xanh.
 
+### Evidence bắt buộc
+
+- Branch, HEAD và working tree đã kiểm tra.
+- Baseline và kết quả sau thay đổi.
+- Từng command/test/workflow đã chạy, exit code và phạm vi kiểm tra.
+- Coverage trước/sau trên cùng scope.
+- Migration/index/constraint và rollback hoặc recovery strategy nếu có.
+- Alert/monitoring rule đã parse/lint và chỉ tham chiếu metric tồn tại.
+- Các phần chưa chạy hoặc chưa xác minh, cùng lý do kỹ thuật, không được tuyên bố là đã hoàn thành.
+
+### Business-contract verification
+
+Phải xác nhận riêng rằng thay đổi không làm đổi ngoài ý muốn tenant isolation, module permission, assignment/record scope, role/capability, dữ liệu người dùng được phép đọc, API response shape và ranh giới masking/redaction.
+
 ---
 
 # XVII. CÁCH THỰC HIỆN
@@ -1007,6 +1034,21 @@ Chỉ liệt kê những việc thực sự chưa thể giải quyết trong pat
 7. `chore(observability): expand production alerts`
 
 Không gộp mọi thứ thành một commit nếu có thể tách an toàn.
+
+Không tự tạo commit nếu chưa được yêu cầu; mục này chỉ là đề xuất phân ranh giới commit.
+
+## 10. Evidence and limitations
+
+- Branch/HEAD/working tree đã kiểm tra.
+- Baseline trước thay đổi.
+- Commands, exit code, test count và coverage trước/sau.
+- Migration/rollback evidence.
+- Các kiểm tra không chạy được và lý do.
+- Các finding còn `deferred`, `not reproducible` hoặc `unverified`.
+
+## 11. Business-contract verification
+
+Xác nhận riêng việc bảo toàn tenant isolation, module permission, assignment/record scope, role/capability, API response shape và quyền xem đầy đủ dữ liệu của người dùng đã được cấp quyền. Nêu rõ mọi điểm chưa thể xác minh.
 
 ---
 

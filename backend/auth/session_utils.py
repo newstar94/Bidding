@@ -12,6 +12,16 @@ from backend.shared.workspace_scope import personal_scope_id
 class OrgPermissionError(Exception):
     """The account cannot access the requested workspace."""
 
+    code = "ORG_ACCESS_DENIED"
+    status_code = 403
+
+
+class OrgScopeRequiredError(OrgPermissionError):
+    """The request is ambiguous because more than one workspace is available."""
+
+    code = "ORG_SCOPE_REQUIRED"
+    status_code = 409
+
 
 @dataclass(frozen=True)
 class OrganizationContext:
@@ -101,7 +111,7 @@ def get_active_org(request, user_id, *, cursor=None):
                     "Không có quyền truy cập tổ chức này!"
                 )
         else:
-            selected_row = cursor.execute(
+            membership_rows = cursor.execute(
                 """
                 SELECT tc.id, tc.trang_thai, tvtc.vai_tro_trong_to_chuc
                 FROM thanh_vien_to_chuc AS tvtc
@@ -109,10 +119,15 @@ def get_active_org(request, user_id, *, cursor=None):
                 WHERE tvtc.user_id = ?
                   AND tvtc.trang_thai_thanh_vien = 'active'
                 ORDER BY lower(tc.ten_to_chuc), tc.id
-                LIMIT 1
+                LIMIT 2
                 """,
                 (user_id,),
-            ).fetchone()
+            ).fetchall()
+            if len(membership_rows) > 1:
+                raise OrgScopeRequiredError(
+                    "Cần chỉ rõ tổ chức đang hoạt động!"
+                )
+            selected_row = membership_rows[0] if membership_rows else None
             if selected_row is None:
                 return _personal_context(
                     request,

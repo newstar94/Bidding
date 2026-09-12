@@ -57,7 +57,7 @@ from backend.shared.async_io import (
     BlockingIOTimeoutError,
     run_blocking_io,
 )
-from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.helpers import OrgPermissionError, OrgScopeRequiredError, database, get_active_org, verify_session
 from backend.shared.access_policy import (
     authorize_record_write,
     can_read_table,
@@ -2544,6 +2544,8 @@ def _public_error(request, error):
         public_code = "PROCUREMENT_LOOKUP_DISABLED" if code == "BLOCKED BY EXTERNAL/API AUTHORIZATION" else code
         return error_response(request, public_code, "Nguồn procurement chưa khả dụng.", status_code=status)
     if isinstance(error, OrgPermissionError):
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request, "ORGANIZATION_ACCESS_DENIED", "Không có quyền truy cập tổ chức.", status_code=403
         )

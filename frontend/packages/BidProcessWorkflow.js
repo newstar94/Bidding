@@ -836,8 +836,10 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   tbody.appendChild(tr);
   const jvViewLink = tr.querySelector(".mt-jv-view-link");
   if (jvViewLink) {
-    jvViewLink.addEventListener("click", (e) => {
+    jvViewLink.addEventListener("click", async (e) => {
       e.preventDefault();
+      if (tr._violationRefresh) await tr._violationRefresh;
+      if (!tr.isConnected) return;
       this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode, tr._leadMemberContractorId || "", tr._leadMemberViolationStatus || "");
     });
   }
@@ -847,9 +849,12 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (
     shouldRefreshSavedOpeningViolationCheck(bidData, ntCode)
   ) {
-    refreshSavedOpeningViolationChecks(gt.id, [bidData]).then(() => {
+    tr._violationRefresh = refreshSavedOpeningViolationChecks(gt.id, [bidData], {
+      pendingMembersOnly: ["VIOLATION_CONFIRMED", "NO_ACTIVE_VIOLATION"].includes(bidData.violationStatus),
+    }).then(() => {
       tr._violationStatus = bidData.violationStatus || VIOLATION_NOT_CHECKED;
       if (String(bidData.loaiNhaThau || "").trim() === "Liên danh") {
+        tr._thanhVienLienDanh = getJointVentureSubMembers(bidData.thanhVienLienDanh || [], ntCode);
         const refreshedLead = (bidData.thanhVienLienDanh || []).find((member) => {
           const role = String(member?.vaiTro || "").toLocaleLowerCase("vi-VN");
           return role.includes("đứng") && role.includes("đầu")

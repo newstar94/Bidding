@@ -39,3 +39,83 @@ groups:
         annotations:
           summary: Origin is shedding load
           description: Inspect worker queues, database capacity, event-loop lag and WAF traffic.
+
+      - alert: BiddingFlowHttp5xxRatio
+        expr: |
+          sum(rate(biddingflow_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(biddingflow_http_requests_total[5m])), 0.000001) > 0.05
+          and
+          sum(increase(biddingflow_http_requests_total[5m])) >= 20
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: HTTP 5xx ratio is elevated
+          description: More than five percent of responses are 5xx for ten minutes, with at least twenty requests in each five-minute window.
+
+      - alert: BiddingFlowHttpLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(biddingflow_http_request_duration_seconds_bucket[10m]))
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: HTTP latency p95 is elevated
+          description: Application request p95 latency is above two seconds for ten minutes.
+
+      - alert: BiddingFlowDocumentWorkerFailures
+        expr: increase(biddingflow_document_worker_failed_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Document worker failures increased
+          description: More than five document jobs failed in fifteen minutes; inspect worker logs and retry state.
+
+      - alert: BiddingFlowDocumentWorkerQueue
+        expr: biddingflow_document_worker_queue_depth > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Document worker queue is backed up
+          description: More than twenty document jobs are waiting for a worker slot.
+
+      - alert: BiddingFlowWebsocketErrors
+        expr: increase(biddingflow_websocket_authentication_failures_total[10m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket authentication failures increased
+          description: Inspect session expiry, active organization scope and origin policy.
+
+      - alert: BiddingFlowAiProviderErrors
+        expr: increase(ai_provider_errors_total[10m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI provider errors increased
+          description: Inspect provider availability, timeout and quota telemetry without logging prompt content.
+
+      - alert: BiddingFlowAuditChainInvalid
+        expr: biddingflow_audit_chain_check_available == 1 and biddingflow_audit_chain_valid == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Audit chain verification failed
+          description: Stop treating the audit chain as trusted until the verification failure is investigated.
+
+      - alert: BiddingFlowBackupStale
+        expr: biddingflow_backup_available == 1 and biddingflow_backup_age_seconds > 86400
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: Verified backup is stale
+          description: The latest verified backup is older than twenty-four hours.

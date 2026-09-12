@@ -559,7 +559,7 @@ def _read_sync_data_blocking(request):
             )
         response.headers["Server-Timing"] = f"sync-read;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         if conn:
             try:
                 conn.rollback()
@@ -567,9 +567,9 @@ def _read_sync_data_blocking(request):
                 pass
         return error_response(
             request,
-            "ORG_ACCESS_DENIED",
+            scope_error.code,
             "Không có quyền truy cập tổ chức này.",
-            status_code=403,
+            status_code=scope_error.status_code,
         )
     except Exception as e:
         return log_and_error(
@@ -759,12 +759,12 @@ def _read_single_record_blocking(request):
         )
 
         return JSONResponse({"item": item})
-    except OrgPermissionError:
+    except OrgPermissionError as scope_error:
         return error_response(
             request,
-            "ORG_ACCESS_DENIED",
+            scope_error.code,
             "Không có quyền truy cập tổ chức này.",
-            status_code=403,
+            status_code=scope_error.status_code,
         )
     except Exception as e:
         return log_and_error(

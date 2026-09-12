@@ -20,7 +20,7 @@ from backend.auth.auth_service import (
     rate_limit_response,
 )
 from backend.auth.auth_helper import verify_session
-from backend.auth.session_utils import OrgPermissionError, get_active_org
+from backend.auth.session_utils import OrgPermissionError, OrgScopeRequiredError, get_active_org
 from backend.partners.partner_lookup_service import (
     PartnerLookupBusyError,
     PartnerUpstreamError,
@@ -196,8 +196,15 @@ async def lookup_tax_code_api(request):
             "Dịch vụ tra cứu đang bận. Vui lòng thử lại sau.",
             status_code=503,
         )
-    except OrgPermissionError:
+    except OrgPermissionError as error:
         _observe_partner_lookup(request, "forbidden")
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(
+                request,
+                error.code,
+                str(error),
+                status_code=error.status_code,
+            )
         return error_response(
             request,
             "ORGANIZATION_ACCESS_DENIED",

@@ -16,6 +16,8 @@ from backend.sync.conflict_resolution.authority import (
 from backend.sync.conflict_resolution.merge_kernel import MISSING, inspect_three_way
 from backend.sync.conflict_resolution.policy_registry import POLICY_VERSION, get_conflict_policy
 from backend.sync.conflict_resolution.routes import conflict_resolution_routes
+from backend.sync.conflict_resolution.routes import _org_error
+from backend.auth.session_utils import OrgPermissionError, OrgScopeRequiredError
 from backend.sync.conflict_resolution.service import (
     ConflictResolutionError,
     ConflictResolutionService,
@@ -32,6 +34,13 @@ SCOPE = {
     "actorUserId": "user-a",
     "workspaceFingerprint": "workspace-a",
 }
+
+
+def test_conflict_http_adapter_preserves_ambiguous_scope_status():
+    ambiguous = _org_error(OrgScopeRequiredError("Cần chọn tổ chức"))
+    denied = _org_error(OrgPermissionError("Không có quyền"))
+    assert (ambiguous.code, ambiguous.status_code) == ("ORG_SCOPE_REQUIRED", 409)
+    assert (denied.code, denied.status_code) == ("ORG_ACCESS_DENIED", 403)
 
 
 class MemoryRepository:

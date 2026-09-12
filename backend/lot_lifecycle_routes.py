@@ -7,6 +7,7 @@ import secrets
 import time
 
 from starlette.responses import JSONResponse
+from backend.auth.session_utils import OrgScopeRequiredError
 
 from backend.lot_lifecycle_service import (
     LotLifecycleInputError,
@@ -161,6 +162,8 @@ async def get_lot_lifecycle_api(request):
         return JSONResponse({"error": str(exc), "code": "PACKAGE_NOT_FOUND"}, status_code=404)
     except LotLifecycleInputError as exc:
         return JSONResponse({"error": str(exc), "code": "LOT_LIFECYCLE_NOT_APPLICABLE"}, status_code=409)
+    except OrgScopeRequiredError as exc:
+        return JSONResponse({"error": str(exc), "code": exc.code}, status_code=409)
     except OrgPermissionError:
         return JSONResponse({"error": "Không có quyền truy cập tổ chức."}, status_code=403)
     except Exception as exc:
@@ -297,9 +300,11 @@ async def create_lot_batch_api(request):
         if connection:
             connection.rollback()
         return JSONResponse({"error": str(exc), "code": "LOT_BATCH_INVALID"}, status_code=400)
-    except OrgPermissionError:
+    except OrgPermissionError as exc:
         if connection:
             connection.rollback()
+        if isinstance(exc, OrgScopeRequiredError):
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=409)
         return JSONResponse({"error": "Không có quyền truy cập tổ chức."}, status_code=403)
     except Exception as exc:
         if connection:
@@ -473,9 +478,11 @@ async def finalize_lot_batch_api(request):
         if connection:
             connection.rollback()
         return JSONResponse({"error": str(exc), "code": "LOT_BATCH_FINALIZE_INVALID"}, status_code=400)
-    except OrgPermissionError:
+    except OrgPermissionError as exc:
         if connection:
             connection.rollback()
+        if isinstance(exc, OrgScopeRequiredError):
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=409)
         return JSONResponse({"error": "Không có quyền truy cập tổ chức."}, status_code=403)
     except Exception as exc:
         if connection:

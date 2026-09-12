@@ -38,6 +38,7 @@ from backend.shared.async_io import run_blocking_io
 from backend.shared.database_io import run_database_read
 from backend.shared.helpers import (
     OrgPermissionError,
+    OrgScopeRequiredError,
     clean_id,
     database,
     get_active_org,
@@ -66,6 +67,8 @@ def _safe_error(request, exception, context):
             status_code=exception.status_code,
         )
     if isinstance(exception, OrgPermissionError):
+        if isinstance(exception, OrgScopeRequiredError):
+            return error_response(request, exception.code, str(exception), status_code=exception.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

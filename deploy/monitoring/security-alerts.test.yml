@@ -1,0 +1,75 @@
+# Run from this directory: promtool test rules security-alerts.test.yml
+rule_files:
+  - security-alerts.yml.example
+evaluation_interval: 1m
+tests:
+  - name: Audit invalidity must persist before firing
+    interval: 1m
+    input_series:
+      - series: 'biddingflow_audit_chain_check_available{instance="test"}'
+        values: '1+0x10'
+      - series: 'biddingflow_audit_chain_valid{instance="test"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BiddingFlowAuditChainInvalid
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: BiddingFlowAuditChainInvalid
+        exp_alerts:
+          - exp_labels:
+              instance: test
+              severity: critical
+            exp_annotations:
+              summary: Audit chain verification failed
+              description: Stop treating the audit chain as trusted until the verification failure is investigated.
+  - name: Unavailable verification is not evidence of an invalid chain
+    interval: 1m
+    input_series:
+      - series: 'biddingflow_audit_chain_check_available{instance="test"}'
+        values: '0+0x10'
+      - series: 'biddingflow_audit_chain_valid{instance="test"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BiddingFlowAuditChainInvalid
+        exp_alerts: []
+
+  - name: Sustained HTTP 5xx ratio fires only after volume and duration gates
+    interval: 1m
+    input_series:
+      - series: 'biddingflow_http_requests_total{status="500",instance="test"}'
+        values: '0+10x20'
+      - series: 'biddingflow_http_requests_total{status="200",instance="test"}'
+        values: '0+90x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: BiddingFlowHttp5xxRatio
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: BiddingFlowHttp5xxRatio
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: HTTP 5xx ratio is elevated
+              description: More than five percent of responses are 5xx for ten minutes, with at least twenty requests in each five-minute window.
+
+  - name: AI provider failures fire after the sustained threshold
+    interval: 1m
+    input_series:
+      - series: 'ai_provider_errors_total{provider="test"}'
+        values: '0+2x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BiddingFlowAiProviderErrors
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: BiddingFlowAiProviderErrors
+        exp_alerts:
+          - exp_labels:
+              provider: test
+              severity: warning
+            exp_annotations:
+              summary: AI provider errors increased
+              description: Inspect provider availability, timeout and quota telemetry without logging prompt content.

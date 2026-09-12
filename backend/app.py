@@ -841,6 +841,7 @@ from backend.shared.helpers import (
     ErrorLoggingMiddleware,
     RequestIdMiddleware,
     OrgPermissionError,
+    OrgScopeRequiredError,
     verify_session,
     database,
     get_active_org
@@ -1223,7 +1224,9 @@ async def protected_image_api(request):
             return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
         if not os.path.isfile(file_path):
             return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",
@@ -1624,9 +1627,9 @@ async def lifespan(application):
 async def org_permission_handler(request, exc):
     return error_response(
         request,
-        "ORG_ACCESS_DENIED",
-        "Không có quyền truy cập tổ chức này.",
-        status_code=403,
+        getattr(exc, "code", "ORG_ACCESS_DENIED"),
+        str(exc) or "Không có quyền truy cập tổ chức này.",
+        status_code=getattr(exc, "status_code", 403),
     )
 
 app = Starlette(

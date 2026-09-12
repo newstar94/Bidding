@@ -9,7 +9,13 @@ from starlette.responses import JSONResponse
 from backend.db.db_helper import DatabaseError
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
-from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.helpers import (
+    OrgPermissionError,
+    OrgScopeRequiredError,
+    database,
+    get_active_org,
+    verify_session,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.legal_versioning.routes import legal_versioning_enabled
 from backend.sync.visibility_scope import VisibilityScope
@@ -135,9 +141,16 @@ def _compare_blocking(request, arguments):
             status_code=error.status_code,
             fields=error.fields,
         )
-    except OrgPermissionError:
+    except OrgPermissionError as error:
         if conn:
             conn.rollback()
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(
+                request,
+                error.code,
+                str(error),
+                status_code=error.status_code,
+            )
         return error_response(
             request, "ORG_ACCESS_DENIED", "Không có quyền truy cập tổ chức này.", status_code=403
         )

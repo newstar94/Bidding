@@ -9,7 +9,13 @@ from starlette.responses import JSONResponse
 
 from backend.shared.access_policy import authorize_record_write
 from backend.shared.database_io import run_database_read, run_database_write
-from backend.shared.helpers import OrgPermissionError, database, get_active_org, verify_session
+from backend.shared.helpers import (
+    OrgPermissionError,
+    OrgScopeRequiredError,
+    database,
+    get_active_org,
+    verify_session,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.client_ip import get_client_ip
 from backend.shared.audit_chain import insert_audit_row
@@ -328,6 +334,12 @@ def _error(request, error):
     )
 
 
+def _org_error(error):
+    if isinstance(error, OrgScopeRequiredError):
+        return ConflictResolutionError(error.code, status_code=error.status_code)
+    return ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403)
+
+
 async def create_conflict_draft_api(request):
     if not CONFLICT_CENTER_ENABLED:
         return error_response(request, "CONFLICT_CENTER_DISABLED", "Tính năng chưa được bật.", status_code=404)
@@ -338,8 +350,8 @@ async def create_conflict_draft_api(request):
     except (ConflictResolutionError, DraftStorageError) as error:
         wrapped = error if isinstance(error, ConflictResolutionError) else ConflictResolutionError(str(error), status_code=409)
         return _error(request, wrapped)
-    except OrgPermissionError:
-        return _error(request, ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403))
+    except OrgPermissionError as error:
+        return _error(request, _org_error(error))
     except Exception as error:  # noqa: BLE001 - sanitized HTTP boundary.
         return log_and_error(request, error, "conflict_draft_create", "CONFLICT_DRAFT_FAILED", "Không thể lưu bản nháp xung đột.")
 
@@ -358,8 +370,8 @@ async def list_conflict_drafts_api(request):
         )
     except ConflictResolutionError as error:
         return _error(request, error)
-    except OrgPermissionError:
-        return _error(request, ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403))
+    except OrgPermissionError as error:
+        return _error(request, _org_error(error))
     except Exception as error:  # noqa: BLE001
         return log_and_error(request, error, "conflict_draft_list", "CONFLICT_LIST_FAILED", "Không thể tải danh sách xung đột.")
 
@@ -378,8 +390,8 @@ async def preview_conflict_draft_api(request):
         return JSONResponse(result, headers={"Cache-Control": "private, no-store"})
     except ConflictResolutionError as error:
         return _error(request, error)
-    except OrgPermissionError:
-        return _error(request, ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403))
+    except OrgPermissionError as error:
+        return _error(request, _org_error(error))
     except Exception as error:  # noqa: BLE001
         return log_and_error(request, error, "conflict_draft_preview", "CONFLICT_PREVIEW_FAILED", "Không thể mở bản nháp xung đột.")
 
@@ -411,8 +423,8 @@ async def resolve_conflict_draft_api(request):
         return response
     except ConflictResolutionError as error:
         return _error(request, error)
-    except OrgPermissionError:
-        return _error(request, ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403))
+    except OrgPermissionError as error:
+        return _error(request, _org_error(error))
     except Exception as error:  # noqa: BLE001
         return log_and_error(request, error, "conflict_draft_resolve", "CONFLICT_RESOLUTION_FAILED", "Không thể áp dụng quyết định xung đột.")
 
@@ -432,8 +444,8 @@ async def delete_conflict_draft_api(request):
         return JSONResponse({"status": "deleted"}, headers={"Cache-Control": "private, no-store"})
     except ConflictResolutionError as error:
         return _error(request, error)
-    except OrgPermissionError:
-        return _error(request, ConflictResolutionError("ORG_ACCESS_DENIED", status_code=403))
+    except OrgPermissionError as error:
+        return _error(request, _org_error(error))
     except Exception as error:  # noqa: BLE001
         return log_and_error(request, error, "conflict_draft_delete", "CONFLICT_DELETE_FAILED", "Không thể xóa bản nháp xung đột.")
 

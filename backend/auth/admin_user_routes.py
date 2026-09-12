@@ -9,6 +9,7 @@ from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.date_utils import vietnam_date_from_epoch
 from backend.shared.helpers import (
     OrgPermissionError,
+    OrgScopeRequiredError,
     database,
     get_active_org,
     get_effective_roles,
@@ -254,7 +255,9 @@ def _list_users_sync(request):
                 )
             users.append(u)
         return JSONResponse(users)
-    except OrgPermissionError:
+    except OrgPermissionError as error:
+        if isinstance(error, OrgScopeRequiredError):
+            return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
             request,
             "ORG_ACCESS_DENIED",

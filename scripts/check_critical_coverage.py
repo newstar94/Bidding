@@ -13,7 +13,7 @@ THRESHOLDS = {
     "backend/shared/access_policy.py": (55.0, 40.0),
     "backend/sync/service.py": (35.0, 25.0),
     "backend/sync/restore_service.py": (65.0, 45.0),
-    "backend/shared/audit_monitor.py": (10.0, 0.0),
+    "backend/shared/audit_monitor.py": (93.0, 84.0),
     "backend/sync/websocket.py": (30.0, 20.0),
     "backend/lot_lifecycle_routes.py": (8.0, 0.0),
     "backend/documents/document_worker.py": (40.0, 15.0),

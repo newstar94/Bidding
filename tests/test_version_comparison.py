@@ -606,6 +606,32 @@ def test_http_contract_rejects_unknown_fields_before_running_comparison(monkeypa
     assert called == []
 
 
+def test_http_contract_preserves_ambiguous_workspace_as_409(monkeypatch):
+    import backend.version_comparison.routes as routes
+    from backend.auth.session_utils import OrgScopeRequiredError
+    from starlette.requests import Request
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        routes,
+        "verify_session",
+        lambda _request: (True, SimpleNamespace(user_id="user-1")),
+    )
+    monkeypatch.setattr(
+        routes,
+        "get_active_org",
+        lambda *_args: (_ for _ in ()).throw(OrgScopeRequiredError("Cần chọn tổ chức")),
+    )
+
+    response = routes._compare_blocking(
+        Request({"type": "http", "method": "POST", "path": "/", "headers": []}),
+        {"entity_type": "goithau", "left_version_id": "a", "right_version_id": "b"},
+    )
+
+    assert response.status_code == 409
+    assert response.body and b"ORG_SCOPE_REQUIRED" in response.body
+
+
 @pytest.mark.parametrize(
     ("relation_page", "expected_field"),
     [
