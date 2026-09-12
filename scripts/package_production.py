@@ -35,19 +35,17 @@ RUNTIME_DIRECTORIES = {
     "shared": lambda path: path.suffix == ".json",
     "dist": lambda path: path.is_file(),
     "views": lambda path: path.is_file(),
-    "deploy": lambda path: path.is_file(),
+    "deploy": lambda path: path.is_file() and path.suffix.lower() != ".md",
 }
 
 RUNTIME_FILES = (
     ".env.example",
     ".python-version",
-    "README.md",
     "holidays.json",
     "pyproject.toml",
     "package.json",
     "package-lock.json",
     "requirements.txt",
-    "docs/production-security-information.md",
     "scripts/backup.py",
     "scripts/configure_database_roles.py",
     "scripts/env_utils.py",
@@ -62,10 +60,6 @@ RUNTIME_FILES = (
     "scripts/verify_document_sandbox.py",
     "scripts/research_muasamcong.py",
 )
-
-ALLOWED_OPERATIONAL_DOCS = {
-    "docs/production-security-information.md",
-}
 
 FORBIDDEN_TOP_LEVEL_PARTS = {
     ".agents",
@@ -91,7 +85,7 @@ FORBIDDEN_TOP_LEVEL_PARTS = {
 }
 FORBIDDEN_NESTED_PARTS = {"__pycache__"}
 FORBIDDEN_NAMES = {".env", "bidding.db", "bidding.db-shm", "bidding.db-wal"}
-FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".map", ".pyc", ".tmp"}
+FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".map", ".md", ".pyc", ".tmp"}
 REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 HASHED_ASSET_PATH = re.compile(
     r"^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$"
@@ -108,12 +102,8 @@ def _relative(path: Path) -> Path:
 
 
 def _assert_safe(relative_path: Path) -> None:
-    relative_name = relative_path.as_posix()
     if (
-        (
-            relative_path.parts[0] in FORBIDDEN_TOP_LEVEL_PARTS
-            and relative_name not in ALLOWED_OPERATIONAL_DOCS
-        )
+        relative_path.parts[0] in FORBIDDEN_TOP_LEVEL_PARTS
         or FORBIDDEN_NESTED_PARTS.intersection(relative_path.parts)
     ):
         raise RuntimeError(f"Forbidden production path: {relative_path.as_posix()}")
