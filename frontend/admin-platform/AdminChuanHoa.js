@@ -13,10 +13,15 @@ function escapeText(value) {
 
 function stateCopy(error) {
   const code = String(error?.code || "");
-  if (code === "CHUAN_HOA_ADMIN_NOT_MAPPED") return "Tài khoản chưa được ánh xạ quyền Super Admin của Chuẩn Hóa.";
+  if (code === "CHUAN_HOA_ADMIN_NOT_MAPPED") return "Chuẩn Hóa đang được quản lý tập trung từ dashboard Bidding.";
   if (code === "CHUAN_HOA_INTEGRATION_NOT_CONFIGURED") return "Tích hợp chưa được cấu hình ở máy chủ BiddingFlow.";
   if (code === "CHUAN_HOA_INTEGRATION_TIMEOUT") return "Chuẩn Hóa chưa phản hồi xác định. Không tự chạy lại thao tác.";
   return error?.message || "Không thể tải trạng thái tích hợp Chuẩn Hóa.";
+}
+
+function connectMarkup(error) {
+  const message = escapeText(stateCopy(error));
+  return `<div class="bf-admin-cross-app-page"><header class="bf-admin-page-intro"><div><p class="page-pretitle mb-1">Ứng dụng liên kết</p><h2 class="h1 mb-2">Chuẩn Hóa</h2><p class="text-secondary mb-0">Quản lý tập trung tại Bidding; dữ liệu và nghiệp vụ vẫn thuộc backend Chuẩn Hóa.</p></div><span class="badge text-dark bg-warning-lt">Chưa khả dụng</span></header>${adminStateMarkup("empty", { title: "Chuẩn Hóa hiện không khả dụng", message })}<p class="text-secondary small mt-3">Kết nối máy chủ được thực hiện tự động; không cần ánh xạ hoặc bấm kết nối thủ công.</p></div>`;
 }
 
 export function confirmChuanHoaEntitlement({ userId, durationDays }, confirmImpl = (message) => globalThis.confirm?.(message) === true) {
@@ -128,6 +133,6 @@ export async function renderAdminChuanHoa(container, {
     }
   } catch (error) {
     if (signal?.aborted) return;
-    container.innerHTML = trustedHTML(`<div class="bf-admin-cross-app-page"><header class="bf-admin-page-intro"><div><p class="page-pretitle mb-1">Ứng dụng liên kết</p><h2 class="h1 mb-2">Chuẩn Hóa</h2><p class="text-secondary mb-0">Dữ liệu và nghiệp vụ vẫn thuộc backend Chuẩn Hóa.</p></div><span class="badge text-dark bg-warning-lt">Chưa sẵn sàng</span></header>${adminStateMarkup("empty", { title: "Tích hợp chưa sẵn sàng", message: escapeText(stateCopy(error)) })}<p class="text-secondary small mt-3">Mã trạng thái: ${escapeText(error?.code || "UNKNOWN")}. Không có thao tác nào được gửi tới ứng dụng đích.</p></div>`);
+    container.innerHTML = trustedHTML(connectMarkup(error));
   }
 }

@@ -4,6 +4,7 @@ import { formatMinorMoney, requestAdminValue } from "./AdminBilling.js";
 import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { adminStatusMarkup } from "./AdminStatus.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -41,7 +42,7 @@ function sessionActivityMarkup(items) {
 
 function invoiceActivityMarkup(items) {
   if (!Array.isArray(items) || items.length === 0) return '<p class="text-secondary">Chưa có yêu cầu hóa đơn.</p>';
-  return `<ul class="list-group list-group-flush">${items.map((item) => `<li class="list-group-item px-0"><div class="d-flex justify-content-between gap-2"><a href="${text(item.href, "/admin/invoices")}"><strong>${text(item.id)}</strong></a><span>${text(item.status)}</span></div><div class="small text-secondary">${escapeHtml(formatMinorMoney(item?.amounts?.totalMinor, item?.amounts?.currency))} · ${text(item.orderPublicId)} · ${formatDate(item.createdAt)}</div><div class="small text-secondary">${text(item.providerReference, "Chưa có tham chiếu")}</div></li>`).join("")}</ul>`;
+  return `<ul class="list-group list-group-flush">${items.map((item) => `<li class="list-group-item px-0"><div class="d-flex justify-content-between gap-2"><a href="${text(item.href, "/admin/invoices")}"><strong>${text(item.id)}</strong></a>${adminStatusMarkup(item.status)}</div><div class="small text-secondary">${escapeHtml(formatMinorMoney(item?.amounts?.totalMinor, item?.amounts?.currency))} · ${text(item.orderPublicId)} · ${formatDate(item.createdAt)}</div><div class="small text-secondary">${text(item.providerReference, "Chưa có tham chiếu")}</div></li>`).join("")}</ul>`;
 }
 
 function linksMarkup(links) {
@@ -465,7 +466,7 @@ export const USER_DIRECTORY = Object.freeze({
     { label: "Ngày tạo", sortKey: "created_at" }, { label: "Chi tiết" },
   ],
   rowMarkup(user) {
-    return `<tr><td data-label="Người dùng"><strong>${text(user?.name)}</strong><div class="small text-secondary">${text(user?.username)}</div></td><td data-label="Email">${text(user?.email)}</td><td data-label="Vai trò">${text(user?.role)}</td><td data-label="Trạng thái">${text(user?.status)}</td><td data-label="Tổ chức">${membershipsMarkup(user?.organizations)}</td><td data-label="Gói dịch vụ">${text(user?.subscription?.packageId)}</td><td data-label="Hoạt động gần nhất">${formatDate(user?.lastActiveAt)}</td><td data-label="Ngày tạo">${formatDate(user?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(user?.id, "")}">Xem và thao tác</button></td></tr>`;
+    return `<tr><td data-label="Người dùng"><strong>${text(user?.name)}</strong><div class="small text-secondary">${text(user?.username)}</div></td><td data-label="Email">${text(user?.email)}</td><td data-label="Vai trò">${text(user?.role)}</td><td data-label="Trạng thái">${adminStatusMarkup(user?.status)}</td><td data-label="Tổ chức">${membershipsMarkup(user?.organizations)}</td><td data-label="Gói dịch vụ">${text(user?.subscription?.packageId)}</td><td data-label="Hoạt động gần nhất">${formatDate(user?.lastActiveAt)}</td><td data-label="Ngày tạo">${formatDate(user?.createdAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-detail-id="${text(user?.id, "")}">Xem và thao tác</button></td></tr>`;
   },
   bindResultActions(root, options) { bindDirectoryDetails(root, options.payload?.items || [], options, "user"); },
 });

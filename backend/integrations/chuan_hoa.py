@@ -13,9 +13,11 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import ssl
 import time
 import uuid
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -40,16 +42,18 @@ class ChuanHoaIntegrationSettings:
 
     @classmethod
     def from_env(cls) -> "ChuanHoaIntegrationSettings":
-        base_url = str(os.environ.get("CHUAN_HOA_ADMIN_BASE_URL", "")).strip()
-        client_id = str(os.environ.get("CHUAN_HOA_ADMIN_CLIENT_ID", "")).strip()
-        shared_secret = str(os.environ.get("CHUAN_HOA_ADMIN_SHARED_SECRET", "")).strip()
+        base_url = str(os.environ.get("CHUAN_HOA_ADMIN_BASE_URL", "")).strip() or str(os.environ.get("CHUAN_HOA_PUBLIC_UPSTREAM_URL", "")).strip()
+        client_id = str(os.environ.get("CHUAN_HOA_ADMIN_CLIENT_ID", "bidding-admin")).strip()
+        shared_secret = str(os.environ.get("CHUAN_HOA_ADMIN_SHARED_SECRET", "")).strip() or _local_bootstrap_secret(base_url)
         raw_ids = str(os.environ.get("CHUAN_HOA_ADMIN_MAPPED_USER_IDS", ""))
         mapped = frozenset(value.strip() for value in raw_ids.split(",") if value.strip())
+        mapped = mapped | load_persisted_mapped_user_ids()
         try:
             timeout = float(os.environ.get("CHUAN_HOA_ADMIN_TIMEOUT_SECONDS", "3"))
         except (TypeError, ValueError):
             timeout = 3.0
-        enabled = str(os.environ.get("CHUAN_HOA_ADMIN_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
+        enabled_value = str(os.environ.get("CHUAN_HOA_ADMIN_ENABLED", "")).strip().lower()
+        enabled = (enabled_value in {"1", "true", "yes", "on"}) if enabled_value else _is_local_development_url(base_url)
         ca_bundle = str(os.environ.get("CHUAN_HOA_ADMIN_CA_BUNDLE", "")).strip()
         return cls(base_url, client_id, shared_secret, mapped, min(max(timeout, 0.5), 10.0), enabled, ca_bundle)
 
@@ -58,11 +62,64 @@ class ChuanHoaIntegrationSettings:
         parsed = urlparse(self.base_url)
         return (
             self.enabled
-            and parsed.scheme == "https"
+            and (parsed.scheme == "https" or _is_local_development_url(self.base_url))
             and bool(parsed.netloc)
             and bool(self.client_id)
             and len(self.shared_secret) >= 32
         )
+
+
+def _is_local_development_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"} and str(os.environ.get("APP_ENV", "development")).lower() in {"development", "dev", "local"}
+
+
+def _local_bootstrap_secret(base_url: str) -> str:
+    if not _is_local_development_url(base_url):
+        return ""
+    root = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share")) / "ChuanHoa" / "Development"
+    path = root / "admin-integration-secret.txt"
+    try:
+        value = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        if len(value) >= 32:
+            return value
+        root.mkdir(parents=True, exist_ok=True)
+        value = secrets.token_urlsafe(48)
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(value)
+            return value
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _mapped_user_ids_path() -> Path:
+    configured = str(os.environ.get("CHUAN_HOA_ADMIN_MAPPING_FILE", "")).strip()
+    return Path(configured or "data/chuan-hoa-admin-mappings.json").resolve()
+
+
+def load_persisted_mapped_user_ids() -> frozenset[str]:
+    path = _mapped_user_ids_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return frozenset()
+    values = payload.get("userIds", []) if isinstance(payload, dict) else []
+    return frozenset(str(value).strip() for value in values if str(value).strip())
+
+
+def persist_mapped_user_id(user_id: str) -> None:
+    normalized = str(user_id).strip()
+    if not normalized:
+        raise ValueError("user_id is required")
+    path = _mapped_user_ids_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    values = sorted(load_persisted_mapped_user_ids() | {normalized})
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temporary.write_text(json.dumps({"userIds": values}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(path)
 
 
 def _signature(secret: str, method: str, path: str, timestamp: str, nonce: str, body: bytes) -> str:

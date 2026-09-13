@@ -8,6 +8,7 @@ import {
 import { escapeHtml } from "../shared/view_helpers.js";
 import { chartsMarkup } from "./AdminAnalytics.js";
 import { adminIconMarkup } from "./AdminIcons.js";
+import { adminStatusMarkup } from "./AdminStatus.js";
 
 const METRICS = Object.freeze([
   ["organizations", "Tổ chức", (metrics) => metrics.organizations?.total ?? metrics.organizations],
@@ -99,7 +100,7 @@ function overviewMarkup(payload) {
   const rows = organizations.map((organization) => {
     const name = organization?.name || organization?.organizationName || "Không có tên";
     const status = organization?.status || "N/A";
-    return `<tr><th scope="row">${escapeHtml(name)}</th><td>${escapeHtml(String(organization?.memberCount ?? "N/A"))}</td><td class="text-secondary">${escapeHtml(status)}</td><td class="text-secondary">${escapeHtml(organization?.subscriptionStatus || "N/A")}</td></tr>`;
+    return `<tr><th scope="row">${escapeHtml(name)}</th><td>${escapeHtml(String(organization?.memberCount ?? "N/A"))}</td><td>${adminStatusMarkup(status)}</td><td>${adminStatusMarkup(organization?.subscriptionStatus)}</td></tr>`;
   }).join("");
   const organizationContent = rows
     ? `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th scope="col">Tổ chức</th><th scope="col">Thành viên</th><th scope="col">Trạng thái</th><th scope="col">Đăng ký</th></tr></thead><tbody>${rows}</tbody></table></div>`

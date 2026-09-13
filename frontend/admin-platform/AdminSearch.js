@@ -1,6 +1,7 @@
 import { getAdminJson } from "./AdminApi.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { adminStatusMarkup } from "./AdminStatus.js";
 
 const KIND_LABELS = Object.freeze({
   user: "Người dùng",
@@ -25,7 +26,7 @@ export function adminSearchResultsMarkup(payload) {
   if (!items.length) return '<div class="bf-admin-search-message">Không tìm thấy kết quả phù hợp.</div>';
   return `<div class="list-group list-group-flush">${items.map((item) => {
     const kind = KIND_LABELS[item?.kind] || "Kết quả";
-    return `<a class="list-group-item list-group-item-action" href="${escapeHtml(safeAdminHref(item?.href))}"><div class="d-flex justify-content-between gap-3"><strong>${escapeHtml(item?.title || "N/A")}</strong><span class="badge bg-secondary-lt text-dark">${escapeHtml(kind)}</span></div><div class="text-secondary small mt-1">${escapeHtml(item?.description || "N/A")}${item?.status ? ` · ${escapeHtml(item.status)}` : ""}</div></a>`;
+    return `<a class="list-group-item list-group-item-action" href="${escapeHtml(safeAdminHref(item?.href))}"><div class="d-flex justify-content-between gap-3"><strong>${escapeHtml(item?.title || "N/A")}</strong><span class="badge bg-secondary-lt text-dark">${escapeHtml(kind)}</span></div><div class="text-secondary small mt-1">${escapeHtml(item?.description || "N/A")}${item?.status ? ` · ${adminStatusMarkup(item.status)}` : ""}</div></a>`;
   }).join("")}</div>`;
 }
 

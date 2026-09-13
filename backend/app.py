@@ -880,6 +880,7 @@ from backend.admin.platform_directory_routes import platform_admin_directory_rou
 from backend.admin.platform_billing_routes import platform_admin_billing_routes
 from backend.admin.platform_system_routes import platform_admin_system_routes
 from backend.admin.platform_chuan_hoa_routes import platform_chuan_hoa_routes
+from backend.integrations.chuan_hoa_public_proxy import chuan_hoa_public_proxy_routes
 
 from backend.auth.otp_routes import (
     register_api,
@@ -1269,6 +1270,7 @@ routes = [
     *platform_admin_billing_routes(Route),
     *platform_admin_system_routes(Route),
     *platform_chuan_hoa_routes(Route),
+    *chuan_hoa_public_proxy_routes(Route),
     *usage_analytics_routes(Route),
     *product_analytics_routes(Route),
     Route("/health/live", health_live_api, methods=["GET"]),

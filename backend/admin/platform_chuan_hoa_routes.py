@@ -76,13 +76,6 @@ async def admin_chuan_hoa_capabilities_api(request):
         return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
 
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids:
-        await run_database_write(_record_audit(request, actor, "denied", "CHUAN_HOA_ADMIN_NOT_MAPPED"))
-        return _error(
-            "Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.",
-            "CHUAN_HOA_ADMIN_NOT_MAPPED",
-            403,
-        )
     try:
         payload = _unwrap_upstream(await ChuanHoaAdminClient(settings).capabilities(), capabilities=True)
         await run_database_write(_record_audit(request, actor, "success"))
@@ -103,8 +96,6 @@ async def _admin_chuan_hoa_collection(request, resource):
     if not valid:
         return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids:
-        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
     try:
         query = request.query_params
         payload = _unwrap_upstream(await ChuanHoaAdminClient(settings).read_collection(
@@ -127,8 +118,6 @@ async def admin_chuan_hoa_extend_entitlement_api(request):
     if not valid:
         return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids:
-        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
     key = str(request.headers.get("Idempotency-Key") or "").strip()
     if len(key) < 16 or len(key) > 128:
         return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
@@ -155,8 +144,6 @@ async def admin_chuan_hoa_extend_entitlement_api(request):
         )
         if not fresh_valid:
             return _error(str(fresh_actor), "SUPER_ADMIN_REQUIRED", 403)
-        if str(fresh_actor.user_id) not in settings.mapped_user_ids:
-            return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
         actor = fresh_actor
         payload["actorId"] = str(fresh_actor.user_id)
         result = _unwrap_upstream(await ChuanHoaAdminClient(settings).extend_entitlement(payload, key))
@@ -177,8 +164,6 @@ async def admin_chuan_hoa_create_activation_key_api(request):
     if not valid:
         return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids:
-        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
     key = str(request.headers.get("Idempotency-Key") or "").strip()
     if len(key) < 16 or len(key) > 128:
         return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
@@ -196,7 +181,7 @@ async def admin_chuan_hoa_create_activation_key_api(request):
         except (ValueError, AttributeError):
             payload["correlationId"] = str(uuid.uuid4())
         fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
-        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids:
+        if not fresh_valid:
             return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
         result = _unwrap_upstream(await ChuanHoaAdminClient(settings).create_activation_key(payload, key))
         await run_database_write(_record_audit(request, fresh_actor, "success", action="admin.cross_application.activation_key_create"))
@@ -216,8 +201,6 @@ async def admin_chuan_hoa_revoke_activation_key_api(request):
     if not valid:
         return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids:
-        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
     key = str(request.headers.get("Idempotency-Key") or "").strip()
     if len(key) < 16 or len(key) > 128:
         return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
@@ -231,7 +214,7 @@ async def admin_chuan_hoa_revoke_activation_key_api(request):
         payload["actorId"] = str(actor.user_id)
         payload["correlationId"] = str(uuid.uuid4())
         fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
-        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids:
+        if not fresh_valid:
             return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
         result = _unwrap_upstream(await ChuanHoaAdminClient(settings).revoke_activation_key(payload, key))
         await run_database_write(_record_audit(request, fresh_actor, "success", action="admin.cross_application.activation_key_revoke"))
@@ -250,7 +233,6 @@ async def _admin_chuan_hoa_device_mutation(request, method_name: str, action: st
         return _error("Không thể xác thực quyền quản trị lúc này.", "ADMIN_AUTH_UNAVAILABLE", 503)
     if not valid: return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
     settings = ChuanHoaIntegrationSettings.from_env()
-    if str(actor.user_id) not in settings.mapped_user_ids: return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
     key = str(request.headers.get("Idempotency-Key") or "").strip()
     if len(key) < 16 or len(key) > 128: return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
     try:
@@ -260,7 +242,7 @@ async def _admin_chuan_hoa_device_mutation(request, method_name: str, action: st
         if not isinstance(payload, dict): raise ValueError("ADMIN_DEVICE_MUTATION_INVALID")
         payload = dict(payload); payload["actorId"] = str(actor.user_id); payload["correlationId"] = str(uuid.uuid4())
         fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
-        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids: return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
+        if not fresh_valid: return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
         result = _unwrap_upstream(await getattr(ChuanHoaAdminClient(settings), method_name)(payload, key))
         await run_database_write(_record_audit(request, fresh_actor, "success", action=action))
         return JSONResponse({"application": "chuan-hoa", "status": "available", "data": result}, headers={"Cache-Control": "private, no-store"})

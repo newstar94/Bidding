@@ -129,19 +129,7 @@ def test_workspace_admin_cannot_access_cross_application_route(monkeypatch):
     assert json.loads(response.body)["code"] == "SUPER_ADMIN_REQUIRED"
 
 
-def test_unmapped_super_admin_is_denied_before_upstream_call(monkeypatch):
-    actor = SimpleNamespace(user_id="admin-1")
-    async def auth(*_args, **_kwargs): return True, actor
-    async def write(_operation): return None
-    monkeypatch.setattr(routes, "run_database_read", auth)
-    monkeypatch.setattr(routes, "run_database_write", write)
-    monkeypatch.setenv("CHUAN_HOA_ADMIN_MAPPED_USER_IDS", "admin-2")
-    response = asyncio.run(routes.admin_chuan_hoa_capabilities_api(_request()))
-    assert response.status_code == 403
-    assert json.loads(response.body)["code"] == "CHUAN_HOA_ADMIN_NOT_MAPPED"
-
-
-def test_mapped_super_admin_reaches_signed_upstream_adapter(monkeypatch):
+def test_any_authenticated_super_admin_reaches_signed_upstream_adapter(monkeypatch):
     actor = SimpleNamespace(user_id="admin-1")
     calls = []
     async def auth(*_args, **_kwargs): return True, actor
@@ -152,7 +140,6 @@ def test_mapped_super_admin_reaches_signed_upstream_adapter(monkeypatch):
     monkeypatch.setattr(routes, "run_database_read", auth)
     monkeypatch.setattr(routes, "run_database_write", write)
     monkeypatch.setattr(routes, "ChuanHoaAdminClient", Client)
-    monkeypatch.setenv("CHUAN_HOA_ADMIN_MAPPED_USER_IDS", "admin-1")
     response = asyncio.run(routes.admin_chuan_hoa_capabilities_api(_request()))
     payload = json.loads(response.body)
     assert response.status_code == 200
@@ -180,7 +167,6 @@ def test_mutation_overwrites_browser_actor_and_preserves_unknown_timeout(monkeyp
     monkeypatch.setattr(routes, "run_database_write", write)
     monkeypatch.setattr(routes, "ChuanHoaAdminClient", Client)
     monkeypatch.setattr(routes, "get_request_id", lambda _request: "00000000-0000-0000-0000-000000000001")
-    monkeypatch.setenv("CHUAN_HOA_ADMIN_MAPPED_USER_IDS", "admin-1")
     response = asyncio.run(routes.admin_chuan_hoa_extend_entitlement_api(Request()))
     assert response.status_code == 504
     assert json.loads(response.body)["code"] == "CHUAN_HOA_INTEGRATION_TIMEOUT"
