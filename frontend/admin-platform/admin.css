@@ -78,6 +78,12 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .navbar-vertical .nav-link:hover .nav-link-icon, .navbar-vertical .nav-link.active .nav-link-icon { opacity: 1; }
 .navbar-vertical .nav-link:hover { background: rgba(255, 255, 255, .07); color: var(--bf-admin-surface); }
 .navbar-vertical .nav-link.active { background: var(--bf-admin-brand); color: var(--bf-admin-surface); }
+.bf-admin-application-filter { min-width: 12rem; }
+.bf-admin-application-filter select { min-width: 11rem; }
+@media (max-width: 767.98px) {
+  .bf-admin-application-filter { width: 100%; order: 3; padding-inline: 0; }
+  .bf-admin-application-filter select { width: 100%; }
+}
 .navbar-vertical .nav-link:focus-visible { outline: 2px solid var(--bf-admin-sidebar-accent); outline-offset: 2px; }
 .page-wrapper > .navbar { background: var(--bf-admin-surface); border-color: var(--bf-admin-line); }
 .bf-admin-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3.5rem; }
@@ -152,6 +158,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-plan-meta { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr); gap: .5rem 1rem; }
 .bf-admin-plan-meta > div { min-width: 0; }
 .admin-plans-page { max-width: 92rem; margin-inline: auto; }
+.bf-admin-cross-app-page { max-width: 70rem; margin-inline: auto; }
 .bf-admin-page-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--bf-admin-line); }
 .bf-admin-page-section { margin-top: 2rem; }
 .bf-admin-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }

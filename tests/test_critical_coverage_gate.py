@@ -15,6 +15,8 @@ def test_critical_coverage_gate_requires_every_owned_module(tmp_path):
 
 def test_critical_coverage_floors_cannot_drop_below_reviewed_risk_baseline():
     reviewed = {
+        "backend/admin/platform_chuan_hoa_routes.py": (50.0, 40.0),
+        "backend/integrations/chuan_hoa.py": (60.0, 15.0),
         "backend/shared/access_policy.py": (55.0, 40.0),
         "backend/sync/service.py": (35.0, 25.0),
         "backend/sync/restore_service.py": (65.0, 45.0),

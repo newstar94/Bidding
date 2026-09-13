@@ -994,7 +994,7 @@ export function setupAuth() {
       return Promise.resolve(true);
     }
     if (!getGoogleIdentityClientId(document)) {
-      showGoogleSignInState("Đăng nhập Google chưa được cấu hình.", "error");
+      showGoogleSignInState("", "idle");
       setGoogleSignInAction(loadGoogleIdentity);
       return Promise.resolve(false);
     }
@@ -1009,7 +1009,7 @@ export function setupAuth() {
       })
       .catch((error) => {
         console.warn("Google Sign-In could not be loaded.", error);
-        showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng hoặc thử lại.", "error");
+        showGoogleSignInState("", "idle");
         setGoogleSignInAction(loadGoogleIdentity);
         return false;
       })

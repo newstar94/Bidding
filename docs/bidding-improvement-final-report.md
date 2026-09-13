@@ -13,8 +13,8 @@ alerts, subscription-plan administration UX, và platform-admin initial loading.
 Một failure Firefox ở bước mở modal không tái hiện ở lần chạy cô lập thứ hai và
 được phân loại `not reproducible`, không dùng làm lý do tăng timeout.
 
-Full Python post-fix đạt 2377 passed, 1 skipped, 1 deselected; coverage tổng
-64.82% và critical ratchet đạt 16/16 module. Secure frontend build, platform
+Full Python current-source đạt 2391 passed, 1 skipped; coverage tổng
+64.85% và critical ratchet đạt 18/18 module. Secure frontend build, platform
 admin tests, organization-scope matrix và Prometheus rule tests đều đạt.
 
 Không tuyên bố production-ready: production Nginx/Prometheus scrape và alert
@@ -73,8 +73,9 @@ Same-scope baseline is `coverage-configured-current.json`; post-fix is
 | versioning repository | 93.5 / 76.7 | 93.5 / 76.7 |
 | versioning service | 66.7 / 50.0 | 66.7 / 50.0 |
 
-Coverage gate stayed at 45%; no threshold was reduced. Overall post-fix coverage
-is 64.82%.
+Coverage gate stayed at 45%; no threshold was reduced. Overall current-source
+coverage is 64.85%. The critical ratchet now covers 18 Python modules, including
+the two Bidding-to-Chuẩn-Hóa integration modules; the JS ratchet covers 14 modules.
 
 ## 5. Refactor
 
@@ -100,8 +101,8 @@ no data migration rollback is needed.
 
 | Command/scope | Result |
 |---|---|
-| Full Python non-browser, branch coverage | 2377 passed, 1 skipped, 1 deselected; exit 0; 1:38:47 |
-| Critical coverage checker | PASS, 16 modules |
+| Full Python current-source, branch coverage | 2391 passed, 1 skipped; coverage 64.85%; exit 0 |
+| Critical coverage checker | PASS, 18 Python modules and 14 JS modules |
 | Sync and joint venture focused matrix | 84 passed |
 | Organization scope backend matrix | 46 passed |
 | Organization/client scope JS matrix | 15 passed |
@@ -109,7 +110,7 @@ no data migration rollback is needed.
 | Procurement fixture E2E, Chromium/Firefox/WebKit | 3 passed |
 | Contractor verdict narrow E2E, three browsers | 3 passed |
 | Secure frontend build and artifact verification | PASS |
-| Frontend module graph | 355 modules, 0 static cycles |
+| Frontend module graph | 356 modules, 0 static cycles |
 | Reachability audit | 354 reachable, 0 orphan, 0 unresolved |
 | Frontend debt/security lint | PASS |
 | Platform-admin budget latest sample | PASS; 811.6ms, 8 requests, 227154 JS bytes |
