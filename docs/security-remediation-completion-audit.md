@@ -40,3 +40,9 @@ trường rollback được phê duyệt. V002 và dữ liệu cũ không bị s
 Chưa chạy production migration/deploy, production multi-replica traffic,
 production proxy topology hoặc payment thật. Dependency advisory scan và local
 test evidence không thay thế production security review.
+
+## Dependency scans bổ sung
+
+- NuGet: `dotnet list ChuanHoa.slnx package --vulnerable --include-transitive --format json` — không phát hiện advisory đã biết trên nguồn NuGet đã truy vấn.
+- npm production: `npm audit --omit=dev --json` — `0` vulnerability trên 32 production dependencies.
+- Python: `python -m pip_audit -r requirements.txt --format json` — không phát hiện vulnerability đã biết.

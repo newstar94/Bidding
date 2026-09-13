@@ -79,7 +79,7 @@ class ChuanHoaAdminClient:
         return await asyncio.to_thread(self._get_capabilities)
 
     async def read_collection(self, resource: str, *, search: str = "", page: int = 1, page_size: int = 25) -> dict:
-        if resource not in {"accounts", "offers", "orders", "subscriptions", "payments", "audit"}:
+        if resource not in {"accounts", "offers", "orders", "subscriptions", "payments", "audit", "activation-keys"}:
             raise ChuanHoaIntegrationError("CHUAN_HOA_RESOURCE_INVALID", "Tài nguyên quản trị không hợp lệ.", 400)
         if not self.settings.configured:
             raise ChuanHoaIntegrationError(
@@ -94,6 +94,30 @@ class ChuanHoaAdminClient:
             raise ChuanHoaIntegrationError("CHUAN_HOA_INTEGRATION_NOT_CONFIGURED", "Tích hợp Chuẩn Hóa chưa được cấu hình đầy đủ.", 503)
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return await asyncio.to_thread(self._request_json, "POST", "/v1/admin/integration/entitlements/extend", body, idempotency_key)
+
+    async def create_activation_key(self, payload: dict, idempotency_key: str) -> dict:
+        if not self.settings.configured:
+            raise ChuanHoaIntegrationError("CHUAN_HOA_INTEGRATION_NOT_CONFIGURED", "Tích hợp Chuẩn Hóa chưa được cấu hình đầy đủ.", 503)
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return await asyncio.to_thread(self._request_json, "POST", "/v1/admin/integration/activation-keys", body, idempotency_key)
+
+    async def revoke_activation_key(self, payload: dict, idempotency_key: str) -> dict:
+        if not self.settings.configured:
+            raise ChuanHoaIntegrationError("CHUAN_HOA_INTEGRATION_NOT_CONFIGURED", "Tích hợp Chuẩn Hóa chưa được cấu hình đầy đủ.", 503)
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return await asyncio.to_thread(self._request_json, "POST", "/v1/admin/integration/activation-keys/revoke", body, idempotency_key)
+
+    async def release_activation_device(self, payload: dict, idempotency_key: str) -> dict:
+        if not self.settings.configured:
+            raise ChuanHoaIntegrationError("CHUAN_HOA_INTEGRATION_NOT_CONFIGURED", "Tích hợp Chuẩn Hóa chưa được cấu hình đầy đủ.", 503)
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return await asyncio.to_thread(self._request_json, "POST", "/v1/admin/integration/activation-keys/release-device", body, idempotency_key)
+
+    async def reset_account_device(self, payload: dict, idempotency_key: str) -> dict:
+        if not self.settings.configured:
+            raise ChuanHoaIntegrationError("CHUAN_HOA_INTEGRATION_NOT_CONFIGURED", "Tích hợp Chuẩn Hóa chưa được cấu hình đầy đủ.", 503)
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return await asyncio.to_thread(self._request_json, "POST", "/v1/admin/integration/accounts/reset-device", body, idempotency_key)
 
     def _get_capabilities(self) -> dict:
         if not self.settings.configured:

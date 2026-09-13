@@ -17,6 +17,8 @@ test("Chuẩn Hóa admin surface labels source, bounded directories, and mutatio
   assert.match(markup, /data-chuan-hoa-resource="audit"/u);
   assert.match(markup, /data-chuan-hoa-extend/u);
   assert.match(markup, /Gia hạn entitlement/u);
+  assert.match(markup, /data-chuan-hoa-key/u);
+  assert.match(markup, /Tạo VIP key/u);
 });
 
 test("Chuẩn Hóa admin surface keeps mutation hidden when target capability is unavailable", () => {
@@ -56,4 +58,12 @@ test("Chuẩn Hóa collections expose bounded server pagination controls", () =>
   assert.match(source, /data-chuan-hoa-page="prev"/u);
   assert.match(source, /data-chuan-hoa-page="next"/u);
   assert.match(source, /current \* pageSize < total/u);
+});
+
+test("VIP key form sends only bounded commercial fields through the Bidding adapter", () => {
+  const source = fs.readFileSync(new URL("../../frontend/admin-platform/AdminChuanHoa.js", import.meta.url), "utf8");
+  assert.match(source, /\/api\/admin\/integrations\/chuan-hoa\/activation-keys/u);
+  assert.match(source, /maxDevices: Number\(form\.get\("maxDevices"\)\)/u);
+  assert.match(source, /retries: 0/u);
+  assert.doesNotMatch(source, /CHUAN_HOA_ADMIN_SHARED_SECRET/u);
 });

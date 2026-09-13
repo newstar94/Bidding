@@ -169,6 +169,115 @@ async def admin_chuan_hoa_extend_entitlement_api(request):
         return _error(str(exc), exc.code, exc.status)
 
 
+async def admin_chuan_hoa_create_activation_key_api(request):
+    try:
+        valid, actor = await run_database_read(verify_session, request, "super_admin", timeout_seconds=5)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _error("Không thể xác thực quyền quản trị lúc này.", "ADMIN_AUTH_UNAVAILABLE", 503)
+    if not valid:
+        return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
+    settings = ChuanHoaIntegrationSettings.from_env()
+    if str(actor.user_id) not in settings.mapped_user_ids:
+        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
+    key = str(request.headers.get("Idempotency-Key") or "").strip()
+    if len(key) < 16 or len(key) > 128:
+        return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
+    try:
+        raw_body = await request.body()
+        if len(raw_body) > 1_048_576:
+            return _error("Request quá lớn.", "INTEGRATION_BODY_TOO_LARGE", 413)
+        payload = json.loads(raw_body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("ADMIN_ACTIVATION_KEY_REQUEST_INVALID")
+        payload = dict(payload)
+        payload["actorId"] = str(actor.user_id)
+        try:
+            payload["correlationId"] = str(uuid.UUID(str(get_request_id(request))))
+        except (ValueError, AttributeError):
+            payload["correlationId"] = str(uuid.uuid4())
+        fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
+        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids:
+            return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
+        result = _unwrap_upstream(await ChuanHoaAdminClient(settings).create_activation_key(payload, key))
+        await run_database_write(_record_audit(request, fresh_actor, "success", action="admin.cross_application.activation_key_create"))
+        return JSONResponse({"application": "chuan-hoa", "status": "available", "data": result}, headers={"Cache-Control": "private, no-store"})
+    except (ValueError, TypeError):
+        return _error("Yêu cầu tạo VIP key không hợp lệ.", "ADMIN_ACTIVATION_KEY_REQUEST_INVALID", 400)
+    except ChuanHoaIntegrationError as exc:
+        await run_database_write(_record_audit(request, actor, "failed", exc.code, "admin.cross_application.activation_key_create"))
+        return _error(str(exc), exc.code, exc.status)
+
+
+async def admin_chuan_hoa_revoke_activation_key_api(request):
+    try:
+        valid, actor = await run_database_read(verify_session, request, "super_admin", timeout_seconds=5)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _error("Không thể xác thực quyền quản trị lúc này.", "ADMIN_AUTH_UNAVAILABLE", 503)
+    if not valid:
+        return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
+    settings = ChuanHoaIntegrationSettings.from_env()
+    if str(actor.user_id) not in settings.mapped_user_ids:
+        return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
+    key = str(request.headers.get("Idempotency-Key") or "").strip()
+    if len(key) < 16 or len(key) > 128:
+        return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
+    try:
+        raw_body = await request.body()
+        if len(raw_body) > 1_048_576:
+            return _error("Request quá lớn.", "INTEGRATION_BODY_TOO_LARGE", 413)
+        payload = json.loads(raw_body.decode("utf-8"))
+        if not isinstance(payload, dict): raise ValueError("ADMIN_KEY_MUTATION_INVALID")
+        payload = dict(payload)
+        payload["actorId"] = str(actor.user_id)
+        payload["correlationId"] = str(uuid.uuid4())
+        fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
+        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids:
+            return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
+        result = _unwrap_upstream(await ChuanHoaAdminClient(settings).revoke_activation_key(payload, key))
+        await run_database_write(_record_audit(request, fresh_actor, "success", action="admin.cross_application.activation_key_revoke"))
+        return JSONResponse({"application": "chuan-hoa", "status": "available", "data": result}, headers={"Cache-Control": "private, no-store"})
+    except (ValueError, TypeError):
+        return _error("Yêu cầu thu hồi VIP key không hợp lệ.", "ADMIN_KEY_MUTATION_INVALID", 400)
+    except ChuanHoaIntegrationError as exc:
+        await run_database_write(_record_audit(request, actor, "failed", exc.code, "admin.cross_application.activation_key_revoke"))
+        return _error(str(exc), exc.code, exc.status)
+
+
+async def _admin_chuan_hoa_device_mutation(request, method_name: str, action: str):
+    try:
+        valid, actor = await run_database_read(verify_session, request, "super_admin", timeout_seconds=5)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _error("Không thể xác thực quyền quản trị lúc này.", "ADMIN_AUTH_UNAVAILABLE", 503)
+    if not valid: return _error(str(actor), "SUPER_ADMIN_REQUIRED", 403)
+    settings = ChuanHoaIntegrationSettings.from_env()
+    if str(actor.user_id) not in settings.mapped_user_ids: return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
+    key = str(request.headers.get("Idempotency-Key") or "").strip()
+    if len(key) < 16 or len(key) > 128: return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
+    try:
+        raw_body = await request.body()
+        if len(raw_body) > 1_048_576: return _error("Request quá lớn.", "INTEGRATION_BODY_TOO_LARGE", 413)
+        payload = json.loads(raw_body.decode("utf-8"))
+        if not isinstance(payload, dict): raise ValueError("ADMIN_DEVICE_MUTATION_INVALID")
+        payload = dict(payload); payload["actorId"] = str(actor.user_id); payload["correlationId"] = str(uuid.uuid4())
+        fresh_valid, fresh_actor = await run_database_read(verify_session, request, "super_admin", fresh=True, timeout_seconds=5)
+        if not fresh_valid or str(fresh_actor.user_id) not in settings.mapped_user_ids: return _error("Quyền quản trị không còn hợp lệ.", "SUPER_ADMIN_REQUIRED", 403)
+        result = _unwrap_upstream(await getattr(ChuanHoaAdminClient(settings), method_name)(payload, key))
+        await run_database_write(_record_audit(request, fresh_actor, "success", action=action))
+        return JSONResponse({"application": "chuan-hoa", "status": "available", "data": result}, headers={"Cache-Control": "private, no-store"})
+    except (ValueError, TypeError): return _error("Yêu cầu mutation thiết bị không hợp lệ.", "ADMIN_DEVICE_MUTATION_INVALID", 400)
+    except ChuanHoaIntegrationError as exc:
+        await run_database_write(_record_audit(request, actor, "failed", exc.code, action))
+        return _error(str(exc), exc.code, exc.status)
+
+
+async def admin_chuan_hoa_release_activation_device_api(request):
+    return await _admin_chuan_hoa_device_mutation(request, "release_activation_device", "admin.cross_application.activation_device_release")
+
+
+async def admin_chuan_hoa_reset_account_device_api(request):
+    return await _admin_chuan_hoa_device_mutation(request, "reset_account_device", "admin.cross_application.account_device_reset")
+
+
 async def admin_chuan_hoa_accounts_api(request):
     return await _admin_chuan_hoa_collection(request, "accounts")
 
@@ -207,4 +316,8 @@ def platform_chuan_hoa_routes(Route):
         Route("/api/admin/integrations/chuan-hoa/payments", admin_chuan_hoa_payments_api, methods=["GET"]),
         Route("/api/admin/integrations/chuan-hoa/audit", admin_chuan_hoa_audit_api, methods=["GET"]),
         Route("/api/admin/integrations/chuan-hoa/entitlements/extend", admin_chuan_hoa_extend_entitlement_api, methods=["POST"]),
+        Route("/api/admin/integrations/chuan-hoa/activation-keys", admin_chuan_hoa_create_activation_key_api, methods=["POST"]),
+        Route("/api/admin/integrations/chuan-hoa/activation-keys/revoke", admin_chuan_hoa_revoke_activation_key_api, methods=["POST"]),
+        Route("/api/admin/integrations/chuan-hoa/activation-keys/release-device", admin_chuan_hoa_release_activation_device_api, methods=["POST"]),
+        Route("/api/admin/integrations/chuan-hoa/accounts/reset-device", admin_chuan_hoa_reset_account_device_api, methods=["POST"]),
     ]
