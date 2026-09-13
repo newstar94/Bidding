@@ -22,7 +22,7 @@ from backend.ai.errors import AiError, ai_error
 from backend.ai.knowledge.repository import retrieve_for_context as retrieve_knowledge
 from backend.ai.prompt_policy import policy_for_mode
 from backend.ai.providers.legal_search import LegalSearchResult, create_legal_search_adapter
-from backend.ai.quota_service import consume_request, record_tokens
+from backend.ai.quota_service import consume_request, record_tokens, reserve_tokens, settle_reserved_tokens
 from backend.ai.tool_executor import execute_tool
 from backend.ai.tool_result_formatter import format_tool_result
 from backend.ai.tool_registry import tool_definitions
@@ -218,6 +218,8 @@ async def stream_message(
     )
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
+    reserved_tokens = max(1, len(content) // 4) + config.max_output_tokens
+    await run_database_write(reserve_tokens, context, reserved_tokens, config=config)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
     if target_hint:
         instructions += (
@@ -404,11 +406,12 @@ async def stream_message(
         await run_database_write(
             record_tokens,
             context,
-            input_tokens,
-            output_tokens,
+            0,
+            0,
             total_tool_calls,
             config=config,
         )
+        await run_database_write(settle_reserved_tokens, context, reserved_tokens, input_tokens, output_tokens)
         increment("ai_input_tokens_total", input_tokens)
         increment("ai_output_tokens_total", output_tokens)
         audit_chat(
@@ -424,6 +427,7 @@ async def stream_message(
         )
         yield {"type": "message.completed", "messageId": assistant_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "generatedAt": datetime.now().astimezone().isoformat(), "sources": all_sources}
     except AiError as exc:
+        await run_database_write(settle_reserved_tokens, context, reserved_tokens, 0, 0)
         if exc.code.startswith("AI_PROVIDER_"):
             increment("ai_provider_errors_total")
         audit_chat(request, context, conversation_id, mode=mode, status="failed", model=config.model, input_tokens=input_tokens, output_tokens=output_tokens, tool_call_count=total_tool_calls, error_code=exc.code)

@@ -245,6 +245,7 @@ def _commit_successful_login(
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=remember,
             device_info=device_info,
+            expected_password_hash=replacement_password_hash or user["mat_khau"],
         )
         access_payload = build_user_access_payload(
             cursor,
@@ -1473,9 +1474,12 @@ async def change_password_api(request):
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         conn.execute("BEGIN")
         cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
-            (new_password_hash, user['id'])
+            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ? AND mat_khau = ?",
+            (new_password_hash, user['id'], user['mat_khau'])
         )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return JSONResponse({"error": "Mật khẩu tài khoản đã thay đổi, vui lòng thử lại."}, status_code=409)
         revoke_user_sessions(cursor, user['id'])
         create_session(
             cursor,

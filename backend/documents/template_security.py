@@ -108,7 +108,10 @@ def create_template_environment() -> SandboxedEnvironment:
 
     environment = SandboxedEnvironment(
         undefined=StrictUndefined,
-        autoescape=False,
+        # DOCX placeholders are embedded directly in WordprocessingML XML.
+        # Escape scalar values so persisted text cannot terminate an XML node
+        # or inject markup during rendering.
+        autoescape=True,
     )
     environment.globals.clear()
     environment.tests.clear()

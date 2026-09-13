@@ -81,3 +81,43 @@ def record_tokens(
         connection.commit()
     finally:
         connection.close()
+
+
+def reserve_tokens(context: AiRequestContext, estimated_tokens: int, *, config: AiConfig) -> None:
+    """Atomically reserve the worst-case request budget before provider execution."""
+    amount = max(0, int(estimated_tokens or 0))
+    connection = database.get_connection()
+    try:
+        row = connection.execute(
+            """INSERT INTO ai_usage_daily (usage_date, organization_id, user_id, input_tokens, output_tokens)
+               VALUES (?, ?, ?, ?, 0)
+               ON CONFLICT (usage_date, organization_id, user_id) DO UPDATE SET
+                 input_tokens = ai_usage_daily.input_tokens + excluded.input_tokens,
+                 updated_at = CURRENT_TIMESTAMP
+               WHERE ai_usage_daily.input_tokens + ai_usage_daily.output_tokens + ? <= ?
+               RETURNING input_tokens""",
+            (_usage_date(), context.organization_id, context.user_id, amount, amount, config.daily_token_limit),
+        ).fetchone()
+        if not row:
+            connection.rollback()
+            increment("ai_quota_rejections_total")
+            raise ai_error("AI_QUOTA_EXCEEDED", "Bạn đã vượt quota token AI trong ngày của workspace này.")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def settle_reserved_tokens(context: AiRequestContext, reserved_tokens: int, actual_input: int, actual_output: int) -> None:
+    delta = max(0, int(actual_input or 0)) + max(0, int(actual_output or 0)) - max(0, int(reserved_tokens or 0))
+    if not delta:
+        return
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            """UPDATE ai_usage_daily SET input_tokens = input_tokens + ?, updated_at = CURRENT_TIMESTAMP
+               WHERE usage_date = ? AND organization_id = ? AND user_id = ?""",
+            (delta, _usage_date(), context.organization_id, context.user_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
