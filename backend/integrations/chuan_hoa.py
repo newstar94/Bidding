@@ -113,7 +113,8 @@ class ChuanHoaAdminClient:
         return self._request_json("GET", path, b"")
 
     def _request_json(self, method: str, path: str, body: bytes, idempotency_key: str = "") -> dict:
-        signed_path = urlparse(path).path
+        parsed_path = urlparse(path)
+        signed_path = parsed_path.path + (f"?{parsed_path.query}" if parsed_path.query else "")
         timestamp = str(int(time.time()))
         nonce = hashlib.sha256(os.urandom(32)).hexdigest()[:32]
         request = Request(

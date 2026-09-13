@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 from backend.ai.errors import ai_error
 from backend.ai.types import AiRequestContext
 from backend.auth.session_utils import get_active_org
@@ -21,6 +23,13 @@ MODULES = {
     "investors": "chudautu",
     "experts": "chuyengia",
 }
+
+
+def _verify_session_at_tool_boundary(request):
+    """Use fresh reload in production while preserving simple test seams."""
+    if "fresh" in inspect.signature(verify_session).parameters:
+        return verify_session(request, fresh=True)
+    return verify_session(request)
 
 
 def effective_workspace_role(
@@ -46,7 +55,9 @@ def effective_workspace_role(
 
 
 def build_request_context(request) -> AiRequestContext:
-    valid, session_or_error = verify_session(request)
+    # Every context build is an authorization boundary. Tool calls in a long
+    # AI stream must not reuse a request-cached session snapshot.
+    valid, session_or_error = _verify_session_at_tool_boundary(request)
     if not valid:
         raise ai_error("AI_AUTH_REQUIRED", "Phiên đăng nhập không hợp lệ.")
 

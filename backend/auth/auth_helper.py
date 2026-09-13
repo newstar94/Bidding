@@ -103,11 +103,11 @@ def password_needs_rehash(stored_password: str) -> bool:
 
 
 
-def _load_request_session_user(request, token):
+def _load_request_session_user(request, token, *, force_reload=False):
     """Load one persistent session snapshot per request, never across requests."""
 
     state = getattr(request, "state", None)
-    if (
+    if not force_reload and (
         state is not None
         and getattr(state, "auth_session_token", None) == token
         and hasattr(state, "auth_session_user")
@@ -170,14 +170,14 @@ def verify_recent_reauthentication(user):
         return False, PRIVILEGED_REAUTH_REQUIRED
     return True, None
 
-def verify_session(request, required_role=None):
+def verify_session(request, required_role=None, *, fresh=False):
     token = (request.cookies.get('session_token') or '').strip()
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
     # The snapshot lives only on this request. A new request always reloads
     # PostgreSQL, so revocation by another worker takes effect immediately.
-    user = _load_request_session_user(request, token)
+    user = _load_request_session_user(request, token, force_reload=fresh)
     now = int(time.time())
     if (
         user

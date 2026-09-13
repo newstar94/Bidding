@@ -26,6 +26,11 @@ production-ready.
 | Migration additive + rollback | fixed | V002 up/down assertions pass |
 | Authenticator valid/missing/wrong/expired/replay/revoked + POST body tamper | fixed | 34 API tests pass, including TestServer HTTP capability/collection/mutation contract |
 | Persistence replay/conflict/concurrency | fixed | 7 PostgreSQL integration tests pass |
+| Multi-replica HMAC nonce replay | fixed locally | PostgreSQL-backed `admin_integration_replay_nonces`, additive V003 migration, atomic insert-if-absent; persistence harness applies/asserts V003 |
+| Raw-body Unicode HMAC | fixed | 36 Chuẩn Hóa API tests include exact UTF-8 Vietnamese payload |
+| Query-string HMAC integrity | fixed | Bidding/Chuẩn Hóa canonical contract tests cover encoded search/page and tampered query |
+| Mutation authority race | fixed locally | Bidding rechecks fresh session/role/mapping immediately before upstream dispatch; regression test |
+| AI per-tool session freshness | fixed locally | AI context reloads session at each tool boundary; existing scope/session tests pass |
 | Visual QA responsive/accessibility | fixed | Playwright 375×812 và 1280×800; no overflow, 0 serious/critical axe |
 | Local signed HTTP controller contract | fixed | ASP.NET TestServer exercises routing, authenticator, controller and fake store |
 | Local two-process HTTPS HTTP E2E | fixed | `scripts/verify_chuan_hoa_https_contract.ps1` chạy PostgreSQL tạm, Kestrel HTTPS thật và Bidding client; capability/audit/mutation pass |
@@ -36,7 +41,7 @@ production-ready.
 
 ## Gates đã chạy
 
-- BiddingFlow full suite: 2391 passed, 1 skipped; coverage 64.85%; critical
+- BiddingFlow full suite: 2393 passed, 1 skipped; coverage 64.85%; critical
   Python ratchet pass với 18 module (gồm hai module integration mới) và JS
   coverage/ratchet pass với 14 module.
 - `npm run build:secure`: pass, 168 obfuscated bundles.
@@ -45,7 +50,8 @@ production-ready.
   Kestrel certificate; no production endpoint was contacted.
 - `npm run lint:security`, `npm run lint:modules`, `git diff --check`: pass.
 - Chuẩn Hóa API: 34 passed; build 0 warning/0 error.
-- Chuẩn Hóa PostgreSQL persistence: 7 passed.
+- Chuẩn Hóa PostgreSQL persistence: 7 passed; V001/V002/V003 migrations và
+  assertions pass, gồm bảng replay nonce đa-instance.
 
 ## Giới hạn kết luận
 

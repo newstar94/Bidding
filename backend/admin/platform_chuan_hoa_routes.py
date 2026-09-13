@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 from starlette.responses import JSONResponse
 
 from backend.auth.auth_helper import verify_session
@@ -132,7 +133,13 @@ async def admin_chuan_hoa_extend_entitlement_api(request):
     if len(key) < 16 or len(key) > 128:
         return _error("Idempotency-Key không hợp lệ.", "INVALID_IDEMPOTENCY_KEY", 400)
     try:
-        payload = await request.json()
+        if hasattr(request, "body"):
+            raw_body = await request.body()
+            if len(raw_body) > 1_048_576:
+                return _error("Request quá lớn.", "INTEGRATION_BODY_TOO_LARGE", 413)
+            payload = json.loads(raw_body.decode("utf-8"))
+        else:
+            payload = await request.json()
         if not isinstance(payload, dict): raise ValueError("ADMIN_ENTITLEMENT_REQUEST_INVALID")
         payload = dict(payload)
         payload["actorId"] = str(actor.user_id)
@@ -141,6 +148,17 @@ async def admin_chuan_hoa_extend_entitlement_api(request):
             payload["correlationId"] = str(uuid.UUID(str(request_id)))
         except (ValueError, AttributeError):
             payload["correlationId"] = str(uuid.uuid4())
+        # Body parsing may be slow. Re-read session, revocation and role at the
+        # authoritative mutation boundary; the initial check only gates work.
+        fresh_valid, fresh_actor = await run_database_read(
+            verify_session, request, "super_admin", fresh=True, timeout_seconds=5
+        )
+        if not fresh_valid:
+            return _error(str(fresh_actor), "SUPER_ADMIN_REQUIRED", 403)
+        if str(fresh_actor.user_id) not in settings.mapped_user_ids:
+            return _error("Tài khoản chưa được ánh xạ quyền quản trị Chuẩn Hóa.", "CHUAN_HOA_ADMIN_NOT_MAPPED", 403)
+        actor = fresh_actor
+        payload["actorId"] = str(fresh_actor.user_id)
         result = _unwrap_upstream(await ChuanHoaAdminClient(settings).extend_entitlement(payload, key))
         await run_database_write(_record_audit(request, actor, "success", action="admin.cross_application.entitlement_extend"))
         return JSONResponse({"application": "chuan-hoa", "status": "available", "data": result}, headers={"Cache-Control": "private, no-store"})

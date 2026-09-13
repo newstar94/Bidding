@@ -35,7 +35,9 @@ no migration or data rewrite is required.
 ## Audit and idempotency
 
 The integration authentication contract includes client identity, timestamp and
-single-use nonce. Mutation endpoints must use the target application's existing
+single-use nonce. Nonces are claimed in a PostgreSQL-backed shared replay store
+with bounded expiry and an atomic `(client_id, nonce)` key, so multiple API
+replicas cannot accept the same nonce independently. Mutation endpoints must use the target application's existing
 idempotency contract and record Bidding actor, target application, object,
 action, result and correlation id in both audit systems. Entitlement extension
 satisfies this contract; further payment or lease commands require separate

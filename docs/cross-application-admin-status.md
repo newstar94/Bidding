@@ -48,12 +48,12 @@ không được dùng làm production API.
 
 ## Kiểm thử
 
-- BiddingFlow: full suite — 2391 Python tests passed, 1 skipped; coverage 64.85%; critical Python ratchet passed for 18 modules (including both integration modules); JS coverage rerun and critical JS ratchet passed for 14 modules.
+- BiddingFlow: full suite — 2393 Python tests passed, 1 skipped; coverage 64.85%; critical Python ratchet passed for 18 modules (including both integration modules); JS coverage rerun and critical JS ratchet passed for 14 modules.
 - BiddingFlow: python -m pytest -q tests/test_chuan_hoa_integration.py — 13 passed; bao gồm envelope validation, mapped/unmapped, workspace denial, actor override và timeout unknown-result.
 - BiddingFlow: Admin router/icon/plans JavaScript tests — 17 passed.
 - BiddingFlow: python -m compileall -q backend tests — passed.
 - Chuẩn Hóa: dotnet test tests/ChuanHoa.Api.Tests/ChuanHoa.Api.Tests.csproj --no-restore — 34 passed, gồm revoke/missing-toggle và contract HTTP TestServer cho capability/collection/mutation.
-- Chuẩn Hóa: V001/V002 migration/rollback assertions — PASS; persistence suite
+- Chuẩn Hóa: V001/V002/V003 migration assertions — PASS; persistence suite
   chạy 7 test tích hợp và V002 có SQL
   assertions cho bảng idempotency/audit và index rollback. Persistence suite
   bao gồm replay cùng key, conflict khác payload và concurrent cùng key.

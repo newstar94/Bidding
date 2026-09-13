@@ -62,6 +62,30 @@ def test_integration_signature_is_stable_for_contract():
     assert value == expected
 
 
+def test_collection_signature_covers_query_string(monkeypatch):
+    settings = ChuanHoaIntegrationSettings(
+        "https://chuanhoa.example.test", "bidding-admin", "s" * 32, frozenset({"u-1"})
+    )
+    seen = []
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return b'{"items":[],"page":2,"pageSize":25,"total":0}'
+    def fake_urlopen(request, **_options):
+        seen.append(request)
+        return Response()
+    monkeypatch.setattr("backend.integrations.chuan_hoa.urlopen", fake_urlopen)
+    asyncio.run(ChuanHoaAdminClient(settings).read_collection("accounts", search="Đà Nẵng", page=2))
+    request = seen[0]
+    parsed = __import__("urllib.parse", fromlist=["urlparse"]).urlparse(request.full_url)
+    signed_path = parsed.path + "?" + parsed.query
+    assert request.get_header("X-integration-signature") == integration_signature(
+        settings.shared_secret, "GET", signed_path,
+        request.get_header("X-integration-timestamp"),
+        request.get_header("X-integration-nonce"), request.data or b"",
+    )
+
+
 def test_mapped_admin_ids_are_explicit(monkeypatch):
     monkeypatch.setenv("CHUAN_HOA_ADMIN_BASE_URL", "https://chuanhoa.example.test")
     monkeypatch.setenv("CHUAN_HOA_ADMIN_CLIENT_ID", "bidding-admin")
@@ -162,6 +186,32 @@ def test_mutation_overwrites_browser_actor_and_preserves_unknown_timeout(monkeyp
     assert json.loads(response.body)["code"] == "CHUAN_HOA_INTEGRATION_TIMEOUT"
     assert received[0][0]["actorId"] == "admin-1"
     assert received[0][0]["correlationId"] == "00000000-0000-0000-0000-000000000001"
+
+
+def test_mutation_rechecks_authority_before_upstream_dispatch(monkeypatch):
+    actor = SimpleNamespace(user_id="admin-1")
+    calls = []
+    async def auth(*_args, **kwargs):
+        calls.append(kwargs.get("fresh", False))
+        return (False, "Session revoked") if kwargs.get("fresh") else (True, actor)
+    async def write(_operation): return None
+    class Request:
+        headers = {"Idempotency-Key": "idempotency-key-123456"}
+        query_params = {}
+        state = SimpleNamespace()
+        async def json(self):
+            return {"userId": "user-1", "productId": "product-1", "featureCodes": ["a"], "durationDays": 30, "reason": "support"}
+    class Client:
+        def __init__(self, _settings): pass
+        async def extend_entitlement(self, *_args, **_kwargs):
+            raise AssertionError("revoked authority must not dispatch upstream")
+    monkeypatch.setattr(routes, "run_database_read", auth)
+    monkeypatch.setattr(routes, "run_database_write", write)
+    monkeypatch.setattr(routes, "ChuanHoaAdminClient", Client)
+    monkeypatch.setenv("CHUAN_HOA_ADMIN_MAPPED_USER_IDS", "admin-1")
+    response = asyncio.run(routes.admin_chuan_hoa_extend_entitlement_api(Request()))
+    assert response.status_code == 403
+    assert calls == [False, True]
 
 
 def test_audit_resource_is_allowlisted_and_signed(monkeypatch):
