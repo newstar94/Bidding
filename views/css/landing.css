@@ -2173,9 +2173,9 @@ html[data-bf-shell="workspace"] .landing-page {
 }
 
 [data-landing-reveal] {
-  opacity: 1;
-  transform: none;
-  transition: none;
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 520ms ease var(--landing-reveal-delay, 0ms), transform 520ms cubic-bezier(.2,.8,.2,1) var(--landing-reveal-delay, 0ms);
 }
 
 [data-landing-reveal].is-visible {
@@ -2571,6 +2571,8 @@ html[data-bf-shell="workspace"] .landing-page {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-landing-reveal] { opacity: 1; transform: none; transition: none; }
+  .landing-process-list li.is-active { transform: none; }
   html[data-bf-shell="landing"] {
     scroll-behavior: auto;
   }
@@ -3063,6 +3065,22 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-process-list li:last-child {
   border-right: 0;
+}
+
+.landing-process-list li {
+  position: relative;
+  transition: background-color 240ms ease, transform 240ms ease;
+}
+
+.landing-process-list li.is-active {
+  background: color-mix(in srgb, var(--landing-blue) 7%, transparent);
+  transform: translateY(-2px);
+}
+
+.landing-process-list li.is-active > i {
+  color: var(--landing-blue);
+  background: #e9efff;
+  box-shadow: 0 0 0 5px rgba(36, 86, 230, .08);
 }
 
 .landing-process-list li > span {

@@ -2,6 +2,7 @@ const LOGIN_PATH = "/dang-nhap";
 const WORKSPACE_PATH = "/tong-quan";
 const LANDING_HISTORY_SCROLL_KEY = "bfLandingScrollY";
 let landingHistoryCaptureInstalled = false;
+let landingMotionCleanup = null;
 
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
@@ -81,6 +82,30 @@ function installMobileNavigation() {
   window.matchMedia("(min-width: 901px)").addEventListener("change", (event) => {
     if (event.matches) close();
   });
+}
+
+function installLandingMotion() {
+  if (landingMotionCleanup) return;
+  const root = document.getElementById("landing-page");
+  if (!root) return;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const revealNodes = [...root.querySelectorAll("[data-landing-reveal]")];
+  const processItems = [...root.querySelectorAll(".landing-process-list > li")];
+  if (reduced.matches || !("IntersectionObserver" in window)) {
+    revealNodes.forEach((node) => node.classList.add("is-visible"));
+    landingMotionCleanup = () => {};
+    return;
+  }
+  revealNodes.forEach((node, index) => node.style.setProperty("--landing-reveal-delay", `${Math.min(index * 45, 260)}ms`));
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => { if (entry.isIntersecting) entry.target.classList.add("is-visible"); });
+  }, { rootMargin: "0px 0px -12% 0px", threshold: 0.12 });
+  revealNodes.forEach((node) => revealObserver.observe(node));
+  const processObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => entry.target.classList.toggle("is-active", entry.isIntersecting));
+  }, { rootMargin: "-38% 0px -48% 0px", threshold: 0 });
+  processItems.forEach((node) => processObserver.observe(node));
+  landingMotionCleanup = () => { revealObserver.disconnect(); processObserver.disconnect(); };
 }
 
 function createLandingIcon(name) {
@@ -303,6 +328,7 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   applySessionAwareLinks(session);
   installHeaderState();
   installMobileNavigation();
+  installLandingMotion();
   installLandingHistoryScrollCapture();
   // WebKit resolves the fragment while the landing shell is still hidden and
   // can therefore retain the URL at the top of the page after a reload. Once
