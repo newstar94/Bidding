@@ -12,6 +12,12 @@ WORD_DEFAULT_MAPPINGS_VERSION = 16
 
 
 WORD_SINGLE_SOURCES = {
+    "cv_khong_ap_dung": ["ten_cong_viec", "gia_tri", "don_vi_thuc_hien"],
+    "cv_chua_du_dieu_kien": ["ten_cong_viec", "gia_tri"],
+    "cv_da_thuc_hien": [
+        "ten_cong_viec", "gia_tri", "don_vi_thuc_hien", "van_ban_phe_duyet",
+        "tham_dinh_gia", "so_chung_thu_tham_dinh_gia",
+    ],
     "chu_dau_tu": [
         "phien_ban",
         "ma_chu_dau_tu",
@@ -95,6 +101,7 @@ WORD_SINGLE_SOURCES = {
         "is_thuoc",
         "trang_thai",
         "yeu_cau_tham_dinh_hsmt",
+        "yeu_cau_tham_dinh_hsmt_code",
         "so_bao_cao_tham_dinh_hsmt",
         "ngay_bao_cao_tham_dinh_hsmt",
         "so_to_trinh_hsmt",
@@ -207,6 +214,9 @@ WORD_SINGLE_SOURCES = {
 
 
 WORD_SINGLE_PREFIXES = {
+    "cv_da_thuc_hien": "cv",
+    "cv_khong_ap_dung": "cv",
+    "cv_chua_du_dieu_kien": "cv",
     "chu_dau_tu": "cdt",
     "ke_hoach_lcnt": "kh",
     "goi_thau": "gt",
@@ -220,6 +230,17 @@ WORD_SINGLE_PREFIXES = {
 }
 
 WORD_SINGLE_NAME_OVERRIDES = {
+    ("cv_khong_ap_dung", "ten_cong_viec"): "ten_cv_khong_ap_dung",
+    ("cv_khong_ap_dung", "gia_tri"): "gia_tri_cv_khong_ap_dung",
+    ("cv_khong_ap_dung", "don_vi_thuc_hien"): "don_vi_cv_khong_ap_dung",
+    ("cv_chua_du_dieu_kien", "ten_cong_viec"): "ten_cv_chua_du_dieu_kien",
+    ("cv_chua_du_dieu_kien", "gia_tri"): "gia_tri_cv_chua_du_dieu_kien",
+    ("cv_da_thuc_hien", "ten_cong_viec"): "ten_cv_da_thuc_hien",
+    ("cv_da_thuc_hien", "gia_tri"): "gia_tri_cv_da_thuc_hien",
+    ("cv_da_thuc_hien", "don_vi_thuc_hien"): "don_vi_cv_da_thuc_hien",
+    ("cv_da_thuc_hien", "van_ban_phe_duyet"): "van_ban_phe_duyet_cv_da_thuc_hien",
+    ("cv_da_thuc_hien", "tham_dinh_gia"): "tham_dinh_gia_cv_da_thuc_hien",
+    ("cv_da_thuc_hien", "so_chung_thu_tham_dinh_gia"): "so_chung_thu_tham_dinh_gia",
     ("chu_dau_tu", "ma_chu_dau_tu"): "ma_cdt",
     ("chu_dau_tu", "ten_chu_dau_tu"): "ten_cdt",
     ("chu_dau_tu", "ngay_ap_dung"): "ngay_ap_dung_cdt",
@@ -422,6 +443,11 @@ WORD_LIST_MAPPINGS = [
 
 
 WORD_CONTEXT_MAPPINGS = [
+    ("tdg_ten_cong_viec", "tdg_ten_cong_viec", "Tên công việc thẩm định giá"),
+    ("tdg_gia_tri", "tdg_gia_tri", "Giá trị công việc thẩm định giá"),
+    ("tdg_don_vi_thuc_hien", "tdg_don_vi_thuc_hien", "Đơn vị thực hiện thẩm định giá"),
+    ("tdg_hop_dong", "tdg_hop_dong", "Hợp đồng thẩm định giá"),
+    ("tdg_so_chung_thu", "tdg_so_chung_thu", "Số chứng thư thẩm định giá"),
     ("tong_so_lo", "tong_so_phan_lo", "Tổng số phần lô"),
     ("so_lo_co_nt", "so_phan_lo_co_nha_thau_tham_du", "Số phần lô có nhà thầu tham dự"),
     ("so_lo_khong_nt", "so_phan_lo_khong_co_nha_thau_tham_du", "Số phần lô không có nhà thầu tham dự"),
@@ -481,7 +507,8 @@ def build_default_word_mappings():
 
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
         mappings.append({
-            "mapping_key": f"context:{source_table}",
+                "mapping_key": f"context:{source_table}",
+                "format": "currency" if source_table == "tdg_gia_tri" else "text",
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,

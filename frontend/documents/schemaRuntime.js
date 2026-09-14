@@ -150,6 +150,7 @@ const RUNTIME_SCHEMA = {
     "noi_mo_tai_khoan": "noiMoTaiKhoan",
     "organization_id": "organizationId",
     "owner_type": "ownerType",
+    "owner_user_id": "ownerUserId",
     "phan_lo": "phanLo",
     "phan_lo_id": "phanLoId",
     "phan_loai": "phanLoai",
@@ -645,7 +646,10 @@ const RUNTIME_SCHEMA = {
     "to_chuc": {
       "created_at": "createdAt",
       "id": "id",
+      "ma_so_thue": "maSoThue",
+      "owner_user_id": "ownerUserId",
       "ten_to_chuc": "tenToChuc",
+      "ten_viet_tat": "tenVietTat",
       "trang_thai": "trangThai",
       "updated_at": "updatedAt"
     }

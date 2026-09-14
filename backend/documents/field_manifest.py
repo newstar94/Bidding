@@ -119,6 +119,7 @@ FIELD_LABELS_BY_TABLE = {
         "is_thuoc": "Là gói thầu thuốc",
         "trang_thai": "Trạng thái gói thầu",
         "yeu_cau_tham_dinh_hsmt": "Yêu cầu thẩm định HSMT",
+        "yeu_cau_tham_dinh_hsmt_code": "Mã yêu cầu thẩm định HSMT",
         "so_bao_cao_tham_dinh_hsmt": "Số báo cáo thẩm định HSMT",
         "ngay_bao_cao_tham_dinh_hsmt": "Ngày báo cáo thẩm định HSMT",
         "so_to_trinh_hsmt": "Số tờ trình phê duyệt HSMT",

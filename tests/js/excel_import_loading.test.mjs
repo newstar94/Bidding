@@ -124,6 +124,34 @@ test("shared application loading surface announces Excel and Word progress", asy
 
     await page.evaluate(() => globalThis.excelLoading.close());
     await loading.waitFor({ state: "hidden" });
+    const failedSave = await page.evaluate(async () => {
+      const { persistAndSync } = await import('/frontend/shared/MutationService.js');
+      let message;
+      try {
+        await persistAndSync({ model: {
+          persistChanges: async () => { throw new Error('storage unavailable'); },
+        } }, 'goithau', { changes: { upserts: { goithau: [{ id: 'test' }] } } });
+      } catch (error) { message = error.message; }
+      return { message, busy: document.body.getAttribute('aria-busy'), inert: document.querySelector('main').inert };
+    });
+    assert.equal(failedSave.message, 'storage unavailable');
+    assert.equal(failedSave.busy, null, 'failed persistence must release the blocking overlay');
+    assert.equal(failedSave.inert, false);
+    const saveDelays = await page.evaluate(async () => {
+      const { persistAndSync } = await import('/frontend/shared/MutationService.js');
+      const originalTimer = window.setTimeout;
+      const delays = [];
+      window.setTimeout = (callback, milliseconds, ...args) => {
+        delays.push(milliseconds);
+        return originalTimer(callback, milliseconds, ...args);
+      };
+      try {
+        await persistAndSync({ model: { persistChanges: async () => {} }, autoSync: async () => ({ ok: true }) },
+          'goithau', { changes: { upserts: { goithau: [{ id: 'test' }] } } });
+      } finally { window.setTimeout = originalTimer; }
+      return delays.filter((milliseconds) => milliseconds > 0);
+    });
+    assert.deepEqual(saveDelays, [], 'saving must not wait for cosmetic minimum-duration or exit timers');
     assert.equal(await page.locator("body").getAttribute("aria-busy"), null);
     assert.equal(await page.locator("main").getAttribute("inert"), null);
   } finally {

@@ -1171,6 +1171,43 @@ export function addBreakdownRow(type, data = null) {
         `);
   }
   const priceInput = row.querySelector(".breakdown-value");
+  if (type === "dathuchien") {
+    const cell = document.createElement("td");
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "breakdown-appraisal";
+    checkbox.checked = data?.thamDinhGia === true || data?.thamDinhGia === 1;
+    label.append(checkbox, document.createTextNode(" Thẩm định giá"));
+    cell.append(label);
+    row.insertBefore(cell, row.lastElementChild);
+    const documentInput = row.querySelector(".breakdown-doc");
+    const certificateLabel = document.createElement("label");
+    certificateLabel.textContent = "Số chứng thư";
+    const certificate = document.createElement("input");
+    certificate.type = "text";
+    certificate.className = "breakdown-certificate bf-s-fa7eceb10a";
+    certificate.value = data?.soChungThuThamDinhGia || "";
+    certificate.placeholder = "Nhập số chứng thư thẩm định giá…";
+    certificateLabel.append(certificate);
+    documentInput.parentElement.append(certificateLabel);
+    const updateAppraisalFields = () => {
+      documentInput.placeholder = checkbox.checked ? "Hợp đồng…" : "Văn bản phê duyệt…";
+      documentInput.setAttribute("aria-label", checkbox.checked ? "Hợp đồng" : "Văn bản phê duyệt");
+      certificateLabel.hidden = !checkbox.checked;
+    };
+    checkbox.addEventListener("change", updateAppraisalFields);
+    updateAppraisalFields();
+    checkbox.addEventListener("change", () => {
+      if (!checkbox.checked) return;
+      tbody.querySelectorAll(".breakdown-appraisal").forEach((other) => {
+        if (other !== checkbox && other.checked) {
+          other.checked = false;
+          other.dispatchEvent(new Event("change"));
+        }
+      });
+    });
+  }
   if (priceInput) {
     bindCurrencyElement(priceInput, (value) => this.model.formatVND(value));
     priceInput.addEventListener("input", () => {
@@ -1250,6 +1287,8 @@ function collectBreakdownRows(controller, type) {
         giaTri,
         donViThucHien: tr.querySelector(".breakdown-unit")?.value.trim() || "",
         vanBanPheDuyet: tr.querySelector(".breakdown-doc")?.value.trim() || "",
+        thamDinhGia: Boolean(tr.querySelector(".breakdown-appraisal")?.checked),
+        soChungThuThamDinhGia: tr.querySelector(".breakdown-certificate")?.value.trim() || "",
       });
     } else if (type === "khongapdung") {
       rows.push({

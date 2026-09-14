@@ -918,6 +918,15 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
             )
         return AccessDecision(True)
     organization_manager = is_organization_manager(cursor, role_str, user_id, organization_id)
+    if table_name == "phan_cong_nhan_su" and (organization_manager or is_manager_role(role_str)):
+        employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
+        target_role = cursor.execute(
+            "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ? AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'",
+            (employee_id, organization_id),
+        ).fetchone()
+        owner = cursor.execute("SELECT owner_user_id FROM to_chuc WHERE id = ?", (organization_id,)).fetchone()
+        if target_role and str(target_role[0] or '') == 'manager' and owner and str(owner[0] or '') != str(user_id) and str(role_str).lower() != 'super_admin':
+            return AccessDecision(False, "Quản lý được bổ nhiệm không được giao việc cho quản lý ngang hàng hoặc quản lý tối cao.")
     if table_name == "phan_cong_nhan_su" and not organization_manager and not is_manager_role(role_str):
         employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
         target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))

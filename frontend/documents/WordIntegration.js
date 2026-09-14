@@ -636,7 +636,8 @@ export function setupWordTemplatesEvents() {
       return;
     }
     const mappings = this.model.state?.wordMappings || [];
-    const match = mappings.find((m) => m.sourceTable === table && m.sourceColumn === column);
+    const match = mappings.find((m) => m.sourceTable === table && m.sourceColumn === column)
+      || DEFAULT_WORD_VARIABLES.find((m) => m.sourceTable === table && m.sourceColumn === column);
     setRuntimeStyle(statusDiv, "display", "block");
     if (match) {
       statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {${escapeHtml(match.tenBien)}}</span>`);
@@ -657,7 +658,8 @@ export function setupWordTemplatesEvents() {
       return;
     }
     const mappings = this.model.state?.wordMappings || [];
-    const match = mappings.find((m) => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === "*"));
+    const match = mappings.find((m) => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === "*"))
+      || DEFAULT_WORD_VARIABLES.find((m) => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === "*"));
     setRuntimeStyle(statusDiv, "display", "block");
     if (match) {
       statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {#${escapeHtml(match.tenBien)}}</span>`);

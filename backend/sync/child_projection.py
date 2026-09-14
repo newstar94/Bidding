@@ -28,6 +28,8 @@ def shape_child(
             shaped[key] = value
         elif snake_key.startswith("gia_") or snake_key in {"bao_dam_du_thau"}:
             shaped[key] = money_json_value(value or 0)
+        elif snake_key == "tham_dinh_gia":
+            shaped[key] = bool(value)
         elif snake_key in {"so_luong", "ty_le"}:
             shaped[key] = value or 0
         else:
@@ -45,6 +47,8 @@ def format_plan_child(row: Mapping[str, object], naming: str) -> dict[str, objec
             ("gia_tri", "giaTri"),
             ("don_vi_thuc_hien", "donViThucHien"),
             ("van_ban_phe_duyet", "vanBanPheDuyet"),
+            ("tham_dinh_gia", "thamDinhGia"),
+            ("so_chung_thu_tham_dinh_gia", "soChungThuThamDinhGia"),
         ],
     )
 

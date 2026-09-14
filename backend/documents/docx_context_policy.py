@@ -68,7 +68,7 @@ def _word_fields(table_name: str) -> set[str]:
 
 
 _PLAN_WORK_FIELDS = frozenset(
-    {"id", "ten_cong_viec", "gia_tri", "don_vi_thuc_hien", "van_ban_phe_duyet"}
+    {"id", "ten_cong_viec", "gia_tri", "don_vi_thuc_hien", "van_ban_phe_duyet", "tham_dinh_gia", "so_chung_thu_tham_dinh_gia"}
 )
 _PLAN_BASIS_FIELDS = frozenset(
     {
@@ -324,6 +324,8 @@ ENTITY_SPECS = {
 
 
 _COMMON_SCALAR_ROOTS = {
+    "tdg_ten_cong_viec", "tdg_gia_tri", "tdg_don_vi_thuc_hien",
+    "tdg_hop_dong", "tdg_so_chung_thu",
     "investor_name",
     "investor_address",
     "current_time",

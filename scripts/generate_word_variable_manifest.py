@@ -50,8 +50,30 @@ def build_frontend_defaults():
         label = (
             field_label(source_column, source_table)
             if source_column
-            else mapping["mo_ta"]
+            else re.sub(
+                r"^Danh sách mặc định từ schema hệ thống:\s*",
+                "",
+                mapping["mo_ta"],
+            )
         )
+        if source_column == "ten_cong_viec" and source_table in {"cv_da_thuc_hien", "cv_khong_ap_dung", "cv_chua_du_dieu_kien"}:
+            label = "Tên công việc"
+        elif source_column == "gia_tri" and source_table in {"cv_da_thuc_hien", "cv_khong_ap_dung", "cv_chua_du_dieu_kien"}:
+            label = "Giá trị công việc"
+        elif source_column == "van_ban_phe_duyet" and source_table == "cv_da_thuc_hien":
+            label = "Văn bản phê duyệt / Hợp đồng"
+        elif source_column in {"tdg_don_vi_thuc_hien", "don_vi_thuc_hien"} and source_table.startswith("cv_"):
+            label = "Đơn vị thực hiện công việc"
+        elif source_column == "tdg_don_vi_thuc_hien":
+            label = "Đơn vị thực hiện thẩm định giá"
+        elif source_column == "tdg_ten_cong_viec":
+            label = "Tên công việc thẩm định giá"
+        elif source_column == "tdg_gia_tri":
+            label = "Giá trị công việc thẩm định giá"
+        elif source_column == "tdg_hop_dong":
+            label = "Hợp đồng thẩm định giá"
+        elif source_column == "tdg_so_chung_thu":
+            label = "Số chứng thư thẩm định giá"
         result.append(
             {
                 "format": mapping.get("format", "text"),

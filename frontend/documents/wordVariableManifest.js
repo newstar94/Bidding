@@ -734,6 +734,15 @@ export const FIELD_METADATA_BY_TABLE = {
       "wordVariable": "yc_tham_dinh_hsmt",
       "excelCompatible": true
     },
+    "yeu_cau_tham_dinh_hsmt_code": {
+      "column": "yeu_cau_tham_dinh_hsmt_code",
+      "jsonKey": "yeuCauThamDinhHsmtCode",
+      "dataType": "string",
+      "label": "Mã yêu cầu thẩm định HSMT",
+      "format": "text",
+      "wordVariable": "gt_yeu_cau_tham_dinh_hsmt_code",
+      "excelCompatible": true
+    },
     "so_bao_cao_tham_dinh_hsmt": {
       "column": "so_bao_cao_tham_dinh_hsmt",
       "jsonKey": "soBaoCaoThamDinhHsmt",
@@ -1440,6 +1449,83 @@ export function getWordColumnLabel(tableName, columnName) {
 export const DEFAULT_WORD_VARIABLES = [
   {
     "format": "text",
+    "label": "Tên công việc",
+    "name": "ten_cv_khong_ap_dung",
+    "sourceColumn": "ten_cong_viec",
+    "sourceTable": "cv_khong_ap_dung"
+  },
+  {
+    "format": "currency",
+    "label": "Giá trị công việc",
+    "name": "gia_tri_cv_khong_ap_dung",
+    "sourceColumn": "gia_tri",
+    "sourceTable": "cv_khong_ap_dung"
+  },
+  {
+    "format": "text",
+    "label": "Đơn vị thực hiện công việc",
+    "name": "don_vi_cv_khong_ap_dung",
+    "sourceColumn": "don_vi_thuc_hien",
+    "sourceTable": "cv_khong_ap_dung"
+  },
+  {
+    "format": "text",
+    "label": "Tên công việc",
+    "name": "ten_cv_chua_du_dieu_kien",
+    "sourceColumn": "ten_cong_viec",
+    "sourceTable": "cv_chua_du_dieu_kien"
+  },
+  {
+    "format": "currency",
+    "label": "Giá trị công việc",
+    "name": "gia_tri_cv_chua_du_dieu_kien",
+    "sourceColumn": "gia_tri",
+    "sourceTable": "cv_chua_du_dieu_kien"
+  },
+  {
+    "format": "text",
+    "label": "Tên công việc",
+    "name": "ten_cv_da_thuc_hien",
+    "sourceColumn": "ten_cong_viec",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "currency",
+    "label": "Giá trị công việc",
+    "name": "gia_tri_cv_da_thuc_hien",
+    "sourceColumn": "gia_tri",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
+    "label": "Đơn vị thực hiện công việc",
+    "name": "don_vi_cv_da_thuc_hien",
+    "sourceColumn": "don_vi_thuc_hien",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
+    "label": "Văn bản phê duyệt / Hợp đồng",
+    "name": "van_ban_phe_duyet_cv_da_thuc_hien",
+    "sourceColumn": "van_ban_phe_duyet",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
+    "label": "Tham dinh giá",
+    "name": "tham_dinh_gia_cv_da_thuc_hien",
+    "sourceColumn": "tham_dinh_gia",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
+    "label": "Số chung thu tham dinh giá",
+    "name": "so_chung_thu_tham_dinh_gia",
+    "sourceColumn": "so_chung_thu_tham_dinh_gia",
+    "sourceTable": "cv_da_thuc_hien"
+  },
+  {
+    "format": "text",
     "label": "Phiên bản dữ liệu",
     "name": "cdt_phien_ban",
     "sourceColumn": "phien_ban",
@@ -1982,6 +2068,13 @@ export const DEFAULT_WORD_VARIABLES = [
     "label": "Yêu cầu thẩm định HSMT",
     "name": "yc_tham_dinh_hsmt",
     "sourceColumn": "yeu_cau_tham_dinh_hsmt",
+    "sourceTable": "goi_thau"
+  },
+  {
+    "format": "text",
+    "label": "Mã yêu cầu thẩm định HSMT",
+    "name": "gt_yeu_cau_tham_dinh_hsmt_code",
+    "sourceColumn": "yeu_cau_tham_dinh_hsmt_code",
     "sourceTable": "goi_thau"
   },
   {
@@ -2637,6 +2730,41 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
+    "label": "Tên công việc thẩm định giá",
+    "name": "tdg_ten_cong_viec",
+    "sourceColumn": "tdg_ten_cong_viec",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "currency",
+    "label": "Giá trị công việc thẩm định giá",
+    "name": "tdg_gia_tri",
+    "sourceColumn": "tdg_gia_tri",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Đơn vị thực hiện thẩm định giá",
+    "name": "tdg_don_vi_thuc_hien",
+    "sourceColumn": "tdg_don_vi_thuc_hien",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Hợp đồng thẩm định giá",
+    "name": "tdg_hop_dong",
+    "sourceColumn": "tdg_hop_dong",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Số chứng thư thẩm định giá",
+    "name": "tdg_so_chung_thu",
+    "sourceColumn": "tdg_so_chung_thu",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
     "label": "Tổng số phần lô",
     "name": "tong_so_lo",
     "sourceColumn": "tong_so_phan_lo",
@@ -2714,238 +2842,238 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT",
+    "label": "Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT",
     "name": "ds_can_cu_lap_ke_hoach",
     "sourceColumn": "",
     "sourceTable": "ke_hoach_can_cu"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách gói thầu của kế hoạch",
+    "label": "Danh sách gói thầu của kế hoạch",
     "name": "ds_gt",
     "sourceColumn": "",
     "sourceTable": "goi_thau_trong_ke_hoach"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phiên bản của gói thầu",
+    "label": "Danh sách phiên bản của gói thầu",
     "name": "ds_phien_ban_gt",
     "sourceColumn": "",
     "sourceTable": "goi_thau_versions"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phiên bản của kế hoạch LCNT",
+    "label": "Danh sách phiên bản của kế hoạch LCNT",
     "name": "ds_phien_ban_kh",
     "sourceColumn": "",
     "sourceTable": "ke_hoach_versions"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Tổ chuyên gia của gói thầu",
+    "label": "Tổ chuyên gia của gói thầu",
     "name": "ds_to_chuyen_gia",
     "sourceColumn": "",
     "sourceTable": "to_chuyen_gia"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Tổ thẩm định của gói thầu",
+    "label": "Tổ thẩm định của gói thầu",
     "name": "ds_to_tham_dinh",
     "sourceColumn": "",
     "sourceTable": "to_tham_dinh"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách thông tin mở thầu",
+    "label": "Danh sách thông tin mở thầu",
     "name": "ds_mo_thau",
     "sourceColumn": "",
     "sourceTable": "thong_tin_mo_thau"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách hợp đồng hiện hành liên kết với gói thầu",
+    "label": "Danh sách hợp đồng hiện hành liên kết với gói thầu",
     "name": "ds_hop_dong",
     "sourceColumn": "",
     "sourceTable": "hop_dong_list"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
+    "label": "Báo cáo đánh giá chi tiết theo nhà thầu và vòng",
     "name": "ds_bao_cao_dgct",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_reports"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Tất cả dòng đánh giá chi tiết",
+    "label": "Tất cả dòng đánh giá chi tiết",
     "name": "ds_dgct",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_rows"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết tính hợp lệ",
+    "label": "Đánh giá chi tiết tính hợp lệ",
     "name": "ds_dgct_hop_le",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_validity_rows"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết năng lực và kinh nghiệm",
+    "label": "Đánh giá chi tiết năng lực và kinh nghiệm",
     "name": "ds_dgct_nang_luc",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_capacity_rows"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết kỹ thuật",
+    "label": "Đánh giá chi tiết kỹ thuật",
     "name": "ds_dgct_ky_thuat",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_technical_rows"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Đánh giá chi tiết tài chính",
+    "label": "Đánh giá chi tiết tài chính",
     "name": "ds_dgct_tai_chinh",
     "sourceColumn": "",
     "sourceTable": "detailed_evaluation_financial_rows"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách phần lô tổng hợp",
+    "label": "Danh sách phần lô tổng hợp",
     "name": "ds_tat_ca_phan_lo",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu tham dự",
+    "label": "Phần lô có nhà thầu tham dự",
     "name": "ds_lo_co_nt",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Phần lô không có nhà thầu tham dự",
+    "label": "Phần lô không có nhà thầu tham dự",
     "name": "ds_lo_khong_nt",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_khong_co_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu trúng thầu",
+    "label": "Phần lô có nhà thầu trúng thầu",
     "name": "ds_lo_co_nt_trung",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_trung"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng",
+    "label": "Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng",
     "name": "ds_lo_co_nt_khong_trung",
     "sourceColumn": "",
     "sourceTable": "ds_phan_lo_co_nha_thau_tham_du_khong_trung"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu tham dự",
+    "label": "Danh sách nhà thầu tham dự",
     "name": "ds_nt_tham_du",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_tham_du"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu trúng thầu",
+    "label": "Danh sách nhà thầu trúng thầu",
     "name": "ds_nt_trung",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_trung_thau"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu trượt thầu",
+    "label": "Danh sách nhà thầu trượt thầu",
     "name": "ds_nt_truot",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_truot_thau"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách nhà thầu không đạt",
+    "label": "Danh sách nhà thầu không đạt",
     "name": "ds_nt_khong_dat",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_khong_dat"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu đạt nhưng không xếp hạng 1",
+    "label": "Nhà thầu đạt nhưng không xếp hạng 1",
     "name": "ds_nt_dat_khong_hang_1",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_dat_khong_xep_hang_1"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu không được đánh giá",
+    "label": "Nhà thầu không được đánh giá",
     "name": "ds_nt_khong_danh_gia",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_khong_duoc_danh_gia"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
+    "label": "Nhà thầu trúng thầu, kèm danh sách phần lô trúng",
     "name": "ds_nt_trung_kem_lo",
     "sourceColumn": "",
     "sourceTable": "ds_nha_thau_trung_theo_phan_lo"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách tùy chọn mua thêm",
+    "label": "Danh sách tùy chọn mua thêm",
     "name": "ds_mua_them",
     "sourceColumn": "",
     "sourceTable": "tuy_chon_mua_them_list"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách gia hạn",
+    "label": "Danh sách gia hạn",
     "name": "ds_gia_han",
     "sourceColumn": "",
     "sourceTable": "gia_han_list"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách yêu cầu làm rõ",
+    "label": "Danh sách yêu cầu làm rõ",
     "name": "ds_yc_lam_ro",
     "sourceColumn": "",
     "sourceTable": "yeu_cau_lam_ro_list"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách trả lời làm rõ",
+    "label": "Danh sách trả lời làm rõ",
     "name": "ds_tl_lam_ro",
     "sourceColumn": "",
     "sourceTable": "tra_loi_lam_ro_list"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách thành viên liên danh",
+    "label": "Danh sách thành viên liên danh",
     "name": "ds_tv_lien_danh",
     "sourceColumn": "",
     "sourceTable": "thanh_vien_lien_danh"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc đã thực hiện",
+    "label": "Danh sách công việc đã thực hiện",
     "name": "ds_cv_da_thuc_hien",
     "sourceColumn": "",
     "sourceTable": "cv_da_thuc_hien"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc không áp dụng LCNT",
+    "label": "Danh sách công việc không áp dụng LCNT",
     "name": "ds_cv_khong_ap_dung",
     "sourceColumn": "",
     "sourceTable": "cv_khong_ap_dung"
   },
   {
     "format": "text",
-    "label": "Danh sách mặc định từ schema hệ thống: Danh sách công việc chưa đủ điều kiện LCNT",
+    "label": "Danh sách công việc chưa đủ điều kiện LCNT",
     "name": "ds_cv_chua_du_dk",
     "sourceColumn": "",
     "sourceTable": "cv_chua_du_dieu_kien"

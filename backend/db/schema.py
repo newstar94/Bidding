@@ -188,7 +188,7 @@ SCHEMA_DINH_NGHIA = {
             "window_started_at": "INTEGER NOT NULL",
             "attempt_count": "INTEGER NOT NULL CHECK(attempt_count >= 0)",
             "expires_at": "INTEGER NOT NULL"
-        }
+        },
     },
     "ai_conversations": {
         "columns": {
@@ -907,6 +907,8 @@ SCHEMA_DINH_NGHIA = {
             "gia_tri": "INTEGER CHECK(gia_tri IS NULL OR (typeof(gia_tri) = 'integer' AND gia_tri >= 0))",
             "don_vi_thuc_hien": "TEXT",
             "van_ban_phe_duyet": "TEXT",
+            "so_chung_thu_tham_dinh_gia": "TEXT NOT NULL DEFAULT ''",
+            "tham_dinh_gia": "INTEGER NOT NULL DEFAULT 0 CHECK(tham_dinh_gia IN (0,1) AND (tham_dinh_gia = 0 OR loai = 'da_thuc_hien'))",
             "sort_order": "INTEGER DEFAULT 0",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
@@ -1741,10 +1743,16 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "ten_to_chuc": "TEXT NOT NULL",
+            "ma_so_thue": "TEXT",
+            "ten_viet_tat": "TEXT",
+            "owner_user_id": "TEXT",
             "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
-        }
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"
+        ]
     },
     "thanh_vien_to_chuc": {
         "columns": {
@@ -2369,7 +2377,7 @@ SCHEMA_DINH_NGHIA = {
             "lease_expires_at": "INTEGER",
             "locked_by": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
-        }
+        },
     },
     "vong_danh_gia": {
         "columns": {

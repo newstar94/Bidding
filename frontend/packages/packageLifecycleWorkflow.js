@@ -5,6 +5,7 @@ import {
   refreshRecordBeforeDelete,
   stageLocalRecords,
 } from "../shared/MutationService.js";
+import { beginLongTaskLoading } from "../shared/LongTaskLoading.js";
 import { hydratePlanPackageRecords, loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import {
   isPlanBreakdownDraftActive,
@@ -153,6 +154,18 @@ export async function deleteGoiThau(id) {
     "trash-2",
   );
   if (localTarget && (!await confirmDelete(localTarget) || !isCurrent())) return;
+  const loading = await beginLongTaskLoading({
+    task: "package-delete",
+    title: "Đang xóa gói thầu",
+    message: "Đang chuẩn bị dữ liệu xóa an toàn…",
+    detail: "Vui lòng không thao tác trên màn hình.",
+    minimumVisibleMs: 0,
+    exitTransitionMs: 0,
+    stages: [
+      { key: "prepare", label: "Chuẩn bị", message: "Đang kiểm tra dữ liệu liên quan…" },
+      { key: "server", label: "Xác nhận máy chủ", message: "Đang chờ máy chủ xác nhận…" },
+    ],
+  });
   const refreshedTarget = await refreshRecordBeforeDelete(this, "goithau", id);
   if (!isCurrent()) return;
   // A target absent from the local projection must be resolved before naming it.
@@ -194,7 +207,9 @@ export async function deleteGoiThau(id) {
   }
   stageLocalRecords(this.model, "kehoach", changedPlans);
   try {
+    await loading.update("server", "Dữ liệu đã chuẩn bị. Đang chờ máy chủ xác nhận…");
     const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+      loadingHandle: loading,
       changes: {
         upserts: { kehoach: changedPlans },
         deletions: {
@@ -208,10 +223,13 @@ export async function deleteGoiThau(id) {
       }
     });
     if (!syncResult?.ok) {
+      await loading.close();
       await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
       return;
     }
+    await loading.close();
   } catch {
+    await loading.close();
     await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
     return;
   }

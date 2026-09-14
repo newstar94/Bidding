@@ -890,6 +890,7 @@ from backend.auth.otp_routes import (
     reset_password_api,
 )
 from backend.api.org_routes import (
+    create_organization_api,
     add_user_to_org_api,
     get_document_export_capabilities_api,
     list_former_organization_members_api,
@@ -1373,6 +1374,7 @@ routes = [
     Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/organizations/membership-candidate", lookup_membership_candidate_api, methods=["GET"]),
+    Route("/api/organizations", create_organization_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
     Route("/api/organizations/former-members", list_former_organization_members_api, methods=["GET"]),
     Route(

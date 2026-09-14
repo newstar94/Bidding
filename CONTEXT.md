@@ -4,6 +4,14 @@ Ngữ cảnh này quản lý lịch sử nghiệp vụ từ kế hoạch lựa c
 
 ## Language
 
+**Quản lý tối cao tổ chức**:
+Người dùng tạo tổ chức và là chủ thể duy nhất được bổ nhiệm hoặc thu hồi vai trò quản lý; khác với Super Admin toàn hệ thống.
+_Avoid_: Super Admin tổ chức, chủ workspace
+
+**Thu hồi quản lý**:
+Chuyển quản lý được bổ nhiệm về vai trò `employee`, giữ nguyên thành viên và các nhiệm vụ hiện có.
+_Avoid_: Xóa thành viên, chuyển giao nhiệm vụ tự động
+
 **Dòng phiên bản**:
 Một đối tượng nghiệp vụ xuyên suốt các lần thay đổi, trong đó mọi phiên bản cùng đại diện cho một kế hoạch, gói thầu hoặc hợp đồng.
 _Avoid_: Bản ghi trùng, đối tượng mới

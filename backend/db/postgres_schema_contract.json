@@ -2990,6 +2990,13 @@
       "table": "plan_legal_binding_head",
       "valid": true
     },
+    "idx_plan_one_appraisal": {
+      "definition": "CREATE UNIQUE INDEX idx_plan_one_appraisal ON $SCHEMA.ke_hoach_cong_viec USING btree (organization_id, ke_hoach_id) WHERE (tham_dinh_gia = 1)",
+      "live": true,
+      "ready": true,
+      "table": "ke_hoach_cong_viec",
+      "valid": true
+    },
     "idx_procurement_binding_family": {
       "definition": "CREATE INDEX idx_procurement_binding_family ON $SCHEMA.procurement_source_binding USING btree (organization_id, provider, family_key, symbol, notify_no)",
       "live": true,
@@ -4285,6 +4292,13 @@
       "table": "billing_orders",
       "valid": true
     },
+    "uq_to_chuc_ma_so_thue": {
+      "definition": "CREATE UNIQUE INDEX uq_to_chuc_ma_so_thue ON $SCHEMA.to_chuc USING btree (ma_so_thue) WHERE ((ma_so_thue IS NOT NULL) AND (btrim(ma_so_thue) <> ''::text))",
+      "live": true,
+      "ready": true,
+      "table": "to_chuc",
+      "valid": true
+    },
     "uq_usage_reservation_identity": {
       "definition": "CREATE UNIQUE INDEX uq_usage_reservation_identity ON $SCHEMA.usage_reservations USING btree (owner_kind, COALESCE(account_user_id, ''::text), COALESCE(organization_id, ''::text), feature, provider, entity_kind, source_code, source_revision)",
       "live": true,
@@ -4539,7 +4553,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 90,
+  "schemaVersion": 93,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -17358,6 +17372,13 @@
           "notNull": true,
           "type": "text"
         },
+        "so_chung_thu_tham_dinh_gia": {
+          "default": "''::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
         "sort_order": {
           "default": "0",
           "generated": "",
@@ -17378,6 +17399,13 @@
           "identity": "",
           "notNull": false,
           "type": "text"
+        },
+        "tham_dinh_gia": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
         },
         "updated_at": {
           "default": "CURRENT_TIMESTAMP",
@@ -17405,6 +17433,13 @@
         "ke_hoach_cong_viec_check": {
           "deferrable": false,
           "definition": "CHECK (owner_type = 'personal'::text AND organization_id ~~ 'personal:%'::text OR owner_type = 'organization'::text AND organization_id !~~ 'personal:%'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ke_hoach_cong_viec_check1": {
+          "deferrable": false,
+          "definition": "CHECK ((tham_dinh_gia = ANY (ARRAY[0, 1])) AND (tham_dinh_gia = 0 OR loai = 'da_thuc_hien'::text))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -26526,11 +26561,32 @@
           "notNull": true,
           "type": "text"
         },
+        "ma_so_thue": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "owner_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "ten_to_chuc": {
           "default": null,
           "generated": "",
           "identity": "",
           "notNull": true,
+          "type": "text"
+        },
+        "ten_viet_tat": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
           "type": "text"
         },
         "trang_thai": {

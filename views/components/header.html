@@ -129,3 +129,30 @@
                     </div>
                 </div>
             </header>
+            <div class="modal-overlay" id="modal-create-organization">
+                <div class="modal-card">
+                    <div class="modal-header">
+                        <h3 id="create-organization-title">Tạo không gian tổ chức</h3>
+                        <button type="button" class="modal-close" data-close="modal-create-organization" aria-label="Đóng">&times;</button>
+                    </div>
+                    <form id="form-create-organization" novalidate>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="organization-tax-code">Mã số thuế <span class="required">*</span></label>
+                                <input type="text" id="organization-tax-code" required maxlength="64" autocomplete="off" inputmode="numeric" placeholder="Ví dụ: 0101234567">
+                                <span class="error-text">Vui lòng nhập mã số thuế</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="organization-short-name">Tên viết tắt của tổ chức <span class="required">*</span></label>
+                                <input type="text" id="organization-short-name" required maxlength="120" autocomplete="organization" placeholder="Ví dụ: HCP">
+                                <span class="error-text">Vui lòng nhập tên viết tắt</span>
+                            </div>
+                            <p class="text-muted">Bạn sẽ là quản lý tối cao của tổ chức này.</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline" data-close="modal-create-organization">Hủy</button>
+                            <button type="submit" class="btn btn-primary">Tạo tổ chức</button>
+                        </div>
+                    </form>
+                </div>
+            </div>

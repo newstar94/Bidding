@@ -206,6 +206,8 @@ export async function beginLongTaskLoading({
   initialStage = "",
   message = "",
   detail = "",
+  minimumVisibleMs = MINIMUM_VISIBLE_MS,
+  exitTransitionMs = EXIT_TRANSITION_MS,
 } = {}) {
   const documentRef = globalThis.document;
   if (!documentRef?.body) return NOOP_HANDLE;
@@ -256,7 +258,7 @@ export async function beginLongTaskLoading({
         taskStack.splice(taskIndex, 1);
         return;
       }
-      const remaining = MINIMUM_VISIBLE_MS - (now(documentRef) - taskState.shownAt);
+      const remaining = minimumVisibleMs - (now(documentRef) - taskState.shownAt);
       if (remaining > 0) await delay(documentRef, remaining);
       taskIndex = taskStack.findIndex((entry) => entry.token === token);
       if (taskIndex < 0) return;
@@ -277,7 +279,7 @@ export async function beginLongTaskLoading({
       previousBodyBusy = null;
       restoreBackground();
 
-      await delay(documentRef, EXIT_TRANSITION_MS);
+      await delay(documentRef, exitTransitionMs);
       if (taskStack.length === 0) refs.overlay.hidden = true;
     },
   });

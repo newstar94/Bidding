@@ -3,9 +3,22 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { normalizeOrganizations } from "./accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { apiFetch } from "../shared/apiClient.js";
 
 function closeProfileDropdown() {
   document.getElementById("profile-dropdown-menu")?.classList.remove("active");
+}
+
+export async function createOrganization({ taxCode, shortName, idempotencyKey }, request = apiFetch) {
+  const response = await request("/api/organizations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ tax_code: taxCode, short_name: shortName }),
+    retries: 2,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Không thể tạo tổ chức.");
+  return payload.organization;
 }
 
 export function renderWorkspaceSwitcher() {
@@ -23,7 +36,7 @@ export function renderWorkspaceSwitcher() {
     setRuntimeStyle(orgPillContainer, "display", showWorkspacePill ? "inline-block" : "none");
   }
 
-  if (!currentUser || workspaces.length <= 1) {
+  if (!currentUser) {
     if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
     if (orgSwitchList) orgSwitchList.replaceChildren();
     return;
@@ -61,7 +74,11 @@ export function renderWorkspaceSwitcher() {
         ${isActive ? '<i data-lucide="check" class="bf-s-2238b82015" aria-hidden="true"></i>' : ""}
       </button>
     `;
-  }).join(""));
+  }).join("") + `
+    <button type="button" class="dropdown-item" id="btn-create-organization" role="menuitem">
+      <i data-lucide="building-2" aria-hidden="true"></i>
+      <span>Tạo tổ chức mới</span>
+    </button>`);
 
   window.lucide?.createIcons?.({ root: orgSwitchList });
 
@@ -109,4 +126,42 @@ export function renderWorkspaceSwitcher() {
       }
     });
   });
+
+  orgSwitchList.querySelector("#btn-create-organization")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeProfileDropdown();
+    document.getElementById("form-create-organization")?.reset();
+    this.view.openModal?.("modal-create-organization");
+  });
+
+  const form = document.getElementById("form-create-organization");
+  if (form && form.dataset.bound !== "true") {
+    form.dataset.bound = "true";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!this.view.validateForm(form)) return;
+      const submit = form.querySelector('button[type="submit"]');
+      const taxCode = document.getElementById("organization-tax-code")?.value?.trim() || "";
+      const shortName = document.getElementById("organization-short-name")?.value?.trim() || "";
+      const idempotencyKey = globalThis.crypto?.randomUUID?.() || `org-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      submit.disabled = true;
+      form.setAttribute("aria-busy", "true");
+      try {
+        const organization = await createOrganization({ taxCode, shortName, idempotencyKey });
+        currentUser.organizations = [
+          ...(Array.isArray(currentUser.organizations) ? currentUser.organizations : []),
+          organization,
+        ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index);
+        this.view.closeModal?.("modal-create-organization");
+        await this.switchWorkspaceContext(organization.id);
+        this.renderWorkspaceSwitcher?.();
+        this.view.showToast?.("Đã tạo tổ chức", `Đang làm việc tại “${organization.name}”.`, "success");
+      } catch (error) {
+        await this.view.customAlert("Không thể tạo tổ chức", error.message || "Vui lòng thử lại.", "alert-triangle");
+      } finally {
+        submit.disabled = false;
+        form.removeAttribute("aria-busy");
+      }
+    });
+  }
 }

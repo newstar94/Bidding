@@ -3766,6 +3766,24 @@ def _upgrade_to_v90_make_plan_project_identity_optional(cursor, _context):
     )
 
 
+def _upgrade_to_v91_work_appraisal(cursor, _context):
+    cursor.execute("ALTER TABLE ke_hoach_cong_viec ADD COLUMN IF NOT EXISTS tham_dinh_gia INTEGER NOT NULL DEFAULT 0 CHECK(tham_dinh_gia IN (0,1) AND (tham_dinh_gia = 0 OR loai = 'da_thuc_hien'))")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_one_appraisal ON ke_hoach_cong_viec (organization_id, ke_hoach_id) WHERE tham_dinh_gia = 1")
+
+def _upgrade_to_v92_self_service_organizations(cursor, _context):
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS ma_so_thue TEXT")
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS ten_viet_tat TEXT")
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
+    cursor.execute("ALTER TABLE to_chuc DROP CONSTRAINT IF EXISTS fk_to_chuc_owner_user")
+    cursor.execute("ALTER TABLE to_chuc ADD CONSTRAINT fk_to_chuc_owner_user FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT NOT VALID")
+    cursor.execute("ALTER TABLE to_chuc VALIDATE CONSTRAINT fk_to_chuc_owner_user")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_ma_so_thue ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''")
+
+
+def _upgrade_to_v93_appraisal_certificate(cursor, _context):
+    cursor.execute("ALTER TABLE ke_hoach_cong_viec ADD COLUMN IF NOT EXISTS so_chung_thu_tham_dinh_gia TEXT NOT NULL DEFAULT ''")
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4208,6 +4226,9 @@ UPGRADES = (
         "make_plan_project_identity_optional",
         _upgrade_to_v90_make_plan_project_identity_optional,
     ),
+    DatabaseUpgrade(91, "work_appraisal", _upgrade_to_v91_work_appraisal),
+    DatabaseUpgrade(92, "self_service_organizations", _upgrade_to_v92_self_service_organizations),
+    DatabaseUpgrade(93, "appraisal_certificate", _upgrade_to_v93_appraisal_certificate),
 )
 
 

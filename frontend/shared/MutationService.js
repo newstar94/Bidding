@@ -1,4 +1,5 @@
 import { isSyncedStateKey } from "./persistencePolicy.js";
+import { beginLongTaskLoading } from "./LongTaskLoading.js";
 import { workspaceMutationCoordinator } from "./WorkspaceMutationCoordinator.js";
 import {
   PLAN_BREAKDOWN_DRAFT_TABLES,
@@ -85,7 +86,24 @@ export async function persistAndSync(controller, tableKeys, {
   changes = null,
   releaseBeforeRemoteSync = false,
   workspaceMutation = null,
+  loadingHandle = null,
 } = {}) {
+  const loading = loadingHandle || await beginLongTaskLoading({
+    task: "mutation-save",
+    title: backgroundSync ? "Đang lưu dữ liệu" : "Đang lưu thay đổi",
+    message: "Đang lưu an toàn. Vui lòng không thao tác trên màn hình.",
+    detail: "Chỉ hoàn tất khi máy chủ xác nhận thay đổi.",
+    stages: [
+      { key: "local", label: "Lưu bản nháp", message: "Đang lưu bản nháp trên thiết bị…" },
+      { key: "server", label: "Xác nhận máy chủ", message: "Đang chờ máy chủ xác nhận…" },
+    ],
+    initialStage: "local",
+    minimumVisibleMs: 0,
+    exitTransitionMs: 0,
+  });
+  const closeLoading = () => loading.close().catch(() => {});
+  let backgroundOwnsLoading = false;
+  try {
   const keys = [...new Set((Array.isArray(tableKeys) ? tableKeys : [tableKeys]).filter(Boolean))];
   for (const key of keys) {
     if (isSyncedStateKey(key) && !explicitTableChanges(changes, key) && !allowLegacyPersistence) {
@@ -223,9 +241,10 @@ export async function persistAndSync(controller, tableKeys, {
       }
       return startRemoteSync();
     };
-    const syncPromise = localPhaseCompletion
+    await loading.update("server", "Bản nháp đã an toàn. Đang chờ máy chủ xác nhận…");
+    const syncPromise = (localPhaseCompletion
       ? Promise.resolve(localPhaseCompletion).then(beginRemoteSync)
-      : beginRemoteSync();
+      : beginRemoteSync()).finally(closeLoading);
     // Once IndexedDB and the outbox are durable, the workspace lease no longer
     // needs to be held by local painting or network latency. A delayed local
     // phase is fenced by the captured workspace token before it can start the
@@ -237,6 +256,7 @@ export async function persistAndSync(controller, tableKeys, {
     void syncPromise.catch((error) => {
       console.error("Background synchronization failed:", error);
     });
+    backgroundOwnsLoading = true;
     return {
       ok: true,
       local: true,
@@ -247,9 +267,13 @@ export async function persistAndSync(controller, tableKeys, {
     };
   }
   if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
+  await loading.update("server", "Đang chờ máy chủ xác nhận…");
   return await startRemoteSync();
   } finally {
     if (ownsMutation && !mutationReleased) releaseMutation();
+  }
+  } finally {
+    if (!backgroundOwnsLoading) await closeLoading();
   }
 }
 

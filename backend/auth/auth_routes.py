@@ -1802,6 +1802,11 @@ async def update_user_role_api(request):
             if not actor_platform_admin and actor_role != "manager":
                 conn.rollback()
                 return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
+            owner_row = cursor.execute("SELECT owner_user_id FROM to_chuc WHERE id = ?", (org_id,)).fetchone()
+            owner_user_id = str(owner_row[0] or "").strip() if owner_row else ""
+            if not actor_platform_admin and owner_user_id and str(role_or_err.user_id) != owner_user_id:
+                conn.rollback()
+                return JSONResponse({"error": "Chỉ quản lý tối cao mới được phân công hoặc thu hồi vai trò quản lý."}, status_code=403)
             if new_role not in {"manager", "employee"}:
                 conn.rollback()
                 return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
@@ -1818,6 +1823,9 @@ async def update_user_role_api(request):
             if user_id == str(role_or_err.user_id) and new_role != target_role:
                 conn.rollback()
                 return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
+            if owner_user_id and str(user_id) == owner_user_id and new_role != "manager":
+                conn.rollback()
+                return JSONResponse({"error": "Không thể hạ quyền quản lý tối cao."}, status_code=409)
 
             hierarchy = {"employee": 0, "manager": 1}
             if not actor_platform_admin:

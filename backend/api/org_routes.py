@@ -55,6 +55,71 @@ _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 _MEMBERSHIP_CANDIDATE_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _QUERY_CHUNK_SIZE = 500
 
+def _create_organization_sync(request, role_or_err, data):
+    invalid = validate_or_response(request, data, {
+        "tax_code": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+        "short_name": {"type": "string", "required": True, "min_length": 1, "max_length": 120},
+    })
+    if invalid: return invalid
+    tax_code = str(data.get("tax_code") or "").strip()
+    short_name = re.sub(r"\s+", " ", str(data.get("short_name") or "").strip())
+    idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
+    if not tax_code or not short_name:
+        return JSONResponse({"error": "Mã số thuế và tên viết tắt là bắt buộc.", "code": "ORGANIZATION_FIELDS_REQUIRED"}, status_code=400)
+    if not _IDEMPOTENCY_KEY_RE.fullmatch(idempotency_key):
+        return JSONResponse({"error": "Thiếu Idempotency-Key hợp lệ.", "code": "INVALID_IDEMPOTENCY_KEY"}, status_code=400)
+    conn = database.get_connection()
+    try:
+        conn.execute("BEGIN")
+        cursor = conn.cursor()
+        valid, actor = verify_session_in_transaction(cursor, request)
+        if not valid or str(actor.user_id) != str(role_or_err.user_id):
+            conn.rollback(); return JSONResponse({"error": actor if not valid else "Phiên làm việc đã thay đổi."}, status_code=403)
+        operation = "organization_create"
+        acquire_idempotency_lock(cursor, operation, role_or_err.user_id, idempotency_key)
+        replay = cursor.execute(
+            "SELECT response_json FROM api_idempotency WHERE actor_user_id = ? AND operation = ? AND idempotency_key = ?",
+            (role_or_err.user_id, operation, idempotency_key),
+        ).fetchone()
+        if replay:
+            conn.commit()
+            return JSONResponse(json.loads(replay[0]))
+        row = cursor.execute("SELECT id FROM to_chuc WHERE ma_so_thue = ?", (tax_code,)).fetchone()
+        if row:
+            conn.rollback(); return JSONResponse({"error": "Mã số thuế đã được đăng ký cho một tổ chức khác.", "code": "ORGANIZATION_TAX_CODE_EXISTS"}, status_code=409)
+        org_id = "org-" + hashlib.sha256(f"{tax_code}:{short_name}:{time.time_ns()}".encode()).hexdigest()[:32]
+        cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue, ten_viet_tat, owner_user_id) VALUES (?, ?, ?, ?, ?)", (org_id, short_name, tax_code, short_name, role_or_err.user_id))
+        cursor.execute("INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, 'manager')", (role_or_err.user_id, org_id))
+        cursor.execute("SELECT id, han_muc_nhan_su FROM goi_dich_vu WHERE trang_thai = 'active' ORDER BY han_muc_nhan_su LIMIT 1")
+        package = cursor.fetchone()
+        if package:
+            now = int(time.time())
+            cursor.execute("INSERT INTO organization_subscriptions (organization_id, package_id, status, starts_at, expires_at, member_quota) VALUES (?, ?, 'active', ?, ?, ?)", (org_id, package[0], now, now + LEGACY_SUBSCRIPTION_TERM_DAYS * SECONDS_PER_DAY, int(package[1])))
+        log_audit("organization.created", actor_user_id=role_or_err.user_id, organization_id=org_id, target_type="to_chuc", target_id=org_id, request=request, metadata={"tax_code": tax_code, "short_name": short_name, "owner_user_id": role_or_err.user_id}, cursor=cursor, required=True)
+        response_payload = {"success": True, "organization": {"id": org_id, "name": short_name, "taxCode": tax_code, "shortName": short_name, "ownerUserId": role_or_err.user_id, "scope_type": "organization", "role": "manager", "status": "active"}}
+        cursor.execute(
+            "INSERT INTO api_idempotency (actor_user_id, operation, idempotency_key, response_json, created_at) VALUES (?, ?, ?, ?, ?)",
+            (role_or_err.user_id, operation, idempotency_key, json.dumps(response_payload, ensure_ascii=False), int(time.time())),
+        )
+        conn.commit()
+        return JSONResponse(response_payload)
+    except IntegrityError:
+        if conn: conn.rollback()
+        return JSONResponse({"error": "Mã số thuế đã được đăng ký cho một tổ chức khác.", "code": "ORGANIZATION_TAX_CODE_EXISTS"}, status_code=409)
+    except Exception as exc:
+        if conn: conn.rollback()
+        return log_and_error(request, exc, "create_organization_api", "ORGANIZATION_CREATE_FAILED", "Không thể tạo tổ chức.")
+    finally:
+        if conn: conn.close()
+
+async def create_organization_api(request):
+    valid, role = verify_session(request)
+    if not valid: return JSONResponse({"error": role}, status_code=403)
+    data, error = await read_json_object(request)
+    if error: return error
+    try: return await run_database_write(_create_organization_sync, request, role, data)
+    except BlockingIOBusyError: return JSONResponse({"error": "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau."}, status_code=503)
+
 
 def _lock_and_can_manage_organization_mutation(
     cursor,
