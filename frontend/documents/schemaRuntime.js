@@ -23,6 +23,7 @@ const RUNTIME_SCHEMA = {
     "anh_dai_dien": "anhDaiDien",
     "anh_dau": "anhDau",
     "archived_at": "archivedAt",
+    "can_cu_gia_goi_thau": "canCuGiaGoiThau",
     "cau_hinh_tinh_nang_ky_thuat": "cauHinhTinhNangKyThuat",
     "chu_dau_tu_id": "chuDauTuId",
     "chu_dau_tu_thanh_ly_id": "chuDauTuThanhLyId",
@@ -491,6 +492,7 @@ const RUNTIME_SCHEMA = {
     },
     "ke_hoach_lcnt": {
       "archived_at": "archivedAt",
+      "can_cu_gia_goi_thau": "canCuGiaGoiThau",
       "chu_dau_tu_id": "chuDauTuId",
       "co_quan_phe_duyet_du_an": "coQuanPheDuyetDuAn",
       "created_at": "createdAt",

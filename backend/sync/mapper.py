@@ -180,11 +180,6 @@ def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sy
             (organization_id, parent_id, kind),
         )
         child_rows = _parse_child_list(item.get(camel_key))
-        appraisal_values = [row.get("thamDinhGia", row.get("tham_dinh_gia", 0)) for row in child_rows]
-        if any(value not in (None, False, True, 0, 1) for value in appraisal_values):
-            raise ValueError("Thẩm định giá phải là Có hoặc Không")
-        if sum(bool(value) for value in appraisal_values) > 1 or (kind != "da_thuc_hien" and any(appraisal_values)):
-            raise ValueError("Chỉ được chọn một công việc đã thực hiện làm thẩm định giá")
         for index, row in enumerate(child_rows):
             rows.append((
                 _child_row_id(parent_id, kind, index, _first_value(row, "id")),
@@ -196,8 +191,6 @@ def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sy
                 _child_money(_first_value(row, "giaTri", "gia_tri")),
                 _first_value(row, "donViThucHien", "don_vi_thuc_hien", default=""),
                 _first_value(row, "vanBanPheDuyet", "van_ban_phe_duyet", default=""),
-                int(bool(appraisal_values[index])),
-                _first_value(row, "soChungThuThamDinhGia", "so_chung_thu_tham_dinh_gia", default=""),
                 index,
                 sync_version,
                 updated_at,
@@ -206,8 +199,8 @@ def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sy
         cursor.executemany("""
             INSERT INTO ke_hoach_cong_viec (
                 id, organization_id, owner_type, ke_hoach_id, loai, ten_cong_viec, gia_tri,
-                don_vi_thuc_hien, van_ban_phe_duyet, tham_dinh_gia, so_chung_thu_tham_dinh_gia, sort_order, sync_version, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                don_vi_thuc_hien, van_ban_phe_duyet, sort_order, sync_version, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
     if _has_child_key(item, PLAN_BASIS_CHILD_KEY):
         _save_plan_basis_children(

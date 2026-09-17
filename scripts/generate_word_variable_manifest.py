@@ -62,18 +62,8 @@ def build_frontend_defaults():
             label = "Giá trị công việc"
         elif source_column == "van_ban_phe_duyet" and source_table == "cv_da_thuc_hien":
             label = "Văn bản phê duyệt / Hợp đồng"
-        elif source_column in {"tdg_don_vi_thuc_hien", "don_vi_thuc_hien"} and source_table.startswith("cv_"):
+        elif source_column in {"don_vi_thuc_hien"} and source_table.startswith("cv_"):
             label = "Đơn vị thực hiện công việc"
-        elif source_column == "tdg_don_vi_thuc_hien":
-            label = "Đơn vị thực hiện thẩm định giá"
-        elif source_column == "tdg_ten_cong_viec":
-            label = "Tên công việc thẩm định giá"
-        elif source_column == "tdg_gia_tri":
-            label = "Giá trị công việc thẩm định giá"
-        elif source_column == "tdg_hop_dong":
-            label = "Hợp đồng thẩm định giá"
-        elif source_column == "tdg_so_chung_thu":
-            label = "Số chứng thư thẩm định giá"
         result.append(
             {
                 "format": mapping.get("format", "text"),

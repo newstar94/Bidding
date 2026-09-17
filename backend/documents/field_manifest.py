@@ -72,6 +72,7 @@ FIELD_LABELS_BY_TABLE = {
         "thoi_gian_du_an": "Thời gian thực hiện dự án",
         "dia_diem_quy_mo": "Địa điểm và quy mô xây dựng/mua sắm",
         "thong_tin_khac": "Thông tin bổ sung khác",
+        "can_cu_gia_goi_thau": "Căn cứ giá gói thầu",
         "so_qd_phe_duyet_du_an": "Số quyết định phê duyệt dự án đầu tư",
         "ngay_qd_phe_duyet_du_an": "Ngày quyết định phê duyệt dự án đầu tư",
         "co_quan_phe_duyet_du_an": "Cơ quan ban hành quyết định phê duyệt dự án",

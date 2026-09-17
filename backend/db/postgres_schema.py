@@ -616,7 +616,6 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau_thanh_ly ON hop_dong (organization_id, nha_thau_thanh_ly_id)",
         "CREATE INDEX IF NOT EXISTS idx_hop_dong_trang_thai ON hop_dong (organization_id, trang_thai_hop_dong)",
         "CREATE INDEX IF NOT EXISTS idx_ke_hoach_chu_dau_tu ON ke_hoach_lcnt (organization_id, chu_dau_tu_id)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_one_appraisal ON ke_hoach_cong_viec (organization_id, ke_hoach_id) WHERE tham_dinh_gia = 1",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau_opening ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id, thong_tin_mo_thau_id)",
         "CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_member ON nha_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",

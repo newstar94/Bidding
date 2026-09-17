@@ -16,7 +16,6 @@ WORD_SINGLE_SOURCES = {
     "cv_chua_du_dieu_kien": ["ten_cong_viec", "gia_tri"],
     "cv_da_thuc_hien": [
         "ten_cong_viec", "gia_tri", "don_vi_thuc_hien", "van_ban_phe_duyet",
-        "tham_dinh_gia", "so_chung_thu_tham_dinh_gia",
     ],
     "chu_dau_tu": [
         "phien_ban",
@@ -54,6 +53,7 @@ WORD_SINGLE_SOURCES = {
         "thoi_gian_du_an",
         "dia_diem_quy_mo",
         "thong_tin_khac",
+        "can_cu_gia_goi_thau",
         "so_qd_phe_duyet_du_an",
         "ngay_qd_phe_duyet_du_an",
         "co_quan_phe_duyet_du_an",
@@ -239,8 +239,6 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("cv_da_thuc_hien", "gia_tri"): "gia_tri_cv_da_thuc_hien",
     ("cv_da_thuc_hien", "don_vi_thuc_hien"): "don_vi_cv_da_thuc_hien",
     ("cv_da_thuc_hien", "van_ban_phe_duyet"): "van_ban_phe_duyet_cv_da_thuc_hien",
-    ("cv_da_thuc_hien", "tham_dinh_gia"): "tham_dinh_gia_cv_da_thuc_hien",
-    ("cv_da_thuc_hien", "so_chung_thu_tham_dinh_gia"): "so_chung_thu_tham_dinh_gia",
     ("chu_dau_tu", "ma_chu_dau_tu"): "ma_cdt",
     ("chu_dau_tu", "ten_chu_dau_tu"): "ten_cdt",
     ("chu_dau_tu", "ngay_ap_dung"): "ngay_ap_dung_cdt",
@@ -271,6 +269,7 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("ke_hoach_lcnt", "thoi_gian_du_an"): "tg_du_an",
     ("ke_hoach_lcnt", "dia_diem_quy_mo"): "dia_diem_quy_mo",
     ("ke_hoach_lcnt", "thong_tin_khac"): "thong_tin_khac_kh",
+    ("ke_hoach_lcnt", "can_cu_gia_goi_thau"): "can_cu_gia_goi_thau",
     ("ke_hoach_lcnt", "so_qd_phe_duyet_du_an"): "so_qd_du_an",
     ("ke_hoach_lcnt", "ngay_qd_phe_duyet_du_an"): "ngay_qd_du_an",
     ("ke_hoach_lcnt", "co_quan_phe_duyet_du_an"): "cq_phe_duyet_du_an",
@@ -443,11 +442,6 @@ WORD_LIST_MAPPINGS = [
 
 
 WORD_CONTEXT_MAPPINGS = [
-    ("tdg_ten_cong_viec", "tdg_ten_cong_viec", "Tên công việc thẩm định giá"),
-    ("tdg_gia_tri", "tdg_gia_tri", "Giá trị công việc thẩm định giá"),
-    ("tdg_don_vi_thuc_hien", "tdg_don_vi_thuc_hien", "Đơn vị thực hiện thẩm định giá"),
-    ("tdg_hop_dong", "tdg_hop_dong", "Hợp đồng thẩm định giá"),
-    ("tdg_so_chung_thu", "tdg_so_chung_thu", "Số chứng thư thẩm định giá"),
     ("tong_so_lo", "tong_so_phan_lo", "Tổng số phần lô"),
     ("so_lo_co_nt", "so_phan_lo_co_nha_thau_tham_du", "Số phần lô có nhà thầu tham dự"),
     ("so_lo_khong_nt", "so_phan_lo_khong_co_nha_thau_tham_du", "Số phần lô không có nhà thầu tham dự"),
@@ -508,7 +502,6 @@ def build_default_word_mappings():
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
         mappings.append({
                 "mapping_key": f"context:{source_table}",
-                "format": "currency" if source_table == "tdg_gia_tri" else "text",
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,

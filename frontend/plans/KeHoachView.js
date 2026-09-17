@@ -256,7 +256,7 @@ export async function renderPlanVersionDetails(versionId) {
                                     <td class="bf-s-8cebed82f0">${escapeHtml(item.tenCongViec)}</td>
                                     <td class="bf-s-c1b2008170">${formatCurrency(item.giaTri)}</td>
                                     <td class="bf-s-8e0dc07fff">${escapeHtml(item.donViThucHien || "--")}</td>
-                                    <td class="bf-s-8e0dc07fff">${item.thamDinhGia ? `Hợp đồng: ${escapeHtml(item.vanBanPheDuyet || "--")}<br>Số chứng thư: ${escapeHtml(item.soChungThuThamDinhGia || "--")}` : escapeHtml(item.vanBanPheDuyet || "--")}</td>
+                                    <td class="bf-s-8e0dc07fff">${escapeHtml(item.vanBanPheDuyet || "--")}</td>
                                 </tr>
                             `).join("")}
                         </tbody>

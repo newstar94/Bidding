@@ -3784,6 +3784,17 @@ def _upgrade_to_v93_appraisal_certificate(cursor, _context):
     cursor.execute("ALTER TABLE ke_hoach_cong_viec ADD COLUMN IF NOT EXISTS so_chung_thu_tham_dinh_gia TEXT NOT NULL DEFAULT ''")
 
 
+def _upgrade_to_v94_remove_work_appraisal(cursor, _context):
+    cursor.execute("DROP INDEX IF EXISTS idx_plan_one_appraisal")
+    cursor.execute("ALTER TABLE ke_hoach_cong_viec DROP COLUMN IF EXISTS tham_dinh_gia, DROP COLUMN IF EXISTS so_chung_thu_tham_dinh_gia")
+    cursor.execute("DELETE FROM cau_hinh_bien_word WHERE (source_table IN ('cv_da_thuc_hien', 'cv_da_thuc_hien_list') AND source_column IN ('tham_dinh_gia', 'so_chung_thu_tham_dinh_gia')) OR (source_table = '__context__' AND source_column IN ('tdg_ten_cong_viec', 'tdg_gia_tri', 'tdg_don_vi_thuc_hien', 'tdg_hop_dong', 'tdg_so_chung_thu'))")
+    cursor.execute("DELETE FROM word_mapping_overrides WHERE mapping_key IN ('field:cv_da_thuc_hien.tham_dinh_gia', 'field:cv_da_thuc_hien.so_chung_thu_tham_dinh_gia', 'context:tdg_ten_cong_viec', 'context:tdg_gia_tri', 'context:tdg_don_vi_thuc_hien', 'context:tdg_hop_dong', 'context:tdg_so_chung_thu')")
+
+
+def _upgrade_to_v95_plan_price_basis(cursor, _context):
+    cursor.execute("ALTER TABLE ke_hoach_lcnt ADD COLUMN IF NOT EXISTS can_cu_gia_goi_thau TEXT NOT NULL DEFAULT ''")
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4229,6 +4240,8 @@ UPGRADES = (
     DatabaseUpgrade(91, "work_appraisal", _upgrade_to_v91_work_appraisal),
     DatabaseUpgrade(92, "self_service_organizations", _upgrade_to_v92_self_service_organizations),
     DatabaseUpgrade(93, "appraisal_certificate", _upgrade_to_v93_appraisal_certificate),
+    DatabaseUpgrade(94, "remove_work_appraisal", _upgrade_to_v94_remove_work_appraisal),
+    DatabaseUpgrade(95, "plan_price_basis", _upgrade_to_v95_plan_price_basis),
 )
 
 

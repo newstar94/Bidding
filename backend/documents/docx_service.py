@@ -426,8 +426,6 @@ def _build_plan_context_snapshot(
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    from backend.documents.plan_appraisal_context import build_plan_appraisal_context
-    unified_context.update(build_plan_appraisal_context(plan))
     projected_context = project_docx_context(
             "plan",
             unified_context,
@@ -658,8 +656,6 @@ def _build_report_context_snapshot(
         'today': now.date().isoformat()
     }
     unified_context.update(build_detailed_evaluation_context(pkg, bids))
-    from backend.documents.plan_appraisal_context import build_plan_appraisal_context
-    unified_context.update(build_plan_appraisal_context(plan))
     return (
         project_docx_context(
             type_param,

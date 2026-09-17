@@ -300,6 +300,15 @@ export const FIELD_METADATA_BY_TABLE = {
       "wordVariable": "thong_tin_khac_kh",
       "excelCompatible": true
     },
+    "can_cu_gia_goi_thau": {
+      "column": "can_cu_gia_goi_thau",
+      "jsonKey": "canCuGiaGoiThau",
+      "dataType": "string",
+      "label": "Căn cứ giá gói thầu",
+      "format": "text",
+      "wordVariable": "can_cu_gia_goi_thau",
+      "excelCompatible": true
+    },
     "so_qd_phe_duyet_du_an": {
       "column": "so_qd_phe_duyet_du_an",
       "jsonKey": "soQdPheDuyetDuAn",
@@ -1512,20 +1521,6 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tham dinh giá",
-    "name": "tham_dinh_gia_cv_da_thuc_hien",
-    "sourceColumn": "tham_dinh_gia",
-    "sourceTable": "cv_da_thuc_hien"
-  },
-  {
-    "format": "text",
-    "label": "Số chung thu tham dinh giá",
-    "name": "so_chung_thu_tham_dinh_gia",
-    "sourceColumn": "so_chung_thu_tham_dinh_gia",
-    "sourceTable": "cv_da_thuc_hien"
-  },
-  {
-    "format": "text",
     "label": "Phiên bản dữ liệu",
     "name": "cdt_phien_ban",
     "sourceColumn": "phien_ban",
@@ -1753,6 +1748,13 @@ export const DEFAULT_WORD_VARIABLES = [
     "label": "Thông tin bổ sung khác",
     "name": "thong_tin_khac_kh",
     "sourceColumn": "thong_tin_khac",
+    "sourceTable": "ke_hoach_lcnt"
+  },
+  {
+    "format": "text",
+    "label": "Căn cứ giá gói thầu",
+    "name": "can_cu_gia_goi_thau",
+    "sourceColumn": "can_cu_gia_goi_thau",
     "sourceTable": "ke_hoach_lcnt"
   },
   {
@@ -2727,41 +2729,6 @@ export const DEFAULT_WORD_VARIABLES = [
     "name": "mo_ta_goi_dv",
     "sourceColumn": "mo_ta",
     "sourceTable": "goi_dich_vu"
-  },
-  {
-    "format": "text",
-    "label": "Tên công việc thẩm định giá",
-    "name": "tdg_ten_cong_viec",
-    "sourceColumn": "tdg_ten_cong_viec",
-    "sourceTable": "__context__"
-  },
-  {
-    "format": "currency",
-    "label": "Giá trị công việc thẩm định giá",
-    "name": "tdg_gia_tri",
-    "sourceColumn": "tdg_gia_tri",
-    "sourceTable": "__context__"
-  },
-  {
-    "format": "text",
-    "label": "Đơn vị thực hiện thẩm định giá",
-    "name": "tdg_don_vi_thuc_hien",
-    "sourceColumn": "tdg_don_vi_thuc_hien",
-    "sourceTable": "__context__"
-  },
-  {
-    "format": "text",
-    "label": "Hợp đồng thẩm định giá",
-    "name": "tdg_hop_dong",
-    "sourceColumn": "tdg_hop_dong",
-    "sourceTable": "__context__"
-  },
-  {
-    "format": "text",
-    "label": "Số chứng thư thẩm định giá",
-    "name": "tdg_so_chung_thu",
-    "sourceColumn": "tdg_so_chung_thu",
-    "sourceTable": "__context__"
   },
   {
     "format": "text",
