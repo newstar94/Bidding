@@ -8,6 +8,16 @@ import {
   isLegacyMedicineTemplateCriteria,
 } from "../../frontend/packages/medicineDetailedEvaluation.js";
 
+test("medicine independent bidder numbering closes the joint venture gap and retains hierarchy", () => {
+  const criteria = createMedicineEvaluationCriteria({ id: "p" }, "single", ["validity", "financial"]);
+  const rows = adaptMedicineEvaluationCriteria(criteria, { loaiNhaThau: "Độc lập" });
+  assert.deepEqual(rows.filter((row) => row.group === "validity").slice(0, 4)
+    .map((row) => row.stt), ["1", "2", "2.1", "2.1.1"]);
+  assert.equal(rows.find((row) => row.group === "financial").stt, "1");
+  assert.deepEqual(adaptMedicineEvaluationCriteria(rows, { loaiNhaThau: "Độc lập" })
+    .map((row) => row.stt), rows.map((row) => row.stt));
+});
+
 test("medicine seed is scoped to medicine packages and does not replace saved state", () => {
   const pkg = { id: "p1", isThuoc: 1, danhGiaHsdtMetadata: {} };
   assert.equal(isMedicineEvaluationPackage(pkg), true);
