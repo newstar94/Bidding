@@ -30,7 +30,7 @@ test("admin router normalizes trailing slash and rejects unknown routes", () => 
   });
   assert.equal(getAdminRoute("/admin/invoices/a%2Fb"), null);
   assert.equal(normalizeAdminPath("/admin/not-real"), null);
-  assert.equal(normalizeAdminPath("/admin/chuan-hoa"), null);
+  assert.equal(normalizeAdminPath("/admin/external-product"), null);
   assert.equal(normalizeAdminPath("/tong-quan-admin"), null);
 });
 

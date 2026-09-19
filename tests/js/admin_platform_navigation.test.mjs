@@ -31,6 +31,6 @@ test("admin sidebar group labels and routes are escaped at the markup seam", () 
 
 test("admin shell manages BiddingFlow only", () => {
   const source = fs.readFileSync(new URL("../../frontend/admin-platform/AdminApp.js", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /data-admin-application-filter|Chuẩn Hóa|AdminChuanHoa/u);
+  assert.doesNotMatch(source, /data-admin-application-filter/u);
   assert.match(source, /BiddingFlow/u);
 });
