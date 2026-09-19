@@ -421,6 +421,12 @@ function bindApprovalSubmit({ view, root, pkg, appController, viewModel, approva
       if (!command.ok) {
         const first = command.errors.find((error) => error.element)?.element;
         if (first) view.focusInvalidControl(first);
+        await view.customAlert(
+          "Chưa thể phê duyệt",
+          "Vui lòng kiểm tra các trường bắt buộc và thông tin nhà thầu trước khi phê duyệt kết quả.",
+          "alert-triangle",
+          first,
+        );
         settleAwardApprovalOperation(operation, { ok: false, kind: "validation_failed" });
         return;
       }
@@ -434,7 +440,11 @@ function bindApprovalSubmit({ view, root, pkg, appController, viewModel, approva
       settleAwardApprovalOperation(operation, result);
     } catch (error) {
       settleAwardApprovalOperation(operation, { ok: false, kind: "unexpected_error" });
-      throw error;
+      await view.customAlert(
+        "Không thể phê duyệt kết quả",
+        error?.message || "Không thể hoàn thành thao tác. Vui lòng thử lại.",
+        "alert-triangle",
+      );
     }
   };
 }

@@ -1089,13 +1089,8 @@ export async function saveKetQuaChiDinhThau(gtId) {
   let dateTtRaw = "";
   let dateTkqRaw = "";
   if (isDirectOrSpecial) {
-    const radChecked = document.querySelector('input[name="result-danh-gia-nang-luc"]:checked');
-    if (radChecked) danhGiaNangLucVal = radChecked.value;
     dateYcbgiRaw = document.getElementById("date-yeu-cau-bao-gia")?.value || "";
     dateGbgiRaw = document.getElementById("date-gui-bao-gia")?.value || "";
-    if (danhGiaNangLucVal === "Có") {
-      dateBcdgRaw = document.getElementById("date-bao-cao-danh-gia")?.value || "";
-    }
     dateMttRaw = document.getElementById("date-moi-thuong-thao")?.value || "";
     dateTtRaw = document.getElementById("date-thuong-thao")?.value || "";
     dateTkqRaw = document.getElementById("date-trinh-ket-qua")?.value || "";

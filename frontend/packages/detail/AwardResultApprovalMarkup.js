@@ -24,6 +24,9 @@ export function buildAwardResultApprovalMarkup(view, {
   scopedDraft = null
 }) {
         const kh2 = view.model.getLatestPlan(gt.keHoachId);
+        const planVersions = (view.model.state.kehoach || []).filter((plan) =>
+          String(plan.rootId || plan.id) === String(kh2?.rootId || kh2?.id || gt.keHoachId));
+        const planVersion00 = planVersions.find((plan) => String(plan.phienBan ?? "00").padStart(2, "0") === "00") || kh2;
         const cdt = kh2 ? view.model.state.chudautu.find((c) => c.id === kh2.chuDauTuId) : null;
         const tenCdt = cdt ? cdt.tenChuDauTu : "Không rõ";
         const tenKhStr = kh2 ? kh2.tenKeHoach : "Không rõ";
@@ -36,7 +39,7 @@ export function buildAwardResultApprovalMarkup(view, {
           return lotX.localeCompare(lotY, "vi", { numeric: true });
         });
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
-        const danhGiaNangLuc = metadata.result.danhGiaNangLuc || "Không";
+        const danhGiaNangLuc = "Không";
         const addWorkingDays = (startDateStr, days) => {
           if (!startDateStr) return "";
           let date = new Date(startDateStr);
@@ -69,20 +72,21 @@ export function buildAwardResultApprovalMarkup(view, {
         let defaultTt = "";
         let defaultTkq = "";
         let defaultPdkq = "";
-        if (kh2) {
-          const isPheDuyetKeHoach = kh2.pheDuyet === "Kế hoạch";
-          const anchorDate = isPheDuyetKeHoach ? kh2.ngayTrinhDuToan : kh2.ngayTrinhKeHoach;
-          const approvalDate = kh2.ngayPheDuyet || "";
-          defaultYcbgi = addWorkingDays(anchorDate, -5);
-          defaultGbgi = addWorkingDays(anchorDate, -1);
+        if (planVersion00) {
+          const anchorDate = planVersion00.pheDuyet === "Kế hoạch"
+            ? planVersion00.ngayTrinhDuToan
+            : planVersion00.ngayTrinhDuToanKeHoach || planVersion00.ngayTrinhKeHoach;
+          const approvalDate = planVersion00.ngayPheDuyet || "";
+          defaultYcbgi = anchorDate;
+          defaultGbgi = approvalDate;
           defaultBcdg = approvalDate;
           defaultMtt = approvalDate;
           defaultTt = addWorkingDays(approvalDate, 1);
           defaultTkq = defaultTt;
           defaultPdkq = defaultTkq;
         }
-        const ngayYeuCauBaoGia = metadata.result.ngayYeuCauBaoGia ? view.model.formatForDateInput(metadata.result.ngayYeuCauBaoGia) : defaultYcbgi ? view.model.formatForDateInput(defaultYcbgi) : "";
-        const ngayGuiBaoGia = metadata.result.ngayGuiBaoGia ? view.model.formatForDateInput(metadata.result.ngayGuiBaoGia) : defaultGbgi ? view.model.formatForDateInput(defaultGbgi) : "";
+        const ngayYeuCauBaoGia = metadata.result.ngayXetDuyetBaoGia || metadata.result.ngayYeuCauBaoGia ? view.model.formatForDateInput(metadata.result.ngayXetDuyetBaoGia || metadata.result.ngayYeuCauBaoGia) : defaultYcbgi ? view.model.formatForDateInput(defaultYcbgi) : "";
+        const ngayGuiBaoGia = metadata.result.ngayPheDuyetKeHoach || metadata.result.ngayGuiBaoGia ? view.model.formatForDateInput(metadata.result.ngayPheDuyetKeHoach || metadata.result.ngayGuiBaoGia) : defaultGbgi ? view.model.formatForDateInput(defaultGbgi) : "";
         const ngayBaoCaoDanhGiaNhaThau = metadata.result.ngayBaoCaoDanhGiaNhaThau ? view.model.formatForDateInput(metadata.result.ngayBaoCaoDanhGiaNhaThau) : defaultBcdg ? view.model.formatForDateInput(defaultBcdg) : "";
         const ngayMoiThuongThao = metadata.result.ngayMoiThuongThao ? view.model.formatForDateInput(metadata.result.ngayMoiThuongThao) : defaultMtt ? view.model.formatForDateInput(defaultMtt) : "";
         const ngayThuongThao = metadata.result.ngayThuongThao ? view.model.formatForDateInput(metadata.result.ngayThuongThao) : defaultTt ? view.model.formatForDateInput(defaultTt) : "";
@@ -303,30 +307,18 @@ export function buildAwardResultApprovalMarkup(view, {
                     </div>
 
                     <div class="bf-s-c12ee1fe89">
-                        <div class="bf-s-72451a63ba">
-                            <span class="bf-s-ae2dc20bdc">
-                                <i data-lucide="shield-check" class="bf-s-c1f1f4a417"></i> Đánh giá năng lực nhà thầu:
-                            </span>
-                            <label class="bf-s-95a4734e91">
-                                <input type="radio" name="result-danh-gia-nang-luc" value="Có" ${danhGiaNangLuc === "Có" ? "checked" : ""}> Có
-                            </label>
-                            <label class="bf-s-95a4734e91">
-                                <input type="radio" name="result-danh-gia-nang-luc" value="Không" ${danhGiaNangLuc === "Không" ? "checked" : ""}> Không
-                            </label>
-                        </div>
-
                         <div id="result-dates-grid" class="bf-s-d131bccf20">
                             <div class="form-group form-group-compact">
-                                <label class="compact-field-label">Ngày yêu cầu báo giá <span class="text-danger">*</span></label>
+                                <label class="compact-field-label">Ngày xét duyệt báo giá <span class="text-danger">*</span></label>
                                 <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayYeuCauBaoGia)}" placeholder="dd/MM/yyyy">
-                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày yêu cầu báo giá!</span>
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày xét duyệt báo giá!</span>
                             </div>
                             <div class="form-group form-group-compact">
-                                <label class="compact-field-label">Ngày gửi báo giá <span class="text-danger">*</span></label>
+                                <label class="compact-field-label">Ngày phê duyệt kế hoạch <span class="text-danger">*</span></label>
                                 <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayGuiBaoGia)}" placeholder="dd/MM/yyyy">
-                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày gửi báo giá!</span>
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày phê duyệt kế hoạch!</span>
                             </div>
-                            <div class="form-group" id="container-date-bao-cao-danh-gia" style="margin-bottom: 0; display: ${danhGiaNangLuc === "Có" ? "block" : "none"};">
+                            <div class="form-group" id="container-date-bao-cao-danh-gia" hidden style="margin-bottom: 0; display: none;">
                                 <label class="compact-field-label">Ngày báo cáo đánh giá nhà thầu <span class="text-danger">*</span></label>
                                 <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayBaoCaoDanhGiaNhaThau)}" placeholder="dd/MM/yyyy">
                                 <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày báo cáo đánh giá nhà thầu!</span>

@@ -92,8 +92,8 @@ export function applyAwardMetadata({ gt, isDirectOrSpecial, soBctdVal, ngayBctdV
   if (isDirectOrSpecial) {
     Object.assign(metaFinal.result, {
       danhGiaNangLuc: directDates.danhGiaNangLucVal,
-      ngayYeuCauBaoGia: directDates.dateYcbgi,
-      ngayGuiBaoGia: directDates.dateGbgi,
+      ngayXetDuyetBaoGia: directDates.dateYcbgi,
+      ngayPheDuyetKeHoach: directDates.dateGbgi,
       ngayBaoCaoDanhGiaNhaThau: directDates.dateBcdg,
       ngayMoiThuongThao: directDates.dateMtt,
       ngayThuongThao: directDates.dateTt,

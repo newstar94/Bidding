@@ -39,9 +39,6 @@ export function getAwardRequiredFieldIds({ isDirectOrSpecial = false, danhGiaNan
   if (hasField("award-ngay-bctd")) fields.push("award-ngay-bctd");
   if (isDirectOrSpecial) {
     fields.push("date-yeu-cau-bao-gia", "date-gui-bao-gia");
-    if (danhGiaNangLucVal === "Có") {
-      fields.push("date-bao-cao-danh-gia");
-    }
     fields.push("date-moi-thuong-thao", "date-thuong-thao", "date-trinh-ket-qua");
   }
   return fields;

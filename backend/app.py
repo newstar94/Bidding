@@ -975,7 +975,6 @@ from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
 from backend.version_comparison.routes import version_comparison_routes
 from backend.sync.conflict_resolution.routes import conflict_resolution_routes
-from backend.documents.template_catalog.routes import word_template_catalog_routes
 from backend.legal_versioning.routes import legal_versioning_routes
 
 
@@ -1306,7 +1305,6 @@ routes = [
     *procurement_lookup_routes(Route),
     *version_comparison_routes(Route),
     *conflict_resolution_routes(Route),
-    *word_template_catalog_routes(Route),
     *legal_versioning_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
