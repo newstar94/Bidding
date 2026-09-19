@@ -1025,7 +1025,19 @@ async function performSaveThongTinMoThau() {
     // The asynchronous verification is display-only. Never let its eventual
     // completion replace a later evaluation form and discard the user's
     // unsaved inputs.
-    if (detailIsActive) return;
+    if (detailIsActive) {
+      // The active opening table must still reflect the authoritative verdict.
+      // Re-rendering here can discard an evaluation form being edited, so only
+      // update the affected contractor-name controls in place.
+      for (const bid of tempBids) {
+        const row = document.querySelector(`#mothau-table tr[data-id="${CSS.escape(String(bid.id))}"]`);
+        if (!row) continue;
+        row._violationStatus = bid.violationStatus || VIOLATION_NOT_CHECKED;
+        row._thanhVienLienDanh = bid.thanhVienLienDanh || [];
+        updateOpeningViolationPresentation(row);
+      }
+      return;
+    }
     this.view.renderGoiThauTable();
     this.renderMoThauPanel();
   }).catch((error) => {

@@ -34,3 +34,14 @@ b2ebe0b1753b372eb92b6a35559191063c6bde5d:backend/integrations/muasamcong_browser
 # Reviewed false positive: analytics KPI label "P90 TTFV" in historical
 # product analytics code; it is a display label, not a credential.
 639d201f27b9f952e779c88691e4ac35da39e0e1:backend/product_analytics/query_service.py:generic-api-key:1935
+
+# Reviewed false positives: deterministic identifiers and redaction assertions
+# in historical tests; these values are not credentials and never authorize a
+# request.
+0109392b7c6007b59f85d151b19138d71cb2444b:tests/test_chuan_hoa_integration.py:generic-api-key:199
+b204bf808661c8178e3cb03305512e3918208dd1:tests/js/admin_platform_chuan_hoa.test.mjs:generic-api-key:46
+b204bf808661c8178e3cb03305512e3918208dd1:tests/test_chuan_hoa_integration.py:generic-api-key:150
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-token:115
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-token:124
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_document_scope_http_error.py:generic-api-key:22
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_lot_scope_http_error.py:generic-api-key:30
