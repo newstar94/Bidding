@@ -27,8 +27,6 @@ function assertAdminPath(path, method = "GET") {
     && /^\/api\/commercial\/releases\/[^/?#]+\/(?:clone|stop-sales)$/u.test(value);
   const approvedBillingAction = verb === "POST"
     && /^\/api\/billing\/admin\/orders\/[^/?#]+\/(?:review|reconcile|refund)$/u.test(value);
-  const approvedChuanHoaEntitlement = verb === "POST"
-    && value === "/api/admin/integrations/chuan-hoa/entitlements/extend";
   const approvedUserCommand = verb === "POST"
     && ["/api/auth/users/update-role", "/api/auth/users/update-metadata"].includes(value);
   const approvedUserAccessSettings = verb === "PUT"
@@ -41,7 +39,7 @@ function assertAdminPath(path, method = "GET") {
   const approvedActiveRoleTransition = verb === "POST" && value === "/api/auth/active-role";
   const approved = platformPath || approvedEnvironmentUpdate || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
     || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
-    || approvedBillingAction || approvedChuanHoaEntitlement || approvedUserCommand || approvedUserDeactivation
+    || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
     || approvedUserAccessSettings
     || approvedOrganizationSubscription || approvedReauthentication
     || approvedActiveRoleTransition;
@@ -159,10 +157,6 @@ export async function postAdminJson(path, {
     throw adminError(response, payload);
   }
   return payload;
-}
-
-export async function postAdminIntegrationJson(path, options = {}) {
-  return postAdminJson(path, { ...options, retries: 0 });
 }
 
 export async function putAdminJson(path, {

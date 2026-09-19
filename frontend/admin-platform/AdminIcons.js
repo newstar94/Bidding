@@ -33,7 +33,6 @@ export const ADMIN_ROUTE_ICONS = Object.freeze({
   "/admin/invoices": "invoices",
   "/admin/payments": "payments",
   "/admin/settings": "settings",
-  "/admin/chuan-hoa": "integration",
   "/admin/environment": "environment",
   "/admin/legal": "legal",
   "/admin/audit": "audit",

@@ -12,7 +12,7 @@ test("admin router recognizes every required deep link", () => {
   const required = [
     "/admin", "/admin/analytics", "/admin/organizations", "/admin/users",
     "/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments",
-    "/admin/settings", "/admin/chuan-hoa", "/admin/environment", "/admin/legal", "/admin/audit", "/admin/health",
+    "/admin/settings", "/admin/environment", "/admin/legal", "/admin/audit", "/admin/health",
     "/admin/security", "/admin/system/jobs", "/admin/system/sync", "/admin/system/version",
   ];
   assert.deepEqual(ADMIN_ROUTES.map(([path]) => path), required);
@@ -30,6 +30,7 @@ test("admin router normalizes trailing slash and rejects unknown routes", () => 
   });
   assert.equal(getAdminRoute("/admin/invoices/a%2Fb"), null);
   assert.equal(normalizeAdminPath("/admin/not-real"), null);
+  assert.equal(normalizeAdminPath("/admin/chuan-hoa"), null);
   assert.equal(normalizeAdminPath("/tong-quan-admin"), null);
 });
 
@@ -44,7 +45,7 @@ test("admin information architecture groups every route exactly once", () => {
     "/admin/analytics",
     "/admin/organizations", "/admin/users",
     "/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments",
-    "/admin/settings", "/admin/chuan-hoa", "/admin/legal", "/admin/system/jobs", "/admin/system/sync",
+    "/admin/settings", "/admin/legal", "/admin/system/jobs", "/admin/system/sync",
     "/admin/audit", "/admin/security",
     "/admin/environment", "/admin/health", "/admin/system/version",
   ]);
