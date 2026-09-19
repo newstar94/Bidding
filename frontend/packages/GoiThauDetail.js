@@ -100,6 +100,11 @@ export async function showPackageDetails(
   const renderVersion = Number(this._packageDetailRenderVersion || 0) + 1;
   this._packageDetailRenderVersion = renderVersion;
   const existingContent = document.getElementById("detail-workflow-content-wrapper");
+  // Dirty state belongs to the panel currently displayed, not the target ID
+  // published below for navigation/chrome. Otherwise A's draft guard can
+  // retain A's opening controls underneath B's header.
+  const renderedPackageId = existingContent?.dataset?.renderedPackageId
+    || this._currentWorkflowPackageId;
   if (existingContent) existingContent.dataset.pendingRenderVersion = String(renderVersion);
   const isCurrentRender = () => this._packageDetailRenderVersion === renderVersion;
   capturePackageDetailNavigationIntent(this, id, requestedTab);
@@ -161,7 +166,7 @@ export async function showPackageDetails(
   // replace the live form and discard unsaved values.
   if (shouldAbortPackageDetailRefreshForNewDraft({
     isDirty: packageWorkspace.isDirty(),
-    currentPackageId: this._currentWorkflowPackageId,
+    currentPackageId: renderedPackageId,
     targetPackageId: id,
     hasExplicitNavigation: Boolean(requestedTab),
   })) return;
@@ -230,7 +235,7 @@ export async function showPackageDetails(
   // discarded by an in-flight projection.
   if (!contentWrapper || shouldAbortPackageDetailRefreshForNewDraft({
     isDirty: packageWorkspace.isDirty(),
-    currentPackageId: this._currentWorkflowPackageId,
+    currentPackageId: renderedPackageId,
     targetPackageId: id,
     hasExplicitNavigation: Boolean(requestedTab),
   })) return;

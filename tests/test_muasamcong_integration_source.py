@@ -44,6 +44,27 @@ from backend.procurement_lookup.domain import ProcurementLookupError
 FIXTURES = Path(__file__).parent / "fixtures" / "muasamcong"
 
 
+@pytest.mark.parametrize("rate,price,final_price", [
+    (21, 2739663000, 2164333770),
+    (0, 3061920700, 3061920700),
+])
+def test_opening_sale_number_preserves_source_discount(rate, price, final_price):
+    payload = {"opening_bid_0": {"bidOpenView": [{
+        "contractorCode": "vn0107669379",
+        "contractorName": "Source contractor",
+        "bidPrice": price,
+        "saleNumber": rate,
+        "bidFinalPrice": final_price,
+    }]}}
+    result = normalize_opening_bundle(
+        payload, notice_no="IB2600416773", revision_id="00",
+    )
+    bidder = result["bidders"][0]
+    assert bidder["discountRate"] == rate
+    assert bidder["bidPrice"] == price
+    assert bidder["priceAfterDiscount"] == final_price
+
+
 def test_unified_source_honors_the_server_owned_browser_mode(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_BROWSER_MODE", "procurement-browser")
     monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "true")

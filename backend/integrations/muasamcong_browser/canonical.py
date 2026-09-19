@@ -1424,6 +1424,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 ),
                 "discountRate": pick(
                     item,
+                    "saleNumber",
                     "discountRate",
                     "discountPercent",
                     "discountPercentage",
