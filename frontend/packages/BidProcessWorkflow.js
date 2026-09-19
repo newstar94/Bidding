@@ -1043,6 +1043,9 @@ async function performSaveThongTinMoThau() {
     // The asynchronous verification is display-only. Never let its eventual
     // completion replace a later evaluation form and discard the user's
     // unsaved inputs.
+    // Historical contract: if (detailIsActive) return; is forbidden here as
+    // it would leave the authoritative violation presentation stale. Update
+    // only the affected controls in place instead.
     if (detailIsActive) {
       // The active opening table must still reflect the authoritative verdict.
       // Re-rendering here can discard an evaluation form being edited, so only
