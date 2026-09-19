@@ -1584,6 +1584,11 @@ test("opening mapper preserves lot and bid values without prefilling venture mem
   );
 });
 
+test("opening mapper preserves procurement discount-rate aliases", () => {
+  assert.equal(mapOpeningBidder({ discountPercent: 5 }).tyLeGiamGia, 5);
+  assert.equal(mapOpeningBidder({ bidPriceDiscountPercent: 7.5 }).tyLeGiamGia, 7.5);
+});
+
 
 test("opening mapper fills the lot name paired with the imported lot code", () => {
   const mapped = mapOpeningBidder({

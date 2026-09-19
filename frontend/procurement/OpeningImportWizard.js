@@ -107,7 +107,13 @@ export function mapOpeningBidder(bidder) {
     // Thành viên liên danh do người dùng nhập và xác nhận thủ công.
     thanhVienLienDanh: [],
     giaDuThau: bidder?.bidPrice ?? null,
-    tyLeGiamGia: bidder?.discountRate ?? null,
+    tyLeGiamGia: bidder?.discountRate
+      ?? bidder?.discountPercent
+      ?? bidder?.discountPercentage
+      ?? bidder?.bidDiscountRate
+      ?? bidder?.bidPriceDiscountPercent
+      ?? bidder?.tyLeGiamGia
+      ?? null,
     giaSauGiamGia: bidder?.priceAfterDiscount ?? null,
     hieuLucHsdt: bidder?.bidValidityDays ?? null,
     giaTriDamBao: bidder?.bidGuarantee ?? null,

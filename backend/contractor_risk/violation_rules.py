@@ -186,6 +186,14 @@ def evaluate_violation_records(
     for record in records:
         if record.is_revoked or not record.is_applicable:
             continue
+        # A decision issued after bid closing cannot establish a violation at
+        # that earlier point in time.  Keep this guard ahead of category-
+        # specific lookback/ban rules so every decision-based category obeys
+        # the same temporal rule.
+        issued_at = _as_vietnam_datetime(record.issued_date)
+        if issued_at is not None and issued_at > closing:
+            reviewed.append(record)
+            continue
         if record.requires_review:
             reviewed.append(record)
             needs_review = True

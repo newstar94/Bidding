@@ -299,3 +299,12 @@ def test_identifier_and_tax_pointing_to_different_entities_is_conflict():
     )
     assert result.conflict is True
     assert result.records == ()
+
+
+def test_decision_issued_after_bid_closing_is_not_a_violation():
+    item = record(
+        ViolationCategory.ADMINISTRATIVE_WARNING_OR_OTHER_ACTION,
+        issued_date="2026-09-11",
+    )
+    result = evaluate_violation_records([item], "2026-09-10")
+    assert result.status == ViolationStatus.NO_ACTIVE_VIOLATION

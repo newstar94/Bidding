@@ -321,6 +321,24 @@ export function renderMoThauPanel() {
     refreshOpeningDraftPagination(this, gtId);
     this.view.createIconsScoped?.(summaryContainer);
     this.view.createIconsScoped?.(bidContainer);
+    // Resolve imported/saved contractors as soon as the opening data is
+    // loaded.  This keeps the warning visible before the user presses Save;
+    // only the name controls are patched so an in-progress draft is preserved.
+    const pendingViolationChecks = bids.filter((bid) =>
+      shouldRefreshSavedOpeningViolationCheck(bid, bid.maDinhDanh || bid.maNhaThau || ""));
+    if (pendingViolationChecks.length > 0) {
+      void refreshSavedOpeningViolationChecks(gtId, pendingViolationChecks).then(() => {
+        for (const bid of pendingViolationChecks) {
+          const row = tbody.querySelector(`tr[data-id="${CSS.escape(String(bid.id))}"]`);
+          if (!row) continue;
+          row._violationStatus = bid.violationStatus || VIOLATION_NOT_CHECKED;
+          row._thanhVienLienDanh = bid.thanhVienLienDanh || [];
+          updateOpeningViolationPresentation(row);
+        }
+      }).catch((error) => {
+        console.error("Opening violation lookup after load failed:", error);
+      });
+    }
   };
   select.onchange = handlePackageSelection;
   handlePackageSelection();
