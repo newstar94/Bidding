@@ -1,3 +1,5 @@
+import { acquireBackgroundInert, releaseBackgroundInert } from "./backgroundInert.js";
+
 const BRAND_ICON_URL = "/assets/app-brand-icon.webp?v=d308bf4310b5dbba1d17fa6bbd0c1d51eedbcefcc6c3f7034ee223447b9a06f6";
 const DEFAULT_STAGES = Object.freeze([
   Object.freeze({
@@ -166,22 +168,16 @@ function isolateBackground(documentRef, refs) {
   previousFocus = documentRef.activeElement;
   backgroundInertState = [...documentRef.body.children]
     .filter((element) => element !== refs.overlay)
-    .map((element) => ({
-      element,
-      inert: Boolean(element.inert),
-      hadAttribute: element.hasAttribute("inert"),
-    }));
+    .map((element) => ({ element }));
   backgroundInertState.forEach(({ element }) => {
-    element.inert = true;
+    acquireBackgroundInert(element, taskStack);
   });
   refs.card.focus({ preventScroll: true });
 }
 
 function restoreBackground() {
-  backgroundInertState.forEach(({ element, inert, hadAttribute }) => {
-    if (!element?.isConnected) return;
-    element.inert = inert;
-    if (!hadAttribute && !inert) element.removeAttribute("inert");
+  backgroundInertState.forEach(({ element }) => {
+    releaseBackgroundInert(element, taskStack);
   });
   backgroundInertState = [];
   if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {

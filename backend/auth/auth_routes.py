@@ -232,11 +232,6 @@ def _commit_successful_login(
     try:
         conn.execute("BEGIN")
         cursor = conn.cursor()
-        if replacement_password_hash:
-            cursor.execute(
-                "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
-                (replacement_password_hash, user["id"]),
-            )
         replace_user_session(
             cursor,
             user_id=user["id"],
@@ -245,7 +240,8 @@ def _commit_successful_login(
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=remember,
             device_info=device_info,
-            expected_password_hash=replacement_password_hash or user["mat_khau"],
+            expected_password_hash=user["mat_khau"],
+            replacement_password_hash=replacement_password_hash,
         )
         access_payload = build_user_access_payload(
             cursor,

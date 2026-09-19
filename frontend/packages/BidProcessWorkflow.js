@@ -838,9 +838,16 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (jvViewLink) {
     jvViewLink.addEventListener("click", async (e) => {
       e.preventDefault();
+      const workspaceToken = this.model.getWorkspaceToken?.();
       if (tr._violationRefresh) await tr._violationRefresh;
-      if (!tr.isConnected) return;
-      this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode, tr._leadMemberContractorId || "", tr._leadMemberViolationStatus || "");
+      if (workspaceToken && !this.model.isWorkspaceCurrent?.(workspaceToken)) return;
+      if (document.getElementById("mothau-goithau-select")?.value !== String(gt.id)) return;
+      // Sync can repaint the row while its risk lookup is in flight. Resolve
+      // the still-visible record again, never open a detached/revoked record.
+      const currentRow = Array.from(document.querySelectorAll("#mothau-table-tbody tr"))
+        .find((row) => row.dataset.id === tr.dataset.id);
+      if (!currentRow?.querySelector(".mt-jv-view-link")) return;
+      this.openMoThauJVViewModal(currentRow._thanhVienLienDanh || [], currentRow._leadMemberName || ntName, currentRow._leadMemberCode || ntCode, currentRow._leadMemberContractorId || "", currentRow._leadMemberViolationStatus || "");
     });
   }
   if (typeof this.unifyTableInputsHeight === "function") {

@@ -41,7 +41,8 @@ def create_session(cursor, *, user_id, token, absolute_expires_at,
 
 def replace_user_session(cursor, *, user_id, token, absolute_expires_at,
                          idle_timeout_seconds, remember=False,
-                         device_info=None, now=None, expected_password_hash=None):
+                         device_info=None, now=None, expected_password_hash=None,
+                         replacement_password_hash=None):
     """Atomically revoke older sessions and create the account's only session.
 
     Locking the account row serializes concurrent password and Google logins.
@@ -60,6 +61,14 @@ def replace_user_session(cursor, *, user_id, token, absolute_expires_at,
         raise ValueError("Account is not active.")
     if expected_password_hash is not None and account[1] != expected_password_hash:
         raise ValueError("Account credentials changed.")
+    if replacement_password_hash is not None:
+        cursor.execute(
+            """UPDATE tai_khoan SET mat_khau = ?
+               WHERE id = ? AND mat_khau = ? AND trang_thai = 'active'""",
+            (replacement_password_hash, user_id, expected_password_hash),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Account credentials changed.")
     revoke_user_sessions(cursor, user_id, now=current)
     return create_session(
         cursor,

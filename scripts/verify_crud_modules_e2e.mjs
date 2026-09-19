@@ -113,7 +113,10 @@ async function submitModal(page, formSelector, modalSelector) {
     });
     return;
   }
-  if (outcome === "closed") return;
+  if (outcome === "closed") {
+    await page.locator('#app-long-task-loading').waitFor({ state: 'hidden', timeout: 20_000 });
+    return;
+  }
   await modal.waitFor({ state: "hidden", timeout: 100 }).catch(async (error) => {
     throw new Error(`${formSelector} did not close: ${JSON.stringify(await diagnostics())}; ${error.message}`);
   });
@@ -371,7 +374,16 @@ try {
   await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
   await page.locator("#search-chuyengia").fill(crudCodes.expert);
   let expertRow = page.locator("#chuyengia-table tbody tr").filter({ hasText: crudCodes.expert });
-  await expertRow.locator('[data-bf-action="edit-expert"]').click();
+  try {
+    await expertRow.locator('[data-bf-action="edit-expert"]').click();
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      search: document.getElementById('search-chuyengia')?.value,
+      rows: document.querySelector('#chuyengia-table tbody')?.innerText,
+      pagination: document.querySelector('#chuyengia-pagination')?.innerText,
+    }));
+    throw new Error(`Expert row unavailable: ${JSON.stringify(state)}; ${error.message}`, { cause: error });
+  }
   await page.locator("#modal-chuyengia.active").waitFor({ state: "visible" });
   const expertUpdated = `${crudCodes.expert} đã sửa`;
   await page.locator("#cg-hoten").fill(expertUpdated);

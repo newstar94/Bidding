@@ -39,7 +39,6 @@ export function buildAwardResultApprovalMarkup(view, {
           return lotX.localeCompare(lotY, "vi", { numeric: true });
         });
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
-        const danhGiaNangLuc = "Không";
         const addWorkingDays = (startDateStr, days) => {
           if (!startDateStr) return "";
           let date = new Date(startDateStr);

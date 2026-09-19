@@ -140,7 +140,7 @@ test("public landing exposes crawlable SEO and semantic content", async ({ page 
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
   await expect(page.locator("main#landing-main")).toContainText("Kế hoạch LCNT");
-  await expect(page.locator("main#landing-main")).toContainText("nghiệp vụ đấu thầu");
+  await expect(page.locator("main#landing-main")).toContainText("Không để một gói thầu trôi khỏi tầm kiểm soát");
   const structured = await page.locator('script[type="application/ld+json"]').textContent();
   expect(() => JSON.parse(structured || "")).not.toThrow();
 });

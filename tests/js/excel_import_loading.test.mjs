@@ -154,6 +154,25 @@ test("shared application loading surface announces Excel and Word progress", asy
     assert.deepEqual(saveDelays, [], 'saving must not wait for cosmetic minimum-duration or exit timers');
     assert.equal(await page.locator("body").getAttribute("aria-busy"), null);
     assert.equal(await page.locator("main").getAttribute("inert"), null);
+    const inertAfterModalSave = await page.evaluate(async () => {
+      const { syncDialogStackAccessibility } = await import('/frontend/shared/dialogAccessibility.js');
+      const { beginLongTaskLoading } = await import('/frontend/shared/LongTaskLoading.js');
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay active';
+      const card = document.createElement('div');
+      card.className = 'modal-card';
+      modal.append(card);
+      document.body.append(modal);
+      syncDialogStackAccessibility(document);
+      const loading = await beginLongTaskLoading({ minimumVisibleMs: 0, exitTransitionMs: 0 });
+      modal.classList.remove('active');
+      syncDialogStackAccessibility(document);
+      await loading.close();
+      syncDialogStackAccessibility(document);
+      modal.remove();
+      return document.querySelector('main').inert;
+    });
+    assert.equal(inertAfterModalSave, false, 'closing save feedback must not restore the already-closed modal inert lock');
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

@@ -128,13 +128,29 @@ async function openOpeningForPackage(page, { packageCode, openingId }) {
 }
 
 async function clickCurrentOpeningSave(page) {
-  await page.waitForFunction(() => {
+  try {
+    await page.waitForFunction(() => {
     const wrapper = document.getElementById("detail-workflow-content-wrapper");
     const button = document.getElementById("btn-mothau-save");
     return button?.isConnected
       && !button.disabled
       && wrapper?.dataset.renderedRenderVersion === wrapper?.dataset.pendingRenderVersion;
-  }, null, { timeout: 20_000 });
+    }, null, { timeout: 20_000 });
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const wrapper = document.getElementById("detail-workflow-content-wrapper");
+      const button = document.getElementById("btn-mothau-save");
+      return {
+        path: location.pathname,
+        activeTab: document.querySelector('[data-workflow-tab].active')?.getAttribute('data-workflow-tab'),
+        button: button ? { disabled: button.disabled, connected: button.isConnected, text: button.textContent?.trim() } : null,
+        render: wrapper ? { rendered: wrapper.dataset.renderedRenderVersion, pending: wrapper.dataset.pendingRenderVersion } : null,
+        loader: document.getElementById('system-init-loader')?.getAttribute('aria-busy'),
+        openingRows: document.querySelectorAll('#mothau-table-tbody tr').length,
+      };
+    });
+    throw new Error(`Opening save readiness timed out: ${JSON.stringify(state)}; ${error.message}`, { cause: error });
+  }
   await page.locator("#btn-mothau-save").dispatchEvent("click");
 }
 

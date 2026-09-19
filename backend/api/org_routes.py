@@ -1599,7 +1599,7 @@ async def update_document_export_capabilities_api(request):
             "Không thể cập nhật quyền do xung đột dữ liệu.",
             status_code=409,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - transaction boundary must rollback and preserve the stable API error
         if conn:
             conn.rollback()
         return log_and_error(

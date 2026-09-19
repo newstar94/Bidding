@@ -1,3 +1,5 @@
+import { acquireBackgroundInert, releaseBackgroundInert } from "./backgroundInert.js";
+
 const modalState = new WeakMap();
 const backgroundState = new Map();
 const FOCUSABLE_SELECTOR = [
@@ -130,15 +132,14 @@ export function deactivateDialogAccessibility(modal) {
 function rememberBackgroundState(element) {
   if (backgroundState.has(element)) return;
   backgroundState.set(element, {
-    inert: element.hasAttribute?.("inert") || false,
     ariaHidden: element.getAttribute?.("aria-hidden"),
   });
+  acquireBackgroundInert(element, backgroundState);
 }
 
 function restoreBackgroundState() {
   backgroundState.forEach((state, element) => {
-    if (state.inert) element.setAttribute?.("inert", "");
-    else element.removeAttribute?.("inert");
+    releaseBackgroundInert(element, backgroundState);
     if (state.ariaHidden === null || state.ariaHidden === undefined) {
       element.removeAttribute?.("aria-hidden");
     } else {

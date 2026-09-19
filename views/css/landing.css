@@ -3079,8 +3079,8 @@ html[data-bf-shell="workspace"] .landing-page {
 
 .landing-process-list li.is-active > i {
   color: var(--landing-blue);
-  background: #e9efff;
-  box-shadow: 0 0 0 5px rgba(36, 86, 230, .08);
+  background: var(--landing-blue-soft);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--landing-blue) 8%, transparent);
 }
 
 .landing-process-list li > span {

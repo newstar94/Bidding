@@ -277,11 +277,29 @@ SCHEMA_DINH_NGHIA = {
             "request_count": "INTEGER NOT NULL DEFAULT 0 CHECK(request_count >= 0)",
             "input_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(input_tokens >= 0)",
             "output_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(output_tokens >= 0)",
+            "reserved_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(reserved_tokens >= 0)",
             "tool_call_count": "INTEGER NOT NULL DEFAULT 0 CHECK(tool_call_count >= 0)",
             "estimated_cost": "REAL NOT NULL DEFAULT 0 CHECK(estimated_cost >= 0)",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         },
         "primary_keys": ["usage_date", "organization_id", "user_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "ai_token_reservations": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "usage_date": "TEXT NOT NULL CHECK(date(usage_date) IS NOT NULL)",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "user_id": "TEXT NOT NULL",
+            "reserved_tokens": "INTEGER NOT NULL CHECK(reserved_tokens >= 0)",
+            "actual_input_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(actual_input_tokens >= 0)",
+            "actual_output_tokens": "INTEGER NOT NULL DEFAULT 0 CHECK(actual_output_tokens >= 0)",
+            "status": "TEXT NOT NULL CHECK(status IN ('reserved', 'settled', 'released'))",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "settled_at": "TEXT"
+        },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]

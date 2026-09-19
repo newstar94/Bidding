@@ -33,7 +33,7 @@ export function validateOpeningTime(gt, formatDeadline) {
     message: `Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu (${deadline})!`
   };
 }
-export function getAwardRequiredFieldIds({ isDirectOrSpecial = false, danhGiaNangLucVal = "Không", hasField = () => false } = {}) {
+export function getAwardRequiredFieldIds({ isDirectOrSpecial = false, danhGiaNangLucVal: _danhGiaNangLucVal = "Không", hasField = () => false } = {}) {
   const fields = ["award-decision-no", "award-decision-date"];
   if (hasField("award-so-bctd")) fields.push("award-so-bctd");
   if (hasField("award-ngay-bctd")) fields.push("award-ngay-bctd");

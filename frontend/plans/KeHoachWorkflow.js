@@ -771,7 +771,7 @@ export async function handleKeHoachSubmit(e) {
   const coQuanPheDuyetDuAn = document.getElementById("kh-coquanpheduyetduan").value.trim();
   const diaDiemQuyMo = document.getElementById("kh-diadiem-quymo").value.trim();
   const thongTinKhac = document.getElementById("kh-thongtinkhac").value.trim();
-  const canCuGiaGoiThau = document.getElementById("kh-cancugiagoithau").value.trim();
+  const canCuGiaGoiThau = document.getElementById("kh-cancugiagoithau")?.value?.trim() || "";
   const tmInput = document.getElementById("kh-tongmuc");
   const currentVal = tmInput.value.trim();
   const initialVal = tmInput.getAttribute("data-initial-val") || "";

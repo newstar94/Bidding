@@ -821,7 +821,16 @@ try {
   await jvLink.waitFor({ state: "visible", timeout: 20_000 });
   await jvLink.click();
   const viewModal = page.locator("#modal-mothau-jv-view");
-  await viewModal.waitFor({ state: "visible" });
+  try {
+    await viewModal.waitFor({ state: "visible" });
+  } catch (error) {
+    throw new Error(
+      `Joint-venture view modal did not open: ${error.message}; `
+      + `pageErrors=${JSON.stringify(pageErrors)}; `
+      + `bodyHasLink=${await page.locator(".mt-jv-view-link").count()}; `
+      + `bodyHasModal=${await page.locator("#modal-mothau-jv-view").count()}`,
+    );
+  }
   const viewText = await viewModal.innerText();
   if (![contractors[0].name, contractors[1].name, contractors[2].name].every((name) => viewText.includes(name))) {
     throw new Error(`Joint venture members missing after reload: ${viewText}`);

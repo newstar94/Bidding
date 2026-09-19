@@ -3775,9 +3775,11 @@ def _upgrade_to_v92_self_service_organizations(cursor, _context):
     cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS ten_viet_tat TEXT")
     cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
     cursor.execute("ALTER TABLE to_chuc DROP CONSTRAINT IF EXISTS fk_to_chuc_owner_user")
-    cursor.execute("ALTER TABLE to_chuc ADD CONSTRAINT fk_to_chuc_owner_user FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT NOT VALID")
-    cursor.execute("ALTER TABLE to_chuc VALIDATE CONSTRAINT fk_to_chuc_owner_user")
+    cursor.execute("ALTER TABLE to_chuc DROP CONSTRAINT IF EXISTS fk_to_chuc_1_d35d84c6")
+    cursor.execute("ALTER TABLE to_chuc ADD CONSTRAINT fk_to_chuc_1_d35d84c6 FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT NOT VALID")
+    cursor.execute("ALTER TABLE to_chuc VALIDATE CONSTRAINT fk_to_chuc_1_d35d84c6")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_ma_so_thue ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_owner_user ON to_chuc (owner_user_id) WHERE owner_user_id IS NOT NULL")
 
 
 def _upgrade_to_v93_appraisal_certificate(cursor, _context):
@@ -3793,6 +3795,36 @@ def _upgrade_to_v94_remove_work_appraisal(cursor, _context):
 
 def _upgrade_to_v95_plan_price_basis(cursor, _context):
     cursor.execute("ALTER TABLE ke_hoach_lcnt ADD COLUMN IF NOT EXISTS can_cu_gia_goi_thau TEXT NOT NULL DEFAULT ''")
+
+
+def _upgrade_to_v96_add_ai_token_reservations(cursor, _context):
+    # Reconcile partially deployed v92 catalogs before taking the new contract
+    # snapshot; the operations are additive/idempotent and do not alter roles.
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS ma_so_thue TEXT")
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS ten_viet_tat TEXT")
+    cursor.execute("ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
+    cursor.execute("ALTER TABLE to_chuc DROP CONSTRAINT IF EXISTS fk_to_chuc_owner_user")
+    cursor.execute("ALTER TABLE to_chuc DROP CONSTRAINT IF EXISTS fk_to_chuc_1_d35d84c6")
+    cursor.execute("ALTER TABLE to_chuc ADD CONSTRAINT fk_to_chuc_1_d35d84c6 FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT NOT VALID")
+    cursor.execute("ALTER TABLE to_chuc VALIDATE CONSTRAINT fk_to_chuc_1_d35d84c6")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_ma_so_thue ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_owner_user ON to_chuc (owner_user_id) WHERE owner_user_id IS NOT NULL")
+    cursor.execute("ALTER TABLE ai_usage_daily ADD COLUMN IF NOT EXISTS reserved_tokens INTEGER NOT NULL DEFAULT 0 CHECK(reserved_tokens >= 0)")
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS ai_token_reservations (
+               id TEXT NOT NULL, usage_date TEXT NOT NULL CHECK(usage_date::date IS NOT NULL),
+               organization_id TEXT NOT NULL CHECK(organization_id <> ''), user_id TEXT NOT NULL,
+               reserved_tokens INTEGER NOT NULL CHECK(reserved_tokens >= 0),
+               actual_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK(actual_input_tokens >= 0),
+               actual_output_tokens INTEGER NOT NULL DEFAULT 0 CHECK(actual_output_tokens >= 0),
+               status TEXT NOT NULL CHECK(status IN ('reserved', 'settled', 'released')),
+               created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, settled_at TEXT,
+               PRIMARY KEY (organization_id, id),
+               CONSTRAINT fk_ai_token_reservations_1_d0816114
+                 FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE)"""
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_active ON ai_token_reservations (organization_id, user_id, usage_date) WHERE status = 'reserved'")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_user ON ai_token_reservations (user_id)")
 
 
 UPGRADES = (
@@ -4242,6 +4274,7 @@ UPGRADES = (
     DatabaseUpgrade(93, "appraisal_certificate", _upgrade_to_v93_appraisal_certificate),
     DatabaseUpgrade(94, "remove_work_appraisal", _upgrade_to_v94_remove_work_appraisal),
     DatabaseUpgrade(95, "plan_price_basis", _upgrade_to_v95_plan_price_basis),
+    DatabaseUpgrade(96, "add_ai_token_reservations", _upgrade_to_v96_add_ai_token_reservations),
 )
 
 
@@ -4262,6 +4295,7 @@ DB_SCHEMA_VERSION = (
 # envelope already accepted by persistent procurement import sessions.
 # V90 makes plan project code and project/budget name optional without rewriting
 # any existing value.
+# V96 separates active reservations from billed tokens and persists idempotent state.
 DB_RUNTIME_MIN_SCHEMA_VERSION = 80
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 

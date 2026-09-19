@@ -64,6 +64,13 @@
       "table": "ai_messages",
       "valid": true
     },
+    "ai_token_reservations_pkey": {
+      "definition": "CREATE UNIQUE INDEX ai_token_reservations_pkey ON $SCHEMA.ai_token_reservations USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "ai_token_reservations",
+      "valid": true
+    },
     "ai_tool_executions_pkey": {
       "definition": "CREATE UNIQUE INDEX ai_tool_executions_pkey ON $SCHEMA.ai_tool_executions USING btree (organization_id, id)",
       "live": true,
@@ -909,6 +916,20 @@
       "live": true,
       "ready": true,
       "table": "ai_messages",
+      "valid": true
+    },
+    "idx_ai_token_reservations_active": {
+      "definition": "CREATE INDEX idx_ai_token_reservations_active ON $SCHEMA.ai_token_reservations USING btree (organization_id, user_id, usage_date) WHERE (status = 'reserved'::text)",
+      "live": true,
+      "ready": true,
+      "table": "ai_token_reservations",
+      "valid": true
+    },
+    "idx_ai_token_reservations_user": {
+      "definition": "CREATE INDEX idx_ai_token_reservations_user ON $SCHEMA.ai_token_reservations USING btree (user_id)",
+      "live": true,
+      "ready": true,
+      "table": "ai_token_reservations",
       "valid": true
     },
     "idx_ai_tool_executions_conversation_created": {
@@ -3270,6 +3291,13 @@
       "table": "tieu_chi_danh_gia",
       "valid": true
     },
+    "idx_to_chuc_owner_user": {
+      "definition": "CREATE INDEX idx_to_chuc_owner_user ON $SCHEMA.to_chuc USING btree (owner_user_id) WHERE (owner_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "to_chuc",
+      "valid": true
+    },
     "idx_usage_credit_grants_order_item_fk": {
       "definition": "CREATE INDEX idx_usage_credit_grants_order_item_fk ON $SCHEMA.usage_credit_grants USING btree (order_item_id)",
       "live": true,
@@ -4546,7 +4574,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 95,
+  "schemaVersion": 96,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -5422,6 +5450,140 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "ai_token_reservations": {
+      "columns": {
+        "actual_input_tokens": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "actual_output_tokens": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "CURRENT_TIMESTAMP",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "timestamp with time zone"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "reserved_tokens": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "settled_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "status": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "usage_date": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "ai_token_reservations_actual_input_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (actual_input_tokens >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_token_reservations_actual_output_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (actual_output_tokens >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_token_reservations_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_token_reservations_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "ai_token_reservations_reserved_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (reserved_tokens >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_token_reservations_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['reserved'::text, 'settled'::text, 'released'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_token_reservations_usage_date_check": {
+          "deferrable": false,
+          "definition": "CHECK (usage_date::date IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "fk_ai_token_reservations_1_d0816114": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "ai_tool_executions": {
       "columns": {
         "arguments_redacted": {
@@ -5614,6 +5776,13 @@
           "notNull": true,
           "type": "integer"
         },
+        "reserved_tokens": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
         "tool_call_count": {
           "default": "0",
           "generated": "",
@@ -5682,6 +5851,13 @@
         "ai_usage_daily_request_count_check": {
           "deferrable": false,
           "definition": "CHECK (request_count >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ai_usage_daily_reserved_tokens_check": {
+          "deferrable": false,
+          "definition": "CHECK (reserved_tokens >= 0)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true
@@ -26584,6 +26760,13 @@
         }
       },
       "constraints": {
+        "fk_to_chuc_1_d35d84c6": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
         "to_chuc_pkey": {
           "deferrable": false,
           "definition": "PRIMARY KEY (id)",

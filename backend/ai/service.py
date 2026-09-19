@@ -22,7 +22,13 @@ from backend.ai.errors import AiError, ai_error
 from backend.ai.knowledge.repository import retrieve_for_context as retrieve_knowledge
 from backend.ai.prompt_policy import policy_for_mode
 from backend.ai.providers.legal_search import LegalSearchResult, create_legal_search_adapter
-from backend.ai.quota_service import consume_request, record_tokens, reserve_tokens, settle_reserved_tokens
+from backend.ai.quota_service import (
+    consume_request,
+    record_tokens,
+    release_token_reservation,
+    reserve_tokens,
+    settle_token_reservation,
+)
 from backend.ai.tool_executor import execute_tool
 from backend.ai.tool_result_formatter import format_tool_result
 from backend.ai.tool_registry import tool_definitions
@@ -149,6 +155,30 @@ def _input_items(messages: list[dict]) -> list[dict]:
     return items
 
 
+def estimate_request_token_budget(*, input_items: list[dict], instructions: str,
+                                  tools: list[dict], max_output_tokens: int) -> int:
+    """Conservative tokenizer-independent upper bound for the complete request."""
+    serialized = json.dumps(
+        {"input": input_items, "instructions": instructions, "tools": tools},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    # One token per two Unicode characters is deliberately conservative for
+    # Vietnamese text and structured tool schemas; add 20% framing/tool safety.
+    prompt_upper_bound = (len(serialized) + 1) // 2
+    return max(1, (prompt_upper_bound * 6 + 4) // 5) + max(0, int(max_output_tokens))
+
+
+async def _cancellation_safe_write(function, *args, **kwargs):
+    """Finish a short quota transition even if the client task is cancelled."""
+    cleanup = asyncio.create_task(run_database_write(function, *args, **kwargs))
+    try:
+        return await asyncio.shield(cleanup)
+    except asyncio.CancelledError:
+        await cleanup
+        raise
+
+
 def _search_legal_sources(content: str, config) -> LegalSearchResult:
     adapter = create_legal_search_adapter(config)
     return adapter.search_official_law(content, config.web_search_allowed_domains)
@@ -218,8 +248,6 @@ async def stream_message(
     )
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
-    reserved_tokens = max(1, len(content) // 4) + config.max_output_tokens
-    await run_database_write(reserve_tokens, context, reserved_tokens, config=config)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
     if target_hint:
         instructions += (
@@ -274,6 +302,14 @@ async def stream_message(
                 )
     provider = ResponsesProvider(config)
     tools = tool_definitions(mode) if mode != "procurement_advice" or target_hint else []
+    estimated_tokens = estimate_request_token_budget(
+        input_items=input_items,
+        instructions=instructions,
+        tools=tools,
+        max_output_tokens=config.max_output_tokens,
+    )
+    reservation = await run_database_write(reserve_tokens, context, estimated_tokens, config=config)
+    settled = False
     all_sources = _merge_sources(
         knowledge.sources if knowledge else (),
         web_search.sources if web_search else (),
@@ -411,7 +447,14 @@ async def stream_message(
             total_tool_calls,
             config=config,
         )
-        await run_database_write(settle_reserved_tokens, context, reserved_tokens, input_tokens, output_tokens)
+        await run_database_write(
+            settle_token_reservation,
+            reservation,
+            input_tokens,
+            output_tokens,
+            config=config,
+        )
+        settled = True
         increment("ai_input_tokens_total", input_tokens)
         increment("ai_output_tokens_total", output_tokens)
         audit_chat(
@@ -427,8 +470,10 @@ async def stream_message(
         )
         yield {"type": "message.completed", "messageId": assistant_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "generatedAt": datetime.now().astimezone().isoformat(), "sources": all_sources}
     except AiError as exc:
-        await run_database_write(settle_reserved_tokens, context, reserved_tokens, 0, 0)
         if exc.code.startswith("AI_PROVIDER_"):
             increment("ai_provider_errors_total")
         audit_chat(request, context, conversation_id, mode=mode, status="failed", model=config.model, input_tokens=input_tokens, output_tokens=output_tokens, tool_call_count=total_tool_calls, error_code=exc.code)
         yield {"type": "message.failed", "code": exc.code, "message": exc.message}
+    finally:
+        if not settled:
+            await _cancellation_safe_write(release_token_reservation, reservation)

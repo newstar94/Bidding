@@ -573,6 +573,9 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ai_feedback_user ON ai_feedback (user_id, organization_id)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_workspace_date ON ai_usage_daily (organization_id, usage_date DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_user ON ai_usage_daily (user_id, organization_id, usage_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_active ON ai_token_reservations (organization_id, user_id, usage_date) WHERE status = 'reserved'",
+        "CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_user ON ai_token_reservations (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_to_chuc_owner_user ON to_chuc (owner_user_id) WHERE owner_user_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_active_org ON ai_knowledge_documents (organization_id, document_type, updated_at DESC) WHERE status = 'active'",
         "CREATE INDEX IF NOT EXISTS idx_ai_knowledge_approved_by ON ai_knowledge_documents (approved_by)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_knowledge_scope_hash ON ai_knowledge_documents (COALESCE(organization_id, ''), content_hash)",
@@ -1355,6 +1358,26 @@ def _historical_v46_catalog(latest_catalog):
         "ai_messages_client_request_id_check", None
     )
     catalog["indexes"].pop("idx_ai_messages_client_request", None)
+    catalog["tables"]["ai_usage_daily"]["columns"].pop("reserved_tokens", None)
+    catalog["tables"]["ai_usage_daily"]["constraints"].pop(
+        "ai_usage_daily_reserved_tokens_check", None
+    )
+    catalog["tables"]["to_chuc"]["columns"].pop("ma_so_thue", None)
+    catalog["tables"]["to_chuc"]["columns"].pop("ten_viet_tat", None)
+    catalog["tables"]["to_chuc"]["columns"].pop("owner_user_id", None)
+    catalog["tables"]["to_chuc"]["constraints"] = {
+        name: constraint
+        for name, constraint in catalog["tables"]["to_chuc"]["constraints"].items()
+        if "owner_user_id" not in constraint.get("definition", "")
+    }
+    catalog["tables"]["ke_hoach_lcnt"]["columns"].pop("can_cu_gia_goi_thau", None)
+    for index_name in (
+        "idx_ai_token_reservations_active",
+        "idx_ai_token_reservations_user",
+        "idx_to_chuc_owner_user",
+        "uq_to_chuc_ma_so_thue",
+    ):
+        catalog["indexes"].pop(index_name, None)
     websocket_events = catalog["tables"]["websocket_events"]
     websocket_events["columns"].pop("dispatched_at", None)
     status_constraint = websocket_events["constraints"].get(
@@ -1398,6 +1421,7 @@ def _historical_v46_catalog(latest_catalog):
         "word_template",
         "word_template_version",
         "word_template_preflight_run",
+        "ai_token_reservations",
         "word_template_publication_event",
         "word_template_projection_outbox",
         "word_publication_assignment_v2",

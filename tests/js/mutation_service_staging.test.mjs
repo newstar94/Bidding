@@ -342,7 +342,7 @@ test("interactive persistence responds after durability without awaiting remote 
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(committed, true);
-  assert.deepEqual(calls, ["begin", "persist", "flush", "sync-start", "finish"]);
+  assert.deepEqual(calls, ["begin", "persist", "flush", "finish", "sync-start"]);
   const result = await committing;
   assert.equal(result.local, true);
   assert.equal(result.queued, true);
@@ -529,4 +529,35 @@ test("background mutation never invokes canonical success after server rejection
   const canonical = await result.syncPromise;
   assert.equal(canonical.canonicalStatus, CANONICAL_SAVE_STATUS.CANONICAL_REJECTED);
   assert.deepEqual(calls, ["local"]);
+});
+
+test("background synchronization rejection is observed without an unhandled promise", async () => {
+  const failure = new Error("sync unavailable");
+  const logged = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    const controller = {
+      model: {
+        state: { hopdong: [{ id: "contract-sync-error" }] },
+        async flushMutationOutbox() {},
+        async persistChanges() {},
+      },
+      async autoSync() {
+        return { ok: false, idempotencyKeyReused: true, retryable: true };
+      },
+      async forceSyncData() { throw failure; },
+    };
+
+    const result = await persistAndSync(controller, "hopdong", {
+      backgroundSync: true,
+      changes: { upserts: { hopdong: [{ id: "contract-sync-error" }] } },
+    });
+
+    await assert.rejects(result.syncPromise, failure);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(logged, [["Background synchronization failed:", failure]]);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

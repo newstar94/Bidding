@@ -242,6 +242,10 @@ export async function persistAndSync(controller, tableKeys, {
       return startRemoteSync();
     };
     await loading.update("server", "Bản nháp đã an toàn. Đang chờ máy chủ xác nhận…");
+    // Release the local workspace lease before attaching the continuation that
+    // can start remote synchronization. If the local phase is already settled,
+    // Promise.then() may otherwise start the network request first.
+    if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
     const syncPromise = (localPhaseCompletion
       ? Promise.resolve(localPhaseCompletion).then(beginRemoteSync)
       : beginRemoteSync()).finally(closeLoading);
@@ -249,7 +253,6 @@ export async function persistAndSync(controller, tableKeys, {
     // needs to be held by local painting or network latency. A delayed local
     // phase is fenced by the captured workspace token before it can start the
     // remote request, so a later workspace switch cannot redirect the request.
-    if (ownsMutation || releaseBeforeRemoteSync) releaseMutation();
     // autoSync owns user-visible error/conflict reporting. This handler only
     // prevents a caller that intentionally does not await the background work
     // from creating an unhandled rejection.
@@ -270,7 +273,7 @@ export async function persistAndSync(controller, tableKeys, {
   await loading.update("server", "Đang chờ máy chủ xác nhận…");
   return await startRemoteSync();
   } finally {
-    if (ownsMutation && !mutationReleased) releaseMutation();
+    if ((ownsMutation || releaseBeforeRemoteSync) && !mutationReleased) releaseMutation();
   }
   } finally {
     if (!backgroundOwnsLoading) await closeLoading();
@@ -420,16 +423,19 @@ export async function mutatePersistAndSync(controller, mutation, options = {}) {
     && typeof model?.beginWorkspaceMutation === "function";
   const workspaceMutation = options.workspaceMutation
     || (ownsMutation ? model.beginWorkspaceMutation() : null);
+  let delegatedRelease = false;
   try {
     const changedTables = applyStateMutations(model, mutation, workspaceMutation);
     const tableKeys = options.tableKeys || changedTables;
+    delegatedRelease = ownsMutation;
     return await persistAndSync(controller, tableKeys, {
       ...options,
       authoritativeBoundaryChecked: true,
       changes: mutation,
       workspaceMutation,
+      releaseBeforeRemoteSync: ownsMutation || options.releaseBeforeRemoteSync,
     });
   } finally {
-    if (ownsMutation) model.finishWorkspaceMutation?.(workspaceMutation);
+    if (ownsMutation && !delegatedRelease) model.finishWorkspaceMutation?.(workspaceMutation);
   }
 }

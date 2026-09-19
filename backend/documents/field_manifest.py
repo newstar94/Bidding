@@ -85,6 +85,21 @@ FIELD_LABELS_BY_TABLE = {
         "so_to_trinh_du_toan_ke_hoach": "Số tờ trình dự toán và kế hoạch lựa chọn nhà thầu",
         "ngay_trinh_ke_hoach": "Ngày trình phê duyệt kế hoạch lựa chọn nhà thầu",
     },
+    "cv_khong_ap_dung": {
+        "ten_cong_viec": "Tên công việc không áp dụng lựa chọn nhà thầu",
+        "gia_tri": "Giá trị công việc không áp dụng lựa chọn nhà thầu",
+        "don_vi_thuc_hien": "Đơn vị thực hiện công việc không áp dụng lựa chọn nhà thầu",
+    },
+    "cv_chua_du_dieu_kien": {
+        "ten_cong_viec": "Tên công việc chưa đủ điều kiện lựa chọn nhà thầu",
+        "gia_tri": "Giá trị công việc chưa đủ điều kiện lựa chọn nhà thầu",
+    },
+    "cv_da_thuc_hien": {
+        "ten_cong_viec": "Tên công việc đã thực hiện",
+        "gia_tri": "Giá trị công việc đã thực hiện",
+        "don_vi_thuc_hien": "Đơn vị thực hiện công việc",
+        "van_ban_phe_duyet": "Văn bản phê duyệt công việc đã thực hiện",
+    },
     "goi_thau": {
         "ma_goi_thau": "Mã gói thầu (Mã TBMT)",
         "phien_ban": "Phiên bản dữ liệu",

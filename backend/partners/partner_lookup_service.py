@@ -12,7 +12,7 @@ import uuid
 from backend.db.db_helper import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
 from backend.partners.position_normalization import derive_investor_head_position
-from backend.shared.text_utils import normalize_organization_name, normalize_person_name
+from backend.shared.text_utils import normalize_person_name
 from backend.partners.name_case import normalize_procurement_partner_name
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.shared.idle_backoff import idle_poll_backoff_from_env

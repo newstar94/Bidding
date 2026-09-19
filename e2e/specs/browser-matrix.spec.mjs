@@ -118,21 +118,20 @@ test("authenticated cold load hydrates icons and navigation handlers", async ({ 
 });
 
 test("primary route module warms once and navigation reuses the loaded module", async ({ page }) => {
-  await loginWithBrowserTransport(page);
-
   await page.route("**/service-worker.js?**", (route) => route.abort());
   let chunkRequests = 0;
-  await page.route("**/dist/assets/KeHoachView-*.js", async (route) => {
+  await page.route("**/*KeHoachView*.js", async (route) => {
     chunkRequests += 1;
     await route.continue();
   });
+  await loginWithBrowserTransport(page);
 
   const response = await page.goto("/tong-quan", { waitUntil: "commit" });
   expect(response?.ok()).toBe(true);
   await waitForApp(page);
 
-  await expect.poll(() => chunkRequests).toBe(1);
   await page.locator("#btn-tab-kehoach").evaluate((button) => button.click());
+  await expect.poll(() => chunkRequests).toBe(1);
   await expect(page.locator("#tab-kehoach")).toHaveClass(/active/);
   await expect(page.locator("#btn-tab-kehoach")).not.toHaveClass(/bf-nav-intent|bf-nav-waiting/);
   await expect(page.locator(".content-viewport")).not.toHaveAttribute("aria-busy", "true");
