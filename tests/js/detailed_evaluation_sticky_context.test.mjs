@@ -60,6 +60,19 @@ test("sticky evaluation context has safe fallbacks and escaped accessible markup
   assert.doesNotMatch(markup, /Gói <thử>/);
 });
 
+test("detail lot label follows the selected bid rather than the whole evaluation scope", () => {
+  const pkg = { phanLo: "Có", phanLoList: [
+    { id: "1", maPhanLo: "L01", tenPhanLo: "Atropin" },
+    { id: "2", maPhanLo: "L02", tenPhanLo: "Fentanyl" },
+  ] };
+  const lotScope = { mode: "selected", selectedLotIds: ["1", "2"], availableLotIds: ["1", "2"] };
+  const label = (selectedBid) => buildDetailedEvaluationContextItems({ pkg, lotScope, selectedBid })
+    .find((item) => item.key === "lot").value;
+  assert.equal(label({ maPhanLo: "L01" }), "L01 — Atropin");
+  assert.equal(label({ maPhanLo: "L02", tenPhanLo: "Fentanyl" }), "L02 — Fentanyl");
+  assert.equal(label(null), "Chưa xác định phần lô của hồ sơ");
+});
+
 test("sticky evaluation context CSS remains sticky and horizontally scrollable on mobile", async () => {
   const css = await readFile(new URL("../../views/css/views.css", import.meta.url), "utf8");
 

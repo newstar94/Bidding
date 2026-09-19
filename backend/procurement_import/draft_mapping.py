@@ -6,6 +6,7 @@ from copy import deepcopy
 import re
 
 from backend.shared.domain_enums import PACKAGE_STATUS_LABELS
+from backend.partners.name_case import normalize_procurement_partner_name
 from backend.procurement_import.domain import (
     derive_import_lifecycle_status,
     has_exact_published_notice,
@@ -79,7 +80,7 @@ def map_plan_canonical_to_draft(provider, family_no, revision):
         "phienBan": str(revision.get("revisionNumber") or ""),
         "investorSource": {
             "code": revision.get("investorCode"),
-            "name": revision.get("investorName"),
+            "name": normalize_procurement_partner_name(revision.get("investorName")),
             "taxCode": revision.get("investorTaxCode"),
             "approvalDecisionNo": revision.get("approvalDecisionNo") or "",
         },

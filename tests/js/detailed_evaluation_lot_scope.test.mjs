@@ -58,6 +58,26 @@ function controllerForSelectedLotScope() {
   };
 }
 
+test("medicine empty persisted draft opens with criteria and pending rows in selected lot", () => {
+  const controller = controllerForSelectedLotScope();
+  const pkg = controller.model.state.goithau[0];
+  pkg.isThuoc = 1;
+  pkg.danhGiaHsdtMetadata = { criteria: [] };
+  const bid = controller.model.state.thongtinmothau[0];
+  bid.baoCaoDanhGiaChiTietList = [{
+    id: "empty-report", loaiVong: "single", trangThai: "draft", chiTietList: [],
+  }];
+  const state = resolveDetailedEvaluationState(controller);
+  assert.ok(state.criteria.filter((row) => row.group === "validity").length > 0);
+  assert.equal(state.report.chiTietList.length, state.criteria.length);
+  assert.ok(state.report.chiTietList.every((row) => row.ketQua === "pending"));
+  assert.equal(state.bid.id, "bid-pl1");
+  assert.equal(bid.baoCaoDanhGiaChiTietList[0].chiTietList.length, 0);
+  const again = resolveDetailedEvaluationState(controller);
+  assert.deepEqual(again.criteria, state.criteria);
+  assert.equal(again.report.id, "empty-report");
+});
+
 test("detailed evaluation bidder selector only includes bids in the active lot scope", () => {
   const controller = controllerForSelectedLotScope();
   const pkg = controller.model.state.goithau[0];

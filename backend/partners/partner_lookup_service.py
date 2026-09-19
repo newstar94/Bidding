@@ -13,6 +13,7 @@ from backend.db.db_helper import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
 from backend.partners.position_normalization import derive_investor_head_position
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
+from backend.partners.name_case import normalize_procurement_partner_name
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.observability.recording import record_partner_upstream
@@ -379,7 +380,7 @@ def _normalize_muasamcong_partner_info(info):
         "business_type",
     ):
         normalized[field] = _normalize_muasamcong_text(normalized.get(field))
-    normalized["name"] = normalize_organization_name(
+    normalized["name"] = normalize_procurement_partner_name(
         _normalize_muasamcong_text(normalized.get("name"))
     )
     normalized["representative_name"] = normalize_person_name(
@@ -415,7 +416,7 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
 
     representative_position = clean_text(data.get("repPosition"))
     return _normalize_muasamcong_partner_info({
-        "name": normalize_organization_name(data.get("orgFullName")),
+        "name": normalize_procurement_partner_name(data.get("orgFullName")),
         "address": address,
         "short_name": clean_text(data.get("orgShortName")),
         "source": "MuaSamCong",

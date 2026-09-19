@@ -1,6 +1,11 @@
 import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
 import { adaptDetailedEvaluationCriteriaForBid } from "./detailedEvaluationCriteria.js";
 import {
+  adaptMedicineEvaluationCriteria, canSeedMedicineEvaluation,
+  createMedicineEvaluationCriteria, isMedicineEvaluationPackage, isLegacyMedicineTemplateCriteria,
+  MEDICINE_TEMPLATE_ID,
+} from "./medicineDetailedEvaluation.js";
+import {
   applyHierarchicalDetailedEvaluationResults,
   markHierarchicalDetailedEvaluationCriteria,
 } from "./detailedEvaluationHierarchy.js";
@@ -159,6 +164,21 @@ function resolvePackage(controller) {
   ) || null;
 }
 
+function canSeedEmptyMedicineReport(report) {
+  return !report || (report.trangThai === "draft" && !report.chiTietList?.length
+    && !reportHasMeaningfulEvaluationData(report) && !report.ketLuan);
+}
+
+function migrateLegacyMedicineCriteria(controller, { pkg, roundType, report,
+  baseCriteria, context, criteriaKey }) {
+  if (!isMedicineEvaluationPackage(pkg)
+    || !isLegacyMedicineTemplateCriteria(baseCriteria)
+    || !canSeedEmptyMedicineReport(report)) return baseCriteria;
+  const criteria = createMedicineEvaluationCriteria(pkg, roundType, context.configuredGroups);
+  controller._detailedEvaluationCriteriaOverrides.set(criteriaKey, criteria);
+  return criteria;
+}
+
 export function resolveDetailedEvaluationState(controller) {
   if (!controller?.view || !controller?.model) {
     throw new TypeError("Detailed evaluation state requires an application controller.");
@@ -213,7 +233,11 @@ export function resolveDetailedEvaluationState(controller) {
         fallbackToTemplate: Boolean(persistedReport?.chiTietList?.length),
       }),
     );
-  const suppressStoredTemplateSeed = !hasCriteriaOverride
+  const medicinePackage = isMedicineEvaluationPackage(pkg);
+  baseCriteria = migrateLegacyMedicineCriteria(controller, {
+    pkg, roundType, report, baseCriteria, context, criteriaKey,
+  });
+  const suppressStoredTemplateSeed = !medicinePackage && !hasCriteriaOverride
     && !baseCriteria.some(isUserConfiguredCriterion)
     && !reportHasMeaningfulEvaluationData(report);
   if (suppressStoredTemplateSeed) {
@@ -229,6 +253,12 @@ export function resolveDetailedEvaluationState(controller) {
       controller._detailedEvaluationDrafts.set(draftKey, report);
     }
   }
+  if (!hasCriteriaOverride && baseCriteria.length === 0
+    && canSeedMedicineEvaluation(pkg, roundType, packageBids)
+    && canSeedEmptyMedicineReport(report)) {
+    baseCriteria = createMedicineEvaluationCriteria(pkg, roundType, context.configuredGroups);
+    controller._detailedEvaluationCriteriaOverrides.set(criteriaKey, baseCriteria);
+  }
   const technicalEvaluationMethod = resolveTechnicalEvaluationMethod({
     pkg,
     roundType,
@@ -237,13 +267,20 @@ export function resolveDetailedEvaluationState(controller) {
     draftMethod: controller._technicalEvaluationMethodDrafts.get(criteriaKey),
   });
   const criteria = markHierarchicalDetailedEvaluationCriteria(
-    adaptDetailedEvaluationCriteriaForBid(
-      applyTechnicalEvaluationMethod(baseCriteria, technicalEvaluationMethod),
-      bid || {},
-    ),
+    medicinePackage
+      ? applyTechnicalEvaluationMethod(
+        adaptMedicineEvaluationCriteria(baseCriteria, bid || {}, report), technicalEvaluationMethod)
+      : adaptDetailedEvaluationCriteriaForBid(
+        applyTechnicalEvaluationMethod(baseCriteria, technicalEvaluationMethod), bid || {}),
   );
   if (bid && !report) {
     report = buildDetailedEvaluationDraft({ pkg, bid, roundType, criteria });
+    controller._detailedEvaluationDrafts.set(draftKey, report);
+  }
+  if (bid && report?.trangThai === "draft" && !report.chiTietList?.length
+    && criteria.some((row) => row.templateId === MEDICINE_TEMPLATE_ID)) {
+    report = { ...report, chiTietList: criteria.map((criterion) =>
+      buildDetailedEvaluationRow(report.id, criterion.id)) };
     controller._detailedEvaluationDrafts.set(draftKey, report);
   }
   if (report) report = applyHierarchicalDetailedEvaluationResults(report, criteria);
@@ -265,6 +302,8 @@ export function resolveDetailedEvaluationState(controller) {
   });
   context = {
     ...context,
+    ...(medicinePackage && baseCriteria.some((row) => row.templateId === MEDICINE_TEMPLATE_ID)
+      ? { templateId: MEDICINE_TEMPLATE_ID, templateVersion: 1 } : {}),
     accessibleGroups,
     visibleGroups: accessibleGroups,
     technicalEvaluationMethod,

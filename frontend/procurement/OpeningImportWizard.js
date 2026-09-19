@@ -1,4 +1,5 @@
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { normalizeProcurementPartnerName } from "./partnerNameCase.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import {
   captureWorkspaceLease,
@@ -99,9 +100,9 @@ export function mapOpeningBidder(bidder) {
   return {
     maDinhDanh: bidder?.contractorCode || "",
     maNhaThau: bidder?.contractorCode || "",
-    tenNhaThau: (isJointVenture && jointVentureName)
+    tenNhaThau: normalizeProcurementPartnerName((isJointVenture && jointVentureName)
       ? jointVentureName
-      : (bidder?.contractorName || ""),
+      : (bidder?.contractorName || "")),
     loaiNhaThau: isJointVenture ? "Liên danh" : "Độc lập",
     // Thành viên liên danh do người dùng nhập và xác nhận thủ công.
     thanhVienLienDanh: [],

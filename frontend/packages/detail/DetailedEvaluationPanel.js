@@ -39,14 +39,13 @@ function joinContextParts(parts) {
 function resolveLotContext(pkg, selectedBid, lotScope) {
   if (pkg?.phanLo !== "Có") return "Không phân lô";
   const details = getEvaluationLotScopeDetails(pkg, lotScope);
-  if (details?.selectedLots?.length) {
-    return details.selectedLots.map((lot) => joinContextParts([lot.code, lot.name])).join(", ");
-  }
+  const code = String(selectedBid?.maPhanLo || selectedBid?.ma_phan_lo || "").trim();
+  const matchingLot = details?.selectedLots?.find((lot) => String(lot.code).trim() === code);
   const bidLot = joinContextParts([
-    selectedBid?.maPhanLo || selectedBid?.ma_phan_lo,
-    selectedBid?.tenPhanLo || selectedBid?.ten_phan_lo,
+    code,
+    selectedBid?.tenPhanLo || selectedBid?.ten_phan_lo || matchingLot?.name,
   ]);
-  return bidLot || "Toàn bộ phần lô";
+  return bidLot || "Chưa xác định phần lô của hồ sơ";
 }
 
 export function buildDetailedEvaluationContextItems({
@@ -267,7 +266,7 @@ function renderNotesCells(row, attributes) {
 }
 
 function renderCriterionStt(criterion, index, disabled) {
-  if (criterion.isCustom !== true) {
+  if (criterion.isCustom !== true || criterion.templateId === "bc-dgct-thuoc-v1") {
     return `<strong class="detailed-evaluation-stt">${escapeHtml(criterion.stt || index + 1)}</strong>`;
   }
   return `<input type="text" class="form-control detailed-evaluation-config-stt"
@@ -280,6 +279,7 @@ function renderCriterionStt(criterion, index, disabled) {
 function renderCriterionName(criterion, disabled = false, {
   showRequirement = true,
 } = {}) {
+  if (criterion.templateId === "bc-dgct-thuoc-v1") showRequirement = false;
   const required = criterion.source === "muasamcong" || criterion.required === false
     ? ""
     : ' <span class="required" aria-label="Bắt buộc">*</span>';
