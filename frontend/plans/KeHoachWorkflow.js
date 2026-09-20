@@ -1456,7 +1456,7 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   // The initial hydration can involve several paginated requests. Keep the
   // long-task surface honest: only move to local persistence after hydration
   // has actually completed, so the user can distinguish the two waits.
-  await loadingHandle?.update?.("local", "Dữ liệu đã sẵn sàng. Đang lưu trên thiết bị…");
+  await loadingHandle?.update?.("local", "Dữ liệu đã sẵn sàng. Đang lưu…");
   const currentDraftPlan = updatePlanBreakdownDraftRows(this, planId);
   const cvDaThucHien = currentDraftPlan?.cvDaThucHienList || [];
   const cvKhongApDung = currentDraftPlan?.cvKhongApDungList || [];
