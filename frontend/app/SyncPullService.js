@@ -289,7 +289,8 @@ async function reapplyCapturedPlanDraftSessions(controller, resources, pullIsCur
   return true;
 }
 
-async function settleOutboxBeforeAuthoritativePull(controller, workspace) {
+async function settleOutboxBeforeAuthoritativePull(controller, workspace, { skipFlush = false } = {}) {
+  if (skipFlush) return null;
   let status = controller.model?.getMutationOutboxStatus?.();
   if (status?.state === "pending" && typeof controller.model?.flushMutationOutbox === "function") {
     try {
@@ -382,11 +383,12 @@ async function executeForceSyncData(
   forceFull = false,
   routeOnly = false,
   signal = null,
+  options = {},
 ) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
   const pullResources = capturePullResources(this);
-  const outboxFailure = await settleOutboxBeforeAuthoritativePull(this, workspace);
+  const outboxFailure = await settleOutboxBeforeAuthoritativePull(this, workspace, options);
   if (outboxFailure) return outboxFailure;
   if (!workspaceIsCurrent(this, workspace)) {
     return {
@@ -606,7 +608,7 @@ function activeSyncRole(controller) {
   return String(controller?.model?.state?.activerole || "").trim().toLowerCase();
 }
 
-export function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
+export function forceSyncData(isBackground = false, forceFull = false, routeOnly = false, options = {}) {
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) {
     return Promise.resolve({ ok: false, error: "No active workspace" });
@@ -619,7 +621,7 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
     this._workspacePullFlights.set(key, flights);
   }
 
-  const requestKey = `${isBackground ? "background" : "foreground"}:${forceFull ? "full" : "delta"}:${routeOnly ? "route" : "workspace"}`;
+  const requestKey = `${isBackground ? "background" : "foreground"}:${forceFull ? "full" : "delta"}:${routeOnly ? "route" : "workspace"}:${options.skipOutboxFlush ? "skip-flush" : "flush"}`;
   const existing = flights.get(requestKey);
   if (existing?.promise) return existing.promise;
 
@@ -651,6 +653,7 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
         forceFull,
         routeOnly,
         requestController.signal,
+        options,
       );
     });
   let tracked;

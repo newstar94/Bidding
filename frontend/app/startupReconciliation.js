@@ -377,7 +377,9 @@ export function reconcileRouteDataAtStartup(controller, {
       if (!isCurrentWorkspace(controller, workspaceToken)) return false;
       if (initialPush?.conflict) {
         if (typeof controller?.forceSyncData === "function") {
-          await controller.forceSyncData(true, true, true);
+          // The push already returned the conflict. Refresh authoritative
+          // state without flushing the rejected outbox a second time.
+          await controller.forceSyncData(true, true, true, { skipOutboxFlush: true });
         }
         completeStartupReconciliation(controller, initialPush, workspaceToken);
         return false;

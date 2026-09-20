@@ -322,7 +322,12 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
     _collect_runtime_directories(selected, ("dist",))
 
     manifest_path = PROJECT_ROOT / "dist" / ".vite" / "manifest.json"
-    if manifest_path.as_posix() not in {source.as_posix() for source, _ in selected.values()}:
+    # Keep the manifest explicit. Some CI filesystem providers do not yield
+    # dot-directories from a recursive walk even though the file is present.
+    manifest_key = _relative(manifest_path).as_posix()
+    if manifest_path.is_file():
+        selected.setdefault(manifest_key, (manifest_path, Path(manifest_key)))
+    if manifest_key not in selected:
         raise RuntimeError("Vite manifest is missing from the production selection.")
     _validate_frontend_artifacts(manifest_path)
     secure_build_path = PROJECT_ROOT / "dist" / "secure-build.json"
