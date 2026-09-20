@@ -674,15 +674,6 @@ def _load_broker_events(after_id):
         conn.close()
 
 
-def _latest_broker_event_id():
-    conn = database.get_connection()
-    try:
-        row = conn.execute("SELECT COALESCE(MAX(id), 0) FROM websocket_events").fetchone()
-        return int(row[0] or 0)
-    finally:
-        conn.close()
-
-
 def _pending_broker_start_id():
     """Resume before the oldest event not acknowledged by any consumer."""
 

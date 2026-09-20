@@ -785,15 +785,6 @@ def _resolve_publication_template_paths(
     return targets
 
 
-def _resolve_publication_template_path(owner_type, owner_id, publication_type):
-    target = _resolve_publication_template_paths(
-        owner_type,
-        owner_id,
-        publication_type,
-    )[0]
-    return target["path"], target["filename"], target["source"]
-
-
 def _word_publication_assignment_payload(owner_type, owner_id):
     stored_assignment_sets = custom_exporter.get_template_assignments(
         owner_id,

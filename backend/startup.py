@@ -116,13 +116,6 @@ def _bounded_configuration_int(
     return value
 
 
-def _configuration_bool(environ, name, default):
-    value = str(environ.get(name, default)).strip().casefold()
-    if value not in {"true", "false"}:
-        raise StartupValidationError(f"{name} must be true or false.")
-    return value == "true"
-
-
 def validate_procurement_lookup_configuration(environ=None):
     """Fail startup on an enabled but unusable browser lookup profile."""
 

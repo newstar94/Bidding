@@ -1192,12 +1192,6 @@ def _issue_citations(rule_id: str, rules: dict) -> list[str]:
     return list(rules["citations"][key])
 
 
-def _add_issue(inventory: _IssueInventory, issue: dict, rules: dict) -> None:
-    value = dict(issue)
-    value["citations"] = _issue_citations(value["ruleId"], rules)
-    inventory.add(value)
-
-
 def _component_key(semantic: str) -> str | None:
     return {
         "document.national_header": "national_header",
