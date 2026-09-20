@@ -43,7 +43,7 @@ def _payload(rows):
 def test_schema_and_upgrade_register_version_owned_plan_basis_table():
     columns = SCHEMA_DINH_NGHIA["ke_hoach_can_cu"]["columns"]
 
-    assert DB_SCHEMA_VERSION == 96
+    assert DB_SCHEMA_VERSION == 97
     assert any(upgrade.version == 90 for upgrade in UPGRADES)
     assert columns["id_goc"].startswith("TEXT NOT NULL")
     assert "PARSED" in columns["parse_status"]

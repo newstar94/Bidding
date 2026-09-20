@@ -426,6 +426,10 @@ export async function renderGoiThauTable() {
     });
     executeAppCommand("renderTablePagination", "goithau-pagination", totalItems, currentPage, pageSize);
   }
+  // Hydrate the just-rendered version controls synchronously. Relying only on
+  // the body mutation observer leaves a WebKit timing window where the native
+  // select is present but its accessible combobox has not been created yet.
+  this.upgradeAllSelects?.(tableBody);
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("goithau-table", "goithau");
   return { performance: tablePerf.complete() };

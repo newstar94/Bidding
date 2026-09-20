@@ -406,6 +406,17 @@ export function autoSync(options = {}) {
   const workspaceToken = String(workspace.token || workspace.organizationId || "");
   const deferPostCommitRender = this._deferPostCommitRender === true;
   this._deferPostCommitRender = false;
+  // A rejected batch remains in the outbox so the user can inspect or retry
+  // it deliberately. Do not let a late mutation callback or startup replay
+  // submit that same batch again after the server has declared a conflict.
+  if (this._syncConflict) {
+    return Promise.resolve({
+      ok: false,
+      conflict: true,
+      status: 409,
+      reconciliationRequired: true,
+    });
+  }
   // A normal mutation-triggered flush must never race the startup owner,
   // even during the brief interval before its state projection is published.
   // Startup reconciliation will observe and replay pending outbox work after
