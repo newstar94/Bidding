@@ -71,6 +71,29 @@ async function readExpertFromIndexedDb(page, recordId) {
   }, recordId);
 }
 
+async function writeExpertToIndexedDb(page, record) {
+  await page.evaluate(async (value) => {
+    const userId = sessionStorage.getItem("bf_user_id") || localStorage.getItem("bf_user_id");
+    const organizationId = sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org");
+    const dbName = `BiddingFlowDB_${encodeURIComponent(userId)}:${encodeURIComponent(organizationId)}`;
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(dbName, 5);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise((resolve, reject) => {
+        const request = database.transaction("chuyengia", "readwrite")
+          .objectStore("chuyengia").put(value);
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      database.close();
+    }
+  }, record);
+}
+
 async function fillExpertForm(page, suffix) {
   const projectDigit = { chromium: "1", firefox: "2", webkit: "3" }[
     test.info().project.name
@@ -327,6 +350,9 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
     suffix,
   });
   expect(deleteResult, JSON.stringify(deleteResult.body)).toMatchObject({ ok: true, status: 200 });
+  // Recreate the stale local row explicitly: the successful server deletion
+  // is allowed to remove the canonical local row before the next startup.
+  await writeExpertToIndexedDb(page, createdExpert);
   expect((await readExpertFromIndexedDb(page, createdExpert.id))?.hoTen).toBe(expertName);
 
   let startupSyncPosts = 0;
