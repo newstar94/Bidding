@@ -414,14 +414,11 @@ export function autoSync(options = {}) {
     return Promise.resolve(this._startupReconciliationPromise).then(() => {
       if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       const settledPhase = this.getStartupReconciliationState?.().phase;
-      if (settledPhase !== "RECONCILED") {
-        return {
-          ok: false,
-          conflict: settledPhase === "CONFLICT",
-          reconciliationRequired: true,
-        };
-      }
-      return this.autoSync(options);
+      return {
+        ok: false,
+        conflict: settledPhase === "CONFLICT",
+        reconciliationRequired: true,
+      };
     });
   }
   if (options.startupReconciliation !== true) {
