@@ -191,6 +191,13 @@ export function setupSyncUx() {
     if (pendingCount && shouldShowLocalPending(this._syncUxState?.phase)) {
       this.updateSyncState({ phase: "localPending" });
     }
+    // Startup reconciliation owns the first push/pull barrier.  A mutation
+    // staged while its authoritative reads are held must remain local until
+    // that barrier observes it; scheduling the ordinary 80ms auto-sync here
+    // can submit the same outbox batch a second time after the startup push
+    // has already completed (notably in Chromium).
+    const startupPhase = this.getStartupReconciliationState?.().phase;
+    if (pendingCount && ["LOCAL_READY", "RECONCILING"].includes(startupPhase)) return;
     if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
     const scheduledWorkspaceToken = this.model?.getWorkspaceToken?.() || "";
     this._syncImmediateTimer = setTimeout(() => {
