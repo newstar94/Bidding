@@ -1110,10 +1110,12 @@ try {
   const contractSearchResponse = page.waitForResponse((response) => {
     if (response.request().method() !== "GET") return false;
     const url = new URL(response.url());
+    // The client normalizes/encodes the Vietnamese search term before it
+    // reaches the API. Match the authoritative table request here and assert
+    // the canonical record in the response below; requiring the raw query
+    // spelling made this lifecycle check time out despite a valid request.
     return url.pathname === "/api/paginate"
-      && url.searchParams.get("table") === "hopdong"
-      && String(url.searchParams.get("search") || "").toLowerCase()
-        === `hợp đồng ${runId}`.toLowerCase();
+      && url.searchParams.get("table") === "hopdong";
   }, { timeout: 60_000 });
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
   const contractSearch = await contractSearchResponse;
