@@ -1439,6 +1439,17 @@ export function ensureNewPlanCreatorAssignment(model, planId) {
   return assignment;
 }
 
+function planPublicationTimeChanged(backupKh, nextPlan) {
+  if (!backupKh) return false;
+  const oldTime = backupKh.thoiGianDangMa ? String(backupKh.thoiGianDangMa).trim() : "";
+  const newTime = nextPlan.thoiGianDangMa ? String(nextPlan.thoiGianDangMa).trim() : "";
+  if (oldTime === "") return false;
+  const oldDate = new Date(oldTime);
+  const newDate = new Date(newTime);
+  if (isNaN(oldDate.getTime()) || isNaN(newDate.getTime())) return oldTime !== newTime;
+  return oldDate.getTime() !== newDate.getTime();
+}
+
 export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
@@ -1465,20 +1476,7 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   let officialVersionCommitted = false;
   if (this.tempPlanAction === "edit") {
     const backupKh = this.backupKeHoachState.find((k) => k.id === this.tempPlanData.id);
-    let saveAsNewVersion = false;
-    if (backupKh) {
-      const oldTime = backupKh.thoiGianDangMa ? String(backupKh.thoiGianDangMa).trim() : "";
-      const newTime = this.tempPlanData.thoiGianDangMa ? String(this.tempPlanData.thoiGianDangMa).trim() : "";
-      if (oldTime !== "") {
-        const oldDate = new Date(oldTime);
-        const newDate = new Date(newTime);
-        if (isNaN(oldDate.getTime()) || isNaN(newDate.getTime())) {
-          saveAsNewVersion = oldTime !== newTime;
-        } else {
-          saveAsNewVersion = oldDate.getTime() !== newDate.getTime();
-        }
-      }
-    }
+    const saveAsNewVersion = planPublicationTimeChanged(backupKh, this.tempPlanData);
     if (saveAsNewVersion) {
       this.model.replaceTableState(
         "kehoach",
