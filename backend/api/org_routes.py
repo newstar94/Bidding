@@ -90,7 +90,13 @@ def _create_organization_sync(request, role_or_err, data):
         org_id = "org-" + hashlib.sha256(f"{tax_code}:{short_name}:{time.time_ns()}".encode()).hexdigest()[:32]
         cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue, ten_viet_tat, owner_user_id) VALUES (?, ?, ?, ?, ?)", (org_id, short_name, tax_code, short_name, role_or_err.user_id))
         cursor.execute("INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, 'manager')", (role_or_err.user_id, org_id))
-        cursor.execute("SELECT id, han_muc_nhan_su FROM goi_dich_vu WHERE trang_thai = 'active' ORDER BY han_muc_nhan_su LIMIT 1")
+        # Every newly-created organization starts on the explicit free tier.
+        # Never infer a paid tier from the current catalog ordering (or from
+        # another organization the creator belongs to).
+        cursor.execute("""SELECT id, han_muc_nhan_su
+                           FROM goi_dich_vu
+                          WHERE id = 'free' AND trang_thai = 'active'
+                          LIMIT 1""")
         package = cursor.fetchone()
         if package:
             now = int(time.time())

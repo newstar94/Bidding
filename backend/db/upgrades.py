@@ -3823,6 +3823,27 @@ def _upgrade_to_v96_add_ai_token_reservations(cursor, _context):
                CONSTRAINT fk_ai_token_reservations_1_d0816114
                  FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE)"""
     )
+
+
+def _upgrade_to_v97_add_free_organization_package(cursor, _context):
+    """Add the explicit no-cost bootstrap package for new organizations."""
+    cursor.execute(
+        """INSERT INTO goi_dich_vu
+               (id, ten_goi, gia_ca, han_muc_nhan_su,
+                document_export_word, document_export_excel,
+                document_export_award_result_excel, trang_thai, mo_ta)
+           VALUES ('free', 'Gói Miễn Phí (Free)', 0, 1, 0, 0, 0,
+                   'active', 'Gói khởi tạo tổ chức, 1 nhân sự, không xuất tài liệu.')
+           ON CONFLICT(id) DO UPDATE SET
+             ten_goi = excluded.ten_goi,
+             gia_ca = excluded.gia_ca,
+             han_muc_nhan_su = excluded.han_muc_nhan_su,
+             document_export_word = excluded.document_export_word,
+             document_export_excel = excluded.document_export_excel,
+             document_export_award_result_excel = excluded.document_export_award_result_excel,
+             trang_thai = 'active',
+             mo_ta = excluded.mo_ta"""
+    )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_active ON ai_token_reservations (organization_id, user_id, usage_date) WHERE status = 'reserved'")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_user ON ai_token_reservations (user_id)")
 
@@ -4275,6 +4296,7 @@ UPGRADES = (
     DatabaseUpgrade(94, "remove_work_appraisal", _upgrade_to_v94_remove_work_appraisal),
     DatabaseUpgrade(95, "plan_price_basis", _upgrade_to_v95_plan_price_basis),
     DatabaseUpgrade(96, "add_ai_token_reservations", _upgrade_to_v96_add_ai_token_reservations),
+    DatabaseUpgrade(97, "add_free_organization_package", _upgrade_to_v97_add_free_organization_package),
 )
 
 

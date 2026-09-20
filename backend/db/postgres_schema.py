@@ -1580,11 +1580,17 @@ def create_fresh_database(cursor, context: DatabaseUpgradeContext) -> int:
            (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta)
            VALUES (%s, %s, %s, %s, %s)""",
         (
+            ("free", "Gói Miễn Phí (Free)", 0, 1, "Gói khởi tạo tổ chức, 1 nhân sự, không xuất tài liệu."),
             ("silver", "Gói Bạc (Silver)", 15_000_000, 5, "Phù hợp với đơn vị quy mô nhỏ, quản lý tối đa 5 nhân sự."),
             ("gold", "Gói Vàng (Gold)", 35_000_000, 15, "Giải pháp cho phòng thầu chuyên nghiệp, tối đa 15 nhân sự."),
             ("diamond", "Gói Kim Cương (Diamond)", 75_000_000, 999, "Gói quản trị không giới hạn số lượng nhân sự."),
         ),
     )
+    cursor.execute("""UPDATE goi_dich_vu
+                         SET document_export_word = 0,
+                             document_export_excel = 0,
+                             document_export_award_result_excel = 0
+                       WHERE id = 'free'""")
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     password_valid, password_error = validate_new_password(admin_password)
     if not password_valid:
