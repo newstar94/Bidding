@@ -321,7 +321,12 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
     }
     _collect_runtime_directories(selected, ("dist",))
 
-    manifest_path = PROJECT_ROOT / "dist" / ".vite" / "manifest.json"
+    manifest_candidates = (
+        PROJECT_ROOT / "dist" / ".vite" / "manifest.json",
+        # Older artifact download providers flatten a leading dot-directory.
+        PROJECT_ROOT / "dist" / "manifest.json",
+    )
+    manifest_path = next((candidate for candidate in manifest_candidates if candidate.is_file()), manifest_candidates[0])
     # Keep the manifest explicit. Some CI filesystem providers do not yield
     # dot-directories from a recursive walk even though the file is present.
     manifest_key = _relative(manifest_path).as_posix()

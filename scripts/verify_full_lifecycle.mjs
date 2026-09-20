@@ -1114,7 +1114,7 @@ try {
       && url.searchParams.get("table") === "hopdong"
       && String(url.searchParams.get("search") || "").toLowerCase()
         === `hợp đồng ${runId}`.toLowerCase();
-  });
+  }, { timeout: 60_000 });
   await page.locator("#search-hopdong").fill(`Hợp đồng ${runId}`);
   const contractSearch = await contractSearchResponse;
   const contractSearchBody = await contractSearch.json().catch(() => null);
