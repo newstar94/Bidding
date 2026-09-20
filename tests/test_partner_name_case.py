@@ -12,3 +12,8 @@ def test_mixed_case_and_source_spacing_are_preserved():
     assert normalize_procurement_partner_name(value) == value
     assert normalize_procurement_partner_name("CÔNG TY 123 ABC") == "Công ty 123 Abc"
     assert normalize_procurement_partner_name("CÔNG TY TNHH DƯỢC PHẨM SANTA VIỆT NAM") == "Công ty TNHH Dược phẩm Santa Việt Nam"
+
+
+def test_short_consonant_only_tokens_are_normalized_as_acronyms():
+    assert normalize_procurement_partner_name("Công ty Hdn ABC") == "Công ty HDN ABC"
+    assert normalize_procurement_partner_name("Công ty Ltd") == "Công ty LTD"
