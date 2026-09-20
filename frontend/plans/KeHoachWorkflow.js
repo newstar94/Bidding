@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { beginSaveButtonFeedback } from "../shared/ModalFormSubmission.js";
+import { beginLongTaskLoading } from "../shared/LongTaskLoading.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
@@ -956,7 +957,25 @@ export async function openPlanBreakdownModal(planId) {
       btnSave.setAttribute("aria-busy", "true");
       const restoreLabel = beginSaveButtonFeedback(btnSave);
       try {
-        await this.savePlanBreakdown();
+        const loading = await beginLongTaskLoading({
+          task: "plan-breakdown-save",
+          title: "Đang lưu kế hoạch",
+          message: "Đang chuẩn bị dữ liệu phân khai…",
+          detail: "Màn hình sẽ được giữ nguyên cho đến khi lưu cục bộ và xác nhận máy chủ hoàn tất.",
+          stages: [
+            { key: "prepare", label: "Chuẩn bị", message: "Đang chuẩn bị dữ liệu phân khai…" },
+            { key: "local", label: "Lưu trên thiết bị", message: "Đang lưu dữ liệu trên thiết bị…" },
+            { key: "server", label: "Xác nhận máy chủ", message: "Đang chờ máy chủ xác nhận…" },
+          ],
+          initialStage: "prepare",
+          minimumVisibleMs: 0,
+          exitTransitionMs: 0,
+        });
+        try {
+          await this.savePlanBreakdown({ loadingHandle: loading });
+        } finally {
+          await loading.close();
+        }
       } finally {
         btnSave.disabled = false;
         btnSave.removeAttribute("aria-busy");
@@ -1420,7 +1439,7 @@ export function ensureNewPlanCreatorAssignment(model, planId) {
   return assignment;
 }
 
-export async function savePlanBreakdown() {
+export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   const planId = document.getElementById("breakdown-plan-id").value;
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
@@ -1661,6 +1680,7 @@ export async function savePlanBreakdown() {
     syncResult = officialVersionCommitted
       ? (await renderVersionTables(), { ok: true })
       : await mutatePersistAndSync(this, explicitChanges, {
+        loadingHandle,
         backgroundSync: true,
         tableKeys: [
           ...new Set([
