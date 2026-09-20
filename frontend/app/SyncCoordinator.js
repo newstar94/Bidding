@@ -197,7 +197,10 @@ export function setupSyncUx() {
     // can submit the same outbox batch a second time after the startup push
     // has already completed (notably in Chromium).
     const startupPhase = this.getStartupReconciliationState?.().phase;
-    if (pendingCount && ["LOCAL_READY", "RECONCILING"].includes(startupPhase)) return;
+    if (pendingCount && (
+      this._startupReconciliationPromise
+      || ["LOCAL_READY", "RECONCILING"].includes(startupPhase)
+    )) return;
     if (!pendingCount || this._syncImmediateTimer || this._deferImmediateSync) return;
     const scheduledWorkspaceToken = this.model?.getWorkspaceToken?.() || "";
     this._syncImmediateTimer = setTimeout(() => {
