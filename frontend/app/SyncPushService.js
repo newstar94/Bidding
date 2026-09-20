@@ -424,11 +424,8 @@ export function autoSync(options = {}) {
         return Promise.resolve(barrier).then(() => {
           if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
           const settledPhase = this.getStartupReconciliationState?.().phase;
-          // The startup owner has already flushed the durable outbox before
-          // publishing RECONCILED. Retrying here races that flush and can
-          // submit the same batch a second time (especially in Chromium).
           if (settledPhase === "RECONCILED") {
-            return { ok: true, skipped: true, startupReconciled: true };
+            return this.autoSync(options);
           }
           return {
             ok: false,
