@@ -437,6 +437,10 @@ export function autoSync(options = {}) {
   }
   const activeSync = this._autoSyncOwner;
   if (activeSync?.workspaceToken === workspaceToken && activeSync.promise) {
+    // Startup reconciliation owns the first push for this workspace. A
+    // mutation callback that arrives at the same boundary must join that
+    // request, not queue a second submission of the identical outbox batch.
+    if (activeSync.startupReconciliation === true) return activeSync.promise;
     activeSync.queued = true;
     this._autoSyncQueued = true;
     return activeSync.promise.then((result) => {
@@ -615,7 +619,12 @@ export function autoSync(options = {}) {
     this.updateSyncState({ phase: "transportError", message: "Không thể kết nối máy chủ" });
     return { ok: false, error, transport: true };
   });
-  const syncOwner = { workspaceToken, promise: null, queued: false };
+  const syncOwner = {
+    workspaceToken,
+    promise: null,
+    queued: false,
+    startupReconciliation: options.startupReconciliation === true,
+  };
   const trackedRequest = request.finally(() => {
     if (this._autoSyncOwner === syncOwner) {
       this._autoSyncOwner = null;
