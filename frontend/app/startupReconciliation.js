@@ -401,7 +401,16 @@ export function reconcileRouteDataAtStartup(controller, {
         return false;
       }
       if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
-        const replay = await controller.autoSync({ startupReconciliation: true });
+        // A mutation can be submitted while the startup pull is in flight.
+        // If its auto-sync is already active, await that request directly;
+        // calling autoSync again marks the owner queued and sends the same
+        // batch a second time after a conflict.
+        const activePush = controller?._autoSyncOwner?.workspaceToken === workspaceToken
+          ? controller._autoSyncOwner.promise
+          : null;
+        const replay = activePush
+          ? await activePush
+          : await controller.autoSync({ startupReconciliation: true });
         if (!isCurrentWorkspace(controller, workspaceToken)) return false;
         void reportRetry({ workspaceKey: controller?.model?.workspaceScope?.key });
         if (!replay?.ok) {
