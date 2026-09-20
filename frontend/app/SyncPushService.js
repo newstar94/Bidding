@@ -406,6 +406,16 @@ export function autoSync(options = {}) {
   const workspaceToken = String(workspace.token || workspace.organizationId || "");
   const deferPostCommitRender = this._deferPostCommitRender === true;
   this._deferPostCommitRender = false;
+  // A normal mutation-triggered flush must never race the startup owner,
+  // even during the brief interval before its state projection is published.
+  // Startup reconciliation will observe and replay pending outbox work after
+  // its authoritative pull.
+  if (options.startupReconciliation !== true && this._startupReconciliationPromise) {
+    return Promise.resolve(this._startupReconciliationPromise).then(() => {
+      if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
+      return this.autoSync(options);
+    });
+  }
   if (options.startupReconciliation !== true) {
     const startupState = this.getStartupReconciliationState?.();
     if (startupState?.phase === "CONFLICT") {
