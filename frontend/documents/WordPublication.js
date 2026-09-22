@@ -702,6 +702,18 @@ export async function setupWordPublicationPage() {
   controller._wordPublicationTemplateConfigLoading = true;
   controller._wordPublicationTemplateConfigError = "";
   renderWordPublicationPage(controller, root);
+  // Re-entering the tab within the same workspace should reuse the
+  // authoritative config already loaded for this workspace. Avoid repeating
+  // the blocking assignment read on every tab switch; save/upload flows still
+  // replace this cache through load/save config functions.
+  if (
+    controller._wordPublicationTemplateConfigWorkspaceToken === lease.token
+    && controller._wordPublicationTemplateConfig
+  ) {
+    controller._wordPublicationTemplateConfigLoading = false;
+    renderWordPublicationPage(controller, root);
+    return;
+  }
   try {
     await loadWordPublicationTemplateConfig(controller);
   } catch {

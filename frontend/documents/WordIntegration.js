@@ -1132,17 +1132,31 @@ export async function loadWordTemplates() {
   if (isWorkspaceLeaseCurrent(model, request.lease)) {
     const assignmentModule = await loadWordTemplateAssignments();
     if (templatesForAssignments) {
-      await assignmentModule.loadAndRenderWordTemplateAssignments(
-        this,
-        templatesForAssignments,
-      );
+      // The assignments view and the dictionary mappings are independent
+      // reads. Start the mappings request before waiting for the assignments
+      // module/render so a cold Word tab does not pay both latencies in
+      // series. Each operation still performs its own workspace-lease check.
+      const mappingsTask = shouldLoadMappings
+        ? Promise.resolve().then(() => this.loadWordMappings())
+        : null;
+      await Promise.allSettled([
+        assignmentModule.loadAndRenderWordTemplateAssignments(
+          this,
+          templatesForAssignments,
+        ),
+        mappingsTask,
+      ]);
     } else {
       assignmentModule.renderWordTemplateAssignments(this, [], {}, {
         error: templatesError || "Không tải được danh sách biểu mẫu Word.",
       });
     }
   }
-  if (shouldLoadMappings && isWorkspaceLeaseCurrent(model, request.lease)) {
+  if (
+    shouldLoadMappings
+    && !templatesForAssignments
+    && isWorkspaceLeaseCurrent(model, request.lease)
+  ) {
     await this.loadWordMappings();
   }
 }
