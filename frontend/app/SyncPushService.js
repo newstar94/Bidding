@@ -176,10 +176,11 @@ export async function applySuccessfulPush(controller, {
 }) {
   if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
   const storage = workspace.storage || currentWorkspaceStorage(controller);
-  if (data.timestamp) storage.setItem("bf_last_sync_timestamp", data.timestamp);
-  if (data.syncVersion !== void 0 && data.syncVersion !== null) {
-    storage.setItem("bf_last_sync_version", data.syncVersion.toString());
-  }
+  // The timestamp fallback is also a pull cursor, not an ACK timestamp.
+  // A push ACK identifies the server transaction, not a complete pulled
+  // snapshot. Another actor may have committed rows between our cursor and
+  // this ACK, so only SyncPullService.commitSyncCursor may advance the delta
+  // cursor after the complete delta has been applied.
   if (controller.model) controller.model.syncErrors = [];
   if (typeof controller.model?.clearCommittedMutationBatch === "function") {
     controller.model.clearCommittedMutationBatch(snapshot);

@@ -66,13 +66,13 @@ def test_production_release_id_rejects_mutable_or_placeholder_values(release_id)
         package_production._validate_release_id({"releaseId": release_id})
 
 
-@pytest.mark.parametrize("release_id", ("a" * 40, "B" * 64))
-def test_production_release_id_accepts_full_commit_or_content_hash(
-    release_id, monkeypatch
-):
+def test_production_release_id_requires_current_source_when_environment_is_unset(monkeypatch):
     monkeypatch.delenv("APP_RELEASE_ID", raising=False)
     monkeypatch.delenv("GITHUB_SHA", raising=False)
-    assert package_production._validate_release_id({"releaseId": release_id}) == release_id
+    monkeypatch.setattr(package_production, "_source_derived_release_id", lambda: "a" * 64)
+    with pytest.raises(RuntimeError, match="source-derived"):
+        package_production._validate_release_id({"releaseId": "b" * 64})
+    assert package_production._validate_release_id({"releaseId": "a" * 64}) == "a" * 64
 
 
 def test_production_release_id_must_match_the_build_environment(monkeypatch):
@@ -205,7 +205,13 @@ def test_package_smoke_child_uses_only_its_synthetic_trusted_hosts(tmp_path):
     assert environment["PYTHONPATH"] == str(tmp_path.resolve())
 
 
-def test_runtime_package_contains_no_markdown_files():
+def test_runtime_package_contains_no_markdown_files(monkeypatch):
+    marker = json.loads(
+        (package_production.PROJECT_ROOT / "dist" / "secure-build.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    monkeypatch.setenv("APP_RELEASE_ID", marker["releaseId"])
     packaged_paths = {
         relative_path.as_posix()
         for _, relative_path in package_production.collect_runtime_files()

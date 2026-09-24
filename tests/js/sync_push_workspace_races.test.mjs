@@ -24,6 +24,21 @@ test("successful partner create invalidates pre-commit page before canonical ren
   } finally { globalThis.document = previousDocument; }
 });
 
+test("normal push ACK does not advance an incomplete pull cursor", async () => {
+  const race = raceController();
+  race.storageA.setItem("bf_last_sync_version", "10");
+  race.model.clearCommittedMutationBatch = () => {};
+  await applySuccessfulPush(race.controller, {
+    workspace: captureWorkspace(race.controller),
+    data: { status: "success", syncVersion: 12 },
+    payload: { goithau: [{ id: "package-a" }] },
+    snapshot: { id: "receipt-a" },
+    deferPostCommitRender: true,
+    status: 200,
+  });
+  assert.equal(race.storageA.getItem("bf_last_sync_version"), "10");
+});
+
 function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });

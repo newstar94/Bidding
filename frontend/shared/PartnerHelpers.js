@@ -2,6 +2,9 @@ import { trustedHTML } from "./trustedTypes.js";
 import { apiFetch } from "./apiClient.js";
 import { initAccessibleCombobox } from "./accessibleCombobox.js";
 
+const ADDRESS_INIT_GENERATION = Symbol("addressInitGeneration");
+const WARD_LOAD_GENERATION = Symbol("wardLoadGeneration");
+
 function addressCacheRoot() {
   return typeof window !== "undefined" ? window : globalThis;
 }
@@ -44,6 +47,24 @@ function renderWardOptions(wards) {
 function syncCustomSelectDisplay(select) {
   if (!select) return;
   select.__bfAccessibleCombobox?.refresh();
+}
+export function shouldCommitWardResponse({
+  loadGeneration,
+  currentGeneration,
+  selectedProvince,
+  requestedProvince,
+  provinceSelect,
+  wardSelect,
+  currentProvinceSelect,
+  currentWardSelect,
+  initGeneration,
+  currentInitGeneration,
+}) {
+  return loadGeneration === currentGeneration
+    && String(selectedProvince) === String(requestedProvince)
+    && currentProvinceSelect === provinceSelect
+    && currentWardSelect === wardSelect
+    && initGeneration === currentInitGeneration;
 }
 async function ensureVietnamProvinces() {
   const root = addressCacheRoot();
@@ -238,10 +259,19 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   const tinhSelect = document.getElementById(tinhSelectId);
   const xaSelect = document.getElementById(xaSelectId);
   if (!tinhSelect || !xaSelect) return;
+  const initGeneration = (tinhSelect[ADDRESS_INIT_GENERATION] || 0) + 1;
+  tinhSelect[ADDRESS_INIT_GENERATION] = initGeneration;
+  xaSelect[ADDRESS_INIT_GENERATION] = initGeneration;
   xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
   xaSelect.disabled = true;
   tinhSelect.disabled = isDisabled;
   const provinces = await ensureVietnamProvinces();
+  if (
+    document.getElementById(tinhSelectId) !== tinhSelect
+    || document.getElementById(xaSelectId) !== xaSelect
+    || tinhSelect[ADDRESS_INIT_GENERATION] !== initGeneration
+    || xaSelect[ADDRESS_INIT_GENERATION] !== initGeneration
+  ) return;
   if (!provinces.length) {
     tinhSelect.innerHTML = trustedHTML('<option value="">Không thể tải danh sách tỉnh thành</option>');
     return;
@@ -256,20 +286,37 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
     }
   }
   const loadWards = async (provinceCode, selectWardName = "") => {
+    const loadGeneration = (xaSelect[WARD_LOAD_GENERATION] || 0) + 1;
+    xaSelect[WARD_LOAD_GENERATION] = loadGeneration;
     if (!provinceCode) {
       xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
       xaSelect.disabled = true;
+      syncCustomSelectDisplay(xaSelect);
       return;
     }
     if (String(provinceCode).startsWith("legacy-province:")) {
       xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
       xaSelect.disabled = isDisabled;
       selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
+      syncCustomSelectDisplay(xaSelect);
       return;
     }
     xaSelect.innerHTML = trustedHTML('<option value="">Đang tải...</option>');
     xaSelect.disabled = true;
+    syncCustomSelectDisplay(xaSelect);
     const wards = await ensureVietnamWards(provinceCode);
+    if (!shouldCommitWardResponse({
+      loadGeneration,
+      currentGeneration: xaSelect[WARD_LOAD_GENERATION],
+      selectedProvince: tinhSelect.value,
+      requestedProvince: provinceCode,
+      provinceSelect: tinhSelect,
+      wardSelect: xaSelect,
+      currentProvinceSelect: document.getElementById(tinhSelectId),
+      currentWardSelect: document.getElementById(xaSelectId),
+      initGeneration,
+      currentInitGeneration: tinhSelect[ADDRESS_INIT_GENERATION],
+    })) return;
     xaSelect.innerHTML = trustedHTML(renderWardOptions(wards));
     xaSelect.disabled = isDisabled;
     if (selectWardName) {
@@ -280,6 +327,7 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
         selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
       }
     }
+    syncCustomSelectDisplay(xaSelect);
   };
   tinhSelect.onchange = (e) => {
     loadWards(e.target.value);

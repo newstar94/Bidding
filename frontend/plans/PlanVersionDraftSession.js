@@ -622,9 +622,8 @@ async function applyCanonicalFinalizeResponse(resources, response, isCurrent) {
       resources.entityIndexes?.invalidate?.(table);
     });
   }
-  if (response?.syncVersion !== undefined) {
-    resources.storage?.setItem?.("bf_last_sync_version", String(response.syncVersion));
-  }
+  // The mutation receipt does not include intervening commits from other
+  // actors. Only a completely applied pull may advance the workspace cursor.
   return true;
 }
 

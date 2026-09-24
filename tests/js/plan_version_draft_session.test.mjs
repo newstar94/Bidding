@@ -666,7 +666,35 @@ test("failed final save keeps the recoverable draft and successful retry clears 
   assert.equal(state.kehoach[0].rowVersion, 1);
   assert.equal(state.goithau[0].rowVersion, 1);
   assert.deepEqual(model.planVersionDraftSessions, []);
-  assert.equal(model.workspaceStorage.values.get("bf_last_sync_version"), "21");
+  assert.equal(model.workspaceStorage.values.has("bf_last_sync_version"), false);
+});
+
+test("finalize ACK preserves pull cursor so intervening remote updates remain fetchable", async () => {
+  const state = draftState();
+  const values = new Map([["bf_last_sync_version", "10"], ["bf_visibility_token", "scope"]]);
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const model = { state, db: memoryDb(), workspaceStorage: storage, normalizeRecordKeys: (row) => row };
+  const session = createPlanVersionDraftSession(state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  await finalizePlanVersionDraft({ model }, session, {
+    send: async () => ({ status: "success", syncVersion: 12, rowVersions: [] }),
+  });
+  const { readSyncCursor, fetchDeltaSnapshot } = await import("../../frontend/app/syncCursor.js");
+  const cursor = readSyncCursor(storage);
+  const delta = await fetchDeltaSnapshot(async (url) => {
+    const after = Number(new URL(url, "http://localhost").searchParams.get("after_version"));
+    return new Response(JSON.stringify({
+      goithau: after < 11 ? [{ id: "remote", tenGoiThau: "Updated by teammate" }] : [],
+      deletions: after < 11 ? [{ table: "goithau", id: "removed" }] : [],
+      throughVersion: 12, syncVersion: 12, visibilityToken: "scope",
+    }));
+  }, { afterVersion: cursor.query.after_version, visibilityToken: cursor.visibilityToken });
+  assert.equal(delta.snapshot.goithau.length, 1);
+  assert.equal(delta.snapshot.deletions.length, 1);
+  assert.equal(storage.getItem("bf_last_sync_version"), "10");
 });
 
 test("reload after server commit durably cleans the acknowledged draft without refinalizing", async () => {

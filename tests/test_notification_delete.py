@@ -6,7 +6,8 @@ from backend.notifications import routes
 
 
 def test_delete_notification_is_recipient_scoped(monkeypatch):
-    connection = sqlite3.connect(":memory:")
+    # Requests run sequentially through the production database worker lane.
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.execute("CREATE TABLE user_notifications (id TEXT PRIMARY KEY, user_id TEXT)")
     connection.executemany("INSERT INTO user_notifications VALUES (?, ?)", [("mine", "a"), ("other", "b")])
     connection.commit()

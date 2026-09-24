@@ -280,6 +280,11 @@ jobs:
       # Keep optional contractor-risk lookups deterministic and offline during
       # the workflow suite; production still uses the configured VNEPS service.
       VNEPS_VIOLATION_FIXTURE_PATH: tests/fixtures/vneps_contractor_violations.json
+      # Run the approved procurement import journey against its checked-in
+      # deterministic source; the spec must execute, not silently skip.
+      VNEPS_PROCUREMENT_IMPORT_ENABLED: "true"
+      VNEPS_PROCUREMENT_PROVIDER: fixture
+      VNEPS_PROCUREMENT_FIXTURE_PATH: tests/fixtures/vneps_plan_history.json
     services:
       postgres:
         image: postgres:17@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317 # 17.10

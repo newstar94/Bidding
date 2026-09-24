@@ -351,11 +351,22 @@ class PostgresConnection:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type is None:
-            self.commit()
-        else:
-            self.rollback()
-        self.close()
+        primary_error = None
+        try:
+            if exc_type is None:
+                self.commit()
+            else:
+                self.rollback()
+        except BaseException as error:  # noqa: BLE001 - preserve the body/commit exception identity
+            primary_error = error
+        finally:
+            try:
+                self.close()
+            except BaseException:  # noqa: BLE001 - cleanup must not mask the primary failure
+                if primary_error is None and exc_type is None:
+                    raise
+        if primary_error is not None and exc_type is None:
+            raise primary_error
         return False
 
 

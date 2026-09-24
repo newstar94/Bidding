@@ -3,6 +3,7 @@ import { applyAccessContext } from "./accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { claimSessionTermination, isAuthSessionActive } from "./authRuntimeState.js";
+import { quarantineForcedSession } from "./logoutMutationSafety.js";
 import {
   invalidateServerCapabilities,
   updateServerCapabilitiesFromSession,
@@ -72,7 +73,7 @@ export function setupActivityTracker() {
     localStorage.setItem("bf_last_activity", now.toString());
   };
   ["mousedown", "mousemove", "keypress", "scroll", "touchstart"].forEach((type) => {
-    document.addEventListener(type, updateActivity, { passive: true });
+    document.addEventListener(type, () => updateActivity(), { passive: true });
   });
   updateActivity(true);
 }
@@ -90,11 +91,9 @@ export function checkInactivity() {
       invalidateServerCapabilities();
       if (this._sessionInterval) clearInterval(this._sessionInterval);
       this.usageAnalyticsTracker?.stop?.();
-      this.disconnectWebSocket?.(false);
-      void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
+      void quarantineForcedSession(this).catch((error) => {
         console.error("Failed to clear inactive workspace data:", error);
       });
-      this.model.clearSessionData();
       const notice = getSessionTerminationNotice("session_idle_expired", timeoutHours);
       this.view?.showToast?.(notice.title, notice.message, "warning");
       const overlay = document.getElementById("auth-overlay");
@@ -140,11 +139,9 @@ export function startBackgroundSessionChecker() {
         this._sessionExpiryHandled = true;
         clearInterval(this._sessionInterval);
         this.usageAnalyticsTracker?.stop?.();
-        this.disconnectWebSocket?.(false);
-        void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
+        void quarantineForcedSession(this).catch((error) => {
           console.error("Failed to clear expired workspace data:", error);
         });
-        this.model.clearSessionData();
         const overlay = document.getElementById("auth-overlay");
         if (overlay) {
           setRuntimeStyle(overlay, "display", "flex");

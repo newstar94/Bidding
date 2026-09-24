@@ -50,6 +50,7 @@ const clientConfiguration = {
   activeOrganization: defaultActiveOrganization,
   onHttpError: null
 };
+const responseLifecycles = new WeakMap();
 
 /**
  * Configure application-specific UI reactions without changing global fetch.
@@ -270,8 +271,6 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
         ? error
         : new ApiError("Không thể kết nối tới máy chủ", { code: "NETWORK_ERROR", cause: error });
     }
-    abort.cleanup();
-
     const retryAfter = response.status === 429 ? parseRetryAfter(response) : null;
     const retryAfterIsTooLong = retryAfter !== null && retryAfter > MAX_AUTO_RETRY_AFTER_MS;
     if (
@@ -279,10 +278,13 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
       && attempt < maxRetries
       && !retryAfterIsTooLong
     ) {
+      await discardResponse(response, abort);
       await wait(retryDelay(attempt, response), requestOptions.signal);
       attempt += 1;
       continue;
     }
+
+    response = wrapResponseBodyLifecycle(response, abort, requestOptions.signal);
 
     if (
       handleHttpErrors
@@ -300,6 +302,7 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
       });
       if (recovery?.retry === true && !httpRecoveryUsed) {
         httpRecoveryUsed = true;
+        try { await response.body?.cancel?.(); } catch { /* response is being retried */ }
         continue;
       }
     }
@@ -313,7 +316,19 @@ async function readResponseBody(response) {
   if (contentType.includes("application/json")) {
     try {
       return await response.json();
-    } catch {
+    } catch (error) {
+      const lifecycle = responseLifecycles.get(response);
+      if (lifecycle?.didTimeOut()) {
+        throw new ApiError("Yêu cầu tới máy chủ đã quá thời gian chờ", {
+          code: "REQUEST_TIMEOUT",
+          cause: error,
+        });
+      }
+      if (lifecycle?.callerSignal?.aborted) {
+        throw lifecycle.callerSignal.reason instanceof Error
+          ? lifecycle.callerSignal.reason
+          : new DOMException("Request cancelled", "AbortError");
+      }
       throw new ApiError("Phản hồi JSON từ máy chủ không hợp lệ", {
         status: response.status,
         response
@@ -331,6 +346,57 @@ async function readResponseBody(response) {
     return normalized.slice(0, 500) || null;
   }
   return text;
+}
+
+function wrapResponseBodyLifecycle(response, abort, callerSignal) {
+  if (!response?.body?.getReader) {
+    abort.cleanup();
+    return response;
+  }
+  const reader = response.body.getReader();
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    abort.cleanup();
+  };
+  const body = new globalThis.ReadableStream({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        finish();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason); } finally { finish(); }
+    },
+  });
+  const wrapped = new globalThis.Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  Object.defineProperties(wrapped, {
+    redirected: { configurable: true, value: response.redirected },
+    type: { configurable: true, value: response.type },
+    url: { configurable: true, value: response.url },
+  });
+  responseLifecycles.set(wrapped, { callerSignal, didTimeOut: abort.didTimeOut });
+  return wrapped;
+}
+
+async function discardResponse(response, abort) {
+  try { await response?.body?.cancel?.(); }
+  catch { /* response body is being discarded before retry */ }
+  finally { abort.cleanup(); }
 }
 
 export async function requestJson(url, options = {}, fetchImpl = globalThis.fetch) {

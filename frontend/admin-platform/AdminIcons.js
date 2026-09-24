@@ -1,7 +1,7 @@
 import { escapeHtml } from "../shared/view_helpers.js";
 
 const ICON_PATHS = Object.freeze({
-  overview: '<path d="M4 13h6V4H4v9zM14 20h6v-9h-6v9zM4 20h6v-3H4v3zM14 7h6V4h-6v3z"/>',
+  overview: '<path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/>',
   analytics: '<path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/>',
   organizations: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1m4 0h1M9 14h1m4 0h1M10 21v-3h4v3"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
@@ -21,6 +21,10 @@ const ICON_PATHS = Object.freeze({
   version: '<path d="M12 3l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>',
   workspace: '<path d="M4 4h16v16H4zM4 9h16M9 9v11"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  menu: '<path d="M4 6h16M4 12h10M4 18h16"/>',
+  monitor: '<path d="M3 4h18v13H3zM12 17v4M8 21h8"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>',
+  coins: '<ellipse cx="9" cy="11" rx="6" ry="3"/><path d="M3 11v7c0 4 12 4 12 0v-7M3 15c0 4 12 4 12 0M9 5c0 4 12 4 12 0s-12-4-12 0M21 5v11c0 2-3 3-6 3"/>',
 });
 
 export const ADMIN_ROUTE_ICONS = Object.freeze({

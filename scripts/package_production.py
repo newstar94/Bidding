@@ -111,6 +111,34 @@ def _assert_safe(relative_path: Path) -> None:
         raise RuntimeError(f"Forbidden production file: {relative_path.as_posix()}")
 
 
+def _source_derived_release_id() -> str:
+    """Derive the local release identity using the same ordered input contract."""
+
+    inputs = (
+        PROJECT_ROOT / "frontend",
+        PROJECT_ROOT / "views",
+        PROJECT_ROOT / "shared",
+        PROJECT_ROOT / "public",
+        PROJECT_ROOT / "package-lock.json",
+        PROJECT_ROOT / "scripts" / "secure_release_id.mjs",
+        PROJECT_ROOT / "vite.config.js",
+    )
+    files: list[Path] = []
+    for root in inputs:
+        if root.is_file():
+            files.append(root)
+        elif root.is_dir():
+            files.extend(path for path in sorted(root.rglob("*")) if path.is_file())
+    digest = hashlib.sha256()
+    for path in sorted(files, key=lambda item: item.relative_to(PROJECT_ROOT).as_posix()):
+        relative = path.relative_to(PROJECT_ROOT).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def _validate_release_id(secure_build: dict[str, object]) -> str:
     release_id = secure_build.get("releaseId")
     if (
@@ -137,6 +165,13 @@ def _validate_release_id(secure_build: dict[str, object]) -> str:
             f"Secure build release ID does not match {expected_name}: "
             f"marker={release_id}, expected={expected_release}."
         )
+    if not expected_release:
+        source_release = _source_derived_release_id()
+        if release_id != source_release:
+            raise RuntimeError(
+                "Secure build release ID does not match the current source-derived release ID: "
+                f"marker={release_id}, source={source_release}."
+            )
     return release_id
 
 

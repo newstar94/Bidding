@@ -96,7 +96,7 @@ function filterMarkup(filter, state) {
   const options = [["", filter.allLabel], ...filter.options]
     .map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(state[filter.key], value)}>${escapeHtml(label)}</option>`)
     .join("");
-  return `<label class="form-label mb-0"><span class="visually-hidden">${escapeHtml(filter.label)}</span><select class="form-select" name="${escapeHtml(filter.key)}" aria-label="${escapeHtml(filter.label)}">${options}</select></label>`;
+    return `<label class="form-label mb-0"><span class="visually-hidden">${escapeHtml(filter.label)}</span><select class="form-select bf-admin-filter-select" name="${escapeHtml(filter.key)}" aria-label="${escapeHtml(filter.label)}">${options}</select></label>`;
 }
 
 function controlsMarkup(config, state) {

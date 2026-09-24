@@ -12,7 +12,7 @@ import time
 
 from starlette.responses import JSONResponse
 
-from backend.shared.access_policy import can_read_record
+from backend.shared.access_policy import can_read_record, filter_items_for_read
 from backend.shared.database_io import run_database_read
 from backend.shared.helpers import database, get_active_org, verify_session
 from backend.shared.media_helper import public_image_path
@@ -248,6 +248,7 @@ def _prepare_upsert_items(cursor, rows, organization_id):
 def _project_candidate(
     cursor, row, *, role, user_id, organization_id,
     media_session_token, sensitive_policy, prepared_upserts=None,
+    read_authorization=None,
 ):
     kind = str(row["kind"])
     raw_table_key = str(row["table_key"])
@@ -273,10 +274,15 @@ def _project_candidate(
             )
         if kind == "upsert" and table_name == "goi_thau":
             _attach_package_expert_relations(cursor, [item], organization_id)
-    if not can_read_record(
-        cursor, role, user_id, organization_id,
-        payload_key, table_name, item,
-    ):
+    allowed = (
+        read_authorization.allows(table_name, payload_key, item)
+        if read_authorization is not None
+        else can_read_record(
+            cursor, role, user_id, organization_id,
+            payload_key, table_name, item,
+        )
+    )
+    if not allowed:
         return None
     if kind == "delete":
         return {
@@ -306,6 +312,45 @@ def _project_candidate(
         "record": project_conflict_record(item),
         "version": int(row["version"]),
     }
+
+
+class _DeltaReadAuthorization:
+    """Batch the existing read policy once per table for one delta request."""
+
+    def __init__(self, cursor, role, user_id, organization_id, candidates, prepared):
+        grouped = {}
+        for row in candidates:
+            raw_table_key = str(row["table_key"])
+            table_name = TABLE_KEYS.get(raw_table_key, raw_table_key)
+            payload_key = _TABLE_KEYS_BY_NAME.get(table_name, raw_table_key)
+            if payload_key not in TABLE_KEYS:
+                continue
+            raw_record = _json_object(
+                row["record_json"]
+                if str(row["kind"]) == "upsert"
+                else row["snapshot_json"]
+            )
+            item = prepared.get((table_name, str(row["record_id"])))
+            if item is None:
+                item = map_db_to_json(table_name, raw_record) if raw_record else {
+                    "id": row["record_id"]
+                }
+            grouped.setdefault((table_name, payload_key), []).append(item)
+        self._allowed = {}
+        for (table_name, payload_key), items in grouped.items():
+            allowed_items = filter_items_for_read(
+                cursor, role, user_id, organization_id,
+                payload_key, table_name, items,
+            )
+            self._allowed[(table_name, payload_key)] = {
+                str(item.get("id")) for item in allowed_items
+                if isinstance(item, dict) and item.get("id") is not None
+            }
+
+    def allows(self, table_name, payload_key, item):
+        return str(item.get("id")) in self._allowed.get(
+            (table_name, payload_key), set()
+        )
 
 
 def _read_delta_page_blocking(request):
@@ -399,6 +444,14 @@ def _read_delta_page_blocking(request):
             candidates,
             organization_id,
         )
+        read_authorization = _DeltaReadAuthorization(
+            cursor,
+            role,
+            role.user_id,
+            organization_id,
+            candidates,
+            prepared_upserts,
+        )
         policy = resolve_sensitive_read_policy(
             cursor, role, role.user_id, organization_id
         )
@@ -417,6 +470,7 @@ def _read_delta_page_blocking(request):
                 media_session_token=signing_key,
                 sensitive_policy=policy,
                 prepared_upserts=prepared_upserts,
+                read_authorization=read_authorization,
             )
             projected_size = (
                 len(json.dumps(

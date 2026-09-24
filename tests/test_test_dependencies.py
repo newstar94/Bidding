@@ -119,6 +119,11 @@ def test_canonical_playwright_matrix_has_three_required_non_skipped_projects():
     assert workflow["jobs"]["e2e"]["env"]["VNEPS_VIOLATION_FIXTURE_PATH"] == (
         "tests/fixtures/vneps_contractor_violations.json"
     )
+    assert workflow["jobs"]["e2e"]["env"]["VNEPS_PROCUREMENT_IMPORT_ENABLED"] == "true"
+    assert workflow["jobs"]["e2e"]["env"]["VNEPS_PROCUREMENT_PROVIDER"] == "fixture"
+    assert workflow["jobs"]["e2e"]["env"]["VNEPS_PROCUREMENT_FIXTURE_PATH"] == (
+        "tests/fixtures/vneps_plan_history.json"
+    )
     for browser in ("chromium", "firefox", "webkit"):
         assert f'name: "{browser}"' in config
     assert "testIgnore" not in config

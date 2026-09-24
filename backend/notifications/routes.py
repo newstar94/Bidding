@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 
 from backend.shared.helpers import database, verify_session
 from backend.shared.logging_utils import log_and_error
+from backend.shared.database_io import run_database_read, run_database_write
 
 
 def _limit(request) -> int:
@@ -18,6 +19,10 @@ def _limit(request) -> int:
 
 
 async def list_notifications_api(request):
+    return await run_database_read(_list_notifications, request)
+
+
+def _list_notifications(request):
     connection = None
     try:
         valid, session = verify_session(request)
@@ -72,6 +77,10 @@ async def list_notifications_api(request):
 
 
 async def mark_notification_read_api(request):
+    return await run_database_write(_mark_notification_read, request)
+
+
+def _mark_notification_read(request):
     connection = None
     try:
         valid, session = verify_session(request)
@@ -108,6 +117,10 @@ async def mark_notification_read_api(request):
 
 
 async def mark_all_notifications_read_api(request):
+    return await run_database_write(_mark_all_notifications_read, request)
+
+
+def _mark_all_notifications_read(request):
     connection = None
     try:
         valid, session = verify_session(request)
@@ -139,6 +152,10 @@ async def mark_all_notifications_read_api(request):
 
 
 async def delete_notification_api(request):
+    return await run_database_write(_delete_notification, request)
+
+
+def _delete_notification(request):
     """Delete only a notification belonging to the authenticated recipient."""
     connection = None
     try:

@@ -6,6 +6,7 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { adminIconMarkup } from "./AdminIcons.js";
 import { adminNavigationMarkup } from "./AdminNavigation.js";
 import { adminSearchMarkup, bindAdminSearch } from "./AdminSearch.js";
+import { bindAdminSelects } from "./AdminSelect.js";
 
 window.performance?.mark?.("bf:app-module-start");
 
@@ -25,18 +26,61 @@ function escapeText(value) {
 }
 function shellMarkup(session) {
   const name = escapeText(session.user?.name || session.user?.username || "Quản trị viên");
-  const links = adminNavigationMarkup();
-  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị"><div class="container-fluid"><h1 class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></h1><div class="navbar-nav flex-row d-lg-none ms-auto"><button class="navbar-toggler" type="button" data-admin-nav-toggle aria-controls="admin-navbar" aria-expanded="false" aria-label="Mở điều hướng"><span class="navbar-toggler-icon"></span></button></div><div class="collapse navbar-collapse" id="admin-navbar"><ul class="navbar-nav pt-lg-3">${links}</ul></div></div></aside><div class="page-wrapper"><header class="navbar navbar-expand-md d-print-none"><div class="container-xl bf-admin-header">${adminSearchMarkup()}<div class="navbar-nav flex-row order-md-last"><span class="nav-link">${adminIconMarkup("account")}<span>${name}</span></span><a class="nav-link" href="/tong-quan" data-admin-workspace-link>${adminIconMarkup("workspace")}<span>Không gian làm việc</span></a><span class="nav-link text-danger" id="admin-workspace-status" aria-live="polite"></span></div></div></header><main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main></div>`;
+  const rawName = String(session.user?.name || session.user?.username || "QT").trim();
+  const nameParts = rawName.split(/\s+/u).filter(Boolean);
+  const initials = escapeText((nameParts.length > 1
+    ? `${nameParts[0][0] || ""}${nameParts.at(-1)?.[0] || ""}`
+    : rawName.slice(0, 2)).toUpperCase());
+  const links = adminNavigationMarkup({ compact: true });
+  const adminAccountIcon = adminIconMarkup("account");
+  const navExpanded = typeof globalThis.innerWidth !== "number" || globalThis.innerWidth >= 992;
+  return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị">
+    <div class="container-fluid">
+      <div class="navbar-brand navbar-brand-autodark">BiddingFlow <span>Admin</span></div>
+      <div class="collapse navbar-collapse${navExpanded ? " show" : ""}" id="admin-navbar"><ul class="navbar-nav">${links}</ul></div>
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    <header class="navbar navbar-expand-md d-print-none"><div class="container-xl bf-admin-header">
+      <div class="bf-admin-header-leading">
+        <button class="bf-admin-header-menu" type="button" data-admin-nav-toggle aria-controls="admin-navbar" aria-expanded="${navExpanded}" aria-label="Mở hoặc đóng điều hướng">${adminIconMarkup("menu", "")}</button>
+        <span class="bf-admin-header-divider" aria-hidden="true">›</span><span class="bf-admin-header-crumb">Tổng quan</span>
+      </div>
+      <div class="bf-admin-header-tools">${adminSearchMarkup()}
+        <div class="navbar-nav flex-row bf-admin-user-tools">
+          <a class="btn btn-outline-primary bf-admin-workspace-link" href="/tong-quan" data-admin-workspace-link>${adminIconMarkup("workspace")}<span>Không gian làm việc</span></a>
+          <span class="bf-admin-user"><span class="bf-admin-user-avatar" aria-hidden="true">${initials}</span><span class="bf-admin-user-icon" aria-hidden="true">${adminAccountIcon}</span><span class="bf-admin-user-name">${name}</span><span class="bf-admin-user-role">· Quản trị viên</span></span>
+        </div>
+      </div>
+      <span class="text-danger" id="admin-workspace-status" aria-live="polite"></span>
+    </div></header>
+    <main id="admin-main" class="page-body" tabindex="-1"><div class="container-xl"><div id="admin-view"></div></div></main>
+  </div>`;
 }
 function bindNavigationToggle() {
   const toggle = document.querySelector("[data-admin-nav-toggle]");
   const navigation = document.getElementById("admin-navbar");
   if (!toggle || !navigation) return;
+  const desktop = window.matchMedia("(min-width: 992px)");
+  const setExpanded = (expanded) => {
+    toggle.setAttribute("aria-expanded", String(expanded));
+    navigation.classList.toggle("show", expanded);
+    navigation.inert = !expanded;
+    document.body.classList.toggle("bf-admin-nav-collapsed", desktop.matches && !expanded);
+  };
+  setExpanded(desktop.matches);
   toggle.addEventListener("click", () => {
     const expanded = toggle.getAttribute("aria-expanded") === "true";
-    toggle.setAttribute("aria-expanded", String(!expanded));
     navigation.classList.toggle("show", !expanded);
+    setExpanded(!expanded);
   });
+  desktop.addEventListener("change", () => setExpanded(desktop.matches));
+  navigation.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    setExpanded(false);
+    toggle.focus();
+  });
+  window.addEventListener("admin:navigate", () => { if (!desktop.matches) setExpanded(false); });
 }
 async function selectWorkspaceRole(event) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -82,7 +126,12 @@ function renderRoute() {
   document.querySelectorAll("[data-admin-link]").forEach((link) => { const active = link.dataset.adminLink === route?.path; link.classList.toggle("active", active); if (active) link.setAttribute("aria-current", "page"); else link.removeAttribute("aria-current"); });
   if (!route) { view.innerHTML = trustedHTML(`<div class="empty"><p class="empty-title">Không tìm thấy trang quản trị</p><div class="empty-action"><a class="btn btn-primary" href="/admin" data-admin-link="/admin">Về tổng quan</a></div></div>`); document.title = "Không tìm thấy | BiddingFlow Admin"; return; }
   document.title = `${route.title} | BiddingFlow Admin`;
-  view.innerHTML = trustedHTML(`<div class="page-header"><div class="row align-items-center"><div class="col"><div class="page-pretitle">Quản trị nền tảng</div><h2 class="page-title">${escapeText(route.title)}</h2></div></div></div><div id="admin-route-content" class="mt-3"></div>`);
+  const breadcrumb = document.querySelector(".bf-admin-header-crumb");
+  if (breadcrumb) breadcrumb.textContent = route.title;
+  const pageHeader = route.path === "/admin"
+    ? ""
+    : `<div class="page-header"><div class="row align-items-center"><div class="col"><div class="page-pretitle">Quản trị nền tảng</div><h2 class="page-title">${escapeText(route.title)}</h2></div></div></div>`;
+  view.innerHTML = trustedHTML(`${pageHeader}<div id="admin-route-content" class="${route.path === "/admin" ? "" : "mt-3"}"></div>`);
   const content = document.getElementById("admin-route-content");
   if (route.path === "/admin") void renderAdminOverview(content, { signal: routeController.signal });
   else if (route.path === "/admin/analytics") loadAdminModule(() => import("./AdminAnalytics.js"), "renderAdminAnalytics", content, { signal: routeController.signal });
@@ -128,6 +177,7 @@ else {
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
   bindNavigationToggle();
   bindAdminSearch(document);
+  bindAdminSelects(app);
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.querySelector("[data-admin-workspace-link]")?.addEventListener("click", selectWorkspaceRole);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });

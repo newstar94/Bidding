@@ -12,6 +12,7 @@ import {
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { adminIconMarkup } from "./AdminIcons.js";
+import { adminStatusMarkup } from "./AdminStatus.js";
 
 const SECRET_FIELDS = Object.freeze([
   ["DATABASE_URL", "Kết nối cơ sở dữ liệu"],
@@ -82,7 +83,7 @@ function statusBadge(status) {
     unknown: ["Chưa xác định", "secondary"],
   };
   const [label, tone] = statusMap[normalized] || ["N/A", "secondary"];
-  return `<span class="badge bg-${tone}-lt">${label}</span>`;
+  return tone === "secondary" ? adminStatusMarkup(status) : adminStatusMarkup(normalized, label);
 }
 
 function generatedAtMarkup(value) {

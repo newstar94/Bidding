@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from backend.shared.access_policy import can_read_record
 from backend.shared.helpers import database, get_active_org, verify_session
+from backend.shared.database_io import run_database_read
 
 
 _TARGETS = {
@@ -25,6 +26,10 @@ def _error(message: str, code: str, status: int) -> JSONResponse:
 
 
 async def list_activity_timeline_api(request):
+    return await run_database_read(_list_activity_timeline, request)
+
+
+def _list_activity_timeline(request):
     valid, session = verify_session(request)
     if not valid:
         return _error(str(session), "SESSION_REQUIRED", 403)

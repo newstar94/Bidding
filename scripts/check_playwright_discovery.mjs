@@ -14,6 +14,7 @@ const result = spawnSync(
     "--config=playwright.config.mjs",
     "--project=chromium",
     "--list",
+    "--reporter=list",
   ],
   { cwd: process.cwd(), encoding: "utf8", env: process.env },
 );

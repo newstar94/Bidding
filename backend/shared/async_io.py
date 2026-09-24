@@ -91,6 +91,13 @@ class _BlockingIOPool:
             self._in_flight = max(0, self._in_flight - 1)
         self._slots.release()
 
+    def _submission_failed(self) -> None:
+        """Release capacity without inspecting a never-completed Future."""
+        with self._lock:
+            self._completed += 1
+            self._in_flight = max(0, self._in_flight - 1)
+        self._slots.release()
+
     async def run(
         self,
         function: Callable[..., Any],
@@ -128,7 +135,7 @@ class _BlockingIOPool:
         try:
             future = self._executor.submit(execute)
         except Exception:
-            self._complete(Future())
+            self._submission_failed()
             raise
         future.add_done_callback(self._complete)
         try:

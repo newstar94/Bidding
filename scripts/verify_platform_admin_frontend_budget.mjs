@@ -36,6 +36,18 @@ const OVERVIEW = {
   recentOrganizations: [{ name: "Tổ chức đo hiệu năng", status: "active" }],
   generatedAt: "2026-09-11T00:00:00Z",
 };
+const HEALTH = {
+  generatedAt: "2026-09-11T00:00:00Z",
+  status: "ready",
+  application: { startupComplete: true, ready: true },
+  database: { status: "available", schemaVersion: 90, latencyMs: 2, version: "16" },
+  operations: {},
+  resources: {
+    application: { status: "healthy" },
+    postgresql: { status: "available" },
+    backgroundJobs: { status: "healthy" },
+  },
+};
 
 function safeManifestAsset(relativePath) {
   if (!/^assets\/[A-Za-z0-9_.-]+$/u.test(relativePath)) {
@@ -120,6 +132,11 @@ async function startHarness(shell, distRoot) {
         response.end(JSON.stringify(OVERVIEW));
         return;
       }
+      if (url.pathname === "/api/admin/health") {
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify(HEALTH));
+        return;
+      }
       if (url.pathname.startsWith("/dist/assets/")) {
         const relativePath = safeManifestAsset(url.pathname.slice("/dist/".length));
         const body = await readFile(path.join(distRoot, relativePath));
@@ -166,7 +183,7 @@ async function measureBrowserRun(browser, baseUrl) {
   try {
     const response = await page.goto(`${baseUrl}/admin`, { waitUntil: "domcontentloaded" });
     if (!response?.ok()) throw new Error(`Admin harness returned HTTP ${response?.status() || "unknown"}.`);
-    await page.locator("#recent-activity-title").waitFor({ state: "visible", timeout: 10_000 });
+    await page.locator(".bf-admin-recent-card").waitFor({ state: "visible", timeout: 10_000 });
     await page.evaluate(() => document.fonts.ready);
     const timing = await page.evaluate(() => ({
       dashboardLoadMs: performance.now(),

@@ -25,6 +25,22 @@ class CountingSignal {
   }
 }
 
+function stalledResponse(options, contentType = "text/plain") {
+  const body = new ReadableStream({
+    start(controller) {
+      const fail = () => controller.error(
+        options.signal.reason || new DOMException("Aborted", "AbortError"),
+      );
+      if (options.signal.aborted) fail();
+      else options.signal.addEventListener("abort", fail, { once: true });
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": contentType },
+  });
+}
+
 
 test("storage access failure omits the active organization header safely", async () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
@@ -100,6 +116,7 @@ test("retry wait removes its abort listener after the timer resolves", async () 
 
   assert.equal(response.status, 200);
   assert.equal(calls, 2);
+  await response.text();
   assert.equal(signal.listeners.size, 0);
 });
 
@@ -209,6 +226,59 @@ test("non-idempotent mutation without an idempotency key is never retried", asyn
     ApiError,
   );
   assert.equal(calls, 1);
+});
+
+
+test("JSON body timeout remains active after response headers arrive", async () => {
+  await assert.rejects(
+    requestJson("/api/slow-json", {
+      csrf: false,
+      retries: 0,
+      timeoutMs: 15,
+    }, async (_url, options) => stalledResponse(options, "application/json")),
+    (error) => error instanceof ApiError && error.code === "REQUEST_TIMEOUT",
+  );
+});
+
+
+test("text body timeout remains active after response headers arrive", async () => {
+  const response = await apiFetch("/api/slow-text", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 15,
+  }, async (_url, options) => stalledResponse(options));
+
+  await assert.rejects(response.text(), (error) => error?.name === "TimeoutError");
+});
+
+
+test("blob body consumption remains cancellable after response headers arrive", async () => {
+  const controller = new AbortController();
+  const response = await apiFetch("/api/slow-blob", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 1_000,
+    signal: controller.signal,
+  }, async (_url, options) => stalledResponse(options, "application/octet-stream"));
+
+  const consuming = response.blob();
+  controller.abort(new DOMException("cancelled", "AbortError"));
+  await assert.rejects(consuming, (error) => error?.name === "AbortError");
+});
+
+
+test("external abort listener is retained through body consumption and then released", async () => {
+  const signal = new CountingSignal();
+  const response = await apiFetch("/api/body", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 0,
+    signal,
+  }, async () => new Response("complete"));
+
+  assert.equal(signal.listeners.size, 1);
+  assert.equal(await response.text(), "complete");
+  assert.equal(signal.listeners.size, 0);
 });
 
 

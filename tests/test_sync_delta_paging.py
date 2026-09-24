@@ -140,6 +140,35 @@ def test_prepared_delta_package_upsert_keeps_expert_team_relations(monkeypatch):
     assert projected["record"]["chuyenGiaIds"] == [expert_id]
 
 
+def test_delta_authorization_batches_each_table_once_without_changing_allowed_ids(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        delta_paging,
+        "filter_items_for_read",
+        lambda _cursor, _role, _user, _org, payload, table, items: (
+            calls.append((payload, table, len(items)))
+            or list(items[::2])
+        ),
+    )
+    candidates = [
+        {
+            "kind": "upsert",
+            "table_key": "goithau",
+            "record_id": f"package-{index}",
+            "record_json": json.dumps({"id": f"package-{index}"}),
+            "snapshot_json": None,
+        }
+        for index in range(50)
+    ]
+    authorization = delta_paging._DeltaReadAuthorization(
+        object(), object(), "user", "org", candidates, {}
+    )
+
+    assert calls == [("goithau", "goi_thau", 50)]
+    assert authorization.allows("goi_thau", "goithau", {"id": "package-0"})
+    assert not authorization.allows("goi_thau", "goithau", {"id": "package-1"})
+
+
 def test_visibility_scope_pushes_assignment_and_module_denial_into_sql():
     scope = VisibilityScope(
         organization_id="org-a",

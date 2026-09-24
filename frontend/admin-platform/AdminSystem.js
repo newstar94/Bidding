@@ -5,6 +5,7 @@ import { adminLoadingMarkup, adminStateMarkup } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { trapAdminDialogFocus } from "./AdminFocusTrap.js";
+import { adminStatusMarkup } from "./AdminStatus.js";
 
 function text(value, fallback = "N/A") {
   const normalized = String(value ?? "").trim();
@@ -190,7 +191,7 @@ export const JOB_DIRECTORY = Object.freeze({
     { label: "Cập nhật", sortKey: "updated_at" }, { label: "Chi tiết" },
   ],
   rowMarkup(job) {
-    return `<tr><td data-label="Tác vụ"><strong>${text(job?.operation)}</strong><div class="small text-secondary">${text(job?.id)} · ${text(job?.recordType)}</div></td><td data-label="Tổ chức">${text(job?.organizationId)}</td><td data-label="Trạng thái">${text(job?.status)}</td><td data-label="Tiến độ">${progressMarkup(job?.progress)}</td><td data-label="Lần thử">${Number.isFinite(job?.attemptCount) ? escapeHtml(job.attemptCount) : "N/A"}</td><td data-label="Lỗi cuối">${text(job?.lastErrorCode)}</td><td data-label="Cập nhật">${formatDate(job?.updatedAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-job-detail-id="${text(job?.id, "")}">Xem và thao tác</button></td></tr>`;
+    return `<tr><td data-label="Tác vụ"><strong>${text(job?.operation)}</strong><div class="small text-secondary">${text(job?.id)} · ${text(job?.recordType)}</div></td><td data-label="Tổ chức">${text(job?.organizationId)}</td><td data-label="Trạng thái">${adminStatusMarkup(job?.status)}</td><td data-label="Tiến độ">${progressMarkup(job?.progress)}</td><td data-label="Lần thử">${Number.isFinite(job?.attemptCount) ? escapeHtml(job.attemptCount) : "N/A"}</td><td data-label="Lỗi cuối">${text(job?.lastErrorCode)}</td><td data-label="Cập nhật">${formatDate(job?.updatedAt)}</td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-job-detail-id="${text(job?.id, "")}">Xem và thao tác</button></td></tr>`;
   },
   bindResultActions(root, options) { bindJobActions(root, options.payload?.items || [], options); },
 });
@@ -217,7 +218,7 @@ export const SYNC_DIRECTORY = Object.freeze({
     { label: "Đã phát" }, { label: "Lỗi cuối" },
   ],
   rowMarkup(event) {
-    return `<tr><td data-label="Sự kiện"><strong>${text(event?.eventType)}</strong><div class="small text-secondary">#${text(event?.id)}</div></td><td data-label="Tổ chức">${text(event?.organizationId)}</td><td data-label="Trạng thái">${text(event?.status)}</td><td data-label="Lần thử">${Number.isFinite(event?.attemptCount) ? escapeHtml(event.attemptCount) : "N/A"}</td><td data-label="Sẵn sàng">${formatDate(event?.availableAt)}</td><td data-label="Đã phát">${formatDate(event?.dispatchedAt)}</td><td data-label="Lỗi cuối">${text(event?.lastErrorCode)}</td></tr>`;
+    return `<tr><td data-label="Sự kiện"><strong>${text(event?.eventType)}</strong><div class="small text-secondary">#${text(event?.id)}</div></td><td data-label="Tổ chức">${text(event?.organizationId)}</td><td data-label="Trạng thái">${adminStatusMarkup(event?.status)}</td><td data-label="Lần thử">${Number.isFinite(event?.attemptCount) ? escapeHtml(event.attemptCount) : "N/A"}</td><td data-label="Sẵn sàng">${formatDate(event?.availableAt)}</td><td data-label="Đã phát">${formatDate(event?.dispatchedAt)}</td><td data-label="Lỗi cuối">${text(event?.lastErrorCode)}</td></tr>`;
   },
 });
 

@@ -6,6 +6,30 @@ import {
   runWordPublicationExportJob,
 } from "../../frontend/documents/WordPublicationJob.js";
 
+test("source change during polling is terminal without retry or download", async () => {
+  let polls = 0;
+  let waits = 0;
+  let downloads = 0;
+  let clock = 0;
+  await assert.rejects(runWordPublicationExportJob({
+    createJobUrl: "/api/document-jobs/plan/plan-a",
+    filename: "plan.docx",
+  }, {
+    request: async (_url, options) => {
+      if (options.method === "POST") return { status: "pending", statusUrl: "/jobs/a" };
+      polls += 1;
+      throw { status: 403, data: { code: "DOCUMENT_EXPORT_SOURCE_CHANGED" } };
+    },
+    now: () => clock,
+    timeoutMs: 20,
+    wait: async () => { waits += 1; clock += 10; },
+    download: async () => { downloads += 1; },
+  }), /Dữ liệu nguồn đã thay đổi/u);
+  assert.equal(polls, 1);
+  assert.equal(waits, 0);
+  assert.equal(downloads, 0);
+});
+
 test("Word publication job creates once, polls status and downloads the returned result URL", async () => {
   const requests = [];
   const downloads = [];
