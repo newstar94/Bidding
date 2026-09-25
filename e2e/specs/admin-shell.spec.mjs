@@ -98,7 +98,8 @@ async function fulfillJson(route, payload, status = 200) {
 
 async function expectAdminReady(page, title) {
   await expect(page.locator("#admin-app")).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
+  if (title === "Tổng quan") await expect(page.getByRole("heading", { level: 1, name: "Tổng quan nền tảng" })).toBeVisible();
+  else await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
   await expect(page.locator("#admin-main")).toBeFocused();
 }
 
@@ -228,7 +229,7 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
   await page.goto("/admin", { waitUntil: "commit" });
   await expect(page.locator('[data-admin-metric="organizations"]')).toHaveText("2");
   await expect(page.getByRole("heading", { name: "Xu hướng và phân bố", exact: true })).toBeVisible();
-  await expect(page.locator('svg[data-admin-chart-kind="line"]')).toBeVisible();
+  await expect(page.locator("svg.bf-admin-growth-svg")).toBeVisible();
 
   for (const viewport of [
     { width: 1440, height: 900 },
@@ -238,21 +239,21 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
   ]) {
     await page.setViewportSize(viewport);
     await expect(page.locator("#admin-main")).toBeVisible();
-    await expect(page.getByRole("heading", { name: /BiddingFlow/u })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Tổng quan nền tảng" })).toBeVisible();
     const widths = await page.evaluate(() => ({
       client: document.documentElement.clientWidth,
       scroll: document.documentElement.scrollWidth,
     }));
     expect(widths.scroll, JSON.stringify(viewport)).toBeLessThanOrEqual(widths.client + 1);
 
-    const toggle = page.getByRole("button", { name: "Mở điều hướng" });
+    const toggle = page.getByRole("button", { name: "Mở hoặc đóng điều hướng" });
     if (viewport.width < 992) {
       await expect(toggle).toBeVisible();
       if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator('[data-admin-link="/admin/users"]')).toBeVisible();
     } else {
-      await expect(toggle).toBeHidden();
+      await expect(toggle).toBeVisible();
       await expect(page.locator('[data-admin-link="/admin/users"]')).toBeVisible();
     }
   }
@@ -631,7 +632,7 @@ test("overview renders authoritative charts, table fallbacks, activity, and acti
   await expect(organizationFallback).toContainText("Hoạt động");
   await expect(organizationFallback).toContainText("9");
   await expect(page.getByRole("heading", { name: "Xu hướng và phân bố" })).toBeVisible();
-  await expect(page.getByRole("img", { name: "Tổ chức mới", exact: true })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Tổ chức mới theo ngày trong 30 ngày gần nhất" })).toContainText("10-09");
   await expect(page.getByRole("list", { name: "Hoạt động nền tảng gần đây" })).toContainText("Công ty Sao Mai");
   const alert = page.locator("article.alert-warning").filter({ hasText: "Hóa đơn quá hạn" });
   await expect(alert).toContainText("Có 1 mục cần rà soát");
@@ -841,7 +842,8 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
     .analyze();
   expect(accessibility.violations).toEqual([]);
 
-  await page.getByLabel("Chế độ xem").selectOption("operations");
+  await page.getByRole("combobox", { name: "Chế độ xem" }).click();
+  await page.getByRole("option", { name: "Vận hành" }).click();
   await page.getByRole("button", { name: "Áp dụng" }).click();
   await expect(page.getByText("Yêu cầu API")).toBeVisible();
   await expect(page.getByText("120", { exact: true })).toBeVisible();

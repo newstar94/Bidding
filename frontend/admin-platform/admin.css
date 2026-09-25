@@ -215,6 +215,12 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-workflow-step strong { font-size: .85rem; }
 .bf-admin-workflow-step small { margin-top: .15rem; color: inherit; font-size: .72rem; line-height: 1.35; }
 .bf-admin-workflow-line { height: 1px; min-width: 1.25rem; background: var(--bf-admin-brand-line); }
+.bf-admin-workflow-step.is-complete { color: var(--bf-admin-success); }
+.bf-admin-plan-tabs { position: sticky; top: .5rem; z-index: 20; gap: .25rem; margin: 0 0 1rem; padding: .35rem; border: 1px solid var(--bf-admin-line); border-radius: .6rem; background: color-mix(in srgb, var(--bf-admin-surface) 94%, transparent); box-shadow: 0 .25rem .8rem color-mix(in srgb, var(--bf-admin-ink) 8%, transparent); }
+.bf-admin-plan-tabs .nav-link { border-radius: .4rem; color: var(--bf-admin-muted); font-size: .82rem; font-weight: 650; }
+.bf-admin-plan-tabs .nav-link:hover, .bf-admin-plan-tabs .nav-link:focus-visible { color: var(--bf-admin-brand-strong); background: var(--bf-admin-brand-soft); }
+.bf-admin-date-filter > span { display: block; margin-bottom: .25rem; color: var(--bf-admin-muted); font-size: .75rem; font-weight: 650; }
+.bf-admin-editor-shell .card-footer { position: sticky; bottom: 0; z-index: 10; box-shadow: 0 -.25rem .8rem color-mix(in srgb, var(--bf-admin-ink) 7%, transparent); }
 .bf-admin-release-card { overflow: hidden; }
 .bf-admin-release-card.is-live { border-top: 3px solid var(--bf-admin-success); }
 .bf-admin-release-card.is-stopped { border-top: 3px solid var(--bf-admin-line-strong); }
@@ -249,6 +255,8 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .bf-admin-editor-actions > div { display: flex; flex-wrap: wrap; gap: .5rem; }
 @media (max-width: 767.98px) {
+  .bf-admin-plan-tabs { position: static; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
+  .bf-admin-plan-tabs .nav-link { flex: 0 0 auto; }
   .bf-admin-page-intro, .bf-admin-section-heading, .bf-admin-editor-intro, .bf-admin-editor-actions { align-items: stretch; flex-direction: column; }
   .bf-admin-workflow-guide { grid-template-columns: 1fr; gap: .6rem; }
   .bf-admin-workflow-line { display: none; }

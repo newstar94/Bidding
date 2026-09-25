@@ -91,7 +91,7 @@ export function directoryBrowserQuery(state, config) {
 function filterMarkup(filter, state) {
   if (!Array.isArray(filter.options)) {
     const type = filter.type === "date" ? "date" : "text";
-    return `<label class="form-label mb-0"><span class="visually-hidden">${escapeHtml(filter.label)}</span><input class="form-control" name="${escapeHtml(filter.key)}" type="${type}" value="${escapeHtml(state[filter.key])}" maxlength="${escapeHtml(filter.maxLength || 200)}" placeholder="${escapeHtml(filter.placeholder || filter.label)}" aria-label="${escapeHtml(filter.label)}"></label>`;
+    return `<label class="form-label mb-0${type === "date" ? " bf-admin-date-filter" : ""}"><span${type === "date" ? "" : " class=\"visually-hidden\""}>${escapeHtml(filter.label)}</span><input class="form-control" name="${escapeHtml(filter.key)}" type="${type}" value="${escapeHtml(state[filter.key])}" maxlength="${escapeHtml(filter.maxLength || 200)}" placeholder="${escapeHtml(filter.placeholder || filter.label)}" aria-label="${escapeHtml(filter.label)}"></label>`;
   }
   const options = [["", filter.allLabel], ...filter.options]
     .map(([value, label]) => `<option value="${escapeHtml(value)}"${selected(state[filter.key], value)}>${escapeHtml(label)}</option>`)

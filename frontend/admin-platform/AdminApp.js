@@ -31,7 +31,7 @@ function shellMarkup(session) {
   const initials = escapeText((nameParts.length > 1
     ? `${nameParts[0][0] || ""}${nameParts.at(-1)?.[0] || ""}`
     : rawName.slice(0, 2)).toUpperCase());
-  const links = adminNavigationMarkup({ compact: true });
+  const links = adminNavigationMarkup();
   const adminAccountIcon = adminIconMarkup("account");
   const navExpanded = typeof globalThis.innerWidth !== "number" || globalThis.innerWidth >= 992;
   return `<aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark" aria-label="Điều hướng quản trị">

@@ -158,6 +158,24 @@ test("plans view exposes version actions without rendering the draft document in
   assert.doesNotMatch(markup, /not-in-list/u);
 });
 
+test("plans view exposes direct navigation between the four commercial work areas", () => {
+  const markup = plansMarkup({
+    currentRelease: { id: "release-1", versionLabel: "v1", nonSellable: false },
+    scheduledRelease: null,
+    drafts: [],
+    releaseHistory: [],
+  });
+  assert.match(markup, /bf-admin-plan-tabs/u);
+  assert.match(markup, /Danh mục hiện hành/u);
+  assert.match(markup, /Bản nháp và xuất bản/u);
+  assert.match(markup, /Mô hình quyền lợi/u);
+  assert.match(markup, /Lịch sử/u);
+  assert.match(markup, /#admin-plan-catalog-title/u);
+  assert.match(markup, /#admin-plan-release-title/u);
+  assert.match(markup, /#admin-plan-model-title/u);
+  assert.match(markup, /#admin-plan-history-title/u);
+});
+
 test("draft editor escapes JSON and gates publish on successful validation", () => {
   const draft = {
     id: "draft-1",

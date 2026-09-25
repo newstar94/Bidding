@@ -46,8 +46,10 @@ function releaseCard(title, release, actions = "") {
   return `<section class="card h-100 bf-admin-release-card ${statusClass}" aria-label="${escapeHtml(title)}"><div class="card-header"><div class="bf-admin-release-heading"><span class="bf-admin-release-dot" aria-hidden="true"></span><div><h3 class="card-title mb-1">${escapeHtml(title)}</h3><p class="text-secondary small mb-0">${text(release.mode)} · ${text(release.scopeKey)}</p></div></div>${actions ? `<div class="card-actions">${actions}</div>` : ""}</div><div class="card-body"><div class="bf-admin-release-version"><span class="text-secondary small">Phiên bản</span><strong>${text(release.versionLabel)}</strong></div><dl class="bf-admin-release-facts"><div><dt>Tình trạng bán</dt><dd><span class="badge ${release.nonSellable === true ? "bg-secondary-lt" : "bg-success-lt"}">${sellable}</span></dd></div><div><dt>Hiệu lực</dt><dd>${formatDate(release.effectiveFrom)}</dd></div></dl></div></section>`;
 }
 
-function workflowGuideMarkup() {
-  return `<aside class="bf-admin-workflow-guide" aria-label="Quy trình quản lý gói"><div class="bf-admin-workflow-step is-active"><span>1</span><div><strong>Xem gói đang bán</strong><small>Kiểm tra nội dung khách hàng đang thấy</small></div></div><div class="bf-admin-workflow-line" aria-hidden="true"></div><div class="bf-admin-workflow-step"><span>2</span><div><strong>Chỉnh sửa bản nháp</strong><small>Lưu thay đổi vào một phiên bản riêng</small></div></div><div class="bf-admin-workflow-line" aria-hidden="true"></div><div class="bf-admin-workflow-step"><span>3</span><div><strong>Kiểm tra và xuất bản</strong><small>Chỉ bản đã kiểm tra mới có thể phát hành</small></div></div></aside>`;
+function workflowGuideMarkup({ draftOpen = false, dirty = false, validated = false } = {}) {
+  const activeStep = dirty || draftOpen ? (validated ? 3 : 2) : 1;
+  const step = (number, title, description) => `<div class="bf-admin-workflow-step${activeStep === number ? " is-active" : ""}${activeStep > number ? " is-complete" : ""}"><span>${activeStep > number ? "✓" : number}</span><div><strong>${title}</strong><small>${description}</small></div></div>`;
+  return `<aside class="bf-admin-workflow-guide" aria-label="Quy trình quản lý gói">${step(1, "Xem gói đang bán", "Kiểm tra nội dung khách hàng đang thấy")}<div class="bf-admin-workflow-line" aria-hidden="true"></div>${step(2, "Chỉnh sửa bản nháp", dirty ? "Có thay đổi chưa lưu" : "Lưu thay đổi vào một phiên bản riêng")}<div class="bf-admin-workflow-line" aria-hidden="true"></div>${step(3, "Kiểm tra và xuất bản", validated ? "Đã kiểm tra, có thể xuất bản" : "Chỉ bản đã kiểm tra mới có thể phát hành")}</aside><nav class="nav nav-tabs bf-admin-plan-tabs" aria-label="Các khu vực quản lý gói"><a class="nav-link" href="#admin-plan-catalog-title">Danh mục hiện hành</a><a class="nav-link" href="#admin-plan-release-title">Bản nháp và xuất bản</a><a class="nav-link" href="#admin-plan-model-title">Mô hình quyền lợi</a><a class="nav-link" href="#admin-plan-history-title">Lịch sử</a></nav>`;
 }
 
 function draftTable(drafts) {
@@ -322,13 +324,18 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   let overview = null;
   let catalog = null;
   let draft = null;
+  let workingDocument = null;
   let validation = null;
+  let dirty = false;
   let busy = false;
 
   const render = () => {
     renderAdminMarkup(container, plansMarkup(overview, {
-      editor: draftEditorMarkup(draft, validation),
+      editor: draftEditorMarkup(draft && workingDocument ? { ...draft, document: workingDocument } : draft, validation),
       catalog,
+      draftOpen: Boolean(draft),
+      dirty,
+      validated: Boolean(validationReady(validation) && !dirty),
     }));
     bind();
   };
@@ -337,7 +344,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       getAdminJson("/api/commercial/admin/overview", { fetchImpl, signal }),
       getAdminJson("/api/public/commercial/offers", { fetchImpl, signal }),
     ]);
-    if (!keepDraft) { draft = null; validation = null; }
+    if (!keepDraft) { draft = null; workingDocument = null; validation = null; dirty = false; }
     render();
   };
   const execute = async (action, operation, success, { keepDraft = false } = {}) => {
@@ -346,9 +353,14 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     container.querySelectorAll?.("button, textarea, input, select").forEach((node) => { node.disabled = true; });
     try {
       const result = await runWithStepUp(operation, { fetchImpl, signal });
-      if (result?.document) draft = result;
-      await refresh({ keepDraft: keepDraft || Boolean(result?.document) });
-      setStatus(container, success);
+      if (result?.document) { draft = result; workingDocument = cloneJson(result.document); dirty = false; }
+      try {
+        await refresh({ keepDraft: keepDraft || Boolean(result?.document) });
+        setStatus(container, success);
+      } catch (refreshError) {
+        render();
+        setStatus(container, `${success} Chưa tải lại được tổng quan: ${refreshError?.message || "lỗi kết nối"}.`, "danger");
+      }
     } catch (error) {
       if (!signal?.aborted) setStatus(container, error?.message || "Không thể hoàn tất thao tác.", "danger");
       render();
@@ -371,8 +383,11 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   const bind = () => {
     container.querySelectorAll?.("[data-admin-draft-open]").forEach((button) => {
       button.addEventListener("click", async () => {
+        if (dirty && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Mở bản nháp khác?")) return;
         try {
           draft = await getAdminJson(`/api/commercial/drafts/${encodeURIComponent(button.dataset.adminDraftOpen)}`, { fetchImpl, signal });
+          workingDocument = cloneJson(draft.document);
+          dirty = false;
           validation = draft.validation ? { ...draft.validation, validationDigest: draft.validationDigest, readinessExpiresAt: draft.readinessExpiresAt } : null;
           render();
           container.querySelector?.("#admin-commercial-editor")?.scrollIntoView?.({ block: "start" });
@@ -382,7 +397,10 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     container.querySelectorAll?.("[data-admin-plan-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         const action = button.dataset.adminPlanAction;
-        if (action === "close") { draft = null; validation = null; render(); return; }
+        if (action === "close") {
+          if (dirty && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Đóng bản nháp?")) return;
+          draft = null; workingDocument = null; validation = null; dirty = false; render(); return;
+        }
         if (action === "create") {
           const key = mutationKey(action);
           await execute(action, () => postAdminJson("/api/commercial/drafts", { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp mới.", { keepDraft: true });
@@ -405,6 +423,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         if (action === "save") {
           const documentValue = readDocument();
           if (!documentValue) return;
+          workingDocument = documentValue;
           const revision = draft.revision;
           const key = mutationKey(action);
           validation = null;
@@ -412,18 +431,31 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "validate") {
+          if (dirty) {
+            setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi kiểm tra.", "danger");
+            return;
+          }
           const key = mutationKey(action);
+          const draftId = draft.id;
+          const revision = draft.revision;
           try {
-            validation = await runWithStepUp(() => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draft.id)}/validate`, { body: { expectedRevision: draft.revision }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), { fetchImpl, signal });
+            const result = await runWithStepUp(() => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}/validate`, { body: { expectedRevision: revision }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), { fetchImpl, signal });
+            if (dirty || draft?.id !== draftId || draft?.revision !== revision || signal?.aborted) return;
+            validation = result;
             render();
             setStatus(container, validation.errors?.length ? "Kiểm tra còn lỗi cần xử lý." : "Kiểm tra đạt.", validation.errors?.length ? "danger" : "success");
           } catch (error) { setStatus(container, error.message, "danger"); }
           return;
         }
         if (action === "publish") {
+          if (dirty) {
+            setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi xuất bản.", "danger");
+            return;
+          }
           if (!validationReady(validation)) return;
           const reason = await requestPlanActionInput(action);
           if (!reason) return;
+          if (dirty || !validationReady(validation)) return;
           const local = container.querySelector?.("#admin-plan-effective")?.value || "";
           const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);
           if (!Number.isFinite(effectiveAt)) { setStatus(container, "Thời điểm hiệu lực không hợp lệ.", "danger"); return; }
@@ -431,6 +463,17 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           await execute(action, () => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draft.id)}/publish`, { body: { expectedRevision: draft.revision, validationDigest: validation.validationDigest, effectiveAt, reason }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã xuất bản bản nháp.");
         }
       });
+    });
+    container.querySelectorAll?.("[data-admin-offer-field], #admin-plan-advanced-document").forEach((field) => {
+      const markDirty = () => {
+        dirty = true;
+        validation = null;
+        const status = container.querySelector?.("#admin-plan-status");
+        if (status) status.innerHTML = trustedHTML('<div class="alert alert-warning" role="status">Có thay đổi chưa lưu. Hãy lưu bản nháp trước khi kiểm tra hoặc xuất bản.</div>');
+        container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach((button) => { button.disabled = true; });
+      };
+      field.addEventListener("input", markDirty);
+      field.addEventListener("change", markDirty);
     });
   };
 
