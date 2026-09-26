@@ -7,6 +7,7 @@ import {
   renderAdminMarkup,
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { setAdminDateValue } from "./AdminDate.js";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const NUMBER_FORMAT = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 });
@@ -14,6 +15,10 @@ const MAX_ROWS = 100;
 const MAX_CHARTS = 16;
 const MAX_SERIES = 8;
 const MAX_POINTS = 100;
+const ANALYTICS_DATE_TIME_FORMAT = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Ho_Chi_Minh",
+});
 
 const UNSUPPORTED_ANALYTICS_METRICS = Object.freeze([
   ["mrr", "MRR"], ["arr", "ARR"], ["arpu", "ARPU"],
@@ -191,6 +196,21 @@ function operationalValue(value, suffix = "") {
   return Number.isFinite(value) ? `${NUMBER_FORMAT.format(value)}${suffix}` : "N/A";
 }
 
+function formatAnalyticsDimension(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "N/A";
+  if (DATE_PATTERN.test(text)) {
+    const [year, month, day] = text.split("-");
+    return `${day}/${month}/${year}`;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T/u.test(text)) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.valueOf())) return text;
+  const parts = Object.fromEntries(ANALYTICS_DATE_TIME_FORMAT.formatToParts(date)
+    .filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]));
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+}
+
 export function operationalAnalyticsMarkup(payload) {
   const operations = payload?.operations || {};
   const analytics = operations.analytics || {};
@@ -285,7 +305,7 @@ function metricCard(label, value, suffix = "") {
 
 function usageDetailsMarkup(usage) {
   const peakRange = usage.peakConcurrency.start || usage.peakConcurrency.end
-    ? `${usage.peakConcurrency.start || "N/A"} – ${usage.peakConcurrency.end || "N/A"}`
+    ? `${formatAnalyticsDimension(usage.peakConcurrency.start)} – ${formatAnalyticsDimension(usage.peakConcurrency.end)}`
     : "Chưa xác định khung thời gian";
   const peak = `<div class="col-sm-6 col-xl-3"><article class="card bf-admin-metric h-100"><div class="card-body"><div class="text-secondary">Cao điểm</div><div class="h1 mb-1">${escapeHtml(operationalValue(usage.peakConcurrency.count))}</div><div class="small text-secondary">${escapeHtml(peakRange)}</div></div></article></div>`;
   const metrics = `${peak}${metricCard("Hoạt động công việc / người", usage.averages.jobsPerActiveUser)}${metricCard("Lượt xuất Word / người", usage.averages.wordExportsPerActiveUser)}${metricCard("Tổng hoạt động được đo", usage.eventCount)}`;
@@ -314,7 +334,7 @@ function seriesVisualMarkup(points, label, headingId) {
     .map((point, index) => ({
       index,
       value: Number.isFinite(point?.value) ? point.value : null,
-      dimension: point?.date || point?.label || "N/A",
+      dimension: point?.date ? formatAnalyticsDimension(point.date) : (point?.label || "N/A"),
     }))
     .filter((point) => point.value !== null);
   if (!numeric.length) return "";
@@ -368,7 +388,7 @@ function seriesTableMarkup(series, chartIndex, seriesIndex) {
     return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4>${adminStateMarkup("empty", { message: "Chưa có điểm dữ liệu." })}</section>`;
   }
   const rows = points.map((point) => {
-    const dimension = point?.date || point?.label || "N/A";
+    const dimension = point?.date ? formatAnalyticsDimension(point.date) : (point?.label || "N/A");
     return `<tr><td>${escapeHtml(dimension)}</td><td class="text-end">${escapeHtml(displayValue(point?.value, point?.status))}</td><td>${escapeHtml(STATUS_LABELS[point?.status] || point?.status || "")}</td></tr>`;
   }).join("");
   return `<section class="card-body border-top" aria-labelledby="${headingId}"><h4 class="h4" id="${headingId}">${escapeHtml(label)}</h4>${seriesVisualMarkup(points, label, headingId)}<div class="table-responsive bf-admin-analytics-scroll mt-2" tabindex="0" aria-label="Bảng dữ liệu cuộn cho ${escapeHtml(label)}"><table class="table table-sm table-vcenter mb-0"><caption class="visually-hidden">Dữ liệu dạng bảng cho ${escapeHtml(label)}</caption><thead><tr><th>Thời điểm / nhóm</th><th class="text-end">Giá trị</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
@@ -464,7 +484,7 @@ export function analyticsFilterMarkup(filters) {
   const buttons = ANALYTICS_PRESETS.map(([key, label]) => `<button class="btn btn-outline-primary${filters.preset === key ? " active" : ""}" type="button" data-analytics-preset="${key}" aria-pressed="${filters.preset === key}">${escapeHtml(label)}</button>`).join("");
   const options = ANALYTICS_VIEWS.map(([key, label]) => `<option value="${key}"${filters.view === key ? " selected" : ""}>${escapeHtml(label)}</option>`).join("");
   const commercialControls = ANALYTICS_FILTER_CONTROLS.map(([key, label, choices]) => analyticsSelectMarkup(key, label, choices, filters[key] || "")).join("");
-  return `<form class="card card-body mb-3" data-admin-analytics-form><div class="mb-3"><span class="form-label" id="admin-analytics-preset-label">Khoảng thời gian</span><div class="btn-group flex-wrap" role="group" aria-labelledby="admin-analytics-preset-label">${buttons}</div><input type="hidden" name="preset" value="${escapeHtml(filters.preset)}" data-admin-analytics-preset-value></div><div class="row g-2 align-items-end"><div class="col-12 col-md"><label class="form-label" for="admin-analytics-from">Từ ngày</label><input class="form-control" id="admin-analytics-from" name="from" type="date" value="${escapeHtml(filters.from)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-to">Đến ngày</label><input class="form-control" id="admin-analytics-to" name="to" type="date" value="${escapeHtml(filters.to)}"></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-bucket">Độ chi tiết</label><select class="form-select" id="admin-analytics-bucket" name="bucket"><option value="day"${filters.bucket === "day" ? " selected" : ""}>Theo ngày</option><option value="hour"${filters.bucket === "hour" ? " selected" : ""}>Theo giờ</option></select></div><div class="col-12 col-md"><label class="form-label" for="admin-analytics-view">Chế độ xem</label><select class="form-select" id="admin-analytics-view" name="view">${options}</select></div></div><details class="mt-3"${Object.keys(ANALYTICS_FILTER_VALUES).some((key) => filters[key]) || IDENTIFIER_FILTERS.some((key) => filters[key]) ? " open" : ""}><summary class="fw-semibold">Bộ lọc phân khúc và thương mại</summary><div class="row g-2 align-items-end mt-1">${commercialControls}<div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-releaseId">Mã bản phát hành</label><input class="form-control" id="admin-analytics-releaseId" name="releaseId" maxlength="128" value="${escapeHtml(filters.releaseId || "")}"></div><div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-plan">Mã gói</label><input class="form-control" id="admin-analytics-plan" name="plan" maxlength="128" value="${escapeHtml(filters.plan || "")}"></div></div></details><div class="mt-3"><button class="btn btn-primary" type="submit">Áp dụng</button></div><p class="text-danger small mt-2 mb-0" data-admin-analytics-validation role="alert" hidden></p></form><div data-admin-analytics-results aria-live="polite"></div>`;
+  return `<form class="card card-body mb-3 bf-admin-analytics-filter" data-admin-analytics-form><div class="mb-3"><span class="form-label" id="admin-analytics-preset-label">Khoảng thời gian</span><div class="btn-group flex-wrap" role="group" aria-labelledby="admin-analytics-preset-label">${buttons}</div><input type="hidden" name="preset" value="${escapeHtml(filters.preset)}" data-admin-analytics-preset-value></div><div class="bf-admin-analytics-primary"><div><label class="form-label" for="admin-analytics-from">Từ ngày</label><input class="form-control bf-admin-date-input" id="admin-analytics-from" name="from" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" data-admin-date-format="iso" value="${escapeHtml(filters.from)}"></div><div><label class="form-label" for="admin-analytics-to">Đến ngày</label><input class="form-control bf-admin-date-input" id="admin-analytics-to" name="to" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" data-admin-date-format="iso" value="${escapeHtml(filters.to)}"></div><div><label class="form-label" for="admin-analytics-bucket">Độ chi tiết</label><select class="form-select" id="admin-analytics-bucket" name="bucket"><option value="day"${filters.bucket === "day" ? " selected" : ""}>Theo ngày</option><option value="hour"${filters.bucket === "hour" ? " selected" : ""}>Theo giờ</option></select></div><div><label class="form-label" for="admin-analytics-view">Chế độ xem</label><select class="form-select" id="admin-analytics-view" name="view">${options}</select></div></div><details class="mt-3"${Object.keys(ANALYTICS_FILTER_VALUES).some((key) => filters[key]) || IDENTIFIER_FILTERS.some((key) => filters[key]) ? " open" : ""}><summary class="fw-semibold">Bộ lọc phân khúc và thương mại</summary><div class="row g-2 align-items-end mt-1">${commercialControls}<div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-releaseId">Mã bản phát hành</label><input class="form-control" id="admin-analytics-releaseId" name="releaseId" maxlength="128" value="${escapeHtml(filters.releaseId || "")}"></div><div class="col-12 col-sm-6 col-xl-3"><label class="form-label" for="admin-analytics-plan">Mã gói</label><input class="form-control" id="admin-analytics-plan" name="plan" maxlength="128" value="${escapeHtml(filters.plan || "")}"></div></div></details><div class="mt-3"><button class="btn btn-primary" type="submit">Áp dụng</button></div><p class="text-danger small mt-2 mb-0" data-admin-analytics-validation role="alert" hidden></p></form><div data-admin-analytics-results aria-live="polite"></div>`;
 }
 
 function syncBrowserQuery(filters) {
@@ -483,8 +503,8 @@ function syncFilterControls(form, filters) {
   }
   const from = form.elements.namedItem("from");
   const to = form.elements.namedItem("to");
-  if (from) from.value = filters.from;
-  if (to) to.value = filters.to;
+  setAdminDateValue(from, filters.from);
+  setAdminDateValue(to, filters.to);
 }
 
 export function renderAdminAnalytics(container, { fetchImpl, signal } = {}) {

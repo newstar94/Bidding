@@ -145,11 +145,17 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 #admin-app .bf-combobox-toggle { position: absolute; right: .25rem; top: .25rem; bottom: .25rem; width: 2rem; padding: 0; border: 0; background: transparent; color: var(--bf-admin-muted); }
 #admin-app .bf-combobox-chevron { display: inline-block; width: .45rem; height: .45rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
 #admin-app .bf-combobox.open .bf-combobox-chevron { transform: rotate(225deg); }
-.bf-admin-select-list { z-index: 1060; margin: 0; padding: .35rem; max-height: 16rem; overflow-y: auto; list-style: none; border: 1px solid var(--bf-admin-line); border-radius: .6rem; background: var(--bf-admin-surface); color: var(--bf-admin-ink); box-shadow: 0 8px 24px color-mix(in srgb, var(--bf-admin-ink) 12%, transparent); }
+.bf-admin-select-list { position: absolute; z-index: 1060; margin: 0; padding: .35rem; max-height: 16rem; overflow-y: auto; list-style: none; border: 1px solid var(--bf-admin-line); border-radius: .6rem; background: var(--bf-admin-surface); color: var(--bf-admin-ink); box-shadow: 0 8px 24px color-mix(in srgb, var(--bf-admin-ink) 12%, transparent); }
 .bf-admin-select-list[hidden] { display: none; }
 .bf-admin-select-list .bf-combobox-option { padding: .55rem .7rem; border-radius: .35rem; font-size: .875rem; font-weight: 500; cursor: pointer; }
 .bf-admin-select-list .bf-combobox-option:hover, .bf-admin-select-list .bf-combobox-option.highlighted { background: var(--bf-admin-surface-subtle); }
 .bf-admin-select-list .bf-combobox-option.selected { color: var(--bf-admin-brand-strong); background: var(--bf-admin-brand-soft); font-weight: 650; }
+.bf-admin-analytics-filter { overflow: visible; }
+.bf-admin-analytics-primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: .75rem; }
+.bf-admin-analytics-primary > div { min-width: 0; }
+.bf-admin-analytics-primary .form-control, .bf-admin-analytics-primary .bf-combobox-input { min-height: 2.7rem; }
+.bf-admin-date-display { background-color: var(--bf-admin-surface); cursor: pointer; }
+.flatpickr-calendar--admin { z-index: 1070; border: 1px solid var(--bf-admin-line); border-radius: .6rem; box-shadow: 0 8px 24px color-mix(in srgb, var(--bf-admin-ink) 12%, transparent); font-family: inherit; }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }
 .bf-admin-state { min-height: 12rem; justify-content: center; }
@@ -173,8 +179,9 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-legend-dot { width: .65rem; height: .65rem; border-radius: 50%; background: var(--bf-admin-line-strong); }
 .bf-admin-legend-dot.is-primary { background: var(--bf-admin-brand); }
 .bf-admin-chart-legend .bf-admin-chart-total { grid-template-columns: 1fr auto; margin-top: .25rem; padding-top: .85rem; border-top: 1px solid var(--bf-admin-line); }
-.bf-admin-series-visual { min-height: 11rem; padding: 1rem 1.25rem .25rem; color: var(--bf-admin-brand); }
-.bf-admin-series-chart { display: block; width: 100%; height: 11rem; overflow: visible; }
+.bf-admin-series-visual { min-height: 9rem; padding: .75rem 1rem .25rem; color: var(--bf-admin-brand); }
+.bf-admin-series-chart { display: block; width: 100%; height: 9rem; overflow: visible; }
+.bf-admin-analytics-scroll { max-height: 15rem; scrollbar-color: var(--bf-admin-line-strong) transparent; scrollbar-width: thin; }
 .bf-admin-chart-grid { stroke: var(--bf-admin-line); stroke-width: 1; }
 .bf-admin-chart-axis { stroke: var(--bf-admin-line-strong); stroke-width: 1; }
 .bf-admin-chart-area { fill: var(--bf-admin-brand-soft); }
@@ -255,6 +262,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .bf-admin-editor-actions > div { display: flex; flex-wrap: wrap; gap: .5rem; }
 @media (max-width: 767.98px) {
+  .bf-admin-analytics-primary { grid-template-columns: 1fr; }
   .bf-admin-plan-tabs { position: static; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
   .bf-admin-plan-tabs .nav-link { flex: 0 0 auto; }
   .bf-admin-page-intro, .bf-admin-section-heading, .bf-admin-editor-intro, .bf-admin-editor-actions { align-items: stretch; flex-direction: column; }
@@ -271,6 +279,9 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
   .bf-admin-directory-table tr { padding: .75rem 1rem; border-bottom: var(--tblr-border-width) solid var(--bf-admin-line); }
   .bf-admin-directory-table td { display: grid; grid-template-columns: minmax(7rem, 35%) 1fr; gap: .75rem; padding: .35rem 0; border: 0; overflow-wrap: anywhere; }
   .bf-admin-directory-table td::before { content: attr(data-label); color: var(--bf-admin-muted); font-weight: 600; }
+}
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .bf-admin-analytics-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 991.98px) {
   .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; }

@@ -74,7 +74,7 @@ async function authorizedShell() {
     .replace("__BF_ADMIN_STYLES__", adminBundle.css.map(
       (asset) => `<link rel="stylesheet" href="/dist/${asset}">`,
     ).join("\n"))
-    .replace("__BF_ADMIN_VENDOR_SCRIPT__", "")
+    .replace("__BF_ADMIN_VENDOR_SCRIPT__", '<script src="/vendor/flatpickr/flatpickr.min.js?v=4"></script><script src="/vendor/flatpickr/l10n/vn.js?v=4"></script>')
     .replace("__BF_ADMIN_ENTRY__", `/dist/${adminBundle.file}`)
     .replace("__BF_ADMIN_SESSION__", JSON.stringify(ADMIN_SESSION).replaceAll("<", "\\u003c"));
 }
@@ -147,6 +147,9 @@ test("deep links preserve query state and back-forward navigation", async ({ con
   await page.goto("/admin/users?search=e2e-user&status=active", { waitUntil: "commit" });
   await expectAdminReady(page, "Người dùng");
   await expect(page.locator("#admin-directory-search")).toHaveValue("e2e-user");
+  await expect(page.locator('input[name="createdFrom"]')).toHaveAttribute("type", "hidden");
+  await expect(page.locator('input.bf-admin-date-display[aria-label="Tạo từ ngày"]')).toHaveAttribute("type", "text");
+  await expect(page.locator('input.bf-admin-date-display[aria-label="Tạo từ ngày"]')).toHaveCount(1);
   await expect(page.getByText("Người dùng kiểm thử", { exact: true })).toBeVisible();
   await expect(page.locator('[data-admin-link="/admin/users"]')).toHaveAttribute("aria-current", "page");
 
@@ -430,6 +433,22 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
 
   await page.goto("/admin/analytics?preset=7d&view=overview", { waitUntil: "commit" });
   await expectAdminReady(page, "Phân tích");
+  const primaryFilterFields = [
+    page.locator("input.bf-admin-date-display").nth(0),
+    page.locator("input.bf-admin-date-display").nth(1),
+    page.getByRole("combobox", { name: "Độ chi tiết" }),
+    page.getByRole("combobox", { name: "Chế độ xem" }),
+  ];
+  await expect(primaryFilterFields[0]).toHaveValue(/\d{2}\/\d{2}\/\d{4}/u);
+  const filterTops = await Promise.all(primaryFilterFields.map(async (field) => (await field.boundingBox())?.y));
+  expect(Math.max(...filterTops) - Math.min(...filterTops)).toBeLessThanOrEqual(4);
+  const filterForm = page.locator("[data-admin-analytics-form]");
+  const closedFormHeight = (await filterForm.boundingBox())?.height;
+  await primaryFilterFields[3].click();
+  await expect(page.locator("#admin-analytics-view-listbox")).toBeVisible();
+  const openFormHeight = (await filterForm.boundingBox())?.height;
+  expect(Math.abs(openFormHeight - closedFormHeight)).toBeLessThanOrEqual(2);
+  await page.keyboard.press("Escape");
   await expect(page.getByText("Kế hoạch đã tạo", { exact: true })).toBeVisible();
   await expect(page.locator("#admin-chart-0")).toHaveText("Kế hoạch");
   await expect(page.getByRole("heading", { name: "Doanh thu và chi phí" })).toBeVisible();
@@ -440,7 +459,7 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
   await expect(revenueChart).toHaveAttribute("aria-label", /Doanh thu: 1 điểm có dữ liệu/u);
   await expect(page.getByRole("cell", { name: "1.250.000" })).toBeVisible();
   await expect(page.getByText("Chưa có chuỗi dữ liệu cho biểu đồ này.")).toBeVisible();
-  await expect(page.getByLabel("Bảng dữ liệu cuộn cho Kế hoạch").getByRole("cell", { name: "2026-09-10" })).toBeVisible();
+  await expect(page.getByLabel("Bảng dữ liệu cuộn cho Kế hoạch").getByRole("cell", { name: "10/09/2026" })).toBeVisible();
   await page.getByRole("button", { name: "90 ngày" }).click();
   await expect(page).toHaveURL(/preset=90d/u);
   await expect(page.getByRole("button", { name: "90 ngày" })).toHaveAttribute("aria-pressed", "true");
@@ -835,7 +854,7 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
   await expectAdminReady(page, "Phân tích");
   const chart = page.getByRole("img", { name: "Kế hoạch", exact: true });
   await expect(chart).toBeVisible();
-  await expect(page.getByRole("table", { name: "Dữ liệu dạng bảng cho Kế hoạch" })).toContainText("2026-09-10");
+  await expect(page.getByRole("table", { name: "Dữ liệu dạng bảng cho Kế hoạch" })).toContainText("10/09/2026");
   accessibility = await new AxeBuilder({ page })
     .include("#admin-app")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

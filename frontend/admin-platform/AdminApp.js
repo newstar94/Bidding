@@ -7,6 +7,7 @@ import { adminIconMarkup } from "./AdminIcons.js";
 import { adminNavigationMarkup } from "./AdminNavigation.js";
 import { adminSearchMarkup, bindAdminSearch } from "./AdminSearch.js";
 import { bindAdminSelects } from "./AdminSelect.js";
+import { bindAdminDates } from "./AdminDate.js";
 
 window.performance?.mark?.("bf:app-module-start");
 
@@ -178,6 +179,7 @@ else {
   bindNavigationToggle();
   bindAdminSearch(document);
   bindAdminSelects(app);
+  bindAdminDates(app);
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.querySelector("[data-admin-workspace-link]")?.addEventListener("click", selectWorkspaceRole);
   document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });

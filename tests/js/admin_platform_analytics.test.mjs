@@ -189,7 +189,8 @@ test("analytics restores authoritative usage peak averages event total and concu
   assert.match(markup, /Lượt xuất Word \/ người[\s\S]*>0,75</u);
   assert.match(markup, /Tổng hoạt động được đo[\s\S]*>58</u);
   assert.match(markup, /Người hoạt động theo thời gian/u);
-  assert.match(markup, /2026-08-02T08:00:00Z[\s\S]*>7</u);
+  assert.match(markup, /02\/08\/2026 15:00[\s\S]*>7</u);
+  assert.doesNotMatch(markup, /2026-08-02T08:00:00Z/u);
   assert.match(markup, /<svg[^>]*role="img"/u);
   assert.doesNotMatch(markup, /do-not-render|secretUsageField/u);
 });
@@ -226,8 +227,8 @@ test("analytics renders responsive accessible charts with tabular fallbacks and 
   assert.match(markup, /data-admin-chart-kind="bar"/u);
   assert.match(markup, /data-admin-chart-bar=/u);
   assert.match(markup, /<caption class="visually-hidden">Dữ liệu dạng bảng cho Hoạt động/u);
-  assert.match(markup, /<table[\s\S]*2026-08-01[\s\S]*12/u);
-  assert.match(markup, /2026-08-02[\s\S]*N\/A[\s\S]*Không đủ mẫu/u);
+  assert.match(markup, /<table[\s\S]*01\/08\/2026[\s\S]*12/u);
+  assert.match(markup, /02\/08\/2026[\s\S]*N\/A[\s\S]*Không đủ mẫu/u);
   assert.match(markup, /Chuỗi trống[\s\S]*Chưa có điểm dữ liệu/u);
   assert.match(markup, /Phân khúc[\s\S]*Nhóm A[\s\S]*8/u);
   assert.match(markup, /Chi tiết[\s\S]*P50[\s\S]*4/u);

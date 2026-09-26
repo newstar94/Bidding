@@ -771,7 +771,10 @@ def _compile_admin_shell(session_bootstrap):
         content = template_file.read()
     entry_src = "/frontend/admin-platform/AdminApp.js"
     stylesheet_tags = '<link rel="stylesheet" href="/vendor/tabler/tabler.min.css">\n<link rel="stylesheet" href="/frontend/admin-platform/admin.css">'
-    vendor_script = ""
+    vendor_script = (
+        '<script src="/vendor/flatpickr/flatpickr.min.js?v=4"></script>\n'
+        '<script src="/vendor/flatpickr/l10n/vn.js?v=4"></script>'
+    )
     if _frontend_bundle_enabled():
         manifest_path = Path(project_root) / "dist" / ".vite" / "manifest.json"
         with manifest_path.open("r", encoding="utf-8") as manifest_file:
@@ -782,7 +785,6 @@ def _compile_admin_shell(session_bootstrap):
             f'<link rel="stylesheet" href="/dist/{asset}">'
             for asset in resolve_frontend_styles(manifest, dist_root, ADMIN_ENTRY)
         )
-        vendor_script = ""
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return content.replace("__BF_ADMIN_STYLES__", stylesheet_tags).replace("__BF_ADMIN_VENDOR_SCRIPT__", vendor_script).replace("__BF_ADMIN_ENTRY__", entry_src).replace("__BF_ADMIN_SESSION__", safe_bootstrap)
 
