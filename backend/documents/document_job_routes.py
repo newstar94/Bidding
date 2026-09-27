@@ -14,6 +14,7 @@ from backend.documents.document_worker import (
     cancel_document_export,
     enqueue_document_export,
     get_document_export_job,
+    list_document_export_jobs,
     read_document_export_result,
     retry_failed_durable_document_job,
 )
@@ -522,6 +523,82 @@ async def document_export_job_status_api(request):
     })
 
 
+def _list_job_access(request):
+    valid, role = verify_session(request)
+    if not valid:
+        return None, _error("AUTH_REQUIRED", 403)
+    try:
+        limit = max(1, min(100, int(request.query_params.get("limit", "20"))))
+    except (TypeError, ValueError):
+        return None, _error("DOCUMENT_JOB_INPUT_INVALID", 400)
+    statuses = tuple(
+        value.strip().lower()
+        for value in str(request.query_params.get("status") or "").split(",")
+        if value.strip()
+    )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        organization_id = get_active_org(request, role.user_id, cursor=cursor)
+        jobs = list_document_export_jobs(
+            database,
+            organization_id,
+            role.user_id,
+            limit=limit,
+            statuses=statuses,
+        )
+        visible = []
+        for job in jobs:
+            try:
+                scope = document_job_record_scope(job)
+                allowed = can_read_record(
+                    cursor,
+                    role,
+                    role.user_id,
+                    organization_id,
+                    scope["module_name"],
+                    scope["table_name"],
+                    scope["record_id"],
+                )
+                if allowed:
+                    verify_document_job_policy(cursor, job)
+            except (DocumentJobAuthorizationError, KeyError, TypeError, ValueError):
+                allowed = False
+            if not allowed:
+                continue
+            phase, completed, total = _job_progress(job)
+            visible.append({
+                "jobId": job["id"],
+                "operation": job.get("operation"),
+                "recordType": job.get("record_type"),
+                "recordId": job.get("record_id"),
+                "filename": job.get("filename"),
+                "status": job.get("status"),
+                "phase": phase,
+                "completedItems": completed,
+                "totalItems": total,
+                "attemptCount": int(job.get("attempt_count") or 0),
+                "errorCode": job.get("last_error_code"),
+                "completedAt": job.get("completed_at"),
+                "expiresAt": job.get("expires_at"),
+                "updatedAt": job.get("updated_at"),
+                "downloadUrl": (
+                    f"/api/document-jobs/{job['id']}/download"
+                    if job.get("status") == "completed" else None
+                ),
+            })
+        return {"items": visible}
+    finally:
+        connection.close()
+
+
+async def list_document_export_jobs_api(request):
+    result, error = await run_database_read(_list_job_access, request)
+    if error:
+        return error
+    return JSONResponse(result)
+
+
 @governed_export("docx.document_job")
 async def download_document_export_job_api(request):
     access, job, error = await run_database_read(_job_access, request)
@@ -598,6 +675,11 @@ async def retry_document_export_job_api(request):
 
 def document_job_routes(Route):
     return [
+        Route(
+            "/api/document-jobs",
+            list_document_export_jobs_api,
+            methods=["GET"],
+        ),
         Route(
             "/api/document-jobs/plan/{plan_id}",
             create_plan_export_job_api,

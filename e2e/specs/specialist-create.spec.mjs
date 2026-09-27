@@ -123,7 +123,7 @@ test("view-permission specialist creates contractor with persisted stamp", async
     });
     const submitted = response.request().postDataJSON().nhathau.find((item) => item.maNhaThau === runId);
     expect(submitted.anhDau, "Submitted contractor must contain the selected stamp").toMatch(/^data:image\//);
-    expect(response.ok(), await response.text()).toBe(true);
+    expect(response.ok(), `Plan finalize returned HTTP ${response.status()}`).toBe(true);
     await expect(page.locator("#modal-nhathau.active")).toBeHidden();
     await page.reload({ waitUntil: "commit" });
     await ready(page);
@@ -236,7 +236,7 @@ test("view-permission specialist creates a plan through the breakdown form", asy
     ));
     await page.locator("#form-goithau button[type='submit']").click();
     const packageResponse = await packageSaved;
-    expect(packageResponse.ok(), await packageResponse.text()).toBe(true);
+    expect(packageResponse.ok(), `Package save returned HTTP ${packageResponse.status()}`).toBe(true);
     await expect(page.locator("#modal-goithau.active")).toBeHidden();
     const packageId = packageResponse.request().postDataJSON().goithau.find((item) => item.maGoiThau === `${runId}-GT`).id;
     expect(fixture("verify_assignments", payload).assignments.filter(

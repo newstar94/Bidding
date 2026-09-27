@@ -191,6 +191,72 @@ def test_operation_get_denies_employee_outside_notice_target_scope(monkeypatch):
         database.close()
 
 
+def test_operation_list_omits_notice_operations_outside_current_record_scope(monkeypatch):
+    database = _test_database()
+    setup = database.get_connection()
+    organization_id = None
+    try:
+        cursor = setup.cursor()
+        organization_id, employee_id, package_id = _seed_denied_package(cursor)
+        actor_id = cursor.execute(
+            """SELECT user_id FROM thanh_vien_to_chuc
+               WHERE organization_id = ? AND user_id != ? LIMIT 1""",
+            (organization_id, employee_id),
+        ).fetchone()[0]
+        visible_operation_id = _seed_notice_operation(
+            cursor,
+            organization_id,
+            package_id,
+            actor_id,
+        )
+        hidden_operation_id = _seed_notice_operation(
+            cursor,
+            organization_id,
+            f"package-outside-{uuid.uuid4().hex}",
+            actor_id,
+        )
+        cursor.execute(
+            """INSERT INTO phan_cong_nhan_su
+                   (id, organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)
+               VALUES (?, ?, ?, ?, 'goithau')""",
+            (
+                f"assignment-list-reader-{uuid.uuid4().hex}",
+                organization_id,
+                employee_id,
+                package_id,
+            ),
+        )
+        setup.commit()
+
+        role = SessionRole(
+            "user",
+            employee_id,
+            platform_role="user",
+            active_role="employee",
+        )
+        client = _procurement_operation_client(
+            monkeypatch,
+            database,
+            {"value": organization_id},
+            {"value": role},
+        )
+        with client:
+            response = client.get(
+                "/api/procurement/imports/operations?limit=20",
+                headers={"X-Active-Org": organization_id},
+            )
+
+        assert response.status_code == 200
+        operation_ids = [item["operationId"] for item in response.json()["items"]]
+        assert visible_operation_id in operation_ids
+        assert hidden_operation_id not in operation_ids
+    finally:
+        setup.close()
+        if organization_id:
+            _delete_seeded_workspace(database, organization_id)
+        database.close()
+
+
 def test_operation_get_follows_module_active_persona_and_target_scope(
     monkeypatch,
 ):

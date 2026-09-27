@@ -1,5 +1,7 @@
 """PostgreSQL persistence for procurement import commands and provenance."""
 
+# ruff: noqa: S608 - status filters use generated placeholders and bound values.
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -124,7 +126,7 @@ class ProcurementImportRepository:
             "rowVersion": int(plan[3] or 1), "familyNo": family_no,
             "isLatest": bool(plan[4]),
         }
-        rows = self.cursor.execute(
+        rows = self.cursor.execute(  # noqa: S608 - query filters use bound values and generated placeholders
             """SELECT package.id,
                       COALESCE(NULLIF(package.id_goc, ''), package.id),
                       package.phien_ban, package.ma_goi_thau,
@@ -1055,6 +1057,41 @@ class ProcurementImportRepository:
             "actorUserId": row[10], "requestHash": row[11],
         }
 
+    def list_operations(self, organization_id, *, limit=50, statuses=()):
+        """Return bounded import-operation metadata for the organization."""
+        bounded_limit = max(1, min(100, int(limit or 50)))
+        normalized_statuses = tuple(dict.fromkeys(
+            str(value).strip().upper() for value in (statuses or ()) if str(value).strip()
+        ))
+        clauses = ["organization_id = ?"]
+        params = [organization_id]
+        if normalized_statuses:
+            placeholders = ", ".join("?" for _ in normalized_statuses)
+            clauses.append(  # noqa: S608 - placeholders are generated from status values
+                f"status IN ({placeholders})"  # noqa: S608 - placeholders are generated from status values
+            )
+            params.extend(normalized_statuses)
+        rows = self.cursor.execute(
+            """SELECT id, provider, family_key, mode, status,
+                      next_revision_index, total_revisions, bundle_digest,
+                      revision_results_json, idempotency_key, actor_user_id,
+                      request_hash
+                 FROM procurement_import_operation
+                WHERE """ + " AND ".join(clauses)
+            + " ORDER BY updated_at DESC, id DESC LIMIT ?",
+            (*params, bounded_limit),
+        ).fetchall()
+        return [
+            {
+                "operationId": row[0], "provider": row[1], "familyNo": row[2],
+                "mode": row[3], "status": row[4], "nextRevisionIndex": int(row[5]),
+                "totalRevisions": int(row[6]), "bundleDigest": row[7],
+                "revisionResults": json.loads(row[8]), "idempotencyKey": row[9],
+                "actorUserId": row[10], "requestHash": row[11],
+            }
+            for row in rows
+        ]
+
 
 class ProcurementImportSessionRepository:
     """PostgreSQL storage for resumable, workspace-scoped import sessions."""
@@ -1068,8 +1105,9 @@ class ProcurementImportSessionRepository:
                    id, organization_id, user_id, workspace_lease, provider,
                    entity_kind, family_key, bundle_digest, revisions_json,
                    canonical_bundle_json, current_revision_index, status,
-                   expires_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   expires_at, created_at, updated_at, preview_id,
+                   preview_bundle_json, preview_bundle_digest, preview_expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (organization_id, id) DO NOTHING""",
             (
                 session["id"], session["organizationId"], session["userId"],
@@ -1079,6 +1117,9 @@ class ProcurementImportSessionRepository:
                 _json(session.get("canonicalBundle") or {}),
                 int(session.get("currentIndex") or 0), session["status"],
                 session["expiresAt"], session["createdAt"], session["updatedAt"],
+                session.get("previewId"),
+                _json(session.get("previewBundle")) if session.get("previewBundle") is not None else None,
+                session.get("previewBundleDigest"), session.get("previewExpiresAt"),
             ),
         )
         stored = self.get_scoped(
@@ -1096,7 +1137,11 @@ class ProcurementImportSessionRepository:
             """SELECT id, organization_id, user_id, workspace_lease, provider,
                       entity_kind, family_key, bundle_digest, revisions_json,
                       canonical_bundle_json, current_revision_index, status,
-                      expires_at, created_at, updated_at
+                      expires_at AT TIME ZONE 'UTC' AS expires_at,
+                      created_at AT TIME ZONE 'UTC' AS created_at,
+                      updated_at AT TIME ZONE 'UTC' AS updated_at, preview_id,
+                      preview_bundle_json, preview_bundle_digest,
+                      preview_expires_at AT TIME ZONE 'UTC' AS preview_expires_at
                  FROM procurement_import_session
                 WHERE organization_id = ? AND id = ?""",
             (organization_id, session_id),
@@ -1105,6 +1150,10 @@ class ProcurementImportSessionRepository:
             return None
         if str(row[2]) != str(user_id) or str(row[3]) != str(workspace_lease):
             raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+        preview_id = row[15] if len(row) > 15 else None
+        preview_bundle = row[16] if len(row) > 16 else None
+        preview_digest = row[17] if len(row) > 17 else None
+        preview_expires = row[18] if len(row) > 18 else None
         return {
             "id": row[0], "organizationId": row[1], "userId": row[2],
             "workspaceLease": row[3], "provider": row[4], "kind": row[5],
@@ -1115,6 +1164,10 @@ class ProcurementImportSessionRepository:
             "expiresAt": _session_datetime(row[12]),
             "createdAt": _session_datetime(row[13]),
             "updatedAt": _session_datetime(row[14]),
+            "previewId": preview_id,
+            "previewBundle": json.loads(preview_bundle) if preview_bundle else None,
+            "previewBundleDigest": preview_digest,
+            "previewExpiresAt": _session_datetime(preview_expires) if preview_expires else None,
         }
 
     def find_active_package_lineages(
@@ -1171,12 +1224,48 @@ class ProcurementImportSessionRepository:
             })
         return result
 
+    def get_by_preview_id(self, preview_id, *, organization_id, user_id, workspace_lease):
+        row = self.cursor.execute(
+            """SELECT id, organization_id, user_id, workspace_lease, provider,
+                      entity_kind, family_key, bundle_digest, revisions_json,
+                      canonical_bundle_json, current_revision_index, status,
+                      expires_at AT TIME ZONE 'UTC' AS expires_at,
+                      created_at AT TIME ZONE 'UTC' AS created_at,
+                      updated_at AT TIME ZONE 'UTC' AS updated_at, preview_id,
+                      preview_bundle_json, preview_bundle_digest,
+                      preview_expires_at AT TIME ZONE 'UTC' AS preview_expires_at
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND preview_id = ?""",
+            (organization_id, str(preview_id)),
+        ).fetchone()
+        if row is None:
+            return None
+        if str(row[2]) != str(user_id) or str(row[3]) != str(workspace_lease):
+            raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+        return {
+            "id": row[0], "organizationId": row[1], "userId": row[2],
+            "workspaceLease": row[3], "provider": row[4], "kind": row[5],
+            "familyNo": row[6], "bundleDigest": row[7],
+            "revisions": json.loads(row[8]),
+            "canonicalBundle": json.loads(row[9]),
+            "currentIndex": int(row[10]), "status": row[11],
+            "expiresAt": _session_datetime(row[12]),
+            "createdAt": _session_datetime(row[13]),
+            "updatedAt": _session_datetime(row[14]),
+            "previewId": row[15],
+            "previewBundle": json.loads(row[16]) if row[16] else None,
+            "previewBundleDigest": row[17],
+            "previewExpiresAt": _session_datetime(row[18]) if row[18] else None,
+        }
+
     def get_for_commit(self, session_id, *, organization_id, user_id):
         row = self.cursor.execute(
             """SELECT id, organization_id, user_id, workspace_lease, provider,
                       entity_kind, family_key, bundle_digest, revisions_json,
                       canonical_bundle_json, current_revision_index, status,
-                      expires_at, created_at, updated_at
+                      expires_at AT TIME ZONE 'UTC' AS expires_at,
+                      created_at AT TIME ZONE 'UTC' AS created_at,
+                      updated_at AT TIME ZONE 'UTC' AS updated_at
                  FROM procurement_import_session
                 WHERE organization_id = ? AND id = ? AND user_id = ?
                 FOR UPDATE""",
@@ -1368,8 +1457,36 @@ class ProcurementImportSessionRepository:
         return int(getattr(result, "rowcount", 0) or 0) > 0
 
     def cleanup_expired(self):
+        # Keep the marker so a restarted worker can still distinguish a truly
+        # expired preview from a missing ID, while releasing its large bundle.
         self.cursor.execute(
-            "DELETE FROM procurement_import_session WHERE expires_at <= CURRENT_TIMESTAMP"
+            """WITH expired_previews AS (
+                   SELECT organization_id, id
+                     FROM procurement_import_session
+                    WHERE preview_expires_at <= CURRENT_TIMESTAMP
+                      AND preview_bundle_json IS NOT NULL
+                    ORDER BY preview_expires_at, organization_id, id
+                    LIMIT 100 FOR UPDATE SKIP LOCKED
+               )
+               UPDATE procurement_import_session AS session
+                  SET preview_bundle_json = NULL,
+                      preview_bundle_digest = NULL
+                 FROM expired_previews
+                WHERE session.organization_id = expired_previews.organization_id
+                  AND session.id = expired_previews.id"""
+        )
+        self.cursor.execute(
+            """WITH expired AS (
+                   SELECT organization_id, id
+                     FROM procurement_import_session
+                    WHERE expires_at <= CURRENT_TIMESTAMP
+                    ORDER BY expires_at, organization_id, id
+                    LIMIT 100 FOR UPDATE SKIP LOCKED
+               )
+               DELETE FROM procurement_import_session AS session
+                USING expired
+                WHERE session.organization_id = expired.organization_id
+                  AND session.id = expired.id"""
         )
 
     def cancel_remaining(self, session_id, *, organization_id, user_id):

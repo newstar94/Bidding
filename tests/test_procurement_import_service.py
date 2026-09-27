@@ -1468,6 +1468,24 @@ def test_preview_scope_and_expiry_are_enforced(tmp_path):
         )
 
 
+def test_new_preview_releases_expired_process_cache_bundle():
+    store = PreviewStore(ttl_seconds=1)
+    first = store.put(
+        {"notice": {"noticeNo": "IB2600000001"}},
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    from dataclasses import replace
+
+    store._items[first.preview_id] = replace(
+        first, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    second = store.put(
+        {"notice": {"noticeNo": "IB2600000002"}},
+        organization_id="org-1", user_id="user-1", workspace_lease="lease-1",
+    )
+    assert set(store._items) == {second.preview_id}
+
+
 def test_three_way_merge_preserves_local_edits_and_surfaces_true_conflict():
     assert three_way_merge_field("old", "old", "new") == ("new", "APPLY_SOURCE")
     assert three_way_merge_field("old", "local", "old") == ("local", "KEEP_LOCAL")
@@ -2724,19 +2742,22 @@ def test_session_predecessor_token_advances_across_three_commits_and_reloads():
 def test_session_cleanup_removes_only_expired_rows():
     class CleanupCursor:
         def __init__(self):
-            self.query = ""
+            self.queries = []
 
         def execute(self, query, params=()):
-            self.query = " ".join(query.split())
+            self.queries.append(" ".join(query.split()))
             assert params == ()
             return self
 
     cursor = CleanupCursor()
     ProcurementImportSessionRepository(cursor).cleanup_expired()
-    assert cursor.query == (
-        "DELETE FROM procurement_import_session "
-        "WHERE expires_at <= CURRENT_TIMESTAMP"
-    )
+    assert len(cursor.queries) == 2
+    assert "preview_expires_at <= CURRENT_TIMESTAMP" in cursor.queries[0]
+    assert "LIMIT 100 FOR UPDATE SKIP LOCKED" in cursor.queries[0]
+    assert "UPDATE procurement_import_session AS session" in cursor.queries[0]
+    assert "expires_at <= CURRENT_TIMESTAMP" in cursor.queries[1]
+    assert "LIMIT 100 FOR UPDATE SKIP LOCKED" in cursor.queries[1]
+    assert "DELETE FROM procurement_import_session AS session" in cursor.queries[1]
 
 
 def test_user_can_stop_a_waiting_session_without_discarding_committed_revisions():

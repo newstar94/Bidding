@@ -40,7 +40,11 @@ from backend.procurement_import.decisions import (
 )
 from backend.procurement_import.repository import ProcurementImportRepository
 from backend.procurement_import.repository import ProcurementImportSessionRepository
-from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
+from backend.procurement_import.service import (
+    ProcurementImportPreparer,
+    PreviewStore,
+    StoredPreview,
+)
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_raw import ProcurementRawSnapshotRepository
 from backend.procurement_import.source import ProcurementSourceError
@@ -85,6 +89,42 @@ PREVIEW_STORE = PreviewStore(
         os.environ.get("VNEPS_PROCUREMENT_PREVIEW_TTL_SECONDS", "300"),
     ))
 )
+
+
+def _load_preview(request, preview_id, *, organization_id, user_id, workspace_lease):
+    """Load only a preview whose import session committed on the server."""
+
+    connection = database.get_connection()
+    try:
+        repository = ProcurementImportSessionRepository(connection.cursor())
+        session = repository.get_by_preview_id(
+            str(preview_id or ""),
+            organization_id=str(organization_id),
+            user_id=str(user_id),
+            workspace_lease=str(workspace_lease),
+        )
+    finally:
+        connection.rollback()
+        connection.close()
+    if session is None:
+        raise LookupError("PROCUREMENT_PREVIEW_EXPIRED")
+    from datetime import datetime, timezone
+    expires_at = session.get("previewExpiresAt")
+    bundle = session.get("previewBundle")
+    digest = session.get("previewBundleDigest")
+    if not expires_at or datetime.now(timezone.utc) >= expires_at:
+        raise LookupError("PROCUREMENT_PREVIEW_EXPIRED")
+    if bundle is None or not digest or canonical_digest(bundle) != digest:
+        raise ValueError("PROCUREMENT_PREVIEW_DIGEST_INVALID")
+    return StoredPreview(
+        preview_id=str(session["previewId"]),
+        organization_id=str(session["organizationId"]),
+        user_id=str(session["userId"]),
+        workspace_lease=str(session["workspaceLease"]),
+        expires_at=expires_at,
+        bundle_digest=str(digest),
+        canonical_bundle=deepcopy(bundle),
+    )
 _PREPARE_FIELDS = {
     "code", "revisionMode", "selectedRevision", "includeLinkedNotices",
     "targetPlanRootId", "workspaceLease",
@@ -254,6 +294,10 @@ def _prepare_blocking(request, payload):
             organization_id=organization_id,
             user_id=session.user_id,
             workspace_lease=lease,
+            preview_id=stored.preview_id,
+            preview_bundle=stored.canonical_bundle,
+            preview_bundle_digest=stored.bundle_digest,
+            preview_expires_at=stored.expires_at,
         )
         connection.commit()
     except Exception:
@@ -294,6 +338,7 @@ def _prepare_blocking(request, payload):
                     "userId": session.user_id,
                     "provider": source.name,
                     "linkedNoticeCount": len(linked),
+                    "previewCacheId": preview["previewId"],
                 },
             })
         else:
@@ -639,7 +684,7 @@ def _start_plan_enrichment(result):
     if not context:
         return result
     bundle = PREVIEW_STORE.get(
-        result["previewId"],
+        context.get("previewCacheId") or result["previewId"],
         organization_id=context["organizationId"],
         user_id=context["userId"],
         workspace_lease=context["workspaceLease"],
@@ -723,6 +768,10 @@ def _prepare_notice_blocking(request, payload):
             organization_id=organization_id,
             user_id=session.user_id,
             workspace_lease=lease,
+            preview_id=stored.preview_id,
+            preview_bundle=stored.canonical_bundle,
+            preview_bundle_digest=stored.bundle_digest,
+            preview_expires_at=stored.expires_at,
         )
         connection.commit()
     except Exception:
@@ -1047,6 +1096,40 @@ def _prepare_opening_blocking(request, payload):
         user_id=session.user_id,
         workspace_lease=lease,
     )
+    # Reuse the existing durable import-session table for opening previews.
+    # The synthetic revision is only a storage envelope; apply continues to
+    # consume the canonical opening bundle and its package row-version CAS.
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        ProcurementImportSessionService(
+            ProcurementImportSessionRepository(connection.cursor()),
+            ttl_seconds=int(os.environ.get("PROCUREMENT_IMPORT_SESSION_TTL_SECONDS", "86400")),
+        ).create_from_bundle(
+                {
+                    **deepcopy(canonical),
+                    "familyNo": str(package[3] or notice_no),
+                    "revisions": [{
+                        "revisionId": str(selected["revisionId"]),
+                        "revisionNumber": str(selected.get("revisionNumber") or "1"),
+                        "revisionDigest": canonical_digest(canonical),
+                        "opening": deepcopy(opening),
+                    }],
+                },
+                organization_id=organization_id,
+                user_id=session.user_id,
+                workspace_lease=lease,
+                preview_id=stored.preview_id,
+                preview_bundle=stored.canonical_bundle,
+                preview_bundle_digest=stored.bundle_digest,
+                preview_expires_at=stored.expires_at,
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
     return {
         **deepcopy(canonical),
         "previewId": stored.preview_id,
@@ -1060,7 +1143,8 @@ def _apply_opening_blocking(request, payload):
         request, payload.get("workspaceLease")
     )
     _enforce_rate_limit(request, session.user_id, organization_id, "apply")
-    stored = PREVIEW_STORE.get(
+    stored = _load_preview(
+        request,
         payload.get("previewId"),
         organization_id=organization_id,
         user_id=session.user_id,
@@ -1874,9 +1958,12 @@ def _apply_blocking(request, payload):
         request, payload.get("workspaceLease")
     )
     _enforce_rate_limit(request, session.user_id, organization_id, "apply")
-    stored = PREVIEW_STORE.get(
-        payload.get("previewId"), organization_id=organization_id,
-        user_id=session.user_id, workspace_lease=lease,
+    stored = _load_preview(
+        request,
+        payload.get("previewId"),
+        organization_id=organization_id,
+        user_id=session.user_id,
+        workspace_lease=lease,
     )
     bundle = deepcopy(stored.canonical_bundle)
     decisions = payload.get("decisions")
@@ -2037,9 +2124,12 @@ def _apply_notice_blocking(request, payload):
         request, payload.get("workspaceLease")
     )
     _enforce_rate_limit(request, session.user_id, organization_id, "apply")
-    stored = PREVIEW_STORE.get(
-        payload.get("previewId"), organization_id=organization_id,
-        user_id=session.user_id, workspace_lease=lease,
+    stored = _load_preview(
+        request,
+        payload.get("previewId"),
+        organization_id=organization_id,
+        user_id=session.user_id,
+        workspace_lease=lease,
     )
     bundle = deepcopy(stored.canonical_bundle)
     if bundle.get("importKind") != "NOTICE":
@@ -2225,6 +2315,104 @@ def _get_operation_blocking(request, operation_id):
     return operation
 
 
+def _list_operations_blocking(request):
+    session, organization_id, _lease = _request_context(request, None)
+    try:
+        limit = max(1, min(100, int(request.query_params.get("limit", "20"))))
+    except (TypeError, ValueError):
+        raise ProcurementRouteError(
+            "PROCUREMENT_OPERATION_INVALID", "Giới hạn tiến trình không hợp lệ.", 400
+        ) from None
+    statuses = tuple(
+        value.strip().upper()
+        for value in str(request.query_params.get("status") or "").split(",")
+        if value.strip()
+    )
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        operations = ProcurementImportRepository(cursor).list_operations(
+            organization_id, limit=limit, statuses=statuses,
+        )
+        visible = []
+        for operation in operations:
+            try:
+                target_exists = _require_operation_read(
+                    cursor, session, organization_id, operation
+                )
+                first_entry = next(iter(operation.get("revisionResults") or []), {})
+                if (
+                    first_entry.get("importKind") == "NOTICE"
+                    and target_exists is False
+                ):
+                    raise ProcurementRouteError(
+                        "ORGANIZATION_ACCESS_DENIED",
+                        "Không có quyền xem bản ghi của tiến trình nhập này.",
+                        403,
+                    )
+            except ProcurementRouteError as error:
+                if error.status_code == 403:
+                    continue
+                raise
+            visible.append({
+                "operationId": operation["operationId"],
+                "provider": operation["provider"],
+                "familyNo": operation["familyNo"],
+                "mode": operation["mode"],
+                "status": operation["status"],
+                "nextRevisionIndex": operation["nextRevisionIndex"],
+                "totalRevisions": operation["totalRevisions"],
+                "bundleDigest": operation["bundleDigest"],
+                "revisionResults": [
+                    _public_operation_result(row)
+                    for row in operation.get("revisionResults") or []
+                ],
+            })
+        return {"items": visible}
+    finally:
+        connection.close()
+
+
+async def list_import_operations(request):
+    try:
+        result = await run_blocking_io(
+            _list_operations_blocking, request, timeout_seconds=8,
+        )
+        return JSONResponse(result)
+    except Exception as error:  # noqa: BLE001 - sanitized boundary.
+        response = _public_error(request, error)
+        return response or log_and_error(
+            request, error, "list_procurement_operations",
+            "PROCUREMENT_OPERATION_FAILED", "Không thể đọc các tiến trình nhập.", status_code=500,
+        )
+
+
+def _operation_target_exists(cursor, organization_id, operation):
+    first_entry = next(iter(operation.get("revisionResults") or []), {})
+    is_notice = first_entry.get("importKind") == "NOTICE"
+    table_name = "goi_thau" if is_notice else "ke_hoach_lcnt"
+    if is_notice:
+        target_value = str(first_entry.get("targetPackageRootId") or "").strip()
+        target_sql = (
+            "COALESCE(NULLIF(source_row.id_goc, ''), source_row.id) = ?"
+        )
+    else:
+        target_value = str(operation.get("familyNo") or "").strip().upper()
+        target_sql = "upper(source_row.ma_ke_hoach) = ? AND source_row.is_latest = 1"
+    if not target_value:
+        return None
+
+    target_exists = cursor.execute(
+        f"""SELECT 1 FROM {table_name} AS source_row
+             WHERE source_row.organization_id = ?
+               AND source_row.archived_at IS NULL
+               AND {target_sql}
+             LIMIT 1""",  # noqa: S608 - table and target SQL are fixed above.
+        (organization_id, target_value),
+    ).fetchone()
+    return target_exists is not None
+
+
 def _require_operation_read(cursor, session, organization_id, operation):
     first_entry = next(iter(operation.get("revisionResults") or []), {})
     is_notice = first_entry.get("importKind") == "NOTICE"
@@ -2244,6 +2432,9 @@ def _require_operation_read(cursor, session, organization_id, operation):
             403,
         )
 
+    target_exists = _operation_target_exists(cursor, organization_id, operation)
+    if target_exists is not True:
+        return target_exists
     if is_notice:
         target_value = str(first_entry.get("targetPackageRootId") or "").strip()
         target_sql = (
@@ -2252,19 +2443,6 @@ def _require_operation_read(cursor, session, organization_id, operation):
     else:
         target_value = str(operation.get("familyNo") or "").strip().upper()
         target_sql = "upper(source_row.ma_ke_hoach) = ? AND source_row.is_latest = 1"
-    if not target_value:
-        return
-
-    target_exists = cursor.execute(
-        f"""SELECT 1 FROM {table_name} AS source_row
-             WHERE source_row.organization_id = ?
-               AND source_row.archived_at IS NULL
-               AND {target_sql}
-             LIMIT 1""",  # noqa: S608 - table and target SQL are fixed above.
-        (organization_id, target_value),
-    ).fetchone()
-    if target_exists is None:
-        return
 
     predicate = VisibilityScope.resolve(
         cursor,
@@ -2286,6 +2464,7 @@ def _require_operation_read(cursor, session, organization_id, operation):
             "Không có quyền xem bản ghi của tiến trình nhập này.",
             403,
         )
+    return True
 
 
 def _public_operation_result(row):
@@ -2827,6 +3006,7 @@ async def resume_import_operation(request):
 
 def procurement_import_routes(Route):
     return [
+        Route("/api/procurement/imports/operations", list_import_operations, methods=["GET"]),
         Route("/api/procurement/imports/plan/prepare", prepare_plan_import, methods=["POST"]),
         Route("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", get_plan_import_revision, methods=["GET"]),
         Route("/api/procurement/imports/plan/sessions/{session_id}/decisions", bind_plan_import_session_decisions, methods=["POST"]),

@@ -3088,6 +3088,20 @@
       "table": "procurement_import_session",
       "valid": true
     },
+    "idx_procurement_session_preview": {
+      "definition": "CREATE UNIQUE INDEX idx_procurement_session_preview ON $SCHEMA.procurement_import_session USING btree (organization_id, preview_id) WHERE (preview_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
+    "idx_procurement_session_preview_expiry": {
+      "definition": "CREATE INDEX idx_procurement_session_preview_expiry ON $SCHEMA.procurement_import_session USING btree (preview_expires_at) WHERE (preview_expires_at IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_import_session",
+      "valid": true
+    },
     "idx_product_usage_feature_window": {
       "definition": "CREATE INDEX idx_product_usage_feature_window ON $SCHEMA.product_usage_hourly USING btree (feature_key, window_started_at, user_id) WHERE (metric_key = 'feature.used'::text)",
       "live": true,
@@ -4574,7 +4588,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 97,
+  "schemaVersion": 98,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -23442,6 +23456,34 @@
           "notNull": true,
           "type": "text"
         },
+        "preview_bundle_digest": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "preview_bundle_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "preview_expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "timestamp with time zone"
+        },
+        "preview_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "provider": {
           "default": null,
           "generated": "",
@@ -23540,6 +23582,20 @@
           "definition": "PRIMARY KEY (organization_id, id)",
           "initiallyDeferred": false,
           "kind": "p",
+          "validated": true
+        },
+        "procurement_import_session_preview_bundle_digest_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(preview_bundle_digest) = 71 AND preview_bundle_digest ~~ 'sha256:%'::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_import_session_preview_bundle_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(preview_bundle_json) >= 2 AND length(preview_bundle_json) <= 16777216)",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "procurement_import_session_provider_check": {

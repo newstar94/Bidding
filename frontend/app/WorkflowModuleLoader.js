@@ -90,6 +90,7 @@ const BIDDING_WORKFLOW_PRIVATE_EXPORTS = Object.freeze([
   "parseStoredInternalAddress",
   "parseVietnamAddress",
   "setDetailedTechnicalEvaluationMethod",
+  "shouldCommitWardResponse",
   "splitAddressParts",
   "stripAdministrativeSuffix",
   "stripVietnamCountrySuffix",

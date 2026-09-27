@@ -972,6 +972,7 @@ from backend.lot_lifecycle_routes import (
     get_lot_lifecycle_api,
 )
 from backend.ai.routes import ai_routes
+from backend.workspace_search import workspace_search_routes
 from backend.contractor_risk.routes import contractor_risk_routes
 from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
@@ -1263,6 +1264,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 
 routes = [
     *ai_routes,
+    *workspace_search_routes,
     *admin_routes(Route),
     *operational_routes(Route),
     *platform_admin_security_routes(Route),

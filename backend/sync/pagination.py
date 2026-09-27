@@ -45,6 +45,10 @@ from backend.sync.version_metadata import (
     VERSIONED_TABLES,
     load_visible_version_metadata,
 )
+from backend.sync.dashboard_summary import (
+    _effective_package_rows_sql,
+    package_alert_conditions,
+)
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
@@ -344,6 +348,12 @@ def _paginate_records_blocking(request):
             if hinh_thuc:
                 query_parts.append("hinh_thuc_lua_chon = ?")
                 query_params.append(hinh_thuc)
+            alert_key = params.get("alertKey", "").strip()
+            alert_conditions = package_alert_conditions("goi_thau")
+            if alert_key:
+                if alert_key not in alert_conditions:
+                    return JSONResponse({"error": "Bộ lọc cảnh báo không hợp lệ"}, status_code=400)
+                query_parts.append(alert_conditions[alert_key])
 
 
         nam = params.get("nam", "")
@@ -424,6 +434,19 @@ def _paginate_records_blocking(request):
         is_text_sort = column_declaration.startswith("TEXT")
         cursor_mode = cursor_mode and (sort_column == "id" or is_text_sort)
         where_clause = " AND ".join(query_parts)
+        source_sql = table_name
+        source_params = []
+        if table_name == "goi_thau" and params.get("alertKey", "").strip():
+            # The summary and its drilldown must evaluate the same official
+            # result status. Scope the inner projection to this organization;
+            # the existing live visibility predicate still gates every row.
+            source_sql = (
+                "(" + _effective_package_rows_sql(  # noqa: S608 - fixed SQL with bound organization
+                    "SELECT * FROM goi_thau WHERE organization_id = ?"
+                ) + ") "
+                "AS goi_thau"
+            )
+            source_params = [org_name]
         include_total = (
             not cursor_mode
             or params.get("includeTotal", "").strip().lower()
@@ -432,9 +455,9 @@ def _paginate_records_blocking(request):
         total_items = None
         if include_total:
             count_sql = (
-                f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
+                f"SELECT COUNT(*) FROM {source_sql} WHERE {where_clause}"
             )
-            cursor.execute(count_sql, tuple(query_params))
+            cursor.execute(count_sql, tuple(source_params + query_params))
             total_items = cursor.fetchone()[0]
         item_query_parts = list(query_parts)
         item_query_params = list(query_params)
@@ -466,12 +489,12 @@ def _paginate_records_blocking(request):
             stable_sort_sql += f", id {sort_order}"
         item_where_clause = " AND ".join(item_query_parts)
         if cursor_mode:
-            items_sql = f"SELECT * FROM {table_name} WHERE {item_where_clause}{stable_sort_sql} LIMIT ?"
-            cursor.execute(items_sql, tuple(item_query_params + [page_size + 1]))
+            items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ?"
+            cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size + 1]))
         else:
             offset = (page - 1) * page_size
-            items_sql = f"SELECT * FROM {table_name} WHERE {item_where_clause}{stable_sort_sql} LIMIT ? OFFSET ?"
-            cursor.execute(items_sql, tuple(item_query_params + [page_size, offset]))
+            items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ? OFFSET ?"
+            cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size, offset]))
         rows = cursor.fetchall()
         has_more = cursor_mode and len(rows) > page_size
         if has_more:

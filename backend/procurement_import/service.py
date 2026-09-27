@@ -141,7 +141,7 @@ class StoredPreview:
 
 
 class PreviewStore:
-    """Small process-local cache; production may replace it with shared storage."""
+    """Short-lived working cache; apply authority is the durable import session."""
 
     def __init__(self, ttl_seconds: int = 300):
         self.ttl_seconds = max(1, min(int(ttl_seconds), 1800))
@@ -160,6 +160,9 @@ class PreviewStore:
             canonical_bundle=deepcopy(canonical_bundle),
         )
         with self._lock:
+            for preview_id, item in list(self._items.items()):
+                if item.expires_at <= now:
+                    self._items.pop(preview_id, None)
             self._items[stored.preview_id] = stored
         return stored
 

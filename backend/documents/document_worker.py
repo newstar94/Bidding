@@ -1,5 +1,7 @@
 """Bounded subprocess runner for untrusted/expensive document operations."""
 
+# ruff: noqa: S608 - status filters use generated placeholders and bound values.
+
 from __future__ import annotations
 
 import asyncio
@@ -1257,6 +1259,54 @@ def get_document_export_job(database, job_id: str, organization_id: str, user_id
             (job_id, organization_id, user_id),
         ).fetchone()
         return dict(row) if row else None
+    finally:
+        connection.close()
+
+
+def list_document_export_jobs(
+    database,
+    organization_id: str,
+    user_id: str,
+    *,
+    limit: int = 50,
+    statuses=None,
+):
+    """Return a bounded owner-scoped view of recent export jobs.
+
+    Record authorization is still checked by the HTTP route because a job's
+    owner scope alone does not prove that the caller can currently read the
+    source record.  This helper intentionally returns metadata only.
+    """
+    bounded_limit = max(1, min(100, int(limit or 50)))
+    normalized_statuses = tuple(
+        dict.fromkeys(
+            str(value).strip().lower()
+            for value in (statuses or ())
+            if str(value).strip()
+        )
+    )
+    connection = database.get_connection()
+    try:
+        clauses = ["organization_id = ?", "user_id = ?"]
+        params = [organization_id, user_id]
+        if normalized_statuses:
+            placeholders = ", ".join("?" for _ in normalized_statuses)
+            clauses.append(  # noqa: S608 - placeholders are generated from status values
+                f"status IN ({placeholders})"  # noqa: S608 - placeholders are generated from status values
+            )
+            params.extend(normalized_statuses)
+        rows = connection.execute(  # noqa: S608 - query filters use bound values and generated placeholders
+            """SELECT id, operation, organization_id, user_id, package_id,
+                      record_type, record_id, filename, content_type, status,
+                      attempt_count, last_error_code, completed_at, expires_at,
+                      cancelled_at, progress_phase, progress_completed_items,
+                      progress_total_items, created_at, updated_at
+                 FROM document_jobs
+                WHERE """ + " AND ".join(clauses) +
+            " ORDER BY updated_at DESC, id DESC LIMIT ?",
+            (*params, bounded_limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         connection.close()
 

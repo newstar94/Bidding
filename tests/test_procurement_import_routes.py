@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import os
 from threading import Event, Thread
 import time
@@ -39,6 +40,70 @@ class _PackageAuthorityCursor:
 
     def fetchone(self):
         return self.current
+
+
+def test_list_operations_filters_records_outside_current_scope(monkeypatch):
+    class Connection:
+        def cursor(self):
+            return self
+
+        def close(self):
+            pass
+
+    class Database:
+        def get_connection(self):
+            return Connection()
+
+    class Repository:
+        def __init__(self, _cursor):
+            pass
+
+        def list_operations(self, _organization_id, *, limit, statuses):
+            assert limit == 20
+            assert statuses == ("FAILED",)
+            return [
+                {
+                    "operationId": "operation-visible",
+                    "provider": "MUASAMCONG",
+                    "familyNo": "IB-visible",
+                    "mode": "ALL",
+                    "status": "FAILED",
+                    "nextRevisionIndex": 0,
+                    "totalRevisions": 1,
+                    "bundleDigest": "sha256:visible",
+                    "revisionResults": [],
+                },
+                {
+                    "operationId": "operation-hidden",
+                    "provider": "MUASAMCONG",
+                    "familyNo": "IB-hidden",
+                    "mode": "ALL",
+                    "status": "FAILED",
+                    "nextRevisionIndex": 0,
+                    "totalRevisions": 1,
+                    "bundleDigest": "sha256:hidden",
+                    "revisionResults": [],
+                },
+            ]
+
+    def require_scope(_cursor, _session, _organization_id, operation):
+        if operation["operationId"] == "operation-hidden":
+            raise ProcurementRouteError("ORGANIZATION_ACCESS_DENIED", "denied", 403)
+
+    monkeypatch.setattr(routes_module, "database", Database())
+    monkeypatch.setattr(
+        routes_module,
+        "_request_context",
+        lambda _request, _body: ("session", "org-a", "lease-a"),
+    )
+    monkeypatch.setattr(routes_module, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(routes_module, "_require_operation_read", require_scope)
+
+    result = routes_module._list_operations_blocking(SimpleNamespace(
+        query_params={"limit": "20", "status": "FAILED"},
+    ))
+
+    assert [item["operationId"] for item in result["items"]] == ["operation-visible"]
 
 
 def _assert_package_authority_stale(current, target=None, organization_id="org-1"):
@@ -125,7 +190,19 @@ def test_enrichment_digest_change_invalidates_candidate_specific_decisions():
     }]
     assert canonical_digest(original) != canonical_digest(enriched)
     assert "decisionAuthority" not in enriched
-from backend.procurement_import.service import PreviewStore
+from backend.procurement_import.service import PreviewStore, StoredPreview
+
+
+def _stored_preview_for_route_test(preview_id, bundle):
+    return StoredPreview(
+        preview_id=preview_id,
+        organization_id="org-1",
+        user_id="user-1",
+        workspace_lease="workspace-1",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        bundle_digest=canonical_digest(bundle),
+        canonical_bundle=bundle,
+    )
 
 
 def test_opening_prepare_reuses_complete_exact_raw_snapshot():
@@ -645,6 +722,7 @@ def test_opening_cached_projection_matches_fresh_bidder_level_fields():
 def test_procurement_import_routes_are_registered():
     routes = procurement_import_routes(Route)
     assert [(route.path, route.methods) for route in routes] == [
+        ("/api/procurement/imports/operations", {"GET", "HEAD"}),
         ("/api/procurement/imports/plan/prepare", {"POST"}),
             ("/api/procurement/imports/plan/sessions/{session_id}/revisions/{revision_number}", {"GET", "HEAD"}),
             ("/api/procurement/imports/plan/sessions/{session_id}/decisions", {"POST"}),
@@ -1835,7 +1913,7 @@ def test_employee_with_plan_view_access_may_prepare_muasamcong_plan(monkeypatch)
 
     class PreviewStore:
         def get(self, *_args, **_kwargs):
-            return SimpleNamespace(canonical_bundle={"kind": "PLAN"})
+            return _stored_preview_for_route_test("preview-employee", {"kind": "PLAN"})
 
     class SessionService:
         def __init__(self, _repository, **_options):
@@ -1921,11 +1999,12 @@ def test_muasamcong_plan_prepare_returns_quick_preview_for_linked_notices(monkey
 
     class PreviewStore:
         def get(self, *_args, **_kwargs):
-            return SimpleNamespace(canonical_bundle={
+            bundle = {
                 "revisions": [{"packages": [{
                     "noticeLink": {"state": "LINKED", "noticeNo": "IB2600000002"},
                 }]}],
-            })
+            }
+            return _stored_preview_for_route_test("preview-quick", bundle)
 
     class SessionService:
         def __init__(self, _repository, **_options):
@@ -2127,6 +2206,12 @@ class _OpeningConnection:
     def cursor(self):
         return _OpeningCursor(self.state)
 
+    def execute(self, _statement):
+        return self
+
+    def commit(self):
+        return None
+
     def rollback(self):
         return None
 
@@ -2182,6 +2267,23 @@ def _install_opening_http_harness(monkeypatch, *, allowed=True):
     )
     monkeypatch.setattr(routes_module, "build_procurement_source", _OpeningSource)
     monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
+    class SessionRepository:
+        def __init__(self, _cursor):
+            pass
+
+        def create(self, row):
+            state["preview_session"] = deepcopy(row)
+            return row
+
+        def get_by_preview_id(self, preview_id, *, organization_id, user_id, workspace_lease):
+            row = state.get("preview_session")
+            if not row or row["previewId"] != preview_id or row["organizationId"] != organization_id:
+                return None
+            if row["userId"] != user_id or row["workspaceLease"] != workspace_lease:
+                raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+            return deepcopy(row)
+
+    monkeypatch.setattr(routes_module, "ProcurementImportSessionRepository", SessionRepository)
     return state
 
 
@@ -2978,10 +3080,8 @@ def test_plan_apply_failure_resets_cursor_to_atomic_batch_start(monkeypatch):
     monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
     monkeypatch.setattr(
         routes_module,
-        "PREVIEW_STORE",
-        SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(
-            canonical_bundle=bundle,
-        )),
+            "_load_preview",
+            lambda *_args, **_kwargs: SimpleNamespace(canonical_bundle=bundle),
     )
     monkeypatch.setattr(
         routes_module,
@@ -3070,10 +3170,8 @@ def test_notice_apply_failure_resets_cursor_to_atomic_batch_start(monkeypatch):
     monkeypatch.setattr(routes_module, "_enforce_rate_limit", lambda *_args: None)
     monkeypatch.setattr(
         routes_module,
-        "PREVIEW_STORE",
-        SimpleNamespace(get=lambda *_args, **_kwargs: SimpleNamespace(
-            canonical_bundle=bundle,
-        )),
+            "_load_preview",
+            lambda *_args, **_kwargs: SimpleNamespace(canonical_bundle=bundle),
     )
     monkeypatch.setattr(
         routes_module,

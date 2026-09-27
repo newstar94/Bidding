@@ -82,6 +82,11 @@ function activityTargetType(action) {
   return Object.hasOwn(ACTIVITY_FIELD_LABELS, prefix) ? prefix : "";
 }
 
+export function activityFieldLabel(entityType, fieldName) {
+  const key = String(fieldName || "").replace(/([a-z0-9])([A-Z])/gu, "$1_$2").toLowerCase();
+  return ACTIVITY_FIELD_LABELS[String(entityType || "").toLowerCase()]?.[key] || "";
+}
+
 export function activityChangedFieldLabels(item) {
   const changedFields = Array.isArray(item?.metadata?.changedFields)
     ? item.metadata.changedFields

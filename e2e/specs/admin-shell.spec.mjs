@@ -405,7 +405,9 @@ test("commercial plans and payments send versioned and audited mutations", async
   });
 });
 
-test("analytics renders bounded chart fallbacks and preserves filter query state", async ({ context, page }) => {
+test("analytics renders bounded chart fallbacks and preserves filter query state", async ({ context, page }, testInfo) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await installAuthorizedShell(context);
   const usage = {
     summary: {
@@ -449,6 +451,13 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
   const openFormHeight = (await filterForm.boundingBox())?.height;
   expect(Math.abs(openFormHeight - closedFormHeight)).toBeLessThanOrEqual(2);
   await page.keyboard.press("Escape");
+  await primaryFilterFields[2].click();
+  await expect(page.locator("#admin-analytics-bucket-listbox")).toBeVisible();
+  await page.locator("#admin-analytics-bucket-listbox").getByRole("option", { name: "Theo giờ", exact: true }).click();
+  await expect(page.locator('select[name="bucket"]')).toHaveValue("hour");
+  await expect(page.locator('select[name="bucket"]')).toBeHidden();
+  await expect(primaryFilterFields[2]).toHaveValue("Theo giờ");
+  expect(pageErrors).toEqual([]);
   await expect(page.getByText("Kế hoạch đã tạo", { exact: true })).toBeVisible();
   await expect(page.locator("#admin-chart-0")).toHaveText("Kế hoạch");
   await expect(page.getByRole("heading", { name: "Doanh thu và chi phí" })).toBeVisible();
@@ -463,6 +472,41 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
   await page.getByRole("button", { name: "90 ngày" }).click();
   await expect(page).toHaveURL(/preset=90d/u);
   await expect(page.getByRole("button", { name: "90 ngày" })).toHaveAttribute("aria-pressed", "true");
+  await filterForm.locator("summary").click();
+  const selectIds = await filterForm.locator("select.form-select").evaluateAll((selects) => selects.map((select) => select.id));
+  expect(selectIds).toHaveLength(11);
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: 950 });
+    for (const id of selectIds) {
+      const nativeSelect = page.locator(`#${id}`);
+      const combobox = page.locator(`#${id}-combobox`);
+      const listbox = page.locator(`#${id}-listbox`);
+      await expect(nativeSelect).toBeHidden();
+      await combobox.click();
+      await expect(combobox).toHaveAttribute("aria-expanded", "true");
+      await expect(listbox).toBeVisible();
+      await expect(listbox).toHaveClass(/bf-admin-select-list/u);
+      expect(await listbox.evaluate((node) => node.parentElement === document.body)).toBe(true);
+      const menu = await listbox.boundingBox();
+      const trigger = await combobox.boundingBox();
+      const menuStyle = await listbox.evaluate((node) => ({ left: getComputedStyle(node).left, position: getComputedStyle(node).position, offsetParent: node.offsetParent?.tagName }));
+      expect(Math.abs(menu.x - trigger.x), `${testInfo.project.name} ${width} menu=${menu.x} trigger=${trigger.x} style=${JSON.stringify(menuStyle)}`).toBeLessThanOrEqual(2);
+      expect(menu.x + menu.width).toBeLessThanOrEqual(width + 1);
+      expect(Math.min(Math.abs(menu.y - trigger.y - trigger.height), Math.abs(menu.y + menu.height - trigger.y))).toBeLessThanOrEqual(10);
+      await page.keyboard.press("Escape");
+      await expect(listbox).toBeHidden();
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 950 });
+  await primaryFilterFields[2].click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('select[name="bucket"]')).toHaveValue("day");
+  expect(await filterForm.evaluate((form) => new FormData(form).get("bucket"))).toBe("day");
+  await primaryFilterFields[2].click();
+  await page.screenshot({ path: testInfo.outputPath("analytics-dropdown-open.png") });
+  await page.keyboard.press("Escape");
+  expect(pageErrors).toEqual([]);
 });
 
 test("operational admin routes render sanitized data and safe detail focus", async ({ context, page }) => {

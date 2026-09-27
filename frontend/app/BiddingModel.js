@@ -425,6 +425,9 @@ export class BiddingModel {
       if (Array.isArray(this.state[stateKey])) this.state[stateKey] = [];
     });
     this.dashboardSummary = null;
+    this.dashboardAlertFilter = "";
+    this.dashboardAlertFilterLabel = "";
+    this._packageListContextToRestore = null;
     this.state.selectedPlanVersion = {};
     this.state.selectedPackageVersion = {};
     this.state.selectedPackageVersionIntent = {};
@@ -667,6 +670,7 @@ export class BiddingModel {
     await this.db.init();
     await this.hydrateMutationOutbox();
     const savedPages = this.workspaceSessionStorage.readJson("bf_current_pages", {});
+    this._packageListContextToRestore = this.workspaceSessionStorage.readJson("bf_package_list_context", null);
     Object.keys(this.currentPage).forEach((key) => {
       this.currentPage[key] = savedPages[key] || 1;
     });
@@ -848,10 +852,12 @@ export class BiddingModel {
   async refreshConflictRecoveryDrafts() {
     const workspaceFingerprint = String(this.workspaceScope?.key || "");
     if (!workspaceFingerprint) return [];
+    const workspaceToken = this.getWorkspaceToken();
     if (!hasServerCapability(CONFLICT_CENTER_CAPABILITY)) {
       return this._getConflictRecoveryStore().replace([]);
     }
     const result = await this._getConflictCenterClient().list(workspaceFingerprint);
+    if (!this.isWorkspaceCurrent(workspaceToken)) return [];
     return this._getConflictRecoveryStore().replace(result?.items || []);
   }
   async previewConflictRecoveryDraft(draftId) {
@@ -861,21 +867,25 @@ export class BiddingModel {
     );
   }
   async resolveConflictRecoveryDraft(draftId, preview, decisions) {
+    const workspaceFingerprint = String(this.workspaceScope?.key || "");
+    const workspaceToken = this.getWorkspaceToken();
     const result = await this._getConflictCenterClient().resolve(draftId, {
-      workspaceFingerprint: String(this.workspaceScope?.key || ""),
+      workspaceFingerprint,
       resolutionAuthority: preview?.resolutionAuthority,
       decisions,
       clientMutationId: createUUID(),
     });
-    this._getConflictRecoveryStore().remove(draftId);
+    if (this.isWorkspaceCurrent(workspaceToken)) this._getConflictRecoveryStore().remove(draftId);
     return result;
   }
   async discardConflictRecoveryDraft(draftId) {
+    const workspaceFingerprint = String(this.workspaceScope?.key || "");
+    const workspaceToken = this.getWorkspaceToken();
     const result = await this._getConflictCenterClient().discard(
       draftId,
-      String(this.workspaceScope?.key || ""),
+      workspaceFingerprint,
     );
-    this._getConflictRecoveryStore().remove(draftId);
+    if (this.isWorkspaceCurrent(workspaceToken)) this._getConflictRecoveryStore().remove(draftId);
     return result;
   }
   getConflictRecoveryDrafts() {

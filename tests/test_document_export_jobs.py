@@ -8,6 +8,7 @@ import time
 import pytest
 
 from backend.documents import document_worker
+import backend.documents.document_job_routes as document_job_routes_module
 from backend.documents.document_job_routes import document_job_routes
 from backend.documents.document_worker import (
     _document_job_dir,
@@ -150,6 +151,105 @@ def test_async_export_routes_cover_create_status_download_retry_and_cancel():
     assert ("/api/document-jobs/{job_id}/download", ("GET",)) in methods
     assert ("/api/document-jobs/{job_id}/retry", ("POST",)) in methods
     assert ("/api/document-jobs/{job_id}", ("DELETE",)) in methods
+
+
+def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
+    class Request:
+        query_params = {"limit": "20"}
+
+    class CursorConnection:
+        def cursor(self):
+            return self
+
+        def close(self):
+            pass
+
+    database = type("ListDatabase", (), {
+        "get_connection": lambda _self: CursorConnection(),
+    })()
+    role = SessionRole(
+        "manager",
+        "user-a",
+        platform_role="user",
+        active_role="manager",
+        active_role_organization_id="org-a",
+    )
+    jobs = [
+        {
+            "id": "job-visible",
+            "operation": "render_docx",
+            "record_type": "goi_thau",
+            "record_id": "package-visible",
+            "filename": "visible.docx",
+            "status": "completed",
+            "attempt_count": 1,
+            "last_error_code": None,
+            "completed_at": 10,
+            "expires_at": 20,
+            "updated_at": 10,
+            "progress_phase": "completed",
+            "progress_completed_items": 1,
+            "progress_total_items": 1,
+        },
+        {
+            "id": "job-hidden",
+            "operation": "render_docx",
+            "record_type": "goi_thau",
+            "record_id": "package-hidden",
+            "filename": "hidden.docx",
+            "status": "completed",
+            "attempt_count": 1,
+            "last_error_code": None,
+            "completed_at": 10,
+            "expires_at": 20,
+            "updated_at": 9,
+            "progress_phase": "completed",
+            "progress_completed_items": 1,
+            "progress_total_items": 1,
+        },
+    ]
+    monkeypatch.setattr(document_job_routes_module, "database", database)
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "verify_session",
+        lambda _request: (True, role),
+    )
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "get_active_org",
+        lambda *_args, **_kwargs: "org-a",
+    )
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "list_document_export_jobs",
+        lambda *_args, **_kwargs: jobs,
+    )
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "document_job_record_scope",
+        lambda job: {
+            "module_name": "goithau",
+            "table_name": "goi_thau",
+            "record_id": job["record_id"],
+            "record_type": "goi_thau",
+        },
+    )
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "can_read_record",
+        lambda _cursor, _role, _user, _org, _module, _table, record_id:
+            record_id == "package-visible",
+    )
+    monkeypatch.setattr(
+        document_job_routes_module,
+        "verify_document_job_policy",
+        lambda _cursor, _job: None,
+    )
+
+    result = document_job_routes_module._list_job_access(Request())
+
+    assert [item["jobId"] for item in result["items"]] == ["job-visible"]
+    assert result["items"][0]["downloadUrl"] == "/api/document-jobs/job-visible/download"
 
 
 def test_cancel_is_owner_scoped_and_only_affects_pending_jobs():

@@ -11,6 +11,12 @@ import {
 
 afterEach(() => invalidateServerCapabilities());
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 
 test("conflict recovery stays local when the server capability is absent", async () => {
   const model = new BiddingModel();
@@ -62,6 +68,45 @@ test("conflict recovery loads only the active workspace when supported", async (
   );
   assert.deepEqual(await model.refreshConflictRecoveryDrafts(), []);
   assert.deepEqual(calls, ["user-1:org-a", "user-1:org-a"]);
+});
+
+test("late conflict responses cannot change the next workspace's draft store", async () => {
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-1" },
+    serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+  });
+  const model = new BiddingModel();
+  const storeChanges = [];
+  const pending = { list: deferred(), discard: deferred(), resolve: deferred() };
+  model.workspaceScope = { key: "user-1:org-a" };
+  model._getConflictCenterClient = () => ({
+    list: () => pending.list.promise,
+    discard: () => pending.discard.promise,
+    resolve: () => pending.resolve.promise,
+  });
+  model._getConflictRecoveryStore = () => ({
+    replace: (items) => { storeChanges.push(["replace", model.workspaceScope.key, items]); return items; },
+    remove: (id) => storeChanges.push(["remove", model.workspaceScope.key, id]),
+  });
+
+  const listing = model.refreshConflictRecoveryDrafts();
+  model.workspaceScope = { key: "user-1:org-b" };
+  pending.list.resolve({ items: [{ id: "draft-a" }] });
+  assert.deepEqual(await listing, []);
+
+  model.workspaceScope = { key: "user-1:org-a" };
+  const discarding = model.discardConflictRecoveryDraft("draft-a");
+  model.workspaceScope = { key: "user-1:org-b" };
+  pending.discard.resolve({ status: "deleted" });
+  await discarding;
+
+  model.workspaceScope = { key: "user-1:org-a" };
+  const resolving = model.resolveConflictRecoveryDraft("draft-a", { resolutionAuthority: "authority" }, {});
+  model.workspaceScope = { key: "user-1:org-b" };
+  pending.resolve.resolve({ status: "resolved" });
+  await resolving;
+  assert.deepEqual(storeChanges, []);
 });
 
 

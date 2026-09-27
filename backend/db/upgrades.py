@@ -3848,6 +3848,16 @@ def _upgrade_to_v97_add_free_organization_package(cursor, _context):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_token_reservations_user ON ai_token_reservations (user_id)")
 
 
+def _upgrade_to_v98_add_durable_procurement_previews(cursor, _context):
+    """Persist the original short-lived apply preview on an import session."""
+    cursor.execute("ALTER TABLE procurement_import_session ADD COLUMN IF NOT EXISTS preview_id TEXT")
+    cursor.execute("ALTER TABLE procurement_import_session ADD COLUMN IF NOT EXISTS preview_bundle_json TEXT CHECK(length(preview_bundle_json) BETWEEN 2 AND 16777216)")
+    cursor.execute("ALTER TABLE procurement_import_session ADD COLUMN IF NOT EXISTS preview_bundle_digest TEXT CHECK(length(preview_bundle_digest) = 71 AND preview_bundle_digest LIKE 'sha256:%')")
+    cursor.execute("ALTER TABLE procurement_import_session ADD COLUMN IF NOT EXISTS preview_expires_at TIMESTAMPTZ")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_session_preview ON procurement_import_session (organization_id, preview_id) WHERE preview_id IS NOT NULL")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_procurement_session_preview_expiry ON procurement_import_session (preview_expires_at) WHERE preview_expires_at IS NOT NULL")
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4297,6 +4307,7 @@ UPGRADES = (
     DatabaseUpgrade(95, "plan_price_basis", _upgrade_to_v95_plan_price_basis),
     DatabaseUpgrade(96, "add_ai_token_reservations", _upgrade_to_v96_add_ai_token_reservations),
     DatabaseUpgrade(97, "add_free_organization_package", _upgrade_to_v97_add_free_organization_package),
+    DatabaseUpgrade(98, "add_durable_procurement_previews", _upgrade_to_v98_add_durable_procurement_previews),
 )
 
 

@@ -240,7 +240,7 @@ test("guest CTA continues to the authenticated entry point", async ({ page }) =>
   await openLanding(page);
   const heroCta = page
     .locator(".landing-hero-actions")
-    .getByRole("link", { name: /Bắt đầu sử dụng/u });
+    .locator('a[data-landing-app-link]');
   await expect(heroCta).toHaveAttribute("href", "/dang-nhap");
   await heroCta.click();
   await expect(page).toHaveURL(/\/dang-nhap$/u);

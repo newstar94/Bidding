@@ -286,11 +286,14 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
   await page.locator("#btn-add-chuyengia").click();
   await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
   await fillExpertForm(page, suffix);
-  const createResponsePromise = page.waitForResponse((response) => (
-    response.request().method() === "POST"
-      && new URL(response.url()).pathname === "/api/sync"
-      && response.ok()
-  ));
+  let createResult;
+  const createResponsePromise = page.waitForResponse(async (response) => {
+    if (response.request().method() !== "POST"
+      || new URL(response.url()).pathname !== "/api/sync"
+      || !response.ok()) return false;
+    createResult = await response.json();
+    return true;
+  });
   await page.locator("#form-chuyengia button[type='submit']").click();
   const createResponse = await createResponsePromise;
   const createPayload = createResponse.request().postDataJSON();
@@ -298,7 +301,6 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
     (record) => record.hoTen === expertName,
   );
   expect(createdExpert?.id).toBeTruthy();
-  const createResult = await createResponse.json();
   const createdVersion = (createResult.rowVersions || []).find((entry) => (
     ["chuyengia", "chuyen_gia"].includes(entry?.table)
       && String(entry?.id) === String(createdExpert.id)

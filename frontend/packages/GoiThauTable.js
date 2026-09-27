@@ -23,6 +23,12 @@ import {
   versionRootId,
 } from "../shared/versionResolver.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
+import { dashboardAlertMatches } from "../app/DashboardView.js";
+import {
+  rememberPackageListContext,
+  renderPackageFilterSummary,
+  restorePackageListContext,
+} from "./PackageListContext.js";
 
 const packageTableRenderGenerations = new WeakMap();
 const packageTableInteractionOwnershipInstalled = new WeakSet();
@@ -183,14 +189,15 @@ export async function renderGoiThauTable() {
   const renderIsCurrent = beginPackageTableRender(tableBody);
   const canStart = await canPackageTableRenderOwnDom(tableBody, renderIsCurrent);
   if (!canPackageTableRenderCommit(canStart, renderIsCurrent)) return;
-  const searchVal = document.getElementById("search-goithau").value.toLowerCase();
-  const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
-  const filterHinhThuc = document.getElementById("filter-goithau-hinhthuc").value;
   const yearSelect = document.getElementById("filter-goithau-nam");
   const monthSelect = document.getElementById("filter-goithau-thang");
   const allPackages = this.model.getLatestPackages();
+  if (this.model._packageListContextToRestore) {
+    restorePackageListContext(this.model, this.model._packageListContextToRestore);
+    this.model._packageListContextToRestore = null;
+  }
   if (yearSelect && monthSelect) {
-    populateYearMonthFilters({ records: allPackages, getDate: (gt) => gt.ngayQuyetDinh, yearSelect, monthSelect });
+    populateYearMonthFilters({ records: allPackages, getDate: (gt) => gt.ngayQuyetDinh, yearSelect, monthSelect, retainSelected: true });
     initCustomSelect("filter-goithau-trangthai");
     initCustomSelect("filter-goithau-hinhthuc");
     initCustomSelect("filter-goithau-nam");
@@ -198,6 +205,17 @@ export async function renderGoiThauTable() {
   }
   const filterNam = yearSelect ? yearSelect.value : "";
   const filterThang = monthSelect ? monthSelect.value : "";
+  const dashboardFilter = this.model.dashboardAlertFilter || "";
+  const dashboardChip = document.getElementById("goithau-dashboard-filter");
+  if (dashboardChip) {
+    dashboardChip.hidden = !this.model.dashboardAlertFilterLabel;
+    const chipText = dashboardChip.querySelector("span");
+    if (chipText) chipText.textContent = this.model.dashboardAlertFilterLabel
+      ? `Đang lọc theo cảnh báo: ${this.model.dashboardAlertFilterLabel}` : "";
+  }
+  const searchVal = document.getElementById("search-goithau").value.toLowerCase();
+  const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
+  const filterHinhThuc = document.getElementById("filter-goithau-hinhthuc").value;
   let slicedData = [];
   let totalItems = 0;
   const currentPage = this.model.currentPage.goithau || 1;
@@ -205,11 +223,14 @@ export async function renderGoiThauTable() {
   const sortState = this.model.sortState.goithau || {};
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
+  rememberPackageListContext(this.model);
+  renderPackageFilterSummary(this.model);
   if (this.model.useServerSidePagination) {
     const pageParams = {
       page: currentPage, pageSize, search: searchVal,
       trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
       sortBy, sortOrder, nam: filterNam, thang: filterThang,
+      alertKey: dashboardFilter,
     };
     if (!getCachedPaginatedRecords(this.model, "goithau", pageParams)) {
       renderTableLoading(tableBody, 8);
@@ -239,13 +260,20 @@ export async function renderGoiThauTable() {
         || assigneeSearch.includes(searchVal);
       const matchesTrangThai = !filterTrangThai || resolvePackageResultStatus(gt) === filterTrangThai;
       const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;
-      return matchesSearch && matchesTrangThai && matchesHinhThuc
+      const alertKey = this.model.dashboardAlertFilter || "";
+      const matchesAlert = !alertKey || dashboardAlertMatches(gt, alertKey);
+      return matchesSearch && matchesTrangThai && matchesHinhThuc && matchesAlert
         && matchesYearMonth(gt.ngayQuyetDinh, filterNam, filterThang);
     });
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
     tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
+  }
+  if (totalItems > 0 && currentPage > Math.ceil(totalItems / pageSize)) {
+    this.model.currentPage.goithau = Math.ceil(totalItems / pageSize);
+    this.model.savePage("goithau");
+    return this.renderGoiThauTable();
   }
   const canCommit = await canPackageTableRenderOwnDom(tableBody, renderIsCurrent);
   if (!canPackageTableRenderCommit(canCommit, renderIsCurrent)) return;

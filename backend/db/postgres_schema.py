@@ -647,6 +647,8 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_procurement_session_owner ON procurement_import_session (organization_id, user_id, workspace_lease)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_session_family ON procurement_import_session (organization_id, family_key, status)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_session_expiry ON procurement_import_session (expires_at)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_session_preview ON procurement_import_session (organization_id, preview_id) WHERE preview_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_procurement_session_preview_expiry ON procurement_import_session (preview_expires_at) WHERE preview_expires_at IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_entity ON procurement_raw_snapshot (organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content ON procurement_raw_snapshot (organization_id, content_hash)",
         "CREATE INDEX IF NOT EXISTS idx_conflict_drafts_actor_workspace ON conflict_resolution_drafts (organization_id, actor_user_id, workspace_fingerprint, status, updated_at DESC)",

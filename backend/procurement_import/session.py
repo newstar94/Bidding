@@ -40,6 +40,10 @@ class ProcurementImportSessionService:
         organization_id,
         user_id,
         workspace_lease,
+        preview_id=None,
+        preview_bundle=None,
+        preview_bundle_digest=None,
+        preview_expires_at=None,
         now=None,
     ):
         created_at = now or datetime.now(timezone.utc)
@@ -97,6 +101,10 @@ class ProcurementImportSessionService:
             "expiresAt": created_at + timedelta(seconds=self.ttl_seconds),
             "createdAt": created_at,
             "updatedAt": created_at,
+            "previewId": str(preview_id) if preview_id else None,
+            "previewBundle": deepcopy(preview_bundle) if preview_bundle is not None else None,
+            "previewBundleDigest": preview_bundle_digest,
+            "previewExpiresAt": preview_expires_at,
         }
         cleanup_expired = getattr(self.repository, "cleanup_expired", None)
         if cleanup_expired is not None:

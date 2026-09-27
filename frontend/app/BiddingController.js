@@ -51,6 +51,7 @@ import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
 import { workspaceTaskScheduler } from "../shared/WorkspaceTaskScheduler.js";
 import { workspaceLifecycleController } from "./WorkspaceLifecycleController.js";
 import { POST_STARTUP_TIMING } from "./startupTiming.js";
+import { setupWorkspaceQuickSearch } from "./WorkspaceQuickSearch.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -935,6 +936,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     }
     this.view.initDOM();
     this.setupSyncUx();
+    setupWorkspaceQuickSearch(this);
     this.setupAuth();
     this.setupActivityTracker();
     this.registerCommands();
@@ -1191,6 +1193,31 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
     const removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);
     const switchTab = (tab, action = null, updateState = true) => this.switchTab(tab, action, updateState);
+    const switchPackageTab = (tab) => {
+      const packageId = this.view?._currentWorkflowPackageId;
+      if (!packageId || !tab) return void 0;
+      return invokeLazyViewMethod("goithau-detail", "showPackageDetails", packageId, false, tab);
+    };
+    const dashboardAlert = (alertKey) => {
+      const labels = { closingToday: "Đóng thầu hôm nay", closingSoon: "Sắp đóng thầu", overdueOpening: "Quá hạn mở thầu", delayedEvaluation: "Chậm báo cáo đánh giá" };
+      this.model.dashboardAlertFilter = String(alertKey || "");
+      this.model.dashboardAlertFilterLabel = labels[this.model.dashboardAlertFilter] || "";
+      this.model.currentPage.goithau = 1;
+      this.model.savePage("goithau");
+      ["search-goithau", "filter-goithau-trangthai", "filter-goithau-hinhthuc", "filter-goithau-nam", "filter-goithau-thang"]
+        .map((id) => document.getElementById(id)).filter(Boolean).forEach((control) => {
+          control.value = "";
+          control.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+      return this.switchTab("goithau");
+    };
+    const clearDashboardAlert = () => {
+      this.model.dashboardAlertFilter = "";
+      this.model.dashboardAlertFilterLabel = "";
+      this.model.currentPage.goithau = 1;
+      this.model.savePage("goithau");
+      return this.switchTab("goithau");
+    };
     const toggleOrgLock = (id) => this.toggleOrgLock(id);
     const renewOrgSubscription = (id) => this.renewOrgSubscription(id);
     const editEmployee = (id) => this.editEmployee(id);
@@ -1308,6 +1335,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       addJointVentureMemberCard,
       removeJointVentureMemberCard,
       switchTab,
+      switchPackageTab,
+      dashboardAlert,
+      clearDashboardAlert,
       toggleOrgLock,
       renewOrgSubscription,
       editEmployee,
@@ -1384,6 +1414,12 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           return call("handlePageChange", target.dataset.containerId, parseInt(target.dataset.page, 10));
         case "switch-tab":
           return call("switchTab", target.dataset.tab);
+        case "switch-package-tab":
+          return call("switchPackageTab", target.dataset.tab);
+        case "dashboard-alert":
+          return call("dashboardAlert", target.dataset.alertKey);
+        case "clear-dashboard-alert":
+          return call("clearDashboardAlert");
         case "close-modal":
           if (target.dataset.modalId) {
             event.preventDefault();

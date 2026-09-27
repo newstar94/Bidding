@@ -5,6 +5,7 @@ import {
 } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
 import { openConflictCenter } from "./ConflictCenter.js";
+import { openWorkRecoveryCenter } from "./WorkRecoveryCenter.js";
 
 
 const ACTIONABLE_PENDING_PHASES = new Set([
@@ -179,6 +180,11 @@ export function setupSyncUx() {
   if (this._syncUxInstalled) return;
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
+  const recoveryButton = document.getElementById("btn-recovery-center");
+  recoveryButton?.removeAttribute("hidden");
+  recoveryButton?.addEventListener("click", () => {
+    void openWorkRecoveryCenter(this);
+  });
   button?.addEventListener("click", () => {
     if (Number(this.model?.getConflictRecoveryCount?.() || 0) > 0) {
       void openConflictCenter(this);

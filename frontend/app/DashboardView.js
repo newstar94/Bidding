@@ -44,6 +44,26 @@ export const ALERT_META = {
   planPublishingWarning: { label: "Cần đăng tải kế hoạch", detail: "Đã qua 3 ngày làm việc", icon: "megaphone", tone: "amber" },
   planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" }
 };
+const ALERT_DEADLINE_SOURCE = Object.freeze({
+  closingToday: "Thời gian đóng thầu",
+  closingSoon: "Thời gian đóng thầu",
+  overdueOpening: "Thời gian đóng thầu",
+  delayedEvaluation: "Thời gian mở thầu",
+  contractExpired: "Ngày ký và thời hạn hợp đồng",
+  contractExpiring: "Ngày ký và thời hạn hợp đồng",
+  planPublishingWarning: "Ngày phê duyệt và lịch ngày làm việc",
+  planPublishingOverdue: "Ngày phê duyệt và lịch ngày làm việc",
+});
+const ALERT_NEXT_STEP = Object.freeze({
+  closingToday: "Kiểm tra mốc đóng thầu và mở hồ sơ gói thầu",
+  closingSoon: "Rà soát hồ sơ trước mốc đóng thầu",
+  overdueOpening: "Mở hồ sơ để xử lý mốc đã quá hạn",
+  delayedEvaluation: "Tiếp tục rà soát và hoàn thiện đánh giá",
+  contractExpired: "Mở hợp đồng để rà soát nghĩa vụ còn lại",
+  contractExpiring: "Mở hợp đồng để rà soát thời hạn",
+  planPublishingWarning: "Mở kế hoạch để kiểm tra việc đăng tải",
+  planPublishingOverdue: "Mở kế hoạch để xử lý việc đăng tải quá hạn",
+});
 const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "closingToday", "delayedEvaluation", "contractExpiring", "planPublishingWarning", "closingSoon"];
 const DASHBOARD_ROLE_CONTEXT = Object.freeze({
   manager: Object.freeze({
@@ -203,6 +223,12 @@ export function deriveDashboardAlerts(packages = [], now = new Date(), delayDays
   });
   items.sort((a, b) => ALERT_PRIORITY.indexOf(a.alertKey) - ALERT_PRIORITY.indexOf(b.alertKey));
   return { counts, items };
+}
+
+export function dashboardAlertMatches(pkg, alertKey, now = new Date()) {
+  return deriveDashboardAlerts([pkg], now).items.some(
+    (item) => item.alertKey === String(alertKey || ""),
+  );
 }
 
 function dashboardIsoDate(date) {
@@ -512,6 +538,30 @@ function renderPackageDonut(statusCounts) {
   if (donut) setRuntimeStyle(donut, "background", chartModel.gradient);
 }
 
+export function buildDashboardActionRows(alerts = {}) {
+  const items = alerts?.items || [];
+  if (!items.length) return renderEmptyRow(3, "Không có công việc khẩn cấp", "circle-check-big");
+  return items.map((item) => {
+    const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
+    const targetType = item.targetType === "plan" ? "plan" : item.targetType === "contract" ? "contract" : "package";
+    const targetMeta = {
+      plan: { action: "show-plan", label: "Kế hoạch", code: item.maKeHoach, fallbackCode: "Chưa có mã kế hoạch", name: item.tenKeHoach || "Kế hoạch LCNT" },
+      contract: { action: "show-contract", label: "Hợp đồng", code: item.soHopDong, fallbackCode: "Chưa có số hợp đồng", name: item.tenHopDong || "Hợp đồng" },
+      package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, fallbackCode: "Chưa có mã gói thầu", name: item.tenGoiThau || "Gói thầu" }
+    }[targetType];
+    const targetIdentity = targetMeta.code || targetMeta.fallbackCode;
+    const deadlineSource = ALERT_DEADLINE_SOURCE[item.alertKey] || "Dữ liệu thời hạn hiện có";
+    const nextStep = ALERT_NEXT_STEP[item.alertKey] || "Mở hồ sơ để xem bước tiếp theo";
+    return `
+      <tr class="dashboard-task-row">
+        <td class="dashboard-task-object-cell"><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell" aria-label="Mở ${safeAttr(targetMeta.label)} ${safeAttr(targetIdentity)}"><span class="dashboard-object-code">${escapeHtml(targetIdentity)}</span><small title="${safeAttr(targetMeta.name)}">${escapeHtml(targetMeta.name)}</small></a></td>
+        <td class="dashboard-task-content-cell"><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small><small class="dashboard-action-source">Mốc lấy từ: ${escapeHtml(deadlineSource)}</small><button type="button" class="dashboard-task-next-step" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}">${escapeHtml(nextStep)}</button></td>
+        <td class="dashboard-task-deadline-cell"><span class="dashboard-deadline deadline-${meta.tone}" title="${safeAttr(`Hạn/mốc theo ${deadlineSource}`)}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
 function renderDashboardAlerts(alerts) {
   const counts = alerts?.counts || {};
   setText("alert-closing-today", counts.closingToday || 0);
@@ -524,27 +574,7 @@ function renderDashboardAlerts(alerts) {
   setText("dashboard-action-count", `${items.length} việc`);
   const tbody = document.getElementById("dashboard-action-items");
   if (!tbody) return;
-  if (!items.length) {
-    tbody.innerHTML = trustedHTML(renderEmptyRow(3, "Không có công việc khẩn cấp", "circle-check-big"));
-    return;
-  }
-  tbody.innerHTML = trustedHTML(items.map((item) => {
-    const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
-    const targetType = item.targetType === "plan" ? "plan" : item.targetType === "contract" ? "contract" : "package";
-    const targetMeta = {
-      plan: { action: "show-plan", label: "Kế hoạch", code: item.maKeHoach, fallbackCode: "Chưa có mã kế hoạch", name: item.tenKeHoach || "Kế hoạch LCNT" },
-      contract: { action: "show-contract", label: "Hợp đồng", code: item.soHopDong, fallbackCode: "Chưa có số hợp đồng", name: item.tenHopDong || "Hợp đồng" },
-      package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, fallbackCode: "Chưa có mã gói thầu", name: item.tenGoiThau || "Gói thầu" }
-    }[targetType];
-    const targetIdentity = targetMeta.code || targetMeta.fallbackCode;
-    return `
-      <tr class="dashboard-task-row">
-        <td class="dashboard-task-object-cell"><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell" aria-label="Mở ${safeAttr(targetMeta.label)} ${safeAttr(targetIdentity)}"><span class="dashboard-object-code">${escapeHtml(targetIdentity)}</span><small title="${safeAttr(targetMeta.name)}">${escapeHtml(targetMeta.name)}</small></a></td>
-        <td class="dashboard-task-content-cell"><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small></td>
-        <td class="dashboard-task-deadline-cell"><span class="dashboard-deadline deadline-${meta.tone}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
-      </tr>
-    `;
-  }).join(""));
+  tbody.innerHTML = trustedHTML(buildDashboardActionRows(alerts));
 }
 
 function renderRecentPackages(view, packages) {

@@ -4,6 +4,7 @@
         <div class="search-filter-group flex-wrap">
             <div class="search-box bf-s-13a8a44cd2">
                 <i data-lucide="search"></i>
+                <label class="visually-hidden" for="search-goithau">Tìm gói thầu</label>
                 <input type="text" placeholder="Tìm gói thầu..." id="search-goithau">
             </div>
             <div class="select-wrapper bf-s-be30dd8090">
@@ -52,6 +53,24 @@
                 <i data-lucide="plus"></i> Thêm Gói thầu mới
             </button>
         </div>
+    </div>
+    <div class="package-saved-views d-flex flex-wrap align-items-center gap-2 mb-2" role="group" aria-label="Chế độ xem gói thầu của tôi">
+        <label for="goithau-saved-view">Chế độ xem của tôi</label>
+        <select id="goithau-saved-view" data-no-custom="true">
+            <option value="">Chọn chế độ xem</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-outline" id="goithau-apply-view">Áp dụng</button>
+        <button type="button" class="btn btn-sm btn-outline" id="goithau-save-view">Lưu mới</button>
+        <button type="button" class="btn btn-sm btn-outline" id="goithau-update-view" disabled>Cập nhật</button>
+        <button type="button" class="btn btn-sm btn-outline" id="goithau-delete-view" disabled>Xóa</button>
+    </div>
+    <div id="goithau-dashboard-filter" class="dashboard-filter-chip" hidden role="status" aria-live="polite">
+        <span></span>
+        <button type="button" class="btn btn-sm btn-outline" data-bf-action="clear-dashboard-alert">Bỏ lọc</button>
+    </div>
+    <div id="goithau-active-filters" class="dashboard-filter-chip" hidden role="status">
+        <span></span>
+        <button type="button" class="btn btn-sm btn-outline" id="goithau-clear-filters">Bỏ bộ lọc</button>
     </div>
 
     <div class="table-container">

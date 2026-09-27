@@ -143,8 +143,6 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
     if (!config.portal) return;
     if (list.parentElement !== document.body) document.body.appendChild(list);
     const rect = input.getBoundingClientRect();
-    const scrollX = window.scrollX || window.pageXOffset;
-    const scrollY = window.scrollY || window.pageYOffset;
     const viewportPadding = 8;
     const dropdownGap = 6;
     const availableWidth = Math.max(0, window.innerWidth - (viewportPadding * 2));
@@ -179,16 +177,19 @@ export function initAccessibleCombobox(select, initialConfig = {}) {
       && rect.top > dropdownHeight;
     wrapper.classList.toggle("drop-up", placeAbove);
     setRuntimeStyles(list, {
-      position: "absolute",
+      // The portal is positioned against the viewport. Fixed positioning avoids
+      // browser-specific body offset behavior (notably WebKit's scrollbar gutter)
+      // while the scroll listener keeps it aligned during page scrolling.
+      position: "fixed",
       animation: "none",
       boxSizing: "border-box",
       width: `${dropdownWidth}px`,
       minWidth: `${dropdownWidth}px`,
       maxWidth: `${availableWidth}px`,
-      left: `${left + scrollX}px`,
+      left: `${left}px`,
       top: `${placeAbove
-        ? rect.top + scrollY - dropdownHeight - dropdownGap
-        : rect.bottom + scrollY + dropdownGap}px`,
+        ? rect.top - dropdownHeight - dropdownGap
+        : rect.bottom + dropdownGap}px`,
     });
   };
 

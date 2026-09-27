@@ -136,7 +136,7 @@ function contentType(pathname) {
 
 function testPage() {
   return template
-    .replace("__BF_ADMIN_STYLES__", '<link rel="stylesheet" href="/node_modules/@tabler/core/dist/css/tabler.min.css"><link rel="stylesheet" href="/frontend/admin-platform/admin.css"><link rel="stylesheet" data-runtime-styles href="/layout-runtime.css">')
+    .replace("__BF_ADMIN_STYLES__", '<link rel="stylesheet" href="/node_modules/@tabler/core/dist/css/tabler.min.css"><link rel="stylesheet" href="/frontend/admin-platform/admin.css">')
     .replace("__BF_ADMIN_VENDOR_SCRIPT__", "")
     .replace("__BF_ADMIN_SESSION__", JSON.stringify({
       valid: true, user: { id: "layout-super-admin", name: "Nguyễn Minh", platform_role: "super_admin" },
@@ -172,9 +172,9 @@ before(async () => {
         }
         return;
       }
-      if (pathname === "/layout-runtime.css") {
+      if (pathname === "/css/runtime-styles.css") {
         response.writeHead(200, { "content-type": "text/css; charset=utf-8" });
-        response.end("");
+        response.end(await readFile(join(root, "views/css/runtime-styles.css")));
         return;
       }
       if (!pathname.startsWith("/frontend/")

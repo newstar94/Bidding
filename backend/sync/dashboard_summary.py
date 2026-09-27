@@ -220,6 +220,26 @@ def _effective_package_rows_sql(latest_packages_sql):
     """
 
 
+def package_alert_conditions(alias="vp"):
+    """Keep dashboard counts and package-list drilldowns on one definition."""
+    return {
+        "closingToday": f"{alias}.effective_status = 'INVITED' AND ({alias}.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+        "closingSoon": f"{alias}.effective_status = 'INVITED' AND {alias}.thoi_gian_dong_thau > CURRENT_TIMESTAMP AND {alias}.thoi_gian_dong_thau <= CURRENT_TIMESTAMP + INTERVAL '7 days' AND ({alias}.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+        "overdueOpening": f"{alias}.effective_status = 'INVITED' AND ({alias}.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+        "delayedEvaluation": f"""
+            {alias}.effective_status IN ('OPENED', 'EVALUATING')
+            AND COALESCE({alias}.thoi_gian_mo_thau, {alias}.thoi_gian_dong_thau)
+                <= CURRENT_TIMESTAMP - INTERVAL '{EVALUATION_REPORT_DELAY_DAYS} days'
+            AND NOT EXISTS (
+                SELECT 1 FROM vong_danh_gia vd
+                WHERE vd.organization_id = {alias}.organization_id
+                  AND vd.goi_thau_id = {alias}.id
+                  AND (COALESCE(trim(vd.so_bao_cao), '') <> '' OR vd.ngay_bao_cao IS NOT NULL)
+            )
+        """,
+    }
+
+
 def build_dashboard_summary(cursor, organization_id, role_str, user_id):
     manager = is_organization_manager(cursor, role_str, user_id, organization_id)
 
@@ -456,23 +476,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             FROM ({effective_packages_sql}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
         """
-        delayed_evaluation_condition = f"""
-            vp.effective_status IN ('OPENED', 'EVALUATING')
-            AND COALESCE(vp.thoi_gian_mo_thau, vp.thoi_gian_dong_thau)
-                <= CURRENT_TIMESTAMP - INTERVAL '{EVALUATION_REPORT_DELAY_DAYS} days'
-            AND NOT EXISTS (
-                SELECT 1 FROM vong_danh_gia vd
-                WHERE vd.organization_id = vp.organization_id
-                  AND vd.goi_thau_id = vp.id
-                  AND (COALESCE(trim(vd.so_bao_cao), '') <> '' OR vd.ngay_bao_cao IS NOT NULL)
-            )
-        """
-        alert_conditions = {
-            "closingToday": "vp.effective_status = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
-            "closingSoon": "vp.effective_status = 'INVITED' AND vp.thoi_gian_dong_thau > CURRENT_TIMESTAMP AND vp.thoi_gian_dong_thau <= CURRENT_TIMESTAMP + INTERVAL '7 days' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
-            "overdueOpening": "vp.effective_status = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
-            "delayedEvaluation": delayed_evaluation_condition,
-        }
+        alert_conditions = package_alert_conditions("vp")
         union_parts = [
             f"SELECT '{key}' AS alert_key, COUNT(*) AS total FROM visible_packages vp WHERE {condition}"
             for key, condition in alert_conditions.items()

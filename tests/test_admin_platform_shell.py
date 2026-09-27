@@ -52,6 +52,7 @@ def test_admin_shell_serves_authorized_deep_link(monkeypatch):
     assert "/frontend/admin-platform/AdminApp.js" in response.text
     assert "/vendor/tabler/tabler.min.css" in response.text
     assert "/vendor/tabler/tabler.min.js" not in response.text
+    assert '<link rel="stylesheet" href="/css/runtime-styles.css?v=2.0" data-runtime-styles>' in response.text
     assert "data-admin-nav-toggle" not in response.text
     assert "__BF_ADMIN_" not in response.text
     assert response.headers["x-robots-tag"] == "noindex, nofollow"

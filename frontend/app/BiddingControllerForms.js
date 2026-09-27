@@ -16,6 +16,13 @@ import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 import { trackPackageInheritance } from "../packages/packageRebidWorkflow.js";
 import { runPackageFormSubmission } from "../packages/packageFormState.js";
 import { runModalFormSubmission } from "../shared/ModalFormSubmission.js";
+import {
+  deletePackageView,
+  renderPackageSavedViews,
+  restorePackageListContext,
+  savePackageView,
+  selectedPackageSavedView,
+} from "../packages/PackageListContext.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -207,6 +214,64 @@ export function setupFileUploads() {
   });
 }
 export function setupActionListeners() {
+  renderPackageSavedViews(this.model);
+  onById("goithau-saved-view", "change", () => renderPackageSavedViews(this.model));
+  onById("goithau-clear-filters", "click", () => {
+    for (const id of [
+      "search-goithau", "filter-goithau-trangthai", "filter-goithau-hinhthuc",
+      "filter-goithau-nam", "filter-goithau-thang",
+    ]) {
+      const control = document.getElementById(id);
+      if (control) control.value = "";
+    }
+    this.model.dashboardAlertFilter = "";
+    this.model.dashboardAlertFilterLabel = "";
+    this.model.currentPage.goithau = 1;
+    this.model.savePage("goithau");
+    this.view.renderGoiThauTable();
+  });
+  onById("goithau-apply-view", "click", () => {
+    const selected = selectedPackageSavedView(this.model);
+    if (!selected) return;
+    restorePackageListContext(this.model, { ...selected.context, search: "" });
+    this.model.savePage("goithau");
+    this.view.renderGoiThauTable();
+  });
+  onById("goithau-save-view", "click", async () => {
+    const name = await this.view.customPrompt(
+      "Lưu chế độ xem", "Lưu bộ lọc và thứ tự sắp xếp hiện tại cho riêng bạn trong workspace này.",
+      "", "Tên chế độ xem", false, (value) => Boolean(String(value || "").trim()), "text",
+      { inputLabel: "Tên chế độ xem" },
+    );
+    if (name === null) return;
+    try {
+      savePackageView(this.model, name);
+    } catch (error) {
+      await this.view.customAlert("Không thể lưu chế độ xem", error.message, "x-circle");
+    }
+  });
+  onById("goithau-update-view", "click", async () => {
+    const selected = selectedPackageSavedView(this.model);
+    if (!selected) return;
+    try {
+      savePackageView(this.model, selected.name, selected.id);
+    } catch (error) {
+      await this.view.customAlert("Không thể cập nhật chế độ xem", error.message, "x-circle");
+    }
+  });
+  onById("goithau-delete-view", "click", async () => {
+    const selected = selectedPackageSavedView(this.model);
+    if (!selected) return;
+    const confirmed = await this.view.customConfirm(
+      "Xóa chế độ xem", `Xóa chế độ xem “${selected.name}”?`, "trash-2",
+    );
+    if (!confirmed) return;
+    try {
+      deletePackageView(this.model, selected.id);
+    } catch (error) {
+      await this.view.customAlert("Không thể xóa chế độ xem", error.message, "x-circle");
+    }
+  });
   const bindTableSearch = (inputId, table, renderMethod) => {
     bindPaginatedTableSearch(this.model, {
       inputId,
