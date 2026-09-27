@@ -8,7 +8,7 @@ import sys
 import time
 from uuid import uuid4
 
-import httpx
+import httpx2 as httpx
 import psycopg
 import pytest
 
