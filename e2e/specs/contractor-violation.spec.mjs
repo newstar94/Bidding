@@ -2,6 +2,9 @@ import { expect, test } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
+// Keep the canonical save visible to the route below; service-worker traffic
+// can bypass page-level routing in Playwright.
+test.use({ serviceWorkers: "block" });
 
 const fixtureReady = Boolean(process.env.VNEPS_VIOLATION_FIXTURE_PATH);
 
@@ -153,15 +156,61 @@ test("confirmed contractor and exact joint-venture members stay red after reload
 
   await expect(page.getByText("Có vi phạm", { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-violation-badge], [data-violation-tooltip]')).toHaveCount(0);
-  const saveResponse = page.waitForResponse(response => (
-    response.request().method() === "POST" && new URL(response.url()).pathname === "/api/sync"
-  ));
-  await page.locator("#btn-mothau-save").click();
-  const response = await saveResponse;
-  const payload = await response.json();
-  const sentPackage = response.request().postDataJSON()?.goithau?.[0];
-  expect(response.ok(), JSON.stringify({ code: payload.code,
-    expectedPackageCode: page.__violationFixture.package.code,
+  const expectedPackage = page.__violationFixture.package;
+  let resolveSyncExchange;
+  let rejectSyncExchange;
+  const syncExchange = new Promise((resolve, reject) => {
+    resolveSyncExchange = resolve;
+    rejectSyncExchange = reject;
+  });
+  // Attach a rejection observer before the click can dispatch the request;
+  // the awaited promise below still propagates the original route failure.
+  void syncExchange.catch(() => {});
+  const syncRouteHandler = async route => {
+    const request = route.request();
+    try {
+      if (request.method() !== "POST"
+        || new URL(request.url()).pathname !== "/api/sync") {
+        await route.continue();
+        return;
+      }
+      const requestPayload = request.postDataJSON();
+      const sentPackage = (requestPayload?.goithau || []).find((item) => (
+        String(item?.id || "") === String(expectedPackage.id)
+        || String(item?.maGoiThau || "") === String(expectedPackage.code)
+      ));
+      if (!sentPackage) {
+        await route.continue();
+        return;
+      }
+      // Capture the body before fulfilling the browser response so later
+      // navigation cannot evict the body needed for assertion diagnostics.
+      const upstreamResponse = await route.fetch();
+      const responseBody = await upstreamResponse.body();
+      await route.fulfill({ response: upstreamResponse, body: responseBody });
+      const payload = JSON.parse(responseBody.toString("utf8"));
+      resolveSyncExchange({
+        payload,
+        sentPackage,
+        ok: upstreamResponse.ok(),
+        status: upstreamResponse.status(),
+      });
+    } catch (error) {
+      rejectSyncExchange(error);
+      throw error;
+    }
+  };
+  await page.route("**/api/sync", syncRouteHandler);
+  let syncResponse;
+  try {
+    await page.locator("#btn-mothau-save").click();
+    syncResponse = await syncExchange;
+  } finally {
+    await page.unroute("**/api/sync", syncRouteHandler);
+  }
+  const { payload, sentPackage } = syncResponse;
+  expect(syncResponse.ok, JSON.stringify({ status: syncResponse.status, code: payload.code,
+    expectedPackageCode: expectedPackage.code,
     submittedPackageCode: sentPackage?.maGoiThau,
     errors: (payload.errors || payload.fields?.errors || []).map(error => ({
       table: error.table, field: error.field, code: error.code, message: error.message,
