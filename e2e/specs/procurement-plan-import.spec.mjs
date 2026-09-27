@@ -55,7 +55,14 @@ async function login(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  await expect(page.locator("#login-username")).toBeHidden();
+  // The auth overlay can disappear before the post-login route transition has
+  // settled.  Waiting for the workspace route prevents the next page.goto()
+  // from racing the dashboard navigation in Firefox.
+  await page.waitForURL("**/tong-quan", { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
+  await page.waitForFunction(() => (
+    document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
+  ));
 }
 
 
