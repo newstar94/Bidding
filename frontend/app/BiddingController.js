@@ -51,7 +51,6 @@ import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
 import { workspaceTaskScheduler } from "../shared/WorkspaceTaskScheduler.js";
 import { workspaceLifecycleController } from "./WorkspaceLifecycleController.js";
 import { POST_STARTUP_TIMING } from "./startupTiming.js";
-import { setupWorkspaceQuickSearch } from "./WorkspaceQuickSearch.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -936,7 +935,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     }
     this.view.initDOM();
     this.setupSyncUx();
-    setupWorkspaceQuickSearch(this);
     this.setupAuth();
     this.setupActivityTracker();
     this.registerCommands();

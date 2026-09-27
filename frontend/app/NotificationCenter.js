@@ -8,7 +8,7 @@ import {
   deriveDashboardAlerts,
   derivePlanPublishingAlerts,
   selectDashboardActionItems
-} from "./DashboardView.js";
+} from "./dashboardAlertRules.js";
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,

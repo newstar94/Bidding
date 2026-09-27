@@ -23,7 +23,7 @@ import {
   versionRootId,
 } from "../shared/versionResolver.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
-import { dashboardAlertMatches } from "../app/DashboardView.js";
+import { dashboardAlertMatches } from "../app/dashboardAlertRules.js";
 import {
   rememberPackageListContext,
   renderPackageFilterSummary,

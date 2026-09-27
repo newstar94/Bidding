@@ -28,7 +28,7 @@
   --canvas: #f5f8fc;
   --surface: #ffffff;
   --surface-subtle: #f0f5fb;
-  --surface-raised: #ffffff;
+  --surface-raised: var(--surface);
   --ink: #111a2c;
   /* Readable secondary copy: 7.44:1 and 5.64:1 on the subtle surface. */
   --ink-muted: #40506a;
@@ -55,18 +55,18 @@
   --focus-ring-offset: 0;
   --focus-ring-glow: 0 0 10px rgba(49, 87, 232, 0.18);
   --bg-app: var(--canvas);
-  --bg-sidebar: #ffffff;
-  --bg-card: #ffffff;
+  --bg-sidebar: var(--surface);
+  --bg-card: var(--surface);
   /* Direct values below preserve the established CSS/a11y token contract. */
-  --border-color: #dce5f0;
-  --border-hover: #c7d5e5;
-  --text-main: #111a2c;
-  --text-muted: #40506a;
-  --text-light: #53627a;
-  --primary: #3157e8;
-  --primary-hover: #2446c7;
-  --primary-soft: #edf2ff;
-  --accent: #0797a6;
+  --border-color: var(--line);
+  --border-hover: var(--line-strong);
+  --text-main: var(--ink);
+  --text-muted: var(--ink-muted);
+  --text-light: var(--ink-subtle);
+  --primary: var(--brand);
+  --primary-hover: var(--brand-strong);
+  --primary-soft: var(--brand-soft);
+  --accent: var(--aqua);
   --success: #0f766e;
   --success-hover: #0b625c;
   --success-soft: #eaf9f4;
@@ -76,7 +76,7 @@
   --danger: #c73543;
   --danger-hover: #a92d39;
   --danger-soft: #fff0f2;
-  --neutral-soft: #f0f5fb;
+  --neutral-soft: var(--surface-subtle);
   --neutral-hover: #e6edf6;
   --shadow-sm: 0 1px 2px rgba(17, 26, 44, 0.04);
   --shadow: 0 8px 24px rgba(35, 57, 91, 0.07);

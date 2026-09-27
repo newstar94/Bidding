@@ -1,7 +1,4 @@
-import { generateUUID } from "../shared/idUtils.js";
-
 const SESSION_KEY = "bf_package_list_context";
-const VIEWS_KEY = "bf_package_saved_views";
 const FILTER_IDS = Object.freeze({
   status: "filter-goithau-trangthai",
   method: "filter-goithau-hinhthuc",
@@ -97,65 +94,4 @@ export function renderPackageFilterSummary(model) {
   root.hidden = labels.length === 0;
   const summary = root.querySelector("span");
   if (summary) summary.textContent = labels.length ? `Đang lọc: ${labels.join(" · ")}` : "";
-}
-
-export function readPackageSavedViews(model) {
-  try {
-    const entries = model?.workspaceStorage?.readJson(VIEWS_KEY, []);
-    return Array.isArray(entries)
-      ? entries.filter((entry) => entry?.id && typeof entry.name === "string" && entry.context?.filters)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writePackageSavedViews(model, views) {
-  model?.workspaceStorage?.writeJson(VIEWS_KEY, views);
-}
-
-export function renderPackageSavedViews(model) {
-  const select = document.getElementById("goithau-saved-view");
-  if (!select) return;
-  const previous = select.value;
-  const makeOption = (label, value) => {
-    const option = document.createElement("option");
-    option.textContent = label;
-    option.value = value;
-    return option;
-  };
-  select.replaceChildren(makeOption("Chọn chế độ xem", ""));
-  readPackageSavedViews(model).forEach((entry) => select.add(makeOption(entry.name, entry.id)));
-  select.value = [...select.options].some((option) => option.value === previous) ? previous : "";
-  const selected = Boolean(select.value);
-  for (const id of ["goithau-update-view", "goithau-delete-view"]) {
-    const button = document.getElementById(id);
-    if (button) button.disabled = !selected;
-  }
-}
-
-export function selectedPackageSavedView(model) {
-  const id = document.getElementById("goithau-saved-view")?.value;
-  return readPackageSavedViews(model).find((entry) => entry.id === id) || null;
-}
-
-export function savePackageView(model, name, id = generateUUID()) {
-  const views = readPackageSavedViews(model);
-  const context = capturePackageListContext(model, { includeSearch: false });
-  context.page = 1;
-  const existing = views.findIndex((entry) => entry.id === id);
-  const entry = { id, name: String(name || "").trim(), context };
-  if (!entry.name) throw new Error("Tên chế độ xem không được để trống.");
-  if (existing < 0) views.push(entry);
-  else views[existing] = entry;
-  writePackageSavedViews(model, views);
-  renderPackageSavedViews(model);
-  document.getElementById("goithau-saved-view").value = id;
-  renderPackageSavedViews(model);
-  return entry;
-}
-
-export function deletePackageView(model, id) {
-  writePackageSavedViews(model, readPackageSavedViews(model).filter((entry) => entry.id !== id));
-  renderPackageSavedViews(model);
 }

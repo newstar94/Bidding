@@ -3,12 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   capturePackageListContext,
-  deletePackageView,
-  readPackageSavedViews,
   rememberPackageListContext,
-  renderPackageSavedViews,
   restorePackageListContext,
-  savePackageView,
 } from "../../frontend/packages/PackageListContext.js";
 
 function select(options) {
@@ -28,9 +24,6 @@ function fixture() {
     ["filter-goithau-hinhthuc", select([["", "Tất cả"], ["Đấu thầu rộng rãi", "Đấu thầu rộng rãi"]])],
     ["filter-goithau-nam", select([["", "Năm"], ["2026", "2026"]])],
     ["filter-goithau-thang", select([["", "Tháng"], ["9", "9"]])],
-    ["goithau-saved-view", select([["", "Chọn chế độ xem"]])],
-    ["goithau-update-view", { disabled: true }],
-    ["goithau-delete-view", { disabled: true }],
   ]);
   globalThis.document = {
     getElementById: (id) => controls.get(id) || null,
@@ -72,37 +65,7 @@ test("package list context restores scoped search, filters and page without URL 
   assert.equal(model.currentPage.goithau, 3);
 });
 
-test("personal saved views contain filters and sort, reject retired options, and stay in one workspace", () => {
-  const { controls, model, scopedStorage } = fixture();
-  controls.get("search-goithau").value = "CCCD 123";
-  controls.get("filter-goithau-hinhthuc").value = "Đấu thầu rộng rãi";
-  model.sortState.goithau = { field: "giaGoiThau", order: "desc" };
-  savePackageView(model, "Theo hình thức", "view-1");
-  const saved = readPackageSavedViews(model);
-  assert.equal(saved.length, 1);
-  assert.equal(saved[0].context.search, undefined);
-  assert.equal(saved[0].context.sort.field, "giaGoiThau");
-  assert.equal(controls.get("goithau-saved-view").value, "view-1");
-  assert.equal(controls.get("goithau-update-view").disabled, false);
-
-  const otherWorkspace = { ...model, workspaceStorage: scopedStorage("user-b:org-b") };
-  assert.deepEqual(readPackageSavedViews(otherWorkspace), []);
-  restorePackageListContext(model, {
-    ...saved[0].context,
-    filters: { ...saved[0].context.filters, status: "Đã bị loại bỏ" },
-    sort: { field: "unsupported", order: "desc" },
-  });
-  assert.equal(controls.get("filter-goithau-trangthai").value, "");
-  assert.equal(model.sortState.goithau.field, "giaGoiThau");
-
-  deletePackageView(model, "view-1");
-  renderPackageSavedViews(model);
-  assert.deepEqual(readPackageSavedViews(model), []);
-  assert.equal(controls.get("goithau-delete-view").disabled, true);
-  assert.equal(capturePackageListContext(model, { includeSearch: false }).search, undefined);
-});
-
-test("a saved year remains usable before its page has loaded", () => {
+test("a year remains usable before its page has loaded", () => {
   const { controls, model } = fixture();
   restorePackageListContext(model, {
     filters: { year: "2025", month: "12" },
