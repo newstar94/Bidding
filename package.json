@@ -13,6 +13,7 @@
     "check:bootstrap-assets": "python scripts/generate_bootstrap_asset_urls.py --check && node scripts/generate_landing_icons.mjs --check",
     "check:route-css": "node scripts/check_route_css_split.mjs",
     "check:e2e-discovery": "node scripts/check_playwright_discovery.mjs",
+    "check:e2e-results": "node scripts/verify_playwright_results.mjs",
     "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
     "lint:python": "python scripts/check_python_quality.py",
     "lint:encoding": "python scripts/check_mojibake.py",
@@ -85,7 +86,7 @@
     "puppeteer": "^25.6.0"
   },
   "overrides": {
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "fast-uri": "3.1.5"
   }
 }

@@ -176,6 +176,21 @@ def test_disabled_payment_runtime_does_not_require_database_or_credentials():
     ) is None
 
 
+def test_trial_payment_runtime_uses_effective_flags_without_resolving_provider():
+    environment = {
+        "TRIAL_FULL_ACCESS_ENABLED": "true",
+        "COMMERCIAL_POLICY_ENABLED": "true",
+        "COMMERCIAL_POLICY_MODE": "enforce",
+        "PAYMENT_CHECKOUT_ENABLED": "true",
+        "PAYMENT_ACTIVATION_ENABLED": "true",
+        "COMMERCIAL_PAYMENT_PROVIDER": "payos",
+    }
+
+    assert validate_payment_provider_runtime(
+        object(), environment=environment
+    ) is None
+
+
 def test_v80_migration_adds_immutable_live_profile_without_secret_values():
     statements = []
 

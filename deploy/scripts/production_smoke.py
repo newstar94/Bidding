@@ -21,9 +21,9 @@ import re
 import stat
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import (
@@ -54,6 +54,8 @@ SENSITIVE_QUERY_PARTS = (
     "key",
 )
 PATH_RE = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/\-?#[\]]*$")
+IMMUTABLE_RELEASE_ID = re.compile(r"^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$")
+RELEASE_IDENTITY_PATH = "/api/admin/system/version"
 
 
 class SmokeConfigurationError(ValueError):
@@ -69,6 +71,7 @@ class ResponseSnapshot:
     status: int
     content_type: str
     body: bytes
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -161,6 +164,24 @@ def _status_set(raw_value: str, variable_name: str, default: Iterable[int]) -> f
     if not statuses or any(status < 100 or status > 599 for status in statuses):
         raise SmokeConfigurationError(f"{variable_name} chứa HTTP status không hợp lệ")
     return statuses
+
+
+def _validate_release_id(raw_value: str, variable_name: str) -> str:
+    value = str(raw_value or "").strip()
+    if not IMMUTABLE_RELEASE_ID.fullmatch(value):
+        raise SmokeConfigurationError(
+            f"{variable_name} phải là release ID bất biến gồm 40 hoặc 64 ký tự hex"
+        )
+    return value
+
+
+def _validate_header_name(raw_value: str, variable_name: str) -> str | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", value):
+        raise SmokeConfigurationError(f"{variable_name} chứa tên header không hợp lệ")
+    return value
 
 
 def _safe_log_path(raw_value: str) -> Path | None:
@@ -294,6 +315,7 @@ class SmokeRunner:
                         status=int(response.status),
                         content_type=_content_type(response.headers),
                         body=data,
+                        headers={str(key).casefold(): str(value) for key, value in response.headers.items()},
                     )
             except HTTPError as error:
                 # Do not read or print the body: it may contain personal data or
@@ -307,6 +329,8 @@ class SmokeRunner:
                     status=int(error.code),
                     content_type=content_type,
                     body=b"",
+                    headers={str(key).casefold(): str(value) for key, value in error.headers.items()}
+                    if error.headers is not None else {},
                 )
             except (URLError, TimeoutError, OSError) as error:
                 last_transport_error = error
@@ -400,6 +424,37 @@ class SmokeRunner:
             raise SmokeCheckError(f"Session không hợp lệ (HTTP {snapshot.status})")
         self.log("session-passed", path=path, status=snapshot.status)
 
+    def assert_release_identity(self, path: str, expected_release_id: str) -> None:
+        """Verify the running server exposes the immutable artifact identity.
+
+        The endpoint is intentionally the existing authorized admin version
+        surface.  We never accept a client-provided header or a local filename
+        as proof that the process serving traffic is the candidate release.
+        """
+
+        try:
+            snapshot = self.request(method="GET", path=path, authenticated=True)
+        except SmokeCheckError as error:
+            self.log("release-identity-failed", path=path)
+            raise error
+        if snapshot.status != 200 or not snapshot.content_type.startswith("application/json"):
+            self.log("release-identity-failed", path=path, status=snapshot.status)
+            if snapshot.status != 200:
+                raise SmokeCheckError(
+                    f"Release identity endpoint trả HTTP {snapshot.status}, cần 200"
+                )
+            raise SmokeCheckError("Release identity endpoint không trả JSON")
+        try:
+            payload = json.loads(snapshot.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            self.log("release-identity-failed", path=path, status=snapshot.status)
+            raise SmokeCheckError("Release identity endpoint không trả JSON hợp lệ") from error
+        actual_release_id = payload.get("releaseId") if isinstance(payload, dict) else None
+        if actual_release_id != expected_release_id:
+            self.log("release-identity-failed", path=path, status=snapshot.status)
+            raise SmokeCheckError("Release identity trên máy chủ không khớp artifact mong đợi")
+        self.log("release-identity-passed", path=path, status=snapshot.status)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -468,6 +523,10 @@ def _load_configuration(args: argparse.Namespace) -> dict[str, object]:
         "sync_path": sync_path,
         "session_path": session_path,
         "login_path": login_path,
+        "release_path": RELEASE_IDENTITY_PATH,
+        "expected_release_id": _validate_release_id(
+            _env("SMOKE_EXPECTED_RELEASE_ID"), "SMOKE_EXPECTED_RELEASE_ID"
+        ),
         "optional": optional,
         "negative_path": negative_path,
         "negative_status": _status_set(
@@ -491,6 +550,9 @@ def _run(config: dict[str, object], mode: str) -> int:
     runner.assert_probe(Probe("ready", "/health/ready", frozenset({200})))
     runner.login(str(config["login_path"]))
     runner.assert_session(str(config["session_path"]))
+    runner.assert_release_identity(
+        str(config["release_path"]), str(config["expected_release_id"])
+    )
     runner.assert_probe(
         Probe("authorized-read", str(config["read_path"]), frozenset({200}))
     )

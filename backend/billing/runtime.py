@@ -14,6 +14,7 @@ import threading
 from .providers.base import PaymentProviderError
 from .providers.fake import FakePaymentProvider
 from .providers.payos import PayOSCredentials, PayOSPaymentProvider
+from backend.commercial_policy.config import commercial_runtime_config
 
 
 PAYOS_ENV_SECRET_NAMES = {
@@ -156,9 +157,14 @@ def validate_payment_provider_runtime(
     """Resolve the exact live DB profile before payment traffic is ready."""
 
     environment = os.environ if environment is None else environment
-    payment_enabled = any(
-        str(environment.get(name, "false")).strip().casefold() == "true"
-        for name in ("PAYMENT_CHECKOUT_ENABLED", "PAYMENT_ACTIVATION_ENABLED")
+    # Use the effective commercial configuration rather than the raw flags.
+    # Trial mode intentionally overrides checkout and activation to off, so a
+    # deployment carrying stale raw flags must not resolve credentials or
+    # require a live database provider profile.
+    commercial_config = commercial_runtime_config(environment)
+    payment_enabled = (
+        commercial_config.payment_checkout_enabled
+        or commercial_config.payment_activation_enabled
     )
     provider_name = str(
         environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")

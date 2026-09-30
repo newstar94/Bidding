@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from copy import deepcopy
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import logging
 import os
 import re
 import threading
+import time
 from uuid import NAMESPACE_URL, uuid5
 
 from starlette.responses import JSONResponse
@@ -487,10 +489,18 @@ def _record_enrichment_progress(context, operation_id, notice_no, processed, tot
         for item in results:
             if str(item.get("noticeNo") or "").upper() == str(notice_no).upper():
                 item["status"] = "SUCCEEDED"
-        repository.update_operation(
+        next_lease = repository.update_operation(
             context["organizationId"], operation_id,
             cursor=min(int(processed), int(total)), results=results, status="RUNNING",
+            expected_lease=context.get("_operationLease"),
         )
+        if next_lease is None:
+            # A restarted worker has fenced this process.  Do not let stale
+            # source results overwrite the new owner; the final transaction
+            # below will abort when it sees this marker.
+            context["_operationLeaseLost"] = True
+        else:
+            context["_operationLease"] = next_lease
         connection.commit()
     except Exception:  # noqa: BLE001 - best-effort progress must not abort enrichment.
         connection.rollback()
@@ -506,27 +516,11 @@ def _record_enrichment_progress(context, operation_id, notice_no, processed, tot
 def _run_plan_enrichment(context, operation_id):
     """Refresh linked notices without holding the HTTP prepare request open."""
     try:
-        progress_connection = database.get_connection()
-        try:
-            progress_connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
-            progress_repo = ProcurementImportRepository(progress_connection.cursor())
-            progress_operation = progress_repo.get_operation(
-                context["organizationId"], operation_id,
-            )
-            if progress_operation is None:
-                return
-            progress_repo.update_operation(
-                context["organizationId"], operation_id,
-                cursor=0,
-                results=progress_operation.get("revisionResults", []),
-                status="RUNNING",
-            )
-            progress_connection.commit()
-        except Exception:
-            progress_connection.rollback()
-            raise
-        finally:
-            progress_connection.close()
+        lease = _claim_enrichment_operation(context, operation_id)
+        if lease is None:
+            return
+        context["_operationLease"] = lease
+        context["_operationLeaseLost"] = False
         connection = database.get_connection()
         try:
             connection.rollback()
@@ -541,6 +535,13 @@ def _run_plan_enrichment(context, operation_id):
         finally:
             connection.close()
         if session_row is None:
+            return
+        expires_at = session_row.get("expiresAt")
+        if expires_at and datetime.now(timezone.utc) >= expires_at:
+            _finish_enrichment_operation(
+                context, operation_id, status="FAILED",
+                results=[], error_code="PROCUREMENT_IMPORT_SESSION_EXPIRED",
+            )
             return
         source = build_procurement_source()
         preparer = _build_import_preparer(source)
@@ -637,7 +638,9 @@ def _run_plan_enrichment(context, operation_id):
                 }
                 for notice in _linked_notice_numbers(enriched_bundle)
             ]
-            ProcurementImportRepository(update_connection.cursor()).update_operation(
+            if context.get("_operationLeaseLost"):
+                raise RuntimeError("PROCUREMENT_ENRICHMENT_LEASE_LOST")
+            next_lease = ProcurementImportRepository(update_cursor).update_operation(
                 context["organizationId"], operation_id,
                 cursor=len(results), results=results,
                 status=(
@@ -645,8 +648,12 @@ def _run_plan_enrichment(context, operation_id):
                     else "PARTIAL" if failed_notices
                     else "COMPLETED"
                 ),
+                expected_lease=context.get("_operationLease"),
             )
+            if next_lease is None:
+                raise RuntimeError("PROCUREMENT_ENRICHMENT_LEASE_LOST")
             update_connection.commit()
+            context["_operationLease"] = next_lease
         except Exception:
             update_connection.rollback()
             raise
@@ -663,9 +670,9 @@ def _run_plan_enrichment(context, operation_id):
             for item in results:
                 item["status"] = "FAILED"
                 item["errorCode"] = str(error)[:120]
-            ProcurementImportRepository(connection.cursor()).update_operation(
-                context["organizationId"], operation_id,
-                cursor=0, results=results, status="FAILED",
+            _finish_enrichment_operation(
+                context, operation_id, status="FAILED", results=results,
+                error_code=str(error)[:120], connection=connection,
             )
             connection.commit()
         except Exception:  # noqa: BLE001 - preserve the original background failure.
@@ -677,6 +684,234 @@ def _run_plan_enrichment(context, operation_id):
             )
         finally:
             connection.close()
+
+
+def _claim_enrichment_operation(context, operation_id):
+    """Claim an enrichment row and return its durable fencing timestamp."""
+
+    try:
+        stale_after_seconds = max(
+            5.0,
+            min(
+                float(os.environ.get(
+                    "PROCUREMENT_ENRICHMENT_LEASE_STALE_SECONDS", "300"
+                )),
+                86_400.0,
+            ),
+        )
+    except (TypeError, ValueError):
+        stale_after_seconds = 300.0
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        claimed = ProcurementImportRepository(connection.cursor()).claim_background_operation(
+            context["organizationId"], operation_id,
+            stale_after_seconds=stale_after_seconds,
+        )
+        connection.commit()
+        return claimed
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _finish_enrichment_operation(
+    context,
+    operation_id,
+    *,
+    status,
+    results,
+    error_code=None,
+    connection=None,
+):
+    """Best-effort fenced terminal update used by normal and recovery workers."""
+
+    owns_connection = connection is None
+    connection = connection or database.get_connection()
+    try:
+        if owns_connection:
+            connection.execute("BEGIN ISOLATION LEVEL SERIALIZABLE")
+        repository = ProcurementImportRepository(connection.cursor())
+        operation = repository.get_operation(
+            context["organizationId"], operation_id,
+        )
+        if operation is None:
+            return False
+        if status == "FAILED" and not results:
+            results = deepcopy(operation.get("revisionResults") or [])
+            for item in results:
+                if item.get("status") not in {"SUCCEEDED", "COMPLETED"}:
+                    item["status"] = "FAILED"
+                    if error_code:
+                        item["errorCode"] = error_code
+        # A failed worker may already have persisted progress.  Keep that
+        # durable cursor when transitioning to FAILED; forcing cursor=0 would
+        # violate the repository's monotonic compare-and-advance guard and
+        # leave the row RUNNING forever.
+        next_cursor = (
+            int(operation.get("nextRevisionIndex") or 0)
+            if status == "FAILED"
+            else len(results)
+        )
+        next_lease = repository.update_operation(
+            context["organizationId"], operation_id,
+            cursor=next_cursor,
+            results=results,
+            status=status,
+            expected_lease=context.get("_operationLease"),
+        )
+        if owns_connection:
+            connection.commit()
+        if next_lease is not None:
+            context["_operationLease"] = next_lease
+        return next_lease is not None
+    except Exception:
+        if owns_connection:
+            connection.rollback()
+        LOGGER.warning(
+            "Unable to finish procurement enrichment operation",
+            extra={"operation_id": operation_id, "status": status,
+                   "error_code": error_code},
+            exc_info=True,
+        )
+        return False
+    finally:
+        if owns_connection:
+            connection.close()
+
+
+def recover_stale_plan_enrichments(*, limit=8):
+    """Requeue durable enrichment operations after a worker restart.
+
+    The session id is carried in the server-generated idempotency key
+    (``enrichment:<session-id>``), avoiding a schema change while retaining the
+    exact session owner, workspace lease, bundle digest and TTL.  Claiming is
+    atomic and fenced by ``updated_at`` so multiple web workers may call this
+    scanner safely.
+    """
+
+    # The internal recovery scanner enumerates tenants directly from the
+    # bounded catalog query; this path is never exposed through HTTP.
+    try:
+        stale_after_seconds = max(
+            5.0,
+            min(
+                float(os.environ.get(
+                    "PROCUREMENT_ENRICHMENT_LEASE_STALE_SECONDS", "300"
+                )),
+                86_400.0,
+            ),
+        )
+    except (TypeError, ValueError):
+        stale_after_seconds = 300.0
+    connection = database.get_connection()
+    try:
+        cursor = connection.cursor()
+        rows = cursor.execute(
+            """SELECT operation.organization_id, operation.id,
+                      operation.provider, operation.family_key,
+                      operation.actor_user_id, operation.idempotency_key
+                 FROM procurement_import_operation AS operation
+                 JOIN procurement_import_session AS session
+                   ON session.organization_id = operation.organization_id
+                  AND session.id = split_part(operation.idempotency_key, ':', 2)
+                WHERE operation.idempotency_key LIKE 'enrichment:%%'
+                  AND (
+                        operation.status = 'PENDING'
+                        OR (
+                            operation.status = 'RUNNING'
+                            AND operation.updated_at < clock_timestamp()
+                                - (? * INTERVAL '1 second')
+                        )
+                  )
+                  AND session.expires_at > clock_timestamp()
+                  AND session.provider = operation.provider
+                  AND session.family_key = operation.family_key
+                  AND session.user_id = operation.actor_user_id
+                ORDER BY operation.updated_at ASC, operation.id ASC
+                LIMIT ?""",
+            (stale_after_seconds, max(1, min(int(limit), 50))),
+        ).fetchall()
+    finally:
+        connection.rollback()
+        connection.close()
+
+    started = 0
+    for organization_id, operation_id, provider, family_no, actor_user_id, key in rows:
+        session_id = str(key).split(":", 1)[1].strip()
+        connection = database.get_connection()
+        try:
+            session = ProcurementImportSessionRepository(
+                connection.cursor()
+            ).get_for_background_recovery(
+                session_id, organization_id=organization_id,
+            )
+        finally:
+            connection.rollback()
+            connection.close()
+        if session is None:
+            continue
+        if (
+            str(session.get("provider")) != str(provider)
+            or str(session.get("familyNo")).upper() != str(family_no).upper()
+            or str(session.get("userId")) != str(actor_user_id)
+        ):
+            continue
+        expires_at = session.get("expiresAt")
+        if expires_at and datetime.now(timezone.utc) >= expires_at:
+            continue
+        bundle = session.get("canonicalBundle") or {}
+        if canonical_digest(bundle) != str(session.get("bundleDigest") or ""):
+            continue
+        plan_context = bundle.get("plan") or {}
+        persisted_selected_revision = (
+            bundle.get("selectedRevision")
+            or plan_context.get("selectedRevision")
+            or (plan_context.get("preview") or {}).get("revisionNumber")
+        )
+        context = {
+            "sessionId": session_id,
+            "familyNo": str(family_no),
+            "revisionMode": bundle.get("revisionMode") or "LATEST",
+            "selectedRevision": persisted_selected_revision,
+            "workspaceLease": session.get("workspaceLease"),
+            "organizationId": organization_id,
+            "userId": session.get("userId"),
+            "provider": provider,
+            "linkedNoticeCount": len(_linked_notice_numbers(bundle)),
+        }
+        thread = threading.Thread(
+            target=_run_plan_enrichment,
+            args=(context, operation_id),
+            daemon=True,
+            name="procurement-plan-enrichment-recovery",
+        )
+        thread.start()
+        started += 1
+    return started
+
+
+def run_plan_enrichment_recovery_worker(stop_event=None):
+    """Periodically recover pending/stale enrichment rows after restarts."""
+
+    interval = max(
+        5.0,
+        min(
+            float(os.environ.get("PROCUREMENT_ENRICHMENT_RECOVERY_INTERVAL_SECONDS", "30")),
+            3600.0,
+        ),
+    )
+    while True:
+        try:
+            recover_stale_plan_enrichments()
+        except Exception:  # noqa: BLE001 - recovery must not stop future scans.
+            LOGGER.warning("Procurement enrichment recovery scan failed", exc_info=True)
+        if stop_event is None:
+            time.sleep(interval)
+        elif stop_event.wait(interval):
+            return
 
 
 def _start_plan_enrichment(result):

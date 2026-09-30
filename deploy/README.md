@@ -292,6 +292,13 @@ Word/Excel. Runner bắt buộc có một tài khoản smoke riêng (`SMOKE_USER
 `SMOKE_READ_PATH` trỏ tới một bản ghi staging đã tồn tại mà tài khoản được
 phép đọc. Không đặt mật khẩu/cookie vào command line hoặc log.
 
+Runner cũng bắt buộc `SMOKE_EXPECTED_RELEASE_ID` là release ID bất biến 40 hoặc
+64 ký tự hex đã được duyệt. Sau login/session, runner gọi endpoint đã phân
+quyền `GET /api/admin/system/version` và chỉ đạt khi `releaseId` trên process đang phục vụ
+khớp chính xác artifact. Vì vậy smoke phải dùng tài khoản có quyền đọc endpoint
+quản trị này; không chấp nhận header do proxy tự thêm hoặc tên thư mục local
+làm bằng chứng identity.
+
 Các probe đồng bộ mặc định dùng `GET /api/sync-version`. Nếu cần kiểm Word và
 Excel, đặt `SMOKE_WORD_PATH` và `SMOKE_EXCEL_PATH` tới các GET download/preview
 đã chuẩn bị trước; runner kiểm Content-Type và không tự tạo job. Có thể đặt
@@ -304,6 +311,7 @@ Ví dụ cấu hình staging (thay bằng secret manager và dữ liệu fixture
 ```bash
 export SMOKE_USERNAME='staging-smoke@example.invalid'
 export SMOKE_PASSWORD='read-from-secret-manager'
+export SMOKE_EXPECTED_RELEASE_ID='FULL_ARTIFACT_RELEASE_ID_FROM_MANIFEST'
 export SMOKE_READ_PATH='/api/record?table=goi_thau&id=STAGING_FIXTURE_ID'
 export SMOKE_WORD_PATH='/api/export-plan/STAGING_PLAN_ID'
 export SMOKE_EXCEL_PATH='/api/export-excel-template/kehoach'
@@ -315,6 +323,29 @@ Không dùng các giá trị ví dụ để đăng nhập. Nếu không cấu h�
 `--mode deploy` và `--mode rollback` chỉ khác nhãn log, để cùng một script
 versioned có thể được gán cho `DEPLOY_SMOKE_SCRIPT` và
 `ROLLBACK_SMOKE_SCRIPT`.
+
+### Deployed browser smoke
+
+Sau khi process đã chạy, chạy thêm browser smoke từ một máy trong cửa sổ kiểm
+tra staging/cutover. Script dùng Playwright để tải đúng origin, kiểm tra CSP,
+HSTS (khi dùng HTTPS), `nosniff`, `Referrer-Policy` và bảo vệ clickjacking;
+đồng thời bắt request asset lỗi và lỗi console/page. Nó đăng nhập bằng tài
+khoản smoke, xác nhận lại release ID qua cùng endpoint quản trị và thực hiện
+một `GET` đọc bản ghi đã có quyền. Script không tạo dữ liệu, không gọi export và
+không ghi credential vào output.
+
+```bash
+export BROWSER_SMOKE_BASE_URL='https://staging.example.invalid'
+export BROWSER_SMOKE_USERNAME='staging-smoke@example.invalid'
+export BROWSER_SMOKE_PASSWORD='read-from-secret-manager'
+export BROWSER_SMOKE_EXPECTED_RELEASE_ID='FULL_ARTIFACT_RELEASE_ID_FROM_MANIFEST'
+export BROWSER_SMOKE_READ_PATH='/api/record?table=goi_thau&id=STAGING_FIXTURE_ID'
+node scripts/verify_deployed_browser_smoke.mjs
+```
+
+HTTP chỉ được phép cho loopback/test host khi dựng fixture cục bộ. Một lần
+browser smoke đạt không thay thế DNS/TLS, backup/restore, migration và các
+kiểm tra hạ tầng production.
 
 Không giải nén hoặc build đè vào `/opt/biddingflow/current`. Thư mục này là
 con trỏ release đang phục vụ; thay đổi `dist` tại chỗ tạo một cửa sổ trong đó

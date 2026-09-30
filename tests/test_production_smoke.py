@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from deploy.scripts import production_smoke
 
+EXPECTED_RELEASE_ID = "a" * 64
+
 
 def _patch_runner(monkeypatch, *, live_status=200, login_status=200):
     """Provide deterministic HTTP responses without a platform HTTP server."""
@@ -27,6 +29,10 @@ def _patch_runner(monkeypatch, *, live_status=200, login_status=200):
             )
         if path == "/api/auth/check-session":
             return production_smoke.ResponseSnapshot(200, "application/json", b'{"valid":true}')
+        if path == "/api/admin/system/version":
+            return production_smoke.ResponseSnapshot(
+                200, "application/json", (f'{{"releaseId":"{EXPECTED_RELEASE_ID}"}}').encode()
+            )
         if path.startswith("/api/record") or path == "/api/sync-version":
             return production_smoke.ResponseSnapshot(200, "application/json", b"{}")
         if path == "/word":
@@ -53,6 +59,7 @@ def _set_required_env(monkeypatch):
     monkeypatch.setenv("SMOKE_USERNAME", "fixture-user")
     monkeypatch.setenv("SMOKE_PASSWORD", "fixture-password-not-for-output")
     monkeypatch.setenv("SMOKE_READ_PATH", "/api/record?table=goi_thau&id=fixture")
+    monkeypatch.setenv("SMOKE_EXPECTED_RELEASE_ID", EXPECTED_RELEASE_ID)
 
 
 def test_requires_credentials_and_read_path(monkeypatch, capsys):
@@ -60,6 +67,7 @@ def test_requires_credentials_and_read_path(monkeypatch, capsys):
     monkeypatch.delenv("SMOKE_PASSWORD", raising=False)
     monkeypatch.delenv("SMOKE_COOKIE_FILE", raising=False)
     monkeypatch.delenv("SMOKE_READ_PATH", raising=False)
+    monkeypatch.delenv("SMOKE_EXPECTED_RELEASE_ID", raising=False)
 
     result = production_smoke.main([])
 
@@ -129,3 +137,27 @@ def test_login_failure_is_nonzero_without_response_body(monkeypatch, capsys):
     assert result == 1
     assert "wrong-secret-that-must-not-print" not in output.out + output.err
     assert "password-not-echoed" not in output.out + output.err
+
+
+def test_requires_expected_release_identity(monkeypatch, capsys):
+    _patch_runner(monkeypatch)
+    _set_required_env(monkeypatch)
+    monkeypatch.delenv("SMOKE_EXPECTED_RELEASE_ID", raising=False)
+
+    result = production_smoke.main(["http://127.0.0.1:8000"])
+
+    assert result == 2
+    assert "release" in capsys.readouterr().err.casefold()
+
+
+def test_fails_when_running_release_does_not_match(monkeypatch, capsys):
+    calls = _patch_runner(monkeypatch)
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("SMOKE_EXPECTED_RELEASE_ID", "b" * 64)
+
+    result = production_smoke.main(["http://127.0.0.1:8000"])
+    output = capsys.readouterr()
+
+    assert result == 1
+    assert any(path == "/api/admin/system/version" for _method, path, _auth in calls)
+    assert "không khớp" in output.err

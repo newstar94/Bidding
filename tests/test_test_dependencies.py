@@ -73,6 +73,9 @@ def test_full_ci_runs_independent_gates_and_installs_required_browsers():
         ("python scripts/audit_fk_indexes.py", _job_runs(workflow, "database")),
     ):
         assert gate in runs
+    assert "npm run check:e2e-results" in e2e_runs
+    assert workflow["jobs"]["release"]["concurrency"]["cancel-in-progress"] is False
+    assert "sha256sum release/biddingflow-production.zip" in _job_runs(workflow, "release")
 
 
 def test_secure_build_artifact_keeps_hidden_manifest_and_is_verified_after_restore():

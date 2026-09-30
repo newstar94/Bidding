@@ -86,7 +86,8 @@ Kết quả đúng ở bước dò đường là response trực tiếp từ Bid
 ### 3.1. Database và deployment
 
 1. Deploy phiên bản có payOS integration.
-2. Chạy migration để database đạt schema **v80**.
+2. Chạy migration để database đạt schema **98** (runtime chỉ hỗ trợ tối thiểu
+   schema 80 cho profile payOS cũ).
 3. Xác nhận profile `provider-payos-production-v2` tồn tại và có trạng thái
    `payos / production / live / ready`.
 4. Kiểm tra readiness:
@@ -255,7 +256,7 @@ query string redirect làm bằng chứng thanh toán hoặc kích hoạt quyề
 |---|---|---|
 | `302` + `Cloudflare-Access` | Endpoint còn nằm sau Access login | Tạo Bypass cho đúng path webhook, rồi thử lại từ phiên không đăng nhập |
 | `403`/HTML challenge | WAF/Bot rule chặn server payOS | Bỏ challenge cho đúng path; vẫn giữ rate limit hợp lý và HMAC backend |
-| `404 NOT_FOUND` | Chưa có profile v2 trong DB hoặc sai path/profile ID | Chạy migration v80 và dùng đúng URL trong mục 1 |
+| `404 NOT_FOUND` | Chưa có profile v2 trong DB hoặc sai path/profile ID | Chạy migration tới schema 98 và dùng đúng URL trong mục 1 |
 | `503 PROVIDER_CREDENTIAL_UNAVAILABLE` | Credential rỗng/sai reference hoặc process chưa restart | Kiểm tra ba biến secret và `env://payos/default`, restart backend |
 | `400 PROVIDER_EVENT_UNVERIFIED` | Sai Checksum Key hoặc payload bị proxy sửa | Dùng Checksum Key cùng kênh; bảo đảm proxy giữ nguyên JSON body |
 | confirm API trả `401` | Sai/thiếu Client ID hoặc API Key | Lấy lại credential của đúng kênh payOS; không dùng Checksum Key làm API Key |

@@ -17,6 +17,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST_ROOT = path.join(ROOT, "dist");
 const MANIFEST_PATH = path.join(DIST_ROOT, ".vite", "manifest.json");
 const TEMPLATE_PATH = path.join(ROOT, "views", "admin", "index.html");
+const RUNTIME_STYLESHEET_PATH = path.join(ROOT, "views", "css", "runtime-styles.css");
+const RUNTIME_STYLESHEET_URL = "/css/runtime-styles.css";
 const SESSION = {
   valid: true,
   user: {
@@ -137,6 +139,17 @@ async function startHarness(shell, distRoot) {
         response.end(JSON.stringify(HEALTH));
         return;
       }
+      // The production admin shell keeps the shared runtime stylesheet at the
+      // application root.  Serving only Vite assets makes the benchmark fail
+      // before the page can paint and hides the request from the real shell
+      // contract.  Match production URL semantics while ignoring the cache
+      // busting query string.
+      if (url.pathname === RUNTIME_STYLESHEET_URL) {
+        const body = await readFile(RUNTIME_STYLESHEET_PATH);
+        response.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "no-store" });
+        response.end(body);
+        return;
+      }
       if (url.pathname.startsWith("/dist/assets/")) {
         const relativePath = safeManifestAsset(url.pathname.slice("/dist/".length));
         const body = await readFile(path.join(distRoot, relativePath));
@@ -216,6 +229,10 @@ export async function run({ repetitions = 3, distRoot = DIST_ROOT } = {}) {
     measuredAssets(distRoot, assets.stylesheets),
     readFile(TEMPLATE_PATH, "utf8"),
   ]);
+  const runtimeStylesheet = {
+    file: RUNTIME_STYLESHEET_URL,
+    bytes: (await stat(RUNTIME_STYLESHEET_PATH)).size,
+  };
   const shell = await buildShell(template, manifest[ADMIN_ENTRY]);
   const server = await startHarness(shell, distRoot);
   const address = server.address();
@@ -229,7 +246,9 @@ export async function run({ repetitions = 3, distRoot = DIST_ROOT } = {}) {
     }
     const measurements = {
       adminJsBytes: javascript.bytes,
-      adminCssBytes: stylesheets.bytes,
+      // Include the shared stylesheet linked by the production shell.  This
+      // keeps the budget tied to the bytes the browser actually downloads.
+      adminCssBytes: stylesheets.bytes + runtimeStylesheet.bytes,
       initialRequests: Math.max(...runs.map((result) => result.initialRequests)),
       dashboardLoadMs: Math.round(Math.max(...runs.map((result) => result.dashboardLoadMs)) * 100) / 100,
     };
@@ -238,7 +257,7 @@ export async function run({ repetitions = 3, distRoot = DIST_ROOT } = {}) {
       status: "PASS",
       budgets: BUDGETS,
       measurements,
-      assets: { javascript, stylesheets },
+      assets: { javascript, stylesheets, runtimeStylesheet },
       runs,
       evidence: "secure-build files and fresh Chromium contexts against an isolated local admin shell",
     };

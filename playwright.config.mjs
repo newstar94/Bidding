@@ -3,6 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 export default defineConfig({
   testDir: "./e2e/specs",
+  // An accidental test.only must never pass a CI run with a false green
+  // result.  Keep local exploratory runs flexible while making the release
+  // matrix fail closed when CI sets its standard marker.
+  forbidOnly: Boolean(process.env.CI),
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

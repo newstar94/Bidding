@@ -58,6 +58,7 @@ RUNTIME_FILES = (
     "scripts/check_security_deployment.py",
     "scripts/verify_overload_recovery.py",
     "scripts/verify_document_sandbox.py",
+    "scripts/verify_deployed_browser_smoke.mjs",
     "scripts/research_muasamcong.py",
 )
 

@@ -360,6 +360,7 @@ async def application_lifespan(
     validation_artifact_janitor_task = None
     word_template_projection_task = None
     word_template_retention_task = None
+    procurement_recovery_stop_event = threading.Event()
     try:
         validate_startup(database)
         validate_artifact_store_configuration()
@@ -487,6 +488,22 @@ async def application_lifespan(
         daemon=True,
         name="cache-retention-cleanup",
     ).start()
+    # Durable linked-notice enrichment survives worker crashes.  The recovery
+    # scanner claims only pending/stale rows and is fenced by the operation
+    # heartbeat, so multiple web workers may run it safely.
+    try:
+        from backend.procurement_import.routes import (
+            run_plan_enrichment_recovery_worker,
+        )
+
+        threading.Thread(
+            target=run_plan_enrichment_recovery_worker,
+            args=(procurement_recovery_stop_event,),
+            daemon=True,
+            name="procurement-enrichment-recovery",
+        ).start()
+    except Exception as exc:  # noqa: BLE001 - optional worker must not block boot.
+        log_error(exc, "procurement_enrichment_recovery_start", level="WARN")
     if enable_partner_lookup_worker:
         from backend.partners.partner_lookup_service import (
             start_partner_background_service,
@@ -496,6 +513,7 @@ async def application_lifespan(
     try:
         yield
     finally:
+        procurement_recovery_stop_event.set()
         for task in (
             monitor_task,
             audit_monitor_task,

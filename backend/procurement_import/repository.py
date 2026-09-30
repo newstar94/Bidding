@@ -1027,15 +1027,105 @@ class ProcurementImportRepository:
             raise ImportConflict("PROCUREMENT_IDEMPOTENCY_CONFLICT")
         return stored
 
-    def update_operation(self, organization_id, operation_id, *, cursor, results, status):
-        self.cursor.execute(
+    def update_operation(
+        self,
+        organization_id,
+        operation_id,
+        *,
+        cursor,
+        results,
+        status,
+        expected_lease=None,
+    ):
+        return self._update_operation(
+            organization_id,
+            operation_id,
+            cursor=cursor,
+            results=results,
+            status=status,
+            expected_lease=expected_lease,
+        )
+
+    def _update_operation(
+        self,
+        organization_id,
+        operation_id,
+        *,
+        cursor,
+        results,
+        status,
+        expected_lease,
+    ):
+        """Persist progress, optionally fenced by the current worker lease.
+
+        ``updated_at`` doubles as a short-lived fencing token.  A recovered
+        worker advances the token on every progress update; a pre-crash worker
+        that wakes later therefore cannot overwrite the new owner's result.
+        Existing callers omit ``expected_lease`` and retain their historical
+        compare-and-advance behavior.
+        """
+
+        lease_clause = ""
+        parameters = [cursor, _json(results), status, organization_id, operation_id, cursor]
+        if expected_lease is not None:
+            lease_clause = (
+                " AND status = 'RUNNING'"
+                " AND floor(EXTRACT(EPOCH FROM updated_at) * 1000000)::bigint = ?"
+            )
+            parameters.append(expected_lease)
+        result = self.cursor.execute(
             """UPDATE procurement_import_operation
                   SET next_revision_index = ?, revision_results_json = ?, status = ?,
-                      updated_at = CURRENT_TIMESTAMP
+                      updated_at = clock_timestamp()
                 WHERE organization_id = ? AND id = ?
-                  AND next_revision_index <= ?""",
-            (cursor, _json(results), status, organization_id, operation_id, cursor),
+                  AND next_revision_index <= ?""" + lease_clause,
+            tuple(parameters),
         )
+        if expected_lease is None:
+            return None
+        if int(getattr(result, "rowcount", 0) or 0) != 1:
+            return None
+        refreshed = self.cursor.execute(
+            """SELECT floor(EXTRACT(EPOCH FROM updated_at) * 1000000)::bigint
+                 FROM procurement_import_operation
+                WHERE organization_id = ? AND id = ?""",
+            (organization_id, operation_id),
+        ).fetchone()
+        return refreshed[0] if refreshed else None
+
+    def claim_background_operation(
+        self,
+        organization_id,
+        operation_id,
+        *,
+        stale_after_seconds,
+    ):
+        """Atomically claim a pending or abandoned background operation.
+
+        ``updated_at`` is the durable heartbeat already maintained by operation
+        progress updates.  Keeping the lease in that column avoids a schema
+        change while still making startup recovery safe across multiple web
+        workers: only one transaction can change a row into ``RUNNING``.
+        """
+
+        bounded_timeout = max(1.0, min(float(stale_after_seconds), 86_400.0))
+        result = self.cursor.execute(
+            """UPDATE procurement_import_operation
+                  SET status = 'RUNNING', updated_at = clock_timestamp()
+                WHERE organization_id = ? AND id = ?
+                  AND (
+                        status = 'PENDING'
+                        OR (
+                            status = 'RUNNING'
+                            AND updated_at < clock_timestamp()
+                                - (? * INTERVAL '1 second')
+                        )
+                  )
+                RETURNING floor(EXTRACT(EPOCH FROM updated_at) * 1000000)::bigint""",
+            (organization_id, operation_id, bounded_timeout),
+        )
+        claimed = result.fetchone()
+        return claimed[0] if claimed else None
 
     def get_operation(self, organization_id, operation_id):
         row = self.cursor.execute(
@@ -1150,6 +1240,50 @@ class ProcurementImportSessionRepository:
             return None
         if str(row[2]) != str(user_id) or str(row[3]) != str(workspace_lease):
             raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
+        preview_id = row[15] if len(row) > 15 else None
+        preview_bundle = row[16] if len(row) > 16 else None
+        preview_digest = row[17] if len(row) > 17 else None
+        preview_expires = row[18] if len(row) > 18 else None
+        return {
+            "id": row[0], "organizationId": row[1], "userId": row[2],
+            "workspaceLease": row[3], "provider": row[4], "kind": row[5],
+            "familyNo": row[6], "bundleDigest": row[7],
+            "revisions": json.loads(row[8]),
+            "canonicalBundle": json.loads(row[9]),
+            "currentIndex": int(row[10]), "status": row[11],
+            "expiresAt": _session_datetime(row[12]),
+            "createdAt": _session_datetime(row[13]),
+            "updatedAt": _session_datetime(row[14]),
+            "previewId": preview_id,
+            "previewBundle": json.loads(preview_bundle) if preview_bundle else None,
+            "previewBundleDigest": preview_digest,
+            "previewExpiresAt": _session_datetime(preview_expires) if preview_expires else None,
+        }
+
+    def get_for_background_recovery(self, session_id, *, organization_id):
+        """Load the durable session scope used by an internal worker restart.
+
+        This method is intentionally not exposed through an HTTP route.  The
+        caller must still verify the operation's organization and actor before
+        constructing a worker context; the returned lease is then passed to
+        the normal scoped session and record authorization checks.
+        """
+
+        row = self.cursor.execute(
+            """SELECT id, organization_id, user_id, workspace_lease, provider,
+                      entity_kind, family_key, bundle_digest, revisions_json,
+                      canonical_bundle_json, current_revision_index, status,
+                      expires_at AT TIME ZONE 'UTC' AS expires_at,
+                      created_at AT TIME ZONE 'UTC' AS created_at,
+                      updated_at AT TIME ZONE 'UTC' AS updated_at, preview_id,
+                      preview_bundle_json, preview_bundle_digest,
+                      preview_expires_at AT TIME ZONE 'UTC' AS preview_expires_at
+                 FROM procurement_import_session
+                WHERE organization_id = ? AND id = ?""",
+            (organization_id, session_id),
+        ).fetchone()
+        if row is None:
+            return None
         preview_id = row[15] if len(row) > 15 else None
         preview_bundle = row[16] if len(row) > 16 else None
         preview_digest = row[17] if len(row) > 17 else None
