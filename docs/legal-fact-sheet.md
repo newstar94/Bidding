@@ -1,48 +1,53 @@
-# Phiếu xác nhận thông tin pháp lý và vận hành
+# Phiếu tham chiếu pháp lý và vận hành
 
-Phiếu này là nguồn bằng chứng cho nội dung công khai tại `views/legal/terms.html`,
-`views/legal/privacy.html` và `views/legal/security.html`. Không ghi secret, credential,
-token hoặc dữ liệu cá nhân không cần thiết vào repository.
+File này từng là danh sách 27 thông tin pháp lý (`LEGAL-01` đến `LEGAL-27`)
+dùng làm điều kiện chặn khi tạo artifact production. Theo quyết định của chủ
+sản phẩm ngày 29/09/2026, danh sách đó đã được **ngừng sử dụng làm release
+blocker**. Dải mã lịch sử được ghi lại ở đây để truy vết quyết định;
+không cần điền trạng thái `approved` để chạy CI hoặc tạo artifact.
 
-Chỉ chuyển trạng thái một dòng từ `missing` sang `approved` khi:
+Việc bỏ blocker kỹ thuật này không phải là xác nhận tuân thủ pháp luật, không
+thay thế việc đánh giá pháp lý của đơn vị vận hành và không làm thay đổi các
+nghĩa vụ bảo mật, quyền riêng tư, lưu trữ, thông báo sự cố hoặc kiểm soát truy
+cập áp dụng cho môi trường production.
 
-1. nội dung đã được đơn vị vận hành xác nhận;
-2. có bằng chứng hoặc tài liệu nguồn có thể kiểm tra;
-3. người có thẩm quyền đã duyệt và ngày duyệt được ghi nhận;
-4. placeholder tương ứng trong `views/legal/` đã được thay bằng nội dung công khai đã duyệt.
+## Hợp đồng của các trang legal tối giản
 
-| ID | Nội dung cần xác nhận | Phạm vi | Bằng chứng/nguồn | Trạng thái | Ngày duyệt | Người duyệt |
-|---|---|---|---|---|---|---|
-| LEGAL-01 | Cơ sở xử lý áp dụng cho từng nhóm dữ liệu | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-02 | Nhà cung cấp, khu vực và mô hình lưu trữ thực tế | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-03 | Danh sách nhà cung cấp dịch vụ bên thứ ba và thỏa thuận xử lý dữ liệu | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-04 | Thời gian lưu trữ dữ liệu theo từng nhóm | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-05 | Email liên hệ về quyền riêng tư | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-06 | Email tiếp nhận yêu cầu xuất dữ liệu | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-07 | Khu vực xử lý và cơ chế chuyển dữ liệu quốc tế, nếu có | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-08 | Cách thông báo thay đổi ảnh hưởng đáng kể đến quyền riêng tư | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-09 | Tên đơn vị vận hành công bố trong chính sách quyền riêng tư | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-10 | Email quyền riêng tư công bố tại phần liên hệ | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-11 | Địa chỉ liên hệ công bố trong chính sách quyền riêng tư | Privacy | Chưa cung cấp | missing | — | — |
-| LEGAL-12 | Chứng chỉ, phiên bản TLS tối thiểu và cấu hình hạ tầng production | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-13 | Mã hóa ổ đĩa, cơ sở dữ liệu, file và bản sao lưu | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-14 | Lịch sao lưu, vị trí lưu, thời gian giữ và kết quả diễn tập khôi phục | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-15 | Chu kỳ rà soát dependency, quét lỗ hổng và thời hạn khắc phục | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-16 | Quy trình ứng phó sự cố, đầu mối và thời hạn thông báo | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-17 | Email tiếp nhận báo cáo bảo mật | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-18 | Chu kỳ rà soát chính sách bảo mật | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-19 | Tên đơn vị vận hành công bố trong chính sách bảo mật | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-20 | Email bảo mật công bố tại phần liên hệ | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-21 | Bộ phận hoặc chức danh phụ trách xử lý sự cố | Security | Chưa cung cấp | missing | — | — |
-| LEGAL-22 | Tên đơn vị vận hành hoặc chủ sở hữu phần mềm | Terms | Chưa cung cấp | missing | — | — |
-| LEGAL-23 | Cách thức và thời hạn thông báo thay đổi quan trọng | Terms | Chưa cung cấp | missing | — | — |
-| LEGAL-24 | Luật áp dụng và cơ quan hoặc cơ chế giải quyết tranh chấp | Terms | Chưa cung cấp | missing | — | — |
-| LEGAL-25 | Tên đơn vị vận hành công bố trong điều khoản | Terms | Chưa cung cấp | missing | — | — |
-| LEGAL-26 | Địa chỉ liên hệ công bố trong điều khoản | Terms | Chưa cung cấp | missing | — | — |
-| LEGAL-27 | Email liên hệ pháp lý | Terms | Chưa cung cấp | missing | — | — |
+Ba trang công khai tại `views/legal/terms.html`, `views/legal/privacy.html` và
+`views/legal/security.html` phải:
 
-## Quy ước bằng chứng
+1. tồn tại trong source và trong production artifact, với nội dung công khai
+   không rỗng;
+2. có nội dung tối giản, trung thực với hành vi hiện tại của ứng dụng;
+3. không còn placeholder công khai dạng `[TODO: ...]` hoặc phần tử
+   `legal-placeholder` trong phần người dùng nhìn thấy;
+4. không đưa secret, credential, token hoặc dữ liệu cá nhân không cần thiết vào
+   repository.
 
-Cột **Bằng chứng/nguồn** nên trỏ tới hồ sơ có quyền truy cập phù hợp, ví dụ mã ticket
-nội bộ, mã chính sách, hợp đồng với nhà cung cấp hoặc biên bản phê duyệt. Không đưa nội
-dung bí mật của tài liệu nguồn vào file này.
+`npm run check:legal` và `npm run check:legal:production` chỉ kiểm tra hợp đồng
+kỹ thuật của các trang trên (tồn tại, có nội dung nhìn thấy và không còn
+placeholder công khai).
+Hai lệnh này không kết luận rằng nội dung đã được luật sư duyệt hoặc
+đơn vị vận hành đã đáp ứng mọi yêu cầu pháp lý.
+
+Các kiểm tra bảo mật triển khai, secret, TLS, tenant isolation, phân quyền,
+backup/restore, monitoring, database migration và rollback vẫn là gate độc lập
+và không được bỏ qua vì quyết định retire 27 mục.
+
+## Danh sách lịch sử đã retire
+
+Các mã sau đây chỉ còn là tham chiếu lịch sử, không có trạng thái phê duyệt bắt
+buộc cho release:
+
+`LEGAL-01`–`LEGAL-27` (privacy, security và terms).
+
+Không dùng việc đổi trạng thái trong danh sách lịch sử để suy ra legal readiness.
+Nếu đơn vị vận hành cần hồ sơ pháp lý riêng, hồ sơ đó phải được quản lý ngoài
+release gate và có owner/phê duyệt theo quy trình của đơn vị.
+
+## Ghi nhận thay đổi
+
+- Quyết định: bỏ blocker 27 mục, giữ trang legal tối giản.
+- Phạm vi: release checker, CI và hướng dẫn đóng gói; không thay đổi role,
+  permission, tenant/assignment scope hoặc dữ liệu mà người dùng được phép xem.
+- ADR: xem `docs/adr/0047-retire-27-fact-production-legal-blocker.md`.

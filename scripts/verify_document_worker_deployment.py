@@ -294,6 +294,32 @@ def parse_environment_file(path: Path) -> dict[str, str]:
     return environment
 
 
+def merge_worker_environments(
+    environment: dict[str, str], database_environment: dict[str, str]
+) -> dict[str, str]:
+    """Merge the two worker files while preserving their secret boundary."""
+
+    duplicates = sorted(
+        (environment.keys() & database_environment.keys()) - {"APP_ENV"}
+    )
+    if duplicates:
+        raise VerificationError(
+            f"Document-worker environment files contain duplicate settings: {duplicates}"
+        )
+    if (
+        "APP_ENV" in environment
+        and "APP_ENV" in database_environment
+        and environment["APP_ENV"].casefold()
+        != database_environment["APP_ENV"].casefold()
+    ):
+        raise VerificationError(
+            "Document-worker environment files contain conflicting APP_ENV values."
+        )
+    merged = dict(environment)
+    merged.update(database_environment)
+    return merged
+
+
 def validate_worker_environment(environment: dict[str, str]) -> None:
     missing = {
         name: expected
@@ -518,9 +544,9 @@ def _arguments() -> argparse.Namespace:
         type=Path,
         default=Path("/etc/biddingflow/database-document-worker.env"),
     )
-    parser.add_argument("--release-root", type=Path, default=Path("/opt/biddingflow"))
+    parser.add_argument("--release-root", type=Path, default=Path("/opt/biddingflow/current"))
     parser.add_argument("--exchange-root", type=Path, default=Path("/var/lib/biddingflow-document-jobs"))
-    parser.add_argument("--python", type=Path, default=Path("/opt/biddingflow/.venv/bin/python"))
+    parser.add_argument("--python", type=Path, default=Path("/opt/biddingflow/venv/bin/python"))
     parser.add_argument("--evidence", type=Path, required=True)
     return parser.parse_args()
 
@@ -543,12 +569,7 @@ def main() -> int:
     try:
         environment = parse_environment_file(environment_file)
         database_environment = parse_environment_file(database_environment_file)
-        duplicates = sorted(environment.keys() & database_environment.keys())
-        if duplicates:
-            raise VerificationError(
-                f"Document-worker environment files contain duplicate settings: {duplicates}"
-            )
-        environment.update(database_environment)
+        environment = merge_worker_environments(environment, database_environment)
         validate_worker_environment(environment)
         worker = _systemd_properties(arguments.worker_unit, WORKER_PROPERTIES)
         web = _systemd_properties(arguments.web_unit, WEB_PROPERTIES)

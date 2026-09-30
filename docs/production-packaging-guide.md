@@ -39,26 +39,26 @@ node --version
 npm --version
 ```
 
-## 3. Điều kiện pháp lý bắt buộc
+## 3. Kiểm tra trang legal công khai
 
-Public production package bị chặn nếu thông tin pháp lý chưa được duyệt. Trước khi build:
+Theo quyết định trong [ADR 0047](adr/0047-retire-27-fact-production-legal-blocker.md),
+27 mục phê duyệt ở [`legal-fact-sheet.md`](legal-fact-sheet.md) không còn là
+điều kiện chặn build hoặc phát hành. Vẫn phải giữ ba trang tối giản:
 
-1. Điền [`legal-fact-sheet.md`](legal-fact-sheet.md) bằng dữ liệu thật.
-2. Mỗi dòng `LEGAL-xx` phải có bằng chứng, ngày duyệt, người duyệt và trạng thái
-   `approved`.
-3. Thay toàn bộ `<span class="legal-placeholder">[TODO: ...]</span>` trong:
-   - `views/legal/terms.html`;
-   - `views/legal/privacy.html`;
-   - `views/legal/security.html`.
+- `views/legal/terms.html`;
+- `views/legal/privacy.html`;
+- `views/legal/security.html`.
 
-Kiểm tra gate:
+Các trang phải tồn tại, có nội dung nhìn thấy và không hiển thị placeholder dạng `[TODO: ...]`
+hoặc `legal-placeholder` cho người dùng. Chạy gate kỹ thuật trước khi package:
 
 ```powershell
 npm run check:legal:production
 ```
 
-Không đổi trạng thái thành `approved` khi chưa có phê duyệt thật và không chạy trực tiếp
-packager để né legal gate.
+Gate này chỉ xác nhận sự hiện diện và vệ sinh nội dung công khai;
+không xác nhận tuân thủ pháp luật. Không dùng packager trực tiếp để bỏ qua gate
+và các kiểm tra engineering khác.
 
 ## 4. Cài dependency sạch
 
@@ -140,8 +140,8 @@ Không dùng lệnh sau như cách thay thế cho production gate:
 python scripts/package_production.py
 ```
 
-Lệnh Python trực tiếp chỉ là implementation bên dưới; nó không chạy legal gate và secure
-build theo chuỗi chính thức.
+Lệnh Python trực tiếp chỉ là implementation bên dưới; nó không chạy page gate
+và secure build theo chuỗi chính thức.
 
 ## 8. Kiểm tra artifact
 
@@ -224,8 +224,10 @@ phải nằm ngoài release artifact, owner `root`, mode `0600`.
 
 ### `LEGAL_READINESS_BLOCKED`
 
-`docs/legal-fact-sheet.md` còn dòng chưa `approved` hoặc `views/legal/` vẫn có placeholder.
-Không bỏ gate; hoàn tất phê duyệt và nội dung công khai.
+Kiểm tra trang legal công khai thất bại: thiếu trang, trang rỗng hoặc còn placeholder
+hiển thị. Sửa chính xác trang được báo rồi chạy lại
+`npm run check:legal:production`. Trạng thái 27 mục lịch sử không còn là
+nguyên nhân chặn.
 
 ### `Secure frontend marker is missing`
 
@@ -255,7 +257,8 @@ npm run package:production
 
 ## 11. Checklist phát hành
 
-- [ ] Legal fact sheet và public legal copy đã được duyệt.
+- [ ] Ba trang legal tối giản tồn tại, có nội dung nhìn thấy, không có placeholder công khai và
+      `npm run check:legal:production` pass.
 - [ ] Working tree không chứa thay đổi ngoài phạm vi release.
 - [ ] Python/Node versions đúng yêu cầu.
 - [ ] `npm ci` và cài Python dependency thành công.

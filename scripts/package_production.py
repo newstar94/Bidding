@@ -320,6 +320,12 @@ def _collect_runtime_directories(
             if not source.is_file() or not predicate(source):
                 continue
             relative_path = _relative(source)
+            # Python test/lint runs may leave ignored bytecode caches inside
+            # runtime directories. They are generated artifacts, never release
+            # inputs; skip them before the path guard instead of making package
+            # verification depend on whether tests ran in this checkout.
+            if FORBIDDEN_NESTED_PARTS.intersection(relative_path.parts):
+                continue
             _assert_safe(relative_path)
             selected[relative_path.as_posix()] = (source, relative_path)
 

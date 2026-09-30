@@ -1,0 +1,53 @@
+[Unit]
+Description=BiddingFlow external document worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/biddingflow-document-jobs
+
+[Service]
+Type=exec
+User=biddingflow-document-worker
+Group=biddingflow-documents
+WorkingDirectory=/opt/biddingflow/current
+EnvironmentFile=/etc/biddingflow/document-worker.env
+EnvironmentFile=/etc/biddingflow/database-document-worker.env
+ExecStart=/opt/biddingflow/venv/bin/python /opt/biddingflow/current/scripts/run_document_worker.py
+Restart=on-failure
+RestartSec=3s
+TimeoutStartSec=90s
+TimeoutStopSec=60s
+KillSignal=SIGTERM
+KillMode=control-group
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# Bubblewrap needs unprivileged user/mount namespaces; do not set RestrictNamespaces=true.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.0.0/16
+IPAddressAllow=fd00::/8
+ReadWritePaths=/var/lib/biddingflow-document-jobs
+CPUQuota=200%
+MemoryMax=2G
+TasksMax=64
+LimitNOFILE=512
+LimitFSIZE=128M
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

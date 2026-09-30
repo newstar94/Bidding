@@ -221,6 +221,16 @@ def test_runtime_package_contains_no_markdown_files(monkeypatch):
     assert not {path for path in packaged_paths if path.lower().endswith(".md")}
 
 
+def test_runtime_source_collection_ignores_generated_python_caches():
+    packaged_paths = {
+        relative_path.as_posix()
+        for _, relative_path in package_production.collect_runtime_source_files()
+    }
+
+    assert not any("/__pycache__/" in f"/{path}/" for path in packaged_paths)
+    assert not any(path.endswith(".pyc") for path in packaged_paths)
+
+
 def test_normalized_postgres_contract_is_in_the_runtime_package():
     packaged_paths = {
         relative_path.as_posix()

@@ -587,7 +587,7 @@ jobs:
           path: dist
       - name: Verify restored secure build artifact
         run: python scripts/verify_secure_build_artifact.py
-      - name: Require approved production legal facts
+      - name: Require public production legal pages
         run: npm run check:legal:production
       - name: Build production SBOMs
         run: npm run sbom

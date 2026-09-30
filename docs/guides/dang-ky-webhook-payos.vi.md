@@ -207,8 +207,10 @@ PAYOS_WEBHOOK_AUTHORIZATION_CONFIRMED=true
 COMMERCIAL_EXTERNAL_LEGAL_READY=true
 ```
 
-`COMMERCIAL_EXTERNAL_LEGAL_READY=true` ở đây ghi nhận quyết định của chủ sản phẩm
-rằng 27 mục legal được coi là đã đạt; nó không sửa nội dung của 27 mục đó.
+`COMMERCIAL_EXTERNAL_LEGAL_READY=true` ở đây ghi nhận quyết định riêng của chủ
+sản phẩm về điều kiện pháp lý và nhà cung cấp để bật thanh toán thật. Cờ này
+không xác nhận 27 mục legal lịch sử đã được duyệt và không thay thế việc kiểm
+tra hợp đồng, cấu hình, webhook hoặc đối soát thanh toán.
 
 Restart ứng dụng và kiểm tra `/health/ready` lại sau mỗi lần đổi cấu hình.
 

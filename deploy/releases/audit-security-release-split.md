@@ -2,8 +2,10 @@
 
 Hai nhóm thay đổi dùng hai release train và change record độc lập. Release A chỉ
 chứa remediation audit/security đã được xác minh; Release B mới nhận các thay đổi
-Word, làm giàu đối tác và định dạng ngày. Không deploy production nếu legal gate
-chưa có dữ kiện thật được phê duyệt.
+Word, làm giàu đối tác và định dạng ngày. Tài liệu này ghi nhận kế hoạch release
+theo thời điểm soạn thảo; yêu cầu phê duyệt 27 dữ kiện pháp lý đã được thay thế
+theo ADR 0047. Trước khi deploy production vẫn phải chạy page gate hiện hành
+và các kiểm tra kỹ thuật/vận hành tương ứng.
 
 ## Release A — audit/security
 
@@ -32,8 +34,9 @@ Gate của Release A:
 - backend/security, JavaScript, browser và migration suites xanh;
 - Chromium, Firefox và WebKit xanh;
 - static/debt/CSS/build/audit dependency xanh;
-- `npm run check:legal:production` vẫn là hard gate và phải chặn khi 27 legal
-  facts còn thiếu hoặc chưa duyệt;
+- `npm run check:legal:production` vẫn là hard gate đối với ba trang legal
+  công khai (tồn tại, có nội dung nhìn thấy, không có placeholder hiển thị); không kiểm
+  trạng thái phê duyệt của 27 mục lịch sử;
 - V63 chỉ chạy Release 1 trên schema v62; migration v63 thuộc Release 2 riêng theo
   `deploy/runbooks/database-upgrade-v63.md`.
 

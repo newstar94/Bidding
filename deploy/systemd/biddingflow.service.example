@@ -1,13 +1,16 @@
 [Unit]
 Description=BiddingFlow web application
-After=network-online.target postgresql.service
+After=network-online.target postgresql.service biddingflow-document-worker.service
 Wants=network-online.target
+BindsTo=biddingflow-document-worker.service
 
 [Service]
 Type=exec
 User=biddingflow
 Group=biddingflow
+SupplementaryGroups=biddingflow-documents
 WorkingDirectory=/opt/biddingflow/current
+RequiresMountsFor=/var/lib/biddingflow-document-jobs
 # Process defaults live with the process manager so web.env only needs an
 # override after capacity testing. EnvironmentFile values take precedence.
 Environment=UVICORN_WORKERS=4
@@ -42,7 +45,7 @@ RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadWritePaths=/var/lib/biddingflow
+ReadWritePaths=/var/lib/biddingflow /var/lib/biddingflow-document-jobs
 UMask=0027
 
 [Install]

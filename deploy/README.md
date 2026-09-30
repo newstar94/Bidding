@@ -1,10 +1,13 @@
 # Production deployment and rollback
 
-Public production packaging is blocked until every fact in
-`docs/legal-fact-sheet.md` is approved and the corresponding placeholder in
-`views/legal/` is replaced with reviewed copy. Verify this explicitly with
-`npm run check:legal:production`; local development uses the warning-only
-`npm run check:legal` command.
+Public production packaging requires the three minimal pages in
+`views/legal/` to exist, contain visible copy, and have no `[TODO: ...]` or
+`legal-placeholder` copy.
+Verify this with `npm run check:legal:production`; local development can use
+`npm run check:legal`. The former 27-fact approval blocker is retired by
+`docs/adr/0047-retire-27-fact-production-legal-blocker.md`. A passing page
+check is not a legal compliance determination. All deployment security,
+database, backup/restore, smoke and rollback checks below still apply.
 
 Production builds also require `APP_RELEASE_ID` to be the immutable full Git
 commit SHA (40 hexadecimal characters) or a 64-character content hash. The
@@ -146,6 +149,11 @@ Các mẫu production được version-control tại:
   `/etc/nginx/snippets/biddingflow-proxy-params.conf`.
 - `deploy/systemd/biddingflow.service.example`: Uvicorn worker, concurrency,
   backlog, keep-alive, request recycling và WebSocket limits.
+- `deploy/systemd/biddingflow-document-worker.service.example`: daemon xử lý
+  hàng đợi tài liệu bằng service account riêng, DB URL riêng và sandbox
+  Bubblewrap.
+- `deploy/document-worker.env.example`: cấu hình không chứa secret cho worker;
+  URL PostgreSQL được sinh riêng thành `database-document-worker.env`.
 - `deploy/monitoring/security-alerts.yml.example`: Prometheus alert mẫu cho
   Turnstile, `429` và overload `503`.
 - `deploy/monitoring/security-dashboard.json`: Grafana dashboard mẫu để đối
@@ -155,6 +163,73 @@ Trước khi reload NGINX, chạy `nginx -t`. Trước khi restart service, ch�
 `systemd-analyze verify` với unit đã cài đặt. Các ngưỡng ban đầu phải được
 điều chỉnh từ baseline thực tế theo trình tự log/dry-run → challenge → block.
 Runbook xử lý sự cố nằm tại `deploy/runbooks/ddos-bot-abuse.md`.
+
+## Cài document worker production
+
+Document worker là một tiến trình POSIX độc lập, không chạy trong Uvicorn và
+không được dùng credential của web. Thực hiện một lần trên từng host, trước khi
+bật các cờ xác nhận trong `document-worker.env`:
+
+```bash
+set -euo pipefail
+
+DOCUMENT_WORKER_SHARED_GID="${DOCUMENT_WORKER_SHARED_GID:?set the dedicated numeric GID}"
+if getent group biddingflow-documents >/dev/null; then
+  test "$(getent group biddingflow-documents | cut -d: -f3)" = "$DOCUMENT_WORKER_SHARED_GID"
+else
+  groupadd --system --gid "$DOCUMENT_WORKER_SHARED_GID" biddingflow-documents
+fi
+if ! id biddingflow-document-worker >/dev/null 2>&1; then
+  useradd --system --gid biddingflow-documents --home-dir /nonexistent \
+    --shell /usr/sbin/nologin biddingflow-document-worker
+fi
+test "$(id -g biddingflow-document-worker)" = "$DOCUMENT_WORKER_SHARED_GID"
+
+install -d -o biddingflow -g biddingflow-documents -m 0770 \
+  /var/lib/biddingflow-document-jobs
+install -o root -g root -m 0600 \
+  /opt/biddingflow/current/deploy/document-worker.env.example \
+  /etc/biddingflow/document-worker.env
+# Edit only the copied file: set the real GID and host attestations after
+# checking the encrypted/shared volume. Never place a database URL or secret
+# in this file.
+
+install -o root -g root -m 0644 \
+  /opt/biddingflow/current/deploy/systemd/biddingflow.service.example \
+  /etc/systemd/system/biddingflow.service
+install -o root -g root -m 0644 \
+  /opt/biddingflow/current/deploy/systemd/biddingflow-document-worker.service.example \
+  /etc/systemd/system/biddingflow-document-worker.service
+systemd-analyze verify \
+  /etc/systemd/system/biddingflow-document-worker.service \
+  /etc/systemd/system/biddingflow.service
+systemctl daemon-reload
+systemctl enable biddingflow-document-worker.service biddingflow.service
+```
+
+Sinh `database-document-worker.env` bằng
+`scripts/prepare_production_database_env.py` như phần PostgreSQL ở trên; file
+này phải là `root:root`, mode `0600`, và chỉ chứa `APP_ENV`,
+`DATABASE_DOCUMENT_WORKER_ROLE` cùng `DOCUMENT_WORKER_DATABASE_URL`. Provision
+role PostgreSQL bằng công cụ quản trị role trước khi start service; worker chỉ
+được `SELECT`/`UPDATE` trên `public.document_jobs` và không được sở hữu object
+hay kế thừa role khác.
+
+Sau khi đã điền environment và kiểm tra Bubblewrap/libseccomp/AppArmor trên host,
+khởi động theo thứ tự worker rồi web. Chạy trình xác minh dưới quyền root; nó
+kiểm tra unit coupling, identity, secret separation, quyền thư mục trao đổi,
+TLS/role PostgreSQL và sandbox probe rồi ghi evidence 0600 ngoài release:
+
+```bash
+systemctl restart biddingflow-document-worker.service
+systemctl restart biddingflow.service
+python /opt/biddingflow/current/scripts/verify_document_worker_deployment.py \
+  --evidence /var/lib/biddingflow/document-worker-deployment-evidence.json
+```
+
+Lệnh trên chỉ là bằng chứng cho host đã chạy; template và kiểm thử repository
+không thay thế xác nhận service account, volume, DB role hoặc unit đang active
+trên môi trường staging/production.
 
 ## Production security preflight
 
@@ -206,6 +281,41 @@ phục vụ người dùng thật.
 
 ## Deploy
 
+### Smoke script theo version artifact
+
+Mỗi artifact phải mang theo
+`deploy/scripts/production_smoke.py`. Đây là smoke runner fail-closed dùng
+được cho cả deploy và rollback; nó chỉ gọi health, login/session và các GET
+đọc đã được cấu hình, không tạo tài khoản, không ghi bản ghi, không enqueue
+Word/Excel. Runner bắt buộc có một tài khoản smoke riêng (`SMOKE_USERNAME` +
+`SMOKE_PASSWORD`) hoặc file cookie phiên ngắn hạn (`SMOKE_COOKIE_FILE`), và
+`SMOKE_READ_PATH` trỏ tới một bản ghi staging đã tồn tại mà tài khoản được
+phép đọc. Không đặt mật khẩu/cookie vào command line hoặc log.
+
+Các probe đồng bộ mặc định dùng `GET /api/sync-version`. Nếu cần kiểm Word và
+Excel, đặt `SMOKE_WORD_PATH` và `SMOKE_EXCEL_PATH` tới các GET download/preview
+đã chuẩn bị trước; runner kiểm Content-Type và không tự tạo job. Có thể đặt
+`SMOKE_NEGATIVE_PATH`/`SMOKE_NEGATIVE_STATUS` để kiểm một endpoint yêu cầu
+session bằng request không có cookie. `SMOKE_LOG_FILE` chỉ ghi event, path đã
+che query nhạy cảm, status và timestamp; không ghi response body/header.
+
+Ví dụ cấu hình staging (thay bằng secret manager và dữ liệu fixture thật):
+
+```bash
+export SMOKE_USERNAME='staging-smoke@example.invalid'
+export SMOKE_PASSWORD='read-from-secret-manager'
+export SMOKE_READ_PATH='/api/record?table=goi_thau&id=STAGING_FIXTURE_ID'
+export SMOKE_WORD_PATH='/api/export-plan/STAGING_PLAN_ID'
+export SMOKE_EXCEL_PATH='/api/export-excel-template/kehoach'
+export SMOKE_LOG_FILE='/var/log/biddingflow/staging-smoke.jsonl'
+```
+
+Không dùng các giá trị ví dụ để đăng nhập. Nếu không cấu hình credential và
+`SMOKE_READ_PATH`, script phải fail; health-only không được coi là smoke đạt.
+`--mode deploy` và `--mode rollback` chỉ khác nhãn log, để cùng một script
+versioned có thể được gán cho `DEPLOY_SMOKE_SCRIPT` và
+`ROLLBACK_SMOKE_SCRIPT`.
+
 Không giải nén hoặc build đè vào `/opt/biddingflow/current`. Thư mục này là
 con trỏ release đang phục vụ; thay đổi `dist` tại chỗ tạo một cửa sổ trong đó
 HTML/manifest và các chunk thuộc hai release khác nhau. Mỗi artifact phải được
@@ -221,13 +331,13 @@ set -euo pipefail
 
 RELEASE_ID="${RELEASE_ID:?export RELEASE_ID with the 40- or 64-character hexadecimal release ID}"
 ARTIFACT_SHA256="${ARTIFACT_SHA256:?export the trusted SHA-256 of biddingflow-production.zip}"
-DEPLOY_SMOKE_SCRIPT="${DEPLOY_SMOKE_SCRIPT:?export an executable approved login/read-only smoke script}"
+DEPLOY_SMOKE_SCRIPT="${DEPLOY_SMOKE_SCRIPT:-/opt/biddingflow/releases/$RELEASE_ID/deploy/scripts/production_smoke.py}"
 if [[ ! "$RELEASE_ID" =~ ^([0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$ ]]; then
   echo "RELEASE_ID must be a full immutable hexadecimal release ID" >&2
   exit 1
 fi
-if [[ ! "$ARTIFACT_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]] || [ ! -x "$DEPLOY_SMOKE_SCRIPT" ]; then
-  echo "A trusted artifact digest and executable smoke script are required" >&2
+if [[ ! "$ARTIFACT_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+  echo "A trusted artifact digest is required" >&2
   exit 1
 fi
 printf '%s  %s\n' "$ARTIFACT_SHA256" biddingflow-production.zip | sha256sum -c -
@@ -249,6 +359,11 @@ if [ -e "$NEW_RELEASE" ] || [ -L "$NEW_RELEASE" ]; then
   exit 1
 fi
 unzip biddingflow-production.zip -d "$NEW_RELEASE"
+
+if [ ! -f "$DEPLOY_SMOKE_SCRIPT" ]; then
+  echo "DEPLOY_SMOKE_SCRIPT must reference a file in the candidate artifact or an approved external script" >&2
+  exit 1
+fi
 
 python "$NEW_RELEASE/scripts/prepare_production_database_env.py" \
   --source /run/secrets/biddingflow-database.json \
@@ -311,7 +426,12 @@ systemctl restart biddingflow-document-worker
 systemctl restart biddingflow
 curl --fail http://127.0.0.1:8000/health/live
 curl --fail http://127.0.0.1:8000/health/ready
-"$DEPLOY_SMOKE_SCRIPT" http://127.0.0.1:8000
+if [[ "$DEPLOY_SMOKE_SCRIPT" == *.py ]]; then
+  python "$DEPLOY_SMOKE_SCRIPT" --mode deploy http://127.0.0.1:8000
+else
+  [ -x "$DEPLOY_SMOKE_SCRIPT" ] || { echo "External DEPLOY_SMOKE_SCRIPT must be executable" >&2; exit 1; }
+  "$DEPLOY_SMOKE_SCRIPT" http://127.0.0.1:8000
+fi
 CUTOVER_STARTED=0
 trap - ERR
 ```
@@ -351,10 +471,10 @@ tập N ∪ N+1.
 set -euo pipefail
 
 ROLLBACK_RELEASE="${ROLLBACK_RELEASE:?export ROLLBACK_RELEASE as an existing versioned release directory}"
-ROLLBACK_SMOKE_SCRIPT="${ROLLBACK_SMOKE_SCRIPT:?export an executable approved login/read-only smoke script}"
+ROLLBACK_SMOKE_SCRIPT="${ROLLBACK_SMOKE_SCRIPT:-$ROLLBACK_RELEASE/deploy/scripts/production_smoke.py}"
 CURRENT_RELEASE="$(readlink -f /opt/biddingflow/current)"
-if [ ! -x "$ROLLBACK_SMOKE_SCRIPT" ]; then
-  echo "ROLLBACK_SMOKE_SCRIPT must be executable" >&2
+if [ ! -f "$ROLLBACK_SMOKE_SCRIPT" ]; then
+  echo "ROLLBACK_SMOKE_SCRIPT must reference a file in the rollback artifact or an approved external script" >&2
   exit 1
 fi
 if [ ! -d "$ROLLBACK_RELEASE" ] || [ "$ROLLBACK_RELEASE" = "$CURRENT_RELEASE" ]; then
@@ -396,7 +516,12 @@ systemctl restart biddingflow-document-worker
 systemctl restart biddingflow
 curl --fail http://127.0.0.1:8000/health/live
 curl --fail http://127.0.0.1:8000/health/ready
-"$ROLLBACK_SMOKE_SCRIPT" http://127.0.0.1:8000
+if [[ "$ROLLBACK_SMOKE_SCRIPT" == *.py ]]; then
+  python "$ROLLBACK_SMOKE_SCRIPT" --mode rollback http://127.0.0.1:8000
+else
+  [ -x "$ROLLBACK_SMOKE_SCRIPT" ] || { echo "External ROLLBACK_SMOKE_SCRIPT must be executable" >&2; exit 1; }
+  "$ROLLBACK_SMOKE_SCRIPT" http://127.0.0.1:8000
+fi
 ROLLBACK_CUTOVER_STARTED=0
 trap - ERR
 ```
