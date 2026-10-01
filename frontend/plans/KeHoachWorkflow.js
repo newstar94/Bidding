@@ -638,13 +638,54 @@ export async function editKeHoach(id, {
     codeInput: document.getElementById("kh-ma"),
     checkbox: procurementLookupCheckbox,
     enabled: procurementLookupEnabled,
-    runLookup: () => this.runProcurementInlineLookup?.({
-      kind: "PLAN",
-      formId: "form-kehoach",
-      codeInputId: "kh-ma",
-      triggerId: "procurement-lookup-plan-enabled",
-      statusId: "procurement-lookup-plan-status",
-    }),
+    runLookup: async () => {
+      const lookupModel = this.model;
+      const lookupLease = captureWorkspaceLease(lookupModel);
+      const lookupStorage = lookupModel.workspaceStorage;
+      const lookupFlow = this.procurementPlanImport;
+      const lookupModal = document.getElementById("modal-kehoach");
+      const codeInput = document.getElementById("kh-ma");
+      const code = String(codeInput?.value || "").trim().toUpperCase();
+      const binding = codeInput?.__bfProcurementAutoLookupCleanup;
+      // The manual editor does not need the procurement graph. Load it for
+      // this action, then verify that the same form/workspace still owns it.
+      let workflowLoadFailed = false;
+      try {
+        await this.ensureBiddingWorkflows?.();
+      } catch {
+        workflowLoadFailed = true;
+      }
+      if (
+        this.model !== lookupModel
+        || !isWorkspaceLeaseCurrent(lookupModel, lookupLease)
+        || lookupModel.workspaceStorage !== lookupStorage
+        || this.procurementPlanImport !== lookupFlow
+        || codeInput?.__bfProcurementAutoLookupCleanup !== binding
+        || String(codeInput?.value || "").trim().toUpperCase() !== code
+        || !procurementLookupCheckbox?.checked
+        || procurementLookupCheckbox.disabled
+        || !lookupModal?.isConnected
+        || !lookupModal.classList.contains("active")
+        || document.getElementById("modal-kehoach") !== lookupModal
+      ) return null;
+      if (workflowLoadFailed) {
+        const status = document.getElementById("procurement-lookup-plan-status");
+        if (status) {
+          status.hidden = false;
+          status.textContent = "Không tải được chức năng lấy dữ liệu tự động. Vui lòng thử lại.";
+          status.dataset.state = "error";
+          status.setAttribute("aria-live", "assertive");
+        }
+        return null;
+      }
+      return this.runProcurementInlineLookup?.({
+        kind: "PLAN",
+        formId: "form-kehoach",
+        codeInputId: "kh-ma",
+        triggerId: "procurement-lookup-plan-enabled",
+        statusId: "procurement-lookup-plan-status",
+      });
+    },
   });
   renderLucideIcons(document.getElementById("modal-kehoach"), lucide);
   assertEditCapabilityCurrent();

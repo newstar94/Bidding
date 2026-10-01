@@ -3,18 +3,13 @@ const BIDDING_CREATE_ROUTES = new Set(["kehoach", "goithau"]);
 const PARTNER_CREATE_ROUTES = new Set(["chudautu", "nhathau", "chuyengia", "hopdong"]);
 
 const BIDDING_METHODS = new Set([
-  "addBreakdownRow",
-  "backToPlanDraft",
   "addGiaHanRow",
   "deleteGoiThau",
-  "deleteKeHoach",
-  "editKeHoach",
   "enforceSingleLeader",
   "moThauGoiThau",
   "openMoThauJVManager",
   "openMoThauJVViewModal",
   "phatHanhHsmtGoiThau",
-  "removeBreakdownRow",
   "restoreCanceledPackage",
   "saveKetQuaChiDinhThau",
   "showNhaThauDetailsAndCloseJV",
@@ -41,6 +36,15 @@ const PACKAGE_EDITOR_METHODS = new Set([
   "editGoiThau",
 ]);
 
+const PLAN_EDITOR_METHODS = new Set([
+  "addBreakdownRow",
+  "backToPlanDraft",
+  "deleteKeHoach",
+  "editKeHoach",
+  "removeBreakdownRow",
+  "savePlanBreakdown",
+]);
+
 const BIDDING_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../shared/BiddingCalculations.js"),
   () => import("../packages/BidEvaluationWorkflow.js"),
@@ -63,6 +67,16 @@ const PACKAGE_EDITOR_WORKFLOW_IMPORTERS = Object.freeze([
   () => import("../packages/GoiThauWorkflow.js"),
   () => import("../shared/FormSubTables.js"),
   () => import("../shared/PartnerHelpers.js"),
+]);
+
+const PLAN_EDITOR_WORKFLOW_IMPORTERS = Object.freeze([
+  // Manual plan editing and its breakdown share this module. Package, investor
+  // and procurement actions load their own workflows when the user invokes them.
+  () => import("../plans/KeHoachWorkflow.js"),
+  async () => {
+    const { makeSearchableSelect } = await import("../shared/PartnerHelpers.js");
+    return { makeSearchableSelect };
+  },
 ]);
 
 const DETAILED_EVALUATION_EXPORTS = Object.freeze([
@@ -123,15 +137,24 @@ export async function importPackageEditorWorkflows() {
   return Object.freeze(Object.assign(Object.create(null), ...workflowModules));
 }
 
+export async function importPlanEditorWorkflows() {
+  const workflowModules = await Promise.all(
+    PLAN_EDITOR_WORKFLOW_IMPORTERS.map((importWorkflowModule) => importWorkflowModule()),
+  );
+  return Object.freeze(Object.assign(Object.create(null), ...workflowModules));
+}
+
 export function workflowRequirementForRoute(tabName, action = null) {
   if (BIDDING_ROUTES.has(tabName)) return "bidding";
   if (action !== "taomoi") return null;
+  if (tabName === "kehoach") return "plan-editor";
   if (BIDDING_CREATE_ROUTES.has(tabName)) return "bidding";
   if (PARTNER_CREATE_ROUTES.has(tabName)) return "partner";
   return "all";
 }
 
 export function workflowRequirementForMethod(methodName) {
+  if (PLAN_EDITOR_METHODS.has(methodName)) return "plan-editor";
   if (PACKAGE_EDITOR_METHODS.has(methodName)) return "package-editor";
   if (BIDDING_METHODS.has(methodName)) return "bidding";
   if (PARTNER_METHODS.has(methodName)) return "partner";
@@ -142,6 +165,7 @@ export function workflowRequirementForMethod(methodName) {
 export class WorkflowModuleLoader {
   constructor({
     importBidding = importBiddingWorkflowsSequentially,
+    importPlanEditor = importPlanEditorWorkflows,
     importPackageEditor = importPackageEditorWorkflows,
     importPartner = () => import("../partners/PartnerWorkflows.js"),
     install,
@@ -151,12 +175,14 @@ export class WorkflowModuleLoader {
     }
     this.importers = {
       bidding: importBidding,
+      "plan-editor": importPlanEditor,
       "package-editor": importPackageEditor,
       partner: importPartner,
     };
     this.install = install;
     this.states = {
       bidding: { ready: false, promise: null },
+      "plan-editor": { ready: false, promise: null },
       "package-editor": { ready: false, promise: null },
       partner: { ready: false, promise: null },
       all: { promise: null },
@@ -167,7 +193,7 @@ export class WorkflowModuleLoader {
     if (group === "all") {
       return this.states.bidding.ready && this.states.partner.ready;
     }
-    if (group === "package-editor" && this.states.bidding.ready) return true;
+    if (["plan-editor", "package-editor"].includes(group) && this.states.bidding.ready) return true;
     return Boolean(this.states[group]?.ready);
   }
 

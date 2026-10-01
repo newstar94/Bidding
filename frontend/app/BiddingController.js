@@ -456,18 +456,42 @@ export class BiddingController {
     const workspaceToken = this.model?.getWorkspaceToken?.()
       || this.model?.workspaceScope?.key
       || "boot";
+    let pendingPlanResume = false;
+    if (requirement === "plan-editor") {
+      try {
+        pendingPlanResume = Boolean(JSON.parse(
+          this.model?.workspaceStorage?.getItem?.("procurement_import_resume_v1") || "null",
+        )?.sessionId);
+      } catch {
+        // The existing resume store treats an invalid entry as absent.
+      }
+    }
     if (
-      !["bidding", "all"].includes(requirement)
+      (!["bidding", "all"].includes(requirement) && !pendingPlanResume)
       || this._procurementImportResumeWorkspaceToken === workspaceToken
-      || typeof this.resumeProcurementImportSession !== "function"
+      || (!pendingPlanResume && typeof this.resumeProcurementImportSession !== "function")
     ) return false;
     this._procurementImportResumeWorkspaceToken = workspaceToken;
     this.schedulePostStartupTask(
-      () => {
+      async () => {
         const currentToken = this.model?.getWorkspaceToken?.()
           || this.model?.workspaceScope?.key
           || "boot";
         if (currentToken !== workspaceToken) return false;
+        if (pendingPlanResume) {
+          try {
+            await this.ensureWorkflowRequirement("bidding");
+          } catch (error) {
+            if (this._procurementImportResumeWorkspaceToken === workspaceToken) {
+              this._procurementImportResumeWorkspaceToken = null;
+            }
+            throw error;
+          }
+          const resumedToken = this.model?.getWorkspaceToken?.()
+            || this.model?.workspaceScope?.key
+            || "boot";
+          if (resumedToken !== workspaceToken) return false;
+        }
         return this.resumeProcurementImportSession();
       },
       { timeout: 3000, key: "procurement-import-resume-after-navigation" },
@@ -502,9 +526,20 @@ export class BiddingController {
   }
   ensureWorkflowReady(methodName) {
     const requirement = workflowRequirementForMethod(methodName);
+    const editorModal = {
+      editKeHoach: "modal-kehoach",
+      editGoiThau: "modal-goithau",
+      editChuDauTu: "modal-chudautu",
+      editNhaThau: "modal-nhathau",
+      editChuyenGia: "modal-chuyengia",
+      editHopDong: "modal-hopdong",
+    }[methodName];
     return Promise.all([
       this.ensureWorkflowRequirement(requirement),
-      this.ensureWorkflowData(methodName)
+      this.ensureWorkflowData(methodName),
+      // Fetch the static form alongside its code and scoped data. DOM insertion
+      // and editor authorization still happen after both readiness barriers.
+      ...(editorModal ? [this.preloadLazyPartial("modal", editorModal)] : []),
     ]);
   }
   loadHolidaysInBackground() {

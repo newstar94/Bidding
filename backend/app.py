@@ -54,6 +54,7 @@ sys.path.insert(0, project_root)
 
 from backend.shared.client_ip import parse_ip_networks
 from backend.shared.origin_policy import get_allowed_websocket_origins
+from backend.source_module_preloads import resolve_source_preload_graph
 from backend.frontend_assets import (
     ADMIN_ENTRY,
     APP_ENTRY,
@@ -469,6 +470,9 @@ _REQUIRED_WORKSPACE_STARTUP_ENTRIES = (
     "frontend/app/IntegrationWorkflowBridges.js",
     "frontend/admin/AdminUserController.js",
 )
+_SOURCE_INITIAL_VIEW_ENTRIES = {
+    "/tong-quan": "frontend/app/DashboardView.js",
+}
 
 
 def _page_preload_entries(session_bootstrap, request_path):
@@ -488,11 +492,26 @@ def _workspace_preload_tag(session_bootstrap, request_path="/workspace"):
     """Preload the complete static graph required by the requested shell."""
     entry_keys = _page_preload_entries(session_bootstrap, request_path)
     if not _frontend_bundle_enabled():
-        preload_sources = [f"/{entry}" for entry in entry_keys[1:]]
-        return "\n".join(
+        initial_view = (
+            _SOURCE_INITIAL_VIEW_ENTRIES.get(request_path)
+            if session_bootstrap.get("valid") else None
+        )
+        source_entries = (*entry_keys, initial_view) if initial_view else entry_keys
+        # Discover static dependencies before browser ESM parsing. The app entry
+        # itself keeps its existing versioned script URL; dynamic workflows stay
+        # owned by the route or action that requests them.
+        preload_sources = [
+            f"/{entry}" for entry in resolve_source_preload_graph(project_root, source_entries)
+            if entry != APP_ENTRY
+        ]
+        module_tags = "\n".join(
             f'<link rel="modulepreload" href="{module_src}">'
             for module_src in dict.fromkeys(preload_sources)
         )
+        if initial_view == _SOURCE_INITIAL_VIEW_ENTRIES["/tong-quan"]:
+            # Fetch only; DashboardView still owns stylesheet attachment.
+            module_tags += '\n<link rel="preload" href="/frontend/app/DashboardView.css" as="style">'
+        return module_tags
 
     if IS_PRODUCTION:
         frontend_assets = assert_production_frontend_ready(project_root)
@@ -733,7 +752,8 @@ async def index(request, *, not_found=False):
         page_title,
         page_description,
     )
-    response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path + page_asset_identity).encode("utf-8")).hexdigest()}"'
+    workspace_preload = _workspace_preload_tag(session_bootstrap, request_path)
+    response_etag = f'"{hashlib.sha256((etag + safe_bootstrap + request_path + page_asset_identity + workspace_preload).encode("utf-8")).hexdigest()}"'
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
@@ -745,7 +765,6 @@ async def index(request, *, not_found=False):
     html_content = html_content.replace("__BF_SOCIAL_METADATA__", social_metadata)
     html_content = html_content.replace("__BF_STRUCTURED_DATA__", structured_data)
     html_content = html_content.replace("__BF_NOT_FOUND__", "true" if not_found else "false")
-    workspace_preload = _workspace_preload_tag(session_bootstrap, request_path)
     html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
     initial_route_preload = (
         ""

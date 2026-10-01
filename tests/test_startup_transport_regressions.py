@@ -173,6 +173,177 @@ def test_dynamic_response_keeps_defensive_chunked_framing():
     assert "content-length" not in headers
 
 
+def _source_preload_fixture(tmp_path):
+    sources = {
+        app_module.APP_ENTRY: '''
+            import { shared } from "../shared/app-shared.js";
+            const workspace = () => import("./workspaceBootstrap.js");
+            const auth = () => import("../auth/AuthShell.js");
+        ''',
+        app_module._WORKSPACE_ENTRY: '''
+            import { runtime } from "../shared/workspace-runtime.js";
+            const assistant = () => import("../assistant/AssistantLoader.js");
+        ''',
+        app_module._AUTH_SHELL_ENTRY: '''
+            import { auth } from "./auth-shared.js";
+            const workspace = () => import("../app/workspaceBootstrap.js");
+        ''',
+        "frontend/app/BiddingModel.js": '''
+            import { storage } from "../shared/storage.js";
+        ''',
+        "frontend/app/BiddingView.js": '''
+            const route = () => import("./PlanView.js");
+        ''',
+        "frontend/app/BiddingControllerForms.js": '''
+            const workflow = () => import("../plans/PlanModalController.js");
+        ''',
+        "frontend/shared/storage.js": '''
+            export { nested } from "./storage-nested.js";
+        ''',
+        "frontend/app/DashboardView.js": '''
+            import { chart } from "../shared/dashboard-chart.js";
+            const workflow = () => import("../plans/PlanModalController.js");
+        ''',
+        "frontend/plans/KeHoachView.js": '''
+            import { rows } from "../shared/plan-rows.js";
+            const workflow = () => import("./PlanModalController.js");
+        ''',
+    }
+    fixture_paths = set(sources) | set(app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES) | {
+        "frontend/shared/app-shared.js", "frontend/shared/workspace-runtime.js",
+        "frontend/shared/storage-nested.js", "frontend/auth/auth-shared.js",
+        "frontend/app/PlanView.js", "frontend/plans/PlanModalController.js",
+        "frontend/assistant/AssistantLoader.js",
+        "frontend/shared/dashboard-chart.js", "frontend/shared/plan-rows.js",
+        "frontend/app/DashboardView.css",
+    }
+    for relative in fixture_paths:
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(sources.get(relative, "export const available = true;"), encoding="utf-8")
+
+
+def test_source_authenticated_preloads_static_transitive_graph_without_dynamic_workflows(monkeypatch, tmp_path):
+    _source_preload_fixture(tmp_path)
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "source")
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+
+    tags = app_module._workspace_preload_tag({"valid": True}, "/ke-hoach")
+
+    assert '<link rel="modulepreload" href="/frontend/shared/app-shared.js">' in tags
+    assert '<link rel="modulepreload" href="/frontend/shared/workspace-runtime.js">' in tags
+    assert '<link rel="modulepreload" href="/frontend/shared/storage-nested.js">' in tags
+    assert "KeHoachView.js" not in tags
+    assert "plan-rows.js" not in tags
+    for entry in (app_module._WORKSPACE_ENTRY, *app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES):
+        assert f'<link rel="modulepreload" href="/{entry}">' in tags
+    for deferred in ("frontend/app/PlanView.js", "frontend/plans/PlanModalController.js",
+                     "frontend/assistant/AssistantLoader.js", app_module._AUTH_SHELL_ENTRY):
+        assert f'href="/{deferred}"' not in tags
+    assert "DashboardView.js" not in tags
+    assert "dashboard-chart.js" not in tags
+    assert 'as="style"' not in tags
+    # The existing versioned script/preload remains the single app entry URL.
+    assert 'href="/frontend/app/app.js"' not in tags
+    assert len(tags.splitlines()) == len(set(tags.splitlines()))
+    # The measured initial-view hint is limited to the exact dashboard route.
+    # Opening a create route must keep workflow dependencies click-owned.
+    create_tags = app_module._workspace_preload_tag({"valid": True}, "/ke-hoach/tao-moi")
+    assert create_tags == tags
+
+
+def test_source_initial_dashboard_preloads_only_requested_view_graph_and_fetches_style(monkeypatch, tmp_path):
+    _source_preload_fixture(tmp_path)
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "source")
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+
+    tags = app_module._workspace_preload_tag({"valid": True}, "/tong-quan")
+
+    assert '<link rel="modulepreload" href="/frontend/app/DashboardView.js">' in tags
+    assert '<link rel="modulepreload" href="/frontend/shared/dashboard-chart.js">' in tags
+    assert '<link rel="preload" href="/frontend/app/DashboardView.css" as="style">' in tags
+    assert 'rel="stylesheet"' not in tags
+    for deferred in ("KeHoachView.js", "plan-rows.js", "PlanModalController.js",
+                     "PlanView.js", "AssistantLoader.js", "AuthShell.js"):
+        assert deferred not in tags
+
+
+def test_source_anonymous_auth_preloads_do_not_expand_workspace_runtime(monkeypatch, tmp_path):
+    _source_preload_fixture(tmp_path)
+    monkeypatch.setattr(app_module, "APP_DEBUG", True)
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "FRONTEND_ASSET_MODE", "source")
+    monkeypatch.setattr(app_module, "project_root", str(tmp_path))
+
+    for path in ("/dang-nhap", "/tong-quan", "/ke-hoach", "/ke-hoach/tao-moi"):
+        tags = app_module._workspace_preload_tag({"valid": False}, path)
+        assert tags.splitlines() == [
+            '<link rel="modulepreload" href="/frontend/auth/AuthShell.js">',
+            '<link rel="modulepreload" href="/frontend/shared/app-shared.js">',
+            '<link rel="modulepreload" href="/frontend/auth/auth-shared.js">',
+        ]
+        for workspace_entry in (app_module._WORKSPACE_ENTRY, *app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES):
+            assert f'href="/{workspace_entry}"' not in tags
+        for initial_view in ("DashboardView.js", "DashboardView.css", "KeHoachView.js",
+                             "dashboard-chart.js", "plan-rows.js"):
+            assert initial_view not in tags
+        assert "workspace-runtime.js" not in tags
+        assert 'href="/frontend/app/app.js"' not in tags
+
+
+def test_index_revalidates_html_when_preload_representation_changes(monkeypatch):
+    template = (
+        '<html><head>__BF_WORKSPACE_PRELOAD__</head>'
+        '<body>__BF_SESSION_BOOTSTRAP__</body></html>'
+    )
+    current_preload = ['<link rel="modulepreload" href="/frontend/shared/old.js">']
+    bootstrap_reads = []
+
+    async def read_session(_function, request):
+        bootstrap_reads.append(request)
+        return {"valid": True, "user": {"id": "fixture-user"}}
+
+    monkeypatch.setattr(app_module, "IS_PRODUCTION", False)
+    monkeypatch.setattr(app_module, "_build_index_response_payload", lambda: (template, '"same-template"'))
+    monkeypatch.setattr(app_module, "_page_shell", lambda body, _path: body)
+    monkeypatch.setattr(app_module, "_page_bundle_stylesheet", lambda body, _path: (body, "same-style"))
+    monkeypatch.setattr(app_module, "run_database_read", read_session)
+    monkeypatch.setattr(app_module, "_workspace_preload_tag", lambda _session, _path: current_preload[0])
+
+    def request(if_none_match=None):
+        headers = {} if if_none_match is None else {"if-none-match": if_none_match}
+        return SimpleNamespace(url=SimpleNamespace(path="/ke-hoach"), headers=headers)
+
+    first = asyncio.run(app_module.index(request()))
+    assert first.status_code == 200
+    old_etag = first.headers["etag"]
+    assert current_preload[0] in first.body.decode("utf-8")
+
+    unchanged = asyncio.run(app_module.index(request(old_etag)))
+    assert unchanged.status_code == 304
+    assert unchanged.body == b""
+
+    current_preload[0] = '<link rel="modulepreload" href="/frontend/shared/new.js">'
+    changed = asyncio.run(app_module.index(request(old_etag)))
+    assert changed.status_code == 200
+    assert changed.headers["etag"] != old_etag
+    assert current_preload[0] in changed.body.decode("utf-8")
+    assert "/frontend/shared/old.js" not in changed.body.decode("utf-8")
+
+    refreshed = asyncio.run(app_module.index(request(changed.headers["etag"])))
+    assert refreshed.status_code == 304
+    assert refreshed.headers["etag"] == changed.headers["etag"]
+    for response in (first, unchanged, changed, refreshed):
+        assert response.headers["cache-control"] == "private, no-cache"
+        assert response.headers["vary"] == "Cookie"
+    # Conditional HTML requests still evaluate the current session before reuse.
+    assert len(bootstrap_reads) == 4
+
+
 def test_bundle_mode_preloads_route_graph_for_reliable_cold_start(monkeypatch, tmp_path):
     manifest_directory = tmp_path / "dist" / ".vite"
     manifest_directory.mkdir(parents=True)
@@ -194,6 +365,10 @@ def test_bundle_mode_preloads_route_graph_for_reliable_cold_start(monkeypatch, t
         "_landing-shared.js": {"file": "assets/landing-shared-12345678.js"},
     }
     for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES:
+        manifest[entry_key] = {
+            "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
+        }
+    for entry_key in ("frontend/app/DashboardView.js", "frontend/plans/KeHoachView.js"):
         manifest[entry_key] = {
             "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
         }
@@ -220,6 +395,8 @@ def test_bundle_mode_preloads_route_graph_for_reliable_cold_start(monkeypatch, t
         '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/workspace-shared-12345678.js">',
     ]
+    for path in ("/tong-quan", "/ke-hoach"):
+        assert app_module._workspace_preload_tag({"valid": True}, path) == authenticated
 
 
 def test_production_preloads_route_graph_for_reliable_cold_start(monkeypatch, tmp_path):
@@ -244,6 +421,10 @@ def test_production_preloads_route_graph_for_reliable_cold_start(monkeypatch, tm
         "_landing-shared.js": {"file": "assets/landing-shared-12345678.js"},
     }
     for entry_key in app_module._REQUIRED_WORKSPACE_STARTUP_ENTRIES:
+        manifest[entry_key] = {
+            "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
+        }
+    for entry_key in ("frontend/app/DashboardView.js", "frontend/plans/KeHoachView.js"):
         manifest[entry_key] = {
             "file": f"assets/{entry_key.rsplit('/', 1)[-1]}-12345678.js"
         }
@@ -276,6 +457,8 @@ def test_production_preloads_route_graph_for_reliable_cold_start(monkeypatch, tm
         '<link rel="modulepreload" href="/dist/assets/app-shared-12345678.js">',
         '<link rel="modulepreload" href="/dist/assets/workspace-shared-12345678.js">',
     ]
+    for path in ("/tong-quan", "/ke-hoach"):
+        assert app_module._workspace_preload_tag({"valid": True}, path) == authenticated
 
 
 def test_secure_html_uses_one_hashed_stylesheet(monkeypatch, tmp_path):

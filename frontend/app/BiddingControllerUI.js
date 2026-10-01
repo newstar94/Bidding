@@ -239,6 +239,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
     }
   }
   let action = parts[1] || null;
+  if (
+    ["kehoach", "goithau", "hopdong", "chudautu", "nhathau", "chuyengia"].includes(tabName)
+    && action === this.actionMap?.taomoi
+  ) action = "taomoi";
   let urlAction = parts[1] || null;
   const packageSnapshotId = tabName === "goithau-detail" && parts[2]
     ? decodeURIComponent(parts[2])
@@ -702,7 +706,8 @@ export function switchTab(tabName, action = null, updateState = true, transition
     return undefined;
   });
   if (action === "taomoi") {
-    setTimeout(() => {
+    void measuredRenderTask.then(() => {
+      if (!isCurrentTransition()) return;
       if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;
       if (tabName === "kehoach") {
         const modal = document.getElementById("modal-kehoach");
@@ -723,7 +728,7 @@ export function switchTab(tabName, action = null, updateState = true, transition
         const modal = document.getElementById("modal-chuyengia");
         if (!modal || !modal.classList.contains("active")) void this.partners.editExpert(null);
       }
-    }, 100);
+    });
   } else if (!action) {
     document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((el) => el.classList.remove("active"));
     const activeModals = document.querySelectorAll(".modal-overlay.active");

@@ -71,7 +71,7 @@ export function loadStyleOnce(href) {
   if (STYLE_LOADERS.has(safeHref)) {
     return STYLE_LOADERS.get(safeHref);
   }
-  const existing = document.querySelector(`link[href="${safeHref}"]`);
+  const existing = document.querySelector(`link[rel="stylesheet"][href="${safeHref}"]`);
   const promise = new Promise((resolve, reject) => {
     const link = existing || document.createElement("link");
     const loaded = () => {

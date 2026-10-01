@@ -7,6 +7,8 @@ import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import {
   beginNavigationFeedback,
   finishNavigationFeedback,
+  handlePathRouting,
+  renderTabData,
   setupTabs,
   switchTab,
 } from "../../frontend/app/BiddingControllerUI.js";
@@ -980,6 +982,209 @@ test("an asynchronous tab render failure is reported without an unhandled reject
     else globalThis.history = previousHistory;
     if (previousElement === undefined) delete globalThis.Element;
     else globalThis.Element = previousElement;
+  }
+});
+
+test("create-route modal opens when rendering completes without a fixed timer", async () => {
+  const previousDocument = globalThis.document;
+  const previousHistory = globalThis.history;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  const render = deferred();
+  const timers = [];
+  const opened = [];
+  globalThis.document = {
+    body: {},
+    getElementById: (id) => id === "tab-kehoach" ? {} : null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  globalThis.history = { pushState() {}, replaceState() {} };
+  globalThis.setTimeout = (callback, delay) => {
+    timers.push({ callback, delay });
+    return timers.length;
+  };
+  globalThis.clearTimeout = () => {};
+  const controller = {
+    _workflowModulesReady: true,
+    lazyTabPartials: {},
+    model: {
+      state: { activetab: "dashboard", activeaction: null, activerole: "manager" },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { kehoach: "ke-hoach" },
+    actionMap: { taomoi: "tao-moi" },
+    view: {
+      elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => true,
+    },
+    renderTabData: () => render.promise,
+    plans: { edit: (id) => opened.push(id) },
+    switchTab,
+  };
+  try {
+    const navigation = controller.switchTab("kehoach", "taomoi");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(opened, [], "opening must wait for the current render");
+    render.resolve({ rendered: true });
+    await navigation;
+    assert.deepEqual(opened, [null], "render completion opens the editor without advancing a timer");
+    assert.deepEqual(timers.map(({ delay }) => delay), [120], "only navigation feedback uses a timer");
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
+  }
+});
+
+test("a stale create-route render cannot open the modal for a newer matching route", async () => {
+  const previousDocument = globalThis.document;
+  const previousHistory = globalThis.history;
+  const renders = [deferred(), deferred()];
+  let renderIndex = 0;
+  const opened = [];
+  globalThis.document = {
+    body: {},
+    getElementById: (id) => id === "tab-kehoach" ? {} : null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  globalThis.history = { pushState() {}, replaceState() {} };
+  const controller = {
+    _workflowModulesReady: true,
+    lazyTabPartials: {},
+    model: {
+      state: { activetab: "dashboard", activeaction: null, activerole: "manager" },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { kehoach: "ke-hoach" },
+    actionMap: { taomoi: "tao-moi" },
+    view: {
+      elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => true,
+    },
+    renderTabData: () => renders[renderIndex++].promise,
+    plans: { edit: (id) => opened.push(id) },
+    switchTab,
+  };
+  try {
+    const staleNavigation = controller.switchTab("kehoach", "taomoi");
+    const currentNavigation = controller.switchTab("kehoach", "taomoi");
+    renders[0].resolve({ rendered: true });
+    await staleNavigation;
+    assert.equal(controller.model.state.activeaction, "taomoi");
+    assert.deepEqual(opened, [], "matching route state does not make an older transition current");
+    assert.notEqual(controller._navigationFeedback, null, "stale completion preserves current feedback");
+    renders[1].resolve({ rendered: true });
+    await currentNavigation;
+    assert.deepEqual(opened, [null]);
+    assert.equal(controller._navigationFeedback, null);
+  } finally {
+    if (controller._navigationFeedback?.timer) clearTimeout(controller._navigationFeedback.timer);
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
+  }
+});
+
+test("initial canonical plan create URL reaches focused readiness and opens after rendering", async () => {
+  const previousDocument = globalThis.document;
+  const previousHistory = globalThis.history;
+  const previousWindow = globalThis.window;
+  const render = deferred();
+  const requirements = [];
+  const ready = new Set();
+  const opened = [];
+  const rewrittenPaths = [];
+  globalThis.document = {
+    body: {},
+    getElementById: (id) => id === "tab-kehoach" ? {} : null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  globalThis.history = { replaceState: (_state, _unused, path) => rewrittenPaths.push(path) };
+  globalThis.window = { location: { pathname: "/ke-hoach/tao-moi", search: "", hash: "" } };
+  const controller = {
+    _workflowModulesReady: false,
+    lazyTabPartials: {},
+    model: {
+      state: { activetab: "dashboard", activeaction: null, activerole: "manager", kehoach: [] },
+      hasActiveEffectiveRole: () => true,
+    },
+    routeMap: { kehoach: "ke-hoach" },
+    actionMap: { taomoi: "tao-moi", chinhsua: "chinh-sua" },
+    isWorkflowRequirementReady: (requirement) => !requirement || ready.has(requirement),
+    ensureWorkflowRequirement: async (requirement) => {
+      requirements.push(requirement);
+      ready.add(requirement);
+    },
+    view: {
+      elements: { navButtons: [], tabPanes: [], pageTitle: { textContent: "" } },
+      areViewModulesReady: () => true,
+      renderKeHoachTable: () => render.promise,
+      createIconsScoped() {},
+      enhanceVisibleContent() {},
+    },
+    plans: { edit: (id) => opened.push(id) },
+    handlePathRouting,
+    switchTab,
+    renderTabData,
+  };
+  try {
+    const routing = controller.handlePathRouting(window.location.pathname, false, true);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(requirements, ["plan-editor"]);
+    assert.equal(controller.model.state.activeaction, "taomoi");
+    assert.deepEqual(opened, [], "initial URL opening waits for its list render");
+    render.resolve({ rendered: true });
+    await routing;
+    assert.deepEqual(opened, [null]);
+    assert.deepEqual(rewrittenPaths, [], "the canonical create URL stays unchanged");
+  } finally {
+    render.resolve();
+    if (controller._navigationFeedback?.timer) clearTimeout(controller._navigationFeedback.timer);
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("create URL normalization preserves detail record identifiers and other actions", () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousHistory = globalThis.history;
+  const routes = [];
+  globalThis.document = {};
+  globalThis.window = { location: { pathname: "/ke-hoach-chi-tiet/tao-moi", search: "", hash: "" } };
+  globalThis.history = { replaceState() {} };
+  const plan = { id: "tao-moi" };
+  const controller = {
+    routeMap: { kehoach: "ke-hoach", "kehoach-detail": "ke-hoach-chi-tiet" },
+    actionMap: { taomoi: "tao-moi", chinhsua: "chinh-sua" },
+    model: { state: { kehoach: [plan] }, getLatestPlan: () => plan },
+    switchTab: (tab, action) => routes.push({ tab, action }),
+  };
+  try {
+    handlePathRouting.call(controller, "/ke-hoach-chi-tiet/tao-moi", false, true);
+    handlePathRouting.call(controller, "/ke-hoach/chinh-sua", false, false);
+    assert.deepEqual(routes, [
+      { tab: "kehoach-detail", action: "tao-moi" },
+      { tab: "kehoach", action: "chinh-sua" },
+    ]);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousHistory === undefined) delete globalThis.history;
+    else globalThis.history = previousHistory;
   }
 });
 

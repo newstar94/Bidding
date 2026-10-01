@@ -42,10 +42,12 @@ function fakeAssetDocument() {
       appendChild(node) { nodes.push(node); },
     },
     querySelector(selector) {
-      const match = /^(script|link)\[(src|href)="(.+)"\]$/u.exec(selector);
+      const match = /^(script|link)(?:\[rel="([^"]+)"\])?\[(src|href)="(.+)"\]$/u.exec(selector);
       if (!match) return null;
       return nodes.find((node) => (
-        node.tagName === match[1].toUpperCase() && node[match[2]] === match[3]
+        node.tagName === match[1].toUpperCase()
+        && (!match[2] || node.rel === match[2])
+        && node[match[3]] === match[4]
       )) || null;
     },
   };
@@ -68,6 +70,43 @@ test("concurrent stylesheet callers both wait for the same load event", async ()
     document.nodes[0].dispatch("load");
     await Promise.all([first, second]);
     assert.equal(secondResolved, true);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test("completed style preload still attaches one stylesheet for concurrent callers", async () => {
+  const originalDocument = globalThis.document;
+  const document = fakeAssetDocument();
+  globalThis.document = document;
+  try {
+    const href = "/frontend/test/preloaded-route.css";
+    const preload = document.createElement("link");
+    preload.rel = "preload";
+    preload.as = "style";
+    preload.href = href;
+    document.head.appendChild(preload);
+    // The browser may finish preloading before the route requests its styles.
+    preload.dispatch("load");
+
+    const first = loadStyleOnce(href);
+    const second = loadStyleOnce(href);
+    assert.equal(first, second, "concurrent callers reuse the stylesheet load");
+    let resolved = false;
+    void first.then(() => { resolved = true; });
+    const stylesheets = document.nodes.filter((node) => node.rel === "stylesheet");
+    assert.equal(stylesheets.length, 1, "a preload does not apply the stylesheet");
+    assert.equal(stylesheets[0].href, href);
+    assert.equal(document.nodes.length, 2);
+    preload.dispatch("load");
+    await Promise.resolve();
+    assert.equal(resolved, false, "preload completion cannot settle stylesheet readiness");
+    stylesheets[0].dispatch("load");
+    assert.deepEqual(await Promise.all([first, second]), [true, true]);
+    assert.equal(resolved, true);
+    assert.equal(await loadStyleOnce(href), true);
+    assert.equal(document.nodes.length, 2, "subsequent callers do not append another stylesheet");
+    assert.equal(preload.rel, "preload");
   } finally {
     globalThis.document = originalDocument;
   }
