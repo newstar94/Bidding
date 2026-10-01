@@ -6,6 +6,7 @@ import pytest
 from scripts.verify_document_worker_deployment import (
     VerificationError,
     merge_worker_environments,
+    validate_apparmor_profile,
 )
 
 
@@ -132,3 +133,57 @@ def test_worker_environment_merge_allows_only_matching_app_env_overlap():
             {"DOCUMENT_WORKER_SANDBOX": "bwrap"},
             {"DOCUMENT_WORKER_SANDBOX": "process"},
         )
+
+
+def _mock_apparmor_status(monkeypatch, profiles: str, *, enabled: str = "Y\n"):
+    original_read_text = Path.read_text
+
+    def read_status(path, *args, **kwargs):
+        if path == Path("/sys/module/apparmor/parameters/enabled"):
+            return enabled
+        if path == Path("/sys/kernel/security/apparmor/profiles"):
+            return profiles
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_status)
+
+
+@pytest.mark.parametrize(
+    "profiles",
+    [
+        "/usr/bin/bwrap (enforce)\n",
+        "bwrap (enforce)\n/usr/sbin/other (complain)\n",
+        " /usr/sbin/other (complain)\n  bwrap (enforce)  \n",
+    ],
+)
+def test_apparmor_accepts_exact_enforced_bubblewrap_profile(monkeypatch, profiles):
+    _mock_apparmor_status(monkeypatch, profiles)
+
+    validate_apparmor_profile()
+
+
+@pytest.mark.parametrize(
+    "profiles",
+    [
+        "/usr/bin/bwrap (complain)\n/usr/sbin/other (enforce)\n",
+        "/usr/sbin/other (enforce)\nbwrap (complain)\n",
+        "/usr/bin/bwrap-helper (enforce)\n",
+        "/usr/bin/bwrap//child (enforce)\n",
+        "other-bwrap (enforce)\n",
+        "/usr/bin/bwrap (enforce) trailing\n",
+        "/usr/sbin/other (enforce)\n",
+        "",
+    ],
+)
+def test_apparmor_requires_enforcement_on_exact_bubblewrap_profile(monkeypatch, profiles):
+    _mock_apparmor_status(monkeypatch, profiles)
+
+    with pytest.raises(VerificationError, match="enforced Bubblewrap"):
+        validate_apparmor_profile()
+
+
+def test_apparmor_rejects_disabled_module_even_with_enforced_profile(monkeypatch):
+    _mock_apparmor_status(monkeypatch, "/usr/bin/bwrap (enforce)\n", enabled="N\n")
+
+    with pytest.raises(VerificationError, match="not enabled"):
+        validate_apparmor_profile()

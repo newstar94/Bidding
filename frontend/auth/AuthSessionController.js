@@ -116,14 +116,31 @@ export function checkInactivity() {
 }
 export function startBackgroundSessionChecker() {
   if (this._sessionInterval) clearInterval(this._sessionInterval);
+  const checkerOwner = {};
+  this._sessionCheckerOwner = checkerOwner;
+  this._sessionCheckInFlight = null;
   this._sessionExpiryHandled = false;
   this._activeRoleBootstrapAttempted = false;
   const checkSession = () => {
+    if (this._sessionCheckerOwner !== checkerOwner || !isAuthSessionActive()) return;
     if (this._sessionCheckInFlight) return this._sessionCheckInFlight;
     if (this.checkInactivity()) {
       clearInterval(this._sessionInterval);
       return;
     }
+    const model = this.model;
+    const activeUser = model?.state?.activeuser;
+    const workspaceToken = model?.getWorkspaceToken?.() || "";
+    const organizationId = getActiveOrganizationId();
+    const requestIsCurrent = () => (
+      this._sessionCheckerOwner === checkerOwner
+      && isAuthSessionActive()
+      && this.model === model
+      && model?.state?.activeuser === activeUser
+      && (workspaceToken && typeof model?.isWorkspaceCurrent === "function"
+        ? model.isWorkspaceCurrent(workspaceToken)
+        : getActiveOrganizationId() === organizationId)
+    );
     const sessionCheck = apiFetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,6 +149,10 @@ export function startBackgroundSessionChecker() {
       if (res.ok) return res.json();
       throw new Error("Invalid session");
     }).then(async (data) => {
+      // Login and workspace switches can finish while the polling response is
+      // in flight. Only its original session may receive profile, capability
+      // or termination updates.
+      if (!requestIsCurrent()) return;
       updateServerCapabilitiesFromSession(data);
       if (!data || !data.valid) {
         if (this._sessionExpiryHandled) return;
@@ -184,8 +205,10 @@ export function startBackgroundSessionChecker() {
                   body: JSON.stringify({ active_role: storedActiveRole })
                 });
                 const rolePayload = await roleResponse.json();
+                if (!requestIsCurrent()) return;
                 serverActiveRole = rolePayload.activeRole || null;
               } catch (error) {
+                if (!requestIsCurrent()) return;
                 roleRestoreFailed = true;
                 console.warn("Could not restore the active role on the server:", error);
               }
@@ -250,12 +273,14 @@ export function startBackgroundSessionChecker() {
         }
       }
     }).catch((err) => {
+      if (!requestIsCurrent()) return;
       console.error("Automatic session check failed:", err);
     });
-    this._sessionCheckInFlight = sessionCheck.finally(() => {
-      this._sessionCheckInFlight = null;
+    const trackedCheck = sessionCheck.finally(() => {
+      if (this._sessionCheckInFlight === trackedCheck) this._sessionCheckInFlight = null;
     });
-    return this._sessionCheckInFlight;
+    this._sessionCheckInFlight = trackedCheck;
+    return trackedCheck;
   };
   this._checkSessionNow = checkSession;
   if (!this._sessionVisibilityBound) {

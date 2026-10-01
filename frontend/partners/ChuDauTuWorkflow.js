@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import {
@@ -34,8 +35,11 @@ import {
 } from "./PartnerFormController.js";
 const todayYmd = getCurrentDateYmd;
 export async function deleteChuDauTu(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const target = await refreshRecordBeforeDelete(this, "chudautu", id);
-  if (!target) return;
+  if (!isCurrent() || !target) return;
   const family = getVersionFamily(this.model.state.chudautu, target);
   const familyIds = new Set(family.map((item) => String(item.id)));
   const hasPlans = this.model.state.kehoach.some((k) => familyIds.has(String(k.chuDauTuId)));
@@ -59,7 +63,7 @@ export async function deleteChuDauTu(id) {
       "Bạn có chắc chắn muốn xóa chủ đầu tư này?",
       "trash-2",
     ) ? 2 : null;
-  if (choice === null) return;
+  if (!isCurrent() || choice === null) return;
   const result = choice === 1
     ? removeLatestVersion(this.model.state.chudautu, target)
     : removeAllVersions(this.model.state.chudautu, target);

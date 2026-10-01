@@ -133,6 +133,9 @@ def test_nginx_template_keeps_origin_on_loopback_and_bounds_abuse():
         assert block is not None
         assert "allow 127.0.0.1" in block.group("body")
         assert "deny all" in block.group("body")
+        # Forward the production Host; the app's existing TrustedHost check
+        # otherwise rejects the upstream name even for a localhost probe.
+        assert "include /etc/nginx/snippets/biddingflow-proxy-params.conf;" in block.group("body")
 
 
 def test_cloudflared_template_has_one_hostname_and_fail_closed_catchall():

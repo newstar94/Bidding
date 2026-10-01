@@ -16,7 +16,9 @@ import {
 import {
   assertWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
+  captureWorkspaceLease,
   finishWorkspaceRequest,
+  isWorkspaceLeaseCurrent,
 } from "../app/workspaceLease.js";
 import { organizationMembershipCommand } from "./OrganizationMembershipCommand.js";
 import { workspaceLifecycleController } from "../app/WorkspaceLifecycleController.js";
@@ -1105,6 +1107,9 @@ export async function viewEmployee(id) {
   this.view.openModal("modal-manager-employee-detail");
 }
 export async function deleteEmployee(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const emp = this.model.state.employees.find((e) => e.id === id);
   if (!emp) return;
   const assignmentsCount = this.model.state.assignments.filter(
@@ -1121,7 +1126,8 @@ export async function deleteEmployee(id) {
     warningText,
     "trash-2",
   );
-  if (confirmed) {
+  if (confirmed && isCurrent()) {
+    const request = beginWorkspaceRequest(model);
     try {
       const submitOffboarding = ({ successorUserId = "", assignmentSuccessors = [] } = {}) => {
         const payload = { user_id: id };
@@ -1134,12 +1140,14 @@ export async function deleteEmployee(id) {
         }
         return apiFetch("/api/auth/users/remove-from-org", {
           method: "POST",
+          signal: request.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
       };
       let res = await submitOffboarding();
       let data = await res.json().catch(() => ({}));
+      if (!isCurrent()) return;
       if (res.status === 409 && data.code === "SUCCESSOR_REQUIRED") {
         const candidates = Array.isArray(data.successorCandidates) ? data.successorCandidates : [];
         if (!candidates.length) {
@@ -1170,22 +1178,29 @@ export async function deleteEmployee(id) {
           assignmentsToTransfer.map(describeAssignment),
           candidates.map((candidate) => ({ value: candidate.user_id, label: candidate.name }))
         );
-        if (!transferChoice) return;
+        if (!isCurrent() || !transferChoice) return;
         res = await submitOffboarding(transferChoice);
         data = await res.json().catch(() => ({}));
+        if (!isCurrent()) return;
       }
       if (res.ok) {
         await this.reloadEmployeesFromDatabase();
+        if (!isCurrent()) return;
         this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter((m) => m.empId !== id);
         await this.model.persistData("permissionmatrix", { trackMutation: false });
+        if (!isCurrent()) return;
         await this.forceSyncData(true, true);
+        if (!isCurrent()) return;
         this.view.renderManagerNhanVienPanel();
         await this.view.customAlert("Đã cho nhân sự rời tổ chức", "Quyền truy cập đã được thu hồi và lịch sử phân công được giữ lại.", "check-circle");
       } else {
         await this.view.customAlert("Thất bại", data.error || "Không thể gỡ bỏ nhân sự này.", "alert-triangle");
       }
     } catch (err) {
+      if (!isCurrent()) return;
       await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    } finally {
+      finishWorkspaceRequest(model, request);
     }
   }
 }
@@ -1336,14 +1351,17 @@ export function editHoSoGiayStatus(id) {
   renderLucideIcons(document.getElementById("btn-save-hosogiay"), lucide);
 }
 export async function deleteHoSoGiayStatus(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const status = await refreshRecordBeforeDelete(this, "customcontractstatuses", id);
-  if (!status) return;
+  if (!isCurrent() || !status) return;
   const confirmed = await this.view.customConfirm(
     "Xác nhận xóa trạng thái",
     `Bạn có chắc chắn muốn xóa trạng thái hợp đồng "${status.name}"? Trạng thái đang được hợp đồng sử dụng sẽ không thể xóa.`,
     "trash-2"
   );
-  if (!confirmed) return;
+  if (!isCurrent() || !confirmed) return;
   this.model.state.customcontractstatuses = this.model.state.customcontractstatuses.filter((s) => s.id !== id);
   this.model.markDeleted?.("customcontractstatuses", [status]);
   const editingId = document.getElementById("form-hosogiay-id").value;
@@ -1356,6 +1374,7 @@ export async function deleteHoSoGiayStatus(id) {
     changes: { deletions: { customcontractstatuses: [status] } },
     afterPersist: () => this.view.renderManagerHoSoGiayPanel()
   });
+  if (!isCurrent()) return;
   if (!syncResult?.ok) {
     await this.view.customAlert(
       "Không thể xóa",

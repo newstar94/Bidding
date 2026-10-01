@@ -34,8 +34,13 @@ mapping dữ liệu hoặc xác nhận asset. Chúng không phải phần remedi
      masking hoặc capability đọc nhạy cảm riêng.
 
 6. **Root `favicon.png`**
-   - Runtime dùng `views/assets/favicon.png`; cần xác nhận root asset 1,87 MiB có
-     phải source-design asset ngoài runtime hay không trước khi xóa.
+   - Đã rà soát ngày 01/10/2026: runtime/build/test dùng
+     `views/assets/favicon.png`; root asset 1.869.717 byte không có tham chiếu.
+   - Root asset đã được khôi phục nguyên byte sau phản hồi của chủ sản phẩm;
+     giữ cả asset nguồn ở thư mục gốc và asset đang được phục vụ. Không coi
+     thiếu tham chiếu runtime là đủ để loại bỏ asset nguồn của sản phẩm.
+   - Bản sao lưu vẫn ở `D:\Bidding-cleanup-archive-20261001`; manifest ghi rõ
+     trạng thái đã khôi phục.
 
 ## Hạng mục vận hành không tự động dọn
 

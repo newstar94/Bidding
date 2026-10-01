@@ -436,7 +436,11 @@ def validate_apparmor_profile() -> None:
         raise VerificationError("AppArmor status cannot be verified.") from exc
     if enabled not in {"y", "yes", "1"}:
         raise VerificationError("AppArmor is not enabled.")
-    if "/usr/bin/bwrap" not in profiles or "enforce" not in profiles:
+    # Ubuntu may use the executable path or an explicit "bwrap" profile name.
+    # The mode must belong to that exact profile, not an unrelated entry or a
+    # child profile that happens to contain the executable name.
+    enforced_bwrap_profiles = {"/usr/bin/bwrap (enforce)", "bwrap (enforce)"}
+    if not any(line.strip() in enforced_bwrap_profiles for line in profiles.splitlines()):
         raise VerificationError("The enforced Bubblewrap AppArmor profile is not loaded.")
 
 

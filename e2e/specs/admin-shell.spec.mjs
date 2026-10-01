@@ -482,14 +482,27 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
       const combobox = page.locator(`#${id}-combobox`);
       const listbox = page.locator(`#${id}-listbox`);
       await expect(nativeSelect).toBeHidden();
+      // Tabler enables smooth scrolling. Settle the target after each synthetic
+      // viewport change before sending the real pointer click.
+      await combobox.evaluate((node) => node.scrollIntoView({ behavior: "instant", block: "center" }));
       await combobox.click();
       await expect(combobox).toHaveAttribute("aria-expanded", "true");
       await expect(listbox).toBeVisible();
       await expect(listbox).toHaveClass(/bf-admin-select-list/u);
       expect(await listbox.evaluate((node) => node.parentElement === document.body)).toBe(true);
-      const menu = await listbox.boundingBox();
-      const trigger = await combobox.boundingBox();
-      const menuStyle = await listbox.evaluate((node) => ({ left: getComputedStyle(node).left, position: getComputedStyle(node).position, offsetParent: node.offsetParent?.tagName }));
+      // Sample both rectangles in the same frame while focus scrolls can still
+      // reposition the portal; separate awaits can compare different positions.
+      const { menu, trigger, menuStyle } = await listbox.evaluate((node, inputId) => {
+        const rect = (element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        return {
+          menu: rect(node),
+          trigger: rect(document.getElementById(inputId)),
+          menuStyle: { left: getComputedStyle(node).left, position: getComputedStyle(node).position, offsetParent: node.offsetParent?.tagName },
+        };
+      }, `${id}-combobox`);
       expect(Math.abs(menu.x - trigger.x), `${testInfo.project.name} ${width} menu=${menu.x} trigger=${trigger.x} style=${JSON.stringify(menuStyle)}`).toBeLessThanOrEqual(2);
       expect(menu.x + menu.width).toBeLessThanOrEqual(width + 1);
       expect(Math.min(Math.abs(menu.y - trigger.y - trigger.height), Math.abs(menu.y + menu.height - trigger.y))).toBeLessThanOrEqual(10);
@@ -498,6 +511,7 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
     }
   }
   await page.setViewportSize({ width: 1440, height: 950 });
+  await primaryFilterFields[2].evaluate((node) => node.scrollIntoView({ behavior: "instant", block: "center" }));
   await primaryFilterFields[2].click();
   await page.keyboard.press("Home");
   await page.keyboard.press("Enter");

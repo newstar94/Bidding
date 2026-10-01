@@ -9,6 +9,9 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from backend.security.turnstile import (
     TurnstileConfigurationError,
     get_turnstile_config,

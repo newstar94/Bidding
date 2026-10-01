@@ -222,8 +222,11 @@ async function loadPackagesForPlans(controller, planIds) {
 }
 
 export async function deleteKeHoach(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const targetPlan = await refreshRecordBeforeDelete(this, "kehoach", id);
-  if (!targetPlan) return;
+  if (!isCurrent() || !targetPlan) return;
   const rootId = targetPlan.rootId || targetPlan.id;
   const relatedPlans = this.model.state.kehoach.filter((kh) => (kh.rootId || kh.id) === rootId);
   if (relatedPlans.length >= 2) {
@@ -233,7 +236,7 @@ export async function deleteKeHoach(id) {
       "Xóa phiên bản gần nhất",
       "Xóa toàn bộ"
     );
-    if (choice === null) return;
+    if (!isCurrent() || choice === null) return;
     if (choice === 1) {
       const preview = removeLatestVersion(this.model.state.kehoach, targetPlan);
       const latestKh = preview.removed[0];
@@ -244,6 +247,7 @@ export async function deleteKeHoach(id) {
       // otherwise the plan version is deleted and its packages stay behind,
       // making the previous version's packages reappear.
       await loadPackagesForPlans(this, preview.removed.map((plan) => plan.id));
+      if (!isCurrent()) return;
       const deletionCheck = canDeleteVersions(latestKh, [{
         name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
       }]);
@@ -264,6 +268,7 @@ export async function deleteKeHoach(id) {
       return;
     } else if (choice === 2) {
       await loadPackagesForPlans(this, relatedPlans.map((plan) => plan.id));
+      if (!isCurrent()) return;
       const deletionCheck = canDeleteVersions(relatedPlans, [{
         name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
       }]);
@@ -286,6 +291,7 @@ export async function deleteKeHoach(id) {
     }
   } else {
     await loadPackagesForPlans(this, relatedPlans.map((plan) => plan.id));
+    if (!isCurrent()) return;
     const deletionCheck = canDeleteVersions(relatedPlans, [{
       name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
     }]);
@@ -302,7 +308,7 @@ export async function deleteKeHoach(id) {
       `Bạn có chắc chắn muốn xóa kế hoạch "${targetPlan.tenKeHoach}"? Dữ liệu sẽ mất vĩnh viễn.`,
       "trash-2"
     );
-    if (confirmed) {
+    if (confirmed && isCurrent()) {
       this.model.replaceTableState(
         "kehoach",
         this.model.state.kehoach.filter((kh) => kh.id !== id),

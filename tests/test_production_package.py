@@ -11,6 +11,42 @@ import pytest
 from scripts import package_production
 
 
+def test_failed_archive_build_preserves_previous_release(tmp_path, monkeypatch):
+    source = tmp_path / "input.py"
+    source.write_bytes(b"new runtime")
+    output = tmp_path / "release.zip"
+    previous_bytes = b"previous verified release"
+    output.write_bytes(previous_bytes)
+    monkeypatch.setattr(package_production, "collect_runtime_files", lambda: [
+        (source, Path("backend/input.py")),
+        (tmp_path / "missing.py", Path("backend/missing.py")),
+    ])
+
+    with pytest.raises(FileNotFoundError):
+        package_production.build_archive(output)
+
+    assert output.read_bytes() == previous_bytes
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["input.py", "release.zip"]
+
+
+def test_successful_archive_build_replaces_previous_release(tmp_path, monkeypatch):
+    source = tmp_path / "input.py"
+    source.write_bytes(b"new runtime")
+    output = tmp_path / "release.zip"
+    output.write_bytes(b"previous verified release")
+    monkeypatch.setattr(package_production, "collect_runtime_files", lambda: [
+        (source, Path("backend/input.py")),
+    ])
+
+    count, size = package_production.build_archive(output)
+
+    assert count == 1 and size == output.stat().st_size
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("backend/input.py") == b"new runtime"
+        manifest = json.loads(archive.read("PRODUCTION_MANIFEST.json"))
+        assert manifest["files"][0]["sha256"] == hashlib.sha256(b"new runtime").hexdigest()
+
+
 def test_smoke_timeout_reports_only_fixed_phase_output(tmp_path, monkeypatch):
     archive = tmp_path / "candidate.zip"
     with zipfile.ZipFile(archive, "w"):

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import http.cookiejar
+import ipaddress
 import json
 import os
 import re
@@ -34,7 +35,7 @@ from urllib.request import (
 )
 
 
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.1.0"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 MAX_TIMEOUT_SECONDS = 120.0
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -81,6 +82,7 @@ class Probe:
     expected_status: frozenset[int]
     expected_content_type: str | None = None
     authenticated: bool = True
+    headers: dict[str, str] | None = None
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -151,6 +153,27 @@ def _validate_path(raw_value: str, variable_name: str) -> str:
             f"{variable_name} phải là path tương đối bắt đầu bằng '/'; không dùng URL ngoài origin"
         )
     return value
+
+
+def _validate_health_base_url(raw_value: str) -> str:
+    """Permit host-local health checks without exposing them at public ingress."""
+    value = str(raw_value or "").strip()
+    try:
+        parsed = urlsplit(value)
+        address = ipaddress.ip_address(parsed.hostname or "")
+        valid = (
+            address.is_loopback and parsed.scheme in {"http", "https"}
+            and not parsed.username and not parsed.password
+            and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment
+            and (parsed.port is None or 0 < parsed.port <= 65535)
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise SmokeConfigurationError(
+            "SMOKE_HEALTH_BASE_URL phải là HTTP(S) origin IP loopback, không có path/query/credential"
+        )
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
 def _status_set(raw_value: str, variable_name: str, default: Iterable[int]) -> frozenset[int]:
@@ -349,6 +372,7 @@ class SmokeRunner:
                 method="GET",
                 path=probe.path,
                 authenticated=probe.authenticated,
+                headers=probe.headers,
             )
         except SmokeCheckError as error:
             self.log("failed", path=probe.path)
@@ -515,6 +539,8 @@ def _load_configuration(args: argparse.Namespace) -> dict[str, object]:
         negative_path = _validate_path(negative_path, "SMOKE_NEGATIVE_PATH")
     return {
         "base_url": base_url,
+        "health_base_url": _validate_health_base_url(_env("SMOKE_HEALTH_BASE_URL"))
+        if _env("SMOKE_HEALTH_BASE_URL") else None,
         "timeout": timeout,
         "cookie_value": cookie_value,
         "username": username or None,
@@ -546,8 +572,17 @@ def _run(config: dict[str, object], mode: str) -> int:
         log_path=config["log_path"],  # type: ignore[arg-type]
     )
     runner.log(f"start-{mode}")
-    runner.assert_probe(Probe("live", "/health/live", frozenset({200})))
-    runner.assert_probe(Probe("ready", "/health/ready", frozenset({200})))
+    health_runner = runner
+    if config["health_base_url"]:
+        health_runner = SmokeRunner(
+            base_url=str(config["health_base_url"]), timeout=float(config["timeout"]),
+            cookie_value=None, username=None, password=None, log_path=config["log_path"],
+        )
+    health_headers = {"Host": urlsplit(str(config["base_url"])).netloc} if config["health_base_url"] else None
+    health_runner.assert_probe(Probe("live", "/health/live", frozenset({200}),
+                                    authenticated=False, headers=health_headers))
+    health_runner.assert_probe(Probe("ready", "/health/ready", frozenset({200}),
+                                    authenticated=False, headers=health_headers))
     runner.login(str(config["login_path"]))
     runner.assert_session(str(config["session_path"]))
     runner.assert_release_identity(

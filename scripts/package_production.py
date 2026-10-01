@@ -407,27 +407,35 @@ def build_archive(output: Path) -> tuple[int, int]:
     files = collect_runtime_files()
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists():
-        output.unlink()
-
     manifest_files = []
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for source, relative_path in files:
-            content = source.read_bytes()
-            archive.writestr(_zip_info(relative_path), content)
-            manifest_files.append({
-                "path": relative_path.as_posix(),
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "size": len(content),
-            })
+    # Write beside the target so replace is atomic on the same filesystem.
+    # A failed read/write must leave the previous verified release intact.
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for source, relative_path in files:
+                content = source.read_bytes()
+                archive.writestr(_zip_info(relative_path), content)
+                manifest_files.append({
+                    "path": relative_path.as_posix(),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "size": len(content),
+                })
 
-        manifest = json.dumps(
-            {"formatVersion": 1, "files": manifest_files},
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        ).encode("utf-8") + b"\n"
-        archive.writestr(_zip_info(Path("PRODUCTION_MANIFEST.json")), manifest)
+            manifest = json.dumps(
+                {"formatVersion": 1, "files": manifest_files},
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ).encode("utf-8") + b"\n"
+            archive.writestr(_zip_info(Path("PRODUCTION_MANIFEST.json")), manifest)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
 
     return len(files), output.stat().st_size
 

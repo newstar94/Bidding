@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import { getAppController } from "../app/controllerRef.js";
@@ -307,6 +308,9 @@ function renderPreview(container, rows, lots) {
 }
 
 function bindEditor(view, root, pkg, lots, editable, rerender) {
+  const model = view.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => view.model === model && isWorkspaceLeaseCurrent(model, lease);
   const addButton = root.querySelector("#btn-package-goods-add");
   addButton?.addEventListener("click", async () => {
     if (!editable) return;
@@ -423,9 +427,13 @@ function bindEditor(view, root, pkg, lots, editable, rerender) {
   });
   inlineRow?.querySelector('[name="tenHangHoa"]')?.focus();
   root.querySelectorAll("[data-delete-goods]").forEach((button) => button.addEventListener("click", async () => {
+    if (!isCurrent()) return;
     if (!editable || !await view.customConfirm("Xóa hàng hóa", "Bạn có chắc muốn xóa hàng hóa này?", "trash-2")) return;
+    if (!isCurrent()) return;
     await view.model.deleteRecord("goithauhanghoa", button.dataset.deleteGoods);
+    if (!isCurrent()) return;
     const result = await getAppController()?.autoSync?.();
+    if (!isCurrent()) return;
     if (!result?.ok) await view.customAlert("Lỗi đồng bộ", "Hàng hóa đang chờ đồng bộ; máy chủ chưa xác nhận thao tác xóa.", "alert-triangle");
     await rerender();
   }));

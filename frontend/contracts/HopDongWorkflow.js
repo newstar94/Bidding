@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import {
@@ -45,8 +46,11 @@ export function resolveInitialContractAssigneeIds({
 }
 
 export async function deleteHopDong(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const targetHd = await refreshRecordBeforeDelete(this, "hopdong", id);
-  if (!targetHd) return;
+  if (!isCurrent() || !targetHd) return;
   const rootId = targetHd.rootId || targetHd.id;
   const relatedHds = this.model.state.hopdong.filter((h) => (h.rootId || h.id) === rootId);
   let deleteConfirmed = false;
@@ -58,14 +62,14 @@ export async function deleteHopDong(id) {
       "Xóa phiên bản gần nhất",
       "Xóa toàn bộ"
     );
-    if (deleteChoice === null) return;
+    if (!isCurrent() || deleteChoice === null) return;
   } else {
     const confirmed = await this.view.customConfirm(
       "Xác nhận xóa",
       "Bạn có chắc chắn muốn xóa hợp đồng này không? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.",
       "trash-2"
     );
-    if (!confirmed) return;
+    if (!isCurrent() || !confirmed) return;
     deleteConfirmed = true;
   }
   if (deleteChoice === 1) {
@@ -78,11 +82,13 @@ export async function deleteHopDong(id) {
         changes: { deletions: { hopdong: result.removed } },
         afterPersist: () => this.view.renderHopDongTable()
       });
+      if (!isCurrent()) return;
       if (!syncResult?.ok) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch {
+      if (!isCurrent()) return;
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
   } else if (deleteChoice === 2 || deleteConfirmed) {
@@ -94,11 +100,13 @@ export async function deleteHopDong(id) {
         changes: { deletions: { hopdong: result.removed } },
         afterPersist: () => this.view.renderHopDongTable()
       });
+      if (!isCurrent()) return;
       if (!syncResult?.ok) {
         await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch {
+      if (!isCurrent()) return;
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
   }

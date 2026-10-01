@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import {
@@ -63,12 +64,15 @@ const safeExpertImageSrc = (value) => {
   return safeImageSrc(value);
 };
 export async function deleteChuyenGia(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   if (this.model.state.activerole === "employee") {
     await this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép xóa Chuyên gia khỏi hệ thống!", "lock");
     return;
   }
   const target = await refreshRecordBeforeDelete(this, "chuyengia", id);
-  if (!target) return;
+  if (!isCurrent() || !target) return;
   const family = getVersionFamily(this.model.state.chuyengia, target);
   const familyIds = new Set(family.map((item) => String(item.id)));
   const assignedPackages = this.model.state.goithau.filter((gt) => {
@@ -106,7 +110,7 @@ export async function deleteChuyenGia(id) {
       "Bạn có chắc muốn xóa chuyên gia đấu thầu này khỏi hệ thống?",
       "trash-2",
     ) ? 2 : null;
-  if (choice === null) return;
+  if (!isCurrent() || choice === null) return;
   const result = choice === 1
     ? removeLatestVersion(this.model.state.chuyengia, target)
     : removeAllVersions(this.model.state.chuyengia, target);

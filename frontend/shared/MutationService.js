@@ -1,6 +1,7 @@
 import { isSyncedStateKey } from "./persistencePolicy.js";
 import { beginLongTaskLoading } from "./LongTaskLoading.js";
 import { workspaceMutationCoordinator } from "./WorkspaceMutationCoordinator.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import {
   PLAN_BREAKDOWN_DRAFT_TABLES,
   isPlanBreakdownEditSessionActive,
@@ -286,7 +287,11 @@ export async function persistAndSync(controller, tableKeys, {
  * expectedVersion so the first delete request is not rejected as a conflict.
  */
 export async function refreshRecordBeforeDelete(controller, tableKey, recordId) {
+  const model = controller?.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => controller?.model === model && isWorkspaceLeaseCurrent(model, lease);
   const target = await refreshRecordBeforeMutation(controller, tableKey, recordId);
+  if (!isCurrent()) return null;
   if (!target || typeof controller?.fetchRecordByLookup !== "function") return target;
 
   const familyRoot = String(target.rootId || target.id || "");
@@ -302,6 +307,7 @@ export async function refreshRecordBeforeDelete(controller, tableKey, recordId) 
   await Promise.all(
     [...familyIds].map((id) => refreshRecordBeforeMutation(controller, tableKey, id)),
   );
+  if (!isCurrent()) return null;
   return controller.model.state[tableKey]?.find(
     (record) => String(record?.id) === String(target.id),
   ) || target;
@@ -312,12 +318,16 @@ export async function refreshRecordBeforeDelete(controller, tableKey, recordId) 
  * mutation carries the latest rowVersion instead of a stale page snapshot.
  */
 export async function refreshRecordBeforeMutation(controller, tableKey, recordId) {
+  const model = controller?.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => controller?.model === model && isWorkspaceLeaseCurrent(model, lease);
   const localRecord = controller?.model?.state?.[tableKey]?.find?.(
     (record) => String(record?.id) === String(recordId)
   ) || null;
   if (typeof controller?.fetchRecordByLookup !== "function") return localRecord;
   try {
     const authoritativeRecord = await controller.fetchRecordByLookup(tableKey, recordId);
+    if (!isCurrent()) return null;
     if (!authoritativeRecord) return localRecord;
     const records = Array.isArray(controller?.model?.state?.[tableKey])
       ? controller.model.state[tableKey]
@@ -339,6 +349,7 @@ export async function refreshRecordBeforeMutation(controller, tableKey, recordId
     replaceTableProjection(controller.model, tableKey, nextRecords);
     return authoritativeRecord;
   } catch (error) {
+    if (!isCurrent()) return null;
     console.warn(`[Sync] Could not refresh ${tableKey}/${recordId} before mutation.`, error);
     return localRecord;
   }

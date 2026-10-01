@@ -1,5 +1,8 @@
 # Production deployment and rollback
 
+Hướng dẫn cài VPS từ đầu, có lệnh theo cấu trúc release và virtualenv riêng:
+[`HUONG_DAN_PUBLIC_PRODUCTION_VPS.vi.md`](../docs/HUONG_DAN_PUBLIC_PRODUCTION_VPS.vi.md).
+
 Public production packaging requires the three minimal pages in
 `views/legal/` to exist, contain visible copy, and have no `[TODO: ...]` or
 `legal-placeholder` copy.
@@ -310,6 +313,7 @@ Ví dụ cấu hình staging (thay bằng secret manager và dữ liệu fixture
 
 ```bash
 export SMOKE_USERNAME='staging-smoke@example.invalid'
+export SMOKE_HEALTH_BASE_URL='http://127.0.0.1:8080'
 export SMOKE_PASSWORD='read-from-secret-manager'
 export SMOKE_EXPECTED_RELEASE_ID='FULL_ARTIFACT_RELEASE_ID_FROM_MANIFEST'
 export SMOKE_READ_PATH='/api/record?table=goi_thau&id=STAGING_FIXTURE_ID'
@@ -455,13 +459,15 @@ CUTOVER_STARTED=1
 mv -Tf /opt/biddingflow/current.next /opt/biddingflow/current
 systemctl restart biddingflow-document-worker
 systemctl restart biddingflow
-curl --fail http://127.0.0.1:8000/health/live
-curl --fail http://127.0.0.1:8000/health/ready
+SMOKE_BASE_URL="${SMOKE_BASE_URL:?set the public HTTPS origin}"
+export SMOKE_HEALTH_BASE_URL=http://127.0.0.1:8080
+curl --fail --header "Host: ${SMOKE_BASE_URL#https://}" "$SMOKE_HEALTH_BASE_URL/health/live"
+curl --fail --header "Host: ${SMOKE_BASE_URL#https://}" "$SMOKE_HEALTH_BASE_URL/health/ready"
 if [[ "$DEPLOY_SMOKE_SCRIPT" == *.py ]]; then
-  python "$DEPLOY_SMOKE_SCRIPT" --mode deploy http://127.0.0.1:8000
+  python "$DEPLOY_SMOKE_SCRIPT" --mode deploy "$SMOKE_BASE_URL"
 else
   [ -x "$DEPLOY_SMOKE_SCRIPT" ] || { echo "External DEPLOY_SMOKE_SCRIPT must be executable" >&2; exit 1; }
-  "$DEPLOY_SMOKE_SCRIPT" http://127.0.0.1:8000
+  "$DEPLOY_SMOKE_SCRIPT" "$SMOKE_BASE_URL"
 fi
 CUTOVER_STARTED=0
 trap - ERR
@@ -545,13 +551,15 @@ ROLLBACK_CUTOVER_STARTED=1
 mv -Tf /opt/biddingflow/current.next /opt/biddingflow/current
 systemctl restart biddingflow-document-worker
 systemctl restart biddingflow
-curl --fail http://127.0.0.1:8000/health/live
-curl --fail http://127.0.0.1:8000/health/ready
+SMOKE_BASE_URL="${SMOKE_BASE_URL:?set the public HTTPS origin}"
+export SMOKE_HEALTH_BASE_URL=http://127.0.0.1:8080
+curl --fail --header "Host: ${SMOKE_BASE_URL#https://}" "$SMOKE_HEALTH_BASE_URL/health/live"
+curl --fail --header "Host: ${SMOKE_BASE_URL#https://}" "$SMOKE_HEALTH_BASE_URL/health/ready"
 if [[ "$ROLLBACK_SMOKE_SCRIPT" == *.py ]]; then
-  python "$ROLLBACK_SMOKE_SCRIPT" --mode rollback http://127.0.0.1:8000
+  python "$ROLLBACK_SMOKE_SCRIPT" --mode rollback "$SMOKE_BASE_URL"
 else
   [ -x "$ROLLBACK_SMOKE_SCRIPT" ] || { echo "External ROLLBACK_SMOKE_SCRIPT must be executable" >&2; exit 1; }
-  "$ROLLBACK_SMOKE_SCRIPT" http://127.0.0.1:8000
+  "$ROLLBACK_SMOKE_SCRIPT" "$SMOKE_BASE_URL"
 fi
 ROLLBACK_CUTOVER_STARTED=0
 trap - ERR

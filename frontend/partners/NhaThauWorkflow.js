@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
@@ -61,8 +62,11 @@ const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "", canUpl
   if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly || !canUpload ? "none" : "");
 };
 export async function deleteNhaThau(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const nt = await refreshRecordBeforeDelete(this, "nhathau", id);
-  if (!nt) return;
+  if (!isCurrent() || !nt) return;
   const family = getVersionFamily(this.model.state.nhathau, nt);
   const familyIds = new Set(family.map((item) => String(item.id)));
   const wonPackages = this.model.state.goithau.filter((gt) => familyIds.has(String(gt.nhaThauTrungThauId)));
@@ -115,7 +119,7 @@ export async function deleteNhaThau(id) {
       "Bạn có chắc chắn muốn xóa thông tin nhà thầu này?",
       "trash-2",
     ) ? 2 : null;
-  if (choice === null) return;
+  if (!isCurrent() || choice === null) return;
   const result = choice === 1
     ? removeLatestVersion(this.model.state.nhathau, nt)
     : removeAllVersions(this.model.state.nhathau, nt);

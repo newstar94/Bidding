@@ -183,6 +183,20 @@ def _create_record_access(request, role, record_type, record_id):
         connection.close()
 
 
+def _current_record_revision(organization_id, record_type, record_id):
+    _module, table = _CREATE_RECORD_SCOPES[record_type]
+    connection = database.get_connection()
+    try:
+        revision_row = connection.execute(
+            f"SELECT row_version FROM {table} "  # noqa: S608 - fixed allowlist
+            "WHERE organization_id = ? AND id = ? AND archived_at IS NULL",
+            (organization_id, record_id),
+        ).fetchone()
+        return int(revision_row[0] or 1) if revision_row else None
+    finally:
+        connection.close()
+
+
 async def _enqueue_prepared_word_export(
     request,
     role,
@@ -199,19 +213,11 @@ async def _enqueue_prepared_word_export(
     sync_revision=None,
     publication_type=None,
 ):
-    _module, table = _CREATE_RECORD_SCOPES[record_type]
-    connection = database.get_connection()
-    try:
-        revision_row = connection.execute(
-            f"SELECT row_version FROM {table} "  # noqa: S608 - fixed allowlist
-            "WHERE organization_id = ? AND id = ? AND archived_at IS NULL",
-            (organization_id, record_id),
-        ).fetchone()
-        if not revision_row:
-            return _error("DOCUMENT_EXPORT_DENIED", 403)
-        record_revision = int(revision_row[0] or 1)
-    finally:
-        connection.close()
+    record_revision = await run_database_read(
+        _current_record_revision, organization_id, record_type, record_id,
+    )
+    if record_revision is None:
+        return _error("DOCUMENT_EXPORT_DENIED", 403)
 
     context_revision = int(manifest.get("record_revision") or 1)
     if context_revision != record_revision:
@@ -341,7 +347,7 @@ def _job_access(request):
 
 @governed_export("docx.package_report")
 async def create_package_export_job_api(request):
-    valid, role = verify_session(request)
+    valid, role = await run_database_read(verify_session, request)
     if not valid:
         return _error("AUTH_REQUIRED", 403)
     package_id = clean_id(request.path_params.get("package_id"))
@@ -352,13 +358,13 @@ async def create_package_export_job_api(request):
     requested_template_filenames = _requested_template_filenames(request)
     if not package_id or report_type not in REPORT_DOCUMENT_TYPES:
         return _error("DOCUMENT_EXPORT_INPUT_INVALID", 400)
-    organization_id, access_error = _create_record_access(
-        request, role, "goi_thau", package_id
+    organization_id, access_error = await run_database_read(
+        _create_record_access, request, role, "goi_thau", package_id,
     )
     if access_error is not None:
         return access_error
-    snapshot_version, snapshot_error = _validate_export_snapshot(
-        request, organization_id
+    snapshot_version, snapshot_error = await run_database_read(
+        _validate_export_snapshot, request, organization_id,
     )
     if snapshot_error is not None:
         return snapshot_error
@@ -407,7 +413,7 @@ async def create_package_export_job_api(request):
 
 @governed_export("docx.plan")
 async def create_plan_export_job_api(request):
-    valid, role = verify_session(request)
+    valid, role = await run_database_read(verify_session, request)
     if not valid:
         return _error("AUTH_REQUIRED", 403)
     plan_id = clean_id(request.path_params.get("plan_id"))
@@ -429,13 +435,13 @@ async def create_plan_export_job_api(request):
     except PlanBasisSelectionError as error:
         return _error(str(error), 400)
 
-    organization_id, access_error = _create_record_access(
-        request, role, "ke_hoach_lcnt", plan_id
+    organization_id, access_error = await run_database_read(
+        _create_record_access, request, role, "ke_hoach_lcnt", plan_id,
     )
     if access_error is not None:
         return access_error
-    snapshot_version, snapshot_error = _validate_export_snapshot(
-        request, organization_id
+    snapshot_version, snapshot_error = await run_database_read(
+        _validate_export_snapshot, request, organization_id,
     )
     if snapshot_error is not None:
         return snapshot_error

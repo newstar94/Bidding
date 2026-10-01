@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -6,6 +8,25 @@ from scripts import check_security_deployment as preflight
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_preflight_cli_runs_from_artifact_without_editable_install():
+    # Skip site initialization so an editable developer checkout cannot hide
+    # the missing project path in a clean production virtualenv.
+    code = (
+        "import runpy,sys,sysconfig; "
+        "sys.path.append(sysconfig.get_paths()['purelib']); "
+        f"sys.argv=[{str(ROOT / 'scripts/check_security_deployment.py')!r},'--help']; "
+        "runpy.run_path(sys.argv[0],run_name='__main__')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", code],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--environment-file" in result.stdout
+
+
 PRODUCTION_ENVIRONMENT = {
     "APP_ENV": "production",
     "APP_PUBLIC_URL": "https://bid.example.vn",

@@ -1,4 +1,5 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 export function trackPackageInheritance(controller, inherit) {
@@ -18,6 +19,9 @@ export async function waitForPackageInheritance(controller) {
 }
 
 export async function restoreCanceledPackage(id) {
+  const model = this.model;
+  const lease = captureWorkspaceLease(model);
+  const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) return;
   let previousState = "Đang chấm thầu";
@@ -34,14 +38,14 @@ export async function restoreCanceledPackage(id) {
     `Bạn có chắc chắn muốn khôi phục gói thầu "${gt.tenGoiThau}"? Trạng thái sẽ được chuyển về "${previousState}".`,
     "rotate-ccw"
   );
-  if (!confirmed) return;
+  if (!isCurrent() || !confirmed) return;
   gt.trangThai = previousState;
   stageLocalRecords(this.model, "goithau", gt);
   const syncResult = await persistAndSync(this, "goithau", {
     changes: { upserts: { goithau: [gt] } },
     afterPersist: () => this.view.renderGoiThauTable()
   });
-  if (!syncResult?.ok) return;
+  if (!isCurrent() || !syncResult?.ok) return;
   await this.view.customAlert("Thành công", "Đã khôi phục trạng thái gói thầu thành công.", "check-circle");
 }
 export async function checkAndInheritCanceledPackage(planId) {

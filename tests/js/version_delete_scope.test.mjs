@@ -21,6 +21,43 @@ function memoryStorage() {
   };
 }
 
+test("a plan delete confirmation from an old workspace cannot stage a delete in the new workspace", async () => {
+  const plan = { id: "plan-a", rowVersion: 4, tenKeHoach: "Plan A" };
+  const otherPlan = { id: "plan-b", rowVersion: 5, tenKeHoach: "Plan B" };
+  const model = new BiddingModel();
+  model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
+  model.workspaceStorage = memoryStorage();
+  model.db = { stores: ["kehoach"], async get() { return null; }, async set() {} };
+  model.state.kehoach = [plan];
+  model.state.goithau = [];
+  model.persistChanges = async () => {};
+  let confirmDelete;
+  let confirmationShown;
+  const shown = new Promise((resolve) => { confirmationShown = resolve; });
+  const confirmation = new Promise((resolve) => { confirmDelete = resolve; });
+  let remoteSyncs = 0;
+  const controller = {
+    model,
+    fetchRecordByLookup: async () => plan,
+    view: {
+      customConfirm() { confirmationShown(); return confirmation; },
+      renderKeHoachTable: async () => {},
+    },
+    autoSync: async () => { remoteSyncs += 1; return { ok: true }; },
+  };
+  const pending = deleteKeHoach.call(controller, plan.id);
+  await shown;
+  model.workspaceScope = { key: "user:org-b", organizationId: "org-b" };
+  model.workspaceStorage = memoryStorage();
+  model._workspaceEpoch += 1;
+  model.state.kehoach = [otherPlan];
+  confirmDelete(true);
+  await pending;
+  assert.deepEqual(model.state.kehoach, [otherPlan]);
+  assert.equal(model.hasPendingMutationOutboxChanges(), false);
+  assert.equal(remoteSyncs, 0);
+});
+
 test("deleting the latest plan version is blocked by packages known only to the server", async () => {
   const planV00 = { id: "plan-00", rootId: "plan-00", phienBan: "00", isLatest: 0, tenKeHoach: "KH" };
   const planV01 = { id: "plan-01", rootId: "plan-00", phienBan: "01", isLatest: 1, tenKeHoach: "KH" };

@@ -143,24 +143,36 @@ try {
         throw "Isolated test server did not become ready."
     }
     foreach ($command in $commands) {
-        if ($command -eq "test:e2e:smoke") {
-            $playwrightArgs = @()
-            if ($Project -ne "all") {
-                $playwrightArgs += "--project=$Project"
-            }
-            if (-not [string]::IsNullOrWhiteSpace($Grep)) {
-                $playwrightArgs += "--grep=$Grep"
-            }
-            if ($playwrightArgs.Count -gt 0) {
-                & npm run $command -- @playwrightArgs
+        # Windows PowerShell 5 can turn native stderr warnings into terminating
+        # errors when the caller captures streams. npm's exit code determines
+        # suite success; warnings must remain visible without aborting the run.
+        $previousErrorAction = $ErrorActionPreference
+        $npmExitCode = $null
+        Get-Command npm -ErrorAction Stop | Out-Null
+        try {
+            $ErrorActionPreference = "Continue"
+            if ($command -eq "test:e2e:smoke") {
+                $playwrightArgs = @()
+                if ($Project -ne "all") {
+                    $playwrightArgs += "--project=$Project"
+                }
+                if (-not [string]::IsNullOrWhiteSpace($Grep)) {
+                    $playwrightArgs += "--grep=$Grep"
+                }
+                if ($playwrightArgs.Count -gt 0) {
+                    & npm run $command -- @playwrightArgs
+                } else {
+                    & npm run $command
+                }
             } else {
                 & npm run $command
             }
-        } else {
-            & npm run $command
+            $npmExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorAction
         }
-        if ($LASTEXITCODE -ne 0) {
-            throw "$command failed with exit code $LASTEXITCODE."
+        if ($null -eq $npmExitCode -or $npmExitCode -ne 0) {
+            throw "$command failed with exit code $npmExitCode."
         }
     }
     $suiteSucceeded = $true

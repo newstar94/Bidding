@@ -10,6 +10,8 @@ import uuid
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from backend.shared.idempotency import acquire_idempotency_lock
+
 
 RETENTION_SECONDS = 30 * 24 * 60 * 60
 MAX_ACTIVE_DRAFTS = 20
@@ -83,6 +85,16 @@ class ConflictDraftRepository:
         payload: dict,
     ) -> dict:
         ciphertext, digest = self._encrypt(payload)
+        # Idempotency lookup and pruning share the actor/workspace draft set.
+        # Serialize their read/modify/write transaction across web workers so
+        # concurrent captures cannot overrun the cap or race the unique key.
+        acquire_idempotency_lock(
+            self.cursor,
+            "conflict-draft-capture",
+            organization_id,
+            actor_user_id,
+            workspace_fingerprint,
+        )
         self.purge_expired()
         existing = self.cursor.execute(
             """SELECT id, payload_sha256, status FROM conflict_resolution_drafts

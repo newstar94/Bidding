@@ -118,3 +118,42 @@ test("forced session termination deactivates but never purges pending workspace"
     ["session"],
   ]);
 });
+
+test("forced session cleanup cannot deactivate a new login after an old outbox flush", async () => {
+  let releaseFlush;
+  const flush = new Promise((resolve) => { releaseFlush = resolve; });
+  const events = [];
+  let token = "user-a:org-a@1";
+  const model = {
+    state: { activeuser: { id: "user-a" } },
+    getWorkspaceToken: () => token,
+    isWorkspaceCurrent: (candidate) => candidate === token,
+    flushMutationOutbox: () => flush,
+    deactivateWorkspace: async () => events.push("deactivate"),
+    clearSessionData: () => events.push("clear"),
+  };
+  const pending = quarantineForcedSession({ model });
+  token = "user-b:org-b@2";
+  model.state.activeuser = { id: "user-b" };
+  releaseFlush();
+  await pending;
+  assert.deepEqual(events, []);
+});
+
+test("forced session cleanup cannot clear a new login while old deactivation settles", async () => {
+  let releaseDeactivation;
+  const deactivate = new Promise((resolve) => { releaseDeactivation = resolve; });
+  const events = [];
+  const model = {
+    state: { activeuser: { id: "user-a" } },
+    flushMutationOutbox: async () => {},
+    deactivateWorkspace: () => deactivate,
+    clearSessionData: () => events.push("clear"),
+  };
+  const pending = quarantineForcedSession({ model });
+  await new Promise((resolve) => setImmediate(resolve));
+  model.state.activeuser = { id: "user-b" };
+  releaseDeactivation();
+  await pending;
+  assert.deepEqual(events, []);
+});

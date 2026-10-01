@@ -198,7 +198,7 @@ test("view-permission specialist creates a plan through the breakdown form", asy
     ));
     await page.locator("#btn-save-plan-breakdown").click();
     const response = await saved;
-    expect(response.ok(), await response.text()).toBe(true);
+    expect(response.ok(), `Plan save returned HTTP ${response.status()}`).toBe(true);
     await expect(page.locator("#modal-plan-breakdown.active")).toBeHidden();
     await page.reload({ waitUntil: "commit" });
     await ready(page);

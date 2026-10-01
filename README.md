@@ -119,7 +119,8 @@ Artifact `release/biddingflow-production.zip` dùng allowlist, có manifest SHA-
 
 ## Deploy và rollback
 
-Xem [deploy/README.md](deploy/README.md). Tóm tắt:
+Xem [hướng dẫn public production lên VPS](docs/HUONG_DAN_PUBLIC_PRODUCTION_VPS.vi.md)
+và [deploy/README.md](deploy/README.md). Tóm tắt:
 
 1. Backup + verify, chạy migration bằng migrator role.
 2. Giải nén artifact mới vào release directory versioned.

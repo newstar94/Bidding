@@ -40,18 +40,21 @@ server {
         allow 127.0.0.1;
         deny all;
         proxy_pass http://biddingflow_app;
+        include /etc/nginx/snippets/biddingflow-proxy-params.conf;
     }
 
     location = /health/ready {
         allow 127.0.0.1;
         deny all;
         proxy_pass http://biddingflow_app;
+        include /etc/nginx/snippets/biddingflow-proxy-params.conf;
     }
 
     location = /metrics {
         allow 127.0.0.1;
         deny all;
         proxy_pass http://biddingflow_app;
+        include /etc/nginx/snippets/biddingflow-proxy-params.conf;
     }
 
     location ~ ^/api/auth/(?:login|register|forgot-password|resend-code|verify)$ {

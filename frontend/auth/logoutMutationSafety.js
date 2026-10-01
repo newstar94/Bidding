@@ -70,12 +70,26 @@ export async function prepareExplicitLogout(controller) {
 }
 
 export async function quarantineForcedSession(controller) {
+  const model = controller?.model;
+  const activeUser = model?.state?.activeuser;
+  const checkerOwner = controller?._sessionCheckerOwner;
+  const workspaceToken = model?.getWorkspaceToken?.() || "";
+  const sessionIsCurrent = () => (
+    controller?.model === model
+    && model?.state?.activeuser === activeUser
+    && controller?._sessionCheckerOwner === checkerOwner
+  );
   controller?.disconnectWebSocket?.(false);
   try {
-    await controller?.model?.flushMutationOutbox?.();
+    await model?.flushMutationOutbox?.();
   } catch {
     // Existing durable replicas remain scoped to the previous user/workspace.
   }
-  await controller?.model?.deactivateWorkspace?.();
-  controller?.model?.clearSessionData?.();
+  if (!sessionIsCurrent() || (workspaceToken
+    && model?.isWorkspaceCurrent?.(workspaceToken) === false)) return;
+  await model?.deactivateWorkspace?.();
+  // Deactivation advances the original workspace epoch itself. Its session
+  // identity still has to match before clearing authentication storage.
+  if (!sessionIsCurrent()) return;
+  model?.clearSessionData?.();
 }

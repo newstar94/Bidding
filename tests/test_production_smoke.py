@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from deploy.scripts import production_smoke
 
 EXPECTED_RELEASE_ID = "a" * 64
@@ -60,6 +62,44 @@ def _set_required_env(monkeypatch):
     monkeypatch.setenv("SMOKE_PASSWORD", "fixture-password-not-for-output")
     monkeypatch.setenv("SMOKE_READ_PATH", "/api/record?table=goi_thau&id=fixture")
     monkeypatch.setenv("SMOKE_EXPECTED_RELEASE_ID", EXPECTED_RELEASE_ID)
+
+
+def test_tunnel_smoke_checks_private_health_locally_without_credentials(monkeypatch):
+    _set_required_env(monkeypatch)
+    _patch_runner(monkeypatch)
+    original_request = production_smoke.SmokeRunner.request
+    calls = []
+
+    def tunnel_request(self, **kwargs):
+        calls.append((self.base_url, kwargs["path"], kwargs.get("authenticated", True), self.cookie_value))
+        if kwargs["path"].startswith("/health/"):
+            assert kwargs["headers"] == {"Host": "app.example.invalid"}
+        if kwargs["path"].startswith("/health/") and self.base_url != "http://127.0.0.1:8080":
+            return production_smoke.ResponseSnapshot(403, "text/html", b"")
+        return original_request(self, **kwargs)
+
+    monkeypatch.setattr(production_smoke.SmokeRunner, "request", tunnel_request)
+    monkeypatch.setenv("SMOKE_HEALTH_BASE_URL", "http://127.0.0.1:8080")
+
+    assert production_smoke.main(["https://app.example.invalid"]) == 0
+    health_calls = [call for call in calls if call[1].startswith("/health/")]
+    assert len(health_calls) == 2
+    assert all(origin == "http://127.0.0.1:8080" and not authenticated and cookie is None
+               for origin, _path, authenticated, cookie in health_calls)
+    assert all(origin == "https://app.example.invalid" for origin, path, _auth, _cookie in calls
+               if not path.startswith("/health/"))
+
+
+@pytest.mark.parametrize("origin", [
+    "http://10.0.0.1:8080", "https://example.invalid", "http://localhost:8080", "http://127.0.0.1:8080/prefix",
+    "http://127.0.0.1:8080?token=value",
+])
+def test_private_health_origin_rejects_non_numeric_loopback_or_non_origin_values(monkeypatch, origin):
+    _set_required_env(monkeypatch)
+    _patch_runner(monkeypatch)
+    monkeypatch.setenv("SMOKE_HEALTH_BASE_URL", origin)
+
+    assert production_smoke.main(["https://app.example.invalid"]) == 2
 
 
 def test_requires_credentials_and_read_path(monkeypatch, capsys):
