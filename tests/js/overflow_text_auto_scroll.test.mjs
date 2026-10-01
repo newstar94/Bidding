@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   OVERFLOW_SCROLL_DEFAULTS,
+  installOverflowTextAutoScroll,
   overflowScrollPosition,
   shouldAutoScrollTextControl,
   textControlOverflowDistance,
@@ -19,6 +20,148 @@ function textControl(overrides = {}) {
     ...overrides,
   };
 }
+
+function scrollingInstallationFixture({ withControl = false } = {}) {
+  let resolveFonts;
+  const fontsReady = new Promise((resolve) => { resolveFonts = resolve; });
+  const metrics = { fontReadyReads: 0, widthReads: 0 };
+  const controls = [];
+  const frames = new Map();
+  const intervals = new Map();
+  let observer;
+  let nextId = 0;
+  const root = Object.assign(new EventTarget(), {
+    nodeType: 9,
+    documentElement: {},
+    activeElement: null,
+    hidden: false,
+    querySelectorAll: () => controls,
+    fonts: {
+      get ready() {
+        metrics.fontReadyReads += 1;
+        return fontsReady;
+      },
+    },
+    defaultView: {
+      requestAnimationFrame(callback) {
+        const id = ++nextId;
+        frames.set(id, callback);
+        return id;
+      },
+      cancelAnimationFrame: (id) => frames.delete(id),
+      setInterval(callback) {
+        const id = ++nextId;
+        intervals.set(id, callback);
+        return id;
+      },
+      clearInterval: (id) => intervals.delete(id),
+      matchMedia: () => Object.assign(new EventTarget(), { matches: false }),
+      MutationObserver: class {
+        constructor(callback) { this.callback = callback; observer = this; }
+        observe() {}
+        disconnect() { this.disconnected = true; }
+      },
+    },
+  });
+  const createControl = () => {
+    const attributes = new Map();
+    const control = textControl({
+      nodeType: 1,
+      ownerDocument: root,
+      scrollLeft: 0,
+      querySelectorAll: () => [],
+      hasAttribute: (name) => attributes.has(name),
+      setAttribute: (name, value) => attributes.set(name, value),
+      removeAttribute: (name) => attributes.delete(name),
+    });
+    Object.defineProperty(control, "scrollWidth", {
+      get() { metrics.widthReads += 1; return 280; },
+    });
+    return control;
+  };
+  if (withControl) controls.push(createControl());
+  return {
+    root,
+    metrics,
+    frames,
+    intervals,
+    resolveFonts,
+    get observer() { return observer; },
+    addControl() {
+      const control = createControl();
+      controls.push(control);
+      observer.callback([{ type: "childList", addedNodes: [control], removedNodes: [] }]);
+      return control;
+    },
+    addControlViaAttribute() {
+      const control = createControl();
+      controls.push(control);
+      observer.callback([{ type: "attributes", target: control, addedNodes: [], removedNodes: [] }]);
+      return control;
+    },
+  };
+}
+
+test("empty UI bootstrap avoids the layout-forcing font-ready getter until a text control appears", async () => {
+  const fixture = scrollingInstallationFixture();
+  const installation = installOverflowTextAutoScroll(fixture.root);
+  try {
+    assert.equal(fixture.metrics.fontReadyReads, 0, "Landing without text controls must not force font layout");
+    fixture.addControl();
+    assert.equal(fixture.metrics.fontReadyReads, 1, "Dynamically added text controls still subscribe to font completion");
+    fixture.addControl();
+    assert.equal(fixture.metrics.fontReadyReads, 1, "Font completion is subscribed once per installation");
+    const before = fixture.metrics.widthReads;
+    fixture.resolveFonts();
+    await Promise.resolve();
+    assert.equal(fixture.metrics.widthReads, before + 2, "Font completion remeasures all tracked text controls");
+  } finally {
+    installation.disconnect();
+  }
+});
+
+test("initial text controls retain their font-completion refresh", async () => {
+  const fixture = scrollingInstallationFixture({ withControl: true });
+  const installation = installOverflowTextAutoScroll(fixture.root);
+  try {
+    assert.equal(fixture.metrics.fontReadyReads, 1);
+    const before = fixture.metrics.widthReads;
+    fixture.resolveFonts();
+    await Promise.resolve();
+    assert.equal(fixture.metrics.widthReads, before + 1);
+  } finally {
+    installation.disconnect();
+  }
+});
+
+test("a control becoming eligible through an attribute change subscribes to font completion", async () => {
+  const fixture = scrollingInstallationFixture();
+  const installation = installOverflowTextAutoScroll(fixture.root);
+  try {
+    assert.equal(fixture.metrics.fontReadyReads, 0);
+    fixture.addControlViaAttribute();
+    assert.equal(fixture.metrics.fontReadyReads, 1);
+    const before = fixture.metrics.widthReads;
+    fixture.resolveFonts();
+    await Promise.resolve();
+    assert.equal(fixture.metrics.widthReads, before + 1);
+  } finally {
+    installation.disconnect();
+  }
+});
+
+test("disconnect before font completion does not revive scrolling or measurements", async () => {
+  const fixture = scrollingInstallationFixture({ withControl: true });
+  const installation = installOverflowTextAutoScroll(fixture.root);
+  installation.disconnect();
+  const before = fixture.metrics.widthReads;
+  fixture.resolveFonts();
+  await Promise.resolve();
+  assert.equal(fixture.metrics.widthReads, before);
+  assert.equal(fixture.frames.size, 0);
+  assert.equal(fixture.intervals.size, 0);
+  assert.equal(fixture.observer.disconnected, true);
+});
 
 test("overflow distance only includes the hidden portion of a text control", () => {
   assert.equal(textControlOverflowDistance(textControl()), 160);

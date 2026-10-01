@@ -16,7 +16,7 @@ const ACTIONABLE_PENDING_PHASES = new Set([
 ]);
 
 function isSyncConflict(result) {
-  if (result?.conflictQuarantined || result?.idempotencyKeyReused) return false;
+  if (result?.conflictQuarantined || result?.idempotencyKeyReused || result?.reloadUnsafe) return false;
   return Boolean(result?.conflict || result?.status === 409);
 }
 
@@ -102,6 +102,12 @@ export function runManualSyncRetry(controller) {
     return activeRetry.promise;
   }
   const run = (async () => {
+    if (controller._rejectedRecordRestoration?.workspaceToken === workspaceToken
+      || controller._terminalRejectionRecovery?.workspace?.token === workspace.token) {
+      const restored = await controller.autoSync();
+      if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+      if (!restored?.ok) return restored;
+    }
     if (Array.isArray(controller.model?.syncErrors) && controller.model.syncErrors.length > 0) {
       showSyncErrorDetails(controller, controller.model.syncErrors);
       return { ok: false, validation: true };
@@ -273,12 +279,24 @@ export async function prepareExportSnapshot() {
   if (!this.model || typeof this.model.buildMutationSyncPayload !== "function") {
     throw new Error("Không thể xác nhận dữ liệu với máy chủ.");
   }
+  const workspace = captureWorkspace(this);
   const syncResult = await this.autoSync();
+  if (!syncWorkspaceIsCurrent(this, workspace)) {
+    throw new Error("Tổ chức đang làm việc đã thay đổi. Vui lòng xuất lại.");
+  }
   if (!syncResult?.ok) {
     if (syncResult?.conflict || syncResult?.status === 409) {
       throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
     }
     throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
+  }
+  if (syncResult.requiredActiveRole) {
+    throw new Error("Thay đổi chưa được đồng bộ. Vui lòng chuyển sang vai trò Quản lý để đồng bộ trước khi xuất tệp.");
+  }
+  if (syncResult.localMutationsPending === true
+    || this.model.hasPendingMutationOutboxChanges?.()
+    || this.model.buildMutationSyncPayload()) {
+    throw new Error("Thay đổi cục bộ chưa được máy chủ xác nhận. Vui lòng đồng bộ trước khi xuất tệp.");
   }
   let snapshotVersion = syncResult?.data?.syncVersion;
   if (snapshotVersion === void 0 || snapshotVersion === null || snapshotVersion === "") {

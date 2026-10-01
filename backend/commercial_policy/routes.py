@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 from backend.auth.auth_helper import verify_session, verify_session_in_transaction
 from backend.db.db_helper import database
 from backend.billing.service import public_order_payload
+from backend.billing.authorization import authorize_organization_buyer
 from backend.shared.logging_utils import log_audit, log_error
 
 from .config import commercial_runtime_config
@@ -552,6 +553,8 @@ async def create_billing_quote_api(request):
         if not valid:
             conn.rollback()
             return JSONResponse({"error": tx_actor, "code": "FORBIDDEN"}, status_code=403)
+        if owner_kind == "organization":
+            authorize_organization_buyer(cursor, tx_actor, owner_id, lock_owner=False)
         context = {
             "ownerKind": owner_kind,
             "ownerId": owner_id,

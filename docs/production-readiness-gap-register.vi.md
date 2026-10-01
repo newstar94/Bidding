@@ -1,16 +1,42 @@
 # Danh mục hoàn tất trước khi phát hành production — BiddingFlow
 
-Ngày cập nhật: 30/09/2026. Phạm vi: working tree tại `D:\Bidding`. Các kết quả cục bộ bên dưới chưa phải bằng chứng của commit phát hành bất biến, staging hoặc host production. Chưa commit, push, deploy hay thực hiện giao dịch PayOS thật. File PPTX không liên quan trong `output/` vẫn nằm ngoài phạm vi.
+Ngày cập nhật: 01/10/2026. Phạm vi: working tree tại `D:\Bidding`. Các kết quả cục bộ bên dưới chưa phải bằng chứng của commit phát hành bất biến, staging hoặc host production. Chưa commit, push, deploy hay thực hiện giao dịch PayOS thật. File PPTX không liên quan trong `output/` vẫn nằm ngoài phạm vi.
+
+**Cập nhật 01/10/2026:** các kết quả gate ở bảng dưới là snapshot ngày
+30/09, không phải chứng nhận bản sửa mới. Bằng chứng và những lỗi phát hiện/sửa
+sau đó được theo dõi tại [báo cáo sửa lỗi](production-repair-report.vi.md).
+Backend hiện đã đạt 2.502 test/1 skip, coverage 65,02%; frontend cuối đạt
+1.972/1.972 test và 14 coverage ratchets ở snapshot trước bổ sung F5. Bản
+ADR 0049 đã đạt focused 33/33 conflict và 79/79 draft/workflow, full JS cuối
+2.026/2.026 và 14 coverage ratchets ở snapshot ADR 0049. Bổ sung ADR 0050
+hiện đạt full JS **2.049/2.049**, 14 ratchets, focused landing/browser **26/26**.
+Secure build/package smoke mới đạt với release ID `9ba70825…`. Gate startup
+landing **100ms** đạt hai lượt **30 cold + 30 warm**, không ghi nhận task
+>=50ms; đây không phải tổng startup <100ms hoặc bằng chứng Edge/workspace thật.
+Chưa có smoke F5/IndexedDB có xác thực trên staging.
+Đối chiếu bằng chứng hiện hành trong báo cáo đó, không dùng bảng lịch sử bên dưới.
 
 ## Kết luận
 
 **Chưa đủ điều kiện phát hành production.** Blocker phê duyệt 27 mục legal đã được gỡ theo quyết định của chủ sản phẩm; ba trang legal tối giản vẫn được giữ. Đây là thay đổi của cổng kiểm tra trang công khai, **không phải** kết luận tuân thủ pháp luật hay miễn các kiểm tra kỹ thuật và vận hành.
 
-Secure build mới và `package_production.py --check` đã đạt, gồm extracted-runtime smoke. Bằng chứng cục bộ hiện tại ghi 167 bundle obfuscate, 879 runtime files và 5.161.770 bytes. Đã tạo lại `release/biddingflow-production.zip` cùng SHA-256 `780e796c710cd54d4cb8a60b1b189515f7801cd57a85471a562a95d7f63cb637`; artifact này vẫn chỉ là đầu ra working tree, chưa được phê duyệt/deploy. Chưa có clone-data migration/restore, staging smoke hoặc cutover production.
+Artifact **01/10 sau tối ưu startup ADR 0050**: 168 bundle obfuscate,
+882 runtime files, 5.201.005 bytes; SHA-256
+`c892d5536a227dbf87e860752b8bdfa929625cf01794808bb45367739f5afd94`;
+release ID `9ba7082517f82a60f48cd27bb436a7a82259c1a3e772f349aaa5e18c8fa3747d`.
+Secure build và `package_production.py --check` đạt, gồm extracted-runtime
+smoke. ZIP/checksum trước tối ưu được giữ dưới tên `pre-startup-20261001`
+để phục hồi, không deploy artifact cũ. Đây vẫn chỉ là
+ứng viên working tree, chưa được phê duyệt/deploy; chưa có clone-data
+migration/restore, staging smoke hoặc cutover production.
 
-Phạm vi phát hành đã bổ sung **thanh toán production** theo yêu cầu của chủ sản phẩm. Code/runbook đã chuẩn bị, nhưng thiếu credential, merchant/webhook authorization, legal/commercial approval và host evidence; không bật `PAYMENT_CHECKOUT_ENABLED=true` hay chạy giao dịch thật khi chưa hoàn tất các mục đó.
+Phạm vi phát hành đã bổ sung **thanh toán production** theo yêu cầu của chủ sản
+phẩm. Code/runbook đã chuẩn bị, nhưng lượt kiểm tra chưa được cung cấp bằng
+chứng credential, merchant/webhook authorization, legal/commercial approval
+và host. Không khẳng định những cấu hình đó chắc chắn chưa tồn tại bên ngoài;
+không bật checkout hoặc chạy giao dịch thật trước khi xác nhận đủ điều kiện.
 
-## Đã thực hiện trong lượt này
+## Lịch sử kiểm tra ngày 30/09 — không dùng chứng nhận ứng viên 01/10
 
 | Hạng mục | Kết quả | Bằng chứng |
 |---|---|---|
@@ -31,22 +57,22 @@ Phạm vi phát hành đã bổ sung **thanh toán production** theo yêu cầu 
 | Mã | Danh mục | Hiện trạng đã xác minh / chưa xác minh | Việc cần làm và điều kiện hoàn tất |
 |---|---|---|---|
 | P0-01 | Phạm vi bản phát hành | Working tree có các sửa đổi release gates/recovery/payment runbook; chưa có commit ứng viên. Thanh toán production đã nằm trong scope được yêu cầu. | Chốt owner, dùng checkout phát hành sạch, bảo toàn PPTX ngoài phạm vi; mọi bằng chứng phải gắn cùng commit/ID bất biến. |
-| P0-02 | Full engineering gates | Static, secure build, full JavaScript 1.920/1.920 và Python 2.451 pass đã đạt cục bộ; hai cleanup lock lỗi do chạy đồng thời đã pass khi chạy tuần tự. Coverage, E2E đa trình duyệt và performance chưa có bằng chứng current-SHA. | Chạy full CI, Python/JS coverage, Playwright browser matrix và các luồng E2E/performance quan trọng; lưu log theo commit, không đổi kỳ vọng quyền hoặc dữ liệu để làm test xanh. |
+| P0-02 | Full engineering gates | Backend không đổi sau snapshot Python 2.502 pass/1 skip và 16 mô-đun trọng yếu. F5 đạt focused 33/33 conflict và 79/79 draft/workflow; ADR 0050 full JS 2.049/2.049, 14 ratchets, focused landing/browser 26/26 và static/lint/secure build đạt. Gate startup landing 100ms đạt hai lượt 30 cold + 30 warm, không task >=50ms. Chưa có authenticated Edge/multi-browser E2E/full CI current-SHA. | Smoke F5 và đo startup Edge/workspace trên staging; chạy full CI và E2E/browser matrix cho cùng commit/ID; không đổi kỳ vọng quyền hoặc dữ liệu để làm test xanh. |
 | P0-03 | An ninh và chuỗi cung ứng | Dependency audit cục bộ đã sạch; chưa có kết quả current-commit cho secret scan, CodeQL, vendor assets và security deployment preflight. | Chạy đủ gate, xử lý phát hiện có căn cứ hoặc ghi exception có chủ sở hữu; xác nhận không rò secret/source map và không có Markdown runtime trong artifact. |
 | P0-04 | Hợp đồng quyền và dữ liệu | Lượt này không sửa role, tenant, module, assignment, record scope, masking hay API đọc. | Chạy regression xác thực/session, tenant isolation, module/assignment/record authorization và hiển thị đầy đủ bản ghi đã được cấp quyền; quyền xuất Word chỉ điều khiển xuất/tải. |
 | P0-05 | Cơ sở dữ liệu | Local isolated schema 98, preflight/dry-run và FK audit đã đạt; runtime hỗ trợ 80–98. Chưa diễn tập trên clone dữ liệu ứng viên và chưa có rollback/restore evidence. | Kiểm tra preflight, migration từ các phiên bản được hỗ trợ trên clone staging tương đương, index/lock/cardinality, dữ liệu trước–sau và đường khôi phục; lưu log schema thực tế đã redacted. |
-| P0-06 | Cấu hình và bí mật production | [Mẫu môi trường](../deploy/production.env.example) còn giá trị mẫu, secret chưa cấp và nhiều xác nhận hạ tầng chưa được đánh dấu. | Cấp secret qua kho bí mật, cấu hình exact origin, SMTP bắt buộc, khóa email outbox và OTP HMAC, cookie, DB private network, admin bootstrap và các tích hợp bật; chạy preflight trên host thật, không commit/in secret. |
+| P0-06 | Cấu hình và bí mật production | [Mẫu môi trường](../deploy/production.env.example) là template; chưa có bằng chứng host/secret manager được cung cấp trong lượt kiểm tra, không khẳng định secret/hạ tầng thực tế chưa tồn tại. | Xác nhận/cấp secret qua kho bí mật, cấu hình exact origin, SMTP bắt buộc, khóa email outbox và OTP HMAC, cookie, DB private network, admin bootstrap và các tích hợp bật; chạy preflight trên host thật, không commit/in secret. |
 | P0-07 | DNS, TLS và biên mạng | Repository có mẫu/runbook, chưa có bằng chứng DNS/TLS, proxy, firewall và ingress trên hạ tầng đích. | Xác minh chứng chỉ, HTTPS/HSTS, trusted proxy, ingress/Cloudflare nếu dùng, nginx và systemd trên host thực tế; lưu kết quả và người chịu trách nhiệm. |
 | P0-08 | Sao lưu và khôi phục | Có công cụ/runbook, chưa có bằng chứng lịch chạy, off-host, cảnh báo và diễn tập restore production/staging gần nhất. | Cấu hình backup DB + file, retention, kiểm checksum, lưu ngoài host, cảnh báo stale; khôi phục vào môi trường cách ly và xác nhận RPO/RTO. |
 | P0-09 | Giám sát và ứng phó sự cố | Có template chỉ số/cảnh báo; chưa xác nhận scrape, receiver, on-call và diễn tập cảnh báo thực tế. | Kết nối dashboard/alert, đặt ngưỡng, kiểm audit checkpoint, phân công trực và thử alert → tiếp nhận → xử lý. |
 | P0-10 | Staging smoke | Smoke runner/browser smoke có kiểm release ID, HTTPS/headers/assets/login/read; contract tests đạt. Chưa có credential smoke, fixture record, artifact ứng viên hoặc log staging. | Cấu hình DEPLOY_SMOKE_SCRIPT/ROLLBACK_SMOKE_SCRIPT bằng artifact ứng viên; cấp tài khoản/cookie ngắn hạn qua secret manager, cài staging giống production, kiểm health/release identity, browser headers/assets/console, login, authorized read, phiên, đồng bộ, Word/Excel và lỗi; lưu log không chứa secret. |
 | P0-11 | Cutover và rollback | Runbook có quy trình, chưa có diễn tập cho ứng viên này. | Diễn tập đổi phiên bản, rollback code và phương án khôi phục DB/file sau migration; ghi thời gian, health, dữ liệu và quyết định go/no-go. |
-| P0-12 | Secure build và package | Secure build mới khớp source-derived release ID; package/extracted-runtime check và archive ứng viên working tree đã đạt. Chưa có commit ứng viên hoặc staging deployment. | Đối chiếu release ID/manifest/hash, allowlist, extracted smoke và ZIP không có Markdown/secret/source map trên checkout phát hành sạch; chỉ deploy artifact sau phê duyệt. |
+| P0-12 | Secure build và package | Ứng viên sau ADR 0050 khớp source-derived ID `9ba70825…`, 168 obfuscated bundles, 882 runtime files; package/extracted-runtime smoke đạt. ZIP/checksum hiện hành khớp báo cáo; bản trước tối ưu được giữ để phục hồi. Chưa có commit ứng viên hoặc staging deployment. | Đối chiếu release ID/manifest/hash, allowlist, extracted smoke và ZIP không có Markdown/secret/source map trên checkout phát hành sạch; chỉ deploy artifact sau phê duyệt. |
 | P0-13 | Provenance và phê duyệt phát hành | SBOM và SHA-256 đã sinh cục bộ cho archive; chưa có release record/approval gắn với commit bất biến và môi trường. | Gắn SBOM, SHA-256, log gate, thay đổi/migration và phê duyệt go/no-go vào release record; đối chiếu artifact → commit → build → môi trường. |
 | P0-14 | Trải nghiệm, khả năng truy cập và sức tải | Chưa có bằng chứng staging cho các màn hình chính, responsive, browser matrix, lỗi accessibility nghiêm trọng và capacity/latency của ứng viên. | Kiểm các luồng có xác thực, xuất tài liệu, mobile/desktop, accessibility, baseline hiệu năng và connection budget; sửa lỗi được xác nhận mà không đổi hợp đồng hiển thị dữ liệu. |
 | P0-15 | Document worker | Đã thêm unit worker, env template, ràng buộc web–worker, verifier merge `APP_ENV` an toàn và test contract; chưa có bằng chứng host Linux/systemd, service account, DB role, Bubblewrap, volume hoặc sandbox probe thật. | Cài worker/service account, DB role, secret và queue/storage tách biệt; đáp ứng kiểm tra coupling và [trình xác minh worker](../scripts/verify_document_worker_deployment.py) trên host đích, ghi evidence 0600 ngoài release. |
 | P0-16 | Enrichment recovery | Recovery/claim/fencing đã implement; 5/5 PostgreSQL regression tests đạt trên DB cô lập, gồm stale-owner rollback, failure-after-progress và starvation. Chưa có crash/rollback drill staging. | Chạy [bộ test PostgreSQL](../tests/test_procurement_enrichment_recovery_postgres.py) trên DB staging phù hợp; kiểm stale worker không ghi đè session bundle, rollback khi mất lease, không đổi TTL/quyền; diễn tập crash/restart staging. |
-| P0-17 | Bật thanh toán production | Code/runbook PayOS đã có, nhưng credential, merchant/webhook authorization, legal/commercial approval, host/path evidence và approved real transaction còn thiếu; checkout phải tắt. | Hoàn tất [runbook PayOS](runbooks/payos-production-integration.md): profile `provider-payos-production-v2`/`env://payos/default`, secret manager, webhook public/HMAC, readiness, reconciliation/support/rollback và staging smoke. Chỉ bật activation rồi checkout sau phê duyệt; giao dịch thật cần xác nhận người thực hiện và số tiền. |
+| P0-17 | Bật thanh toán production | Code/runbook PayOS đã có; lượt kiểm tra chưa có bằng chứng credential, merchant/webhook authorization, legal/commercial approval, host/path và giao dịch thật đã được phê duyệt. Chưa tự bật checkout hoặc giao dịch thật. | Xác nhận các điều kiện trong [runbook PayOS](runbooks/payos-production-integration.md): profile `provider-payos-production-v2`/`env://payos/default`, secret manager, webhook public/HMAC, readiness, reconciliation/support/rollback và staging smoke. Activation ổn → bật checkout trong cửa sổ kiểm thử có kiểm soát đã phê duyệt → giao dịch/đối soát → mở cho khách; xác nhận người thực hiện và số tiền. |
 
 ## Việc phụ thuộc tính năng hoặc mô hình triển khai
 

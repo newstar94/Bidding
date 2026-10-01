@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import os from "node:os";
 import { chromium } from "playwright";
 import { STARTUP_LONG_TASK_LIMIT_MS } from "./profile_startup_long_tasks.mjs";
+import {
+  installRoutePerformanceCollectors,
+  waitForRoutePerformanceSnapshot,
+} from "./route_performance_collectors.mjs";
+import {
+  landingFixturePreloadTags,
+  resolveLandingFixturePreloads,
+  routeFixtureCacheControl,
+} from "./route_fixture_policy.mjs";
+import { withRouteFixtureNavigation } from "./route_fixture_navigation.mjs";
 
 const DIST_ROOT = path.resolve("dist");
-const TEST_HOST = "biddingflow.test";
+const TEST_HOST = "127.0.0.1";
 const manifest = JSON.parse(
   fs.readFileSync(path.join(DIST_ROOT, ".vite", "manifest.json"), "utf8"),
 );
@@ -17,7 +28,21 @@ if (!appScript) throw new Error("Route CSS visual smoke requires a built app scr
 if (!landingShellCss?.endsWith(".css")) {
   throw new Error("Route CSS visual smoke requires the built landing shell stylesheet.");
 }
+if (!fs.statSync(path.join(DIST_ROOT, landingShellCss), { throwIfNoEntry: false })?.isFile()) {
+  throw new Error("Route CSS visual smoke requires an existing landing shell stylesheet.");
+}
 const landingMarkup = fs.readFileSync("views/components/landing_page.html", "utf8");
+const landingPreloads = resolveLandingFixturePreloads(manifest, (file) => (
+  fs.statSync(path.join(DIST_ROOT, file), { throwIfNoEntry: false })?.isFile() === true
+));
+const requiredStartupAssets = [...new Set([
+  ...landingPreloads.moduleFiles, ...landingPreloads.fontFiles, landingShellCss,
+])].map((file) => "/dist/" + file);
+const indexMarkup = fs.readFileSync("views/index.html", "utf8");
+const shellScriptTags = [...indexMarkup.matchAll(
+  /<script src="(\/vendor\/(?:route-shell\.js|lucide\/lucide-shim\.js)\?[^"]+)"><\/script>/g,
+)].map((match) => match[0]);
+if (shellScriptTags.length !== 2) throw new Error("Landing fixture requires both production shell scripts.");
 
 const routeCss = (manifestKey) => {
   const entry = manifest[manifestKey] || {};
@@ -54,27 +79,47 @@ const htmlHeaders = {
   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'",
 };
 const landingDocument = (assetOrigin = "") => (
-  '<!doctype html><html data-bf-shell="landing"><head>'
+  '<!doctype html><html lang="vi" data-trial-full-access="false" data-bf-shell="landing"><head>'
   + (assetOrigin ? '<base href="' + assetOrigin + '/">' : '')
   + '<meta name="viewport" content="width=device-width,initial-scale=1">'
   + '<meta name="bf-app-debug" content="false">'
+  + shellScriptTags[0]
+  + landingFixturePreloadTags(landingPreloads, assetOrigin)
   + '<link rel="stylesheet" href="' + assetOrigin + '/dist/' + landingShellCss
   + '" data-runtime-styles data-bf-shell-styles="landing">'
   + '<script id="bf-session-bootstrap" type="application/json">{"valid":false}</script>'
+  + '</head><body class="bf-init-loading">' + landingMarkup
+  + shellScriptTags[1]
   + '<script type="module" src="' + assetOrigin + '/dist/' + appScript + '"></script>'
-  + '</head><body class="bf-init-loading">' + landingMarkup + '</body></html>'
+  + '</body></html>'
 );
 
+let measuredAssetRequests = 0;
 const server = http.createServer((request, response) => {
+  const originalWriteHead = response.writeHead.bind(response);
+  response.writeHead = (statusCode, ...args) => {
+    const cacheControl = routeFixtureCacheControl(request.url, statusCode);
+    if (cacheControl) response.setHeader("cache-control", cacheControl);
+    return originalWriteHead(statusCode, ...args);
+  };
   const pathname = new URL(request.url, "http://127.0.0.1").pathname;
   if (pathname === "/") {
     response.writeHead(200, htmlHeaders);
     response.end(landingDocument());
     return;
   }
+  if (pathname === "/favicon.ico") {
+    response.writeHead(204).end();
+    return;
+  }
   if (pathname === "/api/public/packages") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end('{"packages":[]}');
+    return;
+  }
+  if (pathname === "/api/public/commercial/offers") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end('{"releaseId":"route-fixture","offers":[],"creditPacks":[],"quotaWarnings":[]}');
     return;
   }
   const routeName = pathname.slice(1);
@@ -91,6 +136,7 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (pathname.startsWith("/dist/assets/")) {
+    measuredAssetRequests += 1;
     const asset = path.resolve(DIST_ROOT, pathname.slice("/dist/".length));
     if (path.dirname(asset) !== path.resolve(DIST_ROOT, "assets") || !fs.existsSync(asset)) {
       response.writeHead(404).end();
@@ -149,14 +195,7 @@ const baseUrl = `http://${TEST_HOST}:${port}`;
 const browser = await chromium.launch({
   headless: true,
   args: [
-    // The measured document is an about:blank shell so host-level HTTP
-    // injectors cannot contaminate long-task attribution. Allow only this
-    // harness to fetch its loopback assets across the opaque origin; CSP and
-    // Trusted Types remain covered by their dedicated production checks.
-    "--disable-web-security",
-    "--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessChecks",
     "--no-proxy-server",
-    `--host-resolver-rules=MAP ${TEST_HOST} 127.0.0.1`,
   ],
 });
 const results = [];
@@ -169,18 +208,42 @@ const percentile = (values, ratio) => {
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)];
 };
 const measureNavigation = async (page) => {
+  const assetRequestsBefore = measuredAssetRequests;
   const diagnostics = [];
-  page.on("console", (message) => diagnostics.push(`console:${message.type()}:${message.text()}`));
-  page.on("pageerror", (error) => diagnostics.push(`pageerror:${error.message}`));
-  page.on("requestfailed", (request) => diagnostics.push(
-    `requestfailed:${request.url()}:${request.failure()?.errorText || "unknown"}`,
-  ));
-  await page.goto("about:blank");
-  await page.setContent(landingDocument(baseUrl), { waitUntil: "domcontentloaded" });
+  const failures = [];
+  const onConsole = (message) => {
+    const diagnostic = `console:${message.type()}:${message.text()}`;
+    diagnostics.push(diagnostic);
+    if (message.type() === "error") failures.push(diagnostic);
+  };
+  const onPageError = (error) => failures.push(`pageerror:${error.message}`);
+  const onRequestFailed = (request) => {
+    if (request.url().startsWith("http://local.adguard.org/")) return;
+    failures.push(`requestfailed:${request.url()}:${request.failure()?.errorText || "unknown"}`);
+  };
+  const onResponse = (response) => {
+    if (response.status() >= 400) failures.push(`response:${response.status()}:${response.url()}`);
+  };
+  page.on("console", onConsole);
+  page.on("pageerror", onPageError);
+  page.on("requestfailed", onRequestFailed);
+  page.on("response", onResponse);
+  try {
+    return await withRouteFixtureNavigation(page, {
+      url: baseUrl + "/", html: landingDocument(), headers: htmlHeaders,
+    }, async () => {
   try {
     await page.waitForFunction(
-      () => document.body.classList.contains("landing-ready"),
+      () => ["ready", "failed"].includes(document.documentElement.dataset.bfBootstrap),
     );
+    const state = await page.evaluate(() => ({
+      bootstrap: document.documentElement.dataset.bfBootstrap,
+      landingReady: document.body.classList.contains("landing-ready"),
+      fatal: Boolean(document.getElementById("bf-bootstrap-fatal")),
+    }));
+    if (state.bootstrap !== "ready" || !state.landingReady || state.fatal) {
+      throw new Error(`Landing bootstrap failed: ${JSON.stringify(state)}`);
+    }
   } catch (error) {
     const state = await page.evaluate(() => ({
       bodyClass: document.body.className,
@@ -190,24 +253,45 @@ const measureNavigation = async (page) => {
     throw new Error(
       `Built landing route did not become ready: ${JSON.stringify({
         state,
-        diagnostics: diagnostics.slice(-12),
+        diagnostics: [...diagnostics, ...failures].slice(-12),
       })}`,
       { cause: error },
     );
   }
-  const metrics = await page.evaluate(() => {
-    const readyMs = Math.round(performance.now() * 100) / 100;
-    const longTasks = [...(globalThis.__bfRouteLongTasks || [])]
+  const readyMs = await page.evaluate(() => Math.round(performance.now() * 100) / 100);
+  // Include font application as well as app readiness. Access the FontFaceSet
+  // only after a natural first paint, avoiding an eager forced initial layout.
+  const productVisual = await page.evaluate(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await document.fonts.ready;
+    const frame = document.querySelector(".landing-product-window");
+    const preview = document.querySelector(".landing-app-preview");
+    const frameRect = frame?.getBoundingClientRect();
+    const previewRect = preview?.getBoundingClientRect();
+    return frameRect && previewRect ? {
+      frameWidth: frameRect.width,
+      frameHeight: frameRect.height,
+      previewWidth: previewRect.width,
+      previewHeight: previewRect.height,
+      rendered: frame.checkVisibility({ contentVisibilityAuto: true })
+        && preview.checkVisibility({ contentVisibilityAuto: true }),
+    } : null;
+  });
+  const snapshot = await page.evaluate(waitForRoutePerformanceSnapshot);
+  snapshot.readyMs = readyMs;
+  const metrics = await page.evaluate((collected) => {
+    const { readyMs, observationEndMs, observerStatus } = collected;
+    const longTasks = [...collected.longTasks]
       .sort((left, right) => right.duration - left.duration);
-    const longAnimationFrames = [...(globalThis.__bfRouteLongAnimationFrames || [])];
+    const longAnimationFrames = [...collected.longAnimationFrames];
     const longestTask = longTasks[0] || null;
     const longestAnimationFrame = [...longAnimationFrames]
       .sort((left, right) => right.duration - left.duration)[0] || null;
     const longestTaskMs = Math.round(Number(longestTask?.duration || 0) * 100) / 100;
-    const frameRect = document.querySelector(".landing-product-window")?.getBoundingClientRect();
-    const previewRect = document.querySelector(".landing-app-preview")?.getBoundingClientRect();
     return {
       readyMs,
+      observationEndMs,
+      observerStatus,
       longestTaskMs,
       longestTask,
       longestAnimationFrame,
@@ -222,17 +306,27 @@ const measureNavigation = async (page) => {
         startTime: Math.round(entry.startTime * 100) / 100,
         responseEnd: Math.round(entry.responseEnd * 100) / 100,
         duration: Math.round(entry.duration * 100) / 100,
-      })).filter((entry) => entry.startTime <= Number(longestTask?.startTime || 0) + 250),
-      productVisual: frameRect && previewRect ? {
-        frameWidth: frameRect.width,
-        frameHeight: frameRect.height,
-        previewWidth: previewRect.width,
-        previewHeight: previewRect.height,
-      } : null,
+        transferSize: entry.transferSize,
+        decodedBodySize: entry.decodedBodySize,
+      })).filter((entry) => entry.startTime <= observationEndMs),
     };
-  });
+  }, snapshot);
+  metrics.productVisual = productVisual;
+  if (failures.length) {
+    throw new Error("Landing runtime/network errors: " + JSON.stringify(failures.slice(-12)));
+  }
+  for (const name of requiredStartupAssets) {
+    if (!metrics.resources.some((resource) => resource.name === name && resource.decodedBodySize > 0)) {
+      throw new Error("Missing successful startup resource: " + name);
+    }
+  }
   if (
     !metrics.productVisual
+    || !metrics.productVisual.rendered
+    || metrics.productVisual.frameWidth <= 0
+    || metrics.productVisual.frameHeight <= 0
+    || metrics.productVisual.previewWidth <= 0
+    || metrics.productVisual.previewHeight <= 0
     || metrics.productVisual.previewWidth > metrics.productVisual.frameWidth + 1
     || metrics.productVisual.previewHeight > metrics.productVisual.frameHeight + 1
   ) {
@@ -243,66 +337,21 @@ const measureNavigation = async (page) => {
   }
   return {
     ...metrics,
+    assetRequests: measuredAssetRequests - assetRequestsBefore,
     longTasks: undefined,
     longAnimationFrames: undefined,
   };
+    });
+  } finally {
+    page.off("console", onConsole);
+    page.off("pageerror", onPageError);
+    page.off("requestfailed", onRequestFailed);
+    page.off("response", onResponse);
+  }
 };
 const createMeasuredContext = async () => {
-  const context = await browser.newContext();
-  await context.addInitScript(() => {
-    globalThis.__bfRouteLongTasks = [];
-    globalThis.__bfRouteLongAnimationFrames = [];
-    try {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          globalThis.__bfRouteLongTasks.push({
-            duration: entry.duration,
-            startTime: entry.startTime,
-            attribution: [...(entry.attribution || [])].map((item) => ({
-              name: item.name,
-              containerType: item.containerType,
-              containerName: item.containerName,
-              containerSrc: item.containerSrc,
-              containerId: item.containerId,
-            })),
-          });
-        }
-      });
-      observer.observe({ type: "longtask", buffered: true });
-    } catch {
-      // Unsupported browsers retain an empty long-task series.
-    }
-    try {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          globalThis.__bfRouteLongAnimationFrames.push({
-            duration: entry.duration,
-            startTime: entry.startTime,
-            blockingDuration: entry.blockingDuration,
-            renderStart: entry.renderStart,
-            styleAndLayoutStart: entry.styleAndLayoutStart,
-            scripts: [...(entry.scripts || [])].map((script) => ({
-              invoker: script.invoker,
-              invokerType: script.invokerType,
-              sourceURL: script.sourceURL,
-              sourceFunctionName: script.sourceFunctionName,
-              duration: script.duration,
-              executionStart: script.executionStart,
-              forcedStyleAndLayoutDuration: script.forcedStyleAndLayoutDuration,
-            })),
-          });
-        }
-      });
-      observer.observe({ type: "long-animation-frame", buffered: true });
-    } catch {
-      // Unsupported browsers retain an empty long-animation-frame series.
-    }
-    try {
-      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: undefined });
-    } catch {
-      // Service-worker availability is not required by this isolated startup harness.
-    }
-  });
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  await context.addInitScript(installRoutePerformanceCollectors);
   return context;
 };
 try {
@@ -371,6 +420,12 @@ try {
       startup.warm.push(await measureNavigation(warmPage));
     }
     await warmContext.close();
+    if (startup.warm.some((sample) => sample.assetRequests !== 0)) {
+      throw new Error("Warm route measurement did not reuse the native hashed-asset HTTP cache.");
+    }
+    if (startup.cold.some((sample) => sample.assetRequests < landingPreloads.moduleFiles.length + 3)) {
+      throw new Error("Cold route measurement did not request its complete startup asset graph.");
+    }
     const measuredLongestTask = Math.max(
       ...startup.cold.map((sample) => sample.longestTaskMs),
       ...startup.warm.map((sample) => sample.longestTaskMs),
@@ -391,6 +446,17 @@ try {
 }
 
 console.log(JSON.stringify({
+  measurement: {
+    releaseId: JSON.parse(fs.readFileSync(path.join(DIST_ROOT, "secure-build.json"), "utf8")).releaseId,
+    appScript,
+    browser: browser.version(),
+    node: process.version,
+    platform: process.platform,
+    cpu: os.cpus()[0]?.model,
+    blockedURLs: ["http://local.adguard.org/*"],
+    serviceWorkers: "block",
+    longTaskLimitMs: STARTUP_LONG_TASK_LIMIT_MS,
+  },
   visualChecks: results,
   startup: {
     cold: {
@@ -398,12 +464,14 @@ console.log(JSON.stringify({
       medianMs: percentile(startup.cold.map((sample) => sample.readyMs), 0.5),
       p95Ms: percentile(startup.cold.map((sample) => sample.readyMs), 0.95),
       longestTaskMs: Math.max(0, ...startup.cold.map((sample) => sample.longestTaskMs)),
+      assetRequests: startup.cold.reduce((sum, sample) => sum + sample.assetRequests, 0),
     },
     warm: {
       count: startup.warm.length,
       medianMs: percentile(startup.warm.map((sample) => sample.readyMs), 0.5),
       p95Ms: percentile(startup.warm.map((sample) => sample.readyMs), 0.95),
       longestTaskMs: Math.max(0, ...startup.warm.map((sample) => sample.longestTaskMs)),
+      assetRequests: startup.warm.reduce((sum, sample) => sum + sample.assetRequests, 0),
     },
   },
   traceSamples: traceOnce ? startup.cold : undefined,

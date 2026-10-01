@@ -125,6 +125,8 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
   const Resize = view?.ResizeObserver || globalThis.ResizeObserver;
   const Intersection = view?.IntersectionObserver || globalThis.IntersectionObserver;
   let animationFrame = null;
+  let fontRefreshSubscribed = false;
+  let disconnected = false;
 
   const setOverflowTitle = (control, state, hasOverflow) => {
     if (hasOverflow && control.value) {
@@ -236,9 +238,21 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
     stopAnimationWhenIdle();
   };
 
-  const trackWithin = (node) => matchingTextControls(node).forEach(track);
   const untrackWithin = (node) => matchingTextControls(node).forEach(untrack);
   const refreshAll = () => states.forEach((_state, control) => synchronizeControl(control));
+  const subscribeToFontRefresh = () => {
+    if (fontRefreshSubscribed || disconnected || !states.size) return;
+    fontRefreshSubscribed = true;
+    // FontFaceSet.ready can force a full layout. Empty shells have no text
+    // controls to refresh; keep their getter untouched until one is tracked.
+    ownerDocument?.fonts?.ready?.then(() => {
+      if (!disconnected) refreshAll();
+    }).catch(() => {});
+  };
+  const trackWithin = (node) => {
+    matchingTextControls(node).forEach(track);
+    subscribeToFontRefresh();
+  };
   const resetAndRefresh = (control) => {
     const state = states.get(control);
     if (!state) return;
@@ -306,8 +320,10 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
         if (node.nodeType === 1) trackWithin(node);
       });
       if (mutation.type === "attributes") {
-        if (mutation.target.matches?.(TEXT_CONTROL_SELECTOR)) track(mutation.target);
-        else untrack(mutation.target);
+        if (mutation.target.matches?.(TEXT_CONTROL_SELECTOR)) {
+          track(mutation.target);
+          subscribeToFontRefresh();
+        } else untrack(mutation.target);
       }
     }))
     : null;
@@ -320,10 +336,10 @@ export function installOverflowTextAutoScroll(root = globalThis.document) {
   const valuePoll = setIntervalInView?.(detectProgrammaticValueChanges, 800) ?? null;
 
   trackWithin(root);
-  ownerDocument?.fonts?.ready?.then(refreshAll).catch(() => {});
 
   const installation = {
     disconnect() {
+      disconnected = true;
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();

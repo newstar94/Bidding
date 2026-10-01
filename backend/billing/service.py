@@ -18,6 +18,7 @@ from backend.commercial_policy.errors import (
 from backend.commercial_policy.repository import CommercialRepository, new_id
 
 from .providers.base import PaymentProviderError
+from .authorization import authorize_organization_buyer
 from .runtime import payment_provider_registry
 
 
@@ -362,19 +363,8 @@ class BillingService:
                 (quote["account_user_id"],),
             ).fetchone()
         else:
-            active_role = str(getattr(actor, "active_role", "") or actor)
-            if (
-                str(quote["organization_id"]) != str(actor.active_role_organization_id or "")
-                or (
-                    str(actor.platform_role) != "super_admin"
-                    and active_role not in {"manager", "super_admin"}
-                )
-            ):
-                raise CommercialPolicyError("BUYER_NOT_AUTHORIZED", "Không có thẩm quyền checkout cho tổ chức.", status_code=403)
-            row = self.cursor.execute(
-                "SELECT id, trang_thai FROM to_chuc WHERE id = ? FOR UPDATE",
-                (quote["organization_id"],),
-            ).fetchone()
+            authorize_organization_buyer(self.cursor, actor, quote["organization_id"])
+            return
         if not row or str(row[1]) != "active":
             raise CommercialPolicyError("OWNER_INACTIVE", "Owner không còn hoạt động.", status_code=409)
 

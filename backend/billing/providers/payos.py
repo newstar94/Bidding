@@ -83,14 +83,18 @@ def verify_signed_data(data, signature, checksum_key):
 
 
 def validate_checkout_url(value):
-    parsed = urlsplit(str(value or ""))
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in PAYOS_CHECKOUT_HOSTS
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.port not in {None, 443}
-    ):
+    try:
+        parsed = urlsplit(str(value or ""))
+        invalid = (
+            parsed.scheme != "https"
+            or parsed.hostname not in PAYOS_CHECKOUT_HOSTS
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port not in {None, 443}
+        )
+    except ValueError as error:
+        raise PaymentProviderError("PROVIDER_CHECKOUT_URL_INVALID", "payOS checkout URL không hợp lệ.") from error
+    if invalid:
         raise PaymentProviderError("PROVIDER_CHECKOUT_URL_INVALID", "payOS checkout URL không hợp lệ.")
     return parsed.geturl()
 
@@ -210,7 +214,11 @@ class PayOSPaymentProvider:
             data, envelope.get("signature"), self.credentials.checksum_key
         ):
             raise PaymentProviderError("PROVIDER_RESPONSE_UNVERIFIED", "Sai chữ ký response payOS.")
-        return dict(data)
+        data = dict(data)
+        checkout_url = data.get("checkoutUrl")
+        if checkout_url is not None and checkout_url != "":
+            data["checkoutUrl"] = validate_checkout_url(checkout_url)
+        return data
 
     @staticmethod
     def _identifier(value):

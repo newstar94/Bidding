@@ -30,6 +30,40 @@ import {
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
 import { executeBidEvaluationDraftSave } from "./BidEvaluationDraftWorkflow.js";
+import { isConfirmedRowVersionConflict } from "../shared/DraftRecoveryStore.js";
+import { buildBidEvaluationRecoveryKey, captureBidEvaluationRecoveryDraft, generalBidEvaluationRecoveryFor } from "./BidEvaluationDraftRecovery.js";
+
+function captureCompletionRecovery(controller, pkg, rows, isTwoEnvelope, lotDetails) {
+  return captureBidEvaluationRecoveryDraft({ controller, pkg, rows,
+    round: isTwoEnvelope ? controller.currentDanhGiaTab : "single", lotIds: lotDetails?.lotIds || [] });
+}
+
+async function holdConflictedCompletion({ controller, result, pkg, requestedPackage, isTwoEnvelope, lotDetails, workspaceToken, priorMetadata, enteredDraft }) {
+  if (!isConfirmedRowVersionConflict(result) || (workspaceToken && controller.model.isWorkspaceCurrent?.(workspaceToken) === false)) return;
+  const round = isTwoEnvelope ? controller.currentDanhGiaTab : "single";
+  const lotIds = lotDetails?.lotIds || [];
+  const recovery = generalBidEvaluationRecoveryFor(controller);
+  const keys = [...new Set([requestedPackage || pkg, pkg].map((target) => buildBidEvaluationRecoveryKey({ controller, pkg: target, round, lotIds })))];
+  const durableRemoval = keys.map((key) => recovery.holdUntilReload(key, enteredDraft).durableRemoval).every(Boolean);
+  // Failed official completion retains report input, not official lifecycle.
+  const retainedMetadata = parseEvaluationMetadataStrict(pkg.danhGiaHsdtMetadata);
+  const targetBlock = round === "single" ? retainedMetadata : retainedMetadata[round] || {};
+  const priorBlock = round === "single" ? priorMetadata : priorMetadata[round] || {};
+  for (const field of ["saved", "trangThai", "hoanThanhLuc", "lotBatches", "activeLotBatchId"]) {
+    if (Object.prototype.hasOwnProperty.call(priorBlock, field)) targetBlock[field] = structuredClone(priorBlock[field]);
+    else delete targetBlock[field];
+  }
+  pkg.danhGiaHsdtMetadata = serializeEvaluationMetadata(retainedMetadata);
+  const current = (controller.model.state.goithau || []).find((row) => String(row.id) === String(pkg.id));
+  if (current !== pkg && controller.model.hasRetainedConflictRecord?.("goithau", pkg.id)) {
+    current.danhGiaHsdtMetadata = pkg.danhGiaHsdtMetadata;
+  }
+  controller.model.updateRetainedConflictRecord?.("goithau", current || pkg);
+  if (!durableRemoval) {
+    await controller.view.customAlert?.("Bộ nhớ bản nháp chưa an toàn",
+      "Không thể xác nhận đã loại bản khôi phục xung đột khỏi bộ nhớ. Hãy giữ tab mở và khôi phục bộ nhớ trước khi tải lại.", "alert-triangle");
+  }
+}
 
 export function stageBidEvaluationMutation(model, pkg, bids = [], workspaceMutation = null) {
   if (!model || !pkg?.id || typeof model.commitLocalMutation !== "function") {
@@ -800,6 +834,8 @@ export async function saveDanhGiaHsdt(options = {}) {
   if (completionWorkspaceToken
     && this.model.isWorkspaceCurrent?.(completionWorkspaceToken) === false) return false;
   const ownsWorkspaceMutation = typeof this.model.beginWorkspaceMutation === "function";
+  const priorCompletionMetadata = parseEvaluationMetadataStrict(gt.danhGiaHsdtMetadata);
+  const enteredCompletionDraft = captureCompletionRecovery(this, gt, rows, is1G2T, evaluationLotDetails);
   const workspaceMutation = ownsWorkspaceMutation ? this.model.beginWorkspaceMutation() : null;
   if (workspaceMutation) this.model.assertWorkspaceMutation?.(workspaceMutation);
   let syncResult;
@@ -834,7 +870,12 @@ export async function saveDanhGiaHsdt(options = {}) {
   } finally {
     if (ownsWorkspaceMutation) this.model.finishWorkspaceMutation?.(workspaceMutation);
   }
-  if (!syncResult?.ok) return;
+  if (!syncResult?.ok) {
+    await holdConflictedCompletion({ controller: this, result: syncResult, pkg: gt, requestedPackage,
+      isTwoEnvelope: is1G2T, lotDetails: evaluationLotDetails,
+      workspaceToken: completionWorkspaceToken, priorMetadata: priorCompletionMetadata, enteredDraft: enteredCompletionDraft });
+    return;
+  }
   const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;

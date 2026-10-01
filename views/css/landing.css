@@ -63,6 +63,21 @@ html[data-bf-shell="workspace"] .landing-page {
   background: var(--landing-surface);
 }
 
+/* Keep the initial layout limited to the hero and nearby content. These
+ * sections remain in the DOM/accessibility tree and render automatically
+ * when scrolling, focus or search brings them near the viewport. */
+.landing-page main > section:not(.landing-hero),
+.landing-footer {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1000px;
+}
+
+/* Fragment navigation requires real section heights, not scroll estimates. */
+html[data-bf-shell="landing"]:has(:target) .landing-page main > section:not(.landing-hero),
+html[data-bf-shell="landing"]:has(:target) .landing-footer {
+  content-visibility: visible;
+}
+
 .landing-page *,
 .landing-page *::before,
 .landing-page *::after {

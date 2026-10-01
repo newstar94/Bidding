@@ -5,6 +5,7 @@ import {
   findInvalidRequiredTechnicalScore,
   saveDanhGiaHsdt,
 } from "../../frontend/packages/bidEvaluationActions.js";
+import { buildBidEvaluationRecoveryKey, generalBidEvaluationRecoveryFor } from "../../frontend/packages/BidEvaluationDraftRecovery.js";
 
 function deferred() {
   let resolve;
@@ -136,6 +137,31 @@ test("complete_evaluation_waits_for_authority_before_mutation", async () => {
 
   scenario.authority.resolve({ authoritative: true, offline: false });
   await saving;
+});
+
+test("confirmed general completion conflict cannot auto-restore autosaved report after F5", async () => {
+  const scenario = completionScenario();
+  const values = new Map();
+  scenario.model.workspaceScope = { userId: "user", organizationId: "org" };
+  scenario.model.workspaceStorage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  scenario.controller.autoSync = async () => ({ ok: false, status: 409, data: { errors: [{ code: "ROW_VERSION_CONFLICT", table: "goi_thau", id: scenario.pkg.id }] } });
+  const key = buildBidEvaluationRecoveryKey({ controller: scenario.controller, pkg: scenario.pkg, round: "single" });
+  const recovery = generalBidEvaluationRecoveryFor(scenario.controller);
+  recovery.save(key, { packageId: scenario.pkg.id, report: { soBaoCao: "Rejected completion input" } });
+  const callbacks = [];
+  recovery.scheduleTimer = (callback) => { callbacks.push(callback); return callbacks.length; };
+  recovery.cancelTimer = () => {};
+  recovery.schedule(key, () => ({ packageId: scenario.pkg.id, report: { soBaoCao: "late rejected input" } }));
+  scenario.authority.resolve({ authoritative: true });
+  await saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });
+  callbacks[0]();
+  assert.equal(generalBidEvaluationRecoveryFor({ model: scenario.model }).restore(key), null);
+  assert.equal(recovery.restore(key).sessionOnly, true);
+  assert.equal(recovery.restore(key).draft.report.soBaoCao, "01/BC-DG");
+  const retainedMetadata = JSON.parse(scenario.pkg.danhGiaHsdtMetadata);
+  assert.notEqual(retainedMetadata.saved, true);
+  assert.notEqual(retainedMetadata.trangThai, "completed");
+  assert.equal(retainedMetadata.soBaoCao, "01/BC-DG");
 });
 
 test("complete_evaluation_preserves_report_input_when_authoritative_refresh_replaces_controls", async () => {

@@ -1,5 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
-import { apiFetch } from "../shared/apiClient.js";
+import { ApiError, apiFetch } from "../shared/apiClient.js";
 import { applyServerSnapshot } from "./syncMergeUtils.js";
 import { getActiveOrganizationId } from "./workspaceState.js";
 import {
@@ -35,6 +35,12 @@ import {
   reconcileTimelinePackageOptionProjection,
 } from "../shared/tableDataUtils.js";
 import { observeProjectionAuthorizationVisibilityToken } from "../shared/PaginatedProjectionStore.js";
+import {
+  forgetConflictProjection,
+  hasConflictProjection,
+  retainAuthorizedConflictRecord,
+  retainedConflictRecord,
+} from "../shared/conflictProjection.js";
 
 
 const DETAIL_ROUTE_TABLE = {
@@ -121,6 +127,10 @@ export function finalizePulledSyncState(controller, timestamp = Date.now()) {
     || controller?.model?.buildMutationSyncPayload?.(),
   );
   const currentPhase = String(controller?._syncUxState?.phase || "");
+  if (hasConflictProjection(controller?.model)) {
+    if (currentPhase !== "storageError") controller?.updateSyncState?.({ phase: "conflict", online: true });
+    return localMutationsPending;
+  }
   // A background pull can finish after an interrupted mutation has already
   // reported a recoverable failure. Keep that actionable state visible until
   // the user explicitly retries, rather than replacing it with a generic
@@ -178,6 +188,7 @@ export function detailRecordExists(model, tableKey, lookup) {
 
 export function storeFetchedRecord(model, tableKey, record) {
   if (!model || !tableKey || !record?.id) return null;
+  record = retainAuthorizedConflictRecord(model, tableKey, record);
   if (!Array.isArray(model.state[tableKey])) model.state[tableKey] = [];
   const index = model.state[tableKey].findIndex(
     (item) => String(item.id) === String(record.id),
@@ -188,7 +199,26 @@ export function storeFetchedRecord(model, tableKey, record) {
   return record;
 }
 
-export async function fetchRecordByLookup(tableKey, lookup) {
+async function dismissDeniedConflictRecord(model, tableKey, lookup, lease) {
+  const needle = String(decodeURIComponent(lookup)).toLowerCase();
+  const record = (lease.state[tableKey] || []).find((row) => (
+    [row.id, row.maGoiThau, row.maKeHoach, row.soHopDong, row.maChuDauTu, row.maNhaThau]
+      .some((value) => value !== undefined && String(value).toLowerCase() === needle)
+  ));
+  if (!record || !retainedConflictRecord(model, tableKey, record.id)) return;
+  forgetConflictProjection(model, tableKey, [record.id]);
+  lease.state[tableKey] = lease.state[tableKey].filter((row) => String(row.id) !== String(record.id));
+  model.entityIndexes?.invalidate?.(tableKey);
+  if (typeof lease.db?.deleteRecord === "function") {
+    await lease.db.deleteRecord(tableKey, record.id);
+    assertWorkspaceLeaseCurrent(model, lease);
+  }
+}
+
+export async function fetchRecordByLookup(tableKey, lookup, {
+  requireCanonicalOutcome = false,
+  storeResult = true,
+} = {}) {
   if (!tableKey || !lookup) return null;
   const model = this.model;
   const request = beginWorkspaceRequest(model);
@@ -198,16 +228,50 @@ export async function fetchRecordByLookup(tableKey, lookup) {
       signal: request.signal,
     });
     assertWorkspaceLeaseCurrent(model, request.lease);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Recovery may remove a local projection only after an authoritative
+      // absence/denial. A transient HTTP failure is not such an outcome.
+      try { await response.body?.cancel?.(); } catch { /* unused error body */ }
+      assertWorkspaceLeaseCurrent(model, request.lease);
+      if (requireCanonicalOutcome && ![401, 403, 404].includes(response.status)) {
+        throw new ApiError("Chưa thể xác nhận bản ghi với máy chủ.", {
+          status: response.status,
+          code: "RECORD_LOOKUP_UNCONFIRMED",
+        });
+      }
+      if (storeResult && [401, 403, 404].includes(response.status)) {
+        await dismissDeniedConflictRecord(model, tableKey, lookup, request.lease);
+      }
+      return null;
+    }
     const data = await response.json();
     assertWorkspaceLeaseCurrent(model, request.lease);
-    if (!data || !data.item) return null;
+    if (!data || !data.item) {
+      if (requireCanonicalOutcome && data?.item !== null) {
+        throw new ApiError("Máy chủ chưa trả kết quả xác nhận bản ghi.", {
+          status: response.status,
+          code: "RECORD_LOOKUP_UNCONFIRMED",
+        });
+      }
+      if (storeResult && data?.item === null) {
+        await dismissDeniedConflictRecord(model, tableKey, lookup, request.lease);
+      }
+      return null;
+    }
+    if (requireCanonicalOutcome && (typeof data.item !== "object" || Array.isArray(data.item)
+      || data.item.id === undefined || data.item.id === null || String(data.item.id) === "")) {
+      throw new ApiError("Máy chủ chưa trả bản ghi hợp lệ để khôi phục.", {
+        status: response.status,
+        code: "RECORD_LOOKUP_UNCONFIRMED",
+      });
+    }
     const normalized = typeof model.normalizeRecordKeys === "function"
       ? model.normalizeRecordKeys(data.item, tableKey)
       : data.item;
     const record = { ...normalized, referenceOnly: false };
+    if (!storeResult) return record;
     const draftLocalState = captureActivePlanBreakdownState(this);
-    storeFetchedRecord(model, tableKey, record);
+    const visibleRecord = storeFetchedRecord(model, tableKey, record);
     if (draftLocalState) {
       reconcilePulledPlanBreakdownState(this, draftLocalState, new Set([tableKey]));
     }
@@ -220,23 +284,24 @@ export async function fetchRecordByLookup(tableKey, lookup) {
       assertWorkspaceLeaseCurrent(model, request.lease);
       model.markStorageTablesRecovered?.([tableKey]);
     }
-    return record;
+    return visibleRecord;
   } finally {
     finishWorkspaceRequest(model, request);
   }
 }
 
-export function ensureDetailRecordLoaded(tabName, action) {
+export function ensureDetailRecordLoaded(tabName, action, { requireCanonicalOutcome = false } = {}) {
   const tableKey = DETAIL_ROUTE_TABLE[tabName];
   if (!tableKey || !action || !this.model?.useServerSidePagination) return null;
   if (detailRecordExists(this.model, tableKey, action)) return null;
   const workspace = captureWorkspace(this);
-  const pendingKey = `${pullFlightKey(workspace)}:${tableKey}:${action}`;
+  const pendingKey = `${pullFlightKey(workspace)}:${tableKey}:${action}:${requireCanonicalOutcome ? "canonical" : "ordinary"}`;
   this._pendingDetailRecordLoads ||= new Map();
   if (this._pendingDetailRecordLoads.has(pendingKey)) {
     return this._pendingDetailRecordLoads.get(pendingKey);
   }
-  const promise = this.fetchRecordByLookup(tableKey, action).catch((error) => {
+  const promise = this.fetchRecordByLookup(tableKey, action, { requireCanonicalOutcome }).catch((error) => {
+    if (requireCanonicalOutcome) throw error;
     console.error("Failed to fetch detail record:", error);
     return null;
   }).finally(() => {
@@ -376,6 +441,25 @@ function reconcileVisibilityScopeChanged(controller, snapshot, storage) {
   return observedScopeChanged || Boolean(incomingToken
     && (incomingToken !== String(storage.getItem("bf_visibility_token") || "")
       || (priorLocalToken !== null && incomingToken !== priorLocalToken)));
+}
+
+async function confirmCurrentDetail(controller, isBackground, pullIsCurrent, stalePullResult) {
+  const currentPath = window.location.pathname;
+  const parts = currentPath.replace(/^\//, "").split("/").filter(Boolean);
+  const detailTab = Object.keys(DETAIL_ROUTE_TABLE).find(
+    (tab) => controller.routeMap?.[tab] === (parts[0] || ""),
+  );
+  if (!detailTab || !parts[1]) return null;
+  const detailLoad = ensureDetailRecordLoaded.call(controller, detailTab, parts[1], {
+    requireCanonicalOutcome: true,
+  });
+  if (detailLoad && !await detailLoad) return { ok: false, canonicalDetailPending: true };
+  if (!pullIsCurrent()) return stalePullResult();
+  if (!isBackground && currentPath === window.location.pathname) {
+    await controller.handlePathRouting?.(currentPath, false, true);
+    if (!pullIsCurrent()) return stalePullResult();
+  }
+  return null;
 }
 
 async function executeForceSyncData(
@@ -548,16 +632,8 @@ async function executeForceSyncData(
     }
     await renderChangedState(this, changedKeys, { isBackground });
     if (!pullIsCurrent()) return stalePullResult();
-    if (!isBackground) {
-      const cleanPath = window.location.pathname.startsWith("/")
-        ? window.location.pathname.substring(1)
-        : window.location.pathname;
-      const parts = cleanPath.split("/").filter(Boolean);
-      const detailTabs = ["goithau-detail", "kehoach-detail", "hopdong-detail", "chudautu-detail", "nhathau-detail"];
-      if (detailTabs.some((tab) => this.routeMap[tab] === (parts[0] || "")) && parts[1]) {
-        this.handlePathRouting(window.location.pathname, false, true);
-      }
-    }
+    const detailConfirmation = await confirmCurrentDetail(this, isBackground, pullIsCurrent, stalePullResult);
+    if (detailConfirmation) return detailConfirmation;
     if (routeOnly && typeof this.scheduleBackgroundSync === "function") {
       this.scheduleBackgroundSync(900);
     }

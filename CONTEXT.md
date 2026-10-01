@@ -181,7 +181,7 @@ Thay đổi được người dùng tạo sau khi ảnh chụp cục bộ đã r
 _Avoid_: Mutation khởi động có sẵn, mutation đã được máy chủ xác nhận
 
 **Xung đột đồng bộ chưa giải quyết**:
-Mutation cục bộ đã bị máy chủ xác nhận từ chối bằng `ROW_VERSION_CONFLICT`; batch đó được cách ly khỏi outbox hoạt động, giữ tạm làm marker trong phiên hiện tại và tự động bỏ khi tải lại trang trước khi lấy server state mới nhất. Mutation khác không thuộc batch xung đột vẫn được bảo toàn.
+Thay đổi bị máy chủ từ chối do xung đột phiên bản, chưa được coi là lưu thành công; nội dung đang nhập vẫn được giữ trên màn hình đến khi người dùng nhấn F5. Sau F5, nội dung xung đột không tự áp lại và được thay bằng dữ liệu máy chủ đã xác nhận; thay đổi khác không thuộc xung đột vẫn được bảo toàn.
 _Avoid_: Tự động merge field nhạy cảm, force overwrite, xóa toàn bộ outbox, áp lại conflict draft sau F5
 
 **Plan breakdown edit session**:

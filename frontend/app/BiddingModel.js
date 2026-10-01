@@ -16,6 +16,7 @@ import { WorkspaceMutationOutbox } from "./WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "./WorkspaceMutationOutboxStore.js";
 import { WorkspaceConflictRecoveryStore } from "./WorkspaceConflictRecoveryStore.js";
 import { ConflictCenterClient } from "./ConflictCenterClient.js";
+import { getSyncValidationErrors } from "./ConflictResolver.js";
 import {
   CONFLICT_CENTER_CAPABILITY,
   hasServerCapability,
@@ -26,6 +27,8 @@ import { EntityIndexes } from "./EntityIndexes.js";
 import {
   abortWorkspaceRequestMap,
   abortWorkspaceRequests,
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
 } from "./workspaceLease.js";
 import {
   ScopedWorkspaceStorage,
@@ -35,6 +38,15 @@ import {
 } from "./workspaceState.js";
 import { clearWorkspaceRenderCaches } from "../shared/workspaceRenderCache.js";
 import { invalidatePaginatedQueryCache } from "../shared/tableDataUtils.js";
+import {
+  canonicalConflictPersistence,
+  filterConflictReplay,
+  forgetConflictProjection,
+  hasConflictProjection,
+  rememberConflictProjection,
+  retainedConflictRecord,
+  updateRetainedConflictRecord,
+} from "../shared/conflictProjection.js";
 import {
   packageVersionResolutionOptions,
   resolveLatestPackageVersion,
@@ -47,7 +59,7 @@ const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
 );
 
 function splitConflictCheckpoint(checkpoint, data = {}) {
-  const errors = Array.isArray(data.errors) ? data.errors : [];
+  const errors = getSyncValidationErrors(data);
   const hasRowVersionConflict = errors.some(
     (error) => error?.code === "ROW_VERSION_CONFLICT" && error?.id,
   );
@@ -108,11 +120,15 @@ function splitConflictCheckpoint(checkpoint, data = {}) {
 
 function requeueCheckpoint(outbox, checkpoint, state) {
   if (!checkpoint?.queue) return false;
+  const active = typeof outbox.snapshot === "function" ? outbox.snapshot() : null;
+  const alreadyPending = (table, id) => active?.upserts?.[table]?.[id]
+    || active?.patches?.[table]?.[id]
+    || active?.deletes?.some((row) => row.table === table && String(row.id) === String(id));
   Object.entries(checkpoint.queue.upserts || {}).forEach(([table, records]) => {
     outbox.enqueue({
       kind: "upsert",
       table,
-      records: Object.values(records || {}),
+      records: Object.values(records || {}).filter((record) => !alreadyPending(table, record.id)),
       baseRecords: Object.values(checkpoint.queue.baseSnapshots?.[table] || {}),
     });
   });
@@ -120,7 +136,7 @@ function requeueCheckpoint(outbox, checkpoint, state) {
     outbox.enqueue({
       kind: "patch",
       table,
-      records: Object.values(records || {}),
+      records: Object.values(records || {}).filter((record) => !alreadyPending(table, record.id)),
       baseRecords: Object.values(checkpoint.queue.baseSnapshots?.[table] || {}),
     });
   });
@@ -136,7 +152,7 @@ function requeueCheckpoint(outbox, checkpoint, state) {
     outbox.enqueue({
       kind: "delete",
       table,
-      records: deletions.map((deletion) => ({
+      records: deletions.filter((deletion) => !alreadyPending(table, deletion.id)).map((deletion) => ({
         id: deletion.id,
         ...(Number.isInteger(deletion.expectedVersion)
           ? { rowVersion: deletion.expectedVersion }
@@ -380,14 +396,14 @@ export class BiddingModel {
       captured.outbox.enqueue({
         kind: "replace-table",
         table: type,
-        records: captured.state[type],
+        records: filterConflictReplay(this, type, captured.state[type]),
       });
       return;
     }
     captured.outbox.enqueue({
       kind: options.mode === "patch" ? "patch" : "upsert",
       table: type,
-      records: options.records || [],
+      records: filterConflictReplay(this, type, options.records || [], { patch: options.mode === "patch" }),
       baseRecords: options.baseRecords || [],
     });
   }
@@ -412,6 +428,8 @@ export class BiddingModel {
   }
 
   _resetWorkspaceMemory() {
+    forgetConflictProjection(this);
+    this.conflictQuarantineFailure = null;
     clearWorkspaceRenderCaches(this);
     invalidatePaginatedQueryCache(this);
     abortWorkspaceRequests(this._workspaceRequestControllers);
@@ -753,7 +771,7 @@ export class BiddingModel {
     }
     if (Array.isArray(oldData) && Array.isArray(state[type])) {
       const oldById = new Map(oldData.filter((record) => record?.id).map((record) => [String(record.id), record]));
-      const changedRecords = state[type].filter((record) => {
+      const changedRecords = filterConflictReplay(this, type, state[type]).filter((record) => {
         if (!record?.id) return false;
         const previous = oldById.get(String(record.id));
         return !previous || JSON.stringify(previous) !== JSON.stringify(record);
@@ -907,7 +925,7 @@ export class BiddingModel {
       ["ke_hoach_lcnt", "kehoach"],
       ["goi_thau", "goithau"],
     ]);
-    const errors = (Array.isArray(data?.errors) ? data.errors : [])
+    const errors = getSyncValidationErrors(data)
       .filter((error) => error?.code === "ROW_VERSION_CONFLICT");
     const requests = errors.map((error) => {
       const entityType = supported.get(String(error.table || ""));
@@ -941,12 +959,17 @@ export class BiddingModel {
     });
     const validRequests = requests.filter(Boolean);
     if (validRequests.length === 0) return [];
+    const lease = captureWorkspaceLease(this);
+    const store = this._getConflictRecoveryStore();
     const drafts = await Promise.all(
       validRequests.map((request) => this._getConflictCenterClient().capture(request)),
     );
-    return this._getConflictRecoveryStore().remember(drafts);
+    if (!isWorkspaceLeaseCurrent(this, lease)) return [];
+    return store.remember(drafts);
   }
   async quarantineMutationBatch({ data, snapshot } = {}) {
+    this.conflictQuarantineFailure = null;
+    const lease = captureWorkspaceLease(this);
     const outbox = this._getMutationOutbox();
     const activeCheckpoint = outbox.checkpoint();
     const scopedReceipt = snapshot && typeof outbox.checkpointForReceipt === "function";
@@ -956,28 +979,86 @@ export class BiddingModel {
     if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
     const { conflicting, unrelated } = splitConflictCheckpoint(checkpoint, data);
-    const durableRecoveryEnabled = hasServerCapability(CONFLICT_CENTER_CAPABILITY);
+    const rowConflicts = getSyncValidationErrors(data)
+      .filter((error) => error?.code === "ROW_VERSION_CONFLICT");
+    const supportedCaptureTables = new Set(["ke_hoach_lcnt", "goi_thau", "kehoach", "goithau"]);
+    const durableRecoveryEnabled = hasServerCapability(CONFLICT_CENTER_CAPABILITY)
+      && (rowConflicts.length === 0 || rowConflicts.some((error) => supportedCaptureTables.has(error.table)));
     let drafts = [];
     if (durableRecoveryEnabled) {
       try {
         drafts = await this._captureServerConflictDrafts(conflicting, data, snapshot);
       } catch {
+        if (isWorkspaceLeaseCurrent(this, lease)) {
+          this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
+        }
         return null;
       }
-      if (drafts.length === 0) return null;
+      if (drafts.length === 0) {
+        if (isWorkspaceLeaseCurrent(this, lease)) {
+          this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
+        }
+        return null;
+      }
     }
+    if (!isWorkspaceLeaseCurrent(this, lease)) return null;
     try {
       if (scopedReceipt) outbox.ack(snapshot);
       else outbox.discard();
-      if (unrelated) requeueCheckpoint(outbox, unrelated, this.state);
+      if (unrelated) requeueCheckpoint(outbox, unrelated, lease.state);
       await outbox.flush();
-      return durableRecoveryEnabled ? drafts[0] : { sessionOnly: true };
     } catch (_error) {
+      if (!isWorkspaceLeaseCurrent(this, lease)) return null;
+      this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
       outbox.restore(activeCheckpoint);
       try { await outbox.flush(); } catch { /* store exposes the durability failure */ }
       drafts.forEach((draft) => this._getConflictRecoveryStore().remove(draft.id));
       return null;
     }
+    if (!isWorkspaceLeaseCurrent(this, lease)) return null;
+    // Only the retired receipt is held in this model. Newer same-row edits and
+    // unrelated active mutations retain their own generation and cache.
+    const activeQueue = typeof outbox.snapshot === "function" ? outbox.snapshot() : null;
+    const projection = {};
+    for (const operation of ["upserts", "patches"]) {
+      for (const [table, records] of Object.entries(conflicting.queue[operation] || {})) {
+        for (const id of Object.keys(records || {})) {
+          const newer = activeQueue?.upserts?.[table]?.[id] || activeQueue?.patches?.[table]?.[id]
+            || activeQueue?.deletes?.some((row) => row.table === table && String(row.id) === id);
+          if (newer) continue;
+          const visible = (lease.state[table] || []).find((row) => String(row?.id) === id);
+          if (!visible) continue;
+          projection[table] ||= [];
+          projection[table].push(visible);
+        }
+      }
+    }
+    rememberConflictProjection(this, projection);
+    const recovery = durableRecoveryEnabled ? drafts[0] : { sessionOnly: true };
+    // The outbox has already retired durably. Cache cleanup must never roll
+    // that receipt back into the active queue if a separate cache write fails.
+    try {
+      const deletions = Object.fromEntries(Object.entries(projection).map(
+        ([table, records]) => [table, records.map((record) => record.id)],
+      ));
+      if (Object.keys(deletions).length && typeof lease.db?.applySyncChanges === "function") {
+        await lease.db.applySyncChanges({ deletions });
+      } else if (typeof lease.db?.deleteRecords === "function") {
+        await Promise.all(Object.entries(deletions).map(([table, ids]) => lease.db.deleteRecords(table, ids)));
+      }
+      if (!isWorkspaceLeaseCurrent(this, lease)) return null;
+      return recovery;
+    } catch {
+      if (!isWorkspaceLeaseCurrent(this, lease)) return null;
+      this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true, receiptRetired: true };
+      return { ...recovery, ...this.conflictQuarantineFailure };
+    }
+  }
+  hasRetainedConflictRecord(type, id) {
+    return Boolean(retainedConflictRecord(this, type, id));
+  }
+  updateRetainedConflictRecord(type, record) {
+    return updateRetainedConflictRecord(this, type, record);
   }
   async hydrateMutationOutbox(options = {}) {
     const snapshot = await this._getMutationOutbox().hydrate(options);
@@ -1063,7 +1144,7 @@ export class BiddingModel {
     return this._getMutationOutbox().enqueue({
       kind: "upsert",
       table: type,
-      records,
+      records: filterConflictReplay(this, type, records),
       baseRecords,
     });
   }
@@ -1074,7 +1155,7 @@ export class BiddingModel {
     return this._getMutationOutbox().enqueue({
       kind: "patch",
       table: type,
-      records,
+      records: filterConflictReplay(this, type, records, { patch: true }),
       baseRecords,
     });
   }
@@ -1085,7 +1166,7 @@ export class BiddingModel {
     return this._getMutationOutbox().enqueue({
       kind: "replace-table",
       table: type,
-      records: this.state[type]
+      records: filterConflictReplay(this, type, this.state[type])
     });
   }
   markDeleted(type, recordIds) {
@@ -1234,7 +1315,11 @@ export class BiddingModel {
       }
       if (mutation.db.stores.includes(type)) {
         try {
-          await mutation.db.putTableData(type, mutation.state[type]);
+          const persistedRecords = hasConflictProjection(this, type)
+            ? canonicalConflictPersistence(this, type, mutation.state[type], await mutation.db.getTableData(type))
+            : mutation.state[type];
+          this.assertWorkspaceMutation(mutation);
+          await mutation.db.putTableData(type, persistedRecords);
         } catch (err) {
           console.error("Failed to persist data for type:", type, err);
           if (options.throwOnError) throw err;
@@ -1260,9 +1345,9 @@ export class BiddingModel {
     if (options.trackMutation !== false) {
       this.assertStorageTablesWritable(type);
     }
-    const records = (Array.isArray(upserts) ? upserts : [upserts])
+    const records = canonicalConflictPersistence(this, type, (Array.isArray(upserts) ? upserts : [upserts])
       .filter((record) => record?.id !== undefined && record?.id !== null)
-      .map((record) => this.normalizeRecordKeys(record, type));
+      .map((record) => this.normalizeRecordKeys(record, type)));
     const ids = (Array.isArray(deletions) ? deletions : [deletions])
       .map((value) => value && typeof value === "object" ? value.id : value)
       .filter((value) => value !== undefined && value !== null && String(value) !== "");

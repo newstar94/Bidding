@@ -1,4 +1,9 @@
 import { applyRecordPatch } from "./mutationQueue.js";
+import {
+  forgetConflictProjection,
+  retainAuthorizedConflictRecord,
+  retainedConflictRecord,
+} from "../shared/conflictProjection.js";
 
 const revokedProjectionByModel = new WeakMap();
 const REVOKED_PROJECTION_STORAGE_KEY = "bf_revoked_projection_ids_v1";
@@ -97,7 +102,11 @@ export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds =
       mergedRecords.push(referenceItem);
       return;
     }
-    const existing = model.state[key][idx] || {};
+    // A rejected projection is intentionally visible only in this model. A
+    // lightweight server reference must never persist those rejected fields
+    // as if it had confirmed a complete canonical record.
+    const existing = retainedConflictRecord(model, key, referenceItem.id)
+      ? {} : model.state[key][idx] || {};
     const referenceKeys = new Set([...Object.keys(referenceItem), "referenceOnly"]);
     const hasFullRecordFields = existing.referenceOnly === false || Object.entries(existing).some(
       ([field, value]) => !referenceKeys.has(field) && hasMeaningfulValue(value)
@@ -343,6 +352,15 @@ export function applyServerSnapshot(model, dbData, options = {}) {
     });
   } else if (typeof model.persistData === "function") {
     persistencePromise = Promise.all(Array.from(changedKeys).map((key) => model.persistData(key, { trackMutation: false })));
+  }
+  for (const key of changedKeys) {
+    const removedIds = [...(deletionsByTable[key] || []), ...(overlayDeletionsByTable[key] || [])];
+    forgetConflictProjection(model, key, removedIds);
+    if (Array.isArray(model.state[key])) {
+      model.state[key] = model.state[key].map(
+        (record) => retainAuthorizedConflictRecord(model, key, record),
+      );
+    }
   }
   for (const key of changedKeys) model.entityIndexes?.invalidate?.(key);
   return { changedKeys, deletionsByTable, useServerSidePagination, persistencePromise };

@@ -107,6 +107,19 @@ function reportSnapshot(controller) {
   };
 }
 
+export function captureBidEvaluationRecoveryDraft({ controller, pkg, rows = [], round = "single", lotIds = [] }) {
+  const recoveryKey = buildBidEvaluationRecoveryKey({ controller, pkg, round, lotIds });
+  return {
+    packageId: pkg.id, round, lotIds: [...lotIds], report: reportSnapshot(controller),
+    bidderPatches: collectBidEvaluationDraftPatches({
+      rows,
+      bids: (controller.model.state.thongtinmothau || []).filter((bid) => String(bid.goiThauId) === String(pkg.id)),
+      dirtyState: bidEvaluationDirtyStateFor(controller, recoveryKey),
+      parseMoney: (value) => controller.model.parseVND(value),
+    }),
+  };
+}
+
 function bindOnce(element, bindingKey, eventNames, callback) {
   if (!element?.addEventListener) return;
   element.__bfEvaluationDraftBindings = element.__bfEvaluationDraftBindings || new Set();

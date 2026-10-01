@@ -267,17 +267,46 @@ function landingNavigationType() {
   return globalThis.performance?.getEntriesByType?.("navigation")?.[0]?.type || "";
 }
 
+function materializeLandingLayout() {
+  document.querySelectorAll(
+    ".landing-page main > section:not(.landing-hero), .landing-footer",
+  ).forEach((node) => { node.style.contentVisibility = "visible"; });
+}
+
+function canonicalLandingScrollY() {
+  const anchor = [...document.querySelectorAll(
+    ".landing-page main > section, .landing-footer",
+  )].find((node) => node.getBoundingClientRect().bottom > 0);
+  if (!anchor) return window.scrollY;
+  const priorTop = anchor.getBoundingClientRect().top;
+  materializeLandingLayout();
+  const canonicalTop = anchor.getBoundingClientRect().top;
+  // Account for both prefix height changes and native scroll anchoring or
+  // clamping. Preserve the visible section's position, not an estimated Y.
+  return Math.max(0, window.scrollY + canonicalTop - priorTop);
+}
+
 export function installLandingHistoryScrollCapture() {
   if (landingHistoryCaptureInstalled) return;
   landingHistoryCaptureInstalled = true;
   if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target.closest?.('a[href^="#"]');
+    if (!anchor || anchor.hash.length < 2) return;
+    // Native anchor navigation must calculate its destination from real
+    // predecessor heights, before the browser performs the default scroll.
+    materializeLandingLayout();
+    document.getElementById("landing-main")?.getBoundingClientRect();
+  }, { capture: true });
   window.addEventListener("pagehide", () => {
     const priorState = history.state && typeof history.state === "object"
       ? history.state
       : {};
     history.replaceState({
       ...priorState,
-      [LANDING_HISTORY_SCROLL_KEY]: window.scrollY,
+      [LANDING_HISTORY_SCROLL_KEY]: canonicalLandingScrollY(),
     }, "");
   });
   window.addEventListener("pageshow", (event) => {
@@ -291,6 +320,11 @@ export function installLandingHistoryScrollCapture() {
 export function restoreLandingFragment({ navigationType = landingNavigationType() } = {}) {
   const savedHistoryPosition = Number(history.state?.[LANDING_HISTORY_SCROLL_KEY]);
   if (navigationType === "back_forward" && Number.isFinite(savedHistoryPosition)) {
+    if (savedHistoryPosition > 0) {
+      // A history coordinate was recorded against real section heights. Do
+      // not restore it against estimates for previously skipped sections.
+      materializeLandingLayout();
+    }
     window.scrollTo({ top: savedHistoryPosition, behavior: "instant" });
     return true;
   }
@@ -305,6 +339,7 @@ export function restoreLandingFragment({ navigationType = landingNavigationType(
   }
   const target = document.getElementById(id);
   if (!target) return false;
+  materializeLandingLayout();
   const root = document.documentElement;
   const previousBehavior = root.style.scrollBehavior;
   root.style.scrollBehavior = "auto";

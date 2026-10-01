@@ -3,11 +3,17 @@
 - Trạng thái: Accepted
 - Ngày: 2026-09-14
 
+Yêu cầu rollback projection ngay tại nhánh conflict được thay bởi
+[ADR 0049](0049-conflict-input-until-f5-and-canonical-reload.md), theo quyết
+định ngày 01/10/2026: giữ nội dung nhập đến F5, sau F5 tải dữ liệu máy chủ.
+Các yêu cầu còn lại của ADR này không thay đổi.
+
 ## Quyết định
 
 Mọi thao tác lưu hoặc xóa phải được xác nhận bởi transaction máy chủ trước khi
-hiển thị thành công. Nếu transaction bị từ chối, dữ liệu nghiệp vụ chính được
-khôi phục về trạng thái trước thao tác; nội dung người dùng vừa nhập vẫn được
+hiển thị thành công. Nếu transaction bị từ chối (ngoại trừ conflict được điều
+chỉnh bởi ADR 0049), dữ liệu nghiệp vụ chính được khôi phục về trạng thái trước
+thao tác; nội dung người dùng vừa nhập vẫn được
 giữ trong bản nháp bền vững tách khỏi outbox hoạt động để thử lại thủ công và không tự replay.
 
 Đây là contract đích, không phải chứng nhận đã triển khai đầy đủ. Việc giữ
@@ -28,5 +34,6 @@ liệu chính thức một phần.
 ## Regression
 
 Các seam `MutationService.persistAndSync`, `SyncPushService.applyFailedPush` và
-`LongTaskLoading` phải giữ bản nháp khi rejected/conflict, rollback projection
-chính thức, không phát success toast, và chặn thao tác nền.
+`LongTaskLoading` phải giữ bản nháp khi rejected/conflict, không phát success
+toast và chặn thao tác nền trong tiến trình lưu. Rollback projection của
+rejection theo ADR này; nhánh conflict giữ đến F5 theo ADR 0049.

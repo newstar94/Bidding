@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 import uuid
 import asyncio
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import psycopg
@@ -17,6 +20,11 @@ from backend.billing import service as billing_service_module
 from backend.billing.worker import BillingWorkProcessor
 from backend.billing import webhook as billing_webhook
 from backend.db.db_helper import PostgresCursor, PostgresDatabase
+from backend.auth.auth_helper import SessionRole, verify_session_in_transaction
+from backend.auth.session_store import create_session, set_session_active_role
+from backend.commercial_policy.errors import CommercialPolicyError
+from backend.shared.membership_invariants import lock_organization_membership_invariants
+from backend.billing.authorization import authorize_organization_buyer
 
 
 def _test_database_url():
@@ -59,6 +67,7 @@ def _insert_base_plan_order(
     owner_kind="account",
     item_type="base_plan",
     create_order=True,
+    actor_user_id=None,
 ):
     token = uuid.uuid4().hex
     actor = cursor.execute(
@@ -73,7 +82,7 @@ def _insert_base_plan_order(
     ).fetchone()
     if not actor:
         pytest.skip("Test database has no active account without a subscription")
-    user_id = actor[0]
+    user_id = actor_user_id or actor[0]
     organization_id = None
     if owner_kind == "organization":
         organization_id = f"org-test-{token}"
@@ -726,6 +735,136 @@ def test_checkout_retries_provider_order_code_collision_and_pins_expiry(
     ).fetchone()[0])
     assert request["expiredAt"] == order["checkout_expires_at"]
     assert request["expiredAt"] > pending["now"]
+
+
+@pytest.mark.parametrize("change", ["left", "employee"])
+def test_checkout_rejects_membership_revoked_after_role_selection(billing_cursor, change):
+    token = uuid.uuid4().hex
+    user_id = f"buyer-{token}"
+    billing_cursor.execute(
+        """INSERT INTO tai_khoan (id, ten_dang_nhap, email, email_norm, mat_khau, vai_tro, trang_thai)
+           VALUES (?, ?, ?, ?, 'unused-test-password', 'user', 'active')""",
+        (user_id, user_id, f"{user_id}@example.test", f"{user_id}@example.test"),
+    )
+    pending = _insert_base_plan_order(
+        billing_cursor, owner_kind="organization", create_order=False,
+        actor_user_id=user_id,
+    )
+    billing_cursor.execute(
+        """INSERT INTO thanh_vien_to_chuc
+           (user_id, organization_id, vai_tro_trong_to_chuc)
+           VALUES (?, ?, 'manager')""",
+        (user_id, pending["organization_id"]),
+    )
+    now = int(time.time())
+    session_id = create_session(
+        billing_cursor, user_id=user_id, token=token,
+        absolute_expires_at=now + 600, idle_timeout_seconds=600, now=now,
+    )
+    set_session_active_role(
+        billing_cursor, session_id, user_id, "manager", pending["organization_id"],
+    )
+    request = SimpleNamespace(
+        cookies={"session_token": token},
+        headers={"X-Active-Org": pending["organization_id"]},
+    )
+    valid, initial_actor = verify_session_in_transaction(billing_cursor, request)
+    assert valid and initial_actor.active_role == "manager"
+    lock_organization_membership_invariants(billing_cursor, pending["organization_id"])
+    if change == "left":
+        statement = "UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = ? WHERE user_id = ? AND organization_id = ?"
+    else:
+        statement = "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ? WHERE user_id = ? AND organization_id = ?"
+    billing_cursor.execute(statement, (change, user_id, pending["organization_id"]))
+    valid, actor = verify_session_in_transaction(billing_cursor, request)
+    assert valid and actor.active_role == "manager"  # persisted selection is stale
+    with pytest.raises(CommercialPolicyError) as error:
+        BillingService(billing_cursor, clock=lambda: pending["now"]).create_checkout(
+            actor, pending["public_quote"], f"authority-{token}",
+        )
+    assert error.value.code == "BUYER_NOT_AUTHORIZED"
+    assert billing_cursor.execute(
+        "SELECT count(*) FROM billing_orders WHERE quote_id = (SELECT id FROM billing_quotes WHERE public_id = ?)",
+        (pending["public_quote"],),
+    ).fetchone()[0] == 0
+
+
+def test_billing_owner_lock_serializes_with_membership_change(billing_cursor):
+    membership = billing_cursor.execute(
+        """SELECT membership.user_id, membership.organization_id
+             FROM thanh_vien_to_chuc AS membership
+             JOIN to_chuc AS organization ON organization.id = membership.organization_id
+            WHERE membership.vai_tro_trong_to_chuc = 'manager'
+              AND membership.trang_thai_thanh_vien = 'active'
+              AND organization.trang_thai = 'active'
+            LIMIT 1"""
+    ).fetchone()
+    assert membership, "Test database must contain an active organization manager"
+    actor = SessionRole(
+        "manager", membership[0], platform_role="user", active_role="manager",
+        active_role_organization_id=membership[1],
+    )
+    BillingService(billing_cursor)._lock_and_authorize_owner(
+        actor, {"owner_kind": "organization", "organization_id": membership[1]},
+    )
+    database = PostgresDatabase(_test_database_url())
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        connection.execute("SET LOCAL lock_timeout = '200ms'")
+        with pytest.raises(psycopg.errors.LockNotAvailable):
+            lock_organization_membership_invariants(connection.cursor(), membership[1])
+    finally:
+        connection.rollback()
+        connection.close()
+        database.close()
+
+
+def test_quote_membership_check_does_not_deadlock_with_member_administration(billing_cursor):
+    membership = billing_cursor.execute(
+        """SELECT membership.user_id, membership.organization_id
+             FROM thanh_vien_to_chuc AS membership
+             JOIN to_chuc AS organization ON organization.id = membership.organization_id
+            WHERE membership.vai_tro_trong_to_chuc = 'manager'
+              AND membership.trang_thai_thanh_vien = 'active'
+              AND organization.trang_thai = 'active' LIMIT 1"""
+    ).fetchone()
+    assert membership, "Test database must contain an active organization manager"
+    user_id, organization_id = membership
+    database = PostgresDatabase(_test_database_url())
+    barrier = threading.Barrier(2)
+
+    def operation(quote):
+        connection = database.get_connection()
+        try:
+            connection.execute("BEGIN")
+            connection.execute("SET LOCAL deadlock_timeout = '100ms'")
+            connection.execute("SET LOCAL lock_timeout = '2s'")
+            cursor = connection.cursor()
+            if quote:
+                cursor.execute("SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE", (user_id,)).fetchone()
+            else:
+                lock_organization_membership_invariants(cursor, organization_id)
+            barrier.wait(timeout=5)
+            if quote:
+                actor = SessionRole(
+                    "manager", user_id, platform_role="user", active_role="manager",
+                    active_role_organization_id=organization_id,
+                )
+                authorize_organization_buyer(cursor, actor, organization_id, lock_owner=False)
+            else:
+                cursor.execute("SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE", (user_id,)).fetchone()
+            return True
+        finally:
+            connection.rollback()
+            connection.close()
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            operations = [executor.submit(operation, quote) for quote in (True, False)]
+            assert all(operation.result(timeout=5) for operation in operations)
+    finally:
+        database.close()
 
 
 def test_ambiguous_cancel_queries_before_repeating_the_mutation(billing_cursor):

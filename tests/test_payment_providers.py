@@ -154,6 +154,106 @@ def test_payos_get_normalizes_the_official_id_as_payment_link_id():
     assert result["paymentLinkId"] == "link-from-get"
 
 
+def _provider_with_signed_response(data):
+    return PayOSPaymentProvider(
+        PayOSCredentials("client", "api", KEY),
+        transport=lambda *_args: (
+            200,
+            json.dumps({
+                "code": "00",
+                "data": data,
+                "signature": sign_signed_data(data, KEY),
+            }).encode(),
+        ),
+    )
+
+
+@pytest.mark.parametrize("operation", ["get", "cancel"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "http://pay.payos.vn/web/1",
+        "https://pay.payos.vn.evil.example/web/1",
+        "https://user@pay.payos.vn/web/1",
+        "https://pay.payos.vn:444/web/1",
+        "https://pay.payos.vn:invalid/web/1",
+        "https://pay.payos.vn:65536/web/1",
+        "https://[pay.payos.vn/web/1",
+    ],
+)
+def test_payos_query_and_cancel_reject_invalid_signed_checkout_urls(operation, url):
+    provider = _provider_with_signed_response({
+        "orderCode": 123,
+        "amount": 99000,
+        "status": "PENDING",
+        "transactions": [],
+        "checkoutUrl": url,
+    })
+
+    with pytest.raises(PaymentProviderError) as error:
+        if operation == "get":
+            provider.get_payment(123)
+        else:
+            provider.cancel_payment(123)
+
+    assert error.value.code == "PROVIDER_CHECKOUT_URL_INVALID"
+
+
+@pytest.mark.parametrize("operation", ["get", "cancel"])
+@pytest.mark.parametrize(
+    "checkout_fields",
+    [
+        {},
+        {"checkoutUrl": None},
+        {"checkoutUrl": ""},
+        {"checkoutUrl": "https://pay.payos.vn/web/link-1"},
+        {"checkoutUrl": "https://next.pay.payos.vn:443/web/link-1"},
+    ],
+)
+def test_payos_query_and_cancel_preserve_optional_and_valid_checkout_urls(
+    operation, checkout_fields
+):
+    data = {
+        "orderCode": 123,
+        "amount": 99000,
+        "status": "PENDING",
+        "transactions": [],
+        **checkout_fields,
+    }
+    provider = _provider_with_signed_response(data)
+
+    result = (
+        provider.get_payment(123)
+        if operation == "get"
+        else provider.cancel_payment(123)
+    )
+
+    assert result == data
+
+
+@pytest.mark.parametrize("checkout_fields", [{}, {"checkoutUrl": None}, {"checkoutUrl": ""}])
+def test_payos_create_still_requires_checkout_url(checkout_fields):
+    provider = _provider_with_signed_response({
+        "orderCode": 123,
+        "amount": 99000,
+        "status": "PENDING",
+        **checkout_fields,
+    })
+
+    with pytest.raises(PaymentProviderError) as error:
+        provider.create_payment({
+            "orderCode": 123,
+            "amount": 99000,
+            "description": "DH0000123",
+            "cancelUrl": "https://app.example/cancel",
+            "returnUrl": "https://app.example/return",
+        })
+
+    assert error.value.code == "PROVIDER_CHECKOUT_URL_INVALID"
+
+
 def test_fake_provider_duplicate_timeout_reconciliation_and_delayed_payment():
     timeout_provider = FakePaymentProvider(scenario="timeout", clock=lambda: 100)
     request = {"orderCode": 101, "amount": 99000}

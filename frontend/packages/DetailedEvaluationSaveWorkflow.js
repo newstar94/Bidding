@@ -1,4 +1,5 @@
-import { persistAndSync, replaceTableProjection } from "../shared/MutationService.js";
+import { persistAndSync, replaceTableProjection, stageLocalRecords } from "../shared/MutationService.js";
+import { isConfirmedRowVersionConflict } from "../shared/DraftRecoveryStore.js";
 import { aggregateDetailedEvaluationReport } from "./detailedEvaluationAggregation.js";
 import { mergeConfiguredCriteria } from "./DetailedEvaluationCriteriaController.js";
 import {
@@ -87,6 +88,46 @@ function findInvalidConfiguredCriterion(criteria) {
   ));
 }
 
+async function retainConfirmedConflictInput(appController, state, report, recovery, workspaceToken, result, completionSummaryCheckpoint) {
+  if (!isConfirmedRowVersionConflict(result) || result?.workspaceChanged
+    || (workspaceToken && appController.model.isWorkspaceCurrent?.(workspaceToken) === false)) return;
+  const retainedInput = {
+    ...report,
+    trangThai: state.report.trangThai,
+    hoanThanhLuc: state.report.hoanThanhLuc,
+    ketLuan: state.report.ketLuan,
+    extension: {
+      ...(report.extension || {}),
+      completedGroups: [...(state.report.extension?.completedGroups || [])],
+      groupResults: { ...(state.report.extension?.groupResults || {}) },
+    },
+  };
+  appController._detailedEvaluationDrafts.set(state.draftKey, retainedInput);
+  // Keep the entered rows, not the optimistic official completion. Limit the
+  // normalization to this report; never replace a newly fetched canonical bid.
+  const normalizeReport = (bid) => {
+    if (!bid) return;
+    bid.baoCaoDanhGiaChiTietList = (bid.baoCaoDanhGiaChiTietList || []).map((item) => (
+      item.id === report.id && item.loaiVong === state.roundType ? retainedInput : item
+    ));
+    for (const [field, prior] of Object.entries(completionSummaryCheckpoint || {})) {
+      if (prior.present) bid[field] = prior.value;
+      else delete bid[field];
+    }
+  };
+  normalizeReport(state.bid);
+  const currentBid = (appController.model.state.thongtinmothau || []).find((bid) => String(bid.id) === String(state.bid.id));
+  if (currentBid !== state.bid && appController.model.hasRetainedConflictRecord?.("thongtinmothau", state.bid.id)) {
+    normalizeReport(currentBid);
+  }
+  appController.model.updateRetainedConflictRecord?.("thongtinmothau", currentBid || state.bid);
+  const held = recovery.holdUntilReload(state.draftKey, retainedInput);
+  if (!held.durableRemoval) {
+    await appController.view.customAlert?.("Bộ nhớ bản nháp chưa an toàn",
+      "Không thể xác nhận đã loại bản khôi phục xung đột khỏi bộ nhớ. Hãy giữ tab mở và khôi phục bộ nhớ trước khi tải lại.", "alert-triangle");
+  }
+}
+
 async function alertInvalidCriterion(appController, root, criterion) {
   const row = root.querySelector(`[data-detailed-criterion-id="${criterion.id}"]`);
   const fieldName = !String(criterion.name || "").trim() ? "name" : "stt";
@@ -102,6 +143,44 @@ async function alertInvalidCriterion(appController, root, criterion) {
   );
 }
 
+async function commitDetailedChanges(appController, commit, upserts, bases, boundaryChecked) {
+  const model = appController.model;
+  const mutation = model.beginWorkspaceMutation?.() || null;
+  try {
+    for (const [table, rows] of Object.entries(upserts)) {
+      const baseRows = bases[table] || [];
+      const baseById = new Map(baseRows.map((row) => [String(row.id), row]));
+      // The UI may have been rebound to fresh canonical objects during the
+      // authority wait. Do not silently adopt their version for older input.
+      const staged = rows.map((row) => {
+        const base = baseById.get(String(row.id));
+        if (!base) return row;
+        const versioned = { ...row };
+        if (base.rowVersion !== undefined) versioned.rowVersion = base.rowVersion;
+        else delete versioned.rowVersion;
+        return versioned;
+      });
+      stageLocalRecords(model, table, staged, mutation, baseRows);
+    }
+    return await commit(appController, Object.keys(upserts), {
+      authoritativeBoundaryChecked: boundaryChecked,
+      changes: { upserts },
+      workspaceMutation: mutation,
+      releaseBeforeRemoteSync: Boolean(mutation),
+    });
+  } finally {
+    model.finishWorkspaceMutation?.(mutation);
+  }
+}
+
+function applyInvalidatedGoodsProjection(model, bid, rows) {
+  const changedById = new Map(rows.map((row) => [String(row.id), row]));
+  replaceTableProjection(model, "hanghoaduthaunhathau", (
+    model.state.hanghoaduthaunhathau || []
+  ).map((row) => changedById.get(String(row.id)) || row));
+  bid.trangThaiTinhUuDai = "stale";
+}
+
 export async function executeDetailedEvaluationSave({
   appController,
   state,
@@ -114,6 +193,26 @@ export async function executeDetailedEvaluationSave({
 } = {}) {
   if (!appController?.view || !state?.bid || !state?.report || !root || state.readOnly) {
     return false;
+  }
+  const recovery = detailedEvaluationAutosaveFor(appController);
+  const workspaceToken = appController.model.getWorkspaceToken?.() || "";
+  const bases = {
+    goithau: [structuredClone(state.pkg)],
+    thongtinmothau: [structuredClone(state.bid)],
+  };
+  const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
+    collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
+  );
+  const groupCriteria = configuredCriteria.filter((criterion) => criterion.group === activeGroup);
+  const enteredRows = collectActiveGroupRows(root, state.report, groupCriteria);
+  const boundaryChecked = typeof appController.awaitAuthoritativeMutationBoundary === "function";
+  if (boundaryChecked) {
+    await appController.awaitAuthoritativeMutationBoundary();
+    if (workspaceToken && appController.model.isWorkspaceCurrent?.(workspaceToken) === false) return false;
+    const pkg = (appController.model.state.goithau || []).find((row) => String(row.id) === String(state.pkg.id));
+    const bid = (appController.model.state.thongtinmothau || []).find((row) => String(row.id) === String(state.bid.id));
+    if (!pkg || !bid || String(bid.goiThauId) !== String(pkg.id)) return false;
+    state = { ...state, pkg, bid };
   }
   if (shouldValidateBidderGoodsOnCompletion(state, completeReport)) {
     const bidderGoodsRows = getBidderGoodsForBid(appController.model, state.pkg, state.bid);
@@ -146,10 +245,6 @@ export async function executeDetailedEvaluationSave({
     );
     return false;
   }
-  const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
-    collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
-  );
-  const groupCriteria = configuredCriteria.filter((criterion) => criterion.group === activeGroup);
   const configuredBaseCriteria = mergeConfiguredCriteria(state.baseCriteria, configuredCriteria);
   appController._detailedEvaluationCriteriaOverrides.set(state.criteriaKey, configuredBaseCriteria);
   const invalidCriterion = findInvalidConfiguredCriterion(groupCriteria);
@@ -178,7 +273,7 @@ export async function executeDetailedEvaluationSave({
     ...state.report,
     trangThai: completeReport ? "completed" : "draft",
     hoanThanhLuc: completeReport ? new Date().toISOString() : null,
-    chiTietList: collectActiveGroupRows(root, state.report, groupCriteria),
+    chiTietList: enteredRows,
   }, configuredCriteria);
   report.extension = {
     ...(report.extension || {}),
@@ -204,6 +299,7 @@ export async function executeDetailedEvaluationSave({
     }
   }
   let invalidatedBidderGoods = false;
+  let changedBidderGoods = [];
   if (!completeGroup && !completeReport) {
     const configured = state.context.configuredGroups || state.context.editableGroups;
     const activeIndex = configured.indexOf(activeGroup);
@@ -215,12 +311,11 @@ export async function executeDetailedEvaluationSave({
       Object.entries(report.extension.groupResults || {}).filter(([group]) => !invalidated.has(group)),
     );
     if (configured.slice(Math.max(0, activeIndex + 1)).includes("bidder_goods")) {
-      replaceTableProjection(appController.model, "hanghoaduthaunhathau", (
-        appController.model.state.hanghoaduthaunhathau || []
-      ).map((row) => String(row.thongTinMoThauId || "") === String(state.bid.id)
-        ? { ...row, trangThaiUuDai: "stale" }
-        : row));
-      state.bid.trangThaiTinhUuDai = "stale";
+      changedBidderGoods = (appController.model.state.hanghoaduthaunhathau || [])
+        .filter((row) => String(row.thongTinMoThauId || "") === String(state.bid.id))
+        .map((row) => ({ ...row, trangThaiUuDai: "stale" }));
+      bases.hanghoaduthaunhathau = structuredClone((appController.model.state.hanghoaduthaunhathau || [])
+        .filter((row) => String(row.thongTinMoThauId || "") === String(state.bid.id)));
       invalidatedBidderGoods = true;
     }
   }
@@ -271,6 +366,9 @@ export async function executeDetailedEvaluationSave({
     (item) => item.loaiVong !== state.roundType,
   );
   allReports.push(report);
+  if (invalidatedBidderGoods) {
+    applyInvalidatedGoodsProjection(appController.model, state.bid, changedBidderGoods);
+  }
   persistCriteriaOnSave(
     state.pkg,
     state.roundType,
@@ -278,23 +376,23 @@ export async function executeDetailedEvaluationSave({
     state.context,
   );
   state.bid.baoCaoDanhGiaChiTietList = allReports;
+  let completionSummaryCheckpoint = null;
   if (completeReport) {
-    Object.assign(
-      state.bid,
-      applyDetailedEvaluationProjection(
-        state.bid,
-        report,
-        configuredCriteria,
-        evaluationGroups,
-        state.pkg,
-      ),
-    );
+    const projected = applyDetailedEvaluationProjection(state.bid, report, configuredCriteria, evaluationGroups, state.pkg);
+    completionSummaryCheckpoint = Object.fromEntries(Object.entries(projected)
+      .filter(([field, value]) => !Object.is(state.bid[field], value))
+      .map(([field]) => [field, { present: Object.prototype.hasOwnProperty.call(state.bid, field), value: state.bid[field] }]));
+    Object.assign(state.bid, projected);
   }
-  const result = await commit(appController, [
-    "goithau", "thongtinmothau",
-    ...(invalidatedBidderGoods ? ["hanghoaduthaunhathau"] : []),
-  ]);
-  if (!result?.ok) return false;
+  const result = await commitDetailedChanges(appController, commit, {
+    goithau: [state.pkg],
+    thongtinmothau: [state.bid],
+    ...(invalidatedBidderGoods ? { hanghoaduthaunhathau: changedBidderGoods } : {}),
+  }, bases, boundaryChecked);
+  if (!result?.ok) {
+    await retainConfirmedConflictInput(appController, state, report, recovery, workspaceToken, result, completionSummaryCheckpoint);
+    return false;
+  }
   appController._detailedEvaluationDrafts.set(state.draftKey, report);
   detailedEvaluationAutosaveFor(appController).clear(state.draftKey);
   appController._editingDetailedEvaluationKey = null;
