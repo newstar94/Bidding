@@ -14,6 +14,13 @@ export function consumeModalReturnState(defaultTab) {
     tab: returnState.tab || defaultTab || null,
     action: returnState.action || null
   };
+  // After reloading a create URL, there is no earlier list action to restore.
+  // Returning to that same create action would immediately reopen the editor.
+  if (
+    state.tab === defaultTab
+    && ["kehoach", "goithau", "hopdong"].includes(defaultTab)
+    && state.action === "taomoi"
+  ) state.action = null;
   returnState = { tab: null, action: null };
   return state;
 }

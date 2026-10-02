@@ -71,3 +71,15 @@ ra ngoài root độc lập vẫn đạt). `npm run build:secure` đạt, gồm 
 vendor/archive checks, xác minh 168 obfuscated bundles và route CSS. Plugin smoke sau
 gỡ probe mở Tổng quan/Kế hoạch/form bình thường, không có console error mới hoặc
 event đo mới. Chưa triển khai production, chưa commit/push.
+
+## Sửa lỗi đóng form sau F5 — 2026-10-02
+
+Tái hiện Kế hoạch → Thêm mới → F5 → X/Hủy: form đóng rồi mở lại vì return state
+đã lưu chính action `taomoi` của trang đang mở. Khi consume điểm quay về cùng
+list Kế hoạch/Gói thầu/Hợp đồng, action tạo mới được đưa về `null`. Điểm quay về
+khác tab, detail ID, action chỉnh sửa, modal lồng và draft giữ nguyên.
+
+Regression thực thi editor, action listeners, switchTab và closeModal thật:
+trước sửa cả X/Hủy mở form lần thứ hai và giữ `/ke-hoach/tao-moi`; sau sửa cả hai
+đóng form, về `/ke-hoach`, action null. Suite liên quan gồm 99 tests đạt. Plugin
+trên origin thực xác minh cùng chuỗi với cả hai nút, không có console error.
