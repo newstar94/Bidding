@@ -82,7 +82,8 @@ test("fixture KHLCNT stays draft-only until the final inline-import confirmation
   await login(page);
   await page.goto("/ke-hoach/tao-moi", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
-  await page.getByRole("button", { name: "Thêm Kế hoạch mới" }).click();
+  // The create route opens its editor after reconciliation; a second create
+  // click would target the list underneath the already active editor.
   await expect(page.locator("#modal-kehoach.active")).toBeVisible();
   await page.locator("#kh-ma").fill(planCode);
   // Modal paint precedes option hydration; assert the exact seeded choice.

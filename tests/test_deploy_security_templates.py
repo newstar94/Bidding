@@ -297,7 +297,7 @@ def test_environment_reference_covers_advanced_code_owned_overrides():
 
 
 def test_production_information_form_covers_every_external_input_without_secrets():
-    form = (ROOT / "docs/production-security-information.md").read_text(
+    form = (ROOT / "deploy/production-security-information.md").read_text(
         encoding="utf-8"
     )
 

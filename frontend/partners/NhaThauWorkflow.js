@@ -131,9 +131,11 @@ export async function deleteNhaThau(id) {
   });
 }
 export async function editNhaThau(id, isReadOnly = false) {
+  const navigationVersion = this._tabTransitionVersion;
   if (!document.getElementById("modal-nhathau")) {
     await this.ensureLazyModal?.("modal-nhathau");
   }
+  if (!id && this._tabTransitionVersion !== navigationVersion) return;
   try {
     const form = document.getElementById("form-nhathau");
     if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
@@ -183,13 +185,13 @@ export async function editNhaThau(id, isReadOnly = false) {
       );
     } else {
       setContractorViewOnly(false);
-      this.switchTab("nhathau", "taomoi", true);
       const titleEl = document.getElementById("modal-nhathau-title");
       if (titleEl) titleEl.textContent = "Thêm Nhà thầu mới";
       await resetPartnerFormData(document, form, PARTNER_FORM_CONFIGS.nhathau, {
         effectiveDate: this.model.formatForDateInput(todayYmd()),
         initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
       });
+      if (this._tabTransitionVersion !== navigationVersion) return;
       this.tempNhaThauStampBase64 = "";
       setNhaThauStampPreview("", false, "", canUploadAssets);
     }
@@ -210,6 +212,9 @@ export async function editNhaThau(id, isReadOnly = false) {
         applyLookupData: lookupHandlers.applyLookupData
       });
     }
+    // Keep the create-route auto-opener from starting another editor while
+    // address data is still initializing this form.
+    if (!id) this.switchTab("nhathau", "taomoi", true);
     this.view.openModal("modal-nhathau");
   } catch (err) {
     console.error("editNhaThau failed: ", err);

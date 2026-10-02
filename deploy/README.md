@@ -1,7 +1,7 @@
 # Production deployment and rollback
 
-Hướng dẫn cài VPS từ đầu, có lệnh theo cấu trúc release và virtualenv riêng:
-[`HUONG_DAN_PUBLIC_PRODUCTION_VPS.vi.md`](../docs/HUONG_DAN_PUBLIC_PRODUCTION_VPS.vi.md).
+Hướng dẫn triển khai theo thư mục release: [chuẩn bị PostgreSQL](#chuẩn-bị-kết-nối-postgresql-production),
+[cài document worker](#cài-document-worker-production), [deploy](#deploy) và [rollback](#rollback).
 
 Public production packaging requires the three minimal pages in
 `views/legal/` to exist, contain visible copy, and have no `[TODO: ...]` or
@@ -19,7 +19,7 @@ values, and verifies the secure-build marker against `APP_RELEASE_ID` (or
 `GITHUB_SHA` in CI) before selecting any runtime files.
 
 Phiếu thông tin cần thu thập trước khi điền production nằm tại
-`docs/production-security-information.md`. Không ghi secret thật vào phiếu;
+`deploy/production-security-information.md`. Không ghi secret thật vào phiếu;
 chỉ ghi tên và nơi lưu secret.
 
 Đây là checklist trung lập với nhà cung cấp. Secret và file environment thật phải nằm ngoài release artifact, owner `root`, mode `0600`.

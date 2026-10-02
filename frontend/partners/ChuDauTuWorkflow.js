@@ -75,9 +75,11 @@ export async function deleteChuDauTu(id) {
   });
 }
 export async function editChuDauTu(id) {
+  const navigationVersion = this._tabTransitionVersion;
   if (!document.getElementById("modal-chudautu")) {
     await this.ensureLazyModal?.("modal-chudautu");
   }
+  if (!id && this._tabTransitionVersion !== navigationVersion) return;
   const form = document.getElementById("form-chudautu");
   clearFormValidation(form);
   if (id) {
@@ -89,12 +91,12 @@ export async function editChuDauTu(id) {
       initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
     });
   } else {
-    this.switchTab("chudautu", "taomoi", true);
     document.getElementById("modal-chudautu-title").textContent = "Thêm Chủ đầu tư mới";
     await resetPartnerFormData(document, form, PARTNER_FORM_CONFIGS.chudautu, {
       effectiveDate: this.model.formatForDateInput(todayYmd()),
       initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
     });
+    if (this._tabTransitionVersion !== navigationVersion) return;
     document.getElementById("cdt-coquanchuquan").value = "";
   }
   const lookupHandlers = createPartnerLookupHandlers({
@@ -109,6 +111,8 @@ export async function editChuDauTu(id) {
     clearLookupData: lookupHandlers.clearLookupData,
     applyLookupData: lookupHandlers.applyLookupData
   });
+  // Publish the create route only after asynchronous form initialization.
+  if (!id) this.switchTab("chudautu", "taomoi", true);
   this.view.openModal("modal-chudautu");
 }
 export async function handleChuDauTuSubmit(e) {

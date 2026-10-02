@@ -20,6 +20,22 @@ from backend.sync.delete_policy import CASCADE_IMPACT_RULES, PROTECTED_DELETE_RE
 
 
 ROOT_TABLES = {"kehoach": "ke_hoach_lcnt", "goithau": "goi_thau", "hopdong": "hop_dong"}
+ROOT_FIXTURE_INSERTS = {
+    "kehoach": """INSERT INTO ke_hoach_lcnt
+        (id, organization_id, id_goc, is_latest, row_version, ke_hoach_id, phien_ban)
+        VALUES (?, 'org-1', ?, ?, ?, ?, ?)""",
+    "goithau": """INSERT INTO goi_thau
+        (id, organization_id, id_goc, is_latest, row_version, ke_hoach_id, phien_ban)
+        VALUES (?, 'org-1', ?, ?, ?, ?, ?)""",
+    "hopdong": """INSERT INTO hop_dong
+        (id, organization_id, id_goc, is_latest, row_version, ke_hoach_id, phien_ban)
+        VALUES (?, 'org-1', ?, ?, ?, ?, ?)""",
+}
+ROOT_MEMBER_INSERTS = {
+    "kehoach": "INSERT INTO ke_hoach_lcnt (id, organization_id, id_goc) VALUES (?, 'org-1', ?)",
+    "goithau": "INSERT INTO goi_thau (id, organization_id, id_goc) VALUES (?, 'org-1', ?)",
+    "hopdong": "INSERT INTO hop_dong (id, organization_id, id_goc) VALUES (?, 'org-1', ?)",
+}
 
 
 class FixtureCursor:
@@ -130,14 +146,12 @@ def selected_delete_api(monkeypatch):
         INSERT INTO ke_hoach_lcnt (id, organization_id, id_goc, tong_muc_dau_tu)
         VALUES ('owner-plan', 'org-1', 'owner-plan', 200)
     """)
-    for key, table in ROOT_TABLES.items():
+    for key in ROOT_TABLES:
         for suffix, latest, version in (("first", 1, 3), ("second", 1, 3), ("history", 0, 2)):
             record_id = f"{key}-{suffix}"
             root_id = f"{key}-first" if suffix == "history" else record_id
-            fixture.raw.execute(  # noqa: S608 - fixed registry fixture table
-                f"""INSERT INTO {table}
-                    (id, organization_id, id_goc, is_latest, row_version, ke_hoach_id, phien_ban)
-                    VALUES (?, 'org-1', ?, ?, ?, ?, ?)""",
+            fixture.raw.execute(
+                ROOT_FIXTURE_INSERTS[key],
                 (record_id, root_id, latest, version, "owner-plan" if key == "goithau" else None,
                  0 if suffix == "history" else 1),
             )
@@ -347,11 +361,10 @@ def test_confirmed_family_membership_drift_rejects_whole_command_under_sync_row_
     fixture = selected_delete_api
     payload = delete_payload(table_key)
     payload["expectedSyncVersion"] = "10"
-    table = ROOT_TABLES[table_key]
     # A concurrent version command added a member after preview. Existing rows
     # retain the same versions, so expectedVersion alone cannot detect it.
-    fixture.raw.execute(  # noqa: S608 - fixed registry fixture table
-        f"INSERT INTO {table} (id, organization_id, id_goc) VALUES (?, 'org-1', ?)",
+    fixture.raw.execute(
+        ROOT_MEMBER_INSERTS[table_key],
         (f"{table_key}-new-member", f"{table_key}-first"),
     )
     fixture.raw.execute("UPDATE sync_metadata SET current_version = 11 WHERE organization_id = 'org-1'")

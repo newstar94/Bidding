@@ -15,6 +15,14 @@ from backend.documents.docx_mapping_service import apply_custom_mappings
 from backend.documents.routes_docx import _scope_contracts_for_word_publication
 
 
+SAMPLE_TEMPLATE_PATH = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "docx"
+    / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+)
+
+
 def _all_document_text(document):
     return "\n".join(
         [paragraph.text for paragraph in document.paragraphs]
@@ -28,11 +36,7 @@ def _all_document_text(document):
 
 
 def test_combined_sample_template_documents_derived_variable_usage():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
 
     text = _all_document_text(Document(template_path))
 
@@ -45,11 +49,7 @@ def test_combined_sample_template_documents_derived_variable_usage():
 
 
 def test_combined_sample_template_renders_evaluation_list_source_fields():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
     context = {
         "ds_to_chuyen_gia": [{
             "ho_ten": "Nguyễn Văn Chuyên Gia",
@@ -116,11 +116,7 @@ def test_combined_sample_template_renders_evaluation_list_source_fields():
 
 
 def test_combined_sample_template_renders_all_contracts_and_formats_money():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
     context = {
         "ds_hop_dong": [
             {
@@ -194,11 +190,7 @@ def test_combined_sample_template_renders_all_contracts_and_formats_money():
 
 
 def test_combined_template_renders_contracts_from_evaluation_context():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
     context = project_docx_context(
         "evaluation",
         {
@@ -246,11 +238,7 @@ def test_combined_template_renders_contracts_from_evaluation_context():
 
 
 def test_combined_template_renders_only_consulting_contract_for_consultant_step():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
     context = project_docx_context(
         "evaluation",
         {
@@ -475,11 +463,7 @@ def test_real_mapping_pipeline_keeps_money_numeric_until_amount_words_are_derive
 
 
 def test_sample_template_renders_money_words_and_approved_short_date_from_real_mappings():
-    template_path = (
-        Path(__file__).resolve().parents[1]
-        / "docs"
-        / "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
-    )
+    template_path = SAMPLE_TEMPLATE_PATH
     context = {
         "goi_thau": {"id": "package-1", "gia_goi_thau": 898000000},
         "ke_hoach": {"thoi_gian_dang_tai": "2026-03-05 14:55:00"},

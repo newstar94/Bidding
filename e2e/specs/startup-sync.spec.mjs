@@ -286,17 +286,31 @@ test("server_deleted_record_is_not_resurrected_from_indexeddb_startup", async ({
   await page.locator("#btn-add-chuyengia").click();
   await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
   await fillExpertForm(page, suffix);
-  let createResult;
-  const createResponsePromise = page.waitForResponse(async (response) => {
-    if (response.request().method() !== "POST"
-      || new URL(response.url()).pathname !== "/api/sync"
-      || !response.ok()) return false;
-    createResult = await response.json();
-    return true;
+  let captureCreateResponse;
+  const createResponsePromise = new Promise((resolve) => {
+    captureCreateResponse = resolve;
+  });
+  await page.route("**/api/sync", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    const createPayload = route.request().postDataJSON();
+    if (!(createPayload.chuyengia || []).some((record) => record.hoTen === expertName)) {
+      await route.continue();
+      return;
+    }
+    // A successful submit navigates away, which can discard Chromium's
+    // browser response body. Read the real server acknowledgement before
+    // delivering it to the page so its canonical versions survive navigation.
+    const response = await route.fetch();
+    const createResult = await response.json();
+    await route.fulfill({ response });
+    captureCreateResponse({ createPayload, createResult, ok: response.ok() });
   });
   await page.locator("#form-chuyengia button[type='submit']").click();
-  const createResponse = await createResponsePromise;
-  const createPayload = createResponse.request().postDataJSON();
+  const { createPayload, createResult, ok } = await createResponsePromise;
+  expect(ok, JSON.stringify(createResult)).toBe(true);
   const createdExpert = (createPayload.chuyengia || []).find(
     (record) => record.hoTen === expertName,
   );

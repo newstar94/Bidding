@@ -39,7 +39,7 @@ async function loginWithBrowserTransport(page) {
   expect(login.ok, login.body).toBe(true);
 }
 
-async function expectFilterDropdownToOpen(page, route, selectId) {
+async function expectFilterModalToOpen(page, route, type, choiceField, dateField) {
   const browserName = page.context().browser()?.browserType().name();
   if (/^https?:/u.test(page.url()) && browserName !== "firefox") {
     // These assertions cover route navigation and filter behavior. Reuse the
@@ -59,15 +59,30 @@ async function expectFilterDropdownToOpen(page, route, selectId) {
     await waitForApp(page);
   }
 
-  const combobox = page.locator(`${selectId}-combobox`);
-  await expect(combobox).toBeVisible();
-  await expect(combobox).toHaveAttribute("data-bf-auto-scroll", "off");
-  await combobox.click();
-  await expect(combobox).toHaveAttribute("aria-expanded", "true");
+  const button = page.locator(`[data-list-filter="${type}"]`);
+  const dialog = page.locator(`#${type}-filter-panel`);
+  await expect(button).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await button.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveJSProperty("open", true);
+  await expect(button).toHaveAttribute("aria-expanded", "true");
 
-  const listboxId = await combobox.getAttribute("aria-controls");
-  expect(listboxId).toBeTruthy();
-  await expect(page.locator(`#${listboxId}`)).toBeVisible();
+  await dialog.locator(".business-filter-field-picker > summary").click();
+  await dialog.locator(`[data-filter-field][value="${choiceField}:value"]`).check();
+  const choices = dialog.locator('[data-filter-condition="0"]');
+  await choices.locator("summary").click();
+  await expect(choices.locator("[data-filter-option-list]")).toBeVisible();
+  await expect(choices.getByRole("searchbox")).toBeVisible();
+
+  await dialog.locator(`[data-filter-field][value="${dateField}:value"]`).check();
+  const dateRange = dialog.locator('[data-filter-condition="1"]');
+  await expect(dateRange.getByLabel("Từ ngày", { exact: true })).toBeVisible();
+  await expect(dateRange.getByLabel("Đến ngày", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+  await expect(button).toBeFocused();
 }
 
 test("authenticated cold load hydrates icons and navigation handlers", async ({ page }) => {
@@ -138,7 +153,7 @@ test("primary route module warms once and navigation reuses the loaded module", 
   expect(chunkRequests).toBe(1);
 });
 
-test("required browser renders public routes, shell, and filter dropdowns", async ({ page }) => {
+test("required browser renders public routes, shell, and filter modals", async ({ page }) => {
   const landing = await page.goto("/", { waitUntil: "commit" });
   expect(landing?.ok()).toBe(true);
   await expect(page.locator('[data-bf-shell="landing"]')).toBeVisible();
@@ -174,9 +189,9 @@ test("required browser renders public routes, shell, and filter dropdowns", asyn
 
   const filterPage = await context.newPage();
   try {
-    await expectFilterDropdownToOpen(filterPage, "/goi-thau", "#filter-goithau-trangthai");
-    await expectFilterDropdownToOpen(filterPage, "/ke-hoach", "#filter-kehoach-nam");
-    await expectFilterDropdownToOpen(filterPage, "/hop-dong", "#filter-hopdong-nam");
+    await expectFilterModalToOpen(filterPage, "/goi-thau", "goithau", "trangThai", "thoiGianDangTai");
+    await expectFilterModalToOpen(filterPage, "/ke-hoach", "kehoach", "chuDauTuId", "ngayPheDuyet");
+    await expectFilterModalToOpen(filterPage, "/hop-dong", "hopdong", "trangThaiHopDong", "ngayKy");
   } finally {
     await filterPage.close();
   }

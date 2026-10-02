@@ -330,7 +330,6 @@ def test_production_deploy_uses_versioned_release_and_retains_n_minus_one_assets
     assert "ln -sfnT \"$NEW_RELEASE\" /opt/biddingflow/current.next" in readme
     assert "mv -Tf /opt/biddingflow/current.next /opt/biddingflow/current" in readme
     assert "rollback_failed_cutover" in readme
-    assert '"$DEPLOY_SMOKE_SCRIPT" http://127.0.0.1:8000' in readme
     assert readme.index("unzip biddingflow-production.zip") < readme.index(
         'python "$NEW_RELEASE/scripts/backup.py" create'
     ) < readme.index(
@@ -342,4 +341,20 @@ def test_production_deploy_uses_versioned_release_and_retains_n_minus_one_assets
     assert '--expected-current-release-id "$ROLLBACK_RELEASE_ID"' in readme
     assert "--previous-release \"$CURRENT_RELEASE\"" in readme
     assert "restore_failed_rollback" in readme
-    assert '"$ROLLBACK_SMOKE_SCRIPT" http://127.0.0.1:8000' in readme
+    deploy_instructions, rollback_instructions = readme.split("## Rollback", 1)
+    for mode, smoke_block in (
+        ("deploy", deploy_instructions),
+        ("rollback", rollback_instructions),
+    ):
+        script = f"${mode.upper()}_SMOKE_SCRIPT"
+        assert f'if [[ "{script}" == *.py ]]; then' in smoke_block
+        assert f'python "{script}" --mode {mode} "$SMOKE_BASE_URL"' in smoke_block
+        assert f'[ -x "{script}" ] ||' in smoke_block
+        assert f'"{script}" "$SMOKE_BASE_URL"' in smoke_block
+        assert 'SMOKE_BASE_URL="${SMOKE_BASE_URL:?set the public HTTPS origin}"' in smoke_block
+        assert "export SMOKE_HEALTH_BASE_URL=http://127.0.0.1:8080" in smoke_block
+        for health_path in ("live", "ready"):
+            assert (
+                'curl --fail --header "Host: ${SMOKE_BASE_URL#https://}" '
+                f'"$SMOKE_HEALTH_BASE_URL/health/{health_path}"'
+            ) in smoke_block

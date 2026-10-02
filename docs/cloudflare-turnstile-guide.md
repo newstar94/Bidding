@@ -339,7 +339,7 @@ secret trên Cloudflare và xử lý lịch sử Git theo quy trình phản ứn
 - `deploy/turnstile/local.env.example`: cấu hình test local.
 - `deploy/turnstile/staging.env.example`: overlay staging.
 - `deploy/turnstile/production.env.example`: overlay production.
-- `docs/production-security-information.md`: phiếu thông tin cần thu thập.
+- `deploy/production-security-information.md`: phiếu thông tin cần thu thập.
 - `docs/security-ddos-captcha-plan.md`: kế hoạch bảo mật tổng thể.
 - `docs/runbooks/ddos-bot-abuse.md`: runbook xử lý bot/DDoS.
 - `deploy/README.md`: quy trình triển khai và preflight đầy đủ.
