@@ -49,3 +49,17 @@ def get_current_sync_version(cursor, organization_id):
     cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
     row = cursor.fetchone()
     return int(row[0] if row else 0)
+
+
+def lock_current_sync_version(cursor, organization_id):
+    """Pin an opt-in command snapshot using the ordinary sync serialization row."""
+
+    cursor.execute(
+        "INSERT INTO sync_metadata (organization_id, current_version) VALUES (?, 0) ON CONFLICT (organization_id) DO NOTHING",
+        (organization_id,),
+    )
+    row = cursor.execute(
+        "SELECT current_version FROM sync_metadata WHERE organization_id = ? FOR UPDATE",
+        (organization_id,),
+    ).fetchone()
+    return int(row[0] if row else 0)

@@ -7,6 +7,10 @@
                 <label class="visually-hidden" for="search-goithau">Tìm gói thầu</label>
                 <input type="text" placeholder="Tìm gói thầu..." id="search-goithau">
             </div>
+            <button type="button" class="btn btn-outline business-list-filter-toggle" data-list-filter="goithau" aria-controls="goithau-filter-panel" aria-haspopup="dialog" aria-expanded="false">
+                <i data-lucide="list-filter"></i> Bộ lọc
+            </button>
+            <div hidden aria-hidden="true">
             <div class="select-wrapper bf-s-be30dd8090">
                 <select id="filter-goithau-trangthai" class="bf-s-20e5983dc7" data-dropdown-fit-content="true">
                     <option value="">Tất cả trạng thái</option>
@@ -41,6 +45,7 @@
                     <option value="">Tháng</option>
                 </select>
             </div>
+            </div>
         </div>
         <div class="bf-s-c896deef0d">
             <button class="btn-excel-action btn-download-excel-template-direct" data-type="goithau">
@@ -54,6 +59,8 @@
             </button>
         </div>
     </div>
+    <dialog id="goithau-filter-panel" class="business-list-filter-panel" hidden aria-modal="true" aria-labelledby="goithau-filter-title"></dialog>
+    <div id="goithau-row-selection" class="business-list-selection-bar" hidden role="status" aria-live="polite"></div>
     <div id="goithau-dashboard-filter" class="dashboard-filter-chip" hidden role="status" aria-live="polite">
         <span></span>
         <button type="button" class="btn btn-sm btn-outline" data-bf-action="clear-dashboard-alert">Bỏ lọc</button>
@@ -67,6 +74,7 @@
         <table class="data-table" id="goithau-table" data-mobile-layout="cards">
             <thead>
                 <tr>
+                    <th class="business-list-selection-column" data-sort-disabled="true" data-no-sort="true"><label class="business-list-checkbox-target"><input type="checkbox" data-list-select-page="goithau" aria-label="Chọn các dòng gói thầu trang hiện tại"></label></th>
                     <th>Mã Gói Thầu</th>
                     <th>Tên Gói Thầu</th>
                     <th>Kế hoạch LCNT</th>

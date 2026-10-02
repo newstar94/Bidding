@@ -481,7 +481,7 @@ def validate_sync_payload_shape(payload, *, trusted_server_projection=False):
         return [_field_error("$", "TYPE_OBJECT_REQUIRED", "Dữ liệu đồng bộ phải là JSON object.")]
 
     allowed_top_level = set(TABLE_KEYS_FOR_VALIDATION) | {
-        "deletions", "baseSyncVersion", "clientMutationId", "includeDashboardSummary",
+        "deletions", "baseSyncVersion", "expectedSyncVersion", "clientMutationId", "includeDashboardSummary",
     }
     for key in payload:
         if key not in allowed_top_level:
@@ -505,12 +505,16 @@ def validate_sync_payload_shape(payload, *, trusted_server_projection=False):
             "clientMutationId", "INVALID_MUTATION_ID",
             "clientMutationId phải là chuỗi từ 1 đến 128 ký tự.",
         ))
-    base_version = payload.get("baseSyncVersion")
-    if base_version not in (None, ""):
-        if isinstance(base_version, bool) or not re.fullmatch(r"\d+", str(base_version)):
+    for version_field in ("baseSyncVersion", "expectedSyncVersion"):
+        if version_field not in payload:
+            continue
+        version_value = payload[version_field]
+        if version_field == "baseSyncVersion" and version_value in (None, ""):
+            continue
+        if isinstance(version_value, bool) or not re.fullmatch(r"\d+", str(version_value)):
             errors.append(_field_error(
-                "baseSyncVersion", "INVALID_INTEGER",
-                "baseSyncVersion phải là số nguyên không âm.",
+                version_field, "INVALID_INTEGER",
+                f"{version_field} phải là số nguyên không âm.",
             ))
 
     include_dashboard_summary = payload.get("includeDashboardSummary")

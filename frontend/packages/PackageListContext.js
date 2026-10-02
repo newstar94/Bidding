@@ -1,3 +1,5 @@
+import { getBusinessListFilters, setBusinessListFilters } from "../shared/BusinessListFilters.js";
+
 const SESSION_KEY = "bf_package_list_context";
 const FILTER_IDS = Object.freeze({
   status: "filter-goithau-trangthai",
@@ -37,6 +39,7 @@ function validOptionValue(select, value, key = "") {
 export function capturePackageListContext(model, { includeSearch = true } = {}) {
   return {
     filters: Object.fromEntries(Object.entries(FILTER_IDS).map(([key, id]) => [key, selectedValue(id)])),
+    advancedFilters: getBusinessListFilters(model, "goithau"),
     ...(includeSearch ? { search: selectedValue("search-goithau") } : {}),
     sort: {
       field: model?.sortState?.goithau?.field || "maGoiThau",
@@ -52,6 +55,12 @@ export function restorePackageListContext(model, context, { restoreSearch = true
   for (const [key, id] of Object.entries(FILTER_IDS)) {
     const select = document.getElementById(id);
     if (select) select.value = validOptionValue(select, String(context.filters?.[key] || ""), key);
+  }
+  try {
+    setBusinessListFilters(model, "goithau", context.advancedFilters || []);
+  } catch {
+    // Older or incomplete session values must not prevent the list from opening.
+    setBusinessListFilters(model, "goithau", []);
   }
   if (restoreSearch) {
     const search = document.getElementById("search-goithau");
@@ -77,21 +86,4 @@ export function rememberPackageListContext(model) {
   } catch {
     // Session storage may be unavailable; the current view remains usable.
   }
-}
-
-export function renderPackageFilterSummary(model) {
-  const root = document.getElementById("goithau-active-filters");
-  if (!root) return;
-  const context = capturePackageListContext(model);
-  const labels = [];
-  if (context.search) labels.push("Từ khóa tìm kiếm");
-  for (const [key, id] of Object.entries(FILTER_IDS)) {
-    if (!context.filters[key]) continue;
-    const select = document.getElementById(id);
-    const label = select?.selectedOptions?.[0]?.textContent || context.filters[key];
-    labels.push(label);
-  }
-  root.hidden = labels.length === 0;
-  const summary = root.querySelector("span");
-  if (summary) summary.textContent = labels.length ? `Đang lọc: ${labels.join(" · ")}` : "";
 }

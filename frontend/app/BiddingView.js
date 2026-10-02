@@ -215,6 +215,7 @@ export class BiddingView {
     const selects = root && typeof root.querySelectorAll === "function" ? root.querySelectorAll("select") : document.querySelectorAll("select");
     selects.forEach((select) => {
       if (!this.isEnhancementTargetActive(select)) return;
+      if (select.parentElement?.closest("[hidden], [aria-hidden='true']")) return;
       const isPackageSelectInDetail = ["mothau-goithau-select", "danhgiahsdt-goithau-select", "result-goithau-select"].includes(select.id) && document.getElementById("tab-goithau-detail");
       if (isPackageSelectInDetail) {
         const existingContainer = select.parentNode.querySelector(`.custom-select-container[data-target="${select.id}"]`);

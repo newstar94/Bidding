@@ -1,4 +1,4 @@
-import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
+import { escapeHtml } from "../shared/view_helpers.js";
 import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
@@ -25,8 +25,16 @@ import {
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
 import { dashboardAlertMatches } from "../app/dashboardAlertRules.js";
 import {
+  ensureBusinessListControls,
+  getBusinessListFilters,
+  matchesBusinessListFilters,
+  renderBusinessListSelectionCell,
+  updateBusinessListSelection,
+  refreshBusinessListSelection,
+  markBusinessListLoading,
+} from "../shared/BusinessListControls.js";
+import {
   rememberPackageListContext,
-  renderPackageFilterSummary,
   restorePackageListContext,
 } from "./PackageListContext.js";
 
@@ -47,6 +55,9 @@ export function installPackageTableInteractionOwnership(tableBody, requestRender
   packageTableInteractionOwnershipInstalled.add(tableBody);
   tableBody.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
+    // Row selection is local state. Replacing the row from the document's click
+    // capture listener would detach the checkbox before its change event fires.
+    if (event.target?.closest?.(".business-list-selection-cell")) return;
     // Once a user starts acting on a rendered row, an older background load
     // must not replace that control before the same click can finish.
     packageTableInteractionPending.add(tableBody);
@@ -196,12 +207,10 @@ export async function renderGoiThauTable() {
     restorePackageListContext(this.model, this.model._packageListContextToRestore);
     this.model._packageListContextToRestore = null;
   }
+  await ensureBusinessListControls(this, "goithau");
+  if (!renderIsCurrent()) return;
   if (yearSelect && monthSelect) {
     populateYearMonthFilters({ records: allPackages, getDate: (gt) => gt.ngayQuyetDinh, yearSelect, monthSelect, retainSelected: true });
-    initCustomSelect("filter-goithau-trangthai");
-    initCustomSelect("filter-goithau-hinhthuc");
-    initCustomSelect("filter-goithau-nam");
-    initCustomSelect("filter-goithau-thang");
   }
   const filterNam = yearSelect ? yearSelect.value : "";
   const filterThang = monthSelect ? monthSelect.value : "";
@@ -216,6 +225,12 @@ export async function renderGoiThauTable() {
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
   const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
   const filterHinhThuc = document.getElementById("filter-goithau-hinhthuc").value;
+  const filters = getBusinessListFilters(this.model, "goithau");
+  const selectionQuery = {
+    search: searchVal, trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
+    nam: filterNam, thang: filterThang, alertKey: dashboardFilter,
+    filters: JSON.stringify(filters),
+  };
   let slicedData = [];
   let totalItems = 0;
   const currentPage = this.model.currentPage.goithau || 1;
@@ -224,16 +239,17 @@ export async function renderGoiThauTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   rememberPackageListContext(this.model);
-  renderPackageFilterSummary(this.model);
   if (this.model.useServerSidePagination) {
+    markBusinessListLoading(this, "goithau");
     const pageParams = {
       page: currentPage, pageSize, search: searchVal,
       trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
       sortBy, sortOrder, nam: filterNam, thang: filterThang,
       alertKey: dashboardFilter,
+      filters: JSON.stringify(filters),
     };
     if (!getCachedPaginatedRecords(this.model, "goithau", pageParams)) {
-      renderTableLoading(tableBody, 8);
+      renderTableLoading(tableBody, 9);
     }
     const loadResult = await settlePackageTableRenderLoad(
       renderIsCurrent,
@@ -243,7 +259,7 @@ export async function renderGoiThauTable() {
       (error) => {
         console.error("Failed to fetch paginated packages", error);
         clearVirtualTable(tableBody);
-        renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại.", onRetry: () => this.renderGoiThauTable() });
+        renderTableError(tableBody, { colspan: 9, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại.", onRetry: () => this.renderGoiThauTable() });
       },
     );
     if (!loadResult.current) return;
@@ -263,7 +279,8 @@ export async function renderGoiThauTable() {
       const alertKey = this.model.dashboardAlertFilter || "";
       const matchesAlert = !alertKey || dashboardAlertMatches(gt, alertKey);
       return matchesSearch && matchesTrangThai && matchesHinhThuc && matchesAlert
-        && matchesYearMonth(gt.ngayQuyetDinh, filterNam, filterThang);
+        && matchesYearMonth(gt.ngayQuyetDinh, filterNam, filterThang)
+        && matchesBusinessListFilters(this.model, "goithau", gt);
     });
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
@@ -277,10 +294,11 @@ export async function renderGoiThauTable() {
   }
   const canCommit = await canPackageTableRenderOwnDom(tableBody, renderIsCurrent);
   if (!canPackageTableRenderCommit(canCommit, renderIsCurrent)) return;
+  updateBusinessListSelection(this, "goithau", { items: slicedData, totalItems, query: selectionQuery });
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
     const pag = document.getElementById("goithau-pagination");
-    renderTableEmpty(tableBody, { colspan: 8, message: "Không tìm thấy Gói thầu nào phù hợp", icon: "archive", pagination: pag });
+    renderTableEmpty(tableBody, { colspan: 9, message: "Không tìm thấy Gói thầu nào phù hợp", icon: "archive", pagination: pag });
   } else {
     const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (gt) => {
@@ -426,6 +444,7 @@ export async function renderGoiThauTable() {
       const actionHtml = renderEntityActions(packageActions);
       return `
             <tr class="${isCanceledPackage ? "cancelled-package" : ""}">
+                ${renderBusinessListSelectionCell(this, "goithau", displayedGt, root)}
                 <td>
                     <div class="bf-s-8c8dc52ed7">
                         <a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Gói thầu"><span class="detail-code bf-s-dc5de304c3">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
@@ -445,9 +464,10 @@ export async function renderGoiThauTable() {
             </tr>
             `;
     }, {
-      colSpan: 8,
+      colSpan: 9,
       rowHeight: 88,
       onRender: () => {
+        refreshBusinessListSelection(this, "goithau");
         bindLotWinnerActions(tableBody, this);
         lucide.createIcons({ root: tableBody });
       },
@@ -460,5 +480,6 @@ export async function renderGoiThauTable() {
   this.upgradeAllSelects?.(tableBody);
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("goithau-table", "goithau");
+  refreshBusinessListSelection(this, "goithau");
   return { performance: tablePerf.complete() };
 }

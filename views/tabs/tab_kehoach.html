@@ -6,6 +6,10 @@
                 <i data-lucide="search"></i>
                 <input type="text" placeholder="Tìm kế hoạch (mã, tên)..." id="search-kehoach">
             </div>
+            <button type="button" class="btn btn-outline business-list-filter-toggle" data-list-filter="kehoach" aria-controls="kehoach-filter-panel" aria-haspopup="dialog" aria-expanded="false">
+                <i data-lucide="list-filter"></i> Bộ lọc
+            </button>
+            <div hidden aria-hidden="true">
             <div class="select-wrapper bf-s-29218dc346">
                 <select id="filter-kehoach-nam" class="bf-s-20e5983dc7">
                     <option value="">Năm</option>
@@ -15,6 +19,7 @@
                 <select id="filter-kehoach-thang" class="bf-s-20e5983dc7">
                     <option value="">Tháng</option>
                 </select>
+            </div>
             </div>
         </div>
         <div class="bf-s-c896deef0d">
@@ -29,11 +34,14 @@
             </button>
         </div>
     </div>
+    <dialog id="kehoach-filter-panel" class="business-list-filter-panel" hidden aria-modal="true" aria-labelledby="kehoach-filter-title"></dialog>
+    <div id="kehoach-row-selection" class="business-list-selection-bar" hidden role="status" aria-live="polite"></div>
 
     <div class="table-container">
         <table class="data-table" id="kehoach-table" data-mobile-layout="cards">
             <thead>
                 <tr>
+                    <th class="business-list-selection-column" data-sort-disabled="true" data-no-sort="true"><label class="business-list-checkbox-target"><input type="checkbox" data-list-select-page="kehoach" aria-label="Chọn các dòng kế hoạch trang hiện tại"></label></th>
                     <th>Mã Kế Hoạch</th>
                     <th>Tên Kế Hoạch Lựa Chọn Nhà Thầu</th>
                     <th>Phân loại</th>

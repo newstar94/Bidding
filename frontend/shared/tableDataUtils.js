@@ -7,6 +7,10 @@ import {
 import { perfNow, reportPerf } from "./perfDiagnostics.js";
 import { getAppController } from "../app/controllerRef.js";
 import {
+  matchesBusinessListFilterConditions,
+  normalizeBusinessListFilters,
+} from "./BusinessListFilters.js";
+import {
   capturePlanBreakdownDraftLocalState,
   rebasePlanBreakdownDraftAfterServerMerge,
 } from "../plans/planBreakdownDraft.js";
@@ -211,7 +215,7 @@ function currentMutationBatch(model) {
 }
 
 const PAGINATION_CONTROL_PARAMS = new Set([
-  "page", "pageSize", "pagination", "cursor", "sortBy", "sortOrder", "search",
+  "page", "pageSize", "pagination", "cursor", "sortBy", "sortOrder", "search", "filters",
 ]);
 const PAGINATED_SEARCH_FIELDS = Object.freeze({
   kehoach: ["maKeHoach", "tenKeHoach", "tenDuAnDuToan"],
@@ -236,7 +240,13 @@ function normalizedSearchText(value) {
     .toLocaleLowerCase("vi");
 }
 
-function recordMatchesPendingQuery(record, table, params = {}) {
+function recordMatchesPendingQuery(model, record, table, params = {}) {
+  if (params.filters) {
+    const source = typeof params.filters === "string"
+      ? JSON.parse(params.filters) : params.filters;
+    const filters = normalizeBusinessListFilters(table, source);
+    if (!matchesBusinessListFilterConditions(model, table, record, filters)) return false;
+  }
   const search = normalizedSearchText(params.search).trim();
   if (search) {
     const fields = PAGINATED_SEARCH_FIELDS[table] || [];
@@ -334,7 +344,7 @@ export function overlayPendingPaginatedMutations(model, table, pageResult, param
     const existing = byId.get(id);
     if (!id || !existing) continue;
     const merged = { ...existing, ...normalized };
-    if (recordMatchesPendingQuery(merged, table, params)) byId.set(id, merged);
+    if (recordMatchesPendingQuery(model, merged, table, params)) byId.set(id, merged);
     else if (byId.delete(id)) removedCount += 1;
   }
 
@@ -351,7 +361,7 @@ export function overlayPendingPaginatedMutations(model, table, pageResult, param
     for (const [candidateId] of lineageEntries) {
       if (candidateId !== id) byId.delete(candidateId);
     }
-    if (!recordMatchesPendingQuery(record, table, params)) {
+    if (!recordMatchesPendingQuery(model, record, table, params)) {
       byId.delete(id);
       if (existedOnPage) removedCount += 1;
       continue;

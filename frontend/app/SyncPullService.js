@@ -1,6 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { ApiError, apiFetch } from "../shared/apiClient.js";
 import { applyServerSnapshot } from "./syncMergeUtils.js";
+import { clearDeletedBusinessListSelections } from "../shared/BusinessListSelection.js";
 import { getActiveOrganizationId } from "./workspaceState.js";
 import {
   commitSyncCursor,
@@ -462,6 +463,22 @@ async function confirmCurrentDetail(controller, isBackground, pullIsCurrent, sta
   return null;
 }
 
+function fullSnapshotSelectionDeletions(model, snapshot, { useVersionDelta, since }) {
+  const deletions = {};
+  if (useVersionDelta || since !== "0" || snapshot.useServerSidePagination || snapshot.partial) return deletions;
+  const pending = model.getMutationQueue?.();
+  for (const type of ["kehoach", "goithau", "hopdong"]) {
+    if (!Array.isArray(snapshot[type])) continue;
+    const incomingIds = new Set(snapshot[type].map((record) => String(record?.id || "")));
+    const pendingIds = new Set(Object.keys(pending?.upserts?.[type] || {}));
+    const removedIds = (model.state[type] || [])
+      .map((record) => String(record?.id || ""))
+      .filter((id) => id && !incomingIds.has(id) && !pendingIds.has(id));
+    if (removedIds.length) deletions[type] = removedIds;
+  }
+  return deletions;
+}
+
 async function executeForceSyncData(
   isBackground = false,
   forceFull = false,
@@ -608,6 +625,7 @@ async function executeForceSyncData(
       return this.forceSyncData(isBackground, true, false);
     }
     const draftLocalState = captureActivePlanBreakdownState(this);
+    const selectionDeletions = fullSnapshotSelectionDeletions(this.model, dbData, { useVersionDelta, since });
     const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(
       this.model,
       dbData,
@@ -617,6 +635,8 @@ async function executeForceSyncData(
       visibilityScopeChanged ? deletionsByTable : {});
     await persistencePromise;
     if (!pullIsCurrent()) return stalePullResult();
+    clearDeletedBusinessListSelections(this.model, selectionDeletions);
+    clearDeletedBusinessListSelections(this.model, deletionsByTable);
     dismissRevokedInteractiveState(this, globalThis.document, changedKeys);
     const draftsReapplied = await reapplyCapturedPlanDraftSessions(
       this, pullResources, pullIsCurrent,

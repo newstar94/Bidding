@@ -6,7 +6,7 @@ import {
 } from "../app/workspaceLease.js";
 import { apiFetch } from "./apiClient.js";
 
-export async function loadWorkspaceEmployees(model, { onLoaded = null } = {}) {
+export async function loadWorkspaceEmployees(model, { onLoaded = null, shouldApply = null } = {}) {
   const request = beginWorkspaceRequest(model);
   try {
     const response = await apiFetch("/api/auth/users", { signal: request.signal });
@@ -26,6 +26,7 @@ export async function loadWorkspaceEmployees(model, { onLoaded = null } = {}) {
         role: user.role,
       };
     });
+    if (shouldApply && !shouldApply()) return employees;
     request.lease.state.employees = employees;
     assertWorkspaceLeaseCurrent(model, request.lease);
     onLoaded?.(employees);

@@ -41,6 +41,11 @@ from backend.db.postgres_schema import postgres_column_definition
 from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES
 from backend.sync.visibility_scope import VisibilityScope
+from backend.sync.list_filters import (
+    ListFilterError,
+    build_list_filter_predicate,
+    parse_list_filters,
+)
 from backend.sync.version_metadata import (
     VERSIONED_TABLES,
     load_visible_version_metadata,
@@ -190,6 +195,10 @@ def _paginate_records_blocking(request):
         except (ValueError, TypeError):
             return JSONResponse({"error": "Tham số phân trang không hợp lệ"}, status_code=400)
         search = params.get("search", "").strip().lower()
+        try:
+            list_filters = parse_list_filters(table_name, params.get("filters", ""))
+        except ListFilterError as filter_error:
+            return JSONResponse({"error": str(filter_error)}, status_code=400)
 
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
@@ -338,6 +347,18 @@ def _paginate_records_blocking(request):
         if search:
             add_like_search_filter()
 
+        effective_status_filter = table_name == "goi_thau" and any(
+            field == "trangThai" for field, _operator, _value in list_filters
+        )
+        list_filter_predicate = build_list_filter_predicate(
+            table_name,
+            list_filters,
+            effective_package_status=effective_status_filter,
+        )
+        if list_filter_predicate.sql:
+            query_parts.append(list_filter_predicate.sql)
+            query_params.extend(list_filter_predicate.parameters)
+
 
         if table_name == "goi_thau":
             trang_thai = params.get("trangThai", "")
@@ -436,9 +457,11 @@ def _paginate_records_blocking(request):
         where_clause = " AND ".join(query_parts)
         source_sql = table_name
         source_params = []
-        if table_name == "goi_thau" and params.get("alertKey", "").strip():
-            # The summary and its drilldown must evaluate the same official
-            # result status. Scope the inner projection to this organization;
+        if table_name == "goi_thau" and (
+            params.get("alertKey", "").strip() or effective_status_filter
+        ):
+            # The summary, drilldown and structured status filters evaluate the
+            # same official result status. Scope the projection to this tenant;
             # the existing live visibility predicate still gates every row.
             source_sql = (
                 "(" + _effective_package_rows_sql(  # noqa: S608 - fixed SQL with bound organization

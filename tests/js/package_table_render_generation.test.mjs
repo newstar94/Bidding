@@ -133,6 +133,25 @@ test("a non-primary pointer does not invalidate package-table ownership", () => 
   assert.equal(renderIsCurrent(), true);
 });
 
+test("row checkbox clicks keep the package row mounted through its native change event", () => {
+  let pointerdown;
+  let click;
+  let replacementCount = 0;
+  const tableBody = {
+    ownerDocument: {
+      defaultView: { requestAnimationFrame() {} },
+      addEventListener(type, listener) { if (type === "click") click = listener; },
+    },
+    addEventListener(type, listener) { if (type === "pointerdown") pointerdown = listener; },
+  };
+  installPackageTableInteractionOwnership(tableBody, () => { replacementCount += 1; });
+  const renderIsCurrent = beginPackageTableRender(tableBody);
+  pointerdown({ button: 0, target: { closest: (selector) => selector === ".business-list-selection-cell" ? {} : null } });
+  click();
+  assert.equal(renderIsCurrent(), true);
+  assert.equal(replacementCount, 0);
+});
+
 test("a background package-table render waits for an open combobox to close", async () => {
   let observerCallback;
   let disconnected = false;

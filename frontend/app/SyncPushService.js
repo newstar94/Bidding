@@ -1,5 +1,6 @@
 import { apiFetch } from "../shared/apiClient.js";
 import { invalidatePaginatedQueryCache } from "../shared/tableDataUtils.js";
+import { clearDeletedBusinessListSelections } from "../shared/BusinessListSelection.js";
 import { DraftRecoveryStore } from "../shared/DraftRecoveryStore.js";
 import { applyRecordPatch } from "./mutationQueue.js";
 import { CLIENT_TABLE_MAP } from "../documents/schemaRuntime.js";
@@ -548,6 +549,13 @@ export async function applySuccessfulPush(controller, {
   const deletedKeys = new Set(
     (payload.deletions || []).map((item) => item?.table).filter(Boolean)
   );
+  const committedDeletions = {};
+  for (const deletion of [...(payload.deletions || []), ...(Array.isArray(data.deleteImpacts) ? data.deleteImpacts : [])]) {
+    const table = deletion?.table;
+    if (!table || deletion.id == null) continue;
+    (committedDeletions[table] ||= []).push(deletion.id);
+  }
+  clearDeletedBusinessListSelections(controller.model, committedDeletions);
   deletedKeys.forEach((key) => {
     if (controller.model?.currentPage && Object.prototype.hasOwnProperty.call(controller.model.currentPage, key)) {
       controller.model.currentPage[key] = 1;

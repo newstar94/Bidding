@@ -72,6 +72,7 @@ from backend.sync.deletion_service import apply_sync_deletions
 from backend.sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
     defer_version_latest_flag,
+    lock_current_sync_version,
     next_sync_version,
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
@@ -573,6 +574,22 @@ def _prepare_sync_transaction(
             },
             status_code=400,
         )
+
+    if "expectedSyncVersion" in envelope.payload:
+        expected_sync_version = int(envelope.payload["expectedSyncVersion"])
+        current_sync_version = lock_current_sync_version(cursor, actor.organization_id)
+        if expected_sync_version != current_sync_version:
+            connection.rollback()
+            return None, error_response(
+                actor.request,
+                "SYNC_SNAPSHOT_CHANGED",
+                "Dữ liệu đã thay đổi kể từ khi xác nhận. Vui lòng tải lại danh sách và xác nhận thao tác.",
+                status_code=409,
+                fields={
+                    "expectedSyncVersion": expected_sync_version,
+                    "currentSyncVersion": current_sync_version,
+                },
+            )
 
     return SyncTransactionContext(
         connection=connection,
@@ -1332,11 +1349,19 @@ def execute_sync_mutation(
                 conn.rollback()
             except DatabaseError:
                 pass
-        if atomic_command and getattr(e, "sqlstate", None) in {
+        concurrency_conflict = getattr(e, "sqlstate", None) in {
             "40001",
             "40P01",
             "55P03",
-        }:
+        }
+        if concurrency_conflict and "expectedSyncVersion" in data:
+            return error_response(
+                request,
+                "SYNC_SNAPSHOT_CHANGED",
+                "Có thay đổi đồng thời khi xóa dữ liệu. Vui lòng tải lại danh sách và xác nhận thao tác.",
+                status_code=409,
+            )
+        if atomic_command and concurrency_conflict:
             return error_response(
                 request,
                 "VERSION_CREATION_CONFLICT",

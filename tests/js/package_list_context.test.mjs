@@ -6,6 +6,7 @@ import {
   rememberPackageListContext,
   restorePackageListContext,
 } from "../../frontend/packages/PackageListContext.js";
+import { getBusinessListFilters, setBusinessListFilters } from "../../frontend/shared/BusinessListFilters.js";
 
 function select(options) {
   return {
@@ -76,4 +77,37 @@ test("a year remains usable before its page has loaded", () => {
   assert.equal(controls.get("filter-goithau-thang").value, "12");
   assert.equal(controls.get("filter-goithau-nam").options.at(-1).value, "2025");
   assert.equal(controls.get("filter-goithau-thang").options.at(-1).value, "12");
+});
+
+test("package list context restores multi-field filters when returning from a detail view", () => {
+  const { model } = fixture();
+  const conditions = [
+    { field: "tenGoiThau", operator: "contains", value: "thiết bị" },
+    { field: "giaGoiThau", operator: "range", value: { min: "1000000", max: "" } },
+  ];
+  setBusinessListFilters(model, "goithau", conditions);
+  const saved = capturePackageListContext(model);
+  const expected = getBusinessListFilters(model, "goithau");
+  assert.equal(expected.length, 2);
+  setBusinessListFilters(model, "goithau", []);
+  restorePackageListContext(model, saved);
+  assert.deepEqual(getBusinessListFilters(model, "goithau"), expected);
+});
+
+test("restoring a legacy package context clears advanced filters and preserves its legacy values", () => {
+  const { controls, model } = fixture();
+  setBusinessListFilters(model, "goithau", [{ field: "tenGoiThau", operator: "contains", value: "cũ" }]);
+  restorePackageListContext(model, { filters: { status: "Đang mời thầu" }, page: 1 });
+  assert.deepEqual(getBusinessListFilters(model, "goithau"), []);
+  assert.equal(controls.get("filter-goithau-trangthai").value, "Đang mời thầu");
+});
+
+test("an invalid saved filter does not prevent restoring the usable package list context", () => {
+  const { controls, model } = fixture();
+  restorePackageListContext(model, {
+    search: "thiết bị", advancedFilters: [{ field: "removedField", operator: "contains", value: "x" }], page: 2,
+  });
+  assert.deepEqual(getBusinessListFilters(model, "goithau"), []);
+  assert.equal(controls.get("search-goithau").value, "thiết bị");
+  assert.equal(model.currentPage.goithau, 2);
 });

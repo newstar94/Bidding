@@ -51,6 +51,8 @@ import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
 import { workspaceTaskScheduler } from "../shared/WorkspaceTaskScheduler.js";
 import { workspaceLifecycleController } from "./WorkspaceLifecycleController.js";
 import { POST_STARTUP_TIMING } from "./startupTiming.js";
+import { setBusinessListFilters } from "../shared/BusinessListFilters.js";
+import { clearBusinessListSelection } from "../shared/BusinessListSelection.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -1233,6 +1235,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     };
     const dashboardAlert = (alertKey) => {
       const labels = { closingToday: "Đóng thầu hôm nay", closingSoon: "Sắp đóng thầu", overdueOpening: "Quá hạn mở thầu", delayedEvaluation: "Chậm báo cáo đánh giá" };
+      setBusinessListFilters(this.model, "goithau", []);
+      clearBusinessListSelection(this.model, "goithau");
       this.model.dashboardAlertFilter = String(alertKey || "");
       this.model.dashboardAlertFilterLabel = labels[this.model.dashboardAlertFilter] || "";
       this.model.currentPage.goithau = 1;
@@ -1245,6 +1249,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       return this.switchTab("goithau");
     };
     const clearDashboardAlert = () => {
+      clearBusinessListSelection(this.model, "goithau");
       this.model.dashboardAlertFilter = "";
       this.model.dashboardAlertFilterLabel = "";
       this.model.currentPage.goithau = 1;

@@ -651,11 +651,12 @@ def _read_single_record_blocking(request):
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             return JSONResponse({"error": "Không có quyền đọc dữ liệu này."}, status_code=403)
 
-        if table_name == "thong_tin_mo_thau":
+        if table_name == "thong_tin_mo_thau" or params.get("exactId") == "1":
+            archive_filter = " AND archived_at IS NULL" if table_name == "thong_tin_mo_thau" else ""
             cursor.execute(
-                f"""SELECT * FROM thong_tin_mo_thau AS source_row
-                   WHERE {record_visibility.sql} AND id = ? AND archived_at IS NULL
-                   LIMIT 1""",  # noqa: S608 - predicate is registry-built
+                f"""SELECT * FROM {table_name} AS source_row
+                   WHERE {record_visibility.sql} AND source_row.id = ?{archive_filter}
+                   LIMIT 1""",  # noqa: S608 - table/predicate are allowlisted; archive clause is fixed
                 (*record_visibility.parameters, lookup_value),
             )
         else:

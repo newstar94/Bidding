@@ -16,6 +16,8 @@ import { paginatedSearchHasChanged } from "../shared/tableDataUtils.js";
 import { trackPackageInheritance } from "../packages/packageRebidWorkflow.js";
 import { runPackageFormSubmission } from "../packages/packageFormState.js";
 import { runModalFormSubmission } from "../shared/ModalFormSubmission.js";
+import { setBusinessListFilters } from "../shared/BusinessListFilters.js";
+import { clearBusinessListSelection } from "../shared/BusinessListSelection.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -30,8 +32,16 @@ function setDynamicFieldLabel(label, text, required = false) {
 
 export function bindPaginatedTableSearch(model, { inputId, table, render }) {
   const renderDebounced = debounce(render);
+  let previousSelectionSearch = String(document.getElementById(inputId)?.value || "").toLocaleLowerCase("vi");
   onById(inputId, "input", () => {
     const search = document.getElementById(inputId)?.value || "";
+    const selectionSearch = String(search).toLocaleLowerCase("vi");
+    if (selectionSearch !== previousSelectionSearch) {
+      previousSelectionSearch = selectionSearch;
+      if (["kehoach", "goithau", "hopdong"].includes(table)) {
+        clearBusinessListSelection(model, table);
+      }
+    }
     if (paginatedSearchHasChanged(model, table, search)) {
       model.currentPage[table] = 1;
     }
@@ -208,6 +218,8 @@ export function setupFileUploads() {
 }
 export function setupActionListeners() {
   onById("goithau-clear-filters", "click", () => {
+    setBusinessListFilters(this.model, "goithau", []);
+    clearBusinessListSelection(this.model, "goithau");
     for (const id of [
       "search-goithau", "filter-goithau-trangthai", "filter-goithau-hinhthuc",
       "filter-goithau-nam", "filter-goithau-thang",

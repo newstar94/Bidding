@@ -17,6 +17,15 @@ import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
+import {
+  ensureBusinessListControls,
+  getBusinessListFilters,
+  matchesBusinessListFilters,
+  renderBusinessListSelectionCell,
+  updateBusinessListSelection,
+  refreshBusinessListSelection,
+  markBusinessListLoading,
+} from "../shared/BusinessListControls.js";
 
 export function canMutateDisplayedContractVersion(displayed, authoritative) {
   if (!displayed) return false;
@@ -26,6 +35,7 @@ export function canMutateDisplayedContractVersion(displayed, authoritative) {
 }
 export async function renderHopDongTable() {
   const tablePerf = beginTablePerf("hopdong", "hopdong");
+  await ensureBusinessListControls(this, "hopdong");
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
   const yearSelect = document.getElementById("filter-hopdong-nam");
@@ -33,11 +43,11 @@ export async function renderHopDongTable() {
   const allContracts = this.model.state.hopdong || [];
   if (yearSelect && monthSelect) {
     populateYearMonthFilters({ records: allContracts, getDate: (h) => h.ngayKy, yearSelect, monthSelect });
-    initCustomSelect("filter-hopdong-nam");
-    initCustomSelect("filter-hopdong-thang");
   }
   const filterNam = yearSelect ? yearSelect.value : "";
   const filterThang = monthSelect ? monthSelect.value : "";
+  const filters = getBusinessListFilters(this.model, "hopdong");
+  const selectionQuery = { search: searchVal, nam: filterNam, thang: filterThang, filters: JSON.stringify(filters) };
   let slicedData = [];
   let totalItems = 0;
   const currentPage = this.model.currentPage.hopdong || 1;
@@ -46,12 +56,14 @@ export async function renderHopDongTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
+    markBusinessListLoading(this, "hopdong");
     const pageParams = {
       page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
       nam: filterNam, thang: filterThang,
+      filters: JSON.stringify(filters),
     };
     if (!getCachedPaginatedRecords(this.model, "hopdong", pageParams)) {
-      renderTableLoading(tableBody, 11);
+      renderTableLoading(tableBody, 12);
     }
     try {
       const data = await loadPaginatedRecords(this.model, "hopdong", pageParams, {
@@ -64,7 +76,7 @@ export async function renderHopDongTable() {
       if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated contracts", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 11, message: "Không thể tải danh sách hợp đồng. Vui lòng thử lại.", onRetry: () => this.renderHopDongTable() });
+      renderTableError(tableBody, { colspan: 12, message: "Không thể tải danh sách hợp đồng. Vui lòng thử lại.", onRetry: () => this.renderHopDongTable() });
       return;
     }
   } else {
@@ -74,17 +86,19 @@ export async function renderHopDongTable() {
       const matchesSearch = (h.soHopDong || "").toLowerCase().includes(searchVal)
         || (h.tenHopDong || "").toLowerCase().includes(searchVal)
         || assigneeSearch.includes(searchVal);
-      return matchesSearch && matchesYearMonth(h.ngayKy, filterNam, filterThang);
+      return matchesSearch && matchesYearMonth(h.ngayKy, filterNam, filterThang)
+        && matchesBusinessListFilters(this.model, "hopdong", h);
     });
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
     slicedData = paginateRecords(filtered, currentPage, pageSize);
     tablePerf.dataComplete({ cacheHit: true, localSnapshot: true });
   }
+  updateBusinessListSelection(this, "hopdong", { items: slicedData, totalItems, query: selectionQuery });
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
     const pag = document.getElementById("hopdong-pagination");
-    renderTableEmpty(tableBody, { colspan: 11, message: "Không tìm thấy Hợp đồng nào phù hợp", icon: "file-check-2", pagination: pag });
+    renderTableEmpty(tableBody, { colspan: 12, message: "Không tìm thấy Hợp đồng nào phù hợp", icon: "file-check-2", pagination: pag });
   } else {
     renderVirtualTable(tableBody, slicedData, (h) => {
       if (!this.model.state.selectedHopDongVersion) {
@@ -132,6 +146,7 @@ export async function renderHopDongTable() {
       const assigneeLabels = assigneeLabelsForTarget(this.model, displayedHd.id, "hopdong");
       return `
                 <tr>
+                    ${renderBusinessListSelectionCell(this, "hopdong", displayedHd, root)}
                     <td>
                         <div class="bf-s-8c8dc52ed7">
                             <a href="#" data-bf-action="show-contract" data-id="${safeAttr(displayedHd.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Hợp đồng"><span class="detail-code link-hover bf-s-dc5de304c3">${escapeHtml(displayedHd.soHopDong)}</span></a>
@@ -153,11 +168,15 @@ export async function renderHopDongTable() {
                     </td>
                 </tr>
             `;
-    }, { colSpan: 11, rowHeight: 86, onRender: () => lucide.createIcons({ root: tableBody }) });
+    }, { colSpan: 12, rowHeight: 86, onRender: () => {
+      refreshBusinessListSelection(this, "hopdong");
+      lucide.createIcons({ root: tableBody });
+    } });
     executeAppCommand("renderTablePagination", "hopdong-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("hopdong-table", "hopdong");
+  refreshBusinessListSelection(this, "hopdong");
   return { performance: tablePerf.complete() };
 }
 export function showHopDongDetails(id, isSwitchingVersion = false) {
