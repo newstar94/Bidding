@@ -11,6 +11,15 @@ import { setValidationError } from "../shared/FormValidation.js";
 import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../shared/PartnerHelpers.js";
 import { createInitialVersion } from "../shared/VersionedEntityService.js";
 
+const PARTNER_FORM_GENERATION = Symbol("partnerFormGeneration");
+
+function finishAddressInitialization(task, deferAddress) {
+  if (!deferAddress) return task;
+  Promise.resolve(task).catch((error) => {
+    console.warn("Không thể hoàn tất danh mục địa chỉ của biểu mẫu:", error);
+  });
+}
+
 export const PARTNER_FORM_CONFIGS = {
   chudautu: {
     role: "CDT",
@@ -240,8 +249,10 @@ export function buildInitialPartnerVersion(data, {
 }
 
 export async function loadPartnerFormData(root, form, record, config, {
-  formatDate, initAddressDropdowns, isReadOnly = false
+  formatDate, initAddressDropdowns, isReadOnly = false, deferAddress = false
 } = {}) {
+  const generation = (form[PARTNER_FORM_GENERATION] || 0) + 1;
+  form[PARTNER_FORM_GENERATION] = generation;
   form.dataset.diaChiGoc = record.diaChiGoc || "";
   setFormValues(root, {
     ...record,
@@ -250,28 +261,47 @@ export async function loadPartnerFormData(root, form, record, config, {
   }, config.fields);
   const stored = parseStoredInternalAddress(record.diaChi || "");
   const address = config.lookup.address;
+  setValue(root, address.detailInputId, stored.detail);
+  let addressReady;
   if (stored.requiresLookup) {
-    await initAddressDropdowns(address.provinceSelectId, address.wardSelectId, "", "", isReadOnly);
-    await applyRawAddressToAddressControls(record.diaChiGoc || record.diaChi || "", address);
+    addressReady = (async () => {
+      const initialization = initAddressDropdowns(address.provinceSelectId, address.wardSelectId, "", "", isReadOnly);
+      const detailInput = control(root, address.detailInputId);
+      const provinceSelect = control(root, address.provinceSelectId);
+      const wardSelect = control(root, address.wardSelectId);
+      const initialValues = [detailInput?.value, provinceSelect?.value, wardSelect?.value];
+      const isCurrent = () => form[PARTNER_FORM_GENERATION] === generation
+        && control(root, address.detailInputId) === detailInput
+        && control(root, address.provinceSelectId) === provinceSelect
+        && control(root, address.wardSelectId) === wardSelect
+        && [detailInput?.value, provinceSelect?.value, wardSelect?.value].every((value, index) => value === initialValues[index]);
+      await initialization;
+      if (!isCurrent()) return;
+      await applyRawAddressToAddressControls(record.diaChiGoc || record.diaChi || "", {
+        ...address, isDisabled: isReadOnly, shouldApply: isCurrent,
+      });
+    })();
   } else {
-    setValue(root, address.detailInputId, stored.detail);
-    await initAddressDropdowns(address.provinceSelectId, address.wardSelectId, stored.provinceName, stored.wardName, isReadOnly);
+    addressReady = initAddressDropdowns(address.provinceSelectId, address.wardSelectId, stored.provinceName, stored.wardName, isReadOnly);
   }
+  await finishAddressInitialization(addressReady, deferAddress);
 }
 
-export async function resetPartnerFormData(root, form, config, { effectiveDate, initAddressDropdowns } = {}) {
+export async function resetPartnerFormData(root, form, config, { effectiveDate, initAddressDropdowns, deferAddress = false } = {}) {
+  form[PARTNER_FORM_GENERATION] = (form[PARTNER_FORM_GENERATION] || 0) + 1;
   resetFormState(form);
   form.dataset.diaChiGoc = "";
   setValue(root, config.fields.id, "");
   setValue(root, config.fields.ngayApDung, effectiveDate || "");
   setValue(root, config.lookup.address.detailInputId, "");
-  await initAddressDropdowns?.(
+  const addressReady = initAddressDropdowns?.(
     config.lookup.address.provinceSelectId,
     config.lookup.address.wardSelectId,
     "",
     "",
     false
   );
+  await finishAddressInitialization(addressReady, deferAddress);
 }
 
 export function validatePartnerRecord(data, records, currentId, config) {

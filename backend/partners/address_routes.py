@@ -135,9 +135,15 @@ async def get_wards_api(request):
                     f"{PROVINCES_API_BASE}/p/{province_code}?depth=2",
                     timeout_seconds=12,
                 )
-                _wards_cache[province_code] = (
-                    data.get("wards", []) if isinstance(data, dict) else []
-                )
+                wards = data.get("wards") if isinstance(data, dict) else None
+                if not isinstance(wards, list):
+                    return error_response(
+                        request,
+                        "WARDS_UPSTREAM_UNAVAILABLE",
+                        "Không thể tải danh sách xã phường lúc này.",
+                        status_code=502,
+                    )
+                _wards_cache[province_code] = wards
             return JSONResponse(_wards_cache[province_code])
     except Exception as e:
         return log_and_error(

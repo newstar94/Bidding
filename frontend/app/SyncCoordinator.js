@@ -274,9 +274,12 @@ export function setupSyncUx() {
   }
 }
 
-function assertExportSyncBoundary(controller, result, workspace) {
+function assertExportSyncBoundary(controller, result, workspace, activeRole) {
   if (!syncWorkspaceIsCurrent(controller, workspace)) {
     throw new Error("Tổ chức đang làm việc đã thay đổi. Vui lòng xuất lại.");
+  }
+  if (String(controller.model.state?.activerole || "").trim().toLowerCase() !== activeRole) {
+    throw new Error("Vai trò đang làm việc đã thay đổi. Vui lòng xuất lại.");
   }
   if (!result?.ok) {
     if (result?.conflict || result?.status === 409) {
@@ -299,15 +302,16 @@ export async function prepareExportSnapshot() {
     throw new Error("Không thể xác nhận dữ liệu với máy chủ.");
   }
   const workspace = captureWorkspace(this);
+  const activeRole = String(this.model.state?.activerole || "").trim().toLowerCase();
   const syncResult = await this.autoSync();
-  assertExportSyncBoundary(this, syncResult, workspace);
+  assertExportSyncBoundary(this, syncResult, workspace, activeRole);
   if (typeof this.forceSyncData !== "function") {
     throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
   }
   // A push ACK does not advance the pull cursor, and route bootstrap can be
   // partial. Await a complete workspace pull before selecting an export version.
   const pullResult = await this.forceSyncData(false, false);
-  assertExportSyncBoundary(this, pullResult, workspace);
+  assertExportSyncBoundary(this, pullResult, workspace, activeRole);
   const snapshotVersion = pullResult?.data?.syncVersion;
   if (pullResult?.data?.partial === true) {
     throw new Error("Chưa có phiên bản dữ liệu đã cam kết để xuất tệp.");

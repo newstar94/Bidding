@@ -234,13 +234,20 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
   await expect(page.getByRole("heading", { name: "Xu hướng và phân bố", exact: true })).toBeVisible();
   await expect(page.locator("svg.bf-admin-growth-svg")).toBeVisible();
 
+  const toggle = page.getByRole("button", { name: "Mở hoặc đóng điều hướng" });
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 1280, height: 800 },
     { width: 768, height: 1024 },
     { width: 390, height: 844 },
   ]) {
+    const wasDesktop = await page.evaluate(() => window.matchMedia("(min-width: 992px)").matches);
     await page.setViewportSize(viewport);
+    const isDesktop = viewport.width >= 992;
+    if (wasDesktop !== isDesktop) {
+      // The breakpoint handler resets navigation asynchronously after a resize.
+      await expect(toggle).toHaveAttribute("aria-expanded", String(isDesktop));
+    }
     await expect(page.locator("#admin-main")).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Tổng quan nền tảng" })).toBeVisible();
     const widths = await page.evaluate(() => ({
@@ -249,8 +256,7 @@ test("admin shell remains operable at desktop, tablet, and mobile widths", async
     }));
     expect(widths.scroll, JSON.stringify(viewport)).toBeLessThanOrEqual(widths.client + 1);
 
-    const toggle = page.getByRole("button", { name: "Mở hoặc đóng điều hướng" });
-    if (viewport.width < 992) {
+    if (!isDesktop) {
       await expect(toggle).toBeVisible();
       if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");

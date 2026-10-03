@@ -35,16 +35,6 @@ def _setup(data: dict) -> dict:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (%s, %s)",
-                (organization_id, f"Pairwise {run_id}"),
-            )
-            cursor.execute(
-                """INSERT INTO danh_muc_trang_thai_hop_dong
-                       (id, organization_id, owner_type, name, color)
-                   VALUES (%s, %s, 'organization', 'Đang thực hiện', '#2563eb')""",
-                (f"{run_id}-contract-status-active", organization_id),
-            )
-            cursor.execute(
                 """INSERT INTO tai_khoan (
                        id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
                        vai_tro, email, email_norm, da_xac_minh, username_da_dat
@@ -54,6 +44,16 @@ def _setup(data: dict) -> dict:
                     hash_password(data["password"]), account["name"],
                     account["email"], account["email"],
                 ),
+            )
+            cursor.execute(
+                "INSERT INTO to_chuc (id, ten_to_chuc, owner_user_id) VALUES (%s, %s, %s)",
+                (organization_id, f"Pairwise {run_id}", account["id"]),
+            )
+            cursor.execute(
+                """INSERT INTO danh_muc_trang_thai_hop_dong
+                       (id, organization_id, owner_type, name, color)
+                   VALUES (%s, %s, 'organization', 'Đang thực hiện', '#2563eb')""",
+                (f"{run_id}-contract-status-active", organization_id),
             )
             cursor.execute(
                 """INSERT INTO thanh_vien_to_chuc (

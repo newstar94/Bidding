@@ -51,7 +51,7 @@ import { prefetchPaginatedRecords } from "../shared/tableDataUtils.js";
 import { workspaceTaskScheduler } from "../shared/WorkspaceTaskScheduler.js";
 import { workspaceLifecycleController } from "./WorkspaceLifecycleController.js";
 import { POST_STARTUP_TIMING } from "./startupTiming.js";
-import { setBusinessListFilters } from "../shared/BusinessListFilters.js";
+import { getBusinessListFilters, setBusinessListFilters } from "../shared/BusinessListFilters.js";
 import { clearBusinessListSelection } from "../shared/BusinessListSelection.js";
 export class BiddingController {
   constructor(model, view) {
@@ -759,12 +759,20 @@ export class BiddingController {
       ...extra,
     });
     const queries = {
-      kehoach: { table: "kehoach", params: pageParams("kehoach", { nam: "", thang: "" }) },
-      goithau: { table: "goithau", params: pageParams("goithau", { trangThai: "", hinhThuc: "", nam: "", thang: "" }) },
+      kehoach: { table: "kehoach", params: pageParams("kehoach", {
+        nam: "", thang: "", filters: JSON.stringify(getBusinessListFilters(this.model, "kehoach")),
+      }) },
+      goithau: { table: "goithau", params: pageParams("goithau", {
+        trangThai: "", hinhThuc: "", nam: "", thang: "",
+        alertKey: this.model?.dashboardAlertFilter || "",
+        filters: JSON.stringify(getBusinessListFilters(this.model, "goithau")),
+      }) },
       chudautu: { table: "chudautu", params: pageParams("chudautu") },
       nhathau: { table: "nhathau", params: pageParams("nhathau") },
       chuyengia: { table: "chuyengia", params: pageParams("chuyengia") },
-      hopdong: { table: "hopdong", params: pageParams("hopdong", { nam: "", thang: "" }) },
+      hopdong: { table: "hopdong", params: pageParams("hopdong", {
+        nam: "", thang: "", filters: JSON.stringify(getBusinessListFilters(this.model, "hopdong")),
+      }) },
     };
     const visibleTabs = new Set(
       [...(this.view?.elements?.navButtons || [])]

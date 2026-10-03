@@ -70,9 +70,14 @@ def test_cleanup_fails_when_foreign_key_dependencies_cannot_progress(monkeypatch
 @pytest.mark.parametrize("seed_investor", [False, True])
 def test_fixture_preserves_manager_default_and_explicit_specialist_permissions(monkeypatch, role, seed_investor):
     calls = []
+    inserted_accounts = set()
 
     class Cursor:
         def execute(self, query, params=None):
+            if "INSERT INTO to_chuc" in query and "owner_user_id" in query:
+                assert params[2] is None or params[2] in inserted_accounts, "owner FK requires the account first"
+            if "INSERT INTO tai_khoan" in query:
+                inserted_accounts.add(params[0])
             calls.append((query, params))
 
     class Connection:
@@ -91,7 +96,19 @@ def test_fixture_preserves_manager_default_and_explicit_specialist_permissions(m
     if role:
         payload["membershipRole"] = role
     payload["seedInvestor"] = seed_investor
-    fixture._setup(payload)
+    result = fixture._setup(payload)
+    organization_index, organization_sql, organization_params = next(
+        (index, query, params) for index, (query, params) in enumerate(calls)
+        if "INSERT INTO to_chuc" in query
+    )
+    if role == "employee":
+        assert "owner_user_id" not in organization_sql or organization_params[2] is None
+    else:
+        assert "owner_user_id" in organization_sql
+        assert organization_params == ("test-org", "Lifecycle E2E specialist-test", "employee")
+        account_index = next(index for index, (query, _) in enumerate(calls) if "INSERT INTO tai_khoan" in query)
+        assert account_index < organization_index
+    assert result == {"organizationId": "test-org", "accountId": "employee"}
     membership = next(params for query, params in calls if "INSERT INTO thanh_vien_to_chuc" in query)
     assert membership[2] == (role or "manager")
     permissions = [query for query, params in calls if "INSERT INTO ma_tran_phan_quyen" in query]

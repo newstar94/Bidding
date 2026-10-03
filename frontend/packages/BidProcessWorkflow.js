@@ -23,6 +23,8 @@ import {
   getWinnerRows
 } from "./bidProcessAwardResult.js";
 import { renderOpeningSummary } from "./bidProcessRender.js";
+import { getOpeningElement } from "./openingPanelDom.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { getPartnerLookupInput } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
@@ -61,18 +63,18 @@ export { buildOpeningActionState, buildOpeningContractorIdentity } from "./bidPr
 export * from "./bidProcessTenderLifecycle.js";
 
 export function refreshOpeningDraftPagination(owner = {}, packageId = "", options = {}) {
-  const table = document.getElementById("mothau-table");
+  const table = getOpeningElement("mothau-table");
   if (table) return enhanceTableRowPagination(table, options);
   return paginateTableRows(
     owner,
     `openingDraft:${String(packageId || "unknown")}`,
-    document.getElementById("mothau-table-tbody"),
-    document.getElementById("mothau-table-pagination"),
+    getOpeningElement("mothau-table-tbody"),
+    getOpeningElement("mothau-table-pagination"),
   );
 }
 
 export function renderMoThauPanel() {
-  const select = document.getElementById("mothau-goithau-select");
+  const select = getOpeningElement("mothau-goithau-select");
   if (!select) return;
   const now = /* @__PURE__ */ new Date();
   const selectedVal = select.value;
@@ -96,11 +98,11 @@ export function renderMoThauPanel() {
     select.value = "";
   }
   this.makeSearchableSelect(select, "Tìm kiếm Gói thầu...");
-  const summaryContainer = document.getElementById("mothau-goithau-summary");
-  const bidContainer = document.getElementById("mothau-bid-container");
-  const emptyState = document.getElementById("mothau-empty-state");
-  const thead = document.getElementById("mothau-table-thead");
-  const tbody = document.getElementById("mothau-table-tbody");
+  const summaryContainer = getOpeningElement("mothau-goithau-summary");
+  const bidContainer = getOpeningElement("mothau-bid-container");
+  const emptyState = getOpeningElement("mothau-empty-state");
+  const thead = getOpeningElement("mothau-table-thead");
+  const tbody = getOpeningElement("mothau-table-tbody");
   const handlePackageSelection = () => {
     const gtId = select.value;
     if (!gtId) {
@@ -150,15 +152,15 @@ export function renderMoThauPanel() {
     }
     emptyState.classList.add("is-hidden");
     bidContainer.classList.remove("is-hidden");
-    const titleEl = document.getElementById("mothau-table-title");
+    const titleEl = getOpeningElement("mothau-table-title");
     if (titleEl) {
       titleEl.textContent = isDirectOrSpecial ? "Danh sách Nhà thầu" : "Danh sách Nhà thầu tham dự & Nộp hồ sơ";
     }
-    const addBidBtn2 = document.getElementById("btn-mothau-add-bid");
-    const saveBtn2 = document.getElementById("btn-mothau-save");
-    const importExcelBtnTop = document.getElementById("btn-mothau-import-excel");
-    const downloadExcelBtnTop = document.getElementById("btn-mothau-download-excel");
-    const importMscBtn = document.getElementById("btn-mothau-import-msc");
+    const addBidBtn2 = getOpeningElement("btn-mothau-add-bid");
+    const saveBtn2 = getOpeningElement("btn-mothau-save");
+    const importExcelBtnTop = getOpeningElement("btn-mothau-import-excel");
+    const downloadExcelBtnTop = getOpeningElement("btn-mothau-download-excel");
+    const importMscBtn = getOpeningElement("btn-mothau-import-msc");
     if (addBidBtn2) {
       setWorkflowActionVisibility(addBidBtn2, isEditable);
       addBidBtn2.innerHTML = trustedHTML(`<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`);
@@ -343,7 +345,7 @@ export function renderMoThauPanel() {
   select.onchange = handlePackageSelection;
   handlePackageSelection();
   this.setupExcelImportEvents();
-  const addBidBtn = document.getElementById("btn-mothau-add-bid");
+  const addBidBtn = getOpeningElement("btn-mothau-add-bid");
   if (addBidBtn) {
     addBidBtn.onclick = () => {
       const gtId = select.value;
@@ -378,7 +380,7 @@ export function calculateOpeningDiscountedPrice(model, bidPriceValue, discountVa
 
 // eslint-disable-next-line complexity -- Legacy row orchestration is isolated for a dedicated refactor.
 export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
-  const tbody = document.getElementById("mothau-table-tbody");
+  const tbody = getOpeningElement("mothau-table-tbody");
   if (!tbody) return;
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", bidData.id || generateRecordId("thongtinmothau"));
@@ -859,10 +861,10 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       const workspaceToken = this.model.getWorkspaceToken?.();
       if (tr._violationRefresh) await tr._violationRefresh;
       if (workspaceToken && !this.model.isWorkspaceCurrent?.(workspaceToken)) return;
-      if (document.getElementById("mothau-goithau-select")?.value !== String(gt.id)) return;
+      if (getOpeningElement("mothau-goithau-select")?.value !== String(gt.id)) return;
       // Sync can repaint the row while its risk lookup is in flight. Resolve
       // the still-visible record again, never open a detached/revoked record.
-      const currentRow = Array.from(document.querySelectorAll("#mothau-table-tbody tr"))
+      const currentRow = Array.from(getOpeningElement("mothau-table-tbody")?.querySelectorAll("tr") || [])
         .find((row) => row.dataset.id === tr.dataset.id);
       if (!currentRow?.querySelector(".mt-jv-view-link")) return;
       this.openMoThauJVViewModal(currentRow._thanhVienLienDanh || [], currentRow._leadMemberName || ntName, currentRow._leadMemberCode || ntCode, currentRow._leadMemberContractorId || "", currentRow._leadMemberViolationStatus || "");
@@ -896,8 +898,24 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   }
 }
 async function performSaveThongTinMoThau() {
-  const select = document.getElementById("mothau-goithau-select");
+  const select = getOpeningElement("mothau-goithau-select");
   if (!select) return;
+  const workspaceLease = captureWorkspaceLease(this.model);
+  const storage = this.model.workspaceStorage;
+  const requestedPackageId = String(select.value || "");
+  const openingBody = getOpeningElement("mothau-table-tbody");
+  const openingPane = document.querySelector?.(".tab-pane.active");
+  const workflowTab = this.view._currentWorkflowTab;
+  const isCurrentWorkspace = () => isWorkspaceLeaseCurrent(this.model, workspaceLease)
+    && this.model.workspaceStorage === storage;
+  const isCurrentForm = () => isCurrentWorkspace()
+    && getOpeningElement("mothau-goithau-select") === select
+    && String(select.value || "") === requestedPackageId
+    && getOpeningElement("mothau-table-tbody") === openingBody;
+  const isCurrentRoute = () => isCurrentWorkspace()
+    && document.querySelector?.(".tab-pane.active") === openingPane
+    && String(getOpeningElement("mothau-goithau-select")?.value || "") === requestedPackageId
+    && this.view._currentWorkflowTab === workflowTab;
   let gtId = select.value;
   if (!gtId) {
     await this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu để lưu!", "alert-triangle", select);
@@ -918,25 +936,35 @@ async function performSaveThongTinMoThau() {
     );
     return;
   }
+  const rows = openingBody?.querySelectorAll("tr") || [];
+  if (rows.length === 0) {
+    await this.view.customAlert(
+      "Chưa có dữ liệu nhà thầu",
+      "Bảng mở thầu chưa có nhà thầu. Vui lòng lấy lại dữ liệu hoặc nhập nhà thầu trước khi lưu.",
+      "alert-triangle",
+    );
+    return;
+  }
+  const openingPackage = { ...gt };
   if (isDirectOrSpecial) {
-    if (!gt.thoiGianMoThau) {
-      gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
+    if (!openingPackage.thoiGianMoThau) {
+      openingPackage.thoiGianMoThau = this.model.getCurrentDateTimeString();
     }
-    if (!gt.thoiGianDongThau) {
-      gt.thoiGianDongThau = gt.thoiGianMoThau;
+    if (!openingPackage.thoiGianDongThau) {
+      openingPackage.thoiGianDongThau = openingPackage.thoiGianMoThau;
     }
   } else {
-    const inputOpTime = document.getElementById("op-thoigianmothau");
+    const inputOpTime = getOpeningElement("op-thoigianmothau");
     if (inputOpTime && inputOpTime.value) {
-      gt.thoiGianMoThau = this.model.convertDMYHMSToYMDHMS(inputOpTime.value);
-    } else if (!gt.thoiGianMoThau) {
-      gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
+      openingPackage.thoiGianMoThau = this.model.convertDMYHMSToYMDHMS(inputOpTime.value);
+    } else if (!openingPackage.thoiGianMoThau) {
+      openingPackage.thoiGianMoThau = this.model.getCurrentDateTimeString();
     }
   }
-  const openingTimeValidation = validateOpeningTime(gt, (value) => this.model.formatDateWithTime(value));
+  const openingTimeValidation = validateOpeningTime(openingPackage, (value) => this.model.formatDateWithTime(value));
   if (!openingTimeValidation.valid) {
-    const inputOpTime = document.getElementById("op-thoigianmothau");
-    const errorEl = document.getElementById("op-thoigianmothau-error");
+    const inputOpTime = getOpeningElement("op-thoigianmothau");
+    const errorEl = getOpeningElement("op-thoigianmothau-error");
     if (errorEl) {
       errorEl.textContent = openingTimeValidation.message;
       setRuntimeStyle(errorEl, "display", "block");
@@ -952,8 +980,11 @@ async function performSaveThongTinMoThau() {
     }
     return;
   }
-  const rows = document.querySelectorAll("#mothau-table-tbody tr");
   await enrichOpeningRowsWithPartnerInfo(rows, this.model);
+  // Enrichment yields to network requests. The user may have switched the
+  // workspace or package, or sync may have replaced the captured form rows.
+  // The collector below mutates contractor state, so fence before collection.
+  if (!isCurrentForm() || Array.from(rows).some((row) => !openingBody.contains(row))) return;
   const openingRowsValidation = validateOpeningRows(rows);
   if (!openingRowsValidation.valid) {
     const message = openingRowsValidation.missingBidPriceInputs?.length
@@ -995,6 +1026,8 @@ async function performSaveThongTinMoThau() {
   );
   const nextBidIds = new Set(tempBids.map((bid) => String(bid.id)));
   const deletedBids = previousBids.filter((bid) => !nextBidIds.has(String(bid.id)));
+  gt.thoiGianMoThau = openingPackage.thoiGianMoThau;
+  if (isDirectOrSpecial) gt.thoiGianDongThau = openingPackage.thoiGianDongThau;
   this.model.replaceTableState(
     "thongtinmothau",
     this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId)),
@@ -1025,6 +1058,7 @@ async function performSaveThongTinMoThau() {
     ["thongtinmothau", "goithau", ...(uniqueContractors.length > 0 ? ["nhathau"] : [])],
     { changes: openingChanges },
   );
+  if (!isCurrentRoute()) return;
   if (!syncResult?.ok) {
     await this.view.customAlert(
       "Không thể lưu thông tin mở thầu",
@@ -1038,6 +1072,7 @@ async function performSaveThongTinMoThau() {
   this.renderMoThauPanel();
   const successAlert = this.view.customAlert("Lưu thành công", successMsg, "check-circle");
   void refreshSavedOpeningViolationChecks(gtId, tempBids).then(() => {
+    if (!isCurrentWorkspace()) return;
     const detailIsActive = document.getElementById("tab-goithau-detail")?.classList.contains("active")
       && String(this.view._currentWorkflowPackageId || "") === String(gtId);
     // The asynchronous verification is display-only. Never let its eventual
@@ -1051,7 +1086,7 @@ async function performSaveThongTinMoThau() {
       // Re-rendering here can discard an evaluation form being edited, so only
       // update the affected contractor-name controls in place.
       for (const bid of tempBids) {
-        const row = document.querySelector(`#mothau-table tr[data-id="${CSS.escape(String(bid.id))}"]`);
+        const row = getOpeningElement("mothau-table")?.querySelector(`tr[data-id="${CSS.escape(String(bid.id))}"]`);
         if (!row) continue;
         row._violationStatus = bid.violationStatus || VIOLATION_NOT_CHECKED;
         row._thanhVienLienDanh = bid.thanhVienLienDanh || [];
@@ -1059,6 +1094,7 @@ async function performSaveThongTinMoThau() {
       }
       return;
     }
+    if (!isCurrentRoute()) return;
     this.view.renderGoiThauTable();
     this.renderMoThauPanel();
   }).catch((error) => {
@@ -1080,7 +1116,7 @@ async function performSaveThongTinMoThau() {
 }
 
 export async function saveThongTinMoThau() {
-  const saveButton = document.getElementById("btn-mothau-save");
+  const saveButton = getOpeningElement("btn-mothau-save");
   if (saveButton?.dataset.openingSaveBusy === "1") return;
   const originalLabel = saveButton?.textContent?.trim() || "Lưu thông tin mở thầu";
   if (saveButton) {

@@ -84,3 +84,20 @@ ADR này; mọi thay đổi semantics tải primary route module phải tuân th
 - `npm run test:first-tab-performance` đo browser thật sau warming với ngưỡng tổng mặc định
   100 ms. Lượt đầu phải không còn click-owned route module; mọi lượt phải không dựng skeleton,
   không duplicate `/api/paginate` và không có lỗi runtime.
+
+## Bổ sung ngày 03/10/2026 — Parity tham số làm ấm
+
+Lượt đo thật phát hiện Kế hoạch/Gói thầu/Hợp đồng gửi thêm request và dựng
+skeleton dù thời gian mở dưới 100 ms. Truy vấn làm ấm thiếu `filters=[]`, còn
+Gói thầu thiếu `alertKey=`; renderer có các tham số này nên exact-query cache
+không khớp. Regression dùng renderer thật tái hiện cùng hành vi sau khi cả ba
+request làm ấm đã hoàn tất.
+
+Truy vấn làm ấm ba bảng lấy bộ lọc hiện hành qua cùng `getBusinessListFilters`
+và serialize như renderer; Gói thầu lấy `dashboardAlertFilter` hiện hành.
+Không coi query khác nhau là tương đương ở tầng cache, không bỏ scope hoặc
+làm phẳng bộ lọc. Các fence workspace/persona, invalidation, TTL, validation,
+server authorization và dữ liệu hiển thị giữ nguyên. Không cần migration hoặc
+backfill; quay lui bằng bản bundle trước. Kiểm thử gồm empty/nonempty filters,
+dashboard alert và warm → render trên DOM/cache thật; giữ cửa sổ 5 giây và
+ngưỡng 100 ms của phép đo đầu tiên.

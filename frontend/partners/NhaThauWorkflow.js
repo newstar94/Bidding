@@ -170,7 +170,8 @@ export async function editNhaThau(id, isReadOnly = false) {
       await loadPartnerFormData(document, form, nt, PARTNER_FORM_CONFIGS.nhathau, {
         formatDate: (value) => this.model.formatForDateInput(value),
         initAddressDropdowns: (...args) => this.initAddressDropdowns(...args),
-        isReadOnly
+        isReadOnly,
+        deferAddress: true,
       });
       if (isReadOnly) {
         if (document.getElementById("nt-tinh")) document.getElementById("nt-tinh").disabled = true;
@@ -189,7 +190,8 @@ export async function editNhaThau(id, isReadOnly = false) {
       if (titleEl) titleEl.textContent = "Thêm Nhà thầu mới";
       await resetPartnerFormData(document, form, PARTNER_FORM_CONFIGS.nhathau, {
         effectiveDate: this.model.formatForDateInput(todayYmd()),
-        initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
+        initAddressDropdowns: (...args) => this.initAddressDropdowns(...args),
+        deferAddress: true,
       });
       if (this._tabTransitionVersion !== navigationVersion) return;
       this.tempNhaThauStampBase64 = "";
@@ -212,8 +214,7 @@ export async function editNhaThau(id, isReadOnly = false) {
         applyLookupData: lookupHandlers.applyLookupData
       });
     }
-    // Keep the create-route auto-opener from starting another editor while
-    // address data is still initializing this form.
+    // Publish once form values are ready; the address catalog loads separately.
     if (!id) this.switchTab("nhathau", "taomoi", true);
     this.view.openModal("modal-nhathau");
   } catch (err) {

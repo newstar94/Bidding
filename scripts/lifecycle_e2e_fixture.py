@@ -36,10 +36,6 @@ def _setup(data: dict) -> dict:
     with psycopg.connect(_database_url()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (%s, %s)",
-                (organization_id, f"Lifecycle E2E {run_id}"),
-            )
-            cursor.execute(
                 """INSERT INTO tai_khoan (
                        id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
                        vai_tro, email, email_norm, da_xac_minh, username_da_dat
@@ -49,6 +45,11 @@ def _setup(data: dict) -> dict:
                     hash_password(str(data["password"])), account["name"],
                     account["email"], account["email"].lower(),
                 ),
+            )
+            cursor.execute(
+                "INSERT INTO to_chuc (id, ten_to_chuc, owner_user_id) VALUES (%s, %s, %s)",
+                (organization_id, f"Lifecycle E2E {run_id}",
+                 account["id"] if membership_role == "manager" else None),
             )
             cursor.execute(
                 """INSERT INTO thanh_vien_to_chuc (

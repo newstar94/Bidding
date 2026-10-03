@@ -7,6 +7,7 @@ import {
   workspaceChangedError,
 } from "../app/workspaceLease.js";
 import { enhanceTableRowPagination } from "../shared/TablePagination.js";
+import { getOpeningElement } from "../packages/openingPanelDom.js";
 
 const openingButtonOperations = new WeakMap();
 
@@ -193,7 +194,7 @@ export function applyOpeningImportToDraft({
   applied,
   action = "MERGE",
 } = {}) {
-  const tbody = document.getElementById("mothau-table-tbody");
+  const tbody = getOpeningElement("mothau-table-tbody");
   if (!pkg || !tbody || !applied?.opening) return { added: 0 };
   const currentRows = Array.from(tbody.querySelectorAll("tr"));
   const currentIdentities = new Set(currentRows.map((row) => openingBidIdentity({
@@ -204,12 +205,13 @@ export function applyOpeningImportToDraft({
   const bidders = (applied.opening.bidders || [])
     .filter((bidder) => bidder.phase !== "FINANCIAL")
     .map(mapOpeningBidder);
+  if (bidders.length === 0) throw new Error("OPENING_SOURCE_NO_TECHNICAL_BIDDERS");
   if (action === "OVERWRITE") tbody.replaceChildren();
   const additions = action === "MERGE"
     ? bidders.filter((bidder) => !currentIdentities.has(openingBidIdentity(bidder)))
     : bidders;
   additions.forEach((bidder) => this.addMoThauRow(openingCaseType(pkg), pkg, bidder));
-  const openingInput = document.getElementById("op-thoigianmothau");
+  const openingInput = getOpeningElement("op-thoigianmothau");
   if (
     openingInput
     && applied.opening.openingAt
@@ -223,7 +225,7 @@ export function applyOpeningImportToDraft({
     packageId: pkg.id,
     packageRowVersion: preview?.package?.rowVersion || applied.package?.rowVersion || null,
   };
-  const table = document.getElementById("mothau-table");
+  const table = getOpeningElement("mothau-table");
   if (table) enhanceTableRowPagination(table);
   this.view?.createIconsScoped?.(tbody);
   return { added: additions.length };
@@ -233,8 +235,8 @@ export function applyOpeningImportToDraft({
 export async function importOpeningFromMuasamcong({
   client = new ProcurementImportClient(),
 } = {}) {
-  const select = document.getElementById("mothau-goithau-select");
-  const button = document.getElementById("btn-mothau-import-msc");
+  const select = getOpeningElement("mothau-goithau-select");
+  const button = getOpeningElement("btn-mothau-import-msc");
   const pkg = this.model.state.goithau.find(
     (item) => String(item.id) === String(select?.value || ""),
   );
@@ -249,16 +251,23 @@ export async function importOpeningFromMuasamcong({
   const lease = captureWorkspaceLease(this.model);
   const workspaceToken = lease.token;
   const storage = this.model?.workspaceStorage;
-  const isCurrentOperation = () => {
+  const openingPane = select.closest?.(".tab-pane");
+  const isOwnedOperation = () => {
     const current = this.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
     return isWorkspaceLeaseCurrent(this.model, lease)
       && this.model?.workspaceStorage === storage
-      && document.getElementById("mothau-goithau-select") === select
-      && document.getElementById("btn-mothau-import-msc") === button
+      && (openingPane
+        ? openingPane.querySelector("#mothau-goithau-select") === select
+          && openingPane.querySelector("#btn-mothau-import-msc") === button
+        : getOpeningElement("mothau-goithau-select") === select
+          && getOpeningElement("btn-mothau-import-msc") === button)
       && openingButtonOperations.get(button) === operationIdentity
       && String(select?.value || "") === String(pkg.id)
       && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
   };
+  const isCurrentOperation = () => isOwnedOperation()
+    && getOpeningElement("mothau-goithau-select") === select
+    && getOpeningElement("btn-mothau-import-msc") === button;
   const assertCurrentWorkspace = () => {
     if (!isCurrentOperation()) throw workspaceChangedError();
   };
@@ -293,6 +302,14 @@ export async function importOpeningFromMuasamcong({
   } catch (error) {
     if (!isCurrentOperation()) return;
     if (error?.code === "WORKSPACE_CHANGED" || error?.name === "AbortError") return;
+    if (error?.message === "OPENING_SOURCE_NO_TECHNICAL_BIDDERS") {
+      await this.view.customAlert(
+        "Chưa có dữ liệu mở thầu kỹ thuật",
+        "Nguồn chưa có nhà thầu cho biên bản mở thầu này. Dữ liệu đang nhập được giữ lại; hãy kiểm tra lại biên bản nguồn.",
+        "alert-triangle",
+      );
+      return;
+    }
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
     await this.view.customAlert(
       stale ? "Preview đã cũ" : "Không thể lấy dữ liệu mở thầu",
@@ -302,7 +319,7 @@ export async function importOpeningFromMuasamcong({
       "alert-triangle",
     );
   } finally {
-    if (isCurrentOperation()) {
+    if (isOwnedOperation()) {
       openingButtonOperations.delete(button);
       delete button.dataset.loading;
       button.disabled = false;

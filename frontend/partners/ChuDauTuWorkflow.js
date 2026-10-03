@@ -88,13 +88,15 @@ export async function editChuDauTu(id) {
     const cdt = this.model.state.chudautu.find((c) => c.id === id);
     await loadPartnerFormData(document, form, cdt, PARTNER_FORM_CONFIGS.chudautu, {
       formatDate: (value) => this.model.formatForDateInput(value),
-      initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
+      initAddressDropdowns: (...args) => this.initAddressDropdowns(...args),
+      deferAddress: true,
     });
   } else {
     document.getElementById("modal-chudautu-title").textContent = "Thêm Chủ đầu tư mới";
     await resetPartnerFormData(document, form, PARTNER_FORM_CONFIGS.chudautu, {
       effectiveDate: this.model.formatForDateInput(todayYmd()),
-      initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
+      initAddressDropdowns: (...args) => this.initAddressDropdowns(...args),
+      deferAddress: true,
     });
     if (this._tabTransitionVersion !== navigationVersion) return;
     document.getElementById("cdt-coquanchuquan").value = "";
@@ -111,7 +113,7 @@ export async function editChuDauTu(id) {
     clearLookupData: lookupHandlers.clearLookupData,
     applyLookupData: lookupHandlers.applyLookupData
   });
-  // Publish the create route only after asynchronous form initialization.
+  // Publish once form values are ready; the address catalog loads separately.
   if (!id) this.switchTab("chudautu", "taomoi", true);
   this.view.openModal("modal-chudautu");
 }

@@ -232,11 +232,23 @@ function selectAddressOption(select, code, name, legacyPrefix) {
   }
   if (option) select.value = option.value;
 }
-export async function applyRawAddressToAddressControls(rawAddress, { detailInputId, provinceSelectId, wardSelectId }) {
-  const parsed = await parseVietnamAddress(rawAddress);
+export async function applyRawAddressToAddressControls(rawAddress, {
+  detailInputId, provinceSelectId, wardSelectId, isDisabled = false, shouldApply = () => true,
+}) {
   const detailInput = document.getElementById(detailInputId);
   const provinceSelect = document.getElementById(provinceSelectId);
   const wardSelect = document.getElementById(wardSelectId);
+  const initGeneration = provinceSelect?.[ADDRESS_INIT_GENERATION];
+  const initialValues = [detailInput?.value, provinceSelect?.value, wardSelect?.value];
+  const isCurrent = () => shouldApply()
+    && document.getElementById(detailInputId) === detailInput
+    && document.getElementById(provinceSelectId) === provinceSelect
+    && document.getElementById(wardSelectId) === wardSelect
+    && provinceSelect?.[ADDRESS_INIT_GENERATION] === initGeneration
+    && [detailInput?.value, provinceSelect?.value, wardSelect?.value].every((value, index) => value === initialValues[index]);
+  const parsed = await parseVietnamAddress(rawAddress);
+  const wards = parsed.provinceCode && wardSelect ? await ensureVietnamWards(parsed.provinceCode) : null;
+  if (!isCurrent()) return parsed;
   if (detailInput) {
     detailInput.value = parsed.detail || rawAddress || "";
   }
@@ -245,11 +257,10 @@ export async function applyRawAddressToAddressControls(rawAddress, { detailInput
     syncCustomSelectDisplay(provinceSelect);
   }
   if (wardSelect && (parsed.provinceCode || parsed.wardName)) {
-    if (parsed.provinceCode) {
-      const wards = await ensureVietnamWards(parsed.provinceCode);
+    if (wards) {
       wardSelect.innerHTML = trustedHTML(renderWardOptions(wards));
     }
-    wardSelect.disabled = false;
+    wardSelect.disabled = isDisabled;
     selectAddressOption(wardSelect, parsed.wardCode, parsed.wardName, "legacy-ward");
     syncCustomSelectDisplay(wardSelect);
   }
@@ -262,29 +273,16 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   const initGeneration = (tinhSelect[ADDRESS_INIT_GENERATION] || 0) + 1;
   tinhSelect[ADDRESS_INIT_GENERATION] = initGeneration;
   xaSelect[ADDRESS_INIT_GENERATION] = initGeneration;
+  tinhSelect.innerHTML = trustedHTML('<option value="">-- Chọn Tỉnh/Thành phố --</option>');
   xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
-  xaSelect.disabled = true;
+  selectAddressOption(tinhSelect, "", currentTinhName, "legacy-province");
+  selectAddressOption(xaSelect, "", currentXaName, "legacy-ward");
+  const initialProvinceValue = tinhSelect.value;
+  const initialWardValue = xaSelect.value;
+  xaSelect.disabled = isDisabled || !currentTinhName;
   tinhSelect.disabled = isDisabled;
-  const provinces = await ensureVietnamProvinces();
-  if (
-    document.getElementById(tinhSelectId) !== tinhSelect
-    || document.getElementById(xaSelectId) !== xaSelect
-    || tinhSelect[ADDRESS_INIT_GENERATION] !== initGeneration
-    || xaSelect[ADDRESS_INIT_GENERATION] !== initGeneration
-  ) return;
-  if (!provinces.length) {
-    tinhSelect.innerHTML = trustedHTML('<option value="">Không thể tải danh sách tỉnh thành</option>');
-    return;
-  }
-  tinhSelect.innerHTML = trustedHTML('<option value="">-- Chọn Tỉnh/Thành phố --</option>' + provinces.map((p) => `<option value="${p.code}" data-name="${escapeOptionText(p.name)}">${escapeOptionText(p.name)}</option>`).join(""));
-  if (currentTinhName) {
-    const foundProvince = provinces.find((p) => p.name === currentTinhName);
-    if (foundProvince) {
-      tinhSelect.value = foundProvince.code;
-    } else {
-      selectAddressOption(tinhSelect, "", currentTinhName, "legacy-province");
-    }
-  }
+  syncCustomSelectDisplay(tinhSelect);
+  syncCustomSelectDisplay(xaSelect);
   const loadWards = async (provinceCode, selectWardName = "") => {
     const loadGeneration = (xaSelect[WARD_LOAD_GENERATION] || 0) + 1;
     xaSelect[WARD_LOAD_GENERATION] = loadGeneration;
@@ -301,8 +299,12 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
       syncCustomSelectDisplay(xaSelect);
       return;
     }
-    xaSelect.innerHTML = trustedHTML('<option value="">Đang tải...</option>');
-    xaSelect.disabled = true;
+    xaSelect.innerHTML = trustedHTML(selectWardName
+      ? '<option value="">-- Chọn Xã/Phường --</option>'
+      : '<option value="">Đang tải...</option>');
+    selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
+    const selectedWardValue = xaSelect.value;
+    xaSelect.disabled = isDisabled || !selectWardName;
     syncCustomSelectDisplay(xaSelect);
     const wards = await ensureVietnamWards(provinceCode);
     if (!shouldCommitWardResponse({
@@ -317,9 +319,13 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
       initGeneration,
       currentInitGeneration: tinhSelect[ADDRESS_INIT_GENERATION],
     })) return;
+    const currentWardValue = xaSelect.value;
+    const currentWardName = xaSelect.options[xaSelect.selectedIndex]?.dataset.name || "";
     xaSelect.innerHTML = trustedHTML(renderWardOptions(wards));
     xaSelect.disabled = isDisabled;
-    if (selectWardName) {
+    if (currentWardValue !== selectedWardValue) {
+      selectAddressOption(xaSelect, currentWardValue, currentWardName, "legacy-ward");
+    } else if (selectWardName) {
       const foundWard = wards.find((w) => w.name === selectWardName);
       if (foundWard) {
         xaSelect.value = foundWard.code;
@@ -332,8 +338,28 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   tinhSelect.onchange = (e) => {
     loadWards(e.target.value);
   };
+  const provinces = await ensureVietnamProvinces();
+  if (
+    document.getElementById(tinhSelectId) !== tinhSelect
+    || document.getElementById(xaSelectId) !== xaSelect
+    || tinhSelect[ADDRESS_INIT_GENERATION] !== initGeneration
+    || xaSelect[ADDRESS_INIT_GENERATION] !== initGeneration
+  ) return;
+  if (!provinces.length) {
+    if (!tinhSelect.value) {
+      tinhSelect.innerHTML = trustedHTML('<option value="">Không thể tải danh sách tỉnh thành</option>');
+    }
+    return;
+  }
+  const selectedProvinceValue = tinhSelect.value;
+  const selectedProvinceName = tinhSelect.options[tinhSelect.selectedIndex]?.dataset.name || "";
+  const selectedWardName = xaSelect.options[xaSelect.selectedIndex]?.dataset.name || "";
+  const provinceName = selectedProvinceValue === initialProvinceValue ? currentTinhName : selectedProvinceName;
+  const wardName = xaSelect.value === initialWardValue ? currentXaName : selectedWardName;
+  tinhSelect.innerHTML = trustedHTML('<option value="">-- Chọn Tỉnh/Thành phố --</option>' + provinces.map((p) => `<option value="${p.code}" data-name="${escapeOptionText(p.name)}">${escapeOptionText(p.name)}</option>`).join(""));
+  selectAddressOption(tinhSelect, selectedProvinceValue, provinceName, "legacy-province");
   if (tinhSelect.value) {
-    await loadWards(tinhSelect.value, currentXaName);
+    await loadWards(tinhSelect.value, wardName);
   }
   makeSearchableSelect(tinhSelect, "Tìm kiếm Tỉnh/Thành phố...");
   makeSearchableSelect(xaSelect, "Tìm kiếm Xã/Phường...");

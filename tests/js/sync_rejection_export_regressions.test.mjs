@@ -416,6 +416,99 @@ test("official export rejects a workspace change during the complete pull", asyn
   await assert.rejects(prepareExportSnapshot.call(controller), /workspace|không gian|tổ chức/i);
 });
 
+test("official export rejects an in-place persona change during synchronization", async () => {
+  const controller = exportController({ ok: true, skipped: true });
+  controller.model.state = { activerole: "manager" };
+  let pulls = 0;
+  controller.autoSync = async () => {
+    controller.model.state.activerole = "employee";
+    return { ok: true, skipped: true };
+  };
+  controller.forceSyncData = async () => {
+    pulls += 1;
+    return { ok: true, data: { syncVersion: 42, partial: false } };
+  };
+
+  await assert.rejects(prepareExportSnapshot.call(controller), /vai trò.*thay đổi/i);
+  assert.equal(pulls, 0);
+});
+
+for (const [beforeRole, afterRole] of [
+  ["manager", "employee"],
+  ["manager", "manager"],
+  ["employee", "employee"],
+]) {
+  test(`official export checks the persona after the actual workspace pull: ${beforeRole} to ${afterRole}`, async () => {
+    const values = new Map([
+      ["bf_last_sync_version", "38"],
+      ["bf_visibility_token", "scope-a"],
+      ["bf_sync_active_role", beforeRole],
+    ]);
+    const storage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: (key) => values.delete(key),
+    };
+    const model = {
+      workspaceScope: { key: "user:org-a", organizationId: "org-a" },
+      workspaceStorage: storage,
+      state: { activerole: beforeRole, goithau: [] },
+      getWorkspaceToken: () => "user:org-a@1",
+      isWorkspaceCurrent: (token) => token === "user:org-a@1",
+      normalizeRecordKeys: (record) => structuredClone(record),
+      getMutationQueue: () => null,
+      suspendMutationTracking: (callback) => callback(),
+      buildMutationSyncPayload: () => null,
+      hasPendingMutationOutboxChanges: () => false,
+      getMutationOutboxStatus: () => ({ state: "ready", trusted: true }),
+      rebaseMutationBatch() {},
+      db: { async applySyncChanges() {} },
+    };
+    const controller = {
+      model, view: null, routeMap: {}, updateSyncState() {},
+      hasLocalWorkspaceData: () => true,
+      autoSync: async () => ({ ok: true, skipped: true }),
+      forceSyncData,
+    };
+    const previous = {
+      fetch: globalThis.fetch, document: globalThis.document, window: globalThis.window,
+      navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+    };
+    globalThis.document = { getElementById: () => null };
+    globalThis.window = { location: { pathname: "/goi-thau" } };
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true, value: { onLine: true },
+    });
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      // Session refresh can update the persona in place without changing the workspace epoch.
+      model.state.activerole = afterRole;
+      return new Response(JSON.stringify({
+        deletions: [], throughVersion: 42, syncVersion: 42,
+        visibilityToken: "scope-a", partial: false,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    try {
+      if (beforeRole !== afterRole) {
+        await assert.rejects(prepareExportSnapshot.call(controller), /vai trò.*thay đổi/i);
+      } else {
+        assert.equal(await prepareExportSnapshot.call(controller), "42");
+        assert.equal(values.get("bf_sync_active_role"), afterRole);
+      }
+      assert.equal(requests, 1);
+      assert.equal(model.getWorkspaceToken(), "user:org-a@1");
+    } finally {
+      for (const key of ["fetch", "document", "window"]) {
+        if (previous[key] === undefined) delete globalThis[key];
+        else globalThis[key] = previous[key];
+      }
+      if (previous.navigator) Object.defineProperty(globalThis, "navigator", previous.navigator);
+      else delete globalThis.navigator;
+    }
+  });
+}
+
 for (const pullResult of [
   { ok: false, status: 503 },
   { ok: true, data: { syncVersion: 42, partial: true } },
