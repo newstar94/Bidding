@@ -12,9 +12,8 @@ import { applyAccessContext, selectActiveOrganization } from "./accessContext.js
 import { setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { validateUsernameClient } from "./usernameClientPolicy.js";
-import { prepareExplicitLogout } from "./logoutMutationSafety.js";
+import { prepareExplicitLogout, requestAuthoritativeLogout } from "./logoutMutationSafety.js";
 import {
-  beginExplicitLogout,
   hideInitLoader,
   isAuthTransitionActive,
   isStaleAuthResult,
@@ -524,7 +523,7 @@ export function setupAuth() {
     });
   }
   if (btnLogout) {
-    btnLogout.onclick = async () => {
+    btnLogout.onclick = createSingleFlightSubmitHandler(async () => {
       const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
       const warning = hasUnsavedForm
         ? " Cảnh báo: còn biểu mẫu chưa lưu."
@@ -533,17 +532,18 @@ export function setupAuth() {
       if (confirmed) {
         const logoutDecision = await prepareExplicitLogout(this);
         if (!logoutDecision.proceed) return;
-        this.usageAnalyticsTracker?.stop?.();
-        beginExplicitLogout();
-        try {
-          await apiFetch("/api/auth/logout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}"
-          });
-        } catch (e) {
-          console.error("Failed to clear server session during logout:", e);
+        if (!await requestAuthoritativeLogout(this)) return;
+        if (logoutDecision.discardConfirmed) {
+          this.model.discardMutationBatch?.();
+          try {
+            await this.model.flushMutationOutbox?.();
+          } catch (error) {
+            // Logout is already committed. Continue the normal purge/deactivate
+            // path so local write failure cannot revive the revoked session.
+            console.error("Failed to persist confirmed logout discard:", error);
+          }
         }
+        this.usageAnalyticsTracker?.stop?.();
         if (typeof this.model.purgeWorkspaceData === "function") {
           this.disconnectWebSocket?.(false);
           setActiveOrganizationId("");
@@ -564,7 +564,16 @@ export function setupAuth() {
         if (this._sessionInterval) clearInterval(this._sessionInterval);
         window.location.assign("/");
       }
-    };
+    }, {
+      onStart: () => {
+        btnLogout.disabled = true;
+        btnLogout.setAttribute("aria-busy", "true");
+      },
+      onSettled: () => {
+        btnLogout.disabled = false;
+        btnLogout.removeAttribute("aria-busy");
+      },
+    });
   }
   const loginSubmitButton = formLogin.querySelector('button[type="submit"]');
   const loginSubmitLabel = loginSubmitButton?.querySelector("span");

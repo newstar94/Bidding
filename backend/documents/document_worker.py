@@ -1300,7 +1300,8 @@ def list_document_export_jobs(
                       record_type, record_id, filename, content_type, status,
                       attempt_count, last_error_code, completed_at, expires_at,
                       cancelled_at, progress_phase, progress_completed_items,
-                      progress_total_items, created_at, updated_at
+                      progress_total_items, created_at, updated_at,
+                      policy_json, policy_hash
                  FROM document_jobs
                 WHERE """ + " AND ".join(clauses) +
             " ORDER BY updated_at DESC, id DESC LIMIT ?",

@@ -523,7 +523,8 @@ test("sending while history loads waits for restoration before appending the fol
     });
     await page.locator(".bf-assistant-input").fill("Câu hỏi tức thời");
     await page.locator(".bf-assistant-send").click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => [...document.querySelectorAll(".bf-assistant-bubble")]
+      .some((node) => node.textContent === "Trả lời tiếp nối"), null, { timeout: 2000 });
 
     assert.equal(state.sentPath, "/api/ai/conversations/aic-data-new/messages");
     assert.deepEqual(await page.locator(".bf-assistant-bubble").allTextContents(), [

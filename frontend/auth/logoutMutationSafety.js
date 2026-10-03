@@ -1,3 +1,7 @@
+import { apiFetch } from "../shared/apiClient.js";
+import { beginExplicitLogout, setAuthSessionActive } from "./authRuntimeState.js";
+import { captureServerCapabilitiesRollback } from "./serverCapabilities.js";
+
 function mutationRecordCount(upserts) {
   return Object.values(upserts || {}).reduce(
     (total, records) => total + Object.keys(records || {}).length,
@@ -9,8 +13,9 @@ export function countPendingMutations(queue = {}) {
   const dirtyTables = Object.values(queue.dirtyTables || {})
     .filter(Boolean).length;
   const upserts = mutationRecordCount(queue.upserts);
+  const patches = mutationRecordCount(queue.patches);
   const deletes = Array.isArray(queue.deletes) ? queue.deletes.length : 0;
-  return dirtyTables + upserts + deletes;
+  return dirtyTables + upserts + patches + deletes;
 }
 
 function syncFailureReason(result, error) {
@@ -34,10 +39,6 @@ export async function prepareExplicitLogout(controller) {
       result = { ok: false };
     }
   }
-  if (result?.ok === true) {
-    return { discardConfirmed: false, proceed: true };
-  }
-
   const queue = controller?.model?.getMutationQueue?.() || {};
   const pendingCount = countPendingMutations(queue);
   if (pendingCount === 0) {
@@ -60,13 +61,41 @@ export async function prepareExplicitLogout(controller) {
     return { pendingCount, proceed: false, reason };
   }
 
-  controller.model?.discardMutationBatch?.();
-  await controller.model?.flushMutationOutbox?.();
   return {
     discardConfirmed: true,
     pendingCount,
     proceed: true,
   };
+}
+
+export async function requestAuthoritativeLogout(controller) {
+  // Arm cross-tab/session-revocation suppression before the request. A server
+  // failure must restore the active session and remove that suppression.
+  const restoreServerCapabilities = captureServerCapabilitiesRollback();
+  beginExplicitLogout();
+  try {
+    const response = await apiFetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      handleHttpErrors: false,
+    });
+    const payload = await response.json();
+    if (!response.ok || payload?.success !== true) {
+      throw new Error("Server did not confirm logout.");
+    }
+    return true;
+  } catch (error) {
+    restoreServerCapabilities();
+    setAuthSessionActive(true);
+    console.error("Server logout was not confirmed:", error);
+    controller?.view?.showToast?.(
+      "Chưa thể đăng xuất",
+      "Phiên làm việc và dữ liệu trên thiết bị được giữ nguyên. Vui lòng thử lại.",
+      "warning",
+    );
+    return false;
+  }
 }
 
 export async function quarantineForcedSession(controller) {

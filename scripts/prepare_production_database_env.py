@@ -35,7 +35,7 @@ def _connection_url(base_url: str, credential: dict[str, str]) -> str:
     base = urlsplit(base_url)
     username = credential["username"]
     password = credential["password"]
-    database = credential.get("database") or base.path.lstrip("/")
+    database = credential.get("database") or unquote(base.path.lstrip("/"))
     host = base.hostname or ""
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"

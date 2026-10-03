@@ -71,11 +71,12 @@ class BillingActivationService:
             return {"status": event["status"], "eventId": str(event_id)}
         signed = json.loads(event["signed_fields_json"])
         order_code = int(signed.get("orderCode") or 0)
-        order = _dict(self.cursor.execute(
-            """SELECT * FROM billing_orders
-                WHERE provider_profile_id = ? AND provider_order_code = ? FOR UPDATE""",
+        order_identity = self.cursor.execute(
+            """SELECT id FROM billing_orders
+                WHERE provider_profile_id = ? AND provider_order_code = ?""",
             (str(provider_profile_id), order_code),
-        ).fetchone())
+        ).fetchone()
+        order = self._lock_order(order_identity[0]) if order_identity else None
         if not order:
             self._event_state(event_id, "review", "ORDER_NOT_FOUND")
             return {"status": "review_required", "reason": "ORDER_NOT_FOUND"}
@@ -151,9 +152,7 @@ class BillingActivationService:
 
     def activate_order(self, order_id):
         """Activate an already verified order, useful for reconciliation jobs."""
-        order = _dict(self.cursor.execute(
-            "SELECT * FROM billing_orders WHERE id = ? FOR UPDATE", (str(order_id),)
-        ).fetchone())
+        order = self._lock_order(order_id)
         if not order:
             return {"status": "missing"}
         if order["activation_state"] == "applied":
@@ -164,9 +163,7 @@ class BillingActivationService:
 
     def apply_order_result(self, order_id, provider_result, *, provider_profile_id):
         """Apply a provider query result when no webhook event exists."""
-        order = _dict(self.cursor.execute(
-            "SELECT * FROM billing_orders WHERE id = ? FOR UPDATE", (str(order_id),)
-        ).fetchone())
+        order = self._lock_order(order_id)
         if not order:
             return {"status": "missing"}
         result = dict(provider_result or {})
@@ -224,6 +221,27 @@ class BillingActivationService:
                 outcome=outcome,
             )
         return outcome
+
+    def _lock_order(self, order_id):
+        """Match checkout/provider completion's stable owner -> order locks."""
+        owner = self.cursor.execute(
+            """SELECT owner_kind, account_user_id, organization_id
+                 FROM billing_orders WHERE id = ?""",
+            (str(order_id),),
+        ).fetchone()
+        if not owner:
+            return None
+        if owner[0] == "account":
+            self.cursor.execute(
+                "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE", (owner[1],)
+            ).fetchone()
+        else:
+            self.cursor.execute(
+                "SELECT id FROM to_chuc WHERE id = ? FOR UPDATE", (owner[2],)
+            ).fetchone()
+        return _dict(self.cursor.execute(
+            "SELECT * FROM billing_orders WHERE id = ? FOR UPDATE", (str(order_id),)
+        ).fetchone())
 
     def _insert_or_validate_payment(
         self,

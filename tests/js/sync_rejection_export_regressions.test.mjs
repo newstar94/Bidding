@@ -332,6 +332,7 @@ function exportController(result, { pending = false, sendable = null } = {}) {
       hasPendingMutationOutboxChanges: () => pending,
     },
     autoSync: async () => result,
+    forceSyncData: async () => ({ ok: true, data: { syncVersion: result?.data?.syncVersion ?? 17, partial: false } }),
   };
 }
 
@@ -352,7 +353,7 @@ test("official export rejects a mutation staged after the sync receipt was commi
   await assert.rejects(prepareExportSnapshot.call(controller), /chưa.*máy chủ|chưa.*đồng bộ/i);
 });
 
-test("official export preserves stored-version fallback when no local mutations remain", async () => {
+test("official export confirms the stored version through a complete pull when no local mutations remain", async () => {
   const controller = exportController({ ok: true, skipped: true });
   assert.equal(await prepareExportSnapshot.call(controller), "17");
 });
@@ -361,6 +362,71 @@ test("official export returns the committed version instead of an older cursor",
   const controller = exportController({ ok: true, data: { syncVersion: 18 } });
   assert.equal(await prepareExportSnapshot.call(controller), "18");
 });
+
+test("official export refreshes a cursor behind an acknowledged award after navigation", async () => {
+  const controller = exportController({ ok: true, skipped: true });
+  controller.model.workspaceStorage.getItem = () => "38";
+  let pulls = 0;
+  controller.forceSyncData = async (...options) => {
+    pulls += 1;
+    assert.deepEqual(options, [false, false]);
+    return { ok: true, data: { syncVersion: 42, partial: false } };
+  };
+  assert.equal(await prepareExportSnapshot.call(controller), "42");
+  assert.equal(pulls, 1);
+});
+
+test("official export waits for a complete pull and uses its version after an acknowledged push", async () => {
+  const controller = exportController({ ok: true, data: { syncVersion: 42 } });
+  controller.model.workspaceStorage.getItem = () => "38";
+  let completePull;
+  let settled = false;
+  controller.forceSyncData = () => new Promise((resolve) => { completePull = resolve; });
+  const preparation = prepareExportSnapshot.call(controller).then((version) => {
+    settled = true;
+    return version;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  completePull({ ok: true, data: { syncVersion: 43, partial: false } });
+  assert.equal(await preparation, "43");
+});
+
+test("official export rechecks mutations staged while the complete pull is pending", async () => {
+  let pending = false;
+  const controller = exportController({ ok: true, skipped: true });
+  controller.model.hasPendingMutationOutboxChanges = () => pending;
+  controller.forceSyncData = async () => {
+    pending = true;
+    return { ok: true, data: { syncVersion: 42, partial: false } };
+  };
+  await assert.rejects(prepareExportSnapshot.call(controller), /chưa.*máy chủ|chưa.*đồng bộ/i);
+});
+
+test("official export rejects a workspace change during the complete pull", async () => {
+  let token = "user:org-a@1";
+  const controller = exportController({ ok: true, skipped: true });
+  controller.model.workspaceScope = { key: "user:org-a", organizationId: "org-a" };
+  controller.model.getWorkspaceToken = () => token;
+  controller.model.isWorkspaceCurrent = (candidate) => candidate === token;
+  controller.forceSyncData = async () => {
+    token = "user:org-b@2";
+    return { ok: true, data: { syncVersion: 42, partial: false } };
+  };
+  await assert.rejects(prepareExportSnapshot.call(controller), /workspace|không gian|tổ chức/i);
+});
+
+for (const pullResult of [
+  { ok: false, status: 503 },
+  { ok: true, data: { syncVersion: 42, partial: true } },
+  { ok: true, data: {} },
+]) {
+  test(`official export never falls back to an older cursor after an unconfirmed pull: ${JSON.stringify(pullResult)}`, async () => {
+    const controller = exportController({ ok: true, skipped: true });
+    controller.forceSyncData = async () => pullResult;
+    await assert.rejects(prepareExportSnapshot.call(controller), /xác nhận|cam kết/i);
+  });
+}
 
 test("official export rejects a workspace change during synchronization", async () => {
   let token = "user:org-a@1";
@@ -557,6 +623,7 @@ test("missing base leaves unresolved projection intact and blocks export until c
       scenario.model.state.nhathau = [canonical];
       return canonical;
     };
+    scenario.controller.forceSyncData = async () => ({ ok: true, data: { syncVersion: 17, partial: false } });
     assert.equal(await prepareExportSnapshot.call(scenario.controller), "17");
     assert.deepEqual(scenario.model.state.nhathau, [canonical]);
     assert.equal(scenario.model.buildMutationSyncPayload(), null);

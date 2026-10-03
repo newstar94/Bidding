@@ -52,6 +52,51 @@ Nếu `APP_INSTANCE_COUNT` lớn hơn 1, mount private shared storage cho
 `AWARD_RESULT_ARTIFACT_SHARED_STORAGE_CONFIRMED=true`. Không dùng sticky session
 để che local artifact store; readiness cố ý fail nếu thiếu xác nhận này.
 
+### Storage của backup và restore
+
+Tạo `/etc/biddingflow/backup-storage.env` từ
+`deploy/backup-storage.env.example` trong artifact đã giải nén, owner `root`,
+mode `0600`. Điền đường dẫn thực tế khớp `BIDDING_DATA_DIR`, `BIDDING_BACKUP_DIR`,
+`BIDDING_UPLOAD_DIR` và `BIDDING_WORD_TEMPLATE_DIR` của web process. Fragment
+database chỉ chứa credential; nó không cung cấp đường dẫn volume. Lệnh backup
+phải nạp cả fragment storage không có secret và `database-backup.env`, như bước
+deploy dưới đây. Không source `web.env` để lấy đường dẫn storage.
+
+Manifest backup v1 mới có thêm `assetDirectories` để phân biệt thư mục rỗng với
+thư mục nguồn bị thiếu. `assetsComplete=false` có nghĩa snapshot không đủ cho
+full restore. Full restore từ chối cây tài sản bị thiếu trước khi đổi file hoặc
+chạy `pg_restore`. Với snapshot v1 cũ, thư mục `uploads`/`word-templates` có thực
+trong snapshot là bằng chứng hiện diện; thư mục vắng mặt không được suy đoán là
+rỗng. Thư mục đã hiện diện nhưng rỗng được hoán đổi thành cây rỗng, cùng cơ chế
+khôi phục file cũ khi `pg_restore` thất bại.
+
+Trước restore trên POSIX, tạo sẵn các thư mục đích với owner/group và mode riêng
+tư đã được duyệt cho service. Stage kế thừa identity/mode thư mục đích; mode file
+được giới hạn trong quyền đọc/ghi của thư mục đó. Không tự chọn owner khi đích
+chưa tồn tại. Xác minh service account đọc/ghi được tài sản trước khi mở traffic.
+Ngắt restore sẽ hoàn tác hoán đổi file rồi báo lại ngắt; PostgreSQL vẫn dùng
+transaction riêng và cần kiểm tra trạng thái authoritative sau ngắt.
+
+Khi restore, tạo riêng `/etc/biddingflow/restore-storage.env` với các đường dẫn
+tuyệt đối của volume **mới/cách ly** đã được duyệt; không dùng profile backup
+production cho đích restore. Cấp `/etc/biddingflow/database-restore.env` ngoài
+release, owner `root`, mode `0600`, chỉ chứa `DATABASE_URL` của database restore
+với role có quyền restore. Cô lập write traffic và xác nhận đích trước khi chạy:
+
+```bash
+set -euo pipefail
+set -a
+. /etc/biddingflow/restore-storage.env
+. /etc/biddingflow/database-restore.env
+set +a
+python "${RESTORE_RELEASE:?set the approved extracted release directory}/scripts/backup.py" \
+  restore --snapshot "${RESTORE_SNAPSHOT:?set the verified snapshot directory}"
+unset DATABASE_URL
+```
+
+`RESTORE_RELEASE` là artifact đã duyệt, `RESTORE_SNAPSHOT` là snapshot đã verify.
+Restore drill và smoke trên database/volume cách ly vẫn là release gate riêng.
+
 ## Preflight
 
 1. Xác nhận artifact SHA-256/`PRODUCTION_MANIFEST.json` và release ID.
@@ -251,6 +296,18 @@ python scripts/check_security_deployment.py \
 Đặt `POSTGRES_MAX_CONNECTIONS` bằng giá trị đã đọc trực tiếp từ `SHOW
 max_connections` trên đúng PostgreSQL cluster production.
 
+Preflight đọc `Environment=` của unit làm mặc định, sau đó nạp mọi
+`EnvironmentFile=` theo thứ tự của unit; file nạp sau ghi đè file trước và các
+mặc định. `--environment-file` phải là file thực sự được unit nạp. Nhờ vậy
+`UVICORN_WORKERS=4` trong mẫu unit vẫn được tính khi `web.env` không có override.
+Shell đang chạy preflight không được dùng làm nguồn cấu hình của service.
+Nếu có drop-in, dùng `systemctl cat biddingflow.service` để xuất unit và drop-in
+theo thứ tự vào file riêng `root:root`, mode `0600` ngoài release, rồi truyền
+file đó cho `--systemd-unit`. Parser hỗ trợ đường dẫn EnvironmentFile tuyệt đối
+tường minh; cấu hình động qua `PassEnvironment`, specifier hoặc escape không
+được suy đoán. Native unit verification và kiểm tra environment của process đang
+chạy vẫn bắt buộc.
+
 Preflight fail closed nếu còn placeholder cốt lõi, domain/origin không đồng
 nhất, trusted proxy không chỉ là loopback, Cloudflare Tunnel bỏ qua NGINX,
 NGINX/Uvicorn lắng nghe public, thiếu resource limit hoặc tổng connection
@@ -421,10 +478,16 @@ python "$NEW_RELEASE/scripts/verify_document_sandbox.py"
 # No database mutation is allowed until extraction, the full package inventory,
 # release identity, frontend graph and static sandbox have all passed.
 set -a
+. /etc/biddingflow/backup-storage.env
 . /etc/biddingflow/database-backup.env
 set +a
+test -d "${BIDDING_UPLOAD_DIR:?set the deployed upload volume path}"
+test -d "${BIDDING_WORD_TEMPLATE_DIR:?set the deployed Word-template volume path}"
 python "$NEW_RELEASE/scripts/backup.py" create
-python "$NEW_RELEASE/scripts/backup.py" verify --snapshot <snapshot>
+# Set BACKUP_SNAPSHOT to the exact snapshot path printed by create, then continue.
+python "$NEW_RELEASE/scripts/backup.py" verify \
+  --snapshot "${BACKUP_SNAPSHOT:?set the exact snapshot path reported by create}" \
+  --require-complete
 unset BACKUP_DATABASE_URL
 set -a
 . /etc/biddingflow/database-migrator.env

@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import psycopg
+from psycopg import sql
 import pytest
 
 from backend.billing.activation import BillingActivationService
@@ -689,6 +690,59 @@ def test_fake_timeout_recovers_with_stable_command_and_activates_once(
     ).fetchone()[0] == 1
 
 
+@pytest.mark.parametrize("stale_outcome", ["complete", "fail"])
+def test_reclaimed_provider_command_rejects_old_callback_from_same_worker(
+    billing_cursor, stale_outcome,
+):
+    order = _insert_base_plan_order(billing_cursor)
+    billing_cursor.execute(
+        "UPDATE billing_orders SET checkout_state = 'creating' WHERE id = ?",
+        (order["order_id"],),
+    )
+    command_id = f"command-{uuid.uuid4().hex}"
+    billing_cursor.execute(
+        """INSERT INTO billing_provider_commands
+               (id, order_id, command_type, provider_reference,
+                request_json, status, available_at)
+           VALUES (?, ?, 'create_checkout', ?, '{}', 'pending', ?)""",
+        (command_id, order["order_id"], f"lease-{order['order_id']}", order["now"]),
+    )
+    executor = ProviderCommandExecutor(
+        _TransactionDatabase(billing_cursor), worker_id="same-process-worker",
+        clock=lambda: order["now"], environment={},
+    )
+    stale = executor._claim(command_id)
+    assert stale is not None
+    billing_cursor.execute(
+        "UPDATE billing_provider_commands SET lease_expires_at = ? WHERE id = ?",
+        (order["now"] - 1, command_id),
+    )
+    current = executor._claim(command_id)
+    assert current is not None
+    result = {
+        "status": "PENDING", "orderCode": order["order_code"],
+        "amount": 100000, "checkoutUrl": "https://example.test/current-checkout",
+    }
+    if stale_outcome == "complete":
+        executor._complete(stale, result)
+    else:
+        executor._fail(stale, PaymentProviderError(
+            "PROVIDER_TRANSPORT_FAILED", "old callback", retryable=True,
+        ))
+    assert billing_cursor.execute(
+        "SELECT status, attempt_count FROM billing_provider_commands WHERE id = ?",
+        (command_id,),
+    ).fetchone() == {"status": "processing", "attempt_count": 2}
+    assert billing_cursor.execute(
+        "SELECT checkout_state FROM billing_orders WHERE id = ?", (order["order_id"],),
+    ).fetchone()[0] == "creating"
+
+    executor._complete(current, result)
+    assert billing_cursor.execute(
+        "SELECT status FROM billing_provider_commands WHERE id = ?", (command_id,),
+    ).fetchone()[0] == "completed"
+
+
 def test_checkout_retries_provider_order_code_collision_and_pins_expiry(
     billing_cursor,
     monkeypatch,
@@ -818,6 +872,106 @@ def test_billing_owner_lock_serializes_with_membership_change(billing_cursor):
     finally:
         connection.rollback()
         connection.close()
+        database.close()
+
+
+@pytest.mark.parametrize("owner_kind", ["account", "organization"])
+def test_activation_serializes_owner_before_order_across_connections(owner_kind):
+    database_url = _test_database_url()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for billing lock integration")
+    database = PostgresDatabase(database_url)
+    seed = database.get_connection()
+    schema = f"billing_lock_test_{uuid.uuid4().hex}"
+    order_read = threading.Event()
+
+    def schema_connection():
+        connection = database.get_connection()
+        connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        connection.commit()
+        return connection
+
+    try:
+        seed.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        for table in (
+            "tai_khoan", "to_chuc", "commercial_releases",
+            "billing_plan_versions", "billing_skus", "billing_prices",
+            "billing_quotes", "billing_orders", "billing_order_items",
+            "billing_subscription_activations", "account_subscriptions",
+            "organization_subscriptions", "usage_credit_grants", "usage_ledger",
+            "payment_transactions", "billing_invoice_requests", "commercial_outbox",
+            "audit_log", "audit_chain_heads",
+        ):
+            seed.execute(sql.SQL(
+                "CREATE TABLE {}.{} (LIKE public.{} INCLUDING ALL)"
+            ).format(sql.Identifier(schema), sql.Identifier(table), sql.Identifier(table)))
+        for table in ("tai_khoan", "commercial_releases"):
+            seed.execute(sql.SQL("INSERT INTO {}.{} SELECT * FROM public.{}").format(
+                sql.Identifier(schema), sql.Identifier(table), sql.Identifier(table),
+            ))
+        seed.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        order = _insert_base_plan_order(seed.cursor(), owner_kind=owner_kind)
+        seed.commit()
+        owner_table = "tai_khoan" if owner_kind == "account" else "to_chuc"
+        owner_id = order["user_id"] if owner_kind == "account" else order["organization_id"]
+
+        class ObservedCursor:
+            def __init__(self, cursor):
+                self.cursor = cursor
+
+            def execute(self, statement, parameters=()):
+                result = self.cursor.execute(statement, parameters)
+                if statement.lstrip().startswith("SELECT") and "FROM billing_orders" in statement:
+                    order_read.set()
+                return result
+
+        def activate():
+            connection = schema_connection()
+            try:
+                connection.execute("BEGIN")
+                connection.execute("SET LOCAL deadlock_timeout = '100ms'")
+                connection.execute("SET LOCAL lock_timeout = '2s'")
+                return BillingActivationService(
+                    ObservedCursor(connection.cursor()), clock=lambda: order["now"]
+                ).apply_order_result(
+                    order["order_id"], _paid_result(order),
+                    provider_profile_id="provider-fake-v1",
+                )
+            finally:
+                connection.rollback()
+                connection.close()
+
+        owner_transaction = schema_connection()
+        try:
+            owner_transaction.execute("BEGIN")
+            owner_transaction.execute("SET LOCAL deadlock_timeout = '100ms'")
+            owner_transaction.execute("SET LOCAL lock_timeout = '2s'")
+            owner_transaction.execute(
+                f"SELECT id FROM {owner_table} WHERE id = ? FOR UPDATE",  # noqa: S608 - fixed test tables
+                (owner_id,),
+            ).fetchone()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pending = executor.submit(activate)
+                try:
+                    assert order_read.wait(timeout=3)
+                    # Provider completion holds the stable owner before taking
+                    # its order lock. Activation must obey the same ordering.
+                    owner_transaction.execute(
+                        "SELECT id FROM billing_orders WHERE id = ? FOR UPDATE",
+                        (order["order_id"],),
+                    ).fetchone()
+                finally:
+                    owner_transaction.rollback()
+                assert pending.result(timeout=5)["status"] == "applied"
+        finally:
+            owner_transaction.rollback()
+            owner_transaction.close()
+    finally:
+        seed.rollback()
+        seed.execute("SET search_path TO public")
+        seed.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+        seed.commit()
+        seed.close()
         database.close()
 
 

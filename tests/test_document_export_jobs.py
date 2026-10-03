@@ -15,6 +15,7 @@ from backend.documents.document_worker import (
     cancel_document_export,
     enqueue_document_export,
     get_document_export_job,
+    list_document_export_jobs,
     process_next_durable_document_job,
     read_document_export_result,
     retry_failed_durable_document_job,
@@ -153,7 +154,13 @@ def test_async_export_routes_cover_create_status_download_retry_and_cancel():
     assert ("/api/document-jobs/{job_id}", ("DELETE",)) in methods
 
 
-def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
+@pytest.mark.parametrize(
+    ("record_type", "module"),
+    (("goi_thau", "goithau"), ("ke_hoach_lcnt", "kehoach")),
+)
+def test_list_export_jobs_filters_each_job_by_current_record_scope(
+    monkeypatch, record_type, module
+):
     class Request:
         query_params = {"limit": "20"}
 
@@ -178,7 +185,7 @@ def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
         {
             "id": "job-visible",
             "operation": "render_docx",
-            "record_type": "goi_thau",
+            "record_type": record_type,
             "record_id": "package-visible",
             "filename": "visible.docx",
             "status": "completed",
@@ -194,7 +201,7 @@ def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
         {
             "id": "job-hidden",
             "operation": "render_docx",
-            "record_type": "goi_thau",
+            "record_type": record_type,
             "record_id": "package-hidden",
             "filename": "hidden.docx",
             "status": "completed",
@@ -208,6 +215,17 @@ def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
             "progress_total_items": 1,
         },
     ]
+    for job in jobs:
+        policy, fingerprint = build_document_job_policy(
+            role,
+            record_type=record_type,
+            record_id=job["record_id"],
+            record_revision=1,
+            document_format="docx",
+        )
+        job["policy_json"] = policy
+        job["policy_hash"] = fingerprint
+
     monkeypatch.setattr(document_job_routes_module, "database", database)
     monkeypatch.setattr(
         document_job_routes_module,
@@ -224,21 +242,16 @@ def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
         "list_document_export_jobs",
         lambda *_args, **_kwargs: jobs,
     )
-    monkeypatch.setattr(
-        document_job_routes_module,
-        "document_job_record_scope",
-        lambda job: {
-            "module_name": "goithau",
-            "table_name": "goi_thau",
-            "record_id": job["record_id"],
-            "record_type": "goi_thau",
-        },
-    )
+    observed_scopes = []
+
+    def can_read(_cursor, _role, _user, _org, checked_module, table, record_id):
+        observed_scopes.append((checked_module, table, record_id))
+        return record_id == "package-visible"
+
     monkeypatch.setattr(
         document_job_routes_module,
         "can_read_record",
-        lambda _cursor, _role, _user, _org, _module, _table, record_id:
-            record_id == "package-visible",
+        can_read,
     )
     monkeypatch.setattr(
         document_job_routes_module,
@@ -246,10 +259,18 @@ def test_list_export_jobs_filters_each_job_by_current_record_scope(monkeypatch):
         lambda _cursor, _job: None,
     )
 
-    result = document_job_routes_module._list_job_access(Request())
+    response = asyncio.run(
+        document_job_routes_module.list_document_export_jobs_api(Request())
+    )
+    assert response.status_code == 200
+    result = json.loads(response.body)
 
     assert [item["jobId"] for item in result["items"]] == ["job-visible"]
     assert result["items"][0]["downloadUrl"] == "/api/document-jobs/job-visible/download"
+    assert observed_scopes == [
+        (module, record_type, "package-visible"),
+        (module, record_type, "package-hidden"),
+    ]
 
 
 def test_cancel_is_owner_scoped_and_only_affects_pending_jobs():
@@ -394,6 +415,81 @@ def test_durable_export_job_completes_and_isolated_owner_can_download(tmp_path, 
             connection.close()
         for job_id in job_ids:
             shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        database.close()
+
+
+def test_list_export_jobs_loads_policy_and_returns_authorized_database_job(
+    tmp_path, monkeypatch,
+):
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for document job integration")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path))
+    database = PostgresDatabase(database_url)
+    connection = database.get_connection()
+    job_id = None
+    organization_id = None
+    try:
+        (
+            organization_id,
+            user_id,
+            package_id,
+            policy,
+            fingerprint,
+        ) = _seed_export_job_scope(connection)
+        job_id = enqueue_document_export(
+            "export_excel",
+            {"function": "create_phanlo_excel", "args": [[]]},
+            organization_id=organization_id,
+            user_id=user_id,
+            package_id=package_id,
+            filename="export.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            policy=policy,
+            policy_hash=fingerprint,
+            database=database,
+        )
+        jobs = list_document_export_jobs(database, organization_id, user_id)
+        assert len(jobs) == 1
+        assert json.loads(jobs[0]["policy_json"]) == policy
+        assert jobs[0]["policy_hash"] == fingerprint
+        assert list_document_export_jobs(
+            database, organization_id, "another-user"
+        ) == []
+
+        role = SessionRole(
+            "manager", user_id, platform_role="user", active_role="manager",
+            active_role_organization_id=organization_id,
+        )
+        monkeypatch.setattr(document_job_routes_module, "database", database)
+        monkeypatch.setattr(
+            document_job_routes_module, "verify_session",
+            lambda _request: (True, role),
+        )
+        monkeypatch.setattr(
+            document_job_routes_module, "get_active_org",
+            lambda *_args, **_kwargs: organization_id,
+        )
+
+        class Request:
+            query_params = {"limit": "20"}
+
+        response = asyncio.run(
+            document_job_routes_module.list_document_export_jobs_api(Request())
+        )
+        assert response.status_code == 200
+        items = json.loads(response.body)["items"]
+        assert [item["jobId"] for item in items] == [job_id]
+        assert "policy_json" not in items[0]
+        assert "policy_hash" not in items[0]
+    finally:
+        connection.rollback()
+        if job_id:
+            connection.execute("DELETE FROM document_jobs WHERE id = ?", (job_id,))
+            shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        if organization_id:
+            _cleanup_export_job_scope(connection, organization_id)
+        connection.close()
         database.close()
 
 

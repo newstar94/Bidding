@@ -29,7 +29,7 @@ test("successful final sync permits logout without discarding data", async () =>
   const controller = {
     autoSync: async () => ({ ok: true }),
     model: {
-      getMutationQueue: () => pendingQueue(),
+      getMutationQueue: () => ({ dirtyTables: {}, upserts: {}, deletes: [] }),
       discardMutationBatch: () => { discarded = true; },
     },
     view: { customConfirm: async () => { throw new Error("must not prompt"); } },
@@ -59,7 +59,40 @@ test("failed final sync with pending data can cancel logout without purge", asyn
   assert.equal(discarded, false);
 });
 
-test("throwing final sync requires explicit discard before logout", async () => {
+for (const syncResult of [
+  { ok: true },
+  { ok: false, transport: true },
+  { ok: true, localMutationsPending: true },
+  { ok: true, requiredActiveRole: "manager" },
+]) {
+  test(`logout preserves pending partial patches until discard is confirmed: ${JSON.stringify(syncResult)}`, async () => {
+    let prompted = false;
+    let discarded = false;
+    const controller = {
+      autoSync: async () => syncResult,
+      model: {
+        getMutationQueue: () => ({
+          patches: { goithau: { "package-1": { id: "package-1", danhGiaHsdtMetadata: "entered" } } },
+        }),
+        discardMutationBatch: () => { discarded = true; },
+      },
+      view: { customConfirm: async (_title, message) => {
+        prompted = true;
+        assert.match(message, /1 thay đổi/);
+        return false;
+      } },
+    };
+
+    const decision = await prepareExplicitLogout(controller);
+
+    assert.equal(prompted, true);
+    assert.equal(decision.proceed, false);
+    assert.equal(decision.pendingCount, 1);
+    assert.equal(discarded, false);
+  });
+}
+
+test("throwing final sync records discard consent without changing data before server logout", async () => {
   let discarded = false;
   const controller = {
     autoSync: async () => { throw new Error("network offline"); },
@@ -79,7 +112,7 @@ test("throwing final sync requires explicit discard before logout", async () => 
 
   assert.equal(decision.proceed, true);
   assert.equal(decision.discardConfirmed, true);
-  assert.equal(discarded, true);
+  assert.equal(discarded, false);
 });
 
 test("failed final sync without pending mutations does not block logout", async () => {

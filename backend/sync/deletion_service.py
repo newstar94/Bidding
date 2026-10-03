@@ -316,6 +316,7 @@ def apply_sync_deletions(
             table_name: [{"id": record_id} for record_id in record_ids]
             for table_name, record_ids in record_ids_by_table.items()
         },
+        records_by_table,
     )
     aggregate_mutability_context = build_aggregate_mutability_context(
         cursor,

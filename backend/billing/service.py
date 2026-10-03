@@ -516,12 +516,13 @@ class ProviderCommandExecutor:
                 return None
             claimed = dict(row)
             claimed["attempt_count"] = int(claimed["attempt_count"]) + 1
+            claimed["lock_token"] = f"{self.worker_id}:{new_id('billing-lease')}"
             connection.execute(
                 """UPDATE billing_provider_commands
                       SET status = 'processing', attempt_count = ?, locked_by = ?,
                           lease_expires_at = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?""",
-                (claimed["attempt_count"], self.worker_id, int(self.clock()) + 60, command_id),
+                (claimed["attempt_count"], claimed["lock_token"], int(self.clock()) + 60, command_id),
             )
             connection.commit()
             claimed["id"] = command_id
@@ -692,7 +693,7 @@ class ProviderCommandExecutor:
         return bool(
             command
             and str(command[0]) == "processing"
-            and str(command[1] or "") == str(self.worker_id)
+            and str(command[1] or "") == str(claimed["lock_token"])
         )
 
     def _read_order(self, public_id):

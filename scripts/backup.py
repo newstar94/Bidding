@@ -28,6 +28,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -39,13 +40,14 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.shared.paths import DATA_DIR, resolve_runtime_path
+from backend.shared.paths import resolve_runtime_path
 from scripts.env_utils import load_env
 
 
 _SNAPSHOT_PREFIX = "biddingflow-backup"
 _MANIFEST_FILENAME = "manifest.json"
 _MAX_MANIFEST_FILES = 500_000
+_ASSET_DIRECTORIES = ("uploads", "word-templates")
 _SNAPSHOT_NAME_PATTERN = re.compile(
     rf"^{re.escape(_SNAPSHOT_PREFIX)}-(\d{{8}}T\d{{6}}Z)$"
 )
@@ -73,7 +75,7 @@ def _postgres_process(database_url: str) -> tuple[dict[str, str], str]:
     parsed = urlparse(database_url)
     if parsed.scheme not in {"postgresql", "postgres"} or not parsed.hostname:
         raise RuntimeError("DATABASE_URL must be a PostgreSQL URL.")
-    database_name = parsed.path.lstrip("/")
+    database_name = unquote(parsed.path.lstrip("/"))
     if not database_name:
         raise RuntimeError("PostgreSQL URL must include a database name.")
     environment = os.environ.copy()
@@ -274,7 +276,13 @@ def _stage_restore_assets(
 ) -> dict[pathlib.Path, pathlib.Path]:
     staged = {}
     try:
+        asset_directories = _snapshot_asset_directories(snapshot_dir, manifest)
         for prefix, destination in destinations.items():
+            if not asset_directories.get(prefix, False):
+                raise RuntimeError(
+                    f"Snapshot does not contain the {prefix} asset tree; "
+                    "a complete restore is unavailable."
+                )
             entries = []
             for entry in manifest.get("files", []):
                 relative_path = _manifest_relative_path(
@@ -282,8 +290,6 @@ def _stage_restore_assets(
                 )
                 if relative_path.parts[0] == prefix:
                     entries.append((entry, relative_path))
-            if not entries:
-                continue
             destination.parent.mkdir(parents=True, exist_ok=True)
             stage = destination.parent / (
                 f".{destination.name}.restore-stage-{uuid4().hex}"
@@ -304,10 +310,30 @@ def _stage_restore_assets(
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
         return staged
-    except Exception:
+    except BaseException:
         for stage in staged.values():
             shutil.rmtree(stage, ignore_errors=True)
         raise
+
+
+def _inherit_asset_tree_metadata(stage: pathlib.Path, destination: pathlib.Path) -> None:
+    """Keep restored POSIX assets accessible to the approved target identity."""
+    if destination.is_symlink() or not destination.is_dir():
+        raise RuntimeError(
+            "Create the restore target with approved ownership and mode before restore."
+        )
+    target = destination.stat(follow_symlinks=False)
+    directory_mode = stat.S_IMODE(target.st_mode)
+    for path in [stage, *sorted(stage.rglob("*"))]:
+        details = path.stat(follow_symlinks=False)
+        if not (stat.S_ISDIR(details.st_mode) or stat.S_ISREG(details.st_mode)):
+            raise RuntimeError("Unsupported staged restore asset type.")
+        mode = (
+            directory_mode if stat.S_ISDIR(details.st_mode)
+            else stat.S_IMODE(details.st_mode) & directory_mode & 0o666
+        )
+        os.chown(path, target.st_uid, target.st_gid)
+        os.chmod(path, mode)
 
 
 def _activate_staged_assets(
@@ -317,15 +343,18 @@ def _activate_staged_assets(
     try:
         for destination, stage in staged.items():
             previous = None
+            if os.name == "posix":
+                _inherit_asset_tree_metadata(stage, destination)
             if destination.exists():
                 previous = destination.parent / (
                     f".{destination.name}.restore-previous-{uuid4().hex}"
                 )
-                destination.replace(previous)
             activated.append((destination, previous))
+            if previous is not None:
+                destination.replace(previous)
             stage.replace(destination)
         return activated
-    except Exception:
+    except BaseException:
         _rollback_asset_swaps(activated)
         for stage in staged.values():
             if stage.exists():
@@ -337,10 +366,14 @@ def _rollback_asset_swaps(
     activated: list[tuple[pathlib.Path, pathlib.Path | None]],
 ) -> None:
     for destination, previous in reversed(activated):
-        if destination.exists():
+        if previous is not None:
+            # If moving the old root failed, it still occupies destination.
+            if previous.exists():
+                if destination.exists():
+                    shutil.rmtree(destination)
+                previous.replace(destination)
+        elif destination.exists():
             shutil.rmtree(destination)
-        if previous is not None and previous.exists():
-            previous.replace(destination)
 
 
 def _finalize_asset_swaps(
@@ -365,6 +398,11 @@ def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: l
         },
         "files": all_files,
         "fileCount": len(all_files),
+        # Additive v1 metadata distinguishes an existing empty source tree
+        # from a source tree that was unavailable during backup.
+        "assetDirectories": {
+            name: (staging / name).is_dir() for name in _ASSET_DIRECTORIES
+        },
     }
     manifest_path = staging / _MANIFEST_FILENAME
     manifest_path.write_text(
@@ -420,7 +458,7 @@ def cmd_create(args) -> int:
     if not database_url:
         database_url = _require_env("DATABASE_URL")
     backup_dir = pathlib.Path(
-        args.backup_dir or os.environ.get("BIDDING_BACKUP_DIR") or str(DATA_DIR / "backups")
+        args.backup_dir or str(resolve_runtime_path("BIDDING_BACKUP_DIR"))
     ).resolve()
     upload_dir = pathlib.Path(
         args.uploads or os.environ.get("BIDDING_UPLOAD_DIR") or str(resolve_runtime_path("BIDDING_UPLOAD_DIR"))
@@ -467,6 +505,9 @@ def cmd_create(args) -> int:
             "fileCount": len(file_entries) + 1,
             "totalSizeBytes": total_size,
             "retentionRemoved": removed_snapshots,
+            "assetsComplete": all(
+                (final_path / name).is_dir() for name in _ASSET_DIRECTORIES
+            ),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -531,11 +572,13 @@ def cmd_restore(args) -> int:
             ],
             capture_output=True, text=True, env=environment,
         )
-    except Exception as exc:
+    except BaseException as exc:
         _rollback_asset_swaps(activated_assets)
         for stage in staged_assets.values():
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
+        if not isinstance(exc, Exception):
+            raise
         print(f"ERROR: Restore failed: {exc}", file=sys.stderr)
         return 1
     if result.returncode != 0:
@@ -548,6 +591,33 @@ def cmd_restore(args) -> int:
 
     print("Restore complete.")
     return 0
+
+
+def _snapshot_asset_directories(snapshot_dir: pathlib.Path, manifest: dict) -> dict[str, bool]:
+    declared = manifest.get("assetDirectories")
+    if "assetDirectories" in manifest and (
+        not isinstance(declared, dict)
+        or set(declared) != set(_ASSET_DIRECTORIES)
+        or any(type(value) is not bool for value in declared.values())
+    ):
+        raise RuntimeError("invalid backup asset directory metadata")
+    present = {}
+    for name in _ASSET_DIRECTORIES:
+        directory = snapshot_dir / name
+        if directory.is_symlink():
+            raise RuntimeError("unsafe backup asset directory")
+        exists = directory.is_dir()
+        if declared is not None and declared[name] != exists:
+            raise RuntimeError(f"backup asset directory presence mismatch: {name}")
+        if not exists and any(
+            str(entry.get("relativePath") or "").startswith(f"{name}/")
+            for entry in manifest.get("files", [])
+        ):
+            raise RuntimeError(f"backup asset directory is missing: {name}")
+        # Legacy v1 snapshots already created the root when the source existed,
+        # including an empty tree. Never infer an absent root to be empty.
+        present[name] = exists
+    return present
 
 
 def _verify_snapshot(snapshot_dir: pathlib.Path) -> dict:
@@ -593,13 +663,21 @@ def _verify_snapshot(snapshot_dir: pathlib.Path) -> dict:
     )
     if verified_entries.get(database_relative.as_posix()) != database_metadata:
         raise RuntimeError("backup database entry is not verified")
+    _snapshot_asset_directories(snapshot_dir, manifest)
     return manifest
+
+
+def _require_complete_snapshot_assets(snapshot: pathlib.Path, manifest: dict) -> None:
+    if not all(_snapshot_asset_directories(snapshot, manifest).values()):
+        raise RuntimeError("Snapshot is missing an asset tree; a complete restore is unavailable.")
 
 
 def cmd_verify(args) -> int:
     snapshot = pathlib.Path(args.snapshot).resolve()
     try:
         manifest = _verify_snapshot(snapshot)
+        if getattr(args, "require_complete", False):
+            _require_complete_snapshot_assets(snapshot, manifest)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -610,6 +688,9 @@ def cmd_verify(args) -> int:
                 "createdAt": manifest.get("createdAt"),
                 "fileCount": manifest.get("fileCount"),
                 "verified": True,
+                "assetsComplete": all(
+                    _snapshot_asset_directories(snapshot, manifest).values()
+                ),
             },
             ensure_ascii=False,
             indent=2,
@@ -625,6 +706,7 @@ def cmd_drill(args) -> int:
     snapshot = pathlib.Path(args.snapshot).resolve()
     try:
         manifest = _verify_snapshot(snapshot)
+        _require_complete_snapshot_assets(snapshot, manifest)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -752,7 +834,7 @@ def cmd_drill(args) -> int:
 
 def cmd_list(args) -> int:
     backup_dir = pathlib.Path(
-        os.environ.get("BIDDING_BACKUP_DIR") or str(DATA_DIR / "backups")
+        str(resolve_runtime_path("BIDDING_BACKUP_DIR"))
     ).resolve()
     if not backup_dir.is_dir():
         print(f"No backup directory found at {backup_dir}")
@@ -777,8 +859,7 @@ def cmd_list(args) -> int:
 def cmd_drill_latest(args) -> int:
     backup_dir = pathlib.Path(
         args.backup_dir
-        or os.environ.get("BIDDING_BACKUP_DIR")
-        or str(DATA_DIR / "backups")
+        or str(resolve_runtime_path("BIDDING_BACKUP_DIR"))
     ).resolve()
     snapshots = _snapshot_directories(backup_dir)
     if not snapshots:
@@ -802,6 +883,7 @@ def _build_parser():
 
     verify_p = sub.add_parser("verify", help="Verify manifest, size and checksums")
     verify_p.add_argument("--snapshot", required=True)
+    verify_p.add_argument("--require-complete", action="store_true", help="Require both asset trees for full restore")
 
     drill_p = sub.add_parser("drill", help="Restore and verify in an isolated drill database")
     drill_p.add_argument("--snapshot", required=True)

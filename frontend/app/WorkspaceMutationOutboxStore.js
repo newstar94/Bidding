@@ -1,4 +1,4 @@
-import { normalizeMutationQueue } from "./mutationQueue.js";
+import { applyRecordPatch, normalizeMutationQueue } from "./mutationQueue.js";
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 
 const MUTATION_QUEUE_KEY = "bf_mutation_queue";
@@ -115,6 +115,14 @@ function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function samePatchFields(left, right) {
+  if (!isObject(left) || !isObject(right)) return sameValue(left, right);
+  const fields = Object.keys(left);
+  return fields.length === Object.keys(right).length && fields.every((field) => (
+    Object.prototype.hasOwnProperty.call(right, field) && sameValue(left[field], right[field])
+  ));
+}
+
 function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
   if (
     (currentQueue !== null && !isMutationQueue(currentQueue))
@@ -129,6 +137,8 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
   });
   const previous = previousQueue || { dirtyTables: {}, upserts: {}, patches: {}, deletes: [] };
   const requested = requestedQueue || { dirtyTables: {}, upserts: {}, patches: {}, deletes: [] };
+  const authoredRecords = new Set();
+  const unchangedRecords = new Set();
 
   const tables = new Set([
     ...Object.keys(previous.upserts || {}),
@@ -140,9 +150,15 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
     ids.forEach((id) => {
       if (Object.prototype.hasOwnProperty.call(after, id)) {
-        if (sameValue(after[id], before[id])) return;
+        if (sameValue(after[id], before[id])) {
+          if (sameValue(current.upserts?.[table]?.[id], before[id])) {
+            unchangedRecords.add(`${table}::${id}`);
+          }
+          return;
+        }
         if (!current.upserts[table]) current.upserts[table] = {};
         current.upserts[table][id] = cloneValue(after[id]);
+        authoredRecords.add(`${table}::${id}`);
         if (current.patches?.[table]) delete current.patches[table][id];
         if (current.patches?.[table] && Object.keys(current.patches[table]).length === 0) {
           delete current.patches[table];
@@ -170,22 +186,48 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     const after = requested.patches?.[table] || {};
     const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
     ids.forEach((id) => {
-      if (Object.prototype.hasOwnProperty.call(after, id)) {
-        if (sameValue(after[id], before[id])) return;
-        current.patches ||= {};
-        if (!current.patches[table]) current.patches[table] = {};
-        current.patches[table][id] = cloneValue(after[id]);
-        if (current.upserts?.[table]) delete current.upserts[table][id];
-        if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
-          delete current.upserts[table];
+      const durablePatch = current.patches?.[table]?.[id];
+      if (after[id] && samePatchFields(after[id], before[id]) && samePatchFields(durablePatch, before[id])) {
+        unchangedRecords.add(`${table}::${id}`);
+      }
+      const mergedPatch = cloneValue(durablePatch || {});
+      const authoredPatch = {};
+      let authoredField = false;
+      // Diff only the caller's own fields. Replaying its full patch would erase
+      // unseen sibling edits and resurrect unchanged fields after an ACK.
+      new Set([...Object.keys(before[id] || {}), ...Object.keys(after[id] || {})]).forEach((field) => {
+        if (field === "id") return;
+        if (Object.prototype.hasOwnProperty.call(after[id] || {}, field)) {
+          if (Object.prototype.hasOwnProperty.call(before[id] || {}, field)
+            && sameValue(after[id][field], before[id][field])) return;
+          mergedPatch[field] = cloneValue(after[id][field]);
+          authoredPatch[field] = cloneValue(after[id][field]);
+          authoredField = true;
+        } else if (Object.prototype.hasOwnProperty.call(mergedPatch, field)
+          && sameValue(mergedPatch[field], before[id][field])) {
+          // Remove only the acknowledged/discarded value this tab observed.
+          delete mergedPatch[field];
         }
+      });
+      if (authoredField && current.upserts?.[table]?.[id]) {
+        // A sibling's full upsert may contain imported/new-record data absent
+        // from this tab. Fold only the newly authored fields into that upsert.
+        current.upserts[table][id] = applyRecordPatch(current.upserts[table][id], authoredPatch);
+        if (current.patches[table]) delete current.patches[table][id];
+      } else if (Object.keys(mergedPatch).some((field) => field !== "id")) {
+        current.patches[table] ||= {};
+        current.patches[table][id] = {
+          ...mergedPatch,
+          id: cloneValue(after[id]?.id ?? durablePatch?.id ?? before[id]?.id ?? id),
+        };
+      } else if (current.patches[table]) {
+        delete current.patches[table][id];
+      }
+      if (authoredField) {
+        authoredRecords.add(`${table}::${id}`);
         current.deletes = current.deletes.filter(
           (item) => !(item.table === table && String(item.id) === id),
         );
-        return;
-      }
-      if (sameValue(current.patches?.[table]?.[id], before[id])) {
-        delete current.patches[table][id];
       }
     });
     if (current.patches?.[table] && Object.keys(current.patches[table]).length === 0) {
@@ -200,8 +242,13 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     const before = beforeDeletes.get(key);
     const after = afterDeletes.get(key);
     if (after) {
+      if (sameValue(after, before)) {
+        if (sameValue(currentDeletes.get(key), before)) unchangedRecords.add(key);
+        return;
+      }
       currentDeletes.set(key, after);
       const [table, id] = key.split("::");
+      authoredRecords.add(key);
       if (current.upserts?.[table]) delete current.upserts[table][id];
       if (current.upserts?.[table] && Object.keys(current.upserts[table]).length === 0) {
         delete current.upserts[table];
@@ -215,6 +262,42 @@ function mergeMutationQueue(currentQueue, previousQueue, requestedQueue) {
     }
   });
   current.deletes = [...currentDeletes.values()];
+
+  // Snapshot changes are independent of payload changes: the canonical base
+  // can become available after the exact same operation was already queued.
+  new Set([
+    ...Object.keys(previous.baseSnapshots || {}),
+    ...Object.keys(requested.baseSnapshots || {}),
+  ]).forEach((table) => {
+    new Set([
+      ...Object.keys(previous.baseSnapshots?.[table] || {}),
+      ...Object.keys(requested.baseSnapshots?.[table] || {}),
+    ]).forEach((id) => {
+      const key = `${table}::${id}`;
+      const authored = authoredRecords.has(key);
+      const before = previous.baseSnapshots?.[table]?.[id];
+      const after = requested.baseSnapshots?.[table]?.[id];
+      const durable = current.baseSnapshots?.[table]?.[id];
+      if (!authored && (!unchangedRecords.has(key) || sameValue(after, before))) return;
+      // Preserve a base installed by an unseen sibling. A newly authored
+      // operation may need its own base restored after an earlier ACK.
+      if (!sameValue(durable, before) && !(authored && durable === undefined)) return;
+      if (after) {
+        current.baseSnapshots[table] ||= {};
+        current.baseSnapshots[table][id] = cloneValue(after);
+      } else if (current.baseSnapshots[table]) {
+        delete current.baseSnapshots[table][id];
+      }
+    });
+  });
+  Object.entries(current.baseSnapshots).forEach(([table, records]) => {
+    Object.keys(records || {}).forEach((id) => {
+      if (!current.upserts?.[table]?.[id]
+        && !current.patches?.[table]?.[id]
+        && !currentDeletes.has(`${table}::${id}`)) delete records[id];
+    });
+    if (Object.keys(records || {}).length === 0) delete current.baseSnapshots[table];
+  });
 
   new Set([
     ...Object.keys(previous.dirtyTables || {}),
@@ -242,8 +325,9 @@ function mergeLocalDeletions(currentValues, previousValues, requestedValues) {
   new Set([...previous.keys(), ...requested.keys()]).forEach((key) => {
     const before = previous.get(key);
     const after = requested.get(key);
-    if (after) current.set(key, after);
-    else if (sameValue(current.get(key), before)) current.delete(key);
+    if (after) {
+      if (!sameValue(after, before)) current.set(key, after);
+    } else if (sameValue(current.get(key), before)) current.delete(key);
   });
   return [...current.values()];
 }
@@ -261,7 +345,10 @@ function mergeEnvelope(currentValue, previousValue, requestedValue, savedAt) {
     current?.localDeletions || [],
     previous?.localDeletions || [],
     requested?.localDeletions || [],
-  );
+  ).filter((item) => (
+    !queue?.upserts?.[item.table]?.[String(item.id)]
+    && !queue?.patches?.[item.table]?.[String(item.id)]
+  ));
   return {
     version: OUTBOX_ENVELOPE_VERSION,
     revision: Math.max(
@@ -318,7 +405,7 @@ export class WorkspaceMutationOutboxStore {
     this.now = now;
     this.onStatusChange = onStatusChange;
     this.revision = 0;
-    this.persistedEnvelope = null;
+    this.persistedRequestEnvelope = null;
     this.writePromise = Promise.resolve();
     this.writeError = null;
     this.status = {
@@ -366,7 +453,7 @@ export class WorkspaceMutationOutboxStore {
       trusted: false,
     });
     this.writePromise = this.writePromise.then(async () => {
-      const previousEnvelope = this.persistedEnvelope;
+      const previousEnvelope = this.persistedRequestEnvelope;
       let databaseFailure = null;
       let durableEnvelope = requestedEnvelope;
       if (databaseConfigured) {
@@ -384,7 +471,11 @@ export class WorkspaceMutationOutboxStore {
           } else {
             await this.database.set(MUTATION_QUEUE_KEY, requestedEnvelope);
           }
-          this.persistedEnvelope = cloneValue(durableEnvelope);
+          // The caller has not hydrated sibling operations added by the
+          // atomic merge. Diff its next request against its own last request;
+          // treating the merged envelope as its baseline would drop unseen
+          // sibling operations on the caller's next save.
+          this.persistedRequestEnvelope = cloneValue(requestedEnvelope);
           this.revision = Math.max(this.revision, Number(durableEnvelope.revision || 0));
         } catch (error) {
           databaseFailure = normalizeFailure(error, "Cannot persist mutation outbox to IndexedDB");
@@ -478,7 +569,7 @@ export class WorkspaceMutationOutboxStore {
     }
 
     const selected = selectNewestEnvelope(localResult.envelope, databaseResult.envelope);
-    this.persistedEnvelope = cloneValue(selected);
+    this.persistedRequestEnvelope = cloneValue(selected);
     this.revision = Math.max(
       this.revision,
       Number(localResult.envelope?.revision || 0),

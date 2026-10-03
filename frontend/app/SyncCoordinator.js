@@ -1,6 +1,5 @@
 import {
   captureWorkspace,
-  currentWorkspaceStorage,
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
@@ -275,32 +274,43 @@ export function setupSyncUx() {
   }
 }
 
+function assertExportSyncBoundary(controller, result, workspace) {
+  if (!syncWorkspaceIsCurrent(controller, workspace)) {
+    throw new Error("Tổ chức đang làm việc đã thay đổi. Vui lòng xuất lại.");
+  }
+  if (!result?.ok) {
+    if (result?.conflict || result?.status === 409) {
+      throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
+    }
+    throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
+  }
+  if (result.requiredActiveRole) {
+    throw new Error("Thay đổi chưa được đồng bộ. Vui lòng chuyển sang vai trò Quản lý để đồng bộ trước khi xuất tệp.");
+  }
+  if (result.localMutationsPending === true
+    || controller.model.hasPendingMutationOutboxChanges?.()
+    || controller.model.buildMutationSyncPayload()) {
+    throw new Error("Thay đổi cục bộ chưa được máy chủ xác nhận. Vui lòng đồng bộ trước khi xuất tệp.");
+  }
+}
+
 export async function prepareExportSnapshot() {
   if (!this.model || typeof this.model.buildMutationSyncPayload !== "function") {
     throw new Error("Không thể xác nhận dữ liệu với máy chủ.");
   }
   const workspace = captureWorkspace(this);
   const syncResult = await this.autoSync();
-  if (!syncWorkspaceIsCurrent(this, workspace)) {
-    throw new Error("Tổ chức đang làm việc đã thay đổi. Vui lòng xuất lại.");
-  }
-  if (!syncResult?.ok) {
-    if (syncResult?.conflict || syncResult?.status === 409) {
-      throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
-    }
+  assertExportSyncBoundary(this, syncResult, workspace);
+  if (typeof this.forceSyncData !== "function") {
     throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
   }
-  if (syncResult.requiredActiveRole) {
-    throw new Error("Thay đổi chưa được đồng bộ. Vui lòng chuyển sang vai trò Quản lý để đồng bộ trước khi xuất tệp.");
-  }
-  if (syncResult.localMutationsPending === true
-    || this.model.hasPendingMutationOutboxChanges?.()
-    || this.model.buildMutationSyncPayload()) {
-    throw new Error("Thay đổi cục bộ chưa được máy chủ xác nhận. Vui lòng đồng bộ trước khi xuất tệp.");
-  }
-  let snapshotVersion = syncResult?.data?.syncVersion;
-  if (snapshotVersion === void 0 || snapshotVersion === null || snapshotVersion === "") {
-    snapshotVersion = currentWorkspaceStorage(this).getItem("bf_last_sync_version");
+  // A push ACK does not advance the pull cursor, and route bootstrap can be
+  // partial. Await a complete workspace pull before selecting an export version.
+  const pullResult = await this.forceSyncData(false, false);
+  assertExportSyncBoundary(this, pullResult, workspace);
+  const snapshotVersion = pullResult?.data?.syncVersion;
+  if (pullResult?.data?.partial === true) {
+    throw new Error("Chưa có phiên bản dữ liệu đã cam kết để xuất tệp.");
   }
   if (snapshotVersion === void 0 || snapshotVersion === null || !/^\d+$/.test(String(snapshotVersion))) {
     throw new Error("Chưa có phiên bản dữ liệu đã cam kết để xuất tệp.");

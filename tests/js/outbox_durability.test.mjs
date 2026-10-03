@@ -5,6 +5,7 @@ import { forceSyncData } from "../../frontend/app/SyncPullService.js";
 import { BiddingModel } from "../../frontend/app/BiddingModel.js";
 import { WorkspaceMutationOutbox } from "../../frontend/app/WorkspaceMutationOutbox.js";
 import { WorkspaceMutationOutboxStore } from "../../frontend/app/WorkspaceMutationOutboxStore.js";
+import { serializeOutboundRecord } from "../../frontend/app/outboundSerializer.js";
 
 function clone(value) {
   return structuredClone(value);
@@ -399,6 +400,29 @@ test("two stale tabs atomically merge disjoint mutations instead of last-writer-
   );
 });
 
+test("a second save from a stale tab retains sibling work it has never hydrated", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = new WorkspaceMutationOutboxStore(backends);
+  const tabB = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+  tabA.persist(queueWithUpsert("package-a"), []);
+  await tabA.flush();
+  tabB.persist(queueWithUpsert("package-b"), []);
+  await tabB.flush();
+  tabB.persist({
+    ...queueWithUpsert("package-b"),
+    upserts: { goithau: {
+      "package-b": { id: "package-b", name: "package-b" },
+      "package-c": { id: "package-c", name: "package-c" },
+    } },
+  }, []);
+  await tabB.flush();
+
+  assert.deepEqual(Object.keys(backends.envelope.queue.upserts.goithau).sort(), [
+    "package-a", "package-b", "package-c",
+  ]);
+});
+
 test("two stale tabs durably merge disjoint partial patches", async () => {
   const backends = sharedAtomicBackends();
   const tabA = new WorkspaceMutationOutboxStore(backends);
@@ -413,6 +437,319 @@ test("two stale tabs durably merge disjoint partial patches", async () => {
     Object.keys(backends.envelope.queue.patches.goithau).sort(),
     ["package-a", "package-b"],
   );
+});
+
+test("atomic outbox persistence retains the canonical base through reload and acknowledgement", async () => {
+  const backends = sharedAtomicBackends();
+  const store = new WorkspaceMutationOutboxStore(backends);
+  const outbox = outboxForStore(store);
+  await outbox.hydrate();
+  const base = { id: "package-a", name: "server", rowVersion: 3 };
+  outbox.enqueue({
+    kind: "upsert",
+    table: "goithau",
+    records: [{ ...base, name: "local" }],
+    baseRecords: [base],
+  });
+  await outbox.flush();
+  const reloaded = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await reloaded.hydrate();
+
+  assert.deepEqual(reloaded.snapshot().baseSnapshots.goithau?.[base.id], base);
+  assert.deepEqual(reloaded.snapshotForSync({ goithau: [] }).snapshot.baseSnapshots.goithau[base.id], base);
+  reloaded.discard();
+  await reloaded.flush();
+  assert.deepEqual(backends.envelope.queue.baseSnapshots, {});
+});
+
+for (const kind of ["upsert", "patch"]) {
+  test(`repeating an identical ${kind} durably captures a newly available canonical base`, async () => {
+    const backends = sharedAtomicBackends();
+    const outbox = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await outbox.hydrate();
+    const base = { id: "package-a", name: "server", rowVersion: 3 };
+    const record = { id: base.id, name: "local", rowVersion: 3 };
+    outbox.enqueue({ kind, table: "goithau", records: [record] });
+    await outbox.flush();
+    outbox.enqueue({ kind, table: "goithau", records: [record], baseRecords: [base] });
+    await outbox.flush();
+    const reloaded = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await reloaded.hydrate();
+
+    assert.deepEqual(outbox.snapshot().baseSnapshots.goithau[base.id], base);
+    assert.deepEqual(backends.envelope.queue.baseSnapshots.goithau?.[base.id], base);
+    assert.deepEqual(reloaded.snapshotForSync({ goithau: [base] }).snapshot.baseSnapshots.goithau?.[base.id], base);
+  });
+
+  test(`a stale base-only ${kind} save preserves a newer sibling operation and base`, async () => {
+    const backends = sharedAtomicBackends();
+    const stale = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await stale.hydrate();
+    const record = { id: "package-a", name: "local", rowVersion: 3 };
+    stale.enqueue({ kind, table: "goithau", records: [record] });
+    await stale.flush();
+    const sibling = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await sibling.hydrate();
+    const siblingBase = { id: record.id, name: "new server", rowVersion: 4 };
+    sibling.enqueue({
+      kind, table: "goithau",
+      records: [{ ...record, name: "new local", rowVersion: 4 }],
+      baseRecords: [siblingBase],
+    });
+    await sibling.flush();
+    stale.enqueue({
+      kind, table: "goithau", records: [record],
+      baseRecords: [{ id: record.id, name: "old server", rowVersion: 3 }],
+    });
+    await stale.flush();
+
+    assert.equal(backends.envelope.queue[kind === "upsert" ? "upserts" : "patches"].goithau[record.id].name, "new local");
+    assert.deepEqual(backends.envelope.queue.baseSnapshots.goithau[record.id], siblingBase);
+  });
+
+  test(`a stale base-only ${kind} save cannot attach a base to a sibling deletion`, async () => {
+    const backends = sharedAtomicBackends();
+    const stale = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await stale.hydrate();
+    const record = { id: "package-a", name: "local", rowVersion: 3 };
+    stale.enqueue({ kind, table: "goithau", records: [record] });
+    await stale.flush();
+    const sibling = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+    await sibling.hydrate();
+    sibling.enqueue({ kind: "delete", table: "goithau", records: [record] });
+    await sibling.flush();
+    stale.enqueue({
+      kind, table: "goithau", records: [record],
+      baseRecords: [{ ...record, name: "server" }],
+    });
+    await stale.flush();
+
+    assert.deepEqual(backends.envelope.queue.baseSnapshots, {});
+    assert.deepEqual(backends.envelope.queue.upserts, {});
+    assert.deepEqual(backends.envelope.queue.patches, {});
+    assert.deepEqual(backends.envelope.queue.deletes, [{ table: "goithau", id: record.id, expectedVersion: 3 }]);
+  });
+}
+
+test("stale tabs preserve separate edited fields of the same partial-patch record through reload", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  const tabB = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+  const base = { id: "package-a", fieldA: "server-a", fieldB: "server-b", rowVersion: 3 };
+  tabA.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "entered-a" }], baseRecords: [base] });
+  await tabA.flush();
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldB: "entered-b" }] });
+  await tabB.flush();
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldC: "entered-c" }] });
+  await tabB.flush();
+  const reloaded = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await reloaded.hydrate();
+
+  assert.deepEqual(reloaded.snapshot().patches.goithau[base.id], {
+    id: base.id, fieldA: "entered-a", fieldB: "entered-b", fieldC: "entered-c",
+  });
+  assert.deepEqual(reloaded.snapshot().baseSnapshots.goithau[base.id], base);
+});
+
+test("a base-only patch save cannot replace an unseen sibling base for the identical operation", async () => {
+  const backends = sharedAtomicBackends();
+  const stale = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await stale.hydrate();
+  const record = { id: "package-a", fieldA: "entered-a" };
+  stale.enqueue({ kind: "patch", table: "goithau", records: [record] });
+  await stale.flush();
+  const sibling = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await sibling.hydrate();
+  const siblingBase = { id: record.id, fieldA: "new server", rowVersion: 4 };
+  sibling.enqueue({ kind: "patch", table: "goithau", records: [record], baseRecords: [siblingBase] });
+  await sibling.flush();
+  stale.enqueue({
+    kind: "patch", table: "goithau", records: [record],
+    baseRecords: [{ id: record.id, fieldA: "old server", rowVersion: 3 }],
+  });
+  await stale.flush();
+
+  assert.deepEqual(backends.envelope.queue.patches.goithau[record.id], record);
+  assert.deepEqual(backends.envelope.queue.baseSnapshots.goithau[record.id], siblingBase);
+});
+
+test("a stale patch save preserves a sibling's newer value of an unchanged field", async () => {
+  const backends = sharedAtomicBackends();
+  const seed = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await seed.hydrate();
+  seed.enqueue({ kind: "patch", table: "goithau", records: [{ id: "package-a", fieldA: "old-a" }] });
+  await seed.flush();
+  const tabA = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  const tabB = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+  tabA.enqueue({ kind: "patch", table: "goithau", records: [{ id: "package-a", fieldA: "new-a" }] });
+  await tabA.flush();
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: "package-a", fieldB: "new-b" }] });
+  await tabB.flush();
+
+  assert.deepEqual(backends.envelope.queue.patches.goithau["package-a"], {
+    id: "package-a", fieldA: "new-a", fieldB: "new-b",
+  });
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: "package-a", fieldA: "last-a" }] });
+  await tabB.flush();
+  assert.equal(backends.envelope.queue.patches.goithau["package-a"].fieldA, "last-a");
+});
+
+test("a stale canonical ACK removes its own patch fields and retains unseen sibling fields", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  const tabB = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await Promise.all([tabA.hydrate(), tabB.hydrate()]);
+  const base = { id: "package-a", fieldA: "server-a", rowVersion: 3 };
+  tabA.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "entered-a" }], baseRecords: [base] });
+  await tabA.flush();
+  const receipt = tabA.snapshotForSync({ goithau: [base] }).snapshot;
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldB: "entered-b" }] });
+  await tabB.flush();
+  tabA.ack(receipt);
+  await tabA.flush();
+
+  assert.deepEqual(backends.envelope.queue.patches.goithau[base.id], { id: base.id, fieldB: "entered-b" });
+  assert.deepEqual(backends.envelope.queue.baseSnapshots.goithau[base.id], base);
+});
+
+test("a stale canonical ACK retains a newer sibling edit of the same field", async () => {
+  const backends = sharedAtomicBackends();
+  const tabA = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await tabA.hydrate();
+  const base = { id: "package-a", fieldA: "server-a", rowVersion: 3 };
+  tabA.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "entered-a" }] });
+  await tabA.flush();
+  const receipt = tabA.snapshotForSync({ goithau: [base] }).snapshot;
+  const tabB = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await tabB.hydrate();
+  tabB.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "newer-a" }] });
+  await tabB.flush();
+  tabA.ack(receipt);
+  await tabA.flush();
+
+  assert.deepEqual(backends.envelope.queue.patches.goithau[base.id], { id: base.id, fieldA: "newer-a" });
+});
+
+test("an acknowledged unchanged patch field is not resurrected by a stale edit to another field", async () => {
+  const backends = sharedAtomicBackends();
+  const ackTab = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await ackTab.hydrate();
+  const base = { id: "package-a", fieldA: "server-a", rowVersion: 3 };
+  ackTab.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "entered-a" }] });
+  await ackTab.flush();
+  const stale = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await stale.hydrate();
+  ackTab.ack(ackTab.snapshotForSync({ goithau: [base] }).snapshot);
+  await ackTab.flush();
+  stale.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldB: "entered-b" }] });
+  await stale.flush();
+
+  assert.deepEqual(backends.envelope.queue.patches.goithau[base.id], { id: base.id, fieldB: "entered-b" });
+});
+
+test("a stale partial patch preserves a sibling full import through serialized reload and canonical ACK", async () => {
+  const backends = sharedAtomicBackends();
+  const model = new BiddingModel();
+  const createOutbox = () => new WorkspaceMutationOutbox({
+    store: new WorkspaceMutationOutboxStore(backends),
+    getBaseSyncVersion: () => "3",
+    createId: () => "import-patch-regression",
+    isSyncedType: () => true,
+    normalizeRecord: (record, type) => model.normalizeRecordKeys(clone(record), type),
+    serializeRecord: (record, type) => serializeOutboundRecord(record, type, (value, recordType) => model.normalizeRecordKeys(value, recordType)),
+  });
+  const imported = createOutbox();
+  const stale = createOutbox();
+  await Promise.all([imported.hydrate(), stale.hydrate()]);
+  const base = { id: "package-a", tenGoiThau: "server title", maGoiThau: "server code", rowVersion: 3, organizationId: "org-a" };
+  const importedRecord = {
+    ...base, tenGoiThau: "imported title",
+    phanLoList: [{ id: "lot-a", nested: ["imported", null] }],
+    ehsmtAdjustments: { before: ["old"] },
+    _procurementImportCurrent: true,
+    sourceRevision: { revision: "import-revision-a" },
+  };
+  imported.enqueue({ kind: "upsert", table: "goithau", records: [importedRecord], baseRecords: [base] });
+  await imported.flush();
+  const originalReceipt = imported.snapshotForSync({ goithau: [base] }).snapshot;
+  const changedObject = { after: ["edited", null] };
+  stale.enqueue({
+    kind: "patch", table: "goithau",
+    records: [{ id: base.id, maGoiThau: "edited code", ehsmtAdjustments: changedObject, tuyChonMuaThemList: null }],
+    baseRecords: [base],
+  });
+  await stale.flush();
+
+  assert.equal(backends.envelope.queue.upserts.goithau?.[base.id]?.tenGoiThau, "imported title");
+  assert.deepEqual(backends.envelope.queue.patches, {});
+  // The old full-import receipt cannot erase the later patch merged into it.
+  imported.ack(originalReceipt);
+  await imported.flush();
+  const reloaded = createOutbox();
+  await reloaded.hydrate();
+  const sent = reloaded.snapshotForSync({ goithau: [base] });
+  assert.equal(sent.payload.goithau[0].tenGoiThau, "imported title");
+  assert.equal(sent.payload.goithau[0].maGoiThau, "edited code");
+  assert.deepEqual(sent.payload.goithau[0].phanLoList, importedRecord.phanLoList);
+  assert.deepEqual(sent.payload.goithau[0].ehsmtAdjustments, changedObject);
+  assert.equal(sent.payload.goithau[0].tuyChonMuaThemList, null);
+  assert.deepEqual(sent.payload.goithau[0].sourceRevision, importedRecord.sourceRevision);
+  assert.equal(sent.payload.goithau[0].expectedVersion, 3);
+  assert.deepEqual(sent.snapshot.baseSnapshots.goithau[base.id], base);
+  reloaded.ack(sent.snapshot);
+  await reloaded.flush();
+  assert.deepEqual(backends.envelope.queue.upserts, {});
+  assert.deepEqual(backends.envelope.queue.patches, {});
+  assert.deepEqual(backends.envelope.queue.baseSnapshots, {});
+});
+
+test("a stale partial patch changes only its authored fields in an unseen sibling upsert", async () => {
+  const backends = sharedAtomicBackends();
+  const seed = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await seed.hydrate();
+  const base = { id: "package-a", fieldA: "server-a", rowVersion: 3, organizationId: "org-a" };
+  seed.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldA: "old-a" }], baseRecords: [base] });
+  await seed.flush();
+  const imported = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  const stale = outboxForStore(new WorkspaceMutationOutboxStore(backends));
+  await Promise.all([imported.hydrate(), stale.hydrate()]);
+  imported.enqueue({
+    kind: "upsert", table: "goithau",
+    records: [{ ...base, fieldA: "imported-a", fieldC: ["imported-c"] }],
+    baseRecords: [base],
+  });
+  await imported.flush();
+  stale.enqueue({ kind: "patch", table: "goithau", records: [{ id: base.id, fieldB: null }], baseRecords: [base] });
+  await stale.flush();
+
+  assert.deepEqual(backends.envelope.queue.upserts.goithau?.[base.id], {
+    ...base, fieldA: "imported-a", fieldB: null, fieldC: ["imported-c"],
+  });
+  assert.deepEqual(backends.envelope.queue.patches, {});
+  assert.deepEqual(backends.envelope.queue.baseSnapshots.goithau[base.id], base);
+});
+
+test("stale tab cannot resurrect an acknowledged deletion while enqueuing another record", async () => {
+  const backends = sharedAtomicBackends();
+  const seed = new WorkspaceMutationOutboxStore(backends);
+  const deletion = { table: "goithau", id: "package-deleted", expectedVersion: 3 };
+  const queue = { ...queueWithUpsert("unused"), upserts: {}, deletes: [deletion] };
+  seed.persist(queue, [deletion]);
+  await seed.flush();
+  const ackTab = new WorkspaceMutationOutboxStore(backends);
+  const enqueueTab = new WorkspaceMutationOutboxStore(backends);
+  await Promise.all([ackTab.hydrate(), enqueueTab.hydrate()]);
+
+  ackTab.persist(null, []);
+  await ackTab.flush();
+  enqueueTab.persist({ ...queueWithUpsert("package-b"), deletes: [deletion] }, [deletion]);
+  await enqueueTab.flush();
+
+  assert.deepEqual(backends.envelope.queue.deletes, []);
+  assert.deepEqual(backends.envelope.localDeletions, []);
+  assert.equal(backends.envelope.queue.upserts.goithau["package-b"].id, "package-b");
 });
 
 test("stale ACK removes only its receipt while a concurrent enqueue survives", async () => {
@@ -461,6 +798,7 @@ test("delete and upsert race has deterministic transaction-order last-operation-
   await Promise.all([tabA.flush(), tabB.flush()]);
 
   assert.equal(backends.envelope.queue.deletes.length, 0);
+  assert.deepEqual(backends.envelope.localDeletions, []);
   assert.equal(
     backends.envelope.queue.upserts.goithau["package-a"].name,
     "newer upsert",

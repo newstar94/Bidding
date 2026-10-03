@@ -82,3 +82,18 @@ def test_custom_service_database_changes_only_the_path():
     source["roles"]["backup"]["database"] = "biddingflow_backup"
     result = build_scoped_environments(source)
     assert urlsplit(result["backup"]["BACKUP_DATABASE_URL"]).path == "/biddingflow_backup"
+
+
+@pytest.mark.parametrize("database_name", ["bidding flow", "bidding%20literal", "bidding_vietnam_đ"])
+def test_service_urls_preserve_encoded_runtime_database_name(database_name):
+    from urllib.parse import quote
+    source = payload()
+    source["databaseUrl"] = source["databaseUrl"].replace("/biddingflow?", "/" + quote(database_name, safe="") + "?")
+    result = build_scoped_environments(source)
+    for scope, key in (("web", "DATABASE_URL"), ("migrator", "MIGRATOR_DATABASE_URL"),
+                       ("backup", "BACKUP_DATABASE_URL"), ("documentWorker", "DOCUMENT_WORKER_DATABASE_URL")):
+        assert unquote(urlsplit(result[scope][key]).path.lstrip("/")) == database_name
+    from scripts.backup import _postgres_process
+    environment, target_database = _postgres_process(result["backup"]["BACKUP_DATABASE_URL"])
+    assert target_database == database_name
+    assert environment["PGDATABASE"] == database_name

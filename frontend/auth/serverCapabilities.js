@@ -23,6 +23,23 @@ export function invalidateServerCapabilities() {
   sessionGeneration += 1;
 }
 
+export function captureServerCapabilitiesRollback() {
+  const capturedGeneration = sessionGeneration;
+  const capturedSession = cachedSession && {
+    ...cachedSession,
+    capabilities: [...cachedSession.capabilities],
+  };
+  return () => {
+    // Restore only the immediately following invalidation. A newer session
+    // refresh or invalidation must retain its own authoritative state.
+    if (sessionGeneration !== capturedGeneration + 1) return false;
+    sessionGeneration += 1;
+    cachedSession = capturedSession;
+    capabilityRequest = null;
+    return true;
+  };
+}
+
 export function hasServerCapability(capability) {
   return Boolean(
     cachedSession?.capabilities.includes(String(capability || "")),

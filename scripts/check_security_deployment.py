@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import re
+import shlex
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -255,19 +256,147 @@ def validate_systemd_unit(path: Path) -> None:
     content = _read_checked(path)
     if "EnvironmentFile=" not in content:
         raise SecurityDeploymentError(f"{path} must load a protected environment file.")
-    exec_start = next(
-        (line for line in content.splitlines() if line.startswith("ExecStart=")),
-        "",
-    )
-    for fragment in (
-        "--host 127.0.0.1",
-        "--no-proxy-headers",
-        "--limit-concurrency ${UVICORN_LIMIT_CONCURRENCY}",
-        "--backlog ${UVICORN_BACKLOG}",
-        "--ws-max-size ${UVICORN_WS_MAX_SIZE}",
-    ):
-        if fragment not in exec_start:
-            raise SecurityDeploymentError(f"{path} ExecStart is missing: {fragment}")
+    commands = []
+    section = ""
+    pending = ""
+    for raw_line in content.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith(("#", ";")):
+            continue
+        line = pending + stripped
+        if line.endswith("\\"):
+            pending = line[:-1] + " "
+            continue
+        pending = ""
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+        elif section == "Service" and "=" in line:
+            name, value = line.split("=", 1)
+            if name.strip() == "ExecStart":
+                if value.strip():
+                    commands.append(value.strip())
+                else:
+                    commands.clear()
+    if pending or len(commands) != 1:
+        raise SecurityDeploymentError(f"{path} must define one effective ExecStart command.")
+    if "\\" in commands[0] or "%" in commands[0]:
+        raise SecurityDeploymentError("Unsupported dynamic/escaped systemd ExecStart syntax.")
+    try:
+        arguments = shlex.split(commands[0], posix=True)
+    except ValueError as exc:
+        raise SecurityDeploymentError("Invalid systemd ExecStart quoting.") from exc
+    if "--" in arguments:
+        arguments = arguments[:arguments.index("--")]
+    required_values = {
+        "--host": "127.0.0.1",
+        "--workers": "${UVICORN_WORKERS}",
+        "--limit-concurrency": "${UVICORN_LIMIT_CONCURRENCY}",
+        "--backlog": "${UVICORN_BACKLOG}",
+        "--timeout-keep-alive": "${UVICORN_TIMEOUT_KEEP_ALIVE}",
+        "--limit-max-requests": "${UVICORN_MAX_REQUESTS}",
+        "--limit-max-requests-jitter": "${UVICORN_MAX_REQUESTS_JITTER}",
+        "--ws-max-size": "${UVICORN_WS_MAX_SIZE}",
+        "--ws-max-queue": "${UVICORN_WS_MAX_QUEUE}",
+    }
+    for option, expected in required_values.items():
+        matches = [(index, argument) for index, argument in enumerate(arguments)
+                   if argument.partition("=")[0] == option]
+        if len(matches) > 1:
+            raise SecurityDeploymentError(f"{path} ExecStart has duplicate {option} options.")
+        actual = ""
+        if matches:
+            index, argument = matches[0]
+            if "=" in argument:
+                actual = argument.split("=", 1)[1]
+            elif index + 1 < len(arguments):
+                actual = arguments[index + 1]
+        if actual != expected:
+            raise SecurityDeploymentError(f"{path} ExecStart is missing: {option} {expected}")
+    proxy_options = [argument for argument in arguments
+                     if argument.partition("=")[0] in {"--proxy-headers", "--no-proxy-headers"}]
+    if len(proxy_options) > 1:
+        raise SecurityDeploymentError(f"{path} ExecStart has duplicate proxy-header options.")
+    if proxy_options != ["--no-proxy-headers"]:
+        raise SecurityDeploymentError(f"{path} ExecStart is missing: --no-proxy-headers")
+    supported_expansions = set(required_values.values()) | {
+        f"{option}={value}" for option, value in required_values.items()
+    }
+    if any("$" in argument and argument not in supported_expansions for argument in arguments):
+        raise SecurityDeploymentError("Unsupported dynamic systemd ExecStart arguments.")
+
+
+def resolve_systemd_environment(unit_path: Path, environment_file: Path) -> dict[str, str]:
+    """Resolve static Service defaults and ordered EnvironmentFile overrides.
+
+    Parsing never evaluates shell code or borrows the preflight shell's values.
+    Dynamic manager/specifier inputs require an explicit deployed configuration.
+    """
+    defaults: dict[str, str] = {}
+    files: list[tuple[Path, bool]] = []
+    unset: list[str] = []
+    section = ""
+    pending = ""
+    for raw_line in _read_checked(unit_path).splitlines():
+        line = pending + raw_line.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.endswith("\\"):
+            pending = line[:-1] + " "
+            continue
+        pending = ""
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            continue
+        if section != "Service" or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name, value = name.strip(), value.strip()
+        if name not in {"Environment", "EnvironmentFile", "UnsetEnvironment", "PassEnvironment"}:
+            continue
+        if name == "PassEnvironment" and value:
+            raise SecurityDeploymentError("PassEnvironment requires deployed manager environment evidence.")
+        if "\\" in value or "%" in value:
+            raise SecurityDeploymentError("Unsupported dynamic/escaped systemd environment syntax.")
+        try:
+            words = shlex.split(value, posix=True)
+        except ValueError as exc:
+            raise SecurityDeploymentError("Invalid systemd environment quoting.") from exc
+        if name == "Environment":
+            if not words:
+                defaults.clear()
+            for assignment in words:
+                key, separator, configured = assignment.partition("=")
+                if not separator or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+                    raise SecurityDeploymentError("Invalid systemd Environment assignment.")
+                defaults[key] = configured
+        elif name == "EnvironmentFile":
+            if not words:
+                files.clear()
+            for configured in words:
+                optional = configured.startswith("-")
+                path = Path(configured[1:] if optional else configured)
+                if not path.is_absolute() or any(char in str(path) for char in "*?[]"):
+                    raise SecurityDeploymentError("EnvironmentFile must be an explicit absolute path.")
+                files.append((path.resolve(), optional))
+        elif name == "UnsetEnvironment":
+            if not words:
+                unset.clear()
+            unset.extend(words)
+    if pending:
+        raise SecurityDeploymentError("Unterminated systemd environment continuation.")
+    configured_file = environment_file.resolve()
+    if configured_file not in {path for path, _optional in files}:
+        raise SecurityDeploymentError("--environment-file is not loaded by the supplied systemd unit.")
+    effective = dict(defaults)
+    for path, optional in files:
+        if optional and not path.exists():
+            continue
+        effective.update(parse_environment_file(path))
+    for assignment in unset:
+        key, separator, value = assignment.partition("=")
+        if not separator or effective.get(key) == value:
+            effective.pop(key, None)
+    return effective
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -285,7 +414,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
     try:
-        environment = parse_environment_file(args.environment_file)
+        validate_systemd_unit(args.systemd_unit)
+        environment = resolve_systemd_environment(args.systemd_unit, args.environment_file)
         result = validate_production_environment(
             environment,
             postgres_max_connections=args.postgres_max_connections,
@@ -293,7 +423,6 @@ def main(argv: list[str] | None = None) -> int:
         hostname = str(result["hostname"])
         validate_cloudflared_config(args.cloudflared_config, hostname=hostname)
         validate_nginx_config(args.nginx_config)
-        validate_systemd_unit(args.systemd_unit)
     except (OSError, SecurityDeploymentError) as exc:
         print(f"Security deployment preflight failed: {exc}", file=sys.stderr)
         return 1

@@ -23,6 +23,16 @@ def _token_hash(token):
     return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
+def invalidate_password_reset_tokens(cursor, user_id, *, now=None):
+    """Invalidate unused recovery links while the caller holds the account lock."""
+
+    current_time = int(time.time() if now is None else now)
+    cursor.execute(
+        "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (current_time, user_id),
+    )
+
+
 def create_password_reset(database, username, email, requested_ip, now=None):
     """Create a reset token when the identity matches, otherwise return None.
 
@@ -34,11 +44,15 @@ def create_password_reset(database, username, email, requested_ip, now=None):
     current_time = int(time.time() if now is None else now)
     conn = database.get_connection()
     try:
+        # Housekeeping must release token locks before identity/account locking.
+        # Keeping it separate preserves cleanup even for mismatched identities.
         conn.execute("BEGIN")
         conn.execute(
             "DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL",
             (current_time,),
         )
+        conn.commit()
+        conn.execute("BEGIN")
         row = conn.execute(
             """
             SELECT id, ho_ten, ten_dang_nhap, email
@@ -46,6 +60,7 @@ def create_password_reset(database, username, email, requested_ip, now=None):
             WHERE username_norm = ? AND email_norm = ?
               AND trang_thai = 'active'
             LIMIT 1
+            FOR UPDATE
             """,
             (normalized_username, normalized_email),
         ).fetchone()
@@ -54,10 +69,8 @@ def create_password_reset(database, username, email, requested_ip, now=None):
             return None
 
         user = dict(row)
-        conn.execute(
-            "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
-            (current_time, user["id"]),
-        )
+        current_time = int(time.time() if now is None else now)
+        invalidate_password_reset_tokens(conn, user["id"], now=current_time)
         raw_token = secrets.token_urlsafe(32)
         conn.execute(
             """
@@ -99,10 +112,14 @@ def create_password_setup_token(
     """Create one password-setup token inside the caller's transaction."""
 
     current_time = int(time.time() if now is None else now)
-    cursor.execute(
-        "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
-        (current_time, user_id),
-    )
+    account = cursor.execute(
+        "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
+        (user_id,),
+    ).fetchone()
+    if account is None:
+        raise InvalidResetToken("Reset token user no longer exists.")
+    current_time = int(time.time() if now is None else now)
+    invalidate_password_reset_tokens(cursor, user_id, now=current_time)
     raw_token = secrets.token_urlsafe(32)
     expires_at = current_time + int(ttl_seconds)
     cursor.execute(
@@ -152,6 +169,27 @@ def redeem_password_reset(
         if row is None or row["used_at"] is not None or int(row["expires_at"]) <= current_time:
             raise InvalidResetToken("Reset token is invalid or expired.")
 
+        user_id = row["user_id"]
+        account = conn.execute(
+            """SELECT id FROM tai_khoan
+               WHERE id = ? AND trang_thai = 'active' FOR UPDATE""",
+            (user_id,),
+        ).fetchone()
+        if account is None:
+            raise InvalidResetToken("Reset token user no longer exists.")
+        # Every recovery writer locks the account before touching its tokens.
+        # Reload after waiting so a completed credential rotation wins.
+        row = conn.execute(
+            """SELECT id, user_id, expires_at, used_at
+               FROM password_reset_tokens
+               WHERE token_hash = ? AND user_id = ?
+               LIMIT 1 FOR UPDATE""",
+            (_token_hash(raw_token), user_id),
+        ).fetchone()
+        current_time = int(time.time() if now is None else now)
+        if row is None or row["used_at"] is not None or int(row["expires_at"]) <= current_time:
+            raise InvalidResetToken("Reset token is invalid or expired.")
+
         consumed = conn.execute(
             """
             UPDATE password_reset_tokens
@@ -163,7 +201,6 @@ def redeem_password_reset(
         if consumed.rowcount != 1:
             raise InvalidResetToken("Reset token has already been used.")
 
-        user_id = row["user_id"]
         replacement_password_hash = password_hash or hash_password(new_password)
         updated = conn.execute(
             """UPDATE tai_khoan SET mat_khau = ?
@@ -174,10 +211,7 @@ def redeem_password_reset(
             raise InvalidResetToken("Reset token user no longer exists.")
         revoke_user_sessions(conn, user_id, now=current_time)
 
-        conn.execute(
-            "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
-            (current_time, user_id),
-        )
+        invalidate_password_reset_tokens(conn, user_id, now=current_time)
         audit(
             "auth.password_reset",
             actor_user_id=user_id,

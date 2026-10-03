@@ -75,7 +75,9 @@ def test_transactional_authority_rejects_a_session_revoked_after_initial_check()
 
     assert valid is False
     assert "đăng nhập" in message.lower()
-    assert "FOR UPDATE OF sessions, accounts" in cursor.statements[0][0]
+    assert "SELECT id FROM tai_khoan" in cursor.statements[0][0]
+    assert cursor.statements[0][0].endswith("FOR UPDATE")
+    assert "FOR UPDATE OF sessions" in cursor.statements[1][0]
 
 
 def test_transactional_super_admin_authority_rechecks_step_up(monkeypatch):

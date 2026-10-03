@@ -27,7 +27,7 @@
     "backend/sync/service.py": 6,
     "backend/sync/version_api.py": 1,
     "backend/sync/websocket.py": 10,
-    "scripts/backup.py": 6,
+    "scripts/backup.py": 5,
     "scripts/run_document_worker.py": 1
   },
   "S608": {

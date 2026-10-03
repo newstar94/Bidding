@@ -14,6 +14,7 @@ from backend.auth import auth_helper, auth_routes, auth_service, google_auth_rou
 from backend.auth.email_delivery_service import _decrypt
 from backend.auth.password_reset_service import (
     InvalidResetToken,
+    create_password_reset,
     create_password_setup_token,
     redeem_password_reset,
 )
@@ -142,6 +143,12 @@ def auth_database(tmp_path, monkeypatch):
             attempt_count INTEGER, expires_at INTEGER
         );
         CREATE TABLE audit_events (action TEXT, user_id TEXT);
+        CREATE TABLE pending_email_changes (
+            user_id TEXT PRIMARY KEY, current_email_norm TEXT, pending_email TEXT,
+            pending_email_norm TEXT UNIQUE, otp_hash TEXT, requested_at INTEGER,
+            expires_at INTEGER, verified_at INTEGER, requested_ip TEXT
+        );
+        CREATE TABLE thanh_vien_to_chuc (user_id TEXT, organization_id TEXT);
         """
     )
     connection.commit()
@@ -162,6 +169,9 @@ def auth_database(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_routes, "disconnect_user_websockets", lambda *_args: None)
     monkeypatch.setattr(google_auth_routes, "disconnect_user_websockets", lambda *_args: None)
     monkeypatch.setattr(auth_routes, "build_security_notification_tasks", lambda **_kwargs: None)
+    monkeypatch.setattr(auth_routes, "enqueue_websocket_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(auth_routes, "_email_change_request_tasks", lambda **_kwargs: None)
+    monkeypatch.setattr(auth_routes, "_email_change_completed_tasks", lambda **_kwargs: None)
     monkeypatch.setenv("EMAIL_OUTBOX_ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("TRUSTED_PROXY_CIDRS", "")
     monkeypatch.setenv("APP_PUBLIC_URL", "https://app.example.test")
@@ -448,3 +458,241 @@ def test_password_change_compare_and_swap_conflict_preserves_attempts(
     assert auth_database.rows("SELECT mat_khau FROM tai_khoan")[0]["mat_khau"] == "concurrent-hash"
     assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) is None
     assert sorted(row["attempt_count"] for row in auth_database.rows("SELECT * FROM rate_limit_buckets")) == [1, 1]
+
+
+def _recovery_token(database, kind):
+    if kind == "reset":
+        return create_password_reset(database, "user-1", "owner@example.test", "192.0.2.1")["token"]
+    connection = database.get_connection()
+    token = create_password_setup_token(connection, "user-1")["token"]
+    connection.commit()
+    connection.close()
+    return token
+
+
+def _pending_email(database, *, expired=False):
+    now = int(time.time())
+    connection = database.get_connection()
+    connection.execute(
+        """INSERT INTO pending_email_changes (
+               user_id, current_email_norm, pending_email, pending_email_norm,
+               otp_hash, requested_at, expires_at, requested_ip
+           ) VALUES ('user-1', 'owner@example.test', 'new@example.test',
+                     'new@example.test', ?, ?, ?, '192.0.2.1')""",
+        (_legacy_hash("123456"), now, now - 1 if expired else now + 600),
+    )
+    connection.commit()
+    connection.close()
+
+
+def _revoke_current_session(database):
+    connection = database.get_connection()
+    connection.execute("UPDATE auth_sessions SET revoked_at = ?", (int(time.time()),))
+    connection.commit()
+    connection.close()
+
+
+@pytest.mark.parametrize("kind", ["reset", "setup"])
+@pytest.mark.parametrize("operation", ["password", "email"])
+def test_credential_rotation_invalidates_unused_recovery_links(
+    auth_database, password_cpu_calls, kind, operation,
+):
+    _add_account(auth_database)
+    token = _recovery_token(auth_database, kind)
+    _pending_email(auth_database)
+    if operation == "password":
+        response = _change_password(old_password="preclaimed-password")
+        assert len(auth_database.rows("SELECT * FROM pending_email_changes")) == 1
+    else:
+        response = asyncio.run(auth_routes.verify_email_change_api(
+            _request({"code": "123456"}, token="old-user-1")
+        ))
+        assert auth_database.rows("SELECT email FROM tai_khoan")[0]["email"] == "new@example.test"
+    assert response.status_code == 200
+    with pytest.raises(InvalidResetToken):
+        redeem_password_reset(
+            auth_database, token, "unused", password_hash="stolen-link-hash",
+            audit=lambda *_args, **_kwargs: None,
+        )
+
+
+@pytest.mark.parametrize("operation", ["password", "email", "profile", "email_request", "expired_email"])
+def test_revocation_during_async_work_prevents_account_write(
+    auth_database, password_cpu_calls, monkeypatch, operation,
+):
+    _add_account(auth_database)
+    token = _recovery_token(auth_database, "setup")
+    if operation in {"email", "expired_email"}:
+        _pending_email(auth_database, expired=operation == "expired_email")
+    if operation == "expired_email":
+        monkeypatch.setattr(auth_routes, "log_audit", lambda *_args, **_kwargs: None)
+    original_read = auth_routes.read_json_object
+
+    async def revoke_after_body(request):
+        result = await original_read(request)
+        _revoke_current_session(auth_database)
+        return result
+
+    async def revoke_after_cpu(function, *args, **_kwargs):
+        result = function(*args)
+        _revoke_current_session(auth_database)
+        return result
+
+    if operation in {"profile", "expired_email"}:
+        monkeypatch.setattr(auth_routes, "read_json_object", revoke_after_body)
+    else:
+        monkeypatch.setattr(auth_routes, "run_cpu_bound", revoke_after_cpu)
+    if operation == "password":
+        response = _change_password(old_password="preclaimed-password")
+    elif operation in {"email", "expired_email"}:
+        response = asyncio.run(auth_routes.verify_email_change_api(
+            _request({"code": "123456"}, token="old-user-1")
+        ))
+    else:
+        response = asyncio.run(auth_routes.update_profile_api(_request({
+            "name": "Changed name", "email": "new@example.test" if operation == "email_request" else "owner@example.test",
+            "password": "preclaimed-password",
+        }, token="old-user-1")))
+    assert response.status_code == 403
+    account = auth_database.rows("SELECT * FROM tai_khoan")[0]
+    assert account["ho_ten"] == "Owner"
+    assert account["email"] == "owner@example.test"
+    assert auth_helper.verify_password(account["mat_khau"], "preclaimed-password")
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
+    assert len(auth_database.rows("SELECT * FROM pending_email_changes")) == int(operation in {"email", "expired_email"})
+    assert auth_database.rows("SELECT action FROM audit_events") == []
+    assert token
+
+
+@pytest.mark.parametrize("operation", ["password", "email"])
+def test_credential_rotation_audit_failure_preserves_unused_recovery_link(
+    auth_database, password_cpu_calls, monkeypatch, operation,
+):
+    _add_account(auth_database)
+    token = _recovery_token(auth_database, "setup")
+    _pending_email(auth_database)
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit unavailable")
+    monkeypatch.setattr(auth_routes, "log_audit", fail_audit)
+    response = _change_password(old_password="preclaimed-password") if operation == "password" else asyncio.run(
+        auth_routes.verify_email_change_api(_request({"code": "123456"}, token="old-user-1"))
+    )
+    assert response.status_code == 500
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
+    assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) is None
+    assert len(auth_database.rows("SELECT * FROM pending_email_changes")) == 1
+    assert redeem_password_reset(auth_database, token, "unused", password_hash="legitimate-hash", audit=lambda *_args, **_kwargs: None) == "user-1"
+    assert len(auth_database.rows("SELECT * FROM pending_email_changes")) == 1
+
+
+def test_profile_email_request_rehash_preserves_recovery_link(auth_database, password_cpu_calls):
+    _add_account(auth_database)
+    _recovery_token(auth_database, "setup")
+    response = asyncio.run(auth_routes.update_profile_api(_request({
+        "name": "Changed name", "email": "new@example.test", "password": "preclaimed-password",
+    }, token="old-user-1")))
+    assert response.status_code == 200
+    assert json.loads(response.body)["emailChangePending"] is True
+    assert auth_database.rows("SELECT ho_ten FROM tai_khoan")[0]["ho_ten"] == "Changed name"
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
+    assert auth_database.rows("SELECT mat_khau FROM tai_khoan")[0]["mat_khau"].startswith("$argon2")
+
+
+@pytest.mark.parametrize("failure", ["revoke", "audit", "commit"])
+def test_logout_persistence_failure_preserves_session_and_cookies(auth_database, monkeypatch, failure):
+    _add_account(auth_database)
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("logout persistence unavailable")
+    if failure == "revoke":
+        monkeypatch.setattr(auth_routes, "revoke_session", fail)
+    elif failure == "audit":
+        monkeypatch.setattr(auth_routes, "log_audit", fail)
+    else:
+        original_connection = auth_database.get_connection
+        def failing_commit_connection():
+            connection = original_connection()
+            connection.commit = fail
+            return connection
+        monkeypatch.setattr(auth_database, "get_connection", failing_commit_connection)
+    response = asyncio.run(auth_routes.logout_api(_request({}, token="old-user-1")))
+    assert response.status_code == 503
+    assert json.loads(response.body).get("success") is not True
+    assert response.headers.getlist("set-cookie") == []
+    assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) is None
+    assert auth_database.rows("SELECT action FROM audit_events") == []
+
+
+def test_logout_disconnect_failure_after_commit_keeps_durable_success(auth_database, monkeypatch):
+    _add_account(auth_database)
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("websocket disconnect unavailable")
+    monkeypatch.setattr(auth_routes, "disconnect_user_websockets", fail)
+    response = asyncio.run(auth_routes.logout_api(_request({}, token="old-user-1")))
+    assert response.status_code == 200
+    assert json.loads(response.body)["success"] is True
+    assert len(response.headers.getlist("set-cookie")) == 2
+    assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) == "session_revoked"
+    assert auth_database.rows("SELECT action FROM audit_events") == [{"action": "auth.logout"}]
+
+
+@pytest.mark.parametrize("kind,ttl", [("reset", 1_800), ("setup", 7_200)])
+def test_recovery_link_ttl_and_one_time_controls(auth_database, kind, ttl):
+    _add_account(auth_database)
+    if kind == "reset":
+        token = create_password_reset(auth_database, "user-1", "owner@example.test", "192.0.2.1", now=1_000)["token"]
+    else:
+        connection = auth_database.get_connection()
+        token = create_password_setup_token(connection, "user-1", now=1_000)["token"]
+        connection.commit()
+        connection.close()
+    with pytest.raises(InvalidResetToken):
+        redeem_password_reset(auth_database, token, "unused", now=1_000 + ttl,
+                              password_hash="expired-hash", audit=lambda *_args, **_kwargs: None)
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
+    assert redeem_password_reset(auth_database, token, "unused", now=999 + ttl,
+                                 password_hash="legitimate-hash", audit=lambda *_args, **_kwargs: None) == "user-1"
+    with pytest.raises(InvalidResetToken):
+        redeem_password_reset(auth_database, token, "unused", now=999 + ttl,
+                              password_hash="replayed-hash", audit=lambda *_args, **_kwargs: None)
+
+
+def test_profile_update_same_email_keeps_authorized_fields(auth_database, password_cpu_calls):
+    _add_account(auth_database)
+    _recovery_token(auth_database, "setup")
+    response = asyncio.run(auth_routes.update_profile_api(_request({
+        "name": "Changed name", "email": "owner@example.test",
+    }, token="old-user-1")))
+    assert response.status_code == 200
+    assert json.loads(response.body)["profile"] == {
+        "username": "user-1", "name": "Changed name", "email": "owner@example.test", "avatar": "",
+    }
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
+    assert password_cpu_calls == []
+
+
+def test_logout_valid_session_commits_revocation_before_clearing_cookies(auth_database):
+    _add_account(auth_database)
+    response = asyncio.run(auth_routes.logout_api(_request({}, token="old-user-1")))
+    assert response.status_code == 200
+    assert json.loads(response.body)["success"] is True
+    assert len(response.headers.getlist("set-cookie")) == 2
+    assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) == "session_revoked"
+
+
+def test_password_change_disconnect_failure_keeps_committed_password_and_new_cookie(
+    auth_database, password_cpu_calls, monkeypatch,
+):
+    _add_account(auth_database)
+    _recovery_token(auth_database, "setup")
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("websocket disconnect unavailable")
+    monkeypatch.setattr(auth_routes, "disconnect_user_websockets", fail)
+    response = _change_password(old_password="preclaimed-password")
+    assert response.status_code == 200
+    assert json.loads(response.body)["success"] is True
+    assert auth_helper.verify_password(
+        auth_database.rows("SELECT mat_khau FROM tai_khoan")[0]["mat_khau"], "owner-new-password"
+    )
+    assert session_invalid_reason(load_session_user(auth_database, "old-user-1")) == "session_revoked"
+    assert session_invalid_reason(load_session_user(auth_database, _response_token(response))) is None
+    assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is not None

@@ -88,11 +88,58 @@ def _add_working_days(start, amount, holidays_data):
         return day
     direction = 1 if steps > 0 else -1
     remaining = abs(steps)
-    while remaining:
-        day += timedelta(days=direction)
-        if _is_working_day(day, holidays_data):
-            remaining -= 1
-    return day
+    origin = day.toordinal()
+    maximum = date.max.toordinal() - origin if direction > 0 else origin - date.min.toordinal()
+    corrections = _working_day_corrections(holidays_data)
+
+    def count_distance(distance):
+        return _count_working_days(
+            origin + 1 if direction > 0 else origin - distance,
+            origin + distance if direction > 0 else origin - 1,
+            corrections,
+        )
+
+    if count_distance(maximum) < remaining:
+        raise OverflowError('date value out of range')
+    low, high = 1, maximum
+    while low < high:
+        middle = (low + high) // 2
+        if count_distance(middle) >= remaining:
+            high = middle
+        else:
+            low = middle + 1
+    return date.fromordinal(origin + direction * low)
+
+
+def _working_day_corrections(holidays_data):
+    """Represent only exceptions to the weekday calendar, preserving overrides."""
+    corrections = {}
+    for year, config in (holidays_data.items() if isinstance(holidays_data, dict) else ()):
+        if not isinstance(config, dict):
+            continue
+        for value in set(config.get('holidays') or []) | set(config.get('working_weekends') or []):
+            if not isinstance(value, str):
+                continue
+            try:
+                day = date.fromisoformat(value)
+            except ValueError:
+                continue
+            if day.isoformat() != value or str(day.year) != year:
+                continue
+            difference = int(_is_working_day(day, holidays_data)) - int(day.weekday() < 5)
+            if difference:
+                corrections[day.toordinal()] = difference
+    return corrections
+
+
+def _count_working_days(first, last, corrections):
+    """Count an inclusive ordinal interval without walking its dates."""
+    if first > last:
+        return 0
+    weeks, extra = divmod(last - first + 1, 7)
+    weekday = (first - 1) % 7
+    total = weeks * 5 + sum((weekday + offset) % 7 < 5 for offset in range(extra))
+    return total + sum(value for ordinal, value in corrections.items() if first <= ordinal <= last)
 
 
 def _diff_working_days(start, end, holidays_data):
@@ -100,14 +147,10 @@ def _diff_working_days(start, end, holidays_data):
     end_day = _parse_formula_date(end)
     if start_day == end_day:
         return 0
-    direction = 1 if end_day > start_day else -1
-    count = 0
-    day = start_day
-    while day != end_day:
-        day += timedelta(days=direction)
-        if _is_working_day(day, holidays_data):
-            count += direction
-    return count
+    corrections = _working_day_corrections(holidays_data)
+    if end_day > start_day:
+        return _count_working_days(start_day.toordinal() + 1, end_day.toordinal(), corrections)
+    return -_count_working_days(end_day.toordinal(), start_day.toordinal() - 1, corrections)
 
 
 class _FormulaEvaluator(ast.NodeVisitor):

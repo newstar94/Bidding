@@ -262,6 +262,17 @@ def verify_session_in_transaction(cursor, request, required_role=None):
     token = (request.cookies.get("session_token") or "").strip()
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
+    # Login and credential rotation already serialize on the account first.
+    # Do not lock the session before that account: revocation takes this order.
+    account = cursor.execute(
+        """SELECT id FROM tai_khoan
+            WHERE id = (
+                SELECT user_id FROM auth_sessions WHERE token_hash = ? LIMIT 1
+            ) FOR UPDATE""",
+        (hash_session_token(token),),
+    ).fetchone()
+    if account is None:
+        return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
     row = cursor.execute(
         """SELECT accounts.id, accounts.vai_tro,
                   accounts.trang_thai AS account_status,
@@ -276,7 +287,7 @@ def verify_session_in_transaction(cursor, request, required_role=None):
              JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
             WHERE sessions.token_hash = ?
             LIMIT 1
-            FOR UPDATE OF sessions, accounts""",
+            FOR UPDATE OF sessions""",
         (hash_session_token(token),),
     ).fetchone()
     user = dict(row) if row is not None else None

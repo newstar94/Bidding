@@ -92,6 +92,9 @@ class BatchWriteAuthorizationContext:
     server_inherited_assignment_ids: set[str] = field(default_factory=set)
     new_plan_draft_records: set[tuple[str, str]] = field(default_factory=set)
     new_records: set[tuple[str, str]] = field(default_factory=set)
+    organization_owner_user_id: str | None = None
+    manager_assignment_recipient_ids: set[str] = field(default_factory=set)
+    assignment_recipient_by_id: dict[str, str] = field(default_factory=dict)
 
 
 _QUERY_CHUNK_SIZE = 500
@@ -352,6 +355,35 @@ def _row_value(row, name, index):
         return row[index]
 
 
+def _authorize_manager_assignment(role_str, user_id, owner_user_id, recipient_is_manager):
+    if (
+        recipient_is_manager
+        and str(owner_user_id or "") != str(user_id)
+        and str(role_str).lower() != "super_admin"
+    ):
+        return AccessDecision(
+            False,
+            "Quản lý được bổ nhiệm không được giao việc cho quản lý ngang hàng hoặc quản lý tối cao.",
+        )
+    return AccessDecision(True)
+
+
+def _manager_assignment_recipients(cursor, organization_id, recipient_ids):
+    managers = set()
+    for chunk in _chunked(sorted(recipient_ids)):
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = cursor.execute(
+            f"""SELECT user_id FROM thanh_vien_to_chuc
+                WHERE organization_id = ?
+                  AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
+                  AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                  AND user_id IN ({placeholders})""",  # noqa: S608 - generated placeholders only
+            (organization_id, *chunk),
+        ).fetchall()
+        managers.update(str(_row_value(row, "user_id", 0)) for row in rows)
+    return managers
+
+
 def build_batch_write_authorization_context(
     cursor,
     role_str,
@@ -396,6 +428,50 @@ def build_batch_write_authorization_context(
         if clean_id(value)
     )
     current_records_by_table = current_records_by_table or {}
+    if records_by_table.get("phan_cong_nhan_su"):
+        direct_assignments = [
+            item for item in records_by_table.get("phan_cong_nhan_su", ())
+            if clean_id(item.get("id")) not in context.server_inherited_assignment_ids
+        ]
+        assignment_ids = {
+            assignment_id for item in direct_assignments
+            if (assignment_id := clean_id(item.get("id")))
+        }
+        current_assignments = current_records_by_table.get("phan_cong_nhan_su", {})
+        for assignment_id in assignment_ids & current_assignments.keys():
+            stored = current_assignments[assignment_id]
+            employee_id = clean_id(stored.get("id_nhan_vien") or stored.get("empId"))
+            if employee_id:
+                context.assignment_recipient_by_id[assignment_id] = employee_id
+        for chunk in _chunked(sorted(assignment_ids - current_assignments.keys())):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = cursor.execute(
+                f"""SELECT id, id_nhan_vien FROM phan_cong_nhan_su
+                    WHERE organization_id = ? AND id IN ({placeholders})""",  # noqa: S608 - generated placeholders only
+                (organization_id, *chunk),
+            ).fetchall()
+            context.assignment_recipient_by_id.update(
+                (str(_row_value(row, "id", 0)), str(_row_value(row, "id_nhan_vien", 1)))
+                for row in rows
+            )
+        recipient_ids = set(context.assignment_recipient_by_id.values())
+        if organization_manager or platform_manager:
+            recipient_ids.update(
+                employee_id for item in direct_assignments
+                if (employee_id := clean_id(item.get("empId") or item.get("id_nhan_vien")))
+            )
+        if recipient_ids:
+            owner = cursor.execute(
+                "SELECT owner_user_id FROM to_chuc WHERE id = ?",
+                (organization_id,),
+            ).fetchone()
+            if owner:
+                context.organization_owner_user_id = str(
+                    _row_value(owner, "owner_user_id", 0) or ""
+                )
+            context.manager_assignment_recipient_ids.update(
+                _manager_assignment_recipients(cursor, organization_id, recipient_ids)
+            )
     for table_name, items in records_by_table.items():
         if table_name not in current_records_by_table:
             continue
@@ -755,6 +831,21 @@ def authorize_record_write_from_context(context, payload_key, table_name, item):
                 "Chỉ Quản lý của tổ chức được cấu hình quyền theo phân hệ cho chuyên viên.",
             )
         return AccessDecision(True)
+    if table_name == "phan_cong_nhan_su":
+        if clean_id(item.get("id")) not in context.server_inherited_assignment_ids:
+            recipient_ids = {
+                context.assignment_recipient_by_id.get(clean_id(item.get("id"))),
+            }
+            if context.organization_manager or is_manager_role(context.role_str):
+                recipient_ids.add(clean_id(item.get("empId") or item.get("id_nhan_vien")))
+            decision = _authorize_manager_assignment(
+                context.role_str,
+                context.user_id,
+                context.organization_owner_user_id,
+                bool(recipient_ids & context.manager_assignment_recipient_ids),
+            )
+            if not decision.allowed:
+                return decision
     if table_name == "phan_cong_nhan_su" and not context.organization_manager and not is_manager_role(context.role_str):
         assignment_id = clean_id(item.get("id"))
         if assignment_id in context.server_inherited_assignment_ids:
@@ -918,15 +1009,32 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
             )
         return AccessDecision(True)
     organization_manager = is_organization_manager(cursor, role_str, user_id, organization_id)
-    if table_name == "phan_cong_nhan_su" and (organization_manager or is_manager_role(role_str)):
-        employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
-        target_role = cursor.execute(
-            "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ? AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'",
-            (employee_id, organization_id),
-        ).fetchone()
-        owner = cursor.execute("SELECT owner_user_id FROM to_chuc WHERE id = ?", (organization_id,)).fetchone()
-        if target_role and str(target_role[0] or '') == 'manager' and owner and str(owner[0] or '') != str(user_id) and str(role_str).lower() != 'super_admin':
-            return AccessDecision(False, "Quản lý được bổ nhiệm không được giao việc cho quản lý ngang hàng hoặc quản lý tối cao.")
+    if table_name == "phan_cong_nhan_su":
+        recipient_ids = set()
+        if organization_manager or is_manager_role(role_str):
+            if employee_id := clean_id(item.get("empId") or item.get("id_nhan_vien")):
+                recipient_ids.add(employee_id)
+        if assignment_id := clean_id(item.get("id")):
+            stored = cursor.execute(
+                """SELECT id_nhan_vien FROM phan_cong_nhan_su
+                    WHERE organization_id = ? AND id = ? LIMIT 1""",
+                (organization_id, assignment_id),
+            ).fetchone()
+            if stored and (employee_id := clean_id(_row_value(stored, "id_nhan_vien", 0))):
+                recipient_ids.add(employee_id)
+        manager_recipients = _manager_assignment_recipients(cursor, organization_id, recipient_ids)
+        if manager_recipients:
+            owner = cursor.execute(
+                "SELECT owner_user_id FROM to_chuc WHERE id = ?", (organization_id,),
+            ).fetchone()
+            decision = _authorize_manager_assignment(
+                role_str,
+                user_id,
+                str(_row_value(owner, "owner_user_id", 0) or "") if owner else None,
+                True,
+            )
+            if not decision.allowed:
+                return decision
     if table_name == "phan_cong_nhan_su" and not organization_manager and not is_manager_role(role_str):
         employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
         target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))

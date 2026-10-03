@@ -12,7 +12,7 @@
 import process from "node:process";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { chromium } from "@playwright/test";
+import { chromium } from "playwright";
 
 const RELEASE_ID_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const RELEASE_IDENTITY_PATH = "/api/admin/system/version";

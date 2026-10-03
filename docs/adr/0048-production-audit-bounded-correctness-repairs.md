@@ -22,6 +22,10 @@ kiểm soát xuất/tải tài liệu. Không tạo capability đọc dữ liệ
 2. Xuất chính thức không tiếp tục nếu còn mutation chưa được xác nhận, đang chờ
    chuyển persona hoặc workspace đã thay đổi. Dùng cursor đã commit khi thực sự
    không còn mutation; không đánh đồng `ok: true, skipped: true` với commit mới.
+   Bổ sung ngày 03/10/2026: trước khi chọn phiên bản xuất, chờ complete workspace
+   pull từ máy chủ và kiểm tra lại workspace, persona, pending mutation. Push ACK
+   hoặc route bootstrap partial không chứng minh cursor pull đã cập nhật. Không
+   fallback sang cursor cũ khi pull lỗi, partial hoặc thiếu phiên bản.
 3. Lỗi transport, 429/5xx hoặc response không xác định khi khôi phục không phải
    bằng chứng bản ghi không tồn tại. Chỉ kết quả canonical mới quyết định
    phục hồi hoặc loại projection do mất phạm vi. Giữ nội dung rejected thành
@@ -37,6 +41,8 @@ không tiếp tục tạo báo giá/checkout tổ chức. Đây là thực thi m
 hành, không thu hồi quyền đọc bản ghi ngoài contract. Tài liệu Word chưa tạo
 cho đến khi dữ liệu được xác nhận; lỗi được báo rõ thay vì xuất snapshot cũ
 như kết quả của phần nhập mới. Phục hồi có thể chờ khi mạng/lưu trữ chưa sẵn sàng.
+Xuất có thể cần thêm một lượt đọc máy chủ để xác nhận snapshot đầy đủ sau save;
+không nâng cursor từ push ACK và không bỏ kiểm tra `EXPORT_SNAPSHOT_STALE`.
 
 ## Migration và rollout
 
@@ -59,7 +65,9 @@ regression seams ghi tại [ADR 0049](0049-conflict-input-until-f5-and-canonical
 
 - Membership `left`/downgrade sau role selection; active manager, personal owner,
   selected employee và ngoại lệ Super Admin; PostgreSQL khóa đồng thời.
-- Export pending/skipped/persona/cursor/workspace và các caller Word hiện hành.
+- Export pending/skipped/persona/cursor/workspace và các caller Word hiện hành;
+  complete pull sau ACK 42 trong khi cursor 38, partial/missing/failure và thay
+  đổi workspace/persona/mutation trong lúc chờ pull.
 - Canonical lookup lỗi mạng/HTTP/schema, absence/denial, receipt base, draft
   persistence, reload/rebuilt generations, no replay, workspace fence, newer
   correction cùng hàng hoặc không liên quan, ambiguous deletes, bảng phân trang,

@@ -1,5 +1,6 @@
 import sqlite3
 import inspect
+import re
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,21 @@ class _SqliteDatabase:
     def get_connection(self):
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
-        return connection
+        return _SqliteConnection(connection)
+
+
+class _SqliteConnection:
+    """Exercise persistence only; PostgreSQL lock races have separate tests."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, statement, parameters=()):
+        statement = re.sub(r"\s+FOR UPDATE(?: OF [\w, ]+)?\s*$", "", statement)
+        return self.connection.execute(statement, parameters)
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
 
 
 def _password_database(tmp_path):

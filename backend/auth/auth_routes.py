@@ -51,6 +51,7 @@ from backend.auth.identity import (
     normalize_username,
 )
 from backend.auth.password_policy import validate_new_password, validate_password_input
+from backend.auth.password_reset_service import invalidate_password_reset_tokens
 from backend.auth.security_notifications import build_security_notification_tasks
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.sync.api import disconnect_user_websockets
@@ -977,6 +978,10 @@ async def update_profile_api(request):
                 )
 
         conn.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
         cursor.execute(
             """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
                       COALESCE(anh_dai_dien, '') AS anh_dai_dien
@@ -1216,6 +1221,10 @@ async def verify_email_change_api(request):
         now = int(time.time())
         if now >= int(initial_change["expires_at"]):
             conn.execute("BEGIN")
+            authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+            if not authority_valid:
+                conn.rollback()
+                return JSONResponse({"error": current_actor}, status_code=403)
             cursor.execute(
                 "DELETE FROM pending_email_changes WHERE user_id = ? AND otp_hash = ?",
                 (role_or_err.user_id, initial_change["otp_hash"]),
@@ -1258,6 +1267,10 @@ async def verify_email_change_api(request):
             )
 
         conn.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
         cursor.execute(
             """SELECT change.user_id, change.current_email_norm,
                       change.pending_email, change.pending_email_norm,
@@ -1359,6 +1372,7 @@ async def verify_email_change_api(request):
             (role_or_err.user_id,),
         )
         revoke_user_sessions(cursor, role_or_err.user_id, now=now)
+        invalidate_password_reset_tokens(cursor, role_or_err.user_id, now=now)
         log_audit(
             "auth.email_changed",
             actor_user_id=role_or_err.user_id,
@@ -1483,6 +1497,10 @@ async def change_password_api(request):
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         conn.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
         cursor.execute(
             "UPDATE tai_khoan SET mat_khau = ? WHERE id = ? AND mat_khau = ?",
             (new_password_hash, user['id'], user['mat_khau'])
@@ -1491,6 +1509,7 @@ async def change_password_api(request):
             conn.rollback()
             return JSONResponse({"error": "Mật khẩu tài khoản đã thay đổi, vui lòng thử lại."}, status_code=409)
         revoke_user_sessions(cursor, user['id'])
+        invalidate_password_reset_tokens(cursor, user['id'])
         create_session(
             cursor,
             user_id=user['id'],
@@ -1511,7 +1530,10 @@ async def change_password_api(request):
         )
         clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
-        disconnect_user_websockets(user['id'])
+        try:
+            disconnect_user_websockets(user['id'])
+        except Exception as e:  # noqa: BLE001 - committed password rotation survives optional disconnect failure
+            log_error(e, "change_password_api_disconnect")
         response = JSONResponse(
             {
                 "success": True,
@@ -1555,7 +1577,10 @@ async def logout_api(request):
             )
             conn.commit()
             if user_id:
-                disconnect_user_websockets(user_id)
+                try:
+                    disconnect_user_websockets(user_id)
+                except Exception as e:  # noqa: BLE001 - committed logout survives optional disconnect failure
+                    log_error(e, "logout_api_disconnect")
         else:
             log_audit(
                 "auth.logout",
@@ -1568,11 +1593,13 @@ async def logout_api(request):
         response.delete_cookie("username", path="/")
         return response
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "logout_api")
-        response = JSONResponse({"success": True})
-        response.delete_cookie("session_token", path="/")
-        response.delete_cookie("username", path="/")
-        return response
+        return JSONResponse({
+            "error": "Chưa thể hoàn tất đăng xuất. Vui lòng thử lại.",
+            "code": "LOGOUT_PERSISTENCE_FAILED",
+        }, status_code=503)
     finally:
         if conn:
             try: conn.close()

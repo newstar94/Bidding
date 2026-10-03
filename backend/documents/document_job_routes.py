@@ -562,8 +562,8 @@ def _list_job_access(request):
                     role,
                     role.user_id,
                     organization_id,
-                    scope["module_name"],
-                    scope["table_name"],
+                    scope["module"],
+                    scope["table"],
                     scope["record_id"],
                 )
                 if allowed:
@@ -593,7 +593,7 @@ def _list_job_access(request):
                     if job.get("status") == "completed" else None
                 ),
             })
-        return {"items": visible}
+        return {"items": visible}, None
     finally:
         connection.close()
 

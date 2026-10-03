@@ -71,8 +71,8 @@ def _setup(data: dict) -> dict:
             else:
                 user_id = _account_id(cursor, str(data["username"]))
             cursor.execute(
-                "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (%s, %s)",
-                (organization_id, f"Joint venture E2E {run_id}"),
+                "INSERT INTO to_chuc (id, ten_to_chuc, owner_user_id) VALUES (%s, %s, %s)",
+                (organization_id, f"Joint venture E2E {run_id}", user_id),
             )
             now = int(time.time())
             cursor.execute(
