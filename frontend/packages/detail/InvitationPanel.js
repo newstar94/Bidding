@@ -7,7 +7,7 @@ const HEADER_CLASS_BY_STYLE = Object.freeze({
   "width: 250px;": "col-datetime"
 });
 
-function renderListCard({ title, addButtonId, addLabel, tableId, bodyId, headers, editMode }) {
+function renderListCard({ title, description = "", addButtonId, addLabel, tableId, bodyId, headers, editMode }) {
   const editClass = editMode ? "" : "is-hidden";
   return `
     <div class="card package-section-card">
@@ -17,6 +17,7 @@ function renderListCard({ title, addButtonId, addLabel, tableId, bodyId, headers
           <i data-lucide="plus" class="icon-sm"></i> ${addLabel}
         </button>
       </div>
+      ${description ? `<p class="helper-text">${description}</p>` : ""}
       <div class="table-container package-table-frame">
         <table class="data-table table-full-width" id="${tableId}" data-row-pagination="true" aria-label="Danh sách phát hành hồ sơ mời thầu">
           <thead><tr>${headers.map((header) => `<th class="${HEADER_CLASS_BY_STYLE[header.style] || ""}">${header.label}</th>`).join("")}<th class="col-actions-sm ${editClass}"></th></tr></thead>
@@ -27,12 +28,13 @@ function renderListCard({ title, addButtonId, addLabel, tableId, bodyId, headers
   `;
 }
 
-export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMode = false } = {}) {
+export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMode = false, canImport = false } = {}) {
   if (!container) return;
   const packageArgsKey = registerCommandArgs([String(pkg?.id || "")]);
   const required = '<span class="required-marker">*</span>';
   const extensionCard = renderListCard({
     title: "Gia hạn thời điểm đóng thầu",
+    description: "Tổng hợp các lần gia hạn từ tất cả phiên bản thông báo mời thầu.",
     addButtonId: "btn-them-giahan",
     addLabel: "Thêm gia hạn",
     tableId: "giahan-table",
@@ -40,7 +42,7 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
     editMode,
     headers: [
       { label: "Lần gia hạn", style: "width: 120px; text-align: center;" },
-      { label: `Thời gian đóng thầu ${required}` },
+      { label: `Thời gian đóng thầu mới ${required}` },
       { label: `Lý do gia hạn ${required}` }
     ]
   });
@@ -72,6 +74,12 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
   });
   container.innerHTML = trustedHTML(`
     ${summaryHtml}
+    ${canImport ? `<div class="workflow-action-row">
+      <button type="button" id="btn-invitation-import-msc" class="btn btn-outline">
+        <i data-lucide="cloud-download"></i> Cập nhật làm rõ, gia hạn từ Mua Sắm Công
+      </button>
+      <span id="invitation-import-status" role="status" aria-live="polite"></span>
+    </div>` : ""}
     ${extensionCard}
     ${requestCard}
     ${responseCard}

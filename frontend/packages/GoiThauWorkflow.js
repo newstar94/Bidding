@@ -607,9 +607,9 @@ export async function editGoiThau(id, isReadOnly = false) {
     this._isEditMode = true;
     this._loadPhanLoRows(gt.phanLoList || []);
     this._loadTuyChonMuaThemRows(gt.tuyChonMuaThemList || []);
-    this._loadGiaHanRows(gt.giaHanList || []);
-    this._loadYeuCauLamRoRows(gt.yeuCauLamRoList || []);
-    this._loadTraLoiLamRoRows(gt.traLoiLamRoList || []);
+    this._loadGiaHanRows(gt.giaHanList || [], form);
+    this._loadYeuCauLamRoRows(gt.yeuCauLamRoList || [], form);
+    this._loadTraLoiLamRoRows(gt.traLoiLamRoList || [], form);
     if (gt.trangThai === "Đã có kết quả") {
       if (gt.phanLo !== "Có") {
         const ntSelectVal = document.getElementById("gt-nhathautrungthauid");
@@ -728,9 +728,9 @@ export async function editGoiThau(id, isReadOnly = false) {
     this._isEditMode = false;
     this._loadPhanLoRows([]);
     this._loadTuyChonMuaThemRows([]);
-    this._loadGiaHanRows([]);
-    this._loadYeuCauLamRoRows([]);
-    this._loadTraLoiLamRoRows([]);
+    this._loadGiaHanRows([], form);
+    this._loadYeuCauLamRoRows([], form);
+    this._loadTraLoiLamRoRows([], form);
     document.getElementById("gt-nhathautrungthauid").value = "";
     document.getElementById("gt-giatrungthau").value = "";
     document.getElementById("gt-thoigian-goithau").value = "";
@@ -957,14 +957,21 @@ export async function handleGoiThauSubmit(e) {
     return;
   }
   const mainDongThauStr = formVals.thoiGianDongThau;
-  const extensionInputRows = Array.from(document.querySelectorAll("#gt-giahan-tbody tr")).map((tr) => {
+  const extensionInputRows = Array.from(form.querySelectorAll("#gt-giahan-tbody tr")).map((tr) => {
     const timeInput = tr.querySelector(".gh-time-input").value.trim();
     const reasonInput = tr.querySelector(".gh-reason-input").value.trim();
-    return { timeStr: timeInput, reason: reasonInput };
+    return {
+      id: tr.getAttribute("data-id"),
+      sourcePreviousClosingAt: tr.getAttribute("data-source-previous-closing-at") || "",
+      timeStr: timeInput, reason: reasonInput,
+    };
   });
-  const extensionValidation = validateExtensionRows(mainDongThauStr, extensionInputRows);
+  const existingPackage = this.model.state.goithau.find((row) => String(row.id) === String(formVals.id));
+  const extensionValidation = validateExtensionRows(mainDongThauStr, extensionInputRows, {
+    existingRows: existingPackage?.giaHanList || [],
+  });
   if (!extensionValidation.valid) {
-    const extensionRow = document.querySelectorAll("#gt-giahan-tbody tr")[extensionValidation.rowIndex];
+    const extensionRow = form.querySelectorAll("#gt-giahan-tbody tr")[extensionValidation.rowIndex];
     const extensionInput = extensionRow?.querySelector(extensionValidation.field === "reason" ? ".gh-reason-input" : ".gh-time-input");
     await this.view.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle", extensionInput);
     return;
@@ -1244,9 +1251,9 @@ export async function handleGoiThauSubmit(e) {
     phanLo: formVals.phanLo,
     phanLoList: collectedPhanLoList,
     tuyChonMuaThemList: collectedTuyChonList,
-    giaHanList: this._collectGiaHanRows(),
-    yeuCauLamRoList: this._collectYeuCauLamRoRows(),
-    traLoiLamRoList: this._collectTraLoiLamRoRows(),
+    giaHanList: this._collectGiaHanRows(form),
+    yeuCauLamRoList: this._collectYeuCauLamRoRows(form),
+    traLoiLamRoList: this._collectTraLoiLamRoRows(form),
     soQuyetDinh: formVals.soQuyetDinh,
     ngayQuyetDinh: formattedDate4,
     thoiGianDangTai: formattedDate1,

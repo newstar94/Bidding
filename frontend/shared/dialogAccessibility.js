@@ -45,6 +45,7 @@ export function getFocusableElements(modal) {
 
 export function handleDialogKeydown(event, modal) {
   if (!modal?.classList?.contains("active")) return false;
+  if (modal.hasAttribute?.("inert")) return false;
   if (event.key === "Escape") {
     if (event.defaultPrevented || event.repeat || event.isComposing) return false;
     const topmost = getTopmostActiveDialog(modal.ownerDocument);
@@ -168,9 +169,14 @@ export function syncDialogStackAccessibility(root = globalThis.document) {
   restoreBackgroundState();
   const modals = [...(root?.querySelectorAll?.(".modal-overlay") || [])];
   const topmost = getTopmostActiveDialog(root);
+  const loading = root?.getElementById?.("app-long-task-loading");
+  const activeLoading = loading && !loading.hidden && loading.classList.contains("is-active")
+    && (!topmost || dialogZIndex(loading, root) >= dialogZIndex(topmost, root))
+    ? loading
+    : null;
   modals.forEach((modal) => {
     const active = modal.classList.contains("active");
-    const accessible = active && modal === topmost;
+    const accessible = active && modal === topmost && !activeLoading;
     if (accessible) {
       modal.removeAttribute?.("inert");
       modal.removeAttribute?.("aria-hidden");
@@ -181,7 +187,11 @@ export function syncDialogStackAccessibility(root = globalThis.document) {
     if (active) activateDialogAccessibility(modal);
     else deactivateDialogAccessibility(modal);
   });
-  if (topmost) inertBackgroundForDialog(root, topmost);
+  if (activeLoading) {
+    activeLoading.removeAttribute("inert");
+    activeLoading.removeAttribute("aria-hidden");
+    inertBackgroundForDialog(root, activeLoading);
+  } else if (topmost) inertBackgroundForDialog(root, topmost);
   return topmost;
 }
 

@@ -162,6 +162,8 @@ test("opening from Mua Sắm Công fills the time then applies bidders to the op
       async customPrompt(...args) {
         const action = args[7]?.secondaryAction;
         assert.equal(action?.label, "Lấy dữ liệu mở thầu tự động");
+        assert.equal(action?.loading?.task, "procurement-opening");
+        assert.equal(action?.loading?.detail, localPackage.tenGoiThau);
         const result = await action.run();
         calls.push(["prompt-import-status", result.status]);
         return result.value;

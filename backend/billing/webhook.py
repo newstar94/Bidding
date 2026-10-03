@@ -40,6 +40,15 @@ async def payment_webhook_api(request):
         if not profile:
             connection.rollback()
             return JSONResponse({"error": "Provider profile không tồn tại.", "code": "NOT_FOUND"}, status_code=404)
+        if str(profile["provider"] or "").strip().casefold() == "fake":
+            connection.rollback()
+            return JSONResponse(
+                {
+                    "error": "Provider giả lập không tiếp nhận webhook công khai.",
+                    "code": "PROVIDER_EVENT_UNVERIFIED",
+                },
+                status_code=400,
+            )
         try:
             provider = payment_provider_registry().resolve(profile)
             signed_data = provider.verify_webhook(envelope)

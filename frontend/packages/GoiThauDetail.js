@@ -263,7 +263,7 @@ export async function showPackageDetails(
     case "opening_tech": {
       const { renderPackageOpeningPanel } = await import("./detail/PackageOpeningPanel.js");
       if (!isCurrentRender()) return;
-      renderPackageOpeningPanel(this, { contentWrapper, pkg: gt, appController });
+      renderPackageOpeningPanel(this, { contentWrapper, pkg: gt, appController, isEditable });
       break;
     }
     case "eval_tech": {

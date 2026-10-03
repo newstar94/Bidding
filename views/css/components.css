@@ -2831,6 +2831,11 @@ textarea[disabled] {
   display: none;
 }
 
+/* Opening data is fetched from the shared dialog, which stays beneath this task. */
+.app-long-task-loading[data-task="procurement-opening"] {
+  z-index: 10002;
+}
+
 .app-long-task-loading.is-active {
   opacity: 1;
   pointer-events: auto;

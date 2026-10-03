@@ -316,31 +316,6 @@ async def google_login_api(request):
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
             created_new_account = True
-            setup_token = create_password_setup_token(
-                cursor,
-                new_id,
-                requested_ip=ip,
-            )
-            public_url = os.environ.get(
-                "APP_PUBLIC_URL", "http://127.0.0.1:8000"
-            ).rstrip("/")
-            setup_link = (
-                f"{public_url}/reset-password#token="
-                f"{urllib.parse.quote(setup_token['token'], safe='')}"
-            )
-            email_subject, email_body = _password_setup_email(
-                user.get("ho_ten"),
-                email,
-                setup_link,
-            )
-            password_setup_delivery_id = create_email_delivery(
-                cursor,
-                user_id=new_id,
-                purpose="google_password_setup",
-                recipient=email,
-                subject=email_subject,
-                html_body=email_body,
-            )
             log_audit(
                 "auth.google_auto_register",
                 actor_user_id=new_id,
@@ -353,15 +328,52 @@ async def google_login_api(request):
             )
 
 
-        if not user.get("da_xac_minh"):
+        promoted_unverified_account = not user.get("da_xac_minh")
+        if promoted_unverified_account:
+            # The Google owner has proved the email; a password chosen before
+            # that proof must not become a credential for the verified account.
             cursor.execute(
                 """UPDATE tai_khoan
                       SET da_xac_minh = 1,
+                          mat_khau = ?,
                           registration_verified_at = COALESCE(registration_verified_at, ?)
                     WHERE id = ?""",
-                (int(time.time()), user["id"]),
+                ("!google-external-only!", int(time.time()), user["id"]),
             )
             user["da_xac_minh"] = 1
+            user["mat_khau"] = "!google-external-only!"
+
+        if created_new_account or promoted_unverified_account:
+            setup_email = (
+                user["email"]
+                if normalize_email(user.get("email")) == email
+                else email
+            )
+            setup_token = create_password_setup_token(
+                cursor,
+                user["id"],
+                requested_ip=ip,
+            )
+            public_url = os.environ.get(
+                "APP_PUBLIC_URL", "http://127.0.0.1:8000"
+            ).rstrip("/")
+            setup_link = (
+                f"{public_url}/reset-password#token="
+                f"{urllib.parse.quote(setup_token['token'], safe='')}"
+            )
+            email_subject, email_body = _password_setup_email(
+                user.get("ho_ten"),
+                setup_email,
+                setup_link,
+            )
+            password_setup_delivery_id = create_email_delivery(
+                cursor,
+                user_id=user["id"],
+                purpose="google_password_setup",
+                recipient=setup_email,
+                subject=email_subject,
+                html_body=email_body,
+            )
 
         session_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
@@ -406,7 +418,7 @@ async def google_login_api(request):
         conn.commit()
         disconnect_user_websockets(user["id"])
 
-        if created_new_account and password_setup_delivery_id:
+        if password_setup_delivery_id:
             # The durable outbox worker already retries pending deliveries. Run
             # the first attempt after the response as well, so Google login is
             # never held open by the SMTP timeout.

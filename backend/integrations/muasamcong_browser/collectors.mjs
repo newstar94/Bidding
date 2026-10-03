@@ -41,27 +41,48 @@ function findBestObject(value, fields, exactField = null, exactValue = null) {
 }
 
 
-function responseVersions(response) {
-  const direct = asArray(asObject(response).versionList);
+function responseVersions(response, familyField = null, familyNo = null) {
+  const canonicalFamily = String(familyNo || "").trim().toUpperCase().replace(/-\d{2}$/, "");
+  const rowFamily = (row) => String(row?.[familyField] || row?.no || "")
+    .trim().toUpperCase().replace(/-\d{2}$/, "");
+  const belongsToFamily = (row) => !familyField || !rowFamily(row)
+    || rowFamily(row) === canonicalFamily;
+  const direct = asArray(asObject(response).versionList).filter(belongsToFamily);
   if (direct.length) return direct;
+  let knownVersions = [];
   let result = [];
   walk(response, (value) => {
-    if (!Array.isArray(value)) return;
-    const rows = value.filter((row) => row && typeof row === "object" && row.id);
+    if (!Array.isArray(value)) {
+      const rows = asArray(value.getVersionDTOS).filter((row) => (
+        row && typeof row === "object" && row.id
+        && (row.version != null || row.planVersion != null || row.notifyVersion != null)
+        && belongsToFamily(row)
+      ));
+      const ownerMatches = rowFamily(value) === canonicalFamily;
+      const rowsMatch = rows.length && rows.every((row) => rowFamily(row) === canonicalFamily);
+      const knownContext = !familyField || ownerMatches || rowsMatch
+        || (value === response && belongsToFamily(value));
+      if (knownContext && rows.length > knownVersions.length) knownVersions = rows;
+      return;
+    }
+    const rows = value.filter((row) => row && typeof row === "object" && row.id
+      && belongsToFamily(row));
+    const numberField = familyField === "notifyNo" ? "notifyVersion" : "planVersion";
     if (
       rows.length > result.length
-      && rows.some((row) => row.planVersion != null || row.notifyVersion != null)
+      && rows.some((row) => familyField ? row[numberField] != null
+        : row.planVersion != null || row.notifyVersion != null)
     ) result = rows;
   });
-  return result;
+  return result.length ? result : knownVersions;
 }
 
 
 function canonicalRevision(row, numberField, familyField, familyNo) {
   return {
     revisionId: String(row?.id || row?.revisionId || ""),
-    revisionNumber: String(row?.[numberField] ?? row?.revisionNumber ?? "").padStart(2, "0"),
-    familyNo: String(row?.[familyField] || familyNo || "").trim().toUpperCase(),
+    revisionNumber: String(row?.[numberField] ?? row?.revisionNumber ?? row?.version ?? "").padStart(2, "0"),
+    familyNo: String(row?.[familyField] || row?.no || familyNo || "").trim().toUpperCase(),
     processApply: String(row?.processApply || ""),
   };
 }
@@ -249,6 +270,23 @@ function findFirstValue(value, field) {
 function usableIdentifier(value) {
   const normalized = String(value ?? "").trim();
   return normalized && normalized.toLowerCase() !== "undefined" ? normalized : null;
+}
+
+
+function assertNoticeRevisionIdentity(notice, revisionId, revisionNumber) {
+  const expectedId = String(revisionId || "").trim();
+  for (const field of ["id", "notifyId"]) {
+    const actualId = usableIdentifier(notice[field]);
+    if (actualId && actualId !== expectedId) {
+      throw new Error("PROCUREMENT_REVISION_INVALID");
+    }
+  }
+  const actualVersion = usableIdentifier(notice.notifyVersion);
+  const expectedVersion = usableIdentifier(revisionNumber);
+  if (actualVersion && expectedVersion
+    && actualVersion.padStart(2, "0") !== expectedVersion.padStart(2, "0")) {
+    throw new Error("PROCUREMENT_REVISION_INVALID");
+  }
 }
 
 
@@ -469,12 +507,12 @@ export class MscCollectors {
     ]) {
       try {
         const response = await this.client.request(operation, { notifyNo: noticeNo });
-        for (const row of responseVersions(response.data)) {
+        for (const row of responseVersions(response.data, "notifyNo", noticeNo)) {
           if (!row?.id) continue;
           const revision = canonicalRevision(row, "notifyVersion", "notifyNo", noticeNo);
           revision.processApply = String(row.processApply || processApply);
           collected.push(revision);
-          this.noticeRevisionHints.set(revision.revisionId, revision.processApply);
+          this.noticeRevisionHints.set(revision.revisionId, revision);
         }
       } catch (error) {
         failures.push(error);
@@ -490,8 +528,9 @@ export class MscCollectors {
     return { revisions: unique };
   }
 
-  async _noticeDetail(noticeNo, revisionId) {
-    const hint = this.noticeRevisionHints.get(String(revisionId)) || "";
+  async _noticeDetail(noticeNo, revisionId, revisionNumber = null) {
+    const revision = this.noticeRevisionHints.get(String(revisionId)) || {};
+    const hint = revision.processApply || "";
     const order = ["NOTICE_LDT_DETAIL", "NOTICE_OTHER_DETAIL", "NOTICE_ADB_DETAIL"];
     if (["ADB", "WB"].includes(hint)) order.unshift(order.pop());
     else if (hint === "KHAC") order.push(order.shift());
@@ -505,8 +544,14 @@ export class MscCollectors {
           "notifyNo",
           noticeNo,
         );
-        if (notice) return { response, notice, operation };
+        if (notice) {
+          assertNoticeRevisionIdentity(
+            notice, revisionId, revisionNumber ?? revision.revisionNumber,
+          );
+          return { response, notice, operation };
+        }
       } catch (error) {
+        if (String(error.message) === "PROCUREMENT_REVISION_INVALID") throw error;
         lastError = error;
       }
     }
@@ -933,6 +978,7 @@ export class MscCollectors {
     const failures = [];
     const detailLevel = String(options.detailLevel || "COMPLETE").trim().toUpperCase();
     const invitationOnly = detailLevel === "INVITATION";
+    const sharedClarifications = new Map();
     const bundle = {
       schemaVersion: "biddingflow-muasamcong-raw-bundle-v2",
       provider: "MUASAMCONG",
@@ -961,12 +1007,26 @@ export class MscCollectors {
       const source = envelope(operation, payload);
       target[key] = source;
       try {
-        const result = await this.client.request(operation, payload);
+        let pending;
+        if (operation === "NOTICE_CLARIFICATION") {
+          const sharedKey = JSON.stringify([payload.notifyNo, payload.processApply]);
+          pending = sharedClarifications.get(sharedKey);
+          if (pending) {
+            source.attempted = false;
+            source.reused = true;
+          } else {
+            pending = Promise.resolve().then(() => this.client.request(operation, payload));
+            sharedClarifications.set(sharedKey, pending);
+          }
+        } else {
+          pending = this.client.request(operation, payload);
+        }
+        const result = await pending;
         source.response = sanitizedRequest(result.data);
         source.success = true;
         source.contentHash = contentHash(source.response);
         source.schemaFingerprint = fingerprint(result.data, operation.toLowerCase());
-        source.metrics = sourceMetrics(result.metadata);
+        source.metrics = source.reused ? {} : sourceMetrics(result.metadata);
         return result.data;
       } catch (error) {
         const code = String(error?.message || "PROCUREMENT_UPSTREAM_UNAVAILABLE");
@@ -1003,12 +1063,12 @@ export class MscCollectors {
     );
     const listed = { revisions: [] };
     for (const [key, processApply] of [["ldtVersionList", "LDT"], ["otherVersionList", "KHAC"]]) {
-      for (const row of responseVersions(bundle.sources[key]?.response)) {
+      for (const row of responseVersions(bundle.sources[key]?.response, "notifyNo", canonicalNoticeNo)) {
         if (!row?.id) continue;
         const revision = canonicalRevision(row, "notifyVersion", "notifyNo", canonicalNoticeNo);
         revision.processApply = String(row.processApply || processApply);
         listed.revisions.push(revision);
-        this.noticeRevisionHints.set(revision.revisionId, revision.processApply);
+        this.noticeRevisionHints.set(revision.revisionId, revision);
       }
     }
     const revisions = listed.revisions;
@@ -1052,7 +1112,9 @@ export class MscCollectors {
       let detail;
       let detailOperation;
       try {
-        const found = await this._noticeDetail(canonicalNoticeNo, revision.revisionId);
+        const found = await this._noticeDetail(
+          canonicalNoticeNo, revision.revisionId, revision.revisionNumber,
+        );
         detail = found.response.data;
         detailOperation = found.operation;
       } catch (error) {
@@ -1061,6 +1123,7 @@ export class MscCollectors {
         const isExactCurrentRevision = (
           String(revision.revisionId) === String(currentId)
           && exactSearchRecord(record, canonicalNoticeNo, "notifyNo") === record
+          && String(error.message) !== "PROCUREMENT_REVISION_INVALID"
         );
         if (!isExactCurrentRevision) {
           const source = envelope(operation, { id: revision.revisionId });
@@ -1102,7 +1165,7 @@ export class MscCollectors {
       const notifyId = usableIdentifier(merged.notifyId || merged.id) || revision.revisionId;
       if (processApply === "LDT") {
         const invitationSources = [
-          capture(node.sources, "tenderInfo", "NOTICE_TENDER_INFO", { id: notifyId }, { revision: label }),
+          capture(node.sources, "tenderInfo", "NOTICE_TENDER_INFO", { id: revision.revisionId }, { revision: label }),
           capture(node.sources, "hsmt", "NOTICE_HSMT", { id: notifyId, processApply }, { revision: label }),
         ];
         if (!invitationOnly) {

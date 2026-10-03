@@ -2,6 +2,7 @@ import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
 import { renderLucideIcons } from "./lucideIcons.js";
 import { parseBidDateTime } from "./dateParseUtils.js";
+import { extensionValidationBaseline } from "../packages/packageValidation.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { escapeHtml } from "./view_helpers.js";
 import { initCustomSelect, syncCustomSelectDisabled } from "./view_helpers.js";
@@ -148,8 +149,8 @@ export function _collectTuyChonMuaThemRows() {
   });
   return list;
 }
-export function updateGiaHanIndices() {
-  const tbody = document.getElementById("gt-giahan-tbody");
+export function updateGiaHanIndices(root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-giahan-tbody");
   if (!tbody) return;
   tbody.querySelectorAll("tr").forEach((tr, index) => {
     const indexCell = tr.querySelector(".gh-index-cell");
@@ -157,12 +158,23 @@ export function updateGiaHanIndices() {
       indexCell.textContent = `Lần ${index + 1}`;
     }
   });
-  this.validateGiaHanRealtime();
+  validateGiaHanRealtime.call(this, root);
 }
-export function validateGiaHanRealtime() {
-  const mainDongThauStr = document.getElementById("gt-thoigiandongthau")?.value || "";
-  const mainDongThauDate = parseBidDateTime(mainDongThauStr);
-  const rows = document.querySelectorAll("#gt-giahan-tbody tr");
+export function validateGiaHanRealtime(root = document.getElementById("form-goithau") || document) {
+  const rows = root.querySelectorAll("#gt-giahan-tbody tr");
+  const packageId = root.querySelector("#display-thoigiandongthau")
+    ? this.view?._currentWorkflowPackageId
+    : root.querySelector("#form-goithau-id")?.value;
+  const currentPackage = this.model?.state?.goithau?.find((row) => String(row.id) === String(packageId));
+  const mainDongThauStr = root.querySelector("#display-thoigiandongthau")
+    ? currentPackage?.thoiGianDongThau || ""
+    : root.querySelector("#gt-thoigiandongthau")?.value || "";
+  const baseline = extensionValidationBaseline(mainDongThauStr, {
+    id: rows[0]?.getAttribute("data-id"),
+    timeStr: rows[0]?.querySelector(".gh-time-input")?.value,
+    sourcePreviousClosingAt: rows[0]?.getAttribute("data-source-previous-closing-at"),
+  }, currentPackage?.giaHanList || []);
+  const mainDongThauDate = parseBidDateTime(baseline);
   const ghRowsData = [];
   rows.forEach((tr, index) => {
     const timeInput = tr.querySelector(".gh-time-input");
@@ -179,7 +191,7 @@ export function validateGiaHanRealtime() {
     }
     if (index === 0) {
       if (mainDongThauDate && currentGiaHanDate <= mainDongThauDate) {
-        showRowError(tr, timeInput, `Phải lớn hơn đóng thầu gốc (${mainDongThauStr})`);
+        showRowError(tr, timeInput, `Phải lớn hơn đóng thầu gốc (${baseline})`);
       }
     } else {
       const prevTimeStr = ghRowsData[index - 1]?.timeStr;
@@ -199,46 +211,48 @@ export function validateGiaHanRealtime() {
     input.parentNode.appendChild(errSpan);
   }
 }
-export function addGiaHanRow(data = {}) {
-  const tbody = document.getElementById("gt-giahan-tbody");
+export function addGiaHanRow(data = {}, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-giahan-tbody");
   if (!tbody) return;
   const rowId = data.id || generateRecordId("giahan");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
+  if (data.sourceKey) tr.setAttribute("data-source-key", data.sourceKey);
+  if (data.sourcePreviousClosingAt) tr.setAttribute("data-source-previous-closing-at", data.sourcePreviousClosingAt);
   tr.innerHTML = trustedHTML(`
         <td class="gh-index-cell bf-s-d5b21f1b33">Lần ...</td>
         <td><input type="text" class="gh-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : "")}" placeholder="dd/MM/yyyy HH:mm"></td>
-        <td><input type="text" class="gh-reason-input bf-s-e278f41ed9" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..."></td>
+        <td><textarea rows="3" class="gh-reason-input bf-s-e278f41ed9" placeholder="Nhập lý do gia hạn...">${escapeHtml(data.lyDoGiaHan || "")}</textarea></td>
         <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-gh-row-btn" aria-label="Xóa lần gia hạn" title="Xóa lần gia hạn"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   const timeInput = tr.querySelector(".gh-time-input");
-  timeInput.addEventListener("change", () => this.validateGiaHanRealtime());
-  timeInput.addEventListener("input", () => this.validateGiaHanRealtime());
+  timeInput.addEventListener("change", () => validateGiaHanRealtime.call(this, root));
+  timeInput.addEventListener("input", () => validateGiaHanRealtime.call(this, root));
   tr.querySelector(".remove-gh-row-btn").addEventListener("click", () => {
     tr.remove();
-    this.updateGiaHanIndices();
+    updateGiaHanIndices.call(this, root);
   });
   tbody.appendChild(tr);
-  this.updateGiaHanIndices();
+  updateGiaHanIndices.call(this, root);
   renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }
 }
-export function _loadGiaHanRows(list) {
-  const tbody = document.getElementById("gt-giahan-tbody");
+export function _loadGiaHanRows(list, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-giahan-tbody");
   if (tbody) tbody.innerHTML = trustedHTML("");
-  list.forEach((item) => this.addGiaHanRow(item));
+  list.forEach((item) => addGiaHanRow.call(this, item, root));
 }
-export function _collectGiaHanRows() {
+export function _collectGiaHanRows(root = document.getElementById("form-goithau") || document) {
   const list = [];
   const seen = /* @__PURE__ */ new Set();
-  document.querySelectorAll("#gt-giahan-tbody tr").forEach((tr) => {
+  root.querySelectorAll("#gt-giahan-tbody tr").forEach((tr) => {
     const id = tr.getAttribute("data-id");
     const timeInput = tr.querySelector(".gh-time-input").value.trim();
     const reasonInput = tr.querySelector(".gh-reason-input").value.trim();
     if (timeInput && reasonInput) {
-      const key = makeSubRowKey(timeInput, reasonInput);
+      const key = id || makeSubRowKey(timeInput, reasonInput);
       if (seen.has(key)) return;
       seen.add(key);
       list.push({ id, thoiGianDongThau: timeInput, lyDoGiaHan: reasonInput });
@@ -246,8 +260,8 @@ export function _collectGiaHanRows() {
   });
   return list;
 }
-export function updateYeuCauLamRoIndices() {
-  const tbody = document.getElementById("gt-yeucaulamro-tbody");
+export function updateYeuCauLamRoIndices(root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-yeucaulamro-tbody");
   if (!tbody) return;
   tbody.querySelectorAll("tr").forEach((tr, index) => {
     const indexCell = tr.querySelector(".yc-index-cell");
@@ -256,43 +270,44 @@ export function updateYeuCauLamRoIndices() {
     }
   });
 }
-export function addYeuCauLamRoRow(data = {}) {
-  const tbody = document.getElementById("gt-yeucaulamro-tbody");
+export function addYeuCauLamRoRow(data = {}, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-yeucaulamro-tbody");
   if (!tbody) return;
   const rowId = data.id || generateRecordId("yeucaulamro");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
+  if (data.sourceKey) tr.setAttribute("data-source-key", data.sourceKey);
   tr.innerHTML = trustedHTML(`
         <td class="yc-index-cell bf-s-d5b21f1b33">...</td>
         <td><input type="text" class="yc-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
-        <td><input type="text" class="yc-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." required></td>
+        <td><textarea rows="3" class="yc-content-input bf-s-e278f41ed9" placeholder="Nhập nội dung yêu cầu làm rõ..." required>${escapeHtml(data.noiDungYeuCau || "")}</textarea></td>
         <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-yc-row-btn" aria-label="Xóa yêu cầu làm rõ" title="Xóa yêu cầu làm rõ"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   tr.querySelector(".remove-yc-row-btn").addEventListener("click", () => {
     tr.remove();
-    this.updateYeuCauLamRoIndices();
+    updateYeuCauLamRoIndices.call(this, root);
   });
   tbody.appendChild(tr);
-  this.updateYeuCauLamRoIndices();
+  updateYeuCauLamRoIndices.call(this, root);
   renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }
 }
-export function _loadYeuCauLamRoRows(list) {
-  const tbody = document.getElementById("gt-yeucaulamro-tbody");
+export function _loadYeuCauLamRoRows(list, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-yeucaulamro-tbody");
   if (tbody) tbody.innerHTML = trustedHTML("");
-  list.forEach((item) => this.addYeuCauLamRoRow(item));
+  list.forEach((item) => addYeuCauLamRoRow.call(this, item, root));
 }
-export function _collectYeuCauLamRoRows() {
+export function _collectYeuCauLamRoRows(root = document.getElementById("form-goithau") || document) {
   const list = [];
   const seen = /* @__PURE__ */ new Set();
-  document.querySelectorAll("#gt-yeucaulamro-tbody tr").forEach((tr) => {
+  root.querySelectorAll("#gt-yeucaulamro-tbody tr").forEach((tr) => {
     const id = tr.getAttribute("data-id");
     const timeInput = tr.querySelector(".yc-time-input").value.trim();
     const contentInput = tr.querySelector(".yc-content-input").value.trim();
     if (timeInput && contentInput) {
-      const key = makeSubRowKey(timeInput, contentInput);
+      const key = id;
       if (seen.has(key)) return;
       seen.add(key);
       list.push({ id, thoiGianYeuCau: timeInput, noiDungYeuCau: contentInput });
@@ -300,8 +315,8 @@ export function _collectYeuCauLamRoRows() {
   });
   return list;
 }
-export function updateTraLoiLamRoIndices() {
-  const tbody = document.getElementById("gt-traloilamro-tbody");
+export function updateTraLoiLamRoIndices(root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-traloilamro-tbody");
   if (!tbody) return;
   tbody.querySelectorAll("tr").forEach((tr, index) => {
     const indexCell = tr.querySelector(".tl-index-cell");
@@ -310,43 +325,44 @@ export function updateTraLoiLamRoIndices() {
     }
   });
 }
-export function addTraLoiLamRoRow(data = {}) {
-  const tbody = document.getElementById("gt-traloilamro-tbody");
+export function addTraLoiLamRoRow(data = {}, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-traloilamro-tbody");
   if (!tbody) return;
   const rowId = data.id || generateRecordId("traloilamro");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
+  if (data.sourceKey) tr.setAttribute("data-source-key", data.sourceKey);
   tr.innerHTML = trustedHTML(`
         <td class="tl-index-cell bf-s-d5b21f1b33">...</td>
         <td><input type="text" class="tl-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
-        <td><input type="text" class="tl-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." required></td>
+        <td><textarea rows="4" class="tl-content-input bf-s-e278f41ed9" placeholder="Nhập nội dung trả lời làm rõ..." required>${escapeHtml(data.noiDungTraLoi || "")}</textarea></td>
         <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete remove-tl-row-btn" aria-label="Xóa câu trả lời" title="Xóa câu trả lời"><i data-lucide="trash-2" aria-hidden="true"></i></button></td>
     `);
   tr.querySelector(".remove-tl-row-btn").addEventListener("click", () => {
     tr.remove();
-    this.updateTraLoiLamRoIndices();
+    updateTraLoiLamRoIndices.call(this, root);
   });
   tbody.appendChild(tr);
-  this.updateTraLoiLamRoIndices();
+  updateTraLoiLamRoIndices.call(this, root);
   renderLucideIcons(tr, lucide);
   if (this.view && typeof this.view.initFlatpickr === "function") {
     this.view.initFlatpickr(tr);
   }
 }
-export function _loadTraLoiLamRoRows(list) {
-  const tbody = document.getElementById("gt-traloilamro-tbody");
+export function _loadTraLoiLamRoRows(list, root = document.getElementById("form-goithau") || document) {
+  const tbody = root.querySelector("#gt-traloilamro-tbody");
   if (tbody) tbody.innerHTML = trustedHTML("");
-  list.forEach((item) => this.addTraLoiLamRoRow(item));
+  list.forEach((item) => addTraLoiLamRoRow.call(this, item, root));
 }
-export function _collectTraLoiLamRoRows() {
+export function _collectTraLoiLamRoRows(root = document.getElementById("form-goithau") || document) {
   const list = [];
   const seen = /* @__PURE__ */ new Set();
-  document.querySelectorAll("#gt-traloilamro-tbody tr").forEach((tr) => {
+  root.querySelectorAll("#gt-traloilamro-tbody tr").forEach((tr) => {
     const id = tr.getAttribute("data-id");
     const timeInput = tr.querySelector(".tl-time-input").value.trim();
     const contentInput = tr.querySelector(".tl-content-input").value.trim();
     if (timeInput && contentInput) {
-      const key = makeSubRowKey(timeInput, contentInput);
+      const key = id;
       if (seen.has(key)) return;
       seen.add(key);
       list.push({ id, thoiGianTraLoi: timeInput, noiDungTraLoi: contentInput });

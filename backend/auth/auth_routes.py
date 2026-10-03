@@ -1421,6 +1421,20 @@ async def change_password_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
+        ip_rate_key = f"change_password:{get_client_ip(request)}"
+        user_rate_key = f"change_password_user:{role_or_err.user_id}"
+        password_ip_limit = await _get_rate_limit_decision_off_event_loop(
+            ip_rate_key, consume_attempt=True
+        )
+        password_user_limit = await _get_rate_limit_decision_off_event_loop(
+            user_rate_key, consume_attempt=True
+        )
+        if not password_ip_limit.allowed or not password_user_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều lần đổi mật khẩu. Vui lòng thử lại sau.",
+                password_ip_limit if not password_ip_limit.allowed else password_user_limit,
+            )
+
         data, json_error = await read_json_object(request)
         if json_error:
             return json_error
@@ -1495,6 +1509,7 @@ async def change_password_api(request):
             cursor=cursor,
             required=True,
         )
+        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
         disconnect_user_websockets(user['id'])
         response = JSONResponse(

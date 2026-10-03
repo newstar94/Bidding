@@ -1,0 +1,50 @@
+{
+  "biduClarifyReqInvAndContentViewVersionDTOList": [
+    {
+      "notifyVersion": "01",
+      "biduClarifyReqInvAndContentViewList": [
+        {
+          "id": "b0c30f97-0774-499e-b369-08b483f0556a",
+          "notyfyId": "bb78355e-90b4-416a-97a7-929cd64acaca",
+          "reqNo": "CID2600012555",
+          "reqName": "Đề nghị Chủ đầu tư làm rõ một số nội dung yêu cầu trong HSMT",
+          "notyfyNo": "IB2600493339",
+          "reqDate": "2026-09-19T11:54:46",
+          "signReqDate": "2026-09-19T11:55:01",
+          "signResDate": "2026-09-28T19:58:58",
+          "clarifyReqContent": "[{\"id\":\"b48876b8-448e-4737-810c-80b0fc2e98f5\",\"subjectCode\":\"YCKT\",\"subjectName\":\"Yêu cầu về kỹ thuật\",\"question\":\"Chi tiết nội dung làm rõ tại file đính kèm\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]",
+          "clarifyResContent": "[{\"id\":\"b48876b8-448e-4737-810c-80b0fc2e98f5\",\"subjectCode\":\"YCKT\",\"subjectName\":\"Yêu cầu về kỹ thuật\",\"question\":\"Chi tiết nội dung làm rõ tại file đính kèm\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]"
+        }
+      ]
+    },
+    {
+      "notifyVersion": "00",
+      "biduClarifyReqInvAndContentViewList": [
+        {
+          "id": "941d3481-013f-429e-9ea0-db45bb2cccb1",
+          "notyfyId": "3a8a45a8-adb2-474d-bc57-e38cb8959cf3",
+          "reqNo": "CID2600012277",
+          "reqName": "Đề nghị làm rõ E-HSMT",
+          "notyfyNo": "IB2600493339",
+          "reqDate": "2026-09-14T17:36:43",
+          "signReqDate": "2026-09-14T17:37:09",
+          "signResDate": "2026-09-19T09:34:21",
+          "clarifyReqContent": "[{\"id\":\"fae8d460-e0a9-43a3-aa5c-8720075c4c44\",\"subjectCode\":\"TCDG\",\"subjectName\":\"Tiêu chuẩn đánh giá E-HSDT\",\"question\":\"Chi tiết xin gửi tài liệu kèm theo\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]",
+          "clarifyResContent": "[{\"id\":\"fae8d460-e0a9-43a3-aa5c-8720075c4c44\",\"subjectCode\":\"TCDG\",\"subjectName\":\"Tiêu chuẩn đánh giá E-HSDT\",\"question\":\"Chi tiết xin gửi tài liệu kèm theo\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]"
+        },
+        {
+          "id": "bda3e1c5-72b8-477e-a986-cab6ffccf777",
+          "notyfyId": "3a8a45a8-adb2-474d-bc57-e38cb8959cf3",
+          "reqNo": "CID2600012195",
+          "reqName": "Đề nghị Chủ đầu tư làm rõ một số yêu cầu kỹ thuật Công nghệ đối với hạ tầng Cloud",
+          "notyfyNo": "IB2600493339",
+          "reqDate": "2026-09-13T11:16:36",
+          "signReqDate": "2026-09-13T11:16:44",
+          "signResDate": "2026-09-15T16:48:06",
+          "clarifyReqContent": "[{\"id\":\"0c768113-3052-4129-aafa-63d435fb2131\",\"subjectCode\":\"YCKT\",\"subjectName\":\"Yêu cầu về kỹ thuật\",\"question\":\"Chi tiết nội dung làm rõ tại file đính kèm\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]",
+          "clarifyResContent": "[{\"id\":\"0c768113-3052-4129-aafa-63d435fb2131\",\"subjectCode\":\"YCKT\",\"subjectName\":\"Yêu cầu về kỹ thuật\",\"question\":\"Chi tiết nội dung làm rõ tại file đính kèm\",\"response\":\"Chi tiết tại file đính kèm\",\"catType\":\"DM_MCLR_HSMT_PTV\"}]"
+        }
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import pytest
 from backend.billing.activation import BillingActivationService
 from backend.billing.providers.base import PaymentProviderError
 from backend.billing.providers.fake import FakePaymentProvider
+from backend.billing.providers.payos import PayOSCredentials, PayOSPaymentProvider, sign_signed_data
 from backend.billing.runtime import PaymentProviderRegistry
 from backend.billing.service import BillingService, ProviderCommandExecutor
 from backend.billing import service as billing_service_module
@@ -1132,9 +1133,11 @@ def test_same_webhook_identity_with_changed_payload_is_held_for_review(
 ):
     database = _TransactionDatabase(billing_cursor)
     registry = PaymentProviderRegistry(environment={})
+    checksum_key = "isolated-inbox-test-checksum"
+    profile_id = "provider-payos-production-v1"
     registry.install(
-        "provider-fake-v1",
-        FakePaymentProvider(profile_id="provider-fake-v1"),
+        profile_id,
+        PayOSPaymentProvider(PayOSCredentials("test-client", "test-api", checksum_key)),
     )
     monkeypatch.setattr(billing_webhook, "database", database)
     monkeypatch.setattr(billing_webhook, "payment_provider_registry", lambda: registry)
@@ -1145,16 +1148,18 @@ def test_same_webhook_identity_with_changed_payload_is_held_for_review(
         "reference": "FAKE-987654",
     }
 
+    first_data = {**identity, "status": "PENDING"}
+    changed_data = {**identity, "status": "PAID"}
     first = asyncio.run(billing_webhook.payment_webhook_api(
         _WebhookRequest(
-            "provider-fake-v1",
-            {"provider": "fake", "data": {**identity, "status": "PENDING"}},
+            profile_id,
+            {"data": first_data, "signature": sign_signed_data(first_data, checksum_key)},
         )
     ))
     changed = asyncio.run(billing_webhook.payment_webhook_api(
         _WebhookRequest(
-            "provider-fake-v1",
-            {"provider": "fake", "data": {**identity, "status": "PAID"}},
+            profile_id,
+            {"data": changed_data, "signature": sign_signed_data(changed_data, checksum_key)},
         )
     ))
 
@@ -1163,7 +1168,7 @@ def test_same_webhook_identity_with_changed_payload_is_held_for_review(
     assert json.loads(changed.body)["reviewRequired"] is True
     rows = billing_cursor.execute(
         """SELECT status, last_error_code FROM payment_webhook_events
-            WHERE provider_profile_id = 'provider-fake-v1'
+            WHERE provider_profile_id = 'provider-payos-production-v1'
               AND dedupe_key = '987654|fake-link-987654|FAKE-987654'
             ORDER BY created_at, id"""
     ).fetchall()

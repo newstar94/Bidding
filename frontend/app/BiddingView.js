@@ -13,6 +13,7 @@ import { normalizeToastFeedback } from "../shared/toastFeedback.js";
 import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import { enhanceTableRowPagination } from "../shared/TablePagination.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
+import { beginLongTaskLoading } from "../shared/LongTaskLoading.js";
 
 export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
@@ -1473,6 +1474,7 @@ export class BiddingView {
       let secondaryButton = null;
       let secondaryStatus = null;
       let onSecondaryAction = null;
+      let promptClosed = false;
       if (secondaryAction && typeof secondaryAction.run === "function") {
         secondaryButton = document.createElement("button");
         secondaryButton.type = "button";
@@ -1498,16 +1500,26 @@ export class BiddingView {
         inputContainer.appendChild(secondaryButton);
         inputContainer.appendChild(secondaryStatus);
         onSecondaryAction = async () => {
-          if (secondaryButton.dataset.loading === "true") return;
+          if (promptClosed || secondaryButton.dataset.loading === "true") return;
           const originalLabel = secondaryButton.innerHTML;
+          let loadingHandle = null;
           secondaryButton.dataset.loading = "true";
           secondaryButton.disabled = true;
+          okBtn.disabled = true;
+          if (secondaryAction.loading) {
+            cancelBtn.disabled = true;
+            if (closeBtn) closeBtn.disabled = true;
+          }
           secondaryButton.setAttribute("aria-busy", "true");
           secondaryButton.textContent = secondaryAction.loadingLabel || "Đang lấy dữ liệu…";
           secondaryStatus.textContent = secondaryAction.loadingStatus || "Đang lấy dữ liệu tự động…";
           setRuntimeStyle(secondaryStatus, "color", "var(--text-muted)");
           try {
+            if (secondaryAction.loading) {
+              loadingHandle = await beginLongTaskLoading(secondaryAction.loading);
+            }
             const result = await secondaryAction.run();
+            if (promptClosed) return;
             if (result?.value) {
               if (inputEl._flatpickr) inputEl._flatpickr.setDate(result.value, true);
               else inputEl.value = result.value;
@@ -1517,15 +1529,25 @@ export class BiddingView {
             secondaryStatus.textContent = result?.status || "Đã lấy dữ liệu thành công.";
             setRuntimeStyle(secondaryStatus, "color", "var(--success)");
           } catch {
+            if (promptClosed) return;
             secondaryStatus.textContent = secondaryAction.errorMessage
               || "Không thể lấy dữ liệu. Vui lòng thử lại.";
             setRuntimeStyle(secondaryStatus, "color", "var(--danger)");
           } finally {
+            if (loadingHandle) await loadingHandle.close();
             delete secondaryButton.dataset.loading;
-            secondaryButton.disabled = false;
-            secondaryButton.removeAttribute("aria-busy");
-            secondaryButton.innerHTML = trustedHTML(originalLabel);
-            this.createIconsScoped(secondaryButton);
+            if (!promptClosed) {
+              secondaryButton.disabled = false;
+              okBtn.disabled = false;
+              if (secondaryAction.loading) {
+                cancelBtn.disabled = false;
+                if (closeBtn) closeBtn.disabled = false;
+              }
+              secondaryButton.removeAttribute("aria-busy");
+              secondaryButton.innerHTML = trustedHTML(originalLabel);
+              this.createIconsScoped(secondaryButton);
+              if (secondaryAction.loading) secondaryButton.focus({ preventScroll: true });
+            }
           }
         };
         secondaryButton.addEventListener("click", onSecondaryAction);
@@ -1550,6 +1572,7 @@ export class BiddingView {
       setRuntimeStyle(okBtn, "borderColor", "");
       this.createIconsScoped(modal);
       const onOk = async () => {
+        if (promptClosed || secondaryButton?.dataset.loading === "true") return;
         let val = inputEl.value;
         if (isDatePicker && val) {
           val = this.model.formatForDatetimeLocal(val);
@@ -1579,18 +1602,25 @@ export class BiddingView {
             return;
           }
         }
+        if (promptClosed || secondaryButton?.dataset.loading === "true") return;
         cleanup();
         resolve(val);
       };
       const onCancel = () => {
+        if (promptClosed || (secondaryAction?.loading && secondaryButton?.dataset.loading === "true")) return;
         cleanup();
         resolve(null);
       };
       const onClose = () => {
+        if (promptClosed || (secondaryAction?.loading && secondaryButton?.dataset.loading === "true")) return;
         cleanup();
         resolve(null);
       };
       const cleanup = () => {
+        promptClosed = true;
+        okBtn.disabled = false;
+        cancelBtn.disabled = false;
+        if (closeBtn) closeBtn.disabled = false;
         if (inputEl._flatpickr) {
           inputEl._flatpickr.destroy();
         }

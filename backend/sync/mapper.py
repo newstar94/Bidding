@@ -408,20 +408,21 @@ def _existing_lot_ids_by_key(cursor, parent_id, organization_id):
     rows = cursor.execute(
         """SELECT id, ma_phan_lo_normalized
            FROM goi_thau_phan_lo
-           WHERE organization_id = ? AND goi_thau_id = ?""",
+           WHERE organization_id = ? AND goi_thau_id = ?
+           ORDER BY (archived_at IS NOT NULL), id""",
         (organization_id, parent_id),
     ).fetchall()
     result = {}
     for row in rows:
         if isinstance(row, dict):
             row_id = clean_id(row.get("id"))
-            code = row.get("ma_phan_lo")
+            code = row.get("ma_phan_lo_normalized")
         else:
             row_id = clean_id(row[0]) if row else None
             code = row[1] if len(row) > 1 else None
         key = normalize_lot_code(code)
         if row_id and key:
-            result[key] = row_id
+            result.setdefault(key, row_id)
     return result
 
 
@@ -509,7 +510,10 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
                 sync_version=excluded.sync_version,
                 row_version=goi_thau_phan_lo.row_version + 1,
                 updated_at=excluded.updated_at
+            WHERE goi_thau_phan_lo.goi_thau_id = excluded.goi_thau_id
         """, rows)
+        if cursor.rowcount != len(rows):
+            raise ValueError("Phan lo khong thuoc goi thau hien tai.")
 
     archive_sql = """UPDATE goi_thau_phan_lo
        SET archived_at = COALESCE(archived_at, ?),
@@ -556,6 +560,25 @@ def _save_options(cursor, parent_id, value, organization_id, owner_type, sync_ve
 
 
 def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync_version, updated_at):
+    content_by_id = {}
+
+    def extension_key(row):
+        row_id = clean_id(_first_value(row, "id"))
+        if not row_id:
+            return ("legacy_content", (
+                _norm_child_key(_first_value(row, "thoiGianDongThau", "thoi_gian_dong_thau")),
+                _norm_child_key(_first_value(row, "lyDoGiaHan", "ly_do_gia_han")),
+            ))
+        content_key = (
+            normalize_datetime_value(_first_value(row, "thoiGianDongThau", "thoi_gian_dong_thau", default="")),
+            _first_value(row, "lyDoGiaHan", "ly_do_gia_han", default=""),
+        )
+        if row_id in content_by_id and content_by_id[row_id] != content_key:
+            raise ValueError("DUPLICATE_EXTENSION_ID")
+        content_by_id[row_id] = content_key
+        return ("id", row_id)
+
+    items = _dedupe_child_items(_parse_child_list(value), extension_key)
     previous_row = cursor.execute(
         """SELECT MAX(thoi_gian_dong_thau) FROM goi_thau_gia_han
            WHERE organization_id = ? AND goi_thau_id = ?""",
@@ -564,10 +587,6 @@ def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync
     previous_closing = previous_row[0] if previous_row else None
     cursor.execute("DELETE FROM goi_thau_gia_han WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
     rows = []
-    items = _dedupe_child_items(
-        _parse_child_list(value),
-        lambda row: f"{_norm_child_key(_first_value(row, 'thoiGianDongThau', 'thoi_gian_dong_thau'))}|{_norm_child_key(_first_value(row, 'lyDoGiaHan', 'ly_do_gia_han'))}"
-    )
     for index, row in enumerate(items):
         rows.append((
             _child_row_id(parent_id, "extend", index, _first_value(row, "id")),
@@ -722,6 +741,16 @@ def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, s
         ("yeuCauLamRoList", "yeu_cau", "request", "thoiGianYeuCau", "noiDungYeuCau"),
         ("traLoiLamRoList", "tra_loi", "reply", "thoiGianTraLoi", "noiDungTraLoi"),
     ]
+
+    def clarification_key(row, time_key, content_key):
+        row_id = clean_id(_first_value(row, "id"))
+        if row_id:
+            return ("id", row_id)
+        return (
+            "legacy_content",
+            f"{_norm_child_key(_first_value(row, time_key))}|{_norm_child_key(_first_value(row, content_key))}",
+        )
+
     rows = []
     for key, kind, prefix, time_key, content_key in mapping:
         if not _has_child_key(item, key):
@@ -732,7 +761,7 @@ def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, s
         )
         items = _dedupe_child_items(
             _parse_child_list(item.get(key)),
-            lambda row, tk=time_key, ck=content_key: f"{_norm_child_key(_first_value(row, tk))}|{_norm_child_key(_first_value(row, ck))}"
+            lambda row, tk=time_key, ck=content_key: clarification_key(row, tk, ck),
         )
         for index, row in enumerate(items):
             rows.append((

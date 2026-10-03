@@ -96,7 +96,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.08.16.1"
+    parser_version = "2026.10.03.5"
 
     def __init__(
         self,
@@ -1016,6 +1016,21 @@ class MuaSamCongProcurementSource:
             "bidOpenId": revision.get("bidOpenId"),
             "inputResultId": revision.get("inputResultId"),
             "techReqId": revision.get("techReqId"),
+            **({
+                "clarificationAvailable": revision["clarificationAvailable"],
+                "clarificationStatus": revision.get("clarificationStatus"),
+                "clarificationRequests": deepcopy(
+                    revision.get("clarificationRequests") or []
+                ),
+                "clarificationResponses": deepcopy(
+                    revision.get("clarificationResponses") or []
+                ),
+            } if "clarificationAvailable" in revision else {}),
+            **({
+                "extensionAvailable": revision["extensionAvailable"],
+                "extensionStatus": revision.get("extensionStatus"),
+                "extensions": deepcopy(revision.get("extensions") or []),
+            } if "extensionAvailable" in revision else {}),
             "bidders": deepcopy(opening.get("bidders") or []),
             "lots": deepcopy(
                 revision.get("lots") or opening.get("lots") or []

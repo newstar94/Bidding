@@ -99,6 +99,16 @@ async function performMoThauGoiThau(id) {
         description: "Tự điền thời gian và dữ liệu nhà thầu vào biên bản mở thầu.",
         loadingLabel: "Đang lấy dữ liệu…",
         loadingStatus: "Đang lấy biên bản mở thầu tự động…",
+        loading: {
+          task: "procurement-opening",
+          title: "Đang lấy dữ liệu mở thầu",
+          detail: gt.tenGoiThau,
+          stages: [{
+            key: "fetch",
+            label: "Lấy biên bản mở thầu",
+            message: "Đang lấy thời gian mở thầu và dữ liệu nhà thầu. Vui lòng chờ…",
+          }],
+        },
         errorMessage: "Không thể lấy biên bản mở thầu. Vui lòng kiểm tra mã TBMT và thử lại.",
         run: async () => {
           preparedOpening = null;

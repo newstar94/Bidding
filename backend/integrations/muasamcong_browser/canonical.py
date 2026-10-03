@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import json
 import math
 import re
@@ -931,6 +932,18 @@ def normalize_notice_revision(
         },
     )
 
+    source_version = notice.get("notifyVersion")
+    if source_version not in (None, "") and str(source_version).strip().zfill(2) != (
+        str(revision_number).strip().zfill(2)
+    ):
+        raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
+    for field in ("notifyId", "id"):
+        source_id = notice.get(field)
+        if source_id not in (None, "") and str(source_id).strip() != str(
+            revision_id
+        ).strip():
+            raise ProcurementSourceError("PROCUREMENT_REVISION_INVALID")
+
     identity = [
         (field, notice.get(field))
         for field in ("notifyNo", "bidNo")
@@ -1797,6 +1810,309 @@ def normalize_contract_list(raw_contracts):
     return contracts
 
 
+def _clarification_content_rows(value):
+    """Read the JSON arrays returned in both MSC clarification text fields."""
+
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+    if not isinstance(value, list) or any(
+        not isinstance(item, dict) for item in value
+    ):
+        return None
+    for item in value:
+        if any(
+            item.get(key) is not None and not isinstance(item.get(key), str)
+            for key in ("subjectName", "question", "response")
+        ):
+            return None
+    return value
+
+
+def _clarification_text(rows, field):
+    parts = []
+    for item in rows:
+        text = item.get(field)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        subject = item.get("subjectName")
+        parts.append(
+            f"{subject}\n{text}"
+            if isinstance(subject, str) and subject.strip()
+            else text
+        )
+    return "\n\n".join(parts)
+
+
+def normalize_notice_clarifications(
+    source, *, notice_no, revision_number, revision_id=None,
+):
+    """Project only the selected notice/version, keeping failures non-authoritative."""
+
+    def unavailable(status):
+        return {
+            "clarificationAvailable": False,
+            "clarificationStatus": status,
+            "clarificationRequests": [],
+            "clarificationResponses": [],
+        }
+
+    if not isinstance(source, dict) or source.get("success") is not True:
+        return unavailable("SOURCE_UNAVAILABLE")
+    response = source.get("response")
+    if not isinstance(response, dict):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+    groups = response.get("biduClarifyReqInvAndContentViewVersionDTOList")
+    if not isinstance(groups, list) or any(
+        not isinstance(group, dict) for group in groups
+    ):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+    version = str(revision_number).zfill(2)
+    matching_groups = [
+        group for group in groups
+        if str(group.get("notifyVersion") or "") == version
+    ]
+    if not matching_groups:
+        return unavailable("REVISION_UNAVAILABLE")
+    rows = []
+    for group in matching_groups:
+        group_rows = group.get("biduClarifyReqInvAndContentViewList")
+        if not isinstance(group_rows, list) or any(
+            not isinstance(item, dict) for item in group_rows
+        ):
+            return unavailable("SCHEMA_UNRECOGNIZED")
+        rows.extend(group_rows)
+    selected_rows = [
+        row for row in rows
+        if str(row.get("notyfyNo") or "").strip().upper() == notice_no
+    ]
+    if rows and not selected_rows:
+        return unavailable("NOTICE_MISMATCH")
+
+    requests = []
+    responses = []
+    seen = {}
+    for row in selected_rows:
+        source_revision_id = row.get("notyfyId")
+        if revision_id and source_revision_id not in (None, "") and (
+            not isinstance(source_revision_id, str)
+            or source_revision_id != str(revision_id)
+        ):
+            return unavailable("REVISION_MISMATCH")
+        request_id = str(row.get("id") or "").strip() or None
+        request_no = str(row.get("reqNo") or "").strip() or None
+        identity = request_no or request_id
+        if not identity:
+            return unavailable("INVALID_CONTENT")
+        request_content = _clarification_content_rows(row.get("clarifyReqContent"))
+        response_content = _clarification_content_rows(row.get("clarifyResContent"))
+        if request_content is None or response_content is None:
+            return unavailable("INVALID_CONTENT")
+        requested_at = pick(row, "signReqDate", "reqDate")
+        question = _clarification_text(request_content, "question") or (
+            _clarification_text(response_content, "question")
+        )
+        if not isinstance(requested_at, str) or not requested_at.strip() or not question:
+            return unavailable("INVALID_CONTENT")
+        title = row.get("reqName")
+        if title is not None and not isinstance(title, str):
+            return unavailable("INVALID_CONTENT")
+        if isinstance(title, str) and title.strip():
+            question = f"{title}\n\n{question}"
+        source_identity = {
+            "sourceRequestId": request_id,
+            "sourceRequestNo": request_no,
+            **({"sourceRequestTitle": title} if title else {}),
+        }
+        request = {
+            **source_identity,
+            "requestedAt": requested_at,
+            "content": question,
+        }
+        response_row = None
+        responded_at = row.get("signResDate")
+        if responded_at not in (None, ""):
+            answer = _clarification_text(response_content, "response") or (
+                _clarification_text(request_content, "response")
+            )
+            if not isinstance(responded_at, str) or not responded_at.strip() or not answer:
+                return unavailable("INVALID_CONTENT")
+            response_row = {
+                **source_identity,
+                "respondedAt": responded_at,
+                "content": answer,
+            }
+        normalized = (request, response_row)
+        if identity in seen:
+            if seen[identity] != normalized:
+                return unavailable("AMBIGUOUS_SOURCE")
+            continue
+        seen[identity] = normalized
+        requests.append(request)
+        if response_row is not None:
+            responses.append(response_row)
+    return {
+        "clarificationAvailable": True,
+        "clarificationStatus": "AVAILABLE",
+        "clarificationRequests": requests,
+        "clarificationResponses": responses,
+    }
+
+
+def _extension_datetime(value):
+    """Validate an observed ISO date-time without changing its source timezone."""
+
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?",
+        value,
+    ):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def normalize_notice_extensions(
+    source, *, notice_no, revision_number, revision_id=None,
+):
+    """Read only the observed TBMT extension list for the selected notice version."""
+
+    def unavailable(status):
+        return {
+            "extensionAvailable": False,
+            "extensionStatus": status,
+            "extensions": [],
+        }
+
+    if not isinstance(source, dict) or source.get("success") is not True:
+        return unavailable("SOURCE_UNAVAILABLE")
+    response = source.get("response")
+    if not isinstance(response, dict):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+    wrapper = response.get("bidNoContractorResponse")
+    if wrapper is None:
+        return unavailable("SOURCE_UNAVAILABLE")
+    if not isinstance(wrapper, dict):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+    parent = wrapper.get("bidNotification")
+    if parent is None:
+        return unavailable("SOURCE_UNAVAILABLE")
+    if not isinstance(parent, dict):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+    version = str(revision_number).zfill(2)
+    expected_notice = str(notice_no).strip().upper()
+    for candidate in (response.get("bidoNotifyContractorM"), parent):
+        if candidate is None:
+            continue
+        if not isinstance(candidate, dict):
+            return unavailable("SCHEMA_UNRECOGNIZED")
+        if str(candidate.get("notifyNo") or "").strip().upper() != expected_notice:
+            return unavailable("NOTICE_MISMATCH")
+        if str(candidate.get("notifyVersion") or "") != version:
+            return unavailable("REVISION_MISMATCH")
+        if revision_id and str(candidate.get("id") or "") != str(revision_id):
+            return unavailable("REVISION_MISMATCH")
+        source_notify_id = candidate.get("notifyId")
+        if revision_id and source_notify_id not in (None, "") and str(
+            source_notify_id
+        ) != str(revision_id):
+            return unavailable("REVISION_MISMATCH")
+    rows = parent.get("delayDTOList")
+    if rows is None:
+        return unavailable("SOURCE_UNAVAILABLE")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        return unavailable("SCHEMA_UNRECOGNIZED")
+
+    extensions = {}
+    ordering = {}
+    date_awareness = set()
+    for row in rows:
+        if str(row.get("notifyNo") or "").strip().upper() != expected_notice:
+            return unavailable("NOTICE_MISMATCH")
+        if str(row.get("notifyVersion") or "") != version:
+            return unavailable("REVISION_MISMATCH")
+        if row.get("notifyType") != "TBMT":
+            return unavailable("INVALID_CONTENT")
+        source_id = row.get("id")
+        reason = row.get("reason")
+        dates = {
+            key: _extension_datetime(row.get(key))
+            for key in ("createdDate", "bidCloseDate", "bidCloseDelayDate")
+        }
+        if (
+            not isinstance(source_id, str) or not source_id.strip()
+            or not isinstance(reason, str) or not reason.strip()
+            or any(value is None for value in dates.values())
+        ):
+            return unavailable("INVALID_CONTENT")
+        date_awareness.update(value.tzinfo is not None for value in dates.values())
+        if len(date_awareness) > 1:
+            return unavailable("INVALID_CONTENT")
+        if dates["bidCloseDelayDate"] <= dates["bidCloseDate"]:
+            return unavailable("INVALID_CONTENT")
+        source_id = source_id.strip()
+        extension = {
+            "sourceExtensionId": source_id,
+            "extendedAt": row["createdDate"],
+            "previousClosingAt": row["bidCloseDate"],
+            "newClosingAt": row["bidCloseDelayDate"],
+            "reason": reason,
+        }
+        if source_id in extensions and extensions[source_id] != extension:
+            return unavailable("AMBIGUOUS_SOURCE")
+        extensions[source_id] = extension
+        ordering[source_id] = dates["createdDate"]
+    return {
+        "extensionAvailable": True,
+        "extensionStatus": "AVAILABLE",
+        "extensions": [
+            extensions[source_id]
+            for source_id in sorted(extensions, key=ordering.__getitem__)
+        ],
+    }
+
+
+def _tender_info_matches_notice(source, *, notice_no, revision_number, revision_id):
+    """Prevent explicit foreign notice identities from enriching a valid detail."""
+
+    if not isinstance(source, dict) or source.get("success") is not True:
+        return True
+    response = source.get("response")
+    if not isinstance(response, dict):
+        return True
+    candidates = [(response, any(
+        response.get(key) not in (None, "")
+        for key in ("notifyNo", "notifyVersion", "notifyId")
+    )), (response.get("bidoNotifyContractorM"), True)]
+    wrapper = response.get("bidNoContractorResponse")
+    if isinstance(wrapper, dict):
+        candidates.append((wrapper.get("bidNotification"), True))
+    for candidate, notice_identity in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        source_no = candidate.get("notifyNo")
+        source_version = candidate.get("notifyVersion")
+        if source_no not in (None, "") and str(source_no).strip().upper() != notice_no:
+            return False
+        if source_version not in (None, "") and str(source_version).strip().zfill(2) != (
+            str(revision_number).strip().zfill(2)
+        ):
+            return False
+        if notice_identity:
+            for field in ("notifyId", "id"):
+                source_id = candidate.get(field)
+                if source_id not in (None, "") and str(source_id).strip() != str(
+                    revision_id
+                ).strip():
+                    return False
+    return True
+
+
 def normalize_notice_complete_bundle(bundle: dict):
     """Project a NOTICE Complete Raw Bundle into a stable aggregate."""
 
@@ -1834,6 +2150,13 @@ def normalize_notice_complete_bundle(bundle: dict):
                 "retrievedAt": detail_source.get("retrievedAt"),
             },
         )
+        supplied_tender_info_source = sources.get("tenderInfo")
+        tender_info_matches = _tender_info_matches_notice(
+            supplied_tender_info_source,
+            notice_no=notice_no,
+            revision_number=revision_number,
+            revision_id=revision_id,
+        )
         sidecars = {}
         for key in (
             "tenderInfo",
@@ -1847,8 +2170,12 @@ def normalize_notice_complete_bundle(bundle: dict):
             "phaseTwo",
             "hsmtPhaseTwo",
         ):
+            if key == "tenderInfo" and not tender_info_matches:
+                continue
             source = sources.get(key) or {}
-            if source.get("success") is True and source.get("response") is not None:
+            if isinstance(source, dict) and source.get("success") is True and (
+                source.get("response") is not None
+            ):
                 sidecars[key] = deepcopy(source.get("response"))
         related_notice_raw = {
             "noticeDetail": raw_detail,
@@ -1977,7 +2304,18 @@ def normalize_notice_complete_bundle(bundle: dict):
             for field, value in plan_values.items():
                 if value is not None:
                     notice[field] = value
-        tender_info_source = sources.get("tenderInfo") or {}
+        tender_info_source = (
+            supplied_tender_info_source
+            if isinstance(supplied_tender_info_source, dict) and tender_info_matches
+            else {}
+        )
+        extension_source = detail_source
+        if notice.get("processApply") == "LDT" and "tenderInfo" in sources:
+            if not isinstance(supplied_tender_info_source, dict) or (
+                supplied_tender_info_source.get("operation")
+                in (None, "", "NOTICE_TENDER_INFO")
+            ):
+                extension_source = supplied_tender_info_source
         tender_info = tender_info_source.get("response")
         sidecar_override_fields = set()
         if tender_info_source.get("success") is True and isinstance(
@@ -2057,6 +2395,18 @@ def normalize_notice_complete_bundle(bundle: dict):
         )
         revision = {
             **notice,
+            **normalize_notice_clarifications(
+                sources.get("clarification"),
+                notice_no=notice_no,
+                revision_number=revision_number,
+                revision_id=revision_id,
+            ),
+            **(normalize_notice_extensions(
+                extension_source,
+                notice_no=notice_no,
+                revision_number=revision_number,
+                revision_id=revision_id,
+            ) if str(bundle.get("detailLevel") or "").upper() == "COMPLETE" else {}),
             "availableSources": sorted(sidecars),
             "actualOpeningAt": (opening or {}).get("openingAt"),
             "financialActualOpeningAt": (opening or {}).get(
@@ -2140,6 +2490,19 @@ def normalize_notice_complete_bundle(bundle: dict):
                     if (sources.get(key) or {}).get("success") is True
                 ],
                 "revision": str(revision_number),
+            }
+        if revision.get("clarificationAvailable") is True:
+            for field in ("clarificationRequests", "clarificationResponses"):
+                field_sources[f"revisions.{revision_number}.{field}"] = {
+                    "operation": (sources.get("clarification") or {}).get("operation"),
+                    "revision": str(revision_number),
+                    "sourcePath": "biduClarifyReqInvAndContentViewVersionDTOList",
+                }
+        if revision.get("extensionAvailable") is True:
+            field_sources[f"revisions.{revision_number}.extensions"] = {
+                "operation": extension_source.get("operation"),
+                "revision": str(revision_number),
+                "sourcePath": "bidNoContractorResponse.bidNotification.delayDTOList",
             }
     contract_source = (bundle.get("sources") or {}).get("contractList") or {}
     contracts = normalize_contract_list(

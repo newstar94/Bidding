@@ -1,4 +1,5 @@
 import { acquireBackgroundInert, releaseBackgroundInert } from "./backgroundInert.js";
+import { syncDialogStackAccessibility } from "./dialogAccessibility.js";
 
 const BRAND_ICON_URL = "/assets/app-brand-icon.webp?v=d308bf4310b5dbba1d17fa6bbd0c1d51eedbcefcc6c3f7034ee223447b9a06f6";
 const DEFAULT_STAGES = Object.freeze([
@@ -172,14 +173,14 @@ function isolateBackground(documentRef, refs) {
   backgroundInertState.forEach(({ element }) => {
     acquireBackgroundInert(element, taskStack);
   });
-  refs.card.focus({ preventScroll: true });
 }
 
-function restoreBackground() {
+function restoreBackground(documentRef) {
   backgroundInertState.forEach(({ element }) => {
     releaseBackgroundInert(element, taskStack);
   });
   backgroundInertState = [];
+  syncDialogStackAccessibility(documentRef);
   if (previousFocus?.isConnected && typeof previousFocus.focus === "function") {
     previousFocus.focus({ preventScroll: true });
   }
@@ -233,6 +234,8 @@ export async function beginLongTaskLoading({
   documentRef.body.classList.add("app-long-task-is-busy");
   refs.overlay.classList.add("is-active");
   if (taskStack.length === 1) isolateBackground(documentRef, refs);
+  syncDialogStackAccessibility(documentRef);
+  if (taskStack.length === 1) refs.card.focus({ preventScroll: true });
   await waitForVisiblePaint(documentRef);
 
   return Object.freeze({
@@ -273,7 +276,7 @@ export async function beginLongTaskLoading({
       if (previousBodyBusy === null) documentRef.body.removeAttribute("aria-busy");
       else documentRef.body.setAttribute("aria-busy", previousBodyBusy);
       previousBodyBusy = null;
-      restoreBackground();
+      restoreBackground(documentRef);
 
       await delay(documentRef, exitTransitionMs);
       if (taskStack.length === 0) refs.overlay.hidden = true;
