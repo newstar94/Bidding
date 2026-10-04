@@ -245,7 +245,8 @@ export async function importOpeningFromMuasamcong({
   button.dataset.loading = "true";
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
-  button.textContent = "Đang lấy dữ liệu…";
+  const busyLabel = "Đang lấy dữ liệu…";
+  button.textContent = busyLabel;
   const operationIdentity = Object.freeze({});
   openingButtonOperations.set(button, operationIdentity);
   const lease = captureWorkspaceLease(this.model);
@@ -253,7 +254,6 @@ export async function importOpeningFromMuasamcong({
   const storage = this.model?.workspaceStorage;
   const openingPane = select.closest?.(".tab-pane");
   const isOwnedOperation = () => {
-    const current = this.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
     return isWorkspaceLeaseCurrent(this.model, lease)
       && this.model?.workspaceStorage === storage
       && (openingPane
@@ -261,13 +261,16 @@ export async function importOpeningFromMuasamcong({
           && openingPane.querySelector("#btn-mothau-import-msc") === button
         : getOpeningElement("mothau-goithau-select") === select
           && getOpeningElement("btn-mothau-import-msc") === button)
-      && openingButtonOperations.get(button) === operationIdentity
+      && openingButtonOperations.get(button) === operationIdentity;
+  };
+  const isCurrentOperation = () => {
+    const current = this.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
+    return isOwnedOperation()
+      && getOpeningElement("mothau-goithau-select") === select
+      && getOpeningElement("btn-mothau-import-msc") === button
       && String(select?.value || "") === String(pkg.id)
       && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
   };
-  const isCurrentOperation = () => isOwnedOperation()
-    && getOpeningElement("mothau-goithau-select") === select
-    && getOpeningElement("btn-mothau-import-msc") === button;
   const assertCurrentWorkspace = () => {
     if (!isCurrentOperation()) throw workspaceChangedError();
   };
@@ -319,7 +322,7 @@ export async function importOpeningFromMuasamcong({
       "alert-triangle",
     );
   } finally {
-    if (isOwnedOperation()) {
+    if (isOwnedOperation() && button.textContent === busyLabel) {
       openingButtonOperations.delete(button);
       delete button.dataset.loading;
       button.disabled = false;

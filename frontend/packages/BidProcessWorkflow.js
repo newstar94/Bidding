@@ -984,7 +984,10 @@ async function performSaveThongTinMoThau() {
   // Enrichment yields to network requests. The user may have switched the
   // workspace or package, or sync may have replaced the captured form rows.
   // The collector below mutates contractor state, so fence before collection.
-  if (!isCurrentForm() || Array.from(rows).some((row) => !openingBody.contains(row))) return;
+  if (!isCurrentForm()) return;
+  const currentRows = openingBody.querySelectorAll("tr");
+  if (currentRows.length !== rows.length
+      || Array.from(rows).some((row, index) => currentRows[index] !== row)) return;
   const openingRowsValidation = validateOpeningRows(rows);
   if (!openingRowsValidation.valid) {
     const message = openingRowsValidation.missingBidPriceInputs?.length

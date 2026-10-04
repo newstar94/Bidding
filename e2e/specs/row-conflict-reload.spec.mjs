@@ -1116,6 +1116,15 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     const clientARequestReleased = new Promise((resolve) => {
       releaseClientARequest = resolve;
     });
+    let captureClientAResponse;
+    let rejectClientAResponse;
+    const clientAResponseCaptured = new Promise((resolve, reject) => {
+      captureClientAResponse = resolve;
+      rejectClientAResponse = reject;
+    });
+    // Observe route failures immediately while B is still committing; the
+    // awaited promise below preserves the original failure for the test.
+    void clientAResponseCaptured.catch(() => {});
     await pageA.route("**/api/sync", async (route) => {
       const request = route.request();
       const payload = request.method() === "POST"
@@ -1131,7 +1140,18 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
       }
       captureClientARequest(request);
       await clientARequestReleased;
-      await route.continue();
+      try {
+        // Keep the real server response before delivering it to Chromium.
+        // Its CDP response body can be unavailable even when the app reads it.
+        const upstreamResponse = await route.fetch();
+        const responseBody = await upstreamResponse.body();
+        const data = JSON.parse(responseBody.toString("utf8"));
+        await route.fulfill({ response: upstreamResponse, body: responseBody });
+        captureClientAResponse({ status: upstreamResponse.status(), data });
+      } catch (error) {
+        rejectClientAResponse(error);
+        throw error;
+      }
     });
 
     await pageA.locator("#gt-nguonvon").fill("Nguồn vốn Local A");
@@ -1170,7 +1190,8 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     ));
     releaseClientARequest();
     const conflictResponse = await conflictResponsePromise;
-    const conflictBody = await conflictResponse.json();
+    const { status: conflictStatus, data: conflictBody } = await clientAResponseCaptured;
+    expect(conflictStatus).toBe(conflictResponse.status());
     expect(conflictResponse.status(), JSON.stringify(conflictBody)).toBe(409);
     expect(conflictBody.errors.some((error) => (
       error.code === "ROW_VERSION_CONFLICT"

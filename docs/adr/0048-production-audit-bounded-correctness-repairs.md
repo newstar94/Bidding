@@ -49,6 +49,17 @@ kiểm soát xuất/tải tài liệu. Không tạo capability đọc dữ liệ
    bản ghi cũ; không báo lưu thành công hoặc chuyển sang đánh giá.
    Nguồn không có nhà thầu ở pha kỹ thuật phải giữ nguyên dòng, thời gian
    và preview đang nhập; không ghi đè bảng bằng tập rỗng của pha tài chính.
+   Bổ sung khi chuẩn bị phát hành: lượt lưu capture workspace, storage, gói
+   và biểu mẫu trước khi tra cứu. Sau tra cứu, chỉ collect khi biểu mẫu và
+   toàn bộ dòng theo đúng số lượng/thứ tự/identity vẫn thuộc lượt đó; không
+   stage snapshot cũ khi người dùng thêm, xóa hoặc đổi thứ tự dòng. Ngày mở
+   thầu chỉ đưa vào bản ghi sau khi validation và fence hoàn tất. ACK của
+   gói/workspace cũ không repaint hoặc điều hướng màn hình mới. Canonical
+   repaint cùng gói vẫn được báo thành công và chuyển sang đánh giá.
+   Phản hồi nhập nguồn chỉ áp dụng khi đúng tab active/gói/root hiện hành;
+   cleanup nút thuộc lượt cũ được thực hiện cả khi tab đã ẩn hoặc lựa chọn
+   gói đổi, nếu workspace, pane, button, operation identity và nhãn busy vẫn
+   do lượt đó sở hữu. Không reset nút đã được lượt mới hoặc màn hình mới dùng.
 
 ## Compatibility impact
 
@@ -66,6 +77,10 @@ Biên bản nhập từ Mua Sắm Công xuất hiện và được lưu trong đ
 Không đổi mapping nguồn, quyền hoặc các trường được phép xem. Form rỗng do
 không có/dữ liệu chưa dựng xong không được coi là biên bản đã lưu hợp lệ;
 đường xóa dòng cuối hiện hành vẫn tạo dòng nhập trống và yêu cầu nhập nhà thầu.
+Lượt lưu bị thay đổi biểu mẫu/dòng trong khi tra cứu dừng trước stage/persist;
+người dùng có thể lưu lại nội dung hiện hành. Nút nhập nguồn không bị khóa
+vĩnh viễn khi quay lại tab hoặc chọn gói khác. Không đổi mapping, validation,
+quyền, dữ liệu nguồn hay định dạng lưu; không có migration/backfill cho bổ sung này.
 
 ## Migration và rollout
 
@@ -107,3 +122,7 @@ regression seams ghi tại [ADR 0049](0049-conflict-input-until-f5-and-canonical
   trạng thái/xóa bản ghi cũ; mở lại biên bản và bảo toàn nháp gói khác ở cả
   hai thứ tự mount; nguồn chỉ có pha tài chính giữ nháp kỹ thuật. Metadata
   schema 1 và tiền dạng chuỗi dựng được 1/202 dòng.
+- Tra cứu mở thầu còn chờ: đổi workspace/gói, mất dòng, thêm dòng, reorder;
+  ACK còn chờ: đổi gói và canonical repaint cùng gói; nhập nguồn còn chờ:
+  rời tab, đổi gói trong cùng pane và lượt mới dùng lại cùng nút. Regression
+  phải chứng minh không stage/persist/điều hướng từ lượt cũ và vẫn retry được.

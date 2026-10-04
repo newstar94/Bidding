@@ -104,6 +104,23 @@ async function withOpeningSave(run, { lookupPending = true } = {}) {
       replaceSamePackageForm() {
         formControls = { select: { value: pkg.id }, body: { ...body }, button: { ...button } };
       },
+      appendNewRowToSameBody() {
+        const addedFields = new Map(fields);
+        addedFields.set(".mt-ma-nha-thau", { value: "vn0100000002" });
+        addedFields.set(".mt-ten-nha-thau", { value: "Nhà thầu mới nhập B" });
+        addedFields.set(".mt-gia-du-thau", { value: "1500000" });
+        addedFields.set(".mt-gia-sau-giam-gia", { value: "1500000" });
+        bodyRows.push({ ...row,
+          getAttribute: (name) => name === "data-id" ? "opening-b" : null,
+          querySelector: (selector) => addedFields.get(selector) || null,
+        });
+        model.state.nhathau.push({ id: "contractor-b", rootId: "contractor-b",
+          maNhaThau: "vn0100000002", tenNhaThau: "Nhà thầu mới nhập B",
+          nguoiDaiDien: "Người đại diện B", isLatest: 1 });
+      },
+      reverseRowsWithinSameBody() {
+        bodyRows.reverse();
+      },
       removeRowsFromSameBody() {
         bodyRows = []; row.isConnected = false;
       },
@@ -187,5 +204,35 @@ test("opening save stops when captured rows are removed from the same tbody duri
     assert.equal(fixture.pkg.trangThai, "Đã mở thầu", "detached rows from an overwritten draft were committed");
     assert.deepEqual(fixture.staged, []);
     assert.deepEqual(fixture.persisted, []);
+  });
+});
+
+test("opening save stops when a new bidder is added to the same tbody during lookup", async () => {
+  await withOpeningSave(async (fixture) => {
+    const saving = saveThongTinMoThau.call(fixture.controller);
+    await fixture.lookupStarted.promise;
+    fixture.appendNewRowToSameBody();
+    fixture.syncReply.resolve({ ok: true }); fixture.lookupReply.resolve();
+    await saving;
+    assert.equal(fixture.pkg.trangThai, "Đã mở thầu", "the old row snapshot omitted the new bidder draft");
+    assert.deepEqual(fixture.staged, []);
+    assert.deepEqual(fixture.persisted, []);
+    assert.deepEqual(fixture.navigations, []);
+    assert.equal(fixture.alerts.some(([title]) => title === "Lưu thành công"), false);
+  });
+});
+
+test("opening save stops when the captured bidder order changes during lookup", async () => {
+  await withOpeningSave(async (fixture) => {
+    fixture.appendNewRowToSameBody();
+    const saving = saveThongTinMoThau.call(fixture.controller);
+    await fixture.lookupStarted.promise;
+    fixture.reverseRowsWithinSameBody();
+    fixture.syncReply.resolve({ ok: true }); fixture.lookupReply.resolve();
+    await saving;
+    assert.equal(fixture.pkg.trangThai, "Đã mở thầu", "the captured bidder order no longer matches the draft");
+    assert.deepEqual(fixture.staged, []);
+    assert.deepEqual(fixture.persisted, []);
+    assert.deepEqual(fixture.navigations, []);
   });
 });

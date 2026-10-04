@@ -45,3 +45,9 @@ d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-
 d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-token:124
 d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_document_scope_http_error.py:generic-api-key:22
 d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_lot_scope_http_error.py:generic-api-key:30
+
+# Reviewed false positives: multiline password rate-limit helper calls in
+# historical auth code. The matched helper identifier is not a credential;
+# the calls consume per-IP and per-user rate-limit attempts.
+bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1427
+bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1430
