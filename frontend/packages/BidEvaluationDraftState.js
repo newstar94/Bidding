@@ -2,11 +2,13 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
+import { parseTechnicalScore } from "./evaluationMethodRules.js";
+import { parseVietnameseNumber } from "../shared/formatters.js";
 
 const BID_FIELD_READERS = Object.freeze({
   danhGiaHopLe: [".mt-dg-hop-le", readText],
   danhGiaNangLuc: [".mt-dg-nang-luc", readText],
-  danhGiaKyThuat: [".mt-dg-ky-thuat", readText],
+  danhGiaKyThuat: [".mt-dg-ky-thuat", readTechnicalScore],
   danhGiaKetLuan: [".mt-dg-ketluan", readText],
   danhGiaTaiChinh: [".mt-dg-xep-hang", readText],
   lamRoHopLe: [".mt-lam-ro-hop-le", readText],
@@ -40,16 +42,22 @@ function readText(control) {
   return String(control?.value ?? control?.textContent ?? "").trim();
 }
 
+function readTechnicalScore(control) {
+  const raw = readText(control);
+  const score = parseTechnicalScore(raw);
+  return score === null ? raw : String(score);
+}
+
 function readMoney(control, parseMoney) {
   const raw = readText(control);
   return raw ? parseMoney(raw) : "";
 }
 
 function readDecimal(control) {
-  const raw = readText(control).replace(/,/g, ".");
+  const raw = readText(control);
   if (!raw) return "";
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) ? value : "";
+  const value = parseVietnameseNumber(raw);
+  return value === null ? "" : value;
 }
 
 function readInteger(control) {

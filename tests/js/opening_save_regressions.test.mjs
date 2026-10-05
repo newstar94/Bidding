@@ -44,6 +44,42 @@ test("opening rows without a bid-price field remain valid", () => {
   assert.equal(validateOpeningRows([openingRow({ includePrice: false })]).valid, true);
 });
 
+test("combined technical-price opening save does not send an empty technical score", () => {
+  const model = {
+    state: {
+      goithau: [{
+        id: "package-combined",
+        phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá",
+        thoiGianMoThau: "2026-08-08",
+      }],
+      nhathau: [],
+      thongtinmothau: [],
+    },
+    getLatestNhaThau: () => model.state.nhathau,
+    parseVND: (value) => Number(String(value || "").replace(/\D/g, "")) || 0,
+  };
+  const fields = new Map([
+    [".mt-ma-nha-thau", { value: "vn000000001" }],
+    [".mt-ten-nha-thau", { value: "Nhà thầu thử nghiệm" }],
+    [".mt-gia-du-thau", { value: "1250000" }],
+  ]);
+  const row = {
+    dataset: {},
+    getAttribute: (name) => name === "data-id" ? "bid-combined" : null,
+    querySelector: (selector) => fields.get(selector) || null,
+  };
+
+  const [bid] = collectOpeningBidsFromRows({
+    rows: [row],
+    gtId: "package-combined",
+    model,
+    isDirectOrSpecial: false,
+    changedContractors: [],
+  });
+
+  assert.equal(Object.hasOwn(bid, "danhGiaKyThuat"), false);
+});
+
 test("unsaved opening draft paginates rows without removing saveable inputs", async () => {
   const workflow = await import("../../frontend/packages/BidProcessWorkflow.js");
   assert.equal(typeof workflow.refreshOpeningDraftPagination, "function");

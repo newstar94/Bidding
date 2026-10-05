@@ -5604,14 +5604,16 @@ input#edit-pkg-price {
 
 .detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-stt,
 .detailed-evaluation-table-technical-score .detailed-evaluation-col-stt { width: 6%; }
-.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-criterion { width: 40%; }
-.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-mark { width: 10%; }
-.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-comment { width: 24%; }
-.detailed-evaluation-table-technical-score .detailed-evaluation-col-criterion { width: 34%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-criterion { width: 34%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-mark { width: 9%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-comment { width: 21%; }
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-criterion { width: 28%; }
 .detailed-evaluation-table-technical-score .detailed-evaluation-col-score-max,
 .detailed-evaluation-table-technical-score .detailed-evaluation-col-score-min,
-.detailed-evaluation-table-technical-score .detailed-evaluation-col-score { width: 12%; }
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-score { width: 10%; }
 .detailed-evaluation-table-technical-score .detailed-evaluation-col-comment { width: 24%; }
+.detailed-evaluation-table-technical-pass-fail .detailed-evaluation-col-actions,
+.detailed-evaluation-table-technical-score .detailed-evaluation-col-actions { width: 12%; }
 
 .detailed-evaluation-table th,
 .detailed-evaluation-table td {
@@ -5725,6 +5727,80 @@ input#edit-pkg-price {
   min-height: 34px;
   padding: 0;
   color: var(--danger, #dc2626);
+}
+
+.detailed-evaluation-table td.detailed-evaluation-criterion-actions-cell {
+  padding-inline: 4px;
+  text-align: center;
+}
+
+.detailed-evaluation-criterion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.detailed-evaluation-criterion-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.detailed-evaluation-criterion-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Keep criterion actions visually distinct so their intent is scannable. */
+.detailed-evaluation-criterion-action-add {
+  color: var(--success, #0f766e) !important;
+}
+
+.detailed-evaluation-criterion-action-add:hover:not(:disabled) {
+  color: var(--success-hover, #0b625c);
+  background: var(--success-soft, #eaf9f4);
+}
+
+.detailed-evaluation-criterion-action-edit {
+  color: var(--primary, #2563eb) !important;
+}
+
+.detailed-evaluation-criterion-action-edit:hover:not(:disabled) {
+  color: var(--primary-hover, #1d4ed8);
+  background: var(--primary-soft, #eff6ff);
+}
+
+.detailed-evaluation-criterion-action-save {
+  color: var(--success, #0f766e) !important;
+}
+
+.detailed-evaluation-criterion-action-save:hover:not(:disabled) {
+  color: var(--success-hover, #0b625c);
+  background: var(--success-soft, #eaf9f4);
+}
+
+.detailed-evaluation-criterion-action-remove {
+  color: var(--danger, #c73543) !important;
+}
+
+.detailed-evaluation-criterion-action-remove:hover:not(:disabled) {
+  color: var(--danger-hover, #a92d39);
+  background: var(--danger-soft, #fff0f2);
+}
+
+.detailed-evaluation-table-technical-pass-fail [data-detailed-config-field][readonly],
+.detailed-evaluation-table-technical-score [data-detailed-config-field][readonly] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  resize: none;
 }
 
 .detailed-evaluation-config-requirement {

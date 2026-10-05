@@ -155,6 +155,68 @@ def test_contains_escapes_literal_wildcards_and_never_interpolates_input():
     assert "ESCAPE E'\\\\'" in predicate.sql
 
 
+def test_postgres_package_search_matches_vietnamese_initial_uppercase():
+    """The paginated search must match ``Điều tra`` after the client folds case."""
+    database_url = str(os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for PostgreSQL search test")
+    with psycopg.connect(database_url, connect_timeout=5) as connection:
+        matched = connection.execute(
+            """
+            SELECT bf_unaccent(lower(%s)) ILIKE bf_unaccent(lower(%s))
+            """,
+            (
+                "Điều tra đánh giá nghề cá",
+                "%điều tra%",
+            ),
+        ).fetchone()[0]
+    assert matched is True
+
+
+def test_package_pagination_search_uses_case_insensitive_accent_projection(monkeypatch):
+    class RecordingCursor:
+        def __init__(self):
+            self.queries = []
+
+        def execute(self, sql, params=()):
+            self.queries.append((sql, tuple(params)))
+            return self
+
+        def fetchone(self):
+            return (0,)
+
+        def fetchall(self):
+            return []
+
+    cursor = RecordingCursor()
+    connection = SimpleNamespace(cursor=lambda: cursor, close=lambda: None)
+    monkeypatch.setattr(pagination, "database", SimpleNamespace(get_connection=lambda: connection))
+    monkeypatch.setattr(pagination, "verify_session", lambda _request: (True, SimpleNamespace(user_id="user-1")))
+    monkeypatch.setattr(pagination, "get_active_org", lambda *_args, **_kwargs: "org-1")
+    monkeypatch.setattr(pagination, "can_read_table", lambda *_args: True)
+    monkeypatch.setattr(pagination, "resolve_sensitive_read_policy", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pagination, "serialize_sensitive_read_items", lambda _table, items, _policy: items)
+    monkeypatch.setattr(
+        pagination.VisibilityScope,
+        "resolve",
+        classmethod(lambda cls, *_args: SimpleNamespace(
+            live_predicate=lambda _table, _alias: SqlPredicate(
+                "goi_thau.organization_id = ?", ("org-1",)
+            ),
+        )),
+    )
+
+    response = pagination._paginate_records_blocking(SimpleNamespace(
+        query_params={"table": "goithau", "search": "Điều tra"},
+        cookies={"session_token": "test"},
+    ))
+
+    assert response.status_code == 200
+    search_sql = cursor.queries[0][0]
+    assert search_sql.count("ILIKE bf_unaccent(lower(?))") == 2
+    assert " LIKE bf_unaccent(lower(?))" not in search_sql
+
+
 class FixtureCursor:
     """Execute portable list SQL against fixtures and record count/page queries."""
 

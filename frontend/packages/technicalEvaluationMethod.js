@@ -4,6 +4,7 @@ import {
   normalizeEvaluationMethod,
   parseTechnicalScore,
 } from "./evaluationMethodRules.js";
+import { formatVietnameseNumber } from "../shared/formatters.js";
 import { parseEvaluationMetadataForDisplay } from "./evaluationMetadata.js";
 
 export { parseTechnicalScore } from "./evaluationMethodRules.js";
@@ -128,6 +129,7 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
   const scoreRequired = requiresTechnicalScore(pkg, roundType);
   root?.querySelectorAll?.("input.mt-dg-ky-thuat").forEach((input) => {
     if (!scoreRequired) {
+      input.type = "text";
       input.removeAttribute?.("data-technical-score-required");
       input.removeAttribute?.("required");
       input.removeAttribute?.("aria-required");
@@ -136,7 +138,9 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
     const current = String(input.value ?? "").trim();
     const parsed = parseTechnicalScore(current);
     const hadInvalidLegacyValue = Boolean(current) && parsed === null;
-    input.type = "number";
+    // A localized text control is required because HTML number inputs reject
+    // the Vietnamese decimal separator (for example, `97,05`).
+    input.type = "text";
     input.setAttribute?.("min", "0");
     input.setAttribute?.("step", "any");
     input.setAttribute?.("inputmode", "decimal");
@@ -144,7 +148,7 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
     input.setAttribute?.("aria-required", "true");
     input.setAttribute?.("data-technical-score-required", "true");
     input.placeholder = "Nhập điểm kỹ thuật...";
-    if (current) input.value = parsed === null ? "" : String(parsed);
+    if (current) input.value = parsed === null ? "" : formatVietnameseNumber(parsed);
     if (
       hadInvalidLegacyValue
       && typeof input.dispatchEvent === "function"

@@ -112,11 +112,17 @@ def enrich_plan_package_with_notice_revision(package, notice_no, detail):
         "additionalPurchaseItems",
         "goodsItems",
         "evaluationMethod",
+        "technicalWeight",
         "approvalDecisionNo",
         "approvalDecisionDate",
     ):
         if detail.get(field) not in (None, ""):
             target[field] = deepcopy(detail[field])
+    # The technical percentage is owned by the evaluation method.  A source
+    # revision that changes method 3 to another method must clear an older
+    # plan-level value instead of inheriting stale weight data.
+    if "technicalWeight" in detail:
+        target["technicalWeight"] = deepcopy(detail.get("technicalWeight"))
     notice_is_multi_lot = detail.get("isMultiLot")
     if isinstance(notice_is_multi_lot, bool):
         target["isMultiLot"] = notice_is_multi_lot

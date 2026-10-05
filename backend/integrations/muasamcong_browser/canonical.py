@@ -164,6 +164,39 @@ def _positive_days(value):
     return int(parsed)
 
 
+def _plan_technical_weight(row):
+    """Read a plan-row technical percentage only for the combined method."""
+
+    def valid(value):
+        parsed = _number(value)
+        if parsed is None or parsed < 0 or parsed > 100 or int(parsed) != parsed:
+            return None
+        return int(parsed)
+
+    method = pick(row, "evaluationMethod", "method")
+    embedded = _decoded_form_value(row.get("formValue"))
+    if isinstance(embedded, dict) and method in (None, ""):
+        method = embedded.get("method")
+    method_text = str(method or "").strip().casefold()
+    is_combined = method_text == "3" or method_text in {
+        "kết hợp giữa kỹ thuật và giá",
+        "kết hợp kỹ thuật và giá",
+    }
+    explicit = pick(row, "technicalWeight", "trongSoKyThuat")
+    if explicit in (None, "") and isinstance(embedded, dict):
+        explicit = pick(embedded, "technicalWeight", "trongSoKyThuat")
+    if explicit not in (None, ""):
+        if method not in (None, "") and not is_combined:
+            return None
+        return valid(explicit)
+    if is_combined:
+        source_txt_k = pick(row, "txtK")
+        if source_txt_k in (None, "") and isinstance(embedded, dict):
+            source_txt_k = embedded.get("txtK")
+        return valid(source_txt_k)
+    return None
+
+
 def normalize_additional_purchase_items(row):
     """Normalize MSC ``formValue`` rows while retaining source identity."""
 
@@ -269,7 +302,7 @@ def _form_rows(raw, form_codes):
     return rows
 
 
-def _evaluation_method_candidates(raw):
+def _evaluation_form_candidates(raw):
     """Read root-level method values only from E-HSMT evaluation forms.
 
     Older source projections omit chapter/file metadata. Keep those compatible
@@ -292,11 +325,18 @@ def _evaluation_method_candidates(raw):
             if str(row.get("bidFile") or "").strip().upper() not in ("", "HSMT"):
                 continue
             value = _decoded_form_value(row.get("formValue"))
-            if not isinstance(value, dict) or value.get("method") in (None, ""):
+            if not isinstance(value, dict):
                 continue
             code = str(row.get("formCode") or "").strip()
             selector = f"formCode={code}" if code else str(index)
-            yield value["method"], f"{collection}[{selector}].formValue.method"
+            yield value, f"{collection}[{selector}].formValue"
+
+
+def _evaluation_method_candidates(raw):
+    for value, path in _evaluation_form_candidates(raw):
+        if value.get("method") in (None, ""):
+            continue
+        yield value["method"], f"{path}.method"
 
 
 def normalize_evaluation_method_form(raw, bid_field):
@@ -310,6 +350,30 @@ def normalize_evaluation_method_form(raw, bid_field):
     if None in methods:
         return None
     return next(iter(methods), None)
+
+
+def normalize_technical_weight_form(raw, bid_field):
+    """Map MSC's ``txtK`` technical percentage for method 3.
+
+    In the E-HSMT form contract ``method=3`` means the combined
+    technical/price method and ``txtK`` is the technical percentage (for
+    example ``80`` means 80%).  Other methods do not own this package field;
+    keep it empty so the local validation rules can clear it consistently.
+    """
+
+    if normalize_evaluation_method_form(raw, bid_field) != "Kết hợp giữa kỹ thuật và giá":
+        return None
+    weights = set()
+    for value, _path in _evaluation_form_candidates(raw):
+        if str(value.get("method") or "").strip() != "3":
+            continue
+        weight = _number(value.get("txtK"))
+        if weight is None or weight < 0 or weight > 100 or int(weight) != weight:
+            continue
+        weights.add(int(weight))
+    if len(weights) > 1:
+        raise ProcurementSourceError("PROCUREMENT_SCHEMA_CHANGED")
+    return next(iter(weights), None)
 
 
 def _text(value):
@@ -828,6 +892,7 @@ def normalize_plan_revision(
                     pick(row, "bidMode", "selectionMode")
                 ),
                 "evaluationMethod": pick(row, "evaluationMethod"),
+                "technicalWeight": _plan_technical_weight(row),
                 "selectionDuration": str(pick(row, "bidTime", "selectionDuration", default=""))
                 or None,
                 "selectionStart": _selection_start(row),
@@ -1063,6 +1128,7 @@ def normalize_notice_revision(
         ),
         "field": map_package_field(bid_field),
         "evaluationMethod": normalize_evaluation_method_form(raw, bid_field),
+        "technicalWeight": normalize_technical_weight_form(raw, bid_field),
         "executionPeriod": execution_period,
         "contractType": map_contract_type(
             related_pick("ctype", "contractType")
@@ -2429,7 +2495,7 @@ def normalize_notice_complete_bundle(bundle: dict):
             "sourceBidPriceVnd", "estimatePriceVnd",
             "executionPeriod", "contractType", "selectionMode",
             "isMedicinePackage", "isMultiLot", "lots",
-            "evaluationMethod",
+            "evaluationMethod", "technicalWeight",
             "goodsItems",
             "additionalPurchaseOption", "additionalPurchaseItems",
             "bidValidityDays", "selectionDuration", "selectionStart",
@@ -2457,7 +2523,7 @@ def normalize_notice_complete_bundle(bundle: dict):
                         if goods_from_plan_package
                         else (sources.get("hsmt") or {}).get("operation")
                     )
-                if field == "evaluationMethod":
+                if field in {"evaluationMethod", "technicalWeight"}:
                     operation = (sources.get("hsmt") or {}).get("operation")
                 source_path = field
                 if field == "evaluationMethod":
@@ -2465,6 +2531,13 @@ def normalize_notice_complete_bundle(bundle: dict):
                         path for _method, path in _evaluation_method_candidates(
                             related_notice_raw
                         )
+                    ))
+                if field == "technicalWeight":
+                    source_path = " | ".join(dict.fromkeys(
+                        f"{path}.txtK" for value, path in _evaluation_form_candidates(
+                            related_notice_raw
+                        ) if str(value.get("method") or "").strip() == "3"
+                        and value.get("txtK") not in (None, "")
                     ))
                 field_sources[f"revisions.{revision_number}.{field}"] = {
                     "operation": operation,
@@ -2517,7 +2590,7 @@ def normalize_notice_complete_bundle(bundle: dict):
         }
     return {
         "schemaVersion": "biddingflow-procurement-canonical-v2",
-        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
+        "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v8",
         "kind": "NOTICE",
         "canonicalCode": notice_no,
         "revisions": revisions,

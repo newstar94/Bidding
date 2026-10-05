@@ -9,6 +9,7 @@ PHRASES = (
     "Trung tâm", "Y tế", "Bệnh viện", "Ban quản lý", "Dự án", "Ủy ban nhân dân",
     "Liên danh", "Chi nhánh", "Khu vực", "Thành phố", "Thị xã", "Thị trấn",
 )
+LOWERCASE_CONNECTORS = ("và",)
 VIETNAMESE_VOWELS = set("aeiouyàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ")
 
 
@@ -35,4 +36,6 @@ def normalize_procurement_partner_name(value):
     result = re.sub(r"[^\W\d_][^\W_]*", word_case, text)
     for phrase in PHRASES:
         result = re.sub(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", phrase, result, flags=re.I)
+    for connector in LOWERCASE_CONNECTORS:
+        result = re.sub(r"(?<!\w)" + re.escape(connector) + r"(?!\w)", connector, result, flags=re.I)
     return result

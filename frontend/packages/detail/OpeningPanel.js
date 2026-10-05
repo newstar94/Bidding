@@ -5,7 +5,7 @@ export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false }
   if (!container) return;
   const packageId = escapeHtml(pkg?.id || "");
   const packageName = escapeHtml(pkg?.tenGoiThau || "");
-  const title = isDirectOrSpecial ? "Danh sách Nhà thầu" : "Danh sách Nhà thầu tham dự &amp; Nộp hồ sơ";
+  const title = isDirectOrSpecial ? "Danh sách 0 Nhà thầu" : "Danh sách 0 Nhà thầu tham dự &amp; Nộp hồ sơ";
   const addLabel = isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ";
   const saveLabel = isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu";
   container.innerHTML = trustedHTML(`

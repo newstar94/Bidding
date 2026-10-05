@@ -1236,11 +1236,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
     const removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);
     const switchTab = (tab, action = null, updateState = true) => this.switchTab(tab, action, updateState);
-    const switchPackageTab = (tab) => {
-      const packageId = this.view?._currentWorkflowPackageId;
-      if (!packageId || !tab) return void 0;
-      return invokeLazyViewMethod("goithau-detail", "showPackageDetails", packageId, false, tab);
-    };
     const dashboardAlert = (alertKey) => {
       const labels = { closingToday: "Đóng thầu hôm nay", closingSoon: "Sắp đóng thầu", overdueOpening: "Quá hạn mở thầu", delayedEvaluation: "Chậm báo cáo đánh giá" };
       setBusinessListFilters(this.model, "goithau", []);
@@ -1381,7 +1376,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       addJointVentureMemberCard,
       removeJointVentureMemberCard,
       switchTab,
-      switchPackageTab,
       dashboardAlert,
       clearDashboardAlert,
       toggleOrgLock,
@@ -1460,8 +1454,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           return call("handlePageChange", target.dataset.containerId, parseInt(target.dataset.page, 10));
         case "switch-tab":
           return call("switchTab", target.dataset.tab);
-        case "switch-package-tab":
-          return call("switchPackageTab", target.dataset.tab);
         case "dashboard-alert":
           return call("dashboardAlert", target.dataset.alertKey);
         case "clear-dashboard-alert":

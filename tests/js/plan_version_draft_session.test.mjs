@@ -815,6 +815,7 @@ test("plan draft stays open until final commit is confirmed so saving feedback r
   const finalize = deferred();
   const refresh = deferred();
   const effects = { closes: 0, alerts: 0, toasts: 0, renders: 0, scheduled: 0, pulls: [] };
+  const feedbackOrder = [];
   const controller = {
     model,
     tempPlanAction: "create",
@@ -841,12 +842,15 @@ test("plan draft stays open until final commit is confirmed so saving feedback r
       renderKeHoachTable: async () => { effects.renders += 1; },
       renderGoiThauTable: async () => { effects.renders += 1; },
       customAlert: async () => { effects.alerts += 1; },
-      showToast: () => { effects.toasts += 1; },
+      showToast: () => { effects.toasts += 1; feedbackOrder.push("toast"); },
     },
+  };
+  const loadingHandle = {
+    close: async () => { feedbackOrder.push("loading-close"); },
   };
 
   let settled = false;
-  const pending = savePlanBreakdown.call(controller).then((result) => {
+  const pending = savePlanBreakdown.call(controller, { loadingHandle }).then((result) => {
     settled = true;
     return result;
   });
@@ -878,6 +882,7 @@ test("plan draft stays open until final commit is confirmed so saving feedback r
       scheduled: 1,
       pulls: [[true, true, true]],
     });
+    assert.deepEqual(feedbackOrder, ["loading-close", "toast"]);
     assert.deepEqual(model.planVersionDraftSessions, []);
   } finally {
     finalize.resolve({ status: "success", rowVersions: [] });

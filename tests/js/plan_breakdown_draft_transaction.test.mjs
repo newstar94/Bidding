@@ -212,7 +212,7 @@ test("procurement resync backfills goods when the existing package has none", ()
 test("package procurement draft fills lifecycle and tender milestone controls", () => {
   const controls = new Map([
     "gt-ma", "gt-ten", "gt-gia", "gt-thoigian", "gt-linhvuc",
-    "gt-hinhthuc", "gt-phuongthuc", "gt-phuongphapdanhgia", "gt-nguonvon",
+    "gt-hinhthuc", "gt-phuongthuc", "gt-phuongphapdanhgia", "gt-trongsokythuat", "gt-nguonvon",
     "gt-loaihopdong", "gt-thoigiantochuc", "gt-thoigianbatdautochuc",
     "gt-quatmang", "gt-trongnuocquocte", "gt-tuychonmuathem", "gt-phanlo",
     "gt-giatribaomothau", "gt-soquyetdinh", "gt-ngayquyetdinh",
@@ -240,6 +240,8 @@ test("package procurement draft fills lifecycle and tender milestone controls", 
     maGoiThau: "IB2600374868",
     trangThai: "Đang chấm thầu",
     hieuLucHsdt: 90,
+    phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá",
+    trongSoKyThuat: 80,
     goiThauThuoc: true,
     phanLo: true,
     danhSachPhanLo: [{
@@ -283,6 +285,7 @@ test("package procurement draft fills lifecycle and tender milestone controls", 
   assert.equal(controls.get("gt-giatribaomothau").value, "52183040");
   assert.equal(controls.get("gt-hieuluchsdt").value, "90");
   assert.equal(controls.get("gt-hieuluchbaomothau").value, "120");
+  assert.equal(controls.get("gt-trongsokythuat").value, "80");
   assert.equal(medicineRadios.get("1").checked, true);
   assert.equal(medicineRadios.get("0").checked, false);
   assert.equal(controls.get("gt-tuychonmuathem").value, "Có");

@@ -153,6 +153,7 @@ def map_package_canonical_to_draft(provider, family_no, revision, package):
         "hinhThucLuaChon": effective.get("selectionForm"),
         "phuongThucLuaChon": effective.get("selectionMode"),
         "phuongPhapDanhGia": effective.get("evaluationMethod"),
+        "trongSoKyThuat": effective.get("technicalWeight"),
         "thoiGianToChuc": effective.get("selectionDuration") or "",
         "thoiGianBatDauToChuc": effective.get("selectionStart") or "",
         "loaiHopDong": effective.get("contractType"),

@@ -15,3 +15,12 @@ test("casing-only procurement partner normalization preserves acronyms", () => {
     "Công ty TNHH Dược phẩm Santa Việt Nam",
   );
 });
+
+test("casing-only procurement partner normalization keeps the conjunction và lowercase", () => {
+  assert.equal(
+    normalizeProcurementPartnerName(
+      "CÔNG TY CỔ PHẦN ĐẦU TƯ PHÁT TRIỂN CÔNG NGHỆ TÀI NGUYÊN VÀ MÔI TRƯỜNG VIỆT NAM",
+    ),
+    "Công ty Cổ phần Đầu tư Phát triển Công Nghệ Tài Nguyên và Môi Trường Việt Nam",
+  );
+});

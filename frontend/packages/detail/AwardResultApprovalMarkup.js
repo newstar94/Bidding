@@ -1,6 +1,7 @@
 import { formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { calculateRankings } from "../../shared/BiddingCalculations.js";
 import { getHolidays } from "../../shared/runtimeState.js";
+import { formatVietnameseNumber } from "../../shared/formatters.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { checkBidQualified } from "./PackageTabs.js";
 import {
@@ -200,7 +201,7 @@ export function buildAwardResultApprovalMarkup(view, {
                                     ` : ""}
                                 </td>
                                 ${isCombinedMethod ? `
-                                    <td class="bf-s-1742e3af74">${score !== void 0 && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : "--"}</td>
+                                    <td class="bf-s-1742e3af74">${score !== void 0 && score !== null && !isNaN(score) && score > 0 ? formatVietnameseNumber(score, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--"}</td>
                                 ` : ""}
                                 ${!isDirectOrSpecial ? `
                                     <td class="bf-s-81cfd3850c">${escapeHtml(rankDisplay)}</td>

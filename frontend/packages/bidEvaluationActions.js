@@ -1,6 +1,7 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { parseVietnameseNumber } from "../shared/formatters.js";
 import { validateEvaluationReportForMode } from "./bidEvaluationValidation.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
@@ -22,6 +23,7 @@ import {
   updateEvaluationLotScope,
 } from "./lotEvaluationScope.js";
 import {
+  parseTechnicalScore,
   requiresTechnicalScoreInput,
   validateTechnicalScore,
 } from "./evaluationMethodRules.js";
@@ -205,7 +207,9 @@ function applyCompletedBidRows({
     }
     bid.danhGiaHopLe = tr.querySelector(".mt-dg-hop-le")?.value.trim() || "";
     bid.danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
-    bid.danhGiaKyThuat = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
+    const technicalValue = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
+    const technicalScore = parseTechnicalScore(technicalValue);
+    bid.danhGiaKyThuat = technicalScore === null ? technicalValue : String(technicalScore);
     const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
     bid.danhGiaKetLuan = selectKetLuan
       ? selectKetLuan.value
@@ -403,8 +407,7 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
   const valKyThuatFinal = (inpKyThuat?.value || inpKyThuat?.textContent || "").trim();
   const isNumeric = (val) => {
     if (!val) return false;
-    const normalized = val.trim().replace(/,/g, ".");
-    return !isNaN(normalized) && isFinite(normalized) && normalized !== "";
+    return parseVietnameseNumber(val) !== null;
   };
   let conclusion = "";
   let status = "pending";
@@ -755,7 +758,7 @@ export async function saveDanhGiaHsdt(options = {}) {
       const discountInput = tr.querySelector(".mt-ty-le-giam-gia");
       const discountRaw = discountInput?.value?.trim() || "";
       if (discountInput && discountRaw) {
-        tyLeGiamGia = parseFloat(discountRaw.replace(/,/g, ".")) || 0;
+        tyLeGiamGia = parseVietnameseNumber(discountRaw) || 0;
       }
       const discountedPriceInput = tr.querySelector(".mt-gia-sau-giam-gia");
       const discountedPriceRaw = discountedPriceInput?.value?.trim() || "";
@@ -765,12 +768,14 @@ export async function saveDanhGiaHsdt(options = {}) {
       if (is1G2T && this.currentDanhGiaTab === "financial") {
         giaDuThau = this.model.parseVND(bidPriceInput?.value || "");
         const tyLeRaw = discountInput?.value || "0";
-        tyLeGiamGia = parseFloat(tyLeRaw.replace(/,/g, ".")) || 0;
+        tyLeGiamGia = parseVietnameseNumber(tyLeRaw) || 0;
         giaSauGiamGia = this.model.parseVND(discountedPriceInput?.value || "");
       } else {
         danhGiaHopLe = tr.querySelector(".mt-dg-hop-le")?.value.trim() || "";
         danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
-        danhGiaKyThuat = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
+        const technicalValue = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
+        const technicalScore = parseTechnicalScore(technicalValue);
+        danhGiaKyThuat = technicalScore === null ? technicalValue : String(technicalScore);
         const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
         if (selectKetLuan) {
           danhGiaKetLuan = selectKetLuan.value;

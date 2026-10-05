@@ -3936,6 +3936,16 @@ html[data-bf-shell="landing"] body {
   text-wrap: pretty;
 }
 
+/* Vietnamese display type needs room for tone marks and word boundaries.
+ * Keep the large landing headlines expressive without collapsing adjacent
+ * glyphs when Plus Jakarta Sans renders Vietnamese text. */
+.landing-hero h1,
+.landing-proof-intro h2,
+.landing-cta-content h2 {
+  letter-spacing: -0.01em;
+  word-spacing: 0.02em;
+}
+
 .landing-proof-promise {
   display: flex;
   max-width: 31rem;

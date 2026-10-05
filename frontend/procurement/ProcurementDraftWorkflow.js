@@ -921,6 +921,7 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
     "gt-hinhthuc": packageDraft?.hinhThucLuaChon,
     "gt-phuongthuc": packageDraft?.phuongThucLuaChon,
     "gt-phuongphapdanhgia": packageDraft?.phuongPhapDanhGia,
+    "gt-trongsokythuat": packageDraft?.trongSoKyThuat,
     "gt-nguonvon": packageDraft?.nguonVon,
     "gt-loaihopdong": packageDraft?.loaiHopDong,
     "gt-thoigiantochuc": packageDraft?.thoiGianToChuc,

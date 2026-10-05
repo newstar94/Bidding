@@ -1,3 +1,5 @@
+import { parseVietnameseNumber } from "../shared/formatters.js";
+
 const RESULT_VALUES = new Set(["pending", "pass", "acceptable", "fail", "not_applicable"]);
 
 function error(criterionId, field, message) {
@@ -34,8 +36,8 @@ export function validateDetailedEvaluationRow(row = {}, criterion = {}, {
     const minimumMissing = criterion.minScore === ""
       || criterion.minScore === null
       || criterion.minScore === undefined;
-    const maximum = maximumMissing ? Number.NaN : Number(criterion.maxScore);
-    const minimum = minimumMissing ? Number.NaN : Number(criterion.minScore);
+    const maximum = maximumMissing ? Number.NaN : parseVietnameseNumber(criterion.maxScore) ?? Number.NaN;
+    const minimum = minimumMissing ? Number.NaN : parseVietnameseNumber(criterion.minScore) ?? Number.NaN;
     if (completing && (!Number.isFinite(maximum) || maximum <= 0)) {
       errors.push(error(
         criterionId,
@@ -60,10 +62,10 @@ export function validateDetailedEvaluationRow(row = {}, criterion = {}, {
   if (criterion.resultType === "score" && result !== "pending") {
     const score = row.diem === "" || row.diem === null || row.diem === undefined
       ? Number.NaN
-      : Number(row.diem);
+      : parseVietnameseNumber(row.diem) ?? Number.NaN;
     const maximum = criterion.maxScore === null || criterion.maxScore === undefined
       ? null
-      : Number(criterion.maxScore);
+      : parseVietnameseNumber(criterion.maxScore);
     if (!Number.isFinite(score) || score < 0 || (maximum !== null && score > maximum)) {
       errors.push(error(
         criterionId,

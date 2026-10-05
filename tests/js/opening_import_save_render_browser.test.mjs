@@ -307,6 +307,7 @@ test("duplicate routes preserve an unrelated draft through import, save, evaluat
           evalSnapshot, committed, stateAfterSave, staleOpeningSave,
           reopened: {
             renderedTab: document.getElementById("detail-workflow-content-wrapper").dataset.renderedWorkflowTab,
+            title: document.querySelector("#tab-goithau-detail #mothau-table-title")?.textContent,
             rows: document.querySelectorAll("#tab-goithau-detail #mothau-table-tbody tr").length,
             name: document.querySelector("#tab-goithau-detail .mt-ten-nha-thau")?.textContent,
             text: document.querySelector("#tab-goithau-detail #mothau-table-tbody")?.textContent,
@@ -326,6 +327,7 @@ test("duplicate routes preserve an unrelated draft through import, save, evaluat
       assert.deepEqual(result.staleOpeningSave.persisted, result.committed, "evaluation route must not save the hidden opening form");
       assert.deepEqual(result.staleOpeningSave.state, result.stateAfterSave, "hidden form was staged after route navigation");
       assert.equal(result.reopened.renderedTab, "opening", mountOrder);
+      assert.equal(result.reopened.title, "Danh sách 1 Nhà thầu tham dự & Nộp hồ sơ", mountOrder);
       assert.equal(result.reopened.rows, 1, mountOrder);
       assert.equal(result.reopened.name, "Nhà thầu nguồn", mountOrder);
       assert.match(result.reopened.text, /1250000/u);

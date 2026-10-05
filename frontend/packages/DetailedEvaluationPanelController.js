@@ -12,6 +12,28 @@ import {
 } from "./detailedEvaluationAggregation.js";
 import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
+import { formatVietnameseNumber, parseVietnameseNumber } from "../shared/formatters.js";
+
+function mergeConfiguredCriteriaForEdit(baseCriteria, configuredCriteria) {
+  const configured = new Map(configuredCriteria.map((criterion) => [
+    String(criterion.id),
+    criterion,
+  ]));
+  return baseCriteria.map((criterion) => {
+    const visible = configured.get(String(criterion.id));
+    if (!visible) return criterion;
+    return {
+      ...criterion,
+      name: visible.name,
+      stt: visible.stt,
+      sourceStt: visible.stt,
+      requirement: visible.requirement || "",
+      resultType: visible.resultType || criterion.resultType,
+      maxScore: visible.maxScore ?? null,
+      minScore: visible.minScore ?? null,
+    };
+  });
+}
 
 export async function confirmDetailedEvaluationDiscard(appController) {
   if (!appController._detailedEvaluationDirty) return true;
@@ -55,10 +77,10 @@ export function collectActiveGroupRows(container, report, criteria) {
     if (criterion.resultType === "text") result = value("nhanXet").trim() ? "pass" : "pending";
     if (criterion.resultType === "number") result = scoreValue !== "" ? "pass" : "pending";
     if (criterion.resultType === "score") {
-      const score = scoreValue === "" ? null : Number(scoreValue);
+      const score = scoreValue === "" ? null : parseVietnameseNumber(scoreValue);
       const minimum = criterion.minScore === null || criterion.minScore === undefined
         ? null
-        : Number(criterion.minScore);
+        : parseVietnameseNumber(criterion.minScore);
       result = score === null || !Number.isFinite(score)
         ? "pending"
         : minimum !== null && Number.isFinite(minimum) && score < minimum ? "fail" : "pass";
@@ -70,7 +92,7 @@ export function collectActiveGroupRows(container, report, criteria) {
       id: previous.id || `detailed-evaluation-row:${report.id}:${criterionId}`,
       tieuChiDanhGiaId: criterionId,
       ketQua: result,
-      diem: scoreValue === "" ? null : Number(scoreValue),
+      diem: scoreValue === "" ? null : parseVietnameseNumber(scoreValue),
       noiDungHsdt: value("noiDungHsdt"),
       nhanXet: value("nhanXet"),
       yeuCauLamRo: hasField("yeuCauLamRo") ? value("yeuCauLamRo") : previous.yeuCauLamRo || "",
@@ -96,9 +118,10 @@ export function collectConfiguredDetailedEvaluationCriteria(container, criteria 
     const value = (field) => element.querySelector(
       `[data-detailed-config-field="${field}"]`,
     )?.value;
-    const name = criterion.isCustom === true ? value("name") : undefined;
-    const stt = criterion.isCustom === true ? value("stt") : undefined;
-    const requirement = criterion.isCustom === true ? value("requirement") : undefined;
+    const configurableContent = criterion.isCustom === true || criterion.group === "technical";
+    const name = configurableContent ? value("name") : undefined;
+    const stt = criterion.isCustom === true && criterion.group !== "technical" ? value("stt") : undefined;
+    const requirement = configurableContent ? value("requirement") : undefined;
     const maxScore = value("maxScore");
     const minScore = value("minScore");
     if (name === undefined && stt === undefined && requirement === undefined
@@ -107,8 +130,8 @@ export function collectConfiguredDetailedEvaluationCriteria(container, criteria 
       ...(name === undefined ? {} : { name: String(name).trim() }),
       ...(stt === undefined ? {} : { stt: String(stt).trim().replace(/\.$/, "") }),
       ...(requirement === undefined ? {} : { requirement: String(requirement).trim() }),
-      ...(maxScore === undefined ? {} : { maxScore: maxScore === "" ? null : Number(maxScore) }),
-      ...(minScore === undefined ? {} : { minScore: minScore === "" ? null : Number(minScore) }),
+      ...(maxScore === undefined ? {} : { maxScore: maxScore === "" ? null : parseVietnameseNumber(maxScore) }),
+      ...(minScore === undefined ? {} : { minScore: minScore === "" ? null : parseVietnameseNumber(minScore) }),
     });
   });
   return criteria.map((criterion) => ({
@@ -191,7 +214,7 @@ export function updateDetailedEvaluationConclusion(
   const score = conclusionRow.querySelector(".detailed-evaluation-conclusion-score");
   if (score) score.textContent = expertAggregation.score === null || expertAggregation.score === undefined
     ? ""
-    : `Tổng điểm: ${expertAggregation.score}`;
+    : `Tổng điểm: ${formatVietnameseNumber(expertAggregation.score)}`;
   return true;
 }
 
@@ -293,6 +316,12 @@ export function bindDetailedEvaluationPanelController({
       }
       scheduleDraftAutosave();
     });
+    if (input.matches('[data-detailed-field="diem"], [data-detailed-config-field="maxScore"], [data-detailed-config-field="minScore"]')) {
+      input.addEventListener("blur", () => {
+        const parsed = parseVietnameseNumber(input.value);
+        if (parsed !== null) input.value = formatVietnameseNumber(parsed);
+      });
+    }
   });
   const applyImmediateSequentialGate = (updatedReport, configuredCriteria) => {
     const activeGroup = appController.selectedDetailedEvaluationTab;
@@ -402,17 +431,50 @@ export function bindDetailedEvaluationPanelController({
 
   const excelInput = root.querySelector("#detailed-evaluation-excel-input");
   const excelButton = root.querySelector("#btn-detailed-evaluation-import-excel");
-  root.querySelector("#btn-detailed-evaluation-add-row")?.addEventListener("click", commands.addCriterion);
-  root.querySelectorAll("[data-detailed-remove-criterion]").forEach((button) => {
-    button._bfDetailedRemoveBound = true;
-    button.addEventListener("click", () => commands.removeCriterion(
-      button.getAttribute("data-detailed-remove-criterion"),
-    ));
-  });
+  root.querySelector("#btn-detailed-evaluation-add-row")?.addEventListener("click", () => commands.addCriterion());
   root.addEventListener?.("click", (event) => {
-    const button = event.target?.closest?.("[data-detailed-remove-criterion]");
-    if (!button || button._bfDetailedRemoveBound) return;
-    commands.removeCriterion(button.getAttribute("data-detailed-remove-criterion"));
+    const button = event.target?.closest?.("[data-detailed-add-child-criterion], [data-detailed-edit-criterion], [data-detailed-remove-criterion]");
+    if (!button || button.disabled || state.readOnly) return;
+    const activeGroup = appController.selectedDetailedEvaluationTab;
+    if (!(state.context.editableGroups || []).includes(activeGroup)) return;
+    const parentId = button.getAttribute("data-detailed-add-child-criterion");
+    if (parentId !== null) {
+      const parent = state.criteria.find((criterion) => String(criterion.id) === String(parentId));
+      if (activeGroup === "technical" && parent?.group === activeGroup) commands.addCriterion(parentId);
+      return;
+    }
+    const editId = button.getAttribute("data-detailed-edit-criterion");
+    if (editId !== null) {
+      const criterion = state.criteria.find((item) => String(item.id) === String(editId));
+      if (activeGroup !== "technical" || criterion?.group !== activeGroup) return;
+      const configuredCriteria = markHierarchicalDetailedEvaluationCriteria(
+        collectConfiguredDetailedEvaluationCriteria(root, state.criteria),
+      );
+      appController._detailedEvaluationCriteriaOverrides ||= new Map();
+      appController._detailedEvaluationCriteriaOverrides.set(
+        state.criteriaKey,
+        mergeConfiguredCriteriaForEdit(state.baseCriteria || state.criteria, configuredCriteria),
+      );
+      appController._detailedEvaluationDrafts ||= new Map();
+      appController._detailedEvaluationDrafts.set(state.draftKey, {
+        ...state.report,
+        chiTietList: collectActiveGroupRows(root, state.report, configuredCriteria),
+      });
+      appController._detailedEvaluationEditingCriteria ||= new Map();
+      const editing = appController._detailedEvaluationEditingCriteria.get(state.draftKey) || new Set();
+      const isEditing = !editing.has(String(editId));
+      if (isEditing) editing.add(String(editId));
+      else editing.delete(String(editId));
+      appController._detailedEvaluationEditingCriteria.set(state.draftKey, editing);
+      Promise.resolve(commands.render()).then(() => {
+        if (isEditing) appController.view.getActiveElement("danhgiahsdt-detail-view")?.querySelector(
+          `[data-detailed-criterion-id="${editId}"] [data-detailed-config-field="name"]`,
+        )?.focus?.();
+      });
+      return;
+    }
+    const criterionId = button.getAttribute("data-detailed-remove-criterion");
+    if (criterionId !== null) commands.removeCriterion(criterionId);
   });
   excelButton?.addEventListener("click", () => excelInput?.click());
   excelInput?.addEventListener("change", async () => {

@@ -16,7 +16,11 @@ from backend.procurement_import.domain import (
     three_way_merge_field,
 )
 from backend.procurement_import.decisions import ProcurementDecisionError
-from backend.procurement_import.service import ProcurementImportPreparer, PreviewStore
+from backend.procurement_import.service import (
+    ProcurementImportPreparer,
+    PreviewStore,
+    enrich_plan_package_with_notice_revision,
+)
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_import.repository import ProcurementImportSessionRepository
 from backend.procurement_import.draft_mapping import (
@@ -735,6 +739,7 @@ def test_prepare_enriches_exact_linked_notice_without_creating_another_package(t
         "revisions": [{
             "revisionId": "notice-rev-01", "revisionNumber": "01",
             "kind": "TBMT", "status": "PUBLISHED",
+            "technicalWeight": 80,
             "bidClosingAt": "2026-03-15T09:00:00+07:00",
         }],
     }
@@ -753,6 +758,7 @@ def test_prepare_enriches_exact_linked_notice_without_creating_another_package(t
         "status": "PUBLISHED",
         "bidClosingAt": "2026-03-15T09:00:00+07:00",
     }
+    assert packages[0]["technicalWeight"] == 80
     source._notices["IB2600000002"]["revisions"][0]["bidClosingAt"] = (
         "2026-03-16T09:00:00+07:00"
     )
@@ -766,6 +772,26 @@ def test_prepare_enriches_exact_linked_notice_without_creating_another_package(t
         != preview["revisionPreviews"][0]["revisionDigest"]
     )
     assert changed_notice["bundleDigest"] != preview["bundleDigest"]
+
+
+def test_notice_enrichment_clears_stale_plan_technical_weight_when_method_changes():
+    enriched = enrich_plan_package_with_notice_revision(
+        {
+            "symbol": "A",
+            "technicalWeight": 80,
+            "evaluationMethod": "Kết hợp giữa kỹ thuật và giá",
+        },
+        "IB2600000002",
+        {
+            "revisionId": "notice-rev-02",
+            "revisionNumber": "02",
+            "kind": "TBMT",
+            "evaluationMethod": "Giá đánh giá",
+            "technicalWeight": None,
+        },
+    )
+    assert enriched["evaluationMethod"] == "Giá đánh giá"
+    assert enriched["technicalWeight"] is None
 
 
 def test_plan_session_keeps_all_linked_notice_revisions_on_one_package_lineage(tmp_path):

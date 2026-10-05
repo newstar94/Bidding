@@ -10,6 +10,7 @@ import {
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { beginWorkspaceRender } from "../shared/workspaceRenderCache.js";
+import { formatVietnameseNumber, parseVietnameseNumber } from "../shared/formatters.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
 import {
   isProposedAwardPriceBelowHalf,
@@ -24,6 +25,13 @@ import { setJvData } from "./jvDataStore.js";
 
 const TECHNICAL_CASES = new Set(["TU_VAN", "1G2T_NO_LOT", "1G2T_WITH_LOT"]);
 const bidEvaluationCacheOwner = (pkg) => `bid-evaluation:${pkg?.id || "unknown"}`;
+
+function formatNumericDisplay(value, fallback = "") {
+  const formatted = formatVietnameseNumber(value);
+  if (formatted) return formatted;
+  const raw = String(value ?? "").trim();
+  return raw || fallback;
+}
 
 function durationText(value, fallback = "") {
   const raw = String(value || "").trim();
@@ -80,7 +88,7 @@ function buildIdentityCells({ pkg, bid, contractor }) {
 
 function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
   const bidPrice = bid.giaDuThau ? model.formatVND(bid.giaDuThau) : "";
-  const discount = bid.tyLeGiamGia !== void 0 ? model.formatVND(bid.tyLeGiamGia) : "0";
+  const discount = bid.tyLeGiamGia !== void 0 ? formatNumericDisplay(bid.tyLeGiamGia, "0") : "0";
   const discountedPrice = bid.giaSauGiamGia ? model.formatVND(bid.giaSauGiamGia) : "";
   const bidValidity = bid.hieuLucHsdt || "";
   const clarification = bid.lamRoTaiChinh || "";
@@ -92,7 +100,7 @@ function buildFinancialCells({ pkg, bid, model, presentation, rowReadOnly }) {
     : "";
   const combinedCells = presentation.showCombinedScore
     ? `
-      <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
+      <td><span>${escapeHtml(formatNumericDisplay(bid.danhGiaKyThuat, "--"))}</span></td>
       <td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>
     `
     : "";
@@ -131,7 +139,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, force
     if (rowReadOnly) {
       return `
         <td><span class="bf-money-display">${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : "--"}</span></td>
-        <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}</span></td>
+        <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? escapeHtml(formatNumericDisplay(bid.tyLeGiamGia, "0")) : "0"}</span></td>
         <td><span class="bf-money-display">${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : "--"}</span></td>
         ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly })}
         <td><span>${escapeHtml(bidValidity)}</span></td>
@@ -142,7 +150,7 @@ function buildTechnicalFacts({ pkg, bid, model, presentation, rowReadOnly, force
     }
     return `
       <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${bid.giaDuThau ? escapeHtml(model.formatVND(bid.giaDuThau)) : ""}"${forceDisabled ? " disabled" : ""}></td>
-      <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(model.formatVND(bid.tyLeGiamGia)) : "0"}" readonly></td>
+      <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? escapeHtml(formatNumericDisplay(bid.tyLeGiamGia, "0")) : "0"}" readonly></td>
       <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? escapeHtml(model.formatVND(bid.giaSauGiamGia)) : ""}" readonly></td>
       ${buildEvaluationPriceCells({ pkg, bid, model, rowReadOnly, disabled: forceDisabled ? " disabled" : "" })}
       <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bidValidity)}" readonly></td>
@@ -176,7 +184,7 @@ function readOnlyEvaluationCells({ bid, presentation }) {
     </td>
     <td><span>${escapeHtml(bid.lamRoNangLuc || "--")}</span></td>
     <td>
-      <span class="mt-dg-ky-thuat bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaKyThuat || "--")}</span>
+      <span class="mt-dg-ky-thuat bf-s-6e8bcfac8d">${escapeHtml(formatNumericDisplay(bid.danhGiaKyThuat, "--"))}</span>
       ${bid.nguyenNhanKhongDatKyThuat ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatKyThuat)}</div>` : ""}
     </td>
     <td><span>${escapeHtml(bid.lamRoKyThuat || "--")}</span></td>
@@ -196,8 +204,11 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
     ? "Nhập điểm kỹ thuật..."
     : "Điểm hoặc Đạt...");
   const technicalInputAttributes = technicalScoreRequired
-    ? 'type="number" inputmode="decimal" min="0" step="any" required'
+    ? 'type="text" inputmode="decimal" min="0" step="any" required'
     : 'type="text"';
+  const technicalValue = technicalScoreRequired
+    ? formatNumericDisplay(bid.danhGiaKyThuat)
+    : String(bid.danhGiaKyThuat || "");
   return `
     <td>
       <select class="form-control mt-dg-hop-le"${disabled} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
@@ -216,7 +227,7 @@ function editableEvaluationCells({ pkg, bid, presentation, forceDisabled }) {
     </td>
     <td><input type="text" class="form-control mt-lam-ro-nang-luc"${disabled} value="${escapeHtml(bid.lamRoNangLuc || "")}" placeholder="${waiting || "Nhập làm rõ năng lực..."}"></td>
     <td>
-      <input ${technicalInputAttributes} class="form-control mt-dg-ky-thuat"${disabled} value="${escapeHtml(bid.danhGiaKyThuat || "")}" placeholder="${technicalPlaceholder}" aria-label="${technicalScoreRequired ? "Điểm kỹ thuật" : "Đánh giá kỹ thuật"}">
+      <input ${technicalInputAttributes} class="form-control mt-dg-ky-thuat"${disabled} value="${escapeHtml(technicalValue)}" placeholder="${technicalPlaceholder}" aria-label="${technicalScoreRequired ? "Điểm kỹ thuật" : "Đánh giá kỹ thuật"}">
       <input type="text" class="form-control mt-reason-fail-kythuat bf-s-32fe8a23fe" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..."${disabled}>
     </td>
     <td><input type="text" class="form-control mt-lam-ro-ky-thuat"${disabled} value="${escapeHtml(bid.lamRoKyThuat || "")}" placeholder="${waiting || "Nhập làm rõ kỹ thuật..."}"></td>
@@ -250,7 +261,7 @@ function bindFinancialInputs({ row, model, onRankingChange }) {
   const security = row.querySelector(".mt-gia-tri-dam-bao");
   const recalculate = () => {
     const baseValue = model.parseVND(bidPrice?.value || "");
-    const discountValue = Number.parseFloat(String(discount?.value || "0").replace(/,/g, ".")) || 0;
+    const discountValue = parseVietnameseNumber(discount?.value || "0") || 0;
     const discountedPrice = row.querySelector(".mt-gia-sau-giam-gia");
     if (discountedPrice) {
       discountedPrice.value = model.formatVND(baseValue * (1 - discountValue / 100)) || "";
@@ -323,6 +334,11 @@ function bindRequiredTechnicalScore(row, pkg) {
   };
   input.addEventListener("input", updateValidity);
   input.addEventListener("change", updateValidity);
+  input.addEventListener("blur", () => {
+    const formatted = formatVietnameseNumber(input.value);
+    if (formatted) input.value = formatted;
+    updateValidity();
+  });
   updateValidity();
 }
 

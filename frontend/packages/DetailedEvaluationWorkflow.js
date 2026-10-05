@@ -39,8 +39,8 @@ export {
 
 export { collectActiveGroupRows, collectConfiguredDetailedEvaluationCriteria };
 
-export async function addDetailedEvaluationCriterion() {
-  return addDetailedEvaluationCriterionWithController(this);
+export async function addDetailedEvaluationCriterion(parentCriterionId = "") {
+  return addDetailedEvaluationCriterionWithController(this, parentCriterionId);
 }
 
 export async function setDetailedTechnicalEvaluationMethod(method) {
@@ -116,6 +116,7 @@ export async function renderDetailedEvaluation() {
     progress,
     warning,
     bidderGoodsMarkup,
+    editingCriterionIds: this._detailedEvaluationEditingCriteria?.get(state.draftKey) || new Set(),
   });
   bindDetailedEvaluationPanelController({
     appController: this,
@@ -126,7 +127,7 @@ export async function renderDetailedEvaluation() {
       render: () => this.renderDetailedEvaluation(),
       save: (options) => this.saveDetailedEvaluation(options),
       importExcel: (file) => importDetailedEvaluationExcel.call(this, file),
-      addCriterion: () => addDetailedEvaluationCriterion.call(this),
+      addCriterion: (parentCriterionId = "") => addDetailedEvaluationCriterion.call(this, parentCriterionId),
       removeCriterion: (criterionId) => removeDetailedEvaluationCriterion(this, criterionId),
       setTechnicalMethod: (method) => setDetailedTechnicalEvaluationMethod.call(this, method),
     },

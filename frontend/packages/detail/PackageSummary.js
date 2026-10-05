@@ -1,28 +1,5 @@
 import { escapeHtml } from "../../shared/view_helpers.js";
 import { evaluationMethodDisplay } from "../evaluationMethodRules.js";
-import { derivePackageNextStepGuide } from "../PackageNextStepGuide.js";
-
-function renderNextStepGuide(pkg) {
-  const guide = derivePackageNextStepGuide(pkg);
-  const targetLabels = {
-    opening: "Mở tab dữ liệu nhà thầu",
-    opening_tech: "Mở tab mở E-HSĐXKT",
-    eval_tech: "Mở tab đánh giá kỹ thuật",
-    result: "Mở tab kết quả",
-  };
-  const targetLabel = targetLabels[guide.targetTab];
-  const missing = guide.missing.length
-    ? `<p class="package-next-step-missing"><strong>Dữ liệu còn thiếu để hiển thị đầy đủ:</strong> ${guide.missing.map(escapeHtml).join(", ")}</p>`
-    : "";
-  return `<section class="package-next-step-guide" aria-labelledby="package-next-step-heading">
-    <h4 id="package-next-step-heading">Bước tiếp theo</h4>
-    <p><strong>Trạng thái hiện tại:</strong> ${escapeHtml(guide.status)}</p>
-    <p>${escapeHtml(guide.action)}</p>
-    ${missing}
-    ${targetLabel ? `<button type="button" class="btn btn-link package-next-step-link" data-bf-action="switch-package-tab" data-tab="${escapeHtml(guide.targetTab)}">${escapeHtml(targetLabel)}</button>` : ""}
-    <small>Nguồn: ${guide.source}. Đây là hướng dẫn theo dữ liệu hiện có, không phải kết luận pháp lý.</small>
-  </section>`;
-}
 
 export function renderPackageSummary({
   pkg,
@@ -58,6 +35,5 @@ export function renderPackageSummary({
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
       <span>${escapeHtml(lockedMessage)}</span>
     </div>` : ""}
-    ${renderNextStepGuide(pkg)}
   </div>`;
 }

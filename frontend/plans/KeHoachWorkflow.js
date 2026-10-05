@@ -19,7 +19,6 @@ import {
   persistAndSync,
   refreshRecordBeforeDelete,
   refreshRecordBeforeMutation,
-  showLocalSavePending,
 } from "../shared/MutationService.js";
 import { restoreRecordSnapshot } from "../shared/recordSnapshot.js";
 import { getHolidays } from "../shared/runtimeState.js";
@@ -1499,6 +1498,9 @@ function planPublicationTimeChanged(backupKh, nextPlan) {
 
 export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   const planId = document.getElementById("breakdown-plan-id").value;
+  const closeLoadingBeforeFeedback = async () => {
+    await loadingHandle?.close?.();
+  };
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
   const activeVersionDraft = findPlanVersionDraftSession(this.model, planId);
@@ -1693,6 +1695,7 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
         return stalePlanFinalizeResult();
       }
       const error = earlyFinalizeOutcome?.error;
+      await closeLoadingBeforeFeedback();
       await this.view.customAlert(
         "Chưa thể hoàn tất kế hoạch",
         error?.message || "Máy chủ chưa xác nhận toàn bộ chuỗi phiên bản. Bản nháp vẫn được giữ trên thiết bị.",
@@ -1709,6 +1712,7 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
       if (finalizeIsCurrent()) {
         const message = completedFinalizeOutcome.error?.message
           || "Bản nháp đã được giữ trên thiết bị và sẽ có thể đồng bộ lại.";
+        await closeLoadingBeforeFeedback();
         if (typeof this.view.showToast === "function") {
           this.view.showToast("Chưa đồng bộ kế hoạch", message, "warning");
         } else {
@@ -1739,7 +1743,6 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
         ],
         afterPersist: () => {
           localTableRefresh = renderVersionTables();
-          showLocalSavePending(this.view, "Kế hoạch");
           return localTableRefresh;
         },
       });
@@ -1759,6 +1762,7 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
       deferPlanTableRender: true,
     });
   }
+  await closeLoadingBeforeFeedback();
   if (
     canonicalResult?.canonicalStatus
     && canonicalResult.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED

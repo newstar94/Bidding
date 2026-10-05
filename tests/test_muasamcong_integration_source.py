@@ -310,7 +310,7 @@ def test_ib2600079201_consulting_method_three_uses_ehsmt_form():
             "bidField": "TV",
             "bidoInvBiddingDTO": [{
                 "formCode": "BD.CG.02.0113",
-                "formValue": json.dumps({"method": "3", "cost": None}),
+                "formValue": json.dumps({"method": "3", "txtK": 80, "txtG": None}),
             }],
         },
         notice_no="IB2600079201",
@@ -320,6 +320,28 @@ def test_ib2600079201_consulting_method_three_uses_ehsmt_form():
 
     assert revision["field"] == "Tư vấn"
     assert revision["evaluationMethod"] == "Kết hợp giữa kỹ thuật và giá"
+    assert revision["technicalWeight"] == 80
+
+
+def test_notice_draft_maps_combined_txtk_to_technical_weight():
+    revision = normalize_notice_revision(
+        {
+            "notifyNo": "IB2600000011",
+            "notifyId": "notice-00",
+            "bidName": "Combined package",
+            "bidField": "HH",
+            "bidoInvBiddingDTO": [{
+                "formCode": "BD.CG.02.0113",
+                "formValue": json.dumps({"method": "3", "txtK": "80", "txtG": "20"}),
+            }],
+        },
+        notice_no="IB2600000011", revision_id="notice-00", revision_number="00",
+    )
+    draft = map_package_canonical_to_draft(
+        "MUASAMCONG", "IB2600000011", revision, revision,
+    )
+    assert draft["phuongPhapDanhGia"] == "Kết hợp giữa kỹ thuật và giá"
+    assert draft["trongSoKyThuat"] == 80
 
 
 def test_method_two_uses_nested_plan_detail_field_when_notice_field_is_missing():
@@ -908,6 +930,40 @@ def test_plan_package_normalizes_bid_validity_and_additional_purchase_items():
         "tyLe": 0.3,
         "giaTriUocTinh": 123_360_000,
     }]
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    (("3", 80), ("Kết hợp giữa kỹ thuật và giá", 80), ("2", None), (None, None)),
+)
+def test_plan_package_maps_txtk_only_for_combined_evaluation_method(method, expected):
+    raw = fixture("plan", "plan_revision_v1.json")
+    raw["bidpPlanDetailToProjectList"][0].update({
+        "bidField": "HH",
+        "method": method,
+        "txtK": 80,
+    })
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+    assert revision["packages"][0]["technicalWeight"] == expected
+
+
+def test_plan_package_reads_combined_method_and_txtk_from_embedded_form_value():
+    raw = fixture("plan", "plan_revision_v1.json")
+    raw["bidpPlanDetailToProjectList"][0]["formValue"] = json.dumps({
+        "method": "3", "txtK": "80", "txtG": "20",
+    })
+    revision = normalize_plan_revision(
+        raw,
+        family_no="PL2600000001",
+        revision_id="plan-01",
+        revision_number="01",
+    )
+    assert revision["packages"][0]["technicalWeight"] == 80
 
 
 def test_notice_bid_validity_period_maps_without_embedded_form_fallback():

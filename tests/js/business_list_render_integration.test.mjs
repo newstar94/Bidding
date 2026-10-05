@@ -718,6 +718,36 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
       assert.equal(await page.locator(`#${type}-row-selection`).isVisible(), true);
       assert.equal(await page.locator(`#${type}-row-selection [data-list-selection-action='delete']`).count(), 0, "employee row selection does not introduce a delete action");
     }
+    // Package codes are optional while a package is still in preparation.
+    // Searching by the Vietnamese package name must continue to work when
+    // that optional field is null in a legacy or imported row.
+    await page.evaluate(async () => {
+      const { model, view } = window.listFixture;
+      const source = model.state.goithau[0] || {};
+      model.state.activerole = "manager";
+      model.state.goithau = [{
+        ...source,
+        id: "goithau-dieu-tra",
+        rootId: "goithau-dieu-tra",
+        phienBan: "00",
+        isLatest: 1,
+        maGoiThau: null,
+        tenGoiThau: "Điều tra hiện trạng",
+      }];
+      model.currentPage.goithau = 1;
+      model.pageSize = 10;
+      document.querySelectorAll(".tab-pane").forEach((pane) => pane.classList.toggle("active", pane.id === "tab-goithau"));
+      document.getElementById("search-goithau").value = "Điều tra";
+      await view.renderGoiThauTable();
+    });
+    assert.equal(await page.locator("#goithau-table tbody [data-list-select-row]").count(), 1, "Vietnamese package-name search must include rows with no package code");
+    assert.match(await page.locator("#goithau-table tbody td:nth-child(3)").first().textContent(), /Điều tra hiện trạng/u);
+    await page.evaluate(async () => {
+      const { view } = window.listFixture;
+      document.getElementById("search-goithau").value = "Dieu tra";
+      await view.renderGoiThauTable();
+    });
+    assert.equal(await page.locator("#goithau-table tbody [data-list-select-row]").count(), 1, "Vietnamese package-name search must also match an unaccented query");
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

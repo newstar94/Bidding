@@ -1,3 +1,5 @@
+import { parseVietnameseNumber } from "../shared/formatters.js";
+
 export const EVALUATION_METHOD_CODES = Object.freeze({
   LOWEST_PRICE: "LOWEST_PRICE",
   EVALUATED_PRICE: "EVALUATED_PRICE",
@@ -96,11 +98,8 @@ export function requiresTechnicalScoreInput(packageOrMethod) {
 }
 
 export function parseTechnicalScore(value) {
-  if (!["string", "number"].includes(typeof value)) return null;
-  const normalized = String(value ?? "").trim().replace(/,/g, ".");
-  if (!normalized || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const score = Number(normalized);
-  return Number.isFinite(score) && score >= 0 ? score : null;
+  const score = parseVietnameseNumber(value);
+  return score !== null && score >= 0 ? score : null;
 }
 
 export function validateTechnicalScore(value, { required = false } = {}) {

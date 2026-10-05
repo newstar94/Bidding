@@ -1,5 +1,11 @@
 import { escapeHtml } from "../shared/view_helpers.js";
-import { getCachedPaginatedRecords, loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
+import {
+  getCachedPaginatedRecords,
+  loadPaginatedRecords,
+  normalizedSearchText,
+  paginateRecords,
+  sortRecords,
+} from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
@@ -222,7 +228,7 @@ export async function renderGoiThauTable() {
     if (chipText) chipText.textContent = this.model.dashboardAlertFilterLabel
       ? `Đang lọc theo cảnh báo: ${this.model.dashboardAlertFilterLabel}` : "";
   }
-  const searchVal = document.getElementById("search-goithau").value.toLowerCase();
+  const searchVal = normalizedSearchText(document.getElementById("search-goithau").value);
   const filterTrangThai = document.getElementById("filter-goithau-trangthai").value;
   const filterHinhThuc = document.getElementById("filter-goithau-hinhthuc").value;
   const filters = getBusinessListFilters(this.model, "goithau");
@@ -270,9 +276,9 @@ export async function renderGoiThauTable() {
   } else {
     const latestPackages = this.model.getFilteredGoiThau();
     const filtered = latestPackages.filter((gt) => {
-      const assigneeSearch = assigneeLabelsForTarget(this.model, gt.id, "goithau").join(" ").toLowerCase();
-      const matchesSearch = gt.maGoiThau.toLowerCase().includes(searchVal)
-        || gt.tenGoiThau.toLowerCase().includes(searchVal)
+      const assigneeSearch = normalizedSearchText(assigneeLabelsForTarget(this.model, gt.id, "goithau").join(" "));
+      const matchesSearch = normalizedSearchText(gt.maGoiThau).includes(searchVal)
+        || normalizedSearchText(gt.tenGoiThau).includes(searchVal)
         || assigneeSearch.includes(searchVal);
       const matchesTrangThai = !filterTrangThai || resolvePackageResultStatus(gt) === filterTrangThai;
       const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;

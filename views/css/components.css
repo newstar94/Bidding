@@ -3561,7 +3561,3 @@ body.app-long-task-is-busy {
 @media (max-width: 760px) {
   .conflict-center-values { grid-template-columns: 1fr; }
 }
-.package-next-step-guide { margin-top: 1rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-subtle); }
-.package-next-step-guide h4 { margin: 0 0 .45rem; }
-.package-next-step-guide p { margin: .25rem 0; }
-.package-next-step-guide small { color: var(--ink-muted); }

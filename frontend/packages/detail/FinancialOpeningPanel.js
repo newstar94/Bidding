@@ -1,4 +1,5 @@
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
+import { formatVietnameseNumber, parseVietnameseNumber } from "../../shared/formatters.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { beginWorkspaceRender } from "../../shared/workspaceRenderCache.js";
 import { renderBidContractorLink } from "./BidderTable.js";
@@ -44,7 +45,7 @@ export function renderFinancialOpeningTable({
   const isConsulting = pkg?.linhVuc === "Tư vấn";
   const rows = bids.map((bid) => {
     const bidPrice = model.formatVND(bid.giaDuThau) || "";
-    const discount = String(bid.tyLeGiamGia || 0).replace(".", ",");
+    const discount = formatVietnameseNumber(bid.tyLeGiamGia ?? 0) || "0";
     const finalPrice = model.formatVND(bid.giaSauGiamGia) || "";
     const validity = bid.hieuLucHsdt || "";
     const identity = escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"));
@@ -55,7 +56,9 @@ export function renderFinancialOpeningTable({
       { owner: cacheOwner },
     );
     const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td class="package-lot-name-cell">${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";
-    const scoreCell = hasTechnicalScore ? `<td class="text-center">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : "";
+    const scoreCell = hasTechnicalScore
+      ? `<td class="text-center">${escapeHtml(formatVietnameseNumber(bid.danhGiaKyThuat) || bid.danhGiaKyThuat || "--")}</td>`
+      : "";
     if (isReadOnly) {
       const validityText = validity ? `${validity}${String(validity).includes("ngày") ? "" : " ngày"}` : "--";
       return `<tr>${lotCells}<td>${identity}</td><td>${contractor}</td>${scoreCell}<td><span class="bf-money-display">${escapeHtml(bidPrice || "--")}</span></td><td class="text-right">${escapeHtml(discount)}</td><td><span class="bf-money-display">${escapeHtml(finalPrice || "--")}</span></td>${isConsulting ? `<td>${escapeHtml(validityText)}</td>` : ""}</tr>`;
@@ -91,7 +94,7 @@ export function bindFinancialOpeningRows(container, { parseVND, formatVND } = {}
     const finalPriceInput = row.querySelector(".op-gia-sau-giam");
     const recalculate = () => {
       const base = parseVND(priceInput?.value || "");
-      const percent = Number.parseFloat(String(discountInput?.value || "0").replace(/,/g, ".")) || 0;
+      const percent = parseVietnameseNumber(discountInput?.value || "0") || 0;
       if (finalPriceInput) finalPriceInput.value = formatVND(base * (1 - percent / 100)) || "";
     };
     const clearInvalid = (input) => {
@@ -115,9 +118,8 @@ export function bindFinancialOpeningRows(container, { parseVND, formatVND } = {}
 }
 
 function parseDiscount(value) {
-  const normalized = String(value ?? "").trim().replace(/,/g, ".");
-  if (!normalized || !/^-?\d+(?:\.\d+)?$/.test(normalized)) return Number.NaN;
-  return Number.parseFloat(normalized);
+  const parsed = parseVietnameseNumber(value);
+  return parsed === null ? Number.NaN : parsed;
 }
 
 function parseValidityDays(value) {
@@ -171,7 +173,7 @@ export function collectFinancialOpeningRows(rows, { parseVND } = {}) {
   return (rows || []).map((row) => {
     const validityInput = row.querySelector(".op-hieu-luc-hsdt");
     const giaDuThau = parseVND(row.querySelector(".op-gia-du-thau")?.value || "");
-    const tyLeGiamGia = Number.parseFloat(String(row.querySelector(".op-ty-le-giam")?.value || "0").replace(/,/g, ".")) || 0;
+    const tyLeGiamGia = parseVietnameseNumber(row.querySelector(".op-ty-le-giam")?.value || "0") || 0;
     return {
       id: row.getAttribute("data-opening-bid-id"),
       giaDuThau,

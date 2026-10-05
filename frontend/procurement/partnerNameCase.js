@@ -8,6 +8,7 @@ const PHRASES = [
   "Trung tâm", "Y tế", "Bệnh viện", "Ban quản lý", "Dự án", "Ủy ban nhân dân",
   "Liên danh", "Chi nhánh", "Khu vực", "Thành phố", "Thị xã", "Thị trấn",
 ];
+const LOWERCASE_CONNECTORS = ["và"];
 const VIETNAMESE_VOWELS = new Set("aeiouyàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ".split(""));
 
 function isShortInitialism(word) {
@@ -32,6 +33,12 @@ export function normalizeProcurementPartnerName(value) {
   });
   for (const phrase of PHRASES) {
     result = result.replace(new RegExp(`(?<![\\p{L}\\p{M}])${phrase}(?![\\p{L}\\p{M}])`, "giu"), phrase);
+  }
+  for (const connector of LOWERCASE_CONNECTORS) {
+    result = result.replace(
+      new RegExp(`(?<![\\p{L}\\p{M}])${connector}(?![\\p{L}\\p{M}])`, "giu"),
+      connector,
+    );
   }
   return result;
 }

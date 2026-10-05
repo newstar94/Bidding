@@ -10,7 +10,7 @@ function applySessionAwareLinks(session) {
   const destination = signedIn ? WORKSPACE_PATH : LOGIN_PATH;
   const appLabel = signedIn
     ? "Mở không gian làm việc"
-    : trialAvailable ? "Dùng thử miễn phí" : "Bắt đầu sử dụng";
+    : trialAvailable ? "Bắt đầu sử dụng" : "Bắt đầu sử dụng";
 
   document.querySelectorAll("[data-landing-app-link]").forEach((link) => {
     link.href = destination;
@@ -22,7 +22,7 @@ function applySessionAwareLinks(session) {
   if (headerLabel) {
     headerLabel.textContent = signedIn
       ? "Mở ứng dụng"
-      : trialAvailable ? "Dùng thử miễn phí" : "Bắt đầu";
+      : trialAvailable ? "Bắt đầu sử dụng" : "Bắt đầu sử dụng";
   }
   document.querySelectorAll("[data-landing-auth-link]").forEach((link) => {
     link.href = destination;

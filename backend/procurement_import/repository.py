@@ -152,7 +152,8 @@ class ProcurementImportRepository:
                       package.trang_thai, package.thoi_gian_dong_thau,
                       package.thoi_gian_mo_thau,
                       package.yeu_cau_tham_dinh_hsmt,
-                      package.yeu_cau_tham_dinh_hsmt_code
+                      package.yeu_cau_tham_dinh_hsmt_code,
+                      package.trong_so_ky_thuat
                  FROM goi_thau AS package
             LEFT JOIN procurement_source_binding AS binding
                    ON binding.organization_id = package.organization_id
@@ -177,6 +178,7 @@ class ProcurementImportRepository:
                 "executionPeriod": row[14], "capitalDetail": row[15],
                 "field": row[16], "selectionDuration": row[17],
                 "selectionStart": row[18], "evaluationMethod": row[19],
+                "technicalWeight": row[33],
             }
             if "noticeLink" in source_fields:
                 local_notice = dict(source_fields.get("noticeLink") or {})
@@ -606,6 +608,7 @@ class ProcurementImportRepository:
                    thoi_gian_thuc_hien, nguon_von, linh_vuc,
                    thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc,
                    phuong_phap_danh_gia, thoi_gian_dang_tai,
+                   trong_so_ky_thuat,
                    thoi_gian_dong_thau, thoi_gian_mo_thau,
                    thoi_gian_mo_ehsdxtc, so_quyet_dinh,
                    ngay_quyet_dinh, gia_tri_dam_bao_du_thau,
@@ -613,7 +616,7 @@ class ProcurementImportRepository:
                    yeu_cau_tham_dinh_hsmt_code,
                    trang_thai, row_version, sync_version)
                VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
             (
                 row["id"], organization_id,
                 None if row["rootId"] == row["id"] else row["rootId"],
@@ -627,6 +630,7 @@ class ProcurementImportRepository:
                 fields.get("field"), fields.get("selectionDuration"),
                 fields.get("selectionStart"), fields.get("evaluationMethod"),
                 normalize_datetime_value(notice_fields.get("publishedAt")),
+                fields.get("technicalWeight"),
                 normalize_datetime_value(notice_fields.get("bidClosingAt")),
                 None,
                 None,
@@ -697,6 +701,7 @@ class ProcurementImportRepository:
             "trong_nuoc_quoc_te", "thoi_gian_thuc_hien", "nguon_von",
             "linh_vuc", "thoi_gian_to_chuc", "thoi_gian_bat_dau_to_chuc",
             "phuong_phap_danh_gia", "thoi_gian_dang_tai",
+            "trong_so_ky_thuat",
             "thoi_gian_dong_thau", "so_quyet_dinh",
             "ngay_quyet_dinh", "gia_tri_dam_bao_du_thau",
         }

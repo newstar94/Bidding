@@ -775,6 +775,9 @@ class MuaSamCongProcurementSource:
                     **({
                         "evaluationMethod": package.get("evaluationMethod"),
                     } if package.get("evaluationMethod") not in (None, "") else {}),
+                    **({
+                        "technicalWeight": package.get("technicalWeight"),
+                    } if package.get("technicalWeight") is not None else {}),
                     "bidForm": package.get("selectionForm"),
                     "bidMode": package.get("selectionMode"),
                     "contractType": package.get("contractType"),
@@ -948,7 +951,7 @@ class MuaSamCongProcurementSource:
                     }
         return {
             "schemaVersion": "biddingflow-procurement-canonical-v2",
-            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
+            "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v8",
             "kind": "PLAN",
             "canonicalCode": family_no,
             "revisions": revisions,
@@ -995,6 +998,9 @@ class MuaSamCongProcurementSource:
             **({
                 "evaluationMethod": revision.get("evaluationMethod"),
             } if revision.get("evaluationMethod") not in (None, "") else {}),
+            **({
+                "technicalWeight": revision.get("technicalWeight"),
+            } if revision.get("technicalWeight") is not None else {}),
             "bidForm": revision.get("selectionForm"),
             "bidMode": revision.get("selectionMode"),
             "processApply": revision.get("processApply"),
@@ -1254,7 +1260,7 @@ class MuaSamCongProcurementSource:
                 ]
                 canonical = {
                     "schemaVersion": "biddingflow-procurement-canonical-v2",
-                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v7",
+                    "mappingSchemaVersion": "biddingflow-muasamcong-mapping-v8",
                     "kind": normalized_kind,
                     "canonicalCode": family_no,
                     "revisions": selected,
@@ -1369,6 +1375,9 @@ class MuaSamCongProcurementSource:
                     **({
                         "evaluationMethod": revision.get("evaluationMethod"),
                     } if revision.get("evaluationMethod") not in (None, "") else {}),
+                    **({
+                        "technicalWeight": revision.get("technicalWeight"),
+                    } if revision.get("technicalWeight") is not None else {}),
                     "bidForm": revision.get("selectionForm"),
                     "bidMode": revision.get("selectionMode"),
                     "processApply": revision.get("processApply"),

@@ -2,6 +2,65 @@ export function formatCurrency(value) {
   const formatted = formatVND(value);
   return formatted ? `${formatted} ₫` : "--";
 }
+
+/**
+ * Parse a number entered/displayed with Vietnamese separators.
+ *
+ * Persisted values remain ordinary JavaScript numbers. This helper accepts
+ * both the canonical dot-decimal form and the Vietnamese display form so UI
+ * controls can be localized without changing API or storage contracts.
+ */
+export function parseVietnameseNumber(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const raw = value.trim().replace(/\s/g, "");
+  if (!raw || raw === "-") return null;
+  if (!/^[+-]?[\d.,]+$/.test(raw)) return null;
+
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+  let normalized = raw;
+  if (lastComma >= 0 && lastDot >= 0) {
+    // The last separator is the decimal separator; the other one is grouping.
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const groupingSeparator = decimalSeparator === "," ? "." : ",";
+    normalized = raw.replaceAll(groupingSeparator, "");
+    if (decimalSeparator === ",") normalized = normalized.replace(",", ".");
+  } else if (lastComma >= 0) {
+    normalized = raw.replaceAll(",", ".");
+  } else if ((raw.match(/\./g) || []).length > 1
+    || /^[+-]?\d{1,3}(?:\.\d{3})+$/.test(raw)) {
+    normalized = raw.replaceAll(".", "");
+  }
+  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Format a number using Vietnamese grouping and decimal separators.
+ * The default preserves the available numeric precision; callers can pass a
+ * lower maximum when a business display is intentionally fixed-width.
+ */
+export function formatVietnameseNumber(value, {
+  minimumFractionDigits = 0,
+  maximumFractionDigits = 20,
+} = {}) {
+  const parsed = parseVietnameseNumber(value);
+  if (parsed === null) return "";
+  try {
+    return new Intl.NumberFormat("vi-VN", {
+      useGrouping: true,
+      minimumFractionDigits,
+      maximumFractionDigits,
+    }).format(parsed);
+  } catch {
+    return "";
+  }
+}
+
 export function formatVND(value) {
   if (value === null || value === void 0) return "";
   let str = value.toString().trim();

@@ -307,8 +307,13 @@ def _paginate_records_blocking(request):
                 expression = " || ' ' || ".join(
                     f"COALESCE({column}, '')" for column in columns
                 )
+                # PostgreSQL's locale-aware ``lower`` does not fold every
+                # Vietnamese uppercase code point (for example ``Đ``).  Keep
+                # the accent-insensitive projection, then use ILIKE so a
+                # lowercased client query still matches a title beginning
+                # with an uppercase Vietnamese letter.
                 base_search = (
-                    f"bf_unaccent(lower({expression})) LIKE bf_unaccent(lower(?))"
+                    f"bf_unaccent(lower({expression})) ILIKE bf_unaccent(lower(?))"
                 )
                 if table_name in {"goi_thau", "hop_dong"}:
                     target_type = (
@@ -331,7 +336,7 @@ def _paginate_records_blocking(request):
                                   COALESCE(member_search.ten_nhan_su, '') || ' ' ||
                                   COALESCE(account_search.ho_ten, '') || ' ' ||
                                   COALESCE(account_search.email, '')
-                              )) LIKE bf_unaccent(lower(?))
+                              )) ILIKE bf_unaccent(lower(?))
                         )
                     )"""
                 query_parts.append(base_search)

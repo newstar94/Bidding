@@ -1,3 +1,5 @@
+import { parseVietnameseNumber } from "../shared/formatters.js";
+
 function uniqueText(values) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
     .join("; ");
@@ -30,8 +32,8 @@ export function aggregateDetailedEvaluation({
     .filter(Boolean);
   const numericScores = groupRows
     .map((row) => row.diem)
-    .filter((value) => value !== null && value !== "" && Number.isFinite(Number(value)))
-    .map(Number);
+    .map(parseVietnameseNumber)
+    .filter((value) => value !== null && Number.isFinite(value));
   return {
     status,
     score: numericScores.length > 0
@@ -82,13 +84,14 @@ export function aggregateDetailedEvaluationReport({
   }
   const scores = results
     .map((result) => result.score)
-    .filter((value) => value !== null && Number.isFinite(Number(value)));
+    .map(parseVietnameseNumber)
+    .filter((value) => value !== null && Number.isFinite(value));
   return {
     byGroup,
     overall: {
       status,
       score: scores.length > 0
-        ? scores.reduce((total, value) => total + Number(value), 0)
+        ? scores.reduce((total, value) => total + value, 0)
         : null,
       clarification: uniqueText(results.map((result) => result.clarification)),
     },

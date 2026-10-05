@@ -352,6 +352,23 @@ test("package preview maps the normalized E-HSMT evaluation method", () => {
 });
 
 
+test("package preview maps the E-HSMT technical percentage", () => {
+  const technicalWeight = control("", ["80"]);
+  const rows = buildComparisonRows("PACKAGE", {
+    technicalWeight: 80,
+  }, {
+    getControl: (id) => (
+      id === "gt-trongsokythuat" ? technicalWeight : null
+    ),
+  });
+  const mapped = rows.find((row) => row.field === "technicalWeight");
+
+  assert.equal(mapped.controlId, "gt-trongsokythuat");
+  assert.equal(mapped.draftValue, "80");
+  assert.equal(mapped.apply, true);
+});
+
+
 test("inline package lookup fills bid guarantee without saving", async () => {
   const previousDocument = globalThis.document;
   const identity = { value: "package-a" };

@@ -57,6 +57,7 @@ import {
   enhanceTableRowPagination,
   paginateTableRows,
 } from "../shared/TablePagination.js";
+import { countOpeningContractors } from "../procurement/OpeningImportWizard.js";
 export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
 export { buildOpeningActionState, buildOpeningContractorIdentity } from "./bidProcessOpeningState.js";
 
@@ -122,6 +123,9 @@ export function renderMoThauPanel() {
     const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
     const is1G1T = gt.phuongThucLuaChon === "Một giai đoạn một túi hồ sơ";
     const hasPhanLo = gt.phanLo === "Có";
+    const bids = this.model.state.thongtinmothau.filter(
+      (b) => String(b.goiThauId) === String(gtId),
+    );
     const stepKey = is1G2T ? "opening_tech" : "opening";
     const hasSavedOpeningData = this.model.state.thongtinmothau.some((b) => String(b.goiThauId) === String(gt.id));
     const openingActionState = buildOpeningActionState({
@@ -154,7 +158,10 @@ export function renderMoThauPanel() {
     bidContainer.classList.remove("is-hidden");
     const titleEl = getOpeningElement("mothau-table-title");
     if (titleEl) {
-      titleEl.textContent = isDirectOrSpecial ? "Danh sách Nhà thầu" : "Danh sách Nhà thầu tham dự & Nộp hồ sơ";
+      const bidderCount = countOpeningContractors(bids);
+      titleEl.textContent = isDirectOrSpecial
+        ? `Danh sách ${bidderCount} Nhà thầu`
+        : `Danh sách ${bidderCount} Nhà thầu tham dự & Nộp hồ sơ`;
     }
     const addBidBtn2 = getOpeningElement("btn-mothau-add-bid");
     const saveBtn2 = getOpeningElement("btn-mothau-save");
@@ -309,7 +316,6 @@ export function renderMoThauPanel() {
     }
     thead.innerHTML = trustedHTML(theadHtml);
     tbody.innerHTML = trustedHTML("");
-    const bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     bids.sort((a, b) => {
       const codeA = String(a.maPhanLo || "").toLowerCase();
       const codeB = String(b.maPhanLo || "").toLowerCase();

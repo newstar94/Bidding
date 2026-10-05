@@ -296,6 +296,7 @@ SOURCE_OWNED_PACKAGE_FIELDS = (
     "selectionForm",
     "selectionMode",
     "evaluationMethod",
+    "technicalWeight",
     "selectionDuration",
     "selectionStart",
     "contractType",

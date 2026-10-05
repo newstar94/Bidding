@@ -98,5 +98,5 @@ test("technical score conclusion updates its total before saving", () => {
   updateDetailedEvaluationConclusion(dom.root, report, criteria, "technical");
 
   assert.equal(dom.badge.textContent, "Đạt");
-  assert.equal(dom.score.textContent, "Tổng điểm: 78.5");
+  assert.equal(dom.score.textContent, "Tổng điểm: 78,5");
 });

@@ -362,10 +362,14 @@ export function collectOpeningBidsFromRows({
       violationStatus: row._violationStatus || "NOT_CHECKED",
       danhGiaHopLe: isDirectOrSpecial ? "Đạt" : "",
       danhGiaNangLuc: isDirectOrSpecial ? "Đạt" : "",
-      danhGiaKyThuat: isDirectOrSpecial ? "Đạt" : "",
       danhGiaKetLuan: isDirectOrSpecial ? "Đạt" : "",
       danhGiaTaiChinh: isDirectOrSpecial ? "Xếp hạng 1" : ""
     };
+    // Opening E-HSĐXKT only records bidder and tender data.  The technical
+    // score is entered during evaluation; sending an empty field here makes
+    // the server mistake this opening mutation for an incomplete combined
+    // technical/price evaluation and reject the whole save.
+    if (isDirectOrSpecial) bid.danhGiaKyThuat = "Đạt";
     const currentBid = (model.state.thongtinmothau || []).find(
       (item) => String(item.id) === String(id)
     );

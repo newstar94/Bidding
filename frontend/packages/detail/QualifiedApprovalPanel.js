@@ -3,6 +3,7 @@ import { setFieldFeedback } from "../../app/formStateUtils.js";
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { beginWorkspaceRender } from "../../shared/workspaceRenderCache.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { formatVietnameseNumber } from "../../shared/formatters.js";
 import { isCompetitiveQuotationPackage } from "../packageAppraisal.js";
 import { saveQualifiedApproval } from "../packageEvaluationProgress.js";
 import {
@@ -223,7 +224,7 @@ function renderQualifiedTable(view, state) {
               `${pkg.id}_qualified_${bid.id}`,
               { owner: qualifiedApprovalCacheOwner(pkg) },
             )}</td>
-            ${hasTechnicalScore ? `<td class="bf-s-63dbf5319a">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : ""}
+            ${hasTechnicalScore ? `<td class="bf-s-63dbf5319a">${escapeHtml(formatVietnameseNumber(bid.danhGiaKyThuat) || bid.danhGiaKyThuat || "--")}</td>` : ""}
             <td class="bf-s-63dbf5319a"><span class="badge badge-success bf-s-391321b535">Đạt kỹ thuật</span></td>
           </tr>`).join("")}</tbody>
       </table>

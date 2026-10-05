@@ -1,5 +1,6 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { formatVietnameseNumber } from "../../shared/formatters.js";
 import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
@@ -31,6 +32,13 @@ const TECHNICAL_METHOD_LABELS = Object.freeze({
   pass_fail: "Kỹ thuật: Đạt/Không đạt",
   score: "Kỹ thuật: Chấm điểm",
 });
+
+function formatScoreDisplay(value, fallback = "") {
+  const formatted = formatVietnameseNumber(value);
+  if (formatted) return formatted;
+  const raw = String(value ?? "").trim();
+  return raw || fallback;
+}
 
 function joinContextParts(parts) {
   return parts.map((part) => String(part || "").trim()).filter(Boolean).join(" — ");
@@ -170,10 +178,10 @@ function renderResultControl(criterion, row, disabled) {
     return `<textarea class="form-control" data-detailed-field="nhanXet" aria-label="Kết quả ${label}" ${attributes}>${escapeHtml(row.nhanXet || "")}</textarea>`;
   }
   if (criterion.resultType === "number") {
-    return `<input type="number" min="0" class="form-control" data-detailed-field="diem" aria-label="Giá trị ${label}" value="${escapeHtml(row.diem ?? "")}" ${attributes}>`;
+    return `<input type="text" inputmode="decimal" min="0" class="form-control" data-detailed-field="diem" aria-label="Giá trị ${label}" value="${escapeHtml(formatScoreDisplay(row.diem))}" ${attributes}>`;
   }
   const score = criterion.resultType === "score"
-    ? `<input type="number" min="0" ${criterion.maxScore != null ? `max="${escapeHtml(criterion.maxScore)}"` : ""} class="form-control" data-detailed-field="diem" aria-label="Điểm ${label}" value="${escapeHtml(row.diem ?? "")}" ${attributes} placeholder="Điểm">`
+    ? `<input type="text" inputmode="decimal" min="0" ${criterion.maxScore != null ? `max="${escapeHtml(formatScoreDisplay(criterion.maxScore))}"` : ""} class="form-control" data-detailed-field="diem" aria-label="Điểm ${label}" value="${escapeHtml(formatScoreDisplay(row.diem))}" ${attributes} placeholder="Điểm">`
     : "";
   return `<select class="form-control" data-detailed-field="ketQua" aria-label="Kết quả ${label}" ${attributes}>${resultOptions(row.ketQua || "pending")}</select>${score}`;
 }
@@ -243,13 +251,13 @@ export function renderDetailedEvaluationConclusionFooter({
       </tfoot>`;
   }
   const score = expert.score !== null
-    ? `<span class="detailed-evaluation-conclusion-score">Tổng điểm: ${escapeHtml(expert.score)}</span>`
+    ? `<span class="detailed-evaluation-conclusion-score">Tổng điểm: ${escapeHtml(formatScoreDisplay(expert.score))}</span>`
     : "";
   return `
     <tfoot>
       <tr class="detailed-evaluation-conclusion-row" data-detailed-conclusion-row>
         <th scope="row" colspan="2">Kết luận</th>
-        <td colspan="4">
+        <td colspan="${activeGroup === "technical" ? 5 : 4}">
           <div class="detailed-evaluation-conclusion-value">${conclusionBadge(expertStatus)}${score}</div>
         </td>
       </tr>
@@ -265,8 +273,8 @@ function renderNotesCells(row, attributes) {
     </td>`;
 }
 
-function renderCriterionStt(criterion, index, disabled) {
-  if (criterion.isCustom !== true || criterion.templateId === "bc-dgct-thuoc-v1") {
+function renderCriterionStt(criterion, index, disabled, { immutable = false } = {}) {
+  if (immutable || criterion.isCustom !== true || criterion.templateId === "bc-dgct-thuoc-v1") {
     return `<strong class="detailed-evaluation-stt">${escapeHtml(criterion.stt || index + 1)}</strong>`;
   }
   return `<input type="text" class="form-control detailed-evaluation-config-stt"
@@ -278,28 +286,59 @@ function renderCriterionStt(criterion, index, disabled) {
 
 function renderCriterionName(criterion, disabled = false, {
   showRequirement = true,
+  technicalActions = false,
+  editing = false,
 } = {}) {
   if (criterion.templateId === "bc-dgct-thuoc-v1") showRequirement = false;
   const required = criterion.source === "muasamcong" || criterion.required === false
     ? ""
     : ' <span class="required" aria-label="Bắt buộc">*</span>';
-  if (criterion.isCustom === true) {
+  // Technical criteria use the same compact display as the capacity and
+  // experience groups until the user explicitly enters edit mode. Keeping
+  // the optional requirement as a field while editing means an empty value
+  // remains addable without leaving a blank placeholder in the report.
+  const editingFields = criterion.isCustom === true && !technicalActions
+    || technicalActions && editing;
+  if (editingFields) {
+    const attributes = disabled ? "disabled" : technicalActions && !editing ? "readonly" : "";
+    const requirementText = String(criterion.requirement || "").trim();
     return `
       <div class="detailed-evaluation-config-criterion">
         <textarea class="form-control" data-detailed-config-field="name"
           aria-label="Nội dung tiêu chí đánh giá" placeholder="Nhập nội dung tiêu chí đánh giá"
-          ${disabled ? "disabled" : ""}>${escapeHtml(criterion.name || "")}</textarea>
-        ${disabled ? "" : `<button type="button" class="btn btn-text detailed-evaluation-remove-criterion"
+          ${attributes}>${escapeHtml(criterion.name || "")}</textarea>
+        ${disabled || technicalActions ? "" : `<button type="button" class="btn btn-text detailed-evaluation-remove-criterion"
           data-detailed-remove-criterion="${escapeHtml(criterion.id)}"
           aria-label="Xóa tiêu chí" title="Xóa dòng"><i data-lucide="trash-2" aria-hidden="true"></i></button>`}
       </div>
       ${showRequirement ? `<textarea class="form-control detailed-evaluation-config-requirement"
         data-detailed-config-field="requirement" aria-label="Yêu cầu của tiêu chí"
-        placeholder="Yêu cầu của tiêu chí (nếu có)" ${disabled ? "disabled" : ""}>${escapeHtml(criterion.requirement || "")}</textarea>` : ""}`;
+        placeholder="Yêu cầu của tiêu chí (nếu có)" ${attributes}>${escapeHtml(requirementText)}</textarea>` : ""}`;
   }
+  const requirementText = String(criterion.requirement || "").trim();
   return `
     <div>${escapeHtml(criterion.name || "")}${required}</div>
-    ${criterion.requirement ? `<div class="detailed-evaluation-requirement"><strong>Yêu cầu:</strong> ${escapeHtml(criterion.requirement)}</div>` : ""}`;
+    ${showRequirement && requirementText ? `<div class="detailed-evaluation-requirement"><strong>Yêu cầu:</strong> ${escapeHtml(requirementText)}</div>` : ""}`;
+}
+
+function renderTechnicalCriterionActions(criterion, disabled, editing) {
+  const id = escapeHtml(criterion.id);
+  const editLabel = editing ? "Hoàn tất sửa tiêu chí" : "Sửa tiêu chí";
+  return `<td class="detailed-evaluation-criterion-actions-cell">${disabled ? "" : `
+    <div class="detailed-evaluation-criterion-actions" role="group" aria-label="Thao tác tiêu chí ${escapeHtml(criterion.stt || "")}">
+      <button type="button" class="btn btn-text detailed-evaluation-criterion-action detailed-evaluation-criterion-action-add"
+        data-detailed-add-child-criterion="${id}" title="Thêm tiêu chí con" aria-label="Thêm tiêu chí con">
+        <i data-lucide="plus" aria-hidden="true"></i>
+      </button>
+      <button type="button" class="btn btn-text detailed-evaluation-criterion-action detailed-evaluation-criterion-action-edit ${editing ? "detailed-evaluation-criterion-action-save" : ""}"
+        data-detailed-edit-criterion="${id}" title="${editLabel}" aria-label="${editLabel}" aria-pressed="${editing ? "true" : "false"}">
+        <i data-lucide="${editing ? "check" : "pencil"}" aria-hidden="true"></i>
+      </button>
+      <button type="button" class="btn btn-text detailed-evaluation-criterion-action detailed-evaluation-criterion-action-remove detailed-evaluation-remove-criterion"
+        data-detailed-remove-criterion="${id}" title="Xóa tiêu chí" aria-label="Xóa tiêu chí">
+        <i data-lucide="trash-2" aria-hidden="true"></i>
+      </button>
+    </div>`}</td>`;
 }
 
 function renderBinaryEvaluationRow({ criterion, row, index, activeGroup, disabled }) {
@@ -342,7 +381,7 @@ function renderBinaryEvaluationRow({ criterion, row, index, activeGroup, disable
     </tr>`;
 }
 
-export function renderTechnicalPassFailRow({ criterion, row, index, disabled }) {
+export function renderTechnicalPassFailRow({ criterion, row, index, disabled, editing = false }) {
   const selected = row.ketQua || "pending";
   const structural = criterion.isSection === true;
   const derived = criterion.hasChildren === true;
@@ -373,34 +412,36 @@ export function renderTechnicalPassFailRow({ criterion, row, index, disabled }) 
       )).join("");
   return `
     <tr class="${structural ? "detailed-evaluation-section-row" : ""} ${derived ? "detailed-evaluation-parent-row" : ""}" data-detailed-criterion-id="${escapeHtml(criterion.id)}">
-      <td>${renderCriterionStt(criterion, index, disabled)}</td>
-      <td class="text-wrap">${renderCriterionName(criterion, disabled)}</td>
+      <td>${renderCriterionStt(criterion, index, disabled, { immutable: true })}</td>
+      <td class="text-wrap">${renderCriterionName(criterion, disabled, { technicalActions: true, editing })}</td>
       ${resultCells}
       ${structural ? "<td></td>" : renderNotesCells(row, disabled ? "disabled" : "")}
+      ${renderTechnicalCriterionActions(criterion, disabled, editing)}
     </tr>`;
 }
 
-function renderScoreLimitInput(criterion, field, label, disabled) {
+function renderScoreLimitInput(criterion, field, label, disabled, editing) {
   const value = criterion[field];
-  return `<input type="number" min="0" step="any" inputmode="decimal" class="form-control detailed-evaluation-score-limit"
+  return `<input type="text" min="0" step="any" inputmode="decimal" class="form-control detailed-evaluation-score-limit"
     data-detailed-config-field="${field}"
     aria-label="${escapeHtml(`${label}: ${criterion.name || criterion.code || "tiêu chí"}`)}"
-    value="${escapeHtml(value ?? "")}" ${disabled ? "disabled" : ""} placeholder="0">`;
+    value="${escapeHtml(formatScoreDisplay(value))}" ${disabled ? "disabled" : !editing ? "readonly" : ""} placeholder="0">`;
 }
 
-export function renderTechnicalScoreRow({ criterion, row, index, disabled }) {
+export function renderTechnicalScoreRow({ criterion, row, index, disabled, editing = false }) {
   const attributes = disabled ? "disabled" : "";
   return `
     <tr data-detailed-criterion-id="${escapeHtml(criterion.id)}">
-      <td>${renderCriterionStt(criterion, index, disabled)}</td>
-      <td class="text-wrap">${renderCriterionName(criterion, disabled)}</td>
-      <td>${renderScoreLimitInput(criterion, "maxScore", "Điểm tối đa", disabled)}</td>
-      <td>${renderScoreLimitInput(criterion, "minScore", "Điểm tối thiểu", disabled)}</td>
-      <td><input type="number" min="0" step="any" inputmode="decimal" ${criterion.maxScore != null ? `max="${escapeHtml(criterion.maxScore)}"` : ""}
+      <td>${renderCriterionStt(criterion, index, disabled, { immutable: true })}</td>
+      <td class="text-wrap">${renderCriterionName(criterion, disabled, { technicalActions: true, editing })}</td>
+      <td>${renderScoreLimitInput(criterion, "maxScore", "Điểm tối đa", disabled, editing)}</td>
+      <td>${renderScoreLimitInput(criterion, "minScore", "Điểm tối thiểu", disabled, editing)}</td>
+      <td><input type="text" min="0" step="any" inputmode="decimal" ${criterion.maxScore != null ? `max="${escapeHtml(formatScoreDisplay(criterion.maxScore))}"` : ""}
         class="form-control detailed-evaluation-score-input" data-detailed-field="diem"
         aria-label="Điểm đánh giá: ${escapeHtml(criterion.name || criterion.code || "tiêu chí") }"
-        value="${escapeHtml(row.diem ?? "")}" ${attributes} placeholder="Điểm"></td>
+        value="${escapeHtml(formatScoreDisplay(row.diem))}" ${attributes} placeholder="Điểm"></td>
       ${renderNotesCells(row, attributes)}
+      ${renderTechnicalCriterionActions(criterion, disabled, editing)}
     </tr>`;
 }
 
@@ -413,6 +454,7 @@ export function renderTechnicalEvaluationHeader(method) {
           <th rowspan="2">Nội dung đánh giá</th>
           <th colspan="3">Kết quả đánh giá của chuyên gia</th>
           <th rowspan="2">Nhận xét của chuyên gia</th>
+          <th rowspan="2">Thao tác</th>
         </tr>
         <tr class="detailed-evaluation-header-subgroup">
           <th>Đạt</th><th>Chấp nhận được</th><th>Không đạt</th>
@@ -427,6 +469,7 @@ export function renderTechnicalEvaluationHeader(method) {
           <th rowspan="2">Nội dung đánh giá</th>
           <th colspan="2">Mức điểm quy định trong E-HSMT</th>
           <th colspan="2">Kết quả đánh giá của chuyên gia</th>
+          <th rowspan="2">Thao tác</th>
         </tr>
         <tr class="detailed-evaluation-header-subgroup">
           <th>Điểm tối đa</th><th>Điểm tối thiểu</th><th>Điểm đánh giá</th><th>Nhận xét của chuyên gia</th>
@@ -499,6 +542,27 @@ export function scheduleDetailedEvaluationRowBatches({
   });
 }
 
+export function renderDetailedEvaluationActionButtons({
+  activeGroup = "",
+  selectedBid = null,
+  readOnly = false,
+  report = null,
+  canReopen = false,
+  bidderGoodsLayout = false,
+  technicalMethodRequired = false,
+} = {}) {
+  if (bidderGoodsLayout || technicalMethodRequired || !selectedBid) return "";
+  if (readOnly) {
+    return report?.trangThai === "completed" && canReopen
+      ? '<button type="button" class="btn btn-primary" id="btn-detailed-evaluation-reopen">Chỉnh sửa báo cáo chi tiết</button>'
+      : "";
+  }
+  const completeGroupButton = activeGroup === "financial"
+    ? ""
+    : '<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-complete-group" data-no-icon>Hoàn thành tab</button>';
+  return `<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-save-draft" data-no-icon>Lưu bản nháp</button>${completeGroupButton}<button type="button" class="btn btn-primary" id="btn-detailed-evaluation-complete-report" data-no-icon>Hoàn thành đánh giá nhà thầu</button>`;
+}
+
 export function renderDetailedEvaluationPanel(container, {
   pkg = null,
   bids = [],
@@ -514,6 +578,7 @@ export function renderDetailedEvaluationPanel(container, {
   canReopen = false,
   warning = "",
   bidderGoodsMarkup = "",
+  editingCriterionIds = new Set(),
 } = {}) {
   if (!container) return;
   const rows = new Map(
@@ -560,10 +625,10 @@ export function renderDetailedEvaluationPanel(container, {
       });
     }
     if (technicalPassFailLayout) {
-      return renderTechnicalPassFailRow({ criterion, row, index, disabled });
+      return renderTechnicalPassFailRow({ criterion, row, index, disabled, editing: editingCriterionIds.has(String(criterion.id)) });
     }
     if (technicalScoreLayout) {
-      return renderTechnicalScoreRow({ criterion, row, index, disabled });
+      return renderTechnicalScoreRow({ criterion, row, index, disabled, editing: editingCriterionIds.has(String(criterion.id)) });
     }
     if (financialLayout) {
       const attributes = disabled ? "disabled" : "";
@@ -584,7 +649,7 @@ export function renderDetailedEvaluationPanel(container, {
         <td class="text-wrap">${renderCriterionName(criterion, disabled)}</td>
         <td><textarea class="form-control" data-detailed-field="noiDungHsdt" aria-label="Nội dung HSDT cho ${escapeHtml(criterion.name || criterion.code || "tiêu chí")}" ${attributes}>${escapeHtml(row.noiDungHsdt || "")}</textarea></td>
         <td><div class="detailed-evaluation-field-stack detailed-evaluation-result-stack">${renderResultControl(criterion, row, disabled)}</div></td>
-        <td class="detailed-evaluation-score">${criterion.resultType === "score" ? `<span>Tối đa: ${escapeHtml(criterion.maxScore ?? "--")}</span>${criterion.minScore != null ? `<span>Tối thiểu: ${escapeHtml(criterion.minScore)}</span>` : ""}` : escapeHtml(row.diem ?? "--")}</td>
+        <td class="detailed-evaluation-score">${criterion.resultType === "score" ? `<span>Tối đa: ${escapeHtml(formatScoreDisplay(criterion.maxScore, "--"))}</span>${criterion.minScore != null ? `<span>Tối thiểu: ${escapeHtml(formatScoreDisplay(criterion.minScore))}</span>` : ""}` : escapeHtml(formatScoreDisplay(row.diem, "--"))}</td>
         ${renderNotesCells(row, attributes)}
       </tr>`;
   });
@@ -618,13 +683,15 @@ export function renderDetailedEvaluationPanel(container, {
       </button>
     </div>
   ` : "";
-  const actionButtons = bidderGoodsLayout || technicalMethodRequired ? "" : !selectedBid
-    ? ""
-    : readOnly
-      ? report?.trangThai === "completed" && canReopen
-        ? '<button type="button" class="btn btn-primary" id="btn-detailed-evaluation-reopen">Chỉnh sửa báo cáo chi tiết</button>'
-        : ""
-      : '<button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-save-draft" data-no-icon>Lưu bản nháp</button><button type="button" class="btn btn-secondary" id="btn-detailed-evaluation-complete-group" data-no-icon>Hoàn thành tab</button><button type="button" class="btn btn-primary" id="btn-detailed-evaluation-complete-report" data-no-icon>Hoàn thành đánh giá nhà thầu</button>';
+  const actionButtons = renderDetailedEvaluationActionButtons({
+    activeGroup,
+    selectedBid,
+    readOnly,
+    report,
+    canReopen,
+    bidderGoodsLayout,
+    technicalMethodRequired,
+  });
   const excelImportControl = !bidderGoodsLayout && selectedBid && !readOnly
     ? `<div class="detailed-evaluation-tab-actions">${technicalMethodRequired ? "" : '<button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-add-row"><i data-lucide="plus" aria-hidden="true"></i> Thêm dòng</button>'}<input type="file" id="detailed-evaluation-excel-input" accept=".xlsx,.xls" hidden><button type="button" class="btn btn-outline compact-action" id="btn-detailed-evaluation-import-excel"><i data-lucide="upload" aria-hidden="true"></i> Nhập từ Excel</button></div>`
     : "";
@@ -660,6 +727,7 @@ export function renderDetailedEvaluationPanel(container, {
       <col class="detailed-evaluation-col-criterion">
       <col class="detailed-evaluation-col-mark"><col class="detailed-evaluation-col-mark"><col class="detailed-evaluation-col-mark">
       <col class="detailed-evaluation-col-comment">
+      <col class="detailed-evaluation-col-actions">
     </colgroup>`;
   const technicalScoreColgroup = `
     <colgroup>
@@ -667,6 +735,7 @@ export function renderDetailedEvaluationPanel(container, {
       <col class="detailed-evaluation-col-criterion">
       <col class="detailed-evaluation-col-score-max"><col class="detailed-evaluation-col-score-min">
       <col class="detailed-evaluation-col-score"><col class="detailed-evaluation-col-comment">
+      <col class="detailed-evaluation-col-actions">
     </colgroup>`;
   const binaryHeader = `
     <thead>

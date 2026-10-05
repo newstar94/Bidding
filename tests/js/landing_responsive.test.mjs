@@ -198,6 +198,57 @@ test("old mobile header keeps a usable primary action", async () => {
   }
 });
 
+test("Vietnamese landing headlines keep readable word and line spacing", async () => {
+  const failures = [];
+  for (const width of [390, 768, 1440]) {
+    const { context, page } = await loadLanding(width);
+    try {
+      await page.evaluate(() => document.fonts.ready);
+      for (const id of ["landing-hero-title", "landing-proof-title", "landing-cta-title"]) {
+        const title = page.locator(`#${id}`);
+        await title.scrollIntoViewIfNeeded();
+        const metrics = await title.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const fontSize = parseFloat(style.fontSize);
+          const spaces = [];
+          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            const text = walker.currentNode;
+            for (let i = 1; i < text.length - 1; i += 1) {
+              if (text.textContent[i] !== " ") continue;
+              const range = document.createRange();
+              range.setStart(text, i);
+              range.setEnd(text, i + 1);
+              const box = range.getBoundingClientRect();
+              // A space collapsed by wrapping has no visible advance.
+              if (box.width > 0.5) spaces.push(box.width / fontSize);
+            }
+          }
+          return {
+            letterSpacing: style.letterSpacing === "normal" ? 0 : parseFloat(style.letterSpacing),
+            lineHeight: parseFloat(style.lineHeight) / fontSize,
+            minimumWordSpace: Math.min(...spaces),
+            hasSpaces: spaces.length > 0,
+            clientWidth: document.documentElement.clientWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+          };
+        });
+        if (process.env.LANDING_QA_CAPTURE_DIR && [390, 1440].includes(width)) {
+          const outputDirectory = join(root, process.env.LANDING_QA_CAPTURE_DIR);
+          await mkdir(outputDirectory, { recursive: true });
+          await title.screenshot({ path: join(outputDirectory, `headline-${width}-${id}.png`) });
+        }
+        if (metrics.letterSpacing < -1.2 || metrics.lineHeight < 0.95
+          || !metrics.hasSpaces || metrics.minimumWordSpace < 0.13
+          || metrics.scrollWidth > metrics.clientWidth + 1) {
+          failures.push({ width, id, ...metrics });
+        }
+      }
+    } finally { await context.close(); }
+  }
+  assert.deepEqual(failures, [], `crowded Vietnamese headlines: ${JSON.stringify(failures)}`);
+});
+
 test('historical landing icons render strokes and native scrolling remains available', async () => {
   const { context, page } = await loadLanding(390, 844);
   try {

@@ -1,7 +1,8 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { calculateRankings } from "../shared/BiddingCalculations.js";
-import { parseVND } from "../shared/formatters.js";
+import { formatVietnameseNumber, parseVietnameseNumber, parseVND } from "../shared/formatters.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
+import { parseTechnicalScore } from "./evaluationMethodRules.js";
 import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
@@ -16,8 +17,7 @@ function controlValue(control, fallback = "") {
 
 function isNumeric(value) {
   if (!value) return false;
-  const normalized = String(value).trim().replace(/,/g, ".");
-  return normalized !== "" && !Number.isNaN(Number(normalized)) && Number.isFinite(Number(normalized));
+  return parseVietnameseNumber(value) !== null;
 }
 
 function setControlsDisabled(row, disabled) {
@@ -76,6 +76,7 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
   const validity = controlValue(validityInput, bid.danhGiaHopLe);
   const capacity = controlValue(capacityInput, bid.danhGiaNangLuc);
   const technical = controlValue(technicalInput, bid.danhGiaKyThuat);
+  const technicalScore = parseTechnicalScore(technical);
   const conclusionCell = row.querySelector(".mt-ketluan-cell");
   const conclusion = conclusionSelect
     ? conclusionSelect.value
@@ -95,7 +96,7 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
   const discountInput = row.querySelector(".mt-ty-le-giam-gia");
   const price = priceInput ? parseVND(priceInput.value) ?? 0 : bid.giaDuThau || 0;
   const discount = discountInput
-    ? Number.parseFloat(String(discountInput.value || "").replace(/,/g, ".")) || 0
+    ? parseVietnameseNumber(discountInput.value || "") || 0
     : bid.tyLeGiamGia || 0;
   const rankingPriceInput = row.querySelector(".mt-gia-xep-hang");
   const proposedAwardPriceInput = row.querySelector(".mt-gia-de-nghi-trung-thau");
@@ -112,7 +113,7 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
     ...bid,
     danhGiaHopLe: validity,
     danhGiaNangLuc: capacity,
-    danhGiaKyThuat: technical,
+    danhGiaKyThuat: technicalScore === null ? technical : String(technicalScore),
     danhGiaKetLuan: conclusion,
     giaDuThau: price,
     tyLeGiamGia: discount,
@@ -139,7 +140,9 @@ function renderRanking(row, bid, rankings, scores) {
   }
   const scoreCell = row.querySelector(".mt-combined-score");
   if (scoreCell) {
-    scoreCell.textContent = Number.isFinite(score) && score > 0 ? score.toFixed(2) : "--";
+    scoreCell.textContent = Number.isFinite(score) && score > 0
+      ? formatVietnameseNumber(score, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : "--";
   }
   const badge = row.querySelector(".mt-ketluan-cell")?.querySelector(".badge");
   if (badge?.textContent.trim().startsWith("Đạt")) {

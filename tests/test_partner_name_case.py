@@ -17,3 +17,9 @@ def test_mixed_case_and_source_spacing_are_preserved():
 def test_short_consonant_only_tokens_are_normalized_as_acronyms():
     assert normalize_procurement_partner_name("Công ty Hdn ABC") == "Công ty HDN ABC"
     assert normalize_procurement_partner_name("Công ty Ltd") == "Công ty LTD"
+
+
+def test_conjunction_va_is_lowercase_in_all_uppercase_names():
+    assert normalize_procurement_partner_name(
+        "CÔNG TY CỔ PHẦN ĐẦU TƯ PHÁT TRIỂN CÔNG NGHỆ TÀI NGUYÊN VÀ MÔI TRƯỜNG VIỆT NAM"
+    ) == "Công ty Cổ phần Đầu tư Phát triển Công Nghệ Tài Nguyên và Môi Trường Việt Nam"

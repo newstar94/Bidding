@@ -65,7 +65,7 @@ test("combined technical-price summary uses a required numeric technical score i
     hinhThucLuaChon: "Đấu thầu rộng rãi",
     phuongPhapDanhGia: "Kết hợp kỹ thuật và giá",
   }), true);
-  assert.equal(input.type, "number");
+  assert.equal(input.type, "text");
   assert.equal(input.value, "");
   assert.equal(input.placeholder, "Nhập điểm kỹ thuật...");
   assert.equal(input.attributes.get("required"), "true");

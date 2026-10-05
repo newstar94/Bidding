@@ -27,6 +27,10 @@ import {
 } from "./bidderGoodsSelectors.js";
 import { validateBidderGoodsSubmission } from "./bidderGoodsValidation.js";
 import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
+import {
+  parseTechnicalScore,
+  requiresTechnicalScoreInput,
+} from "./evaluationMethodRules.js";
 
 export function shouldValidateBidderGoodsOnCompletion(state, completeReport) {
   return Boolean(completeReport)
@@ -179,6 +183,72 @@ function applyInvalidatedGoodsProjection(model, bid, rows) {
     model.state.hanghoaduthaunhathau || []
   ).map((row) => changedById.get(String(row.id)) || row));
   bid.trangThaiTinhUuDai = "stale";
+}
+
+function technicalScoreFromReport(report, criteria) {
+  return aggregateDetailedEvaluationReport({
+    report,
+    criteria,
+    groups: ["technical"],
+  }).byGroup.technical?.score ?? null;
+}
+
+function prepareDetailedEvaluationBidMutation({
+  state,
+  report,
+  configuredCriteria,
+  evaluationGroups,
+  activeGroup,
+  completeGroup,
+  completeReport,
+} = {}) {
+  let completionSummaryCheckpoint = null;
+  if (completeGroup && activeGroup === "technical" && requiresTechnicalScoreInput(state.pkg)) {
+    const score = technicalScoreFromReport(report, configuredCriteria);
+    if (score === null) {
+      return {
+        error: "Vui lòng nhập điểm kỹ thuật bằng số trước khi hoàn thành tab đánh giá.",
+      };
+    }
+    completionSummaryCheckpoint = {
+      danhGiaKyThuat: {
+        present: Object.prototype.hasOwnProperty.call(state.bid, "danhGiaKyThuat"),
+        value: state.bid.danhGiaKyThuat,
+      },
+    };
+    state.bid.danhGiaKyThuat = String(score);
+  }
+  if (completeReport) {
+    const projected = applyDetailedEvaluationProjection(
+      state.bid,
+      report,
+      configuredCriteria,
+      evaluationGroups,
+      state.pkg,
+    );
+    if (requiresTechnicalScoreInput(state.pkg)
+      && parseTechnicalScore(projected.danhGiaKyThuat) === null) {
+      return {
+        error: "Vui lòng nhập điểm kỹ thuật bằng số trước khi hoàn thành đánh giá nhà thầu.",
+      };
+    }
+    completionSummaryCheckpoint = Object.fromEntries(Object.entries(projected)
+      .filter(([field, value]) => !Object.is(state.bid[field], value))
+      .map(([field]) => [field, {
+        present: Object.prototype.hasOwnProperty.call(state.bid, field),
+        value: state.bid[field],
+      }]));
+    Object.assign(state.bid, projected);
+  }
+  const bidUpsert = { ...state.bid };
+  if (requiresTechnicalScoreInput(state.pkg)
+    && parseTechnicalScore(bidUpsert.danhGiaKyThuat) === null) {
+    // A draft may still contain the legacy categorical result from the opening
+    // record. Omit it from this mutation until the detailed numeric score is
+    // completed; the server then preserves the existing canonical value.
+    delete bidUpsert.danhGiaKyThuat;
+  }
+  return { bidUpsert, completionSummaryCheckpoint };
 }
 
 export async function executeDetailedEvaluationSave({
@@ -376,17 +446,27 @@ export async function executeDetailedEvaluationSave({
     state.context,
   );
   state.bid.baoCaoDanhGiaChiTietList = allReports;
-  let completionSummaryCheckpoint = null;
-  if (completeReport) {
-    const projected = applyDetailedEvaluationProjection(state.bid, report, configuredCriteria, evaluationGroups, state.pkg);
-    completionSummaryCheckpoint = Object.fromEntries(Object.entries(projected)
-      .filter(([field, value]) => !Object.is(state.bid[field], value))
-      .map(([field]) => [field, { present: Object.prototype.hasOwnProperty.call(state.bid, field), value: state.bid[field] }]));
-    Object.assign(state.bid, projected);
+  const preparedMutation = prepareDetailedEvaluationBidMutation({
+    state,
+    report,
+    configuredCriteria,
+    evaluationGroups,
+    activeGroup,
+    completeGroup,
+    completeReport,
+  });
+  if (preparedMutation.error) {
+    await appController.view.customAlert(
+      "Chưa thể hoàn thành đánh giá",
+      preparedMutation.error,
+      "alert-triangle",
+    );
+    return false;
   }
+  const { bidUpsert, completionSummaryCheckpoint } = preparedMutation;
   const result = await commitDetailedChanges(appController, commit, {
     goithau: [state.pkg],
-    thongtinmothau: [state.bid],
+    thongtinmothau: [bidUpsert],
     ...(invalidatedBidderGoods ? { hanghoaduthaunhathau: changedBidderGoods } : {}),
   }, bases, boundaryChecked);
   if (!result?.ok) {

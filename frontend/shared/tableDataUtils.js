@@ -231,7 +231,7 @@ const PAGINATED_DATE_FIELDS = Object.freeze({
   hopdong: "ngayKy",
 });
 
-function normalizedSearchText(value) {
+export function normalizedSearchText(value) {
   return String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

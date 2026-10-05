@@ -234,7 +234,7 @@ test("marks pass/fail technical text invalid when importing a combined evaluatio
 
 test("combined evaluation renders a required numeric technical-score control", () => {
   const source = fs.readFileSync("frontend/packages/BidEvaluationRowRenderer.js", "utf8");
-  assert.match(source, /type="number" inputmode="decimal" min="0" step="any" required/);
+  assert.match(source, /type="text" inputmode="decimal" min="0" step="any" required/);
   assert.match(source, /requiresTechnicalScoreInput\(pkg\)/);
 });
 

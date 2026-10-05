@@ -117,6 +117,7 @@ _NOTICE_MATERIAL_FIELDS = (
     "actualOpeningAt",
     "financialActualOpeningAt",
     "bidGuaranteeVnd",
+    "technicalWeight",
     "approvalDecisionNo",
     "approvalDecisionDate",
 )
@@ -150,6 +151,7 @@ def _package_notice_material_snapshot(package):
                 "status", "statusForNotify", "publishedAt", "bidClosingAt",
                 "bidOpeningAt", "actualOpeningAt", "financialActualOpeningAt",
                 "bidGuaranteeVnd", "approvalDecisionNo", "approvalDecisionDate",
+                "technicalWeight",
                 "field", "selectionForm", "selectionMode", "contractType",
                 "onlineMode", "domesticOrInternational", "priceVnd",
                 "capitalDetail", "executionPeriod",
@@ -304,8 +306,14 @@ class ProcurementNoticeReconciler:
             "bidGuaranteeVnd", "approvalDecisionNo",
             "approvalDecisionDate", "actualOpeningAt",
             "financialActualOpeningAt",
+            "technicalWeight",
         ):
-            if notice.get(field) not in (None, ""):
+            if field == "technicalWeight" and field in notice:
+                # This field is coupled to the source evaluation method.  Keep
+                # an explicit null so a later non-combined revision clears an
+                # older method-3 percentage instead of retaining stale data.
+                source_fields[field] = deepcopy(notice.get(field))
+            elif notice.get(field) not in (None, ""):
                 source_fields[field] = deepcopy(notice[field])
         source_fields["noticeLink"] = {
             "state": "LINKED", "noticeNo": notice_no,

@@ -132,7 +132,7 @@ function inheritedTechnicalScore(sourceOpening, sourcePackage) {
     .map((row) => parseTechnicalScore(row?.diem))
     .filter((score) => score !== null);
   if (numericRows.length) {
-    const total = numericRows.reduce((sum, score) => sum + Number(score), 0);
+    const total = numericRows.reduce((sum, score) => sum + score, 0);
     return String(total);
   }
   const reportScore = parseTechnicalScore(
