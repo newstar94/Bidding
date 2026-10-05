@@ -4,6 +4,8 @@ import test from "node:test";
 import { executeDetailedEvaluationSave } from "../../frontend/packages/DetailedEvaluationSaveWorkflow.js";
 import { detailedEvaluationAutosaveFor } from "../../frontend/packages/DetailedEvaluationDraftAutosave.js";
 import { resolveDetailedEvaluationState } from "../../frontend/packages/DetailedEvaluationState.js";
+import { importDetailedEvaluationExcel } from "../../frontend/packages/DetailedEvaluationWorkflow.js";
+import { excelParseWorkerClient } from "../../frontend/documents/ExcelParseWorkerClient.js";
 
 for (const failDraftRemoval of [false, true]) {
   test(`row conflict renders canonical report, criteria and method when draft removal ${failDraftRemoval ? "fails" : "succeeds"}`, async () => {
@@ -88,7 +90,7 @@ for (const failDraftRemoval of [false, true]) {
     assert.equal(controller._detailedEvaluationCriteriaOverrides.has("other:single"), true);
     assert.equal(controller._technicalEvaluationMethodDrafts.has("other:single"), true);
     assert.equal(controller._detailedEvaluationDrafts.has("other:bid:single"), true);
-    assert.equal(controller._detailedEvaluationDirty, false);
+    assert.equal(Boolean(controller._detailedEvaluationDirty), false);
     assert.equal(alerts.length, 0);
     assert.equal(toasts.length, failDraftRemoval ? 1 : 0);
     if (failDraftRemoval) assert.equal(toasts[0][2], "warning");
@@ -353,4 +355,147 @@ test("combined technical draft omits a legacy categorical technical result", asy
 
   assert.equal(result, true);
   assert.equal(Object.prototype.hasOwnProperty.call(committedBid, "danhGiaKyThuat"), false);
+});
+
+test("stale Excel import cancels after switching contractor before the parser returns", async () => {
+  const criterion = {
+    id: "validity",
+    stt: "1",
+    name: "Tính hợp lệ",
+    group: "validity",
+    resultType: "pass_fail",
+    required: true,
+    source: "custom",
+  };
+  const pkg = {
+    id: "pkg-stale-import",
+    linhVuc: "Phi tư vấn",
+    phuongThucLuaChon: "Một giai đoạn một túi hồ sơ",
+    danhGiaHsdtMetadata: JSON.stringify({
+      criteria: [criterion],
+      technicalEvaluationMethod: "pass_fail",
+    }),
+  };
+  const makeReport = (id, note) => ({
+    id,
+    loaiVong: "single",
+    trangThai: "draft",
+    chiTietList: [{
+      id: `row-${id}`,
+      tieuChiDanhGiaId: criterion.id,
+      ketQua: "pass",
+      nhanXet: note,
+      diem: null,
+    }],
+    extension: {
+      completedGroups: ["validity", "capacity", "technical"],
+      groupResults: { validity: "Đạt", capacity: "Đạt", technical: "Đạt" },
+    },
+  });
+  const bidA = {
+    id: "bid-a-stale-import",
+    goiThauId: pkg.id,
+    tenNhaThau: "Nhà thầu A",
+    baoCaoDanhGiaChiTietList: [makeReport("report-a-stale-import", "Existing A")],
+  };
+  const bidB = {
+    id: "bid-b-stale-import",
+    goiThauId: pkg.id,
+    tenNhaThau: "Nhà thầu B",
+    baoCaoDanhGiaChiTietList: [makeReport("report-b-stale-import", "Existing B")],
+  };
+  const storage = new Map();
+  const persisted = [];
+  const alerts = [];
+  const renders = [];
+  const root = { querySelector: () => null, querySelectorAll: () => [] };
+  const controller = {
+    selectedEvaluationBidId: bidA.id,
+    selectedDetailedEvaluationTab: "validity",
+    view: {
+      getActiveElement(id) {
+        if (id === "danhgiahsdt-goithau-select") return { value: pkg.id };
+        if (id === "danhgiahsdt-detail-view") return root;
+        return null;
+      },
+      customAlert: async (...args) => alerts.push(args),
+    },
+    model: {
+      workspaceStorage: {
+        getItem: (key) => storage.get(key) || null,
+        setItem: (key, value) => storage.set(key, value),
+        removeItem: (key) => storage.delete(key),
+      },
+      state: {
+        goithau: [pkg],
+        thongtinmothau: [bidA, bidB],
+        hanghoaduthaunhathau: [],
+      },
+      hasPermission: () => true,
+      getWorkspaceToken: () => "workspace-stale-import",
+      isWorkspaceCurrent: () => true,
+      assertStorageTablesWritable() {},
+      commitLocalMutation() {},
+      async persistChanges(table, changes) {
+        persisted.push({ table, ...structuredClone(changes) });
+      },
+      async autoSync() {
+        return { ok: true };
+      },
+    },
+    async renderDetailedEvaluation() {
+      renders.push(this.selectedEvaluationBidId);
+    },
+  };
+  resolveDetailedEvaluationState(controller);
+
+  let resolveParser;
+  let parserEntered;
+  const parserReady = new Promise((resolve) => {
+    parserEntered = resolve;
+  });
+  const originalParse = excelParseWorkerClient.parse;
+  excelParseWorkerClient.parse = async () => {
+    parserEntered();
+    return new Promise((resolve) => {
+      resolveParser = resolve;
+    });
+  };
+  const file = {
+    name: "stale-import.xls",
+    size: 8,
+    async arrayBuffer() {
+      return new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).buffer;
+    },
+  };
+  try {
+    const importing = importDetailedEvaluationExcel.call(controller, file);
+    await parserReady;
+    controller.selectedEvaluationBidId = bidB.id;
+    resolveDetailedEvaluationState(controller);
+    resolveParser([
+      {
+        name: "Sheet1",
+        rows: [["STT", "Kết quả", "Nhận xét"], ["1", "Đạt", "Imported A"]],
+      },
+    ]);
+
+    assert.equal(await importing, false);
+    assert.equal(persisted.length, 0);
+    assert.equal(
+      controller._detailedEvaluationDrafts.get(`${pkg.id}:${bidA.id}:single`)
+        ?.chiTietList?.[0]?.nhanXet,
+      "Existing A",
+    );
+    assert.equal(
+      controller._detailedEvaluationDrafts.get(`${pkg.id}:${bidB.id}:single`)
+        ?.chiTietList?.[0]?.nhanXet,
+      "Existing B",
+    );
+    assert.notEqual(controller._detailedEvaluationDirty, true);
+    assert.deepEqual(renders, []);
+    assert.deepEqual(alerts, []);
+  } finally {
+    excelParseWorkerClient.parse = originalParse;
+  }
 });

@@ -627,6 +627,10 @@ def _public_commercial_offers_sync(request, config):
 async def public_commercial_offers_api(request):
     try:
         config = commercial_runtime_config()
+        # The disabled storefront is a configuration-only response. Keep it
+        # available even when the bounded database read lane is saturated.
+        if not config.enabled or config.mode == "off":
+            return _public_commercial_offers_sync(request, config)
         return await run_database_read(_public_commercial_offers_sync, request, config)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _database_lane_unavailable(
@@ -730,9 +734,33 @@ def _create_billing_quote_sync(request, body, request_shape, request_hash):
 
 async def create_billing_quote_api(request):
     try:
+        config = commercial_runtime_config()
+        if not config.enabled or config.mode != "enforce":
+            raise CommercialPolicyError(
+                QUOTE_NOT_AVAILABLE,
+                "Báo giá thanh toán chưa được bật.",
+                status_code=503,
+            )
+        # Preserve the original pre-body authentication boundary while
+        # keeping the blocking session lookup off the event loop.
+        valid, actor = await run_database_read(verify_session, request)
+        if not valid:
+            return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
         body = await _json_body(request)
         owner_kind = str(body.get("ownerKind") or "").strip()
         owner_id = str(body.get("ownerId") or "").strip()
+        if owner_kind == "account" and owner_id != actor.user_id:
+            raise CommercialPolicyError(
+                "BUYER_NOT_AUTHORIZED",
+                "Không được mua cho tài khoản khác.",
+                status_code=403,
+            )
+        if owner_kind == "organization" and owner_id != str(actor.active_role_organization_id or ""):
+            raise CommercialPolicyError(
+                "BUYER_NOT_AUTHORIZED",
+                "Workspace tổ chức không khớp phiên đang hoạt động.",
+                status_code=403,
+            )
         request_shape = {
             "ownerKind": owner_kind,
             "ownerId": owner_id,

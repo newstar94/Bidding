@@ -196,6 +196,30 @@ def test_signed_payos_receipt_and_dedupe_remain_available_with_checkout_disabled
         )} == {("pending", None), ("review", "WEBHOOK_DEDUPE_PAYLOAD_MISMATCH")}
 
 
+def test_identical_signed_events_are_independent_between_provider_profiles(inbox):
+    database, registry = inbox
+    with database.get_connection() as connection:
+        connection.execute(
+            """INSERT INTO payment_provider_profiles VALUES
+                ('payos-profile-2', 'payos', 'production', 'live', 'ready', NULL, 1000, 3)"""
+        )
+    registry.install("payos-profile-2", PayOSPaymentProvider(
+        PayOSCredentials("test-client", "test-api", CHECKSUM_KEY),
+    ))
+    data = {"orderCode": 123, "amount": 100000, "paymentLinkId": "link", "reference": "ref"}
+    envelope = {"data": data, "signature": sign_signed_data(data, CHECKSUM_KEY)}
+    first = send("payos-profile", envelope)
+    other = send("payos-profile-2", envelope)
+    duplicate = send("payos-profile-2", envelope)
+    assert first.status_code == other.status_code == duplicate.status_code == 202
+    assert json.loads(other.body)["duplicate"] is False
+    assert json.loads(duplicate.body)["duplicate"] is True
+    with database.get_connection() as connection:
+        rows = connection.execute("SELECT id, provider_profile_id FROM payment_webhook_events").fetchall()
+        assert len(rows) == 2
+        assert len({row["id"] for row in rows}) == 2
+
+
 @pytest.mark.parametrize("signature", [None, "bad-signature"])
 def test_unsigned_or_invalid_payos_signature_cannot_create_events(inbox, signature):
     database, _registry = inbox

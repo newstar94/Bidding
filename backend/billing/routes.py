@@ -26,7 +26,7 @@ from backend.shared.async_io import (
 from backend.shared.database_io import run_database_read, run_database_write
 
 from .service import BillingService, ProviderCommandExecutor, public_order_payload
-from .webhook import payment_webhook_api
+from .webhook import payment_webhook_api, webhook_event_id
 from .providers.fake import FakePaymentProvider
 from .runtime import payment_provider_registry
 from backend.usage_credits import UsageCreditService, UsageOwner
@@ -154,7 +154,7 @@ def _update_fake_checkout_sync(request, body):
                 signed, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             )
             payload_hash = sha256(signed_json.encode("utf-8")).hexdigest()
-            event_id = f"payment-event-{payload_hash[:32]}"
+            event_id = webhook_event_id(order["provider_profile_id"], payload_hash)
             connection.execute(
                 """INSERT INTO payment_webhook_events
                        (id, provider_profile_id, dedupe_key, payload_hash,
@@ -219,24 +219,21 @@ def _update_fake_checkout_sync(request, body):
 
 
 async def update_fake_checkout_api(request):
-    body, invalid = await read_json_object(request)
-    if invalid:
-        return invalid
-    if set(body) != {"action"}:
-        raise CommercialPolicyError(
-            "FAKE_ACTION_INVALID",
-            "Thao tác checkout giả lập không hợp lệ.",
-        )
     try:
+        body, invalid = await read_json_object(request)
+        if invalid:
+            return invalid
+        if set(body) != {"action"}:
+            raise CommercialPolicyError(
+                "FAKE_ACTION_INVALID",
+                "Thao tác checkout giả lập không hợp lệ.",
+            )
         result = await run_database_write(_update_fake_checkout_sync, request, body)
         if isinstance(result, JSONResponse):
             return result
         reconciled_order = (
-            await run_blocking_io(
-                _provider_executor().execute,
-                result["command_id"],
-                timeout_seconds=35,
-            ) if result["command_id"] else None
+            await _execute_provider_command(result["command_id"])
+            if result["command_id"] else None
         )
         return JSONResponse({
             "accepted": True,
@@ -270,6 +267,21 @@ def _provider_executor():
     if _executor is None:
         _executor = ProviderCommandExecutor(database, environment=os.environ)
     return _executor
+
+
+async def _execute_provider_command(command_id):
+    """Keep provider-pool saturation on the route's generic error path."""
+
+    try:
+        return await run_blocking_io(
+            _provider_executor().execute,
+            command_id,
+            timeout_seconds=35,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        # The 503 contract belongs to the database lane. Provider execution
+        # failures retain the pre-offload BILLING_FAILED response.
+        raise RuntimeError("provider command execution unavailable") from error
 
 
 async def payment_result_page(_request):
@@ -356,13 +368,11 @@ async def create_checkout_api(request):
             quote_public_id,
             idempotency_key,
         )
+        if isinstance(result, JSONResponse):
+            return result
         order = result["order"]
         if result["command_id"]:
-            order = await run_blocking_io(
-                _provider_executor().execute,
-                result["command_id"],
-                timeout_seconds=35,
-            ) or order
+            order = await _execute_provider_command(result["command_id"]) or order
         return JSONResponse(
             {"order": public_order_payload(order), "replayed": result["replayed"]},
             status_code=200 if result["replayed"] else 201,
@@ -525,25 +535,21 @@ def _cancel_personal_order_sync(request, body):
 
 
 async def cancel_personal_order_api(request):
-    body, invalid = await read_json_object(request)
-    if invalid:
-        return invalid
-    if set(body) - {"reason"}:
-        raise CommercialPolicyError(
-            "CHECKOUT_REQUEST_INVALID",
-            "Cancel request chứa field không hỗ trợ.",
-        )
     try:
+        body, invalid = await read_json_object(request)
+        if invalid:
+            return invalid
+        if set(body) - {"reason"}:
+            raise CommercialPolicyError(
+                "CHECKOUT_REQUEST_INVALID",
+                "Cancel request chứa field không hỗ trợ.",
+            )
         result = await run_database_write(_cancel_personal_order_sync, request, body)
         if isinstance(result, JSONResponse):
             return result
         order = result["order"]
         if result["command_id"]:
-            order = await run_blocking_io(
-                _provider_executor().execute,
-                result["command_id"],
-                timeout_seconds=35,
-            ) or order
+            order = await _execute_provider_command(result["command_id"]) or order
         return JSONResponse(
             {"order": public_order_payload(order), "replayed": result["replayed"]}
         )
@@ -697,11 +703,8 @@ async def _admin_order_action(request, action):
         if isinstance(result, JSONResponse):
             return result
         reconciled = (
-            await run_blocking_io(
-                _provider_executor().execute,
-                result["command_id"],
-                timeout_seconds=35,
-            ) if result["command_id"] else None
+            await _execute_provider_command(result["command_id"])
+            if result["command_id"] else None
         )
         return JSONResponse({
             "success": True,

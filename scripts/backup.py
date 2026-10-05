@@ -41,6 +41,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.shared.paths import resolve_runtime_path
+from backend.observability.backup_validation import (
+    snapshot_asset_directories as _shared_snapshot_asset_directories,
+    verify_snapshot as _shared_verify_snapshot,
+)
 from scripts.env_utils import load_env
 
 
@@ -594,77 +598,11 @@ def cmd_restore(args) -> int:
 
 
 def _snapshot_asset_directories(snapshot_dir: pathlib.Path, manifest: dict) -> dict[str, bool]:
-    declared = manifest.get("assetDirectories")
-    if "assetDirectories" in manifest and (
-        not isinstance(declared, dict)
-        or set(declared) != set(_ASSET_DIRECTORIES)
-        or any(type(value) is not bool for value in declared.values())
-    ):
-        raise RuntimeError("invalid backup asset directory metadata")
-    present = {}
-    for name in _ASSET_DIRECTORIES:
-        directory = snapshot_dir / name
-        if directory.is_symlink():
-            raise RuntimeError("unsafe backup asset directory")
-        exists = directory.is_dir()
-        if declared is not None and declared[name] != exists:
-            raise RuntimeError(f"backup asset directory presence mismatch: {name}")
-        if not exists and any(
-            str(entry.get("relativePath") or "").startswith(f"{name}/")
-            for entry in manifest.get("files", [])
-        ):
-            raise RuntimeError(f"backup asset directory is missing: {name}")
-        # Legacy v1 snapshots already created the root when the source existed,
-        # including an empty tree. Never infer an absent root to be empty.
-        present[name] = exists
-    return present
+    return _shared_snapshot_asset_directories(snapshot_dir, manifest)
 
 
 def _verify_snapshot(snapshot_dir: pathlib.Path) -> dict:
-    snapshot_dir = snapshot_dir.resolve()
-    manifest_path = snapshot_dir / _MANIFEST_FILENAME
-    if not manifest_path.is_file() or manifest_path.stat().st_size > 64 * 1024 * 1024:
-        raise RuntimeError("manifest.json is missing or too large")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("format") != "biddingflow-pg-backup" or manifest.get("version") != 1:
-        raise RuntimeError("unsupported backup format")
-    files = manifest.get("files")
-    if not isinstance(files, list) or len(files) > _MAX_MANIFEST_FILES:
-        raise RuntimeError("invalid backup file list")
-    if len(files) != int(manifest.get("fileCount", -1)):
-        raise RuntimeError("backup file count mismatch")
-    seen = set()
-    verified_entries = {}
-    for item in files:
-        relative = _manifest_relative_path(item.get("relativePath"))
-        candidate = (snapshot_dir / relative).resolve()
-        if candidate in seen or snapshot_dir not in candidate.parents:
-            raise RuntimeError("unsafe or duplicate backup path")
-        seen.add(candidate)
-        if not candidate.is_file():
-            raise RuntimeError(f"backup file is missing: {relative.as_posix()}")
-        size = int(item.get("sizeBytes", -1))
-        digest = str(item.get("sha256") or "")
-        if candidate.stat().st_size != size:
-            raise RuntimeError(f"backup size mismatch: {relative.as_posix()}")
-        if not hmac.compare_digest(_sha256(candidate), digest):
-            raise RuntimeError(f"backup checksum mismatch: {relative.as_posix()}")
-        verified_entries[relative.as_posix()] = (size, digest)
-
-    database_entry = manifest.get("database")
-    if not isinstance(database_entry, dict):
-        raise RuntimeError("invalid backup database entry")
-    database_relative = _manifest_relative_path(
-        database_entry.get("relativePath")
-    )
-    database_metadata = (
-        int(database_entry.get("sizeBytes", -1)),
-        str(database_entry.get("sha256") or ""),
-    )
-    if verified_entries.get(database_relative.as_posix()) != database_metadata:
-        raise RuntimeError("backup database entry is not verified")
-    _snapshot_asset_directories(snapshot_dir, manifest)
-    return manifest
+    return _shared_verify_snapshot(snapshot_dir)
 
 
 def _require_complete_snapshot_assets(snapshot: pathlib.Path, manifest: dict) -> None:

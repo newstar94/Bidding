@@ -32,7 +32,7 @@ class _Cursor:
 
 @pytest.fixture
 def cursor():
-    connection = sqlite3.connect(":memory:")
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.executescript(
         """

@@ -12,6 +12,7 @@ import {
 } from "./DetailedEvaluationCriteriaController.js";
 import {
   getDetailedEvaluationProgress,
+  getEvaluationRoundType,
   isDetailedEvaluationSummaryOwned,
 } from "./detailedEvaluationSelectors.js";
 import {
@@ -84,6 +85,8 @@ export async function closeDetailedEvaluation() {
 }
 
 export async function renderDetailedEvaluation() {
+  const contextGeneration = (this._detailedEvaluationContextGeneration || 0) + 1;
+  this._detailedEvaluationContextGeneration = contextGeneration;
   const state = resolveDetailedEvaluationState(this);
   const summary = this.view.getActiveElement("danhgiahsdt-summary-view");
   const detail = this.view.getActiveElement("danhgiahsdt-detail-view");
@@ -139,6 +142,69 @@ export async function renderDetailedEvaluation() {
 export async function importDetailedEvaluationExcel(file) {
   const state = resolveDetailedEvaluationState(this);
   if (!state?.bid || !state.report || state.readOnly) return false;
+  const generation = (this._detailedEvaluationImportGeneration || 0) + 1;
+  this._detailedEvaluationImportGeneration = generation;
+  const importContext = Object.freeze({
+    generation,
+    contextGeneration: this._detailedEvaluationContextGeneration || 0,
+    packageId: String(state.pkg.id || ""),
+    bidId: String(state.bid.id || ""),
+    roundType: String(state.roundType || ""),
+    activeGroup: String(this.selectedDetailedEvaluationTab || ""),
+    view: this.currentEvaluationView,
+    packageRenderGeneration: this.view._packageDetailRenderVersion || 0,
+    packageRowVersion: state.pkg.rowVersion,
+    bidRowVersion: state.bid.rowVersion,
+    workspaceToken: this.model.getWorkspaceToken?.() || this.getWorkspaceToken?.() || "",
+  });
+  let expectedContextGeneration = importContext.contextGeneration;
+  let commitStarted = false;
+  const isCurrentImport = () => {
+    if (this._detailedEvaluationImportGeneration !== importContext.generation
+      || (this._detailedEvaluationContextGeneration || 0) !== expectedContextGeneration
+      || String(this.selectedEvaluationBidId || "") !== importContext.bidId
+      || String(this.selectedDetailedEvaluationTab || "") !== importContext.activeGroup
+      || this.currentEvaluationView !== importContext.view
+      || (this.view._packageDetailRenderVersion || 0) !== importContext.packageRenderGeneration) {
+      return false;
+    }
+    const selectedPackageId = this.view.getActiveElement("danhgiahsdt-goithau-select")?.value
+      || this.view._currentWorkflowPackageId
+      || this._currentWorkflowPackageId
+      || "";
+    if (String(selectedPackageId) !== importContext.packageId) return false;
+    if (importContext.workspaceToken && this.model.isWorkspaceCurrent
+      && !this.model.isWorkspaceCurrent(importContext.workspaceToken)) return false;
+    const currentWorkspaceToken = this.model.getWorkspaceToken?.() || this.getWorkspaceToken?.() || "";
+    if (currentWorkspaceToken !== importContext.workspaceToken) return false;
+    const currentPackage = (this.model.state.goithau || []).find(
+      (item) => String(item.id || "") === importContext.packageId,
+    );
+    const currentBid = (this.model.state.thongtinmothau || []).find(
+      (item) => String(item.id || "") === importContext.bidId,
+    );
+    if (!currentPackage || !currentBid || String(currentBid.goiThauId || "") !== importContext.packageId) {
+      return false;
+    }
+    if (!commitStarted && (currentPackage !== state.pkg || currentBid !== state.bid
+      || currentPackage.rowVersion !== importContext.packageRowVersion
+      || currentBid.rowVersion !== importContext.bidRowVersion)) return false;
+    if (getEvaluationRoundType(currentPackage, this.currentDanhGiaTab) !== importContext.roundType) return false;
+    const actorId = this.model.state.activeuser?.id || "";
+    if (this.model.hasPermission?.(actorId, "goithau", "edit") === false
+      || this.model.hasPermission?.(actorId, "thongtinmothau", "edit") === false) return false;
+    return true;
+  };
+  const cancelStaleImport = () => {
+    if (!importContext.workspaceToken || this.model.isWorkspaceCurrent?.(importContext.workspaceToken) !== false) {
+      this.view.showToast?.(
+        "Đã hủy nhập Excel",
+        "Màn hình đánh giá đã thay đổi. Tác vụ nhập đã dừng; vui lòng kiểm tra dữ liệu trước khi nhập lại.",
+        "warning",
+      );
+    }
+    return false;
+  };
   try {
     const [
       { readExcelWorkbookSheets },
@@ -147,17 +213,26 @@ export async function importDetailedEvaluationExcel(file) {
       import("../documents/excelFileReader.js"),
       import("./DetailedEvaluationImport.js"),
     ]);
+    if (!isCurrentImport()) return cancelStaleImport();
     const sheets = await readExcelWorkbookSheets(file);
+    if (!isCurrentImport()) return cancelStaleImport();
     const analysis = analyzeDetailedEvaluationWorkbook({
       state,
       sheets,
-      activeGroup: this.selectedDetailedEvaluationTab,
+      activeGroup: importContext.activeGroup,
       currentCriteriaOverride: this._detailedEvaluationCriteriaOverrides.get(state.criteriaKey),
     });
-    if (analysis.isMuasamcong
-      && !await verifyMuasamcongDetailedEvaluationContractor(this, state, sheets)) {
-      return false;
+    if (analysis.isMuasamcong) {
+      const verified = await verifyMuasamcongDetailedEvaluationContractor(
+        this,
+        state,
+        sheets,
+        isCurrentImport,
+      );
+      if (!isCurrentImport()) return cancelStaleImport();
+      if (!verified) return false;
     }
+    if (!isCurrentImport()) return cancelStaleImport();
     if (!analysis.report) {
       await this.view.customAlert(
         "Không tìm thấy tiêu chí phù hợp",
@@ -169,10 +244,30 @@ export async function importDetailedEvaluationExcel(file) {
     if (analysis.criteriaOverride) {
       this._detailedEvaluationCriteriaOverrides.set(state.criteriaKey, analysis.criteriaOverride);
     }
+    if (!isCurrentImport()) return cancelStaleImport();
     this._detailedEvaluationDrafts.set(state.draftKey, analysis.report);
     this._detailedEvaluationDirty = true;
-    this.renderDetailedEvaluation();
-    const persisted = await saveDetailedEvaluation.call(this, { notify: false });
+    const generationBeforeRender = this._detailedEvaluationContextGeneration || 0;
+    await this.renderDetailedEvaluation();
+    const generationAfterRender = this._detailedEvaluationContextGeneration || 0;
+    if (generationAfterRender !== generationBeforeRender
+      && generationAfterRender !== generationBeforeRender + 1) return cancelStaleImport();
+    expectedContextGeneration = generationAfterRender;
+    if (!isCurrentImport()) return cancelStaleImport();
+    const persisted = await saveDetailedEvaluation.call(this, {
+      notify: false,
+      isContextCurrent: isCurrentImport,
+      beforeContextRender: () => {
+        commitStarted = true;
+      },
+      afterContextRender: () => {
+        expectedContextGeneration = this._detailedEvaluationContextGeneration || 0;
+      },
+      beforeContextCommit: () => {
+        commitStarted = true;
+      },
+    });
+    if (!isCurrentImport()) return cancelStaleImport();
     if (!persisted) return false;
     const { matched, skipped, warnings: warningCount, sheetNames } = analysis.stats;
     await this.view.customAlert(
@@ -182,6 +277,7 @@ export async function importDetailedEvaluationExcel(file) {
     );
     return true;
   } catch (error) {
+    if (!isCurrentImport()) return cancelStaleImport();
     console.error(error);
     await this.view.customAlert(
       "Không thể đọc Excel",
@@ -196,6 +292,7 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
   controller,
   state,
   sheets,
+  isContextCurrent = null,
 ) {
   const [
     { validateMuasamcongContractorIdentity },
@@ -204,6 +301,7 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
     import("./detailedEvaluationExcel.js"),
     import("../partners/contractorVersionBinding.js"),
   ]);
+  if (isContextCurrent && !isContextCurrent()) return false;
   const selectedContractorName = resolveBidContractorName(controller.model, state.bid)
     || String(state.bid?.tenNhaThau || "").trim();
   const identity = validateMuasamcongContractorIdentity(sheets, selectedContractorName);
@@ -224,6 +322,7 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
       cancelLabel: "Hủy",
     },
   );
+  if (isContextCurrent && !isContextCurrent()) return false;
   return confirmed === true;
 }
 
@@ -231,10 +330,16 @@ export async function saveDetailedEvaluation({
   completeGroup = false,
   completeReport = false,
   notify = true,
+  isContextCurrent = null,
+  beforeContextRender = null,
+  afterContextRender = null,
+  beforeContextCommit = null,
 } = {}) {
+  if (isContextCurrent && !isContextCurrent()) return false;
   const state = resolveDetailedEvaluationState(this);
   const detail = this.view.getActiveElement("danhgiahsdt-detail-view");
   const { executeDetailedEvaluationSave } = await import("./DetailedEvaluationSaveWorkflow.js");
+  if (isContextCurrent && !isContextCurrent()) return false;
   return executeDetailedEvaluationSave({
     appController: this,
     state,
@@ -243,5 +348,9 @@ export async function saveDetailedEvaluation({
     completeGroup,
     completeReport,
     notify,
+    isContextCurrent,
+    beforeContextRender,
+    afterContextRender,
+    beforeContextCommit,
   });
 }

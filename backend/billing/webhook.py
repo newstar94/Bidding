@@ -20,6 +20,11 @@ from .runtime import payment_provider_registry
 MAX_WEBHOOK_BYTES = 262_144
 
 
+def webhook_event_id(profile_id, payload_hash):
+    identity = f"{profile_id}|{payload_hash}".encode("utf-8")
+    return f"payment-event-{sha256(identity).hexdigest()[:32]}"
+
+
 def _payment_webhook_sync(request, profile_id, envelope, raw):
     connection = None
     try:
@@ -62,7 +67,7 @@ def _payment_webhook_sync(request, profile_id, envelope, raw):
         if not dedupe_key.strip("|"):
             connection.rollback()
             return JSONResponse({"error": "Webhook thiếu identity.", "code": "WEBHOOK_INVALID"}, status_code=400)
-        event_id = f"payment-event-{payload_hash[:32]}"
+        event_id = webhook_event_id(profile_id, payload_hash)
         conflicting_event = connection.execute(
             """SELECT id FROM payment_webhook_events
                 WHERE provider_profile_id = ? AND dedupe_key = ?
@@ -106,15 +111,15 @@ def _payment_webhook_sync(request, profile_id, envelope, raw):
 
 
 async def payment_webhook_api(request):
-    profile_id = str(request.path_params["profile_id"] or "").strip()
-    raw = await request.body()
-    if len(raw) > MAX_WEBHOOK_BYTES:
-        return JSONResponse({"error": "Webhook quá lớn.", "code": "WEBHOOK_TOO_LARGE"}, status_code=413)
     try:
-        envelope = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return JSONResponse({"error": "Webhook không phải JSON hợp lệ.", "code": "WEBHOOK_INVALID"}, status_code=400)
-    try:
+        profile_id = str(request.path_params["profile_id"] or "").strip()
+        raw = await request.body()
+        if len(raw) > MAX_WEBHOOK_BYTES:
+            return JSONResponse({"error": "Webhook quá lớn.", "code": "WEBHOOK_TOO_LARGE"}, status_code=413)
+        try:
+            envelope = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return JSONResponse({"error": "Webhook không phải JSON hợp lệ.", "code": "WEBHOOK_INVALID"}, status_code=400)
         return await run_database_write(
             _payment_webhook_sync,
             request,
@@ -129,3 +134,6 @@ async def payment_webhook_api(request):
         )
         response.headers["Retry-After"] = "1"
         return response
+    except Exception as error:  # noqa: BLE001 - webhook returns bounded public error
+        log_error(error, "payment_webhook_api")
+        return JSONResponse({"error": "Không thể tiếp nhận webhook.", "code": "WEBHOOK_FAILED"}, status_code=500)

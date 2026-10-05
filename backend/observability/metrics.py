@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
-import hmac
 import ipaddress
 import itertools
 import json
@@ -294,30 +292,11 @@ def _latest_backup_timestamp(backup_directory: Path) -> float | None:
             candidates.append((entry.name, Path(entry.path) / "manifest.json"))
     for _name, manifest_path in sorted(candidates, reverse=True)[:8]:
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if manifest.get("format") != "biddingflow-pg-backup" or manifest.get("version") != 1:
-                continue
-            files = manifest.get("files")
-            if not isinstance(files, list) or len(files) != int(manifest.get("fileCount", -1)):
-                continue
-            valid = True
-            for item in files:
-                relative = Path(str(item.get("relativePath") or ""))
-                candidate = (manifest_path.parent / relative).resolve()
-                if manifest_path.parent.resolve() not in candidate.parents:
-                    valid = False
-                    break
-                if not candidate.is_file() or candidate.stat().st_size != int(item.get("sizeBytes", -1)):
-                    valid = False
-                    break
-                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
-                if not hmac.compare_digest(digest, str(item.get("sha256") or "")):
-                    valid = False
-                    break
-            if not valid:
-                continue
+            from backend.observability.backup_validation import verify_snapshot
+
+            manifest = verify_snapshot(manifest_path.parent)
             created_at = manifest.get("createdAt")
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        except (OSError, ValueError, TypeError, RuntimeError, json.JSONDecodeError):
             continue
         timestamp = _parse_timestamp(created_at)
         if timestamp is not None and (latest is None or timestamp > latest):

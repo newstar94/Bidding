@@ -230,10 +230,15 @@ export async function executeDetailedEvaluationSave({
   completeReport = false,
   notify = true,
   commit = persistAndSync,
+  isContextCurrent = null,
+  beforeContextRender = null,
+  afterContextRender = null,
+  beforeContextCommit = null,
 } = {}) {
   if (!appController?.view || !state?.bid || !state?.report || !root || state.readOnly) {
     return false;
   }
+  if (isContextCurrent && !isContextCurrent()) return false;
   const recovery = detailedEvaluationAutosaveFor(appController);
   const workspaceToken = appController.model.getWorkspaceToken?.() || "";
   const bases = {
@@ -248,6 +253,7 @@ export async function executeDetailedEvaluationSave({
   const boundaryChecked = typeof appController.awaitAuthoritativeMutationBoundary === "function";
   if (boundaryChecked) {
     await appController.awaitAuthoritativeMutationBoundary();
+    if (isContextCurrent && !isContextCurrent()) return false;
     if (workspaceToken && appController.model.isWorkspaceCurrent?.(workspaceToken) === false) return false;
     const pkg = (appController.model.state.goithau || []).find((row) => String(row.id) === String(state.pkg.id));
     const bid = (appController.model.state.thongtinmothau || []).find((row) => String(row.id) === String(state.bid.id));
@@ -286,6 +292,7 @@ export async function executeDetailedEvaluationSave({
     return false;
   }
   const configuredBaseCriteria = mergeConfiguredCriteria(state.baseCriteria, configuredCriteria);
+  if (isContextCurrent && !isContextCurrent()) return false;
   appController._detailedEvaluationCriteriaOverrides.set(state.criteriaKey, configuredBaseCriteria);
   const invalidCriterion = findInvalidConfiguredCriterion(groupCriteria);
   if (invalidCriterion) {
@@ -406,6 +413,7 @@ export async function executeDetailedEvaluationSave({
     (item) => item.loaiVong !== state.roundType,
   );
   allReports.push(report);
+  if (isContextCurrent && !isContextCurrent()) return false;
   if (invalidatedBidderGoods) {
     applyInvalidatedGoodsProjection(appController.model, state.bid, changedBidderGoods);
   }
@@ -434,11 +442,14 @@ export async function executeDetailedEvaluationSave({
     return false;
   }
   const { bidUpsert } = preparedMutation;
+  if (isContextCurrent && !isContextCurrent()) return false;
+  beforeContextCommit?.();
   const result = await commitDetailedChanges(appController, commit, {
     goithau: [state.pkg],
     thongtinmothau: [bidUpsert],
     ...(invalidatedBidderGoods ? { hanghoaduthaunhathau: changedBidderGoods } : {}),
   }, bases, boundaryChecked);
+  if (isContextCurrent && !isContextCurrent()) return false;
   if (!result?.ok) {
     await clearConfirmedConflictInput(appController, state, recovery, workspaceToken, result);
     return false;
@@ -454,7 +465,10 @@ export async function executeDetailedEvaluationSave({
     completeGroup,
   });
   if (nextTab) appController.selectedDetailedEvaluationTab = nextTab;
+  beforeContextRender?.();
   await appController.renderDetailedEvaluation();
+  afterContextRender?.();
+  if (isContextCurrent && !isContextCurrent()) return false;
   if (notify) {
     await appController.view.customAlert(
       "Lưu thành công",
