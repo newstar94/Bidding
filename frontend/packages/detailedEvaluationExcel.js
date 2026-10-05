@@ -242,10 +242,21 @@ function makeCriterion({ group, stt, name, rowIndex, roundId, resultType = "pass
 }
 
 function markStructuralCriteria(parsed) {
+  const criteriaByGroupAndStt = new Map(parsed.criteria.map((criterion) => [
+    `${criterion.group}:${criterion.stt}`,
+    criterion,
+  ]));
   const valuesById = new Map(parsed.matches.map(
     ({ criterion, values }) => [String(criterion.id), values],
   ));
   parsed.criteria.forEach((criterion) => {
+    const parts = String(criterion.stt || "").split(".");
+    if (parts.length > 1 && !criterion.parentCriterionId) {
+      const parent = criteriaByGroupAndStt.get(
+        `${criterion.group}:${parts.slice(0, -1).join(".")}`,
+      );
+      if (parent) criterion.parentCriterionId = parent.id;
+    }
     const hasChildren = parsed.criteria.some((candidate) => (
       candidate.stt.startsWith(`${criterion.stt}.`)
     ));

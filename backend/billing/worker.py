@@ -314,12 +314,6 @@ class BillingWorkProcessor:
             connection.close()
 
 
-def process_next_billing_work(database, *, environment=None, registry=None):
-    return BillingWorkProcessor(
-        database, environment=environment, registry=registry
-    ).process_next()
-
-
 async def run_billing_worker(database, *, environment=None, registry=None):
     """Continuously drain billing queues with graceful cancellation."""
     environment = os.environ if environment is None else environment

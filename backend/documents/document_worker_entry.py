@@ -316,19 +316,7 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         function_name = payload.get("function")
         if function_name not in allowed_exports:
             raise ValueError("Loại xuất Excel không được hỗ trợ.")
-        pure_exports = {
-            "create_excel_from_spec",
-            "create_excel_template",
-            "create_mothau_template",
-            "create_phanlo_excel",
-            "create_timeline_excel",
-            "create_tuychonmuathem_excel",
-            "create_winning_goods_excel",
-        }
-        if function_name in pure_exports:
-            from backend.documents import excel_workbook_builder as export_service
-        else:
-            from backend.documents import excel_service as export_service
+        from backend.documents import excel_workbook_builder as export_service
         workbook = getattr(export_service, function_name)(*payload.get("args", []))
         output = BytesIO()
         workbook.save(output)

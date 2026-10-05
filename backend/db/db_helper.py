@@ -513,5 +513,4 @@ class PostgresDatabase:
             pool.close(timeout=10.0)
 
 
-models = None
 database = PostgresDatabase()

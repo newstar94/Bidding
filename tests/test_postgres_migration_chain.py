@@ -275,7 +275,7 @@ def _schema_object_oids(cursor):
     }
 
 
-def _open_fixture_connection():
+def _open_fixture_connection(*, fresh_catalog=False):
     fixture = _load_v1_fixture()
     database_url = _test_database_url()
     if not database_url:
@@ -301,8 +301,11 @@ def _open_fixture_connection():
             )
         )
         _create_extensions(cursor)
-        _create_v1_schema(cursor, fixture)
-        _seed_v1_representative_data(cursor)
+        if fresh_catalog:
+            assert create_fresh_database(cursor, _upgrade_context()) == DB_SCHEMA_VERSION
+        else:
+            _create_v1_schema(cursor, fixture)
+            _seed_v1_representative_data(cursor)
     except Exception:
         connection.rollback()
         connection.close()
@@ -815,10 +818,11 @@ def test_v59_to_v61_replaces_delete_function_and_renames_default_workspace():
 
 
 def test_v46_exact_catalog_only_advances_version_without_rebuilding_objects():
-    connection, cursor, schema_name = _open_fixture_connection()
+    # Model an exact active catalog with old metadata, without replaying v99
+    # retirement twice into an archive that already owns the original tables.
+    connection, cursor, schema_name = _open_fixture_connection(fresh_catalog=True)
     try:
         context = _upgrade_context()
-        assert apply_database_upgrades(cursor, 1, context) == DB_SCHEMA_VERSION
         assert_schema_contract(cursor)
         cursor.execute("UPDATE database_metadata SET schema_version = 45 WHERE id = 1")
         before = _schema_object_oids(cursor)

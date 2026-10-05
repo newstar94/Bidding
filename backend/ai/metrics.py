@@ -45,8 +45,3 @@ def render_prometheus_lines(values=None) -> list[str]:
         lines.append(f"# TYPE {name} {metric_type}")
         lines.append(f"{name} {snapshot.get(name, 0)}")
     return lines
-
-
-def reset_for_tests() -> None:
-    with _lock:
-        _values.clear()

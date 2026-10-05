@@ -58,10 +58,6 @@ def canonical_provider_name(name: str) -> str:
     return _ALIASES.get(normalized, normalized)
 
 
-def supported_provider_names() -> tuple[str, ...]:
-    return tuple(sorted(set(_FACTORIES) | set(_ALIASES)))
-
-
 def register_provider(name: str, factory: ProviderFactory, *, aliases: tuple[str, ...] = ()) -> None:
     """Register an in-process adapter without changing the service layer."""
 

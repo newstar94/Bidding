@@ -30,6 +30,7 @@ import { supportsGoodsWorkflow } from "./goodsWorkflowSupport.js";
 import {
   parseTechnicalScore,
   requiresTechnicalScoreInput,
+  serializeTechnicalScore,
 } from "./evaluationMethodRules.js";
 
 export function shouldValidateBidderGoodsOnCompletion(state, completeReport) {
@@ -191,7 +192,7 @@ function prepareDetailedEvaluationBidMutation({
         error: "Vui lòng nhập điểm kỹ thuật bằng số trước khi hoàn thành tab đánh giá.",
       };
     }
-    state.bid.danhGiaKyThuat = String(score);
+    state.bid.danhGiaKyThuat = serializeTechnicalScore(score);
   }
   if (completeReport) {
     const projected = applyDetailedEvaluationProjection(

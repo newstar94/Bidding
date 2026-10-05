@@ -107,6 +107,7 @@ export async function addDetailedEvaluationCriterion(appController, parentCriter
     order: configuredBaseCriteria.length,
     source: "custom",
     isCustom: true,
+    parentCriterionId: parent?.id || null,
   };
   const nextCriteria = [...configuredBaseCriteria];
   let insertionIndex = nextCriteria.length;

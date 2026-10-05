@@ -25,8 +25,6 @@ PACKAGE_CHILD_TABLES = frozenset({
     "goi_thau_lam_ro",
     "nha_thau_tham_du_mo_thau",
     "contractor_violation_checks",
-    "package_legal_binding",
-    "package_legal_binding_head",
 })
 _QUERY_CHUNK_SIZE = 500
 

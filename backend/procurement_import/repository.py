@@ -1553,14 +1553,6 @@ class ProcurementImportSessionRepository:
         )
         return {"currentIndex": next_index, "status": status}
 
-    def update_progress(self, session_id, *, current_index, status):
-        self.cursor.execute(
-            """UPDATE procurement_import_session
-                  SET current_revision_index = ?, status = ?,
-                      updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?""",
-            (int(current_index), status, session_id),
-        )
 
     def update_canonical_bundle(
         self,

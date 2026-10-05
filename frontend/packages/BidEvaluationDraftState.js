@@ -2,7 +2,7 @@ import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
 } from "./evaluationMetadata.js";
-import { parseTechnicalScore } from "./evaluationMethodRules.js";
+import { parseTechnicalScore, serializeTechnicalScore } from "./evaluationMethodRules.js";
 import { parseVietnameseNumber } from "../shared/formatters.js";
 
 const BID_FIELD_READERS = Object.freeze({
@@ -45,7 +45,7 @@ function readText(control) {
 function readTechnicalScore(control) {
   const raw = readText(control);
   const score = parseTechnicalScore(raw);
-  return score === null ? raw : String(score);
+  return score === null ? raw : serializeTechnicalScore(score);
 }
 
 function readMoney(control, parseMoney) {

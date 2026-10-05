@@ -2,7 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { calculateRankings } from "../shared/BiddingCalculations.js";
 import { formatVietnameseNumber, parseVietnameseNumber, parseVND } from "../shared/formatters.js";
 import { updateRowConclusion } from "./bidEvaluationActions.js";
-import { parseTechnicalScore } from "./evaluationMethodRules.js";
+import { parseTechnicalScore, serializeTechnicalScore } from "./evaluationMethodRules.js";
 import {
   isProposedAwardPriceBelowHalf,
   normalizeLowPriceAcceptance,
@@ -113,7 +113,7 @@ function collectRowBid({ row, bid, pkg, isTwoEnvelope, isReadOnly, sequence }) {
     ...bid,
     danhGiaHopLe: validity,
     danhGiaNangLuc: capacity,
-    danhGiaKyThuat: technicalScore === null ? technical : String(technicalScore),
+    danhGiaKyThuat: technicalScore === null ? technical : serializeTechnicalScore(technicalScore),
     danhGiaKetLuan: conclusion,
     giaDuThau: price,
     tyLeGiamGia: discount,

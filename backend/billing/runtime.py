@@ -100,13 +100,6 @@ def payment_provider_registry():
     return _runtime_registry
 
 
-def configure_payment_credential_resolver(resolver):
-    """Replace only the process-local resolver; profile references stay in DB."""
-    global _runtime_registry
-    _runtime_registry = PaymentProviderRegistry(credential_resolver=resolver)
-    return _runtime_registry
-
-
 def build_payos_environment_credential_resolver(environment=None):
     """Build a reference-bound resolver without persisting secret material.
 

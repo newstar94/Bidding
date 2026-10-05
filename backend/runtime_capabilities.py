@@ -29,7 +29,8 @@ def _procurement_import_available(environ):
     elif lookup_enabled:
         # The lookup connector is the Mua Sam Cong connector when no
         # dedicated import provider has been configured.  Keep capability
-        # advertisement aligned with procurement_import.routes._provider_name.
+        # advertisement aligned with procurement_import.runtime.
+        # procurement_provider_name.
         provider = "muasamcong"
     else:
         provider = "muasamcong"

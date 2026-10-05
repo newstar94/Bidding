@@ -2,7 +2,6 @@
 import re
 
 ACRONYMS = set("TNHH CTCP CP MTV UBND HDN HĐND BQL BQLDA HTX JSC LLC FPT VNPT EVN BIDV PCCC TM DV XNK".split())
-COMMON_WORDS = set("CONG TY DUOC PHAM THUONG MAI DICH VU XAY DUNG DAU TU PHAT TRIEN TRUNG TAM TE BENH VIEN BAN QUAN LY ANH CHI NHAN DAN TINH THANH PHO KHU VUC".split())
 PHRASES = (
     "Công ty", "Cổ phần", "Trách nhiệm hữu hạn", "Một thành viên", "Hai thành viên",
     "Thương mại", "Dịch vụ", "Dược phẩm", "Xây dựng", "Đầu tư", "Phát triển",

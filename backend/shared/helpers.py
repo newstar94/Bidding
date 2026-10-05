@@ -3,7 +3,6 @@
 
 
 from backend.db.db_helper import (
-    models,
     database
 )
 
@@ -59,7 +58,7 @@ from backend.shared.logging_utils import (
 
 
 __all__ = [
-    "models", "database", "save_base64_image", "ROLE_HIERARCHY",
+    "database", "save_base64_image", "ROLE_HIERARCHY",
     "get_effective_roles", "hash_password", "verify_password",
     "password_needs_rehash", "SessionRole", "verify_session",
     "SCHEMA_DINH_NGHIA", "to_snake_case", "to_camel_case", "clean_id",

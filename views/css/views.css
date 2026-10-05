@@ -5759,40 +5759,40 @@ input#edit-pkg-price {
 }
 
 /* Keep criterion actions visually distinct so their intent is scannable. */
-.detailed-evaluation-criterion-action-add {
-  color: var(--success, #0f766e) !important;
+.detailed-evaluation-table .detailed-evaluation-criterion-actions .btn.detailed-evaluation-criterion-action-add {
+  color: var(--success);
 }
 
 .detailed-evaluation-criterion-action-add:hover:not(:disabled) {
-  color: var(--success-hover, #0b625c);
-  background: var(--success-soft, #eaf9f4);
+  color: var(--success-hover);
+  background: var(--success-soft);
 }
 
-.detailed-evaluation-criterion-action-edit {
-  color: var(--primary, #2563eb) !important;
+.detailed-evaluation-table .detailed-evaluation-criterion-actions .btn.detailed-evaluation-criterion-action-edit {
+  color: var(--primary);
 }
 
 .detailed-evaluation-criterion-action-edit:hover:not(:disabled) {
-  color: var(--primary-hover, #1d4ed8);
-  background: var(--primary-soft, #eff6ff);
+  color: var(--primary-hover);
+  background: var(--primary-soft);
 }
 
-.detailed-evaluation-criterion-action-save {
-  color: var(--success, #0f766e) !important;
+.detailed-evaluation-table .detailed-evaluation-criterion-actions .btn.detailed-evaluation-criterion-action-save {
+  color: var(--success);
 }
 
 .detailed-evaluation-criterion-action-save:hover:not(:disabled) {
-  color: var(--success-hover, #0b625c);
-  background: var(--success-soft, #eaf9f4);
+  color: var(--success-hover);
+  background: var(--success-soft);
 }
 
-.detailed-evaluation-criterion-action-remove {
-  color: var(--danger, #c73543) !important;
+.detailed-evaluation-table .detailed-evaluation-criterion-actions .btn.detailed-evaluation-criterion-action-remove {
+  color: var(--danger);
 }
 
 .detailed-evaluation-criterion-action-remove:hover:not(:disabled) {
-  color: var(--danger-hover, #a92d39);
-  background: var(--danger-soft, #fff0f2);
+  color: var(--danger-hover);
+  background: var(--danger-soft);
 }
 
 .detailed-evaluation-table-technical-pass-fail [data-detailed-config-field][readonly],

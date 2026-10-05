@@ -230,6 +230,62 @@ test("technical add action passes the parent criterion id to the child-criterion
   assert.deepEqual(calls, ["criterion-1"]);
 });
 
+test("rebinding the panel keeps delegated criterion actions single-shot", () => {
+  const listeners = new Map();
+  const root = {
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener: (type, listener) => {
+      const bucket = listeners.get(type) || [];
+      bucket.push(listener);
+      listeners.set(type, bucket);
+    },
+    removeEventListener: (type, listener) => {
+      const bucket = listeners.get(type) || [];
+      const index = bucket.indexOf(listener);
+      if (index >= 0) bucket.splice(index, 1);
+    },
+  };
+  const calls = { add: [], remove: [] };
+  const appController = {
+    selectedDetailedEvaluationTab: "technical",
+    view: { createIconsScoped: () => {} },
+  };
+  const state = {
+    readOnly: false,
+    bids: [],
+    criteria: [{ ...criterion, group: "technical" }],
+    context: { editableGroups: ["technical"] },
+  };
+  const commands = {
+    close: () => {},
+    render: () => {},
+    save: () => {},
+    importExcel: () => {},
+    addCriterion: (parentId) => calls.add.push(parentId),
+    removeCriterion: (criterionId) => calls.remove.push(criterionId),
+    setTechnicalMethod: () => {},
+  };
+  bindDetailedEvaluationPanelController({ appController, root, state, commands });
+  bindDetailedEvaluationPanelController({ appController, root, state, commands });
+
+  const addAction = {
+    disabled: false,
+    getAttribute: (name) => name === "data-detailed-add-child-criterion" ? "criterion-1" : null,
+  };
+  for (const listener of listeners.get("click") || []) {
+    listener({ target: { closest: () => addAction } });
+  }
+  const removeAction = {
+    disabled: false,
+    getAttribute: (name) => name === "data-detailed-remove-criterion" ? "criterion-1" : null,
+  };
+  for (const listener of listeners.get("click") || []) {
+    listener({ target: { closest: () => removeAction } });
+  }
+  assert.deepEqual(calls, { add: ["criterion-1"], remove: ["criterion-1"] });
+});
+
 test("financial evaluation offers direct contractor completion without a tab-completion button", () => {
   const actions = renderDetailedEvaluationActionButtons({
     activeGroup: "financial",

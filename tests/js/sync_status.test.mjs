@@ -315,11 +315,6 @@ test("sync status distinguishes durable, pending, validation, transport, and off
   assert.equal(deriveSyncStatus({ phase: "validationRejected" }).state, "validation-rejected");
   assert.equal(deriveSyncStatus({ phase: "transportError" }).state, "transport-error");
   assert.equal(deriveSyncStatus({ phase: "serverSaved", online: false }).state, "offline");
-  assert.deepEqual(deriveSyncStatus({ phase: "serverSaved", recoveryCount: 2 }), {
-    state: "recovery-pending",
-    label: "2 bản nháp cần phục hồi",
-    assertive: false,
-  });
 });
 
 

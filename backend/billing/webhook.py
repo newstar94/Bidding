@@ -9,6 +9,8 @@ import time
 from starlette.responses import JSONResponse
 
 from backend.db.db_helper import database
+from backend.shared.async_io import BlockingIOBusyError
+from backend.shared.database_io import run_database_write
 from backend.shared.logging_utils import log_error
 
 from .providers.base import PaymentProviderError
@@ -18,17 +20,9 @@ from .runtime import payment_provider_registry
 MAX_WEBHOOK_BYTES = 262_144
 
 
-async def payment_webhook_api(request):
+def _payment_webhook_sync(request, profile_id, envelope, raw):
     connection = None
     try:
-        profile_id = str(request.path_params["profile_id"] or "").strip()
-        raw = await request.body()
-        if len(raw) > MAX_WEBHOOK_BYTES:
-            return JSONResponse({"error": "Webhook quá lớn.", "code": "WEBHOOK_TOO_LARGE"}, status_code=413)
-        try:
-            envelope = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return JSONResponse({"error": "Webhook không phải JSON hợp lệ.", "code": "WEBHOOK_INVALID"}, status_code=400)
         connection = database.get_connection()
         connection.execute("BEGIN")
         profile = connection.execute(
@@ -109,3 +103,29 @@ async def payment_webhook_api(request):
     finally:
         if connection:
             connection.close()
+
+
+async def payment_webhook_api(request):
+    profile_id = str(request.path_params["profile_id"] or "").strip()
+    raw = await request.body()
+    if len(raw) > MAX_WEBHOOK_BYTES:
+        return JSONResponse({"error": "Webhook quá lớn.", "code": "WEBHOOK_TOO_LARGE"}, status_code=413)
+    try:
+        envelope = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JSONResponse({"error": "Webhook không phải JSON hợp lệ.", "code": "WEBHOOK_INVALID"}, status_code=400)
+    try:
+        return await run_database_write(
+            _payment_webhook_sync,
+            request,
+            profile_id,
+            envelope,
+            raw,
+        )
+    except BlockingIOBusyError:
+        response = JSONResponse(
+            {"error": "Hệ thống đang bận tiếp nhận webhook.", "code": "WEBHOOK_BUSY"},
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response

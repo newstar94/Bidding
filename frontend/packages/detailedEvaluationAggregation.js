@@ -14,7 +14,10 @@ export function aggregateDetailedEvaluation({
   const rows = new Map(
     (report.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
   );
-  const requiredCriteria = groupCriteria.filter((criterion) => criterion.required !== false);
+  // A parent with children is a derived subtotal. Aggregate only leaf criteria
+  // so a stored/legacy parent score cannot be counted a second time.
+  const leafCriteria = groupCriteria.filter((criterion) => criterion.hasChildren !== true);
+  const requiredCriteria = leafCriteria.filter((criterion) => criterion.required !== false);
   const requiredRows = requiredCriteria.map(
     (criterion) => rows.get(String(criterion.id)) || { ketQua: "pending" },
   );
@@ -27,7 +30,7 @@ export function aggregateDetailedEvaluation({
   ) {
     status = "Đạt";
   }
-  const groupRows = groupCriteria
+  const groupRows = leafCriteria
     .map((criterion) => rows.get(String(criterion.id)))
     .filter(Boolean);
   const numericScores = groupRows
@@ -54,7 +57,8 @@ export function aggregateDetailedEvaluationAutomatic({
     (report.chiTietList || []).map((row) => [String(row.tieuChiDanhGiaId), row]),
   );
   const results = criteria
-    .filter((criterion) => criterion.group === group && criterion.required !== false)
+    .filter((criterion) => criterion.group === group
+      && criterion.hasChildren !== true && criterion.required !== false)
     .map((criterion) => {
       const row = rows.get(String(criterion.id)) || {};
       return row.extension?.ketQuaTuDong || row.ketQuaTuDong || "pending";

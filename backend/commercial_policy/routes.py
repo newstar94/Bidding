@@ -13,6 +13,8 @@ from backend.db.db_helper import database
 from backend.billing.service import public_order_payload
 from backend.billing.authorization import authorize_organization_buyer
 from backend.shared.logging_utils import log_audit, log_error
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_io import run_database_read, run_database_write
 
 from .config import commercial_runtime_config
 from .document import canonical_json
@@ -36,6 +38,12 @@ def _error_response(error):
         {"error": "Không thể xử lý cấu hình thương mại.", "code": "COMMERCIAL_POLICY_INVALID"},
         status_code=500,
     )
+
+
+def _database_lane_unavailable(message, code):
+    response = JSONResponse({"error": message, "code": code}, status_code=503)
+    response.headers["Retry-After"] = "1"
+    return response
 
 
 async def _json_body(request):
@@ -112,7 +120,7 @@ def _release_payload(release):
     }
 
 
-async def commercial_admin_overview_api(request):
+def _commercial_admin_overview_sync(request):
     valid, role_or_error = verify_session(request, required_role="super_admin")
     if not valid:
         return JSONResponse({"error": role_or_error, "code": "FORBIDDEN"}, status_code=403)
@@ -184,10 +192,20 @@ async def commercial_admin_overview_api(request):
         conn.close()
 
 
-async def create_commercial_draft_api(request):
+async def commercial_admin_overview_api(request):
+    try:
+        return await run_database_read(_commercial_admin_overview_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải tổng quan thương mại.", "COMMERCIAL_OVERVIEW_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _create_commercial_draft_sync(request, body):
     conn = None
     try:
-        body = await _json_body(request)
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -237,7 +255,19 @@ async def create_commercial_draft_api(request):
             conn.close()
 
 
-async def get_commercial_draft_api(request):
+async def create_commercial_draft_api(request):
+    try:
+        body = await _json_body(request)
+        return await run_database_write(_create_commercial_draft_sync, request, body)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tạo bản nháp thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _get_commercial_draft_sync(request):
     valid, role_or_error = verify_session(request, required_role="super_admin")
     if not valid:
         return JSONResponse({"error": role_or_error, "code": "FORBIDDEN"}, status_code=403)
@@ -251,14 +281,20 @@ async def get_commercial_draft_api(request):
         conn.close()
 
 
-async def save_commercial_draft_api(request):
+async def get_commercial_draft_api(request):
+    try:
+        return await run_database_read(_get_commercial_draft_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải bản nháp thương mại.", "COMMERCIAL_READ_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _save_commercial_draft_sync(request, body, revision, document):
     conn = None
     try:
-        body = await _json_body(request)
-        revision = _expected_revision(request, body)
-        document = body.get("document")
-        if not isinstance(document, dict):
-            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu document có kiểu object.")
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -294,11 +330,27 @@ async def save_commercial_draft_api(request):
             conn.close()
 
 
-async def validate_commercial_draft_api(request):
-    conn = None
+async def save_commercial_draft_api(request):
     try:
         body = await _json_body(request)
         revision = _expected_revision(request, body)
+        document = body.get("document")
+        if not isinstance(document, dict):
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu document có kiểu object.")
+        return await run_database_write(
+            _save_commercial_draft_sync, request, body, revision, document
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận lưu bản nháp thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _validate_commercial_draft_sync(request, body, revision):
+    conn = None
+    try:
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -332,16 +384,24 @@ async def validate_commercial_draft_api(request):
             conn.close()
 
 
-async def publish_commercial_draft_api(request):
-    conn = None
+async def validate_commercial_draft_api(request):
     try:
         body = await _json_body(request)
         revision = _expected_revision(request, body)
-        digest = str(body.get("validationDigest") or "").strip()
-        reason = str(body.get("reason") or "").strip()
-        effective_at = body.get("effectiveAt") or int(time.time())
-        if len(digest) != 64 or len(reason) < 3:
-            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu digest hoặc lý do xuất bản hợp lệ.")
+        return await run_database_write(
+            _validate_commercial_draft_sync, request, body, revision
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận kiểm tra bản nháp thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _publish_commercial_draft_sync(request, body, revision, digest, reason, effective_at):
+    conn = None
+    try:
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -378,10 +438,30 @@ async def publish_commercial_draft_api(request):
             conn.close()
 
 
-async def clone_commercial_release_api(request):
+async def publish_commercial_draft_api(request):
+    try:
+        body = await _json_body(request)
+        revision = _expected_revision(request, body)
+        digest = str(body.get("validationDigest") or "").strip()
+        reason = str(body.get("reason") or "").strip()
+        effective_at = body.get("effectiveAt") or int(time.time())
+        if len(digest) != 64 or len(reason) < 3:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu digest hoặc lý do xuất bản hợp lệ.")
+        return await run_database_write(
+            _publish_commercial_draft_sync,
+            request, body, revision, digest, reason, effective_at,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận xuất bản cấu hình thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _clone_commercial_release_sync(request):
     conn = None
     try:
-        await _json_body(request)
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -430,15 +510,21 @@ async def clone_commercial_release_api(request):
             conn.close()
 
 
-async def stop_commercial_release_sales_api(request):
+async def clone_commercial_release_api(request):
+    try:
+        await _json_body(request)
+        return await run_database_write(_clone_commercial_release_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận nhân bản cấu hình thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _stop_commercial_release_sales_sync(request, body, reason, effective_at, scope):
     conn = None
     try:
-        body = await _json_body(request)
-        reason = str(body.get("reason") or "").strip()
-        if len(reason) < 3:
-            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Cần lý do ngừng bán.")
-        effective_at = int(body.get("effectiveAt") or time.time())
-        scope = body.get("scope") or {}
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -478,9 +564,28 @@ async def stop_commercial_release_sales_api(request):
             conn.close()
 
 
-async def public_commercial_offers_api(request):
+async def stop_commercial_release_sales_api(request):
     try:
-        config = commercial_runtime_config()
+        body = await _json_body(request)
+        reason = str(body.get("reason") or "").strip()
+        if len(reason) < 3:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Cần lý do ngừng bán.")
+        effective_at = int(body.get("effectiveAt") or time.time())
+        scope = body.get("scope") or {}
+        return await run_database_write(
+            _stop_commercial_release_sales_sync,
+            request, body, reason, effective_at, scope,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận dừng bán cấu hình thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _public_commercial_offers_sync(request, config):
+    try:
         if not config.enabled or config.mode == "off":
             return JSONResponse(
                 {
@@ -519,7 +624,19 @@ async def public_commercial_offers_api(request):
         return _error_response(exc)
 
 
-async def create_billing_quote_api(request):
+async def public_commercial_offers_api(request):
+    try:
+        config = commercial_runtime_config()
+        return await run_database_read(_public_commercial_offers_sync, request, config)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải bảng giá.", "COMMERCIAL_READ_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
+def _create_billing_quote_sync(request, body, request_shape, request_hash):
     conn = None
     try:
         config = commercial_runtime_config()
@@ -529,23 +646,8 @@ async def create_billing_quote_api(request):
                 "Báo giá thanh toán chưa được bật.",
                 status_code=503,
             )
-        valid, actor = verify_session(request)
-        if not valid:
-            return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
-        body = await _json_body(request)
-        owner_kind = str(body.get("ownerKind") or "").strip()
-        owner_id = str(body.get("ownerId") or "").strip()
-        if owner_kind == "account" and owner_id != actor.user_id:
-            raise CommercialPolicyError("BUYER_NOT_AUTHORIZED", "Không được mua cho tài khoản khác.", status_code=403)
-        if owner_kind == "organization" and owner_id != str(actor.active_role_organization_id or ""):
-            raise CommercialPolicyError("BUYER_NOT_AUTHORIZED", "Workspace tổ chức không khớp phiên đang hoạt động.", status_code=403)
-        request_shape = {
-            "ownerKind": owner_kind,
-            "ownerId": owner_id,
-            "operation": str(body.get("operation") or "purchase"),
-            "skuCode": str(body.get("skuCode") or ""),
-        }
-        request_hash = sha256(canonical_json(request_shape).encode("utf-8")).hexdigest()
+        owner_kind = request_shape["ownerKind"]
+        owner_id = request_shape["ownerId"]
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
@@ -624,6 +726,30 @@ async def create_billing_quote_api(request):
     finally:
         if conn:
             conn.close()
+
+
+async def create_billing_quote_api(request):
+    try:
+        body = await _json_body(request)
+        owner_kind = str(body.get("ownerKind") or "").strip()
+        owner_id = str(body.get("ownerId") or "").strip()
+        request_shape = {
+            "ownerKind": owner_kind,
+            "ownerId": owner_id,
+            "operation": str(body.get("operation") or "purchase"),
+            "skuCode": str(body.get("skuCode") or ""),
+        }
+        request_hash = sha256(canonical_json(request_shape).encode("utf-8")).hexdigest()
+        return await run_database_write(
+            _create_billing_quote_sync,
+            request, body, request_shape, request_hash,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tạo báo giá.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
 
 
 def commercial_policy_routes(Route):

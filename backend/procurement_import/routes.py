@@ -54,7 +54,6 @@ from backend.procurement_import.runtime import (
     ProcurementRouteError,
     build_procurement_source as _build_runtime_source,
     procurement_import_enabled,
-    procurement_provider_name,
     procurement_source_timeout_seconds,
 )
 from backend.procurement_lookup.config import ProcurementLookupSettings
@@ -154,10 +153,6 @@ _OPENING_APPLY_FIELDS = {
 
 def _enabled():
     return procurement_import_enabled()
-
-
-def _provider_name():
-    return procurement_provider_name()
 
 
 def _source_timeout_seconds():

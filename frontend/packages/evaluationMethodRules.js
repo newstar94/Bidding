@@ -1,4 +1,4 @@
-import { parseVietnameseNumber } from "../shared/formatters.js";
+import { formatVietnameseNumber, parseVietnameseNumber } from "../shared/formatters.js";
 
 export const EVALUATION_METHOD_CODES = Object.freeze({
   LOWEST_PRICE: "LOWEST_PRICE",
@@ -100,6 +100,19 @@ export function requiresTechnicalScoreInput(packageOrMethod) {
 export function parseTechnicalScore(value) {
   const score = parseVietnameseNumber(value);
   return score !== null && score >= 0 ? score : null;
+}
+
+/**
+ * Serialize a parsed technical score using the same Vietnamese separators the
+ * score parser accepts.  A dot-decimal string such as "97.125" is ambiguous
+ * to the shared number parser (it can be a thousands-grouped value), so score
+ * values must cross the persistence boundary through this formatter instead
+ * of String(score).
+ */
+export function serializeTechnicalScore(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const score = typeof value === "number" ? value : parseTechnicalScore(value);
+  return score === null ? String(value) : formatVietnameseNumber(score);
 }
 
 export function validateTechnicalScore(value, { required = false } = {}) {

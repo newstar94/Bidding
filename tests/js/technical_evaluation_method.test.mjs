@@ -14,6 +14,7 @@ import {
 } from "../../frontend/packages/DetailedEvaluationPanelController.js";
 import { validateDetailedEvaluationRow } from "../../frontend/packages/detailedEvaluationValidation.js";
 import { applyDetailedEvaluationProjection } from "../../frontend/packages/DetailedEvaluationState.js";
+import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js";
 
 const { PASS_FAIL, SCORE } = TECHNICAL_EVALUATION_METHODS;
 const TECHNICAL_METHOD_CASES = JSON.parse(readFileSync(
@@ -164,6 +165,32 @@ test("combined packages project the detailed technical score instead of a pass/f
     { phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá" },
   );
   assert.equal(projected.danhGiaKyThuat, "85");
+});
+
+test("combined decimal technical scores keep their value through projection and ranking", () => {
+  const pkg = {
+    linhVuc: "Hàng hóa",
+    phuongPhapDanhGia: "Kết hợp giữa kỹ thuật và giá",
+    trongSoKyThuat: 80,
+    phanLo: "Không",
+  };
+  const projected = applyDetailedEvaluationProjection(
+    { id: "decimal-bid", danhGiaKyThuat: "Đạt" },
+    {
+      trangThai: "completed",
+      chiTietList: [{ tieuChiDanhGiaId: "technical-1", ketQua: "pass", diem: 97.125 }],
+    },
+    [{ id: "technical-1", group: "technical", required: true, resultType: "score" }],
+    ["technical"],
+    pkg,
+  );
+
+  assert.equal(projected.danhGiaKyThuat, "97,125");
+  const { rankings } = calculateRankings(pkg, [
+    { ...projected, danhGiaKetLuan: "Đạt", giaXepHang: 100 },
+    { id: "higher-bid", danhGiaKetLuan: "Đạt", danhGiaKyThuat: "98", giaXepHang: 100 },
+  ]);
+  assert.deepEqual(rankings, { "higher-bid": 1, "decimal-bid": 2 });
 });
 
 test("score limits are collected for configured and imported criteria", () => {

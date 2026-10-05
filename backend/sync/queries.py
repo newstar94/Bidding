@@ -20,7 +20,6 @@ TABLE_KEYS = {
     "hanghoaduthaunhathau": "hang_hoa_du_thau_nha_thau",
 }
 
-SYNCED_TABLES = set(TABLE_KEYS.values())
 ALLOWED_ORPHAN_TABLES = {
     "goi_thau",
     "thong_tin_mo_thau",

@@ -967,22 +967,6 @@ def resolve_publication_templates(
     return [], 'unassigned'
 
 
-def resolve_publication_template(
-    document_type,
-    owner_id=None,
-    *,
-    owner_type='personal',
-    allow_active_fallback=False,
-):
-    templates, source = resolve_publication_templates(
-        document_type,
-        owner_id,
-        owner_type=owner_type,
-        allow_active_fallback=allow_active_fallback,
-    )
-    return (templates[0] if templates else ''), source
-
-
 def set_active_template(
     filename,
     owner_id=None,

@@ -14,6 +14,19 @@ import { beginExcelImportLoading } from "../shared/ExcelImportLoading.js";
 import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
 import { formatVietnameseNumber, parseVietnameseNumber } from "../shared/formatters.js";
 
+const delegatedListenersByRoot = new WeakMap();
+
+function clearDelegatedListeners(root) {
+  const listeners = delegatedListenersByRoot.get(root) || [];
+  listeners.forEach(({ type, listener }) => root.removeEventListener?.(type, listener));
+  delegatedListenersByRoot.delete(root);
+}
+
+function addDelegatedListener(root, listeners, type, listener) {
+  root.addEventListener?.(type, listener);
+  listeners.push({ type, listener });
+}
+
 function mergeConfiguredCriteriaForEdit(baseCriteria, configuredCriteria) {
   const configured = new Map(configuredCriteria.map((criterion) => [
     String(criterion.id),
@@ -235,6 +248,8 @@ export function bindDetailedEvaluationPanelController({
     throw new TypeError("Detailed evaluation panel controller received an invalid context.");
   }
   assertCommands(commands);
+  clearDelegatedListeners(root);
+  const delegatedListeners = [];
   root.querySelector("#btn-detailed-evaluation-back")?.addEventListener("click", commands.close);
   const select = root.querySelector("#detailed-evaluation-bid-select");
   if (select) select.onchange = async () => {
@@ -394,13 +409,13 @@ export function bindDetailedEvaluationPanelController({
       if (input.checked) commands.setTechnicalMethod(input.value);
     });
   });
-  root.addEventListener?.("input", (event) => {
+  addDelegatedListener(root, delegatedListeners, "input", (event) => {
     if (
       event.target?.matches?.("input, select, textarea")
       && !event.target._bfDetailedDirtyBound
     ) markDirty();
   });
-  root.addEventListener?.("change", (event) => {
+  addDelegatedListener(root, delegatedListeners, "change", (event) => {
     const input = event.target;
     if (input?.matches?.("input, select, textarea") && !input._bfDetailedDirtyBound) {
       markDirty();
@@ -432,7 +447,7 @@ export function bindDetailedEvaluationPanelController({
   const excelInput = root.querySelector("#detailed-evaluation-excel-input");
   const excelButton = root.querySelector("#btn-detailed-evaluation-import-excel");
   root.querySelector("#btn-detailed-evaluation-add-row")?.addEventListener("click", () => commands.addCriterion());
-  root.addEventListener?.("click", (event) => {
+  addDelegatedListener(root, delegatedListeners, "click", (event) => {
     const button = event.target?.closest?.("[data-detailed-add-child-criterion], [data-detailed-edit-criterion], [data-detailed-remove-criterion]");
     if (!button || button.disabled || state.readOnly) return;
     const activeGroup = appController.selectedDetailedEvaluationTab;
@@ -496,5 +511,6 @@ export function bindDetailedEvaluationPanelController({
       await loading.close();
     }
   });
+  delegatedListenersByRoot.set(root, delegatedListeners);
   appController.view.createIconsScoped?.(root);
 }

@@ -18,7 +18,12 @@ from backend.commercial_policy.repository import new_id
 from backend.db.db_helper import database
 from backend.shared.logging_utils import log_audit, log_error
 from backend.shared.request_validation import read_json_object
-from backend.shared.async_io import run_blocking_io
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    run_blocking_io,
+)
+from backend.shared.database_io import run_database_read, run_database_write
 
 from .service import BillingService, ProviderCommandExecutor, public_order_payload
 from .webhook import payment_webhook_api
@@ -32,6 +37,12 @@ _executor = None
 _FAKE_CHECKOUT_HTML = (
     Path(__file__).resolve().parents[2] / "views" / "fake_checkout.html"
 )
+
+
+def _database_lane_unavailable(message, code):
+    response = JSONResponse({"error": message, "code": code}, status_code=503)
+    response.headers["Retry-After"] = "1"
+    return response
 
 
 def _fake_checkout_environment_allowed():
@@ -68,7 +79,7 @@ def _fake_checkout_context(connection, request):
     return dict(row)
 
 
-async def fake_checkout_page(request):
+def _fake_checkout_page_sync(request):
     connection = None
     try:
         connection = database.get_connection()
@@ -84,7 +95,16 @@ async def fake_checkout_page(request):
             connection.close()
 
 
-async def get_fake_checkout_api(request):
+async def fake_checkout_page(request):
+    try:
+        return await run_database_read(_fake_checkout_page_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải checkout giả lập.", "FAKE_CHECKOUT_UNAVAILABLE"
+        )
+
+
+def _get_fake_checkout_sync(request):
     connection = None
     try:
         connection = database.get_connection()
@@ -100,18 +120,19 @@ async def get_fake_checkout_api(request):
             connection.close()
 
 
-async def update_fake_checkout_api(request):
+async def get_fake_checkout_api(request):
+    try:
+        return await run_database_read(_get_fake_checkout_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải checkout giả lập.", "FAKE_CHECKOUT_UNAVAILABLE"
+        )
+
+
+def _update_fake_checkout_sync(request, body):
     connection = None
     command_id = None
     try:
-        body, invalid = await read_json_object(request)
-        if invalid:
-            return invalid
-        if set(body) != {"action"}:
-            raise CommercialPolicyError(
-                "FAKE_ACTION_INVALID",
-                "Thao tác checkout giả lập không hợp lệ.",
-            )
         connection = database.get_connection()
         order = _fake_checkout_context(connection, request)
         provider = payment_provider_registry().resolve(order)
@@ -183,17 +204,11 @@ async def update_fake_checkout_api(request):
         connection.commit()
         connection.close()
         connection = None
-        reconciled_order = (
-            await run_blocking_io(
-                _provider_executor().execute, command_id, timeout_seconds=35
-            ) if command_id else None
-        )
-        return JSONResponse({
-            "accepted": True,
-            "providerStatus": provider_result.get("status"),
-            "order": public_order_payload(reconciled_order or order),
-            "message": "Sự kiện giả lập đã được đưa vào hàng đợi đối soát.",
-        }, status_code=202)
+        return {
+            "order": order,
+            "command_id": command_id,
+            "provider_status": provider_result.get("status"),
+        }
     except Exception as error:  # noqa: BLE001
         if connection:
             connection.rollback()
@@ -201,6 +216,40 @@ async def update_fake_checkout_api(request):
     finally:
         if connection:
             connection.close()
+
+
+async def update_fake_checkout_api(request):
+    body, invalid = await read_json_object(request)
+    if invalid:
+        return invalid
+    if set(body) != {"action"}:
+        raise CommercialPolicyError(
+            "FAKE_ACTION_INVALID",
+            "Thao tác checkout giả lập không hợp lệ.",
+        )
+    try:
+        result = await run_database_write(_update_fake_checkout_sync, request, body)
+        if isinstance(result, JSONResponse):
+            return result
+        reconciled_order = (
+            await run_blocking_io(
+                _provider_executor().execute,
+                result["command_id"],
+                timeout_seconds=35,
+            ) if result["command_id"] else None
+        )
+        return JSONResponse({
+            "accepted": True,
+            "providerStatus": result["provider_status"],
+            "order": public_order_payload(reconciled_order or result["order"]),
+            "message": "Sự kiện giả lập đã được đưa vào hàng đợi đối soát.",
+        }, status_code=202)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận xử lý checkout giả lập.", "FAKE_CHECKOUT_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
 
 
 def _error(error):
@@ -241,25 +290,9 @@ async def payment_cancel_page(_request):
     )
 
 
-async def create_checkout_api(request):
+def _create_checkout_sync(request, quote_public_id, idempotency_key):
     connection = None
     try:
-        config = commercial_runtime_config()
-        if not config.payment_checkout_enabled:
-            raise CommercialPolicyError(
-                "PAYMENT_CHECKOUT_DISABLED",
-                "Checkout mới đang tắt; order đã tạo vẫn được reconcile theo cấu hình activation.",
-                status_code=503,
-            )
-        body, invalid = await read_json_object(request)
-        if invalid:
-            return invalid
-        if set(body) != {"quotePublicId"}:
-            raise CommercialPolicyError("CHECKOUT_REQUEST_INVALID", "Checkout chỉ nhận quotePublicId.")
-        quote_public_id = str(body.get("quotePublicId") or "").strip()
-        idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
-        if not quote_public_id or not _IDEMPOTENCY_KEY.fullmatch(idempotency_key):
-            raise CommercialPolicyError("CHECKOUT_REQUEST_INVALID", "Thiếu quote hoặc Idempotency-Key hợp lệ.")
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -289,26 +322,60 @@ async def create_checkout_api(request):
                 required=True,
             )
         connection.commit()
-        connection.close()
-        connection = None
-        if command_id:
-            order = await run_blocking_io(
-                _provider_executor().execute, command_id, timeout_seconds=35
-            ) or order
-        return JSONResponse(
-            {"order": public_order_payload(order), "replayed": replayed},
-            status_code=200 if replayed else 201,
-        )
-    except Exception as error:  # noqa: BLE001 - translated at the HTTP seam
+        return {"order": order, "command_id": command_id, "replayed": replayed}
+    except Exception:
         if connection:
             connection.rollback()
-        return _error(error)
+        raise
     finally:
         if connection:
             connection.close()
 
 
-async def list_personal_orders_api(request):
+async def create_checkout_api(request):
+    try:
+        config = commercial_runtime_config()
+        if not config.payment_checkout_enabled:
+            raise CommercialPolicyError(
+                "PAYMENT_CHECKOUT_DISABLED",
+                "Checkout mới đang tắt; order đã tạo vẫn được reconcile theo cấu hình activation.",
+                status_code=503,
+            )
+        body, invalid = await read_json_object(request)
+        if invalid:
+            return invalid
+        if set(body) != {"quotePublicId"}:
+            raise CommercialPolicyError("CHECKOUT_REQUEST_INVALID", "Checkout chỉ nhận quotePublicId.")
+        quote_public_id = str(body.get("quotePublicId") or "").strip()
+        idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
+        if not quote_public_id or not _IDEMPOTENCY_KEY.fullmatch(idempotency_key):
+            raise CommercialPolicyError("CHECKOUT_REQUEST_INVALID", "Thiếu quote hoặc Idempotency-Key hợp lệ.")
+        result = await run_database_write(
+            _create_checkout_sync,
+            request,
+            quote_public_id,
+            idempotency_key,
+        )
+        order = result["order"]
+        if result["command_id"]:
+            order = await run_blocking_io(
+                _provider_executor().execute,
+                result["command_id"],
+                timeout_seconds=35,
+            ) or order
+        return JSONResponse(
+            {"order": public_order_payload(order), "replayed": result["replayed"]},
+            status_code=200 if result["replayed"] else 201,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận xử lý checkout.", "CHECKOUT_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at the HTTP seam
+        return _error(error)
+
+
+def _list_personal_orders_sync(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
@@ -328,7 +395,18 @@ async def list_personal_orders_api(request):
         connection.close()
 
 
-async def get_usage_balance_api(request):
+async def list_personal_orders_api(request):
+    try:
+        return await run_database_read(_list_personal_orders_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải lịch sử thanh toán.", "BILLING_HISTORY_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+
+
+def _get_usage_balance_sync(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
@@ -347,7 +425,18 @@ async def get_usage_balance_api(request):
         connection.close()
 
 
-async def get_personal_order_api(request):
+async def get_usage_balance_api(request):
+    try:
+        return await run_database_read(_get_usage_balance_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải số dư sử dụng.", "BILLING_BALANCE_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+
+
+def _get_personal_order_sync(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
@@ -371,17 +460,20 @@ async def get_personal_order_api(request):
         connection.close()
 
 
-async def cancel_personal_order_api(request):
+async def get_personal_order_api(request):
+    try:
+        return await run_database_read(_get_personal_order_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải đơn thanh toán.", "BILLING_ORDER_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+
+
+def _cancel_personal_order_sync(request, body):
     connection = None
     try:
-        body, invalid = await read_json_object(request)
-        if invalid:
-            return invalid
-        if set(body) - {"reason"}:
-            raise CommercialPolicyError(
-                "CHECKOUT_REQUEST_INVALID",
-                "Cancel request chứa field không hỗ trợ.",
-            )
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -422,15 +514,7 @@ async def cancel_personal_order_api(request):
                 required=True,
             )
         connection.commit()
-        connection.close()
-        connection = None
-        if command_id:
-            order = await run_blocking_io(
-                _provider_executor().execute, command_id, timeout_seconds=35
-            ) or order
-        return JSONResponse(
-            {"order": public_order_payload(order), "replayed": replayed}
-        )
+        return {"order": order, "command_id": command_id, "replayed": replayed}
     except Exception as error:  # noqa: BLE001
         if connection:
             connection.rollback()
@@ -438,6 +522,37 @@ async def cancel_personal_order_api(request):
     finally:
         if connection:
             connection.close()
+
+
+async def cancel_personal_order_api(request):
+    body, invalid = await read_json_object(request)
+    if invalid:
+        return invalid
+    if set(body) - {"reason"}:
+        raise CommercialPolicyError(
+            "CHECKOUT_REQUEST_INVALID",
+            "Cancel request chứa field không hỗ trợ.",
+        )
+    try:
+        result = await run_database_write(_cancel_personal_order_sync, request, body)
+        if isinstance(result, JSONResponse):
+            return result
+        order = result["order"]
+        if result["command_id"]:
+            order = await run_blocking_io(
+                _provider_executor().execute,
+                result["command_id"],
+                timeout_seconds=35,
+            ) or order
+        return JSONResponse(
+            {"order": public_order_payload(order), "replayed": result["replayed"]}
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận hủy đơn thanh toán.", "BILLING_CANCEL_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
 
 
 async def admin_review_order_api(request):
@@ -448,17 +563,9 @@ async def admin_reconcile_order_api(request):
     return await _admin_order_action(request, "reconcile")
 
 
-async def admin_refund_order_api(request):
+def _admin_refund_order_sync(request, body, key):
     connection = None
     try:
-        body, invalid = await read_json_object(request)
-        if invalid:
-            return invalid
-        if set(body) - {"amount", "reason"} or not str(body.get("reason") or "").strip():
-            raise CommercialPolicyError("REFUND_REQUEST_INVALID", "Refund cần amount và reason.")
-        key = str(request.headers.get("Idempotency-Key") or "").strip()
-        if not _IDEMPOTENCY_KEY.fullmatch(key):
-            raise CommercialPolicyError("INVALID_IDEMPOTENCY_KEY", "Thiếu Idempotency-Key hợp lệ.")
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -495,13 +602,29 @@ async def admin_refund_order_api(request):
             connection.close()
 
 
-async def _admin_order_action(request, action):
-    connection = None
-    command_id = None
+async def admin_refund_order_api(request):
     try:
         body, invalid = await read_json_object(request)
         if invalid:
             return invalid
+        if set(body) - {"amount", "reason"} or not str(body.get("reason") or "").strip():
+            raise CommercialPolicyError("REFUND_REQUEST_INVALID", "Refund cần amount và reason.")
+        key = str(request.headers.get("Idempotency-Key") or "").strip()
+        if not _IDEMPOTENCY_KEY.fullmatch(key):
+            raise CommercialPolicyError("INVALID_IDEMPOTENCY_KEY", "Thiếu Idempotency-Key hợp lệ.")
+        return await run_database_write(_admin_refund_order_sync, request, body, key)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận xử lý hoàn tiền.", "BILLING_REFUND_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+
+
+def _admin_order_action_sync(request, action, body):
+    connection = None
+    command_id = None
+    try:
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -555,19 +678,7 @@ async def _admin_order_action(request, action):
             cursor=cursor, required=True,
         )
         connection.commit()
-        connection.close()
-        connection = None
-        reconciled = (
-            await run_blocking_io(
-                _provider_executor().execute, command_id, timeout_seconds=35
-            ) if command_id else None
-        )
-        return JSONResponse({
-            "success": True,
-            "action": action,
-            "publicId": order["public_id"],
-            "order": public_order_payload(reconciled) if reconciled else None,
-        })
+        return {"order": dict(order), "command_id": command_id, "action": action}
     except Exception as error:  # noqa: BLE001
         if connection:
             connection.rollback()
@@ -575,6 +686,35 @@ async def _admin_order_action(request, action):
     finally:
         if connection:
             connection.close()
+
+
+async def _admin_order_action(request, action):
+    try:
+        body, invalid = await read_json_object(request)
+        if invalid:
+            return invalid
+        result = await run_database_write(_admin_order_action_sync, request, action, body)
+        if isinstance(result, JSONResponse):
+            return result
+        reconciled = (
+            await run_blocking_io(
+                _provider_executor().execute,
+                result["command_id"],
+                timeout_seconds=35,
+            ) if result["command_id"] else None
+        )
+        return JSONResponse({
+            "success": True,
+            "action": result["action"],
+            "publicId": result["order"]["public_id"],
+            "order": public_order_payload(reconciled) if reconciled else None,
+        })
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận xử lý đơn thanh toán.", "BILLING_ADMIN_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
 
 
 def billing_routes(Route):

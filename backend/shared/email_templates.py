@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 
 BRAND_NAME = "BiddingFlow"
 BRAND_COLOR = "#3157e8"
-BRAND_STRONG = "#2446c7"
 ACCENT_COLOR = "#0797a6"
 CANVAS_COLOR = "#f5f8fc"
 INK_COLOR = "#111a2c"

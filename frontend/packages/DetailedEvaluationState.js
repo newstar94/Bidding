@@ -32,7 +32,10 @@ import {
   resolveTechnicalEvaluationMethod,
 } from "./technicalEvaluationMethod.js";
 import { detailedEvaluationAutosaveFor } from "./DetailedEvaluationDraftAutosave.js";
-import { requiresTechnicalScoreInput } from "./evaluationMethodRules.js";
+import {
+  requiresTechnicalScoreInput,
+  serializeTechnicalScore,
+} from "./evaluationMethodRules.js";
 import { parseEvaluationMetadataStrict } from "./evaluationMetadata.js";
 import { isOfficialBidderGoodsRow } from "./bidderGoodsSelectors.js";
 
@@ -118,7 +121,7 @@ export function applyDetailedEvaluationProjection(bid, report, criteria, groups,
     const fields = GROUP_PROJECTION_FIELDS[group];
     if (!fields) return;
     projected[fields.result] = group === "technical" && requiresTechnicalScoreInput(pkg)
-      ? result.score === null ? "" : String(result.score)
+      ? result.score === null ? "" : serializeTechnicalScore(result.score)
       : result.status;
   });
   projected.danhGiaKetLuan = aggregation.overall.status;

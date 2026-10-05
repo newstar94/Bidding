@@ -100,10 +100,6 @@ def _process_start_token(pid: int) -> str | None:
 _SELF_START_TOKEN = _process_start_token(os.getpid()) or str(time.time_ns())
 
 
-def current_worker_identity() -> tuple[int, str]:
-    return os.getpid(), _SELF_START_TOKEN
-
-
 def _worker_alive(pid: int, start_token: str) -> bool:
     observed = _process_start_token(pid)
     return observed is not None and secrets.compare_digest(observed, start_token)

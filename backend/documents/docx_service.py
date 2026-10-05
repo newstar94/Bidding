@@ -438,19 +438,6 @@ def _build_plan_context_snapshot(
     return projected_context, int(plan.get("row_version") or 1)
 
 
-def build_plan_context(
-    plan_id, user_id, org_name, capabilities=None, selected_plan_basis_ids=None
-):
-    context, _record_revision = _build_plan_context_snapshot(
-        plan_id,
-        user_id,
-        org_name,
-        capabilities,
-        selected_plan_basis_ids,
-    )
-    return context
-
-
 def build_plan_context_snapshot(
     plan_id, user_id, org_name, capabilities=None, selected_plan_basis_ids=None
 ):

@@ -1,5 +1,6 @@
 import { getHolidays } from "../shared/runtimeState.js";
 import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
+import { parseEvaluationMetadataForDisplay } from "../packages/evaluationMetadata.js";
 
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
 export const ALERT_META = {
@@ -44,7 +45,8 @@ function parseDashboardDate(value) {
 }
 
 function packageHasEvaluationReport(pkg) {
-  const metadata = pkg.danhGiaHsdtMetadata || pkg.danh_gia_hsdt_metadata || {};
+  const rawMetadata = pkg.danhGiaHsdtMetadata || pkg.danh_gia_hsdt_metadata || {};
+  const metadata = parseEvaluationMetadataForDisplay(rawMetadata).metadata;
   return Object.values(metadata || {}).some((round) => round && (
     round.soBaoCao || round.ngayBaoCao || round.saved || round.trangThai === "completed" || round.trangThai === "approved"
   ));

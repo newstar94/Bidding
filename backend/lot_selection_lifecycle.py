@@ -141,27 +141,6 @@ class LotLifecyclePolicyError(ValueError):
         self.blockers = tuple(blockers)
 
 
-_ONE_STAGE_ONE_ENVELOPE_TRANSITIONS = {
-    LotStage.NOT_STARTED: frozenset({LotStage.EVALUATION_DRAFT}),
-    LotStage.EVALUATION_DRAFT: frozenset({LotStage.EVALUATION_FINALIZED}),
-    LotStage.EVALUATION_FINALIZED: frozenset({LotStage.RESULT_APPRAISED}),
-    LotStage.RESULT_APPRAISED: frozenset({LotStage.RESULT_APPROVED}),
-    LotStage.RESULT_APPROVED: frozenset(),
-}
-
-_ONE_STAGE_TWO_ENVELOPE_TRANSITIONS = {
-    LotStage.NOT_STARTED: frozenset({LotStage.TECHNICAL_DRAFT}),
-    LotStage.TECHNICAL_DRAFT: frozenset({LotStage.TECHNICAL_EVALUATED}),
-    LotStage.TECHNICAL_EVALUATED: frozenset({LotStage.TECHNICAL_APPRAISED}),
-    LotStage.TECHNICAL_APPRAISED: frozenset({LotStage.TECHNICAL_APPROVED}),
-    LotStage.TECHNICAL_APPROVED: frozenset({LotStage.FINANCIAL_OPENED}),
-    LotStage.FINANCIAL_OPENED: frozenset({LotStage.FINANCIAL_EVALUATED}),
-    LotStage.FINANCIAL_EVALUATED: frozenset({LotStage.RESULT_APPRAISED}),
-    LotStage.RESULT_APPRAISED: frozenset({LotStage.RESULT_APPROVED}),
-    LotStage.RESULT_APPROVED: frozenset(),
-}
-
-
 def _assess_scope(
     context: PackageLifecycleContext,
     selected_lot_ids: Iterable[str],

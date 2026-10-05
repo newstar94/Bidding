@@ -2,6 +2,7 @@ import { generateRecordId } from "../shared/idUtils.js";
 import {
   parseTechnicalScore,
   requiresTechnicalScoreInput,
+  serializeTechnicalScore,
 } from "./evaluationMethodRules.js";
 import { parseEvaluationMetadataStrict } from "./evaluationMetadata.js";
 
@@ -115,7 +116,7 @@ function technicalReportForOpening(sourceOpening, sourcePackage) {
 function inheritedTechnicalScore(sourceOpening, sourcePackage) {
   if (!requiresTechnicalScoreInput(sourcePackage)) return null;
   const existingScore = parseTechnicalScore(sourceOpening?.danhGiaKyThuat);
-  if (existingScore !== null) return String(existingScore);
+  if (existingScore !== null) return serializeTechnicalScore(existingScore);
   const report = technicalReportForOpening(sourceOpening, sourcePackage);
   if (!report) return null;
   const criteria = asArray(technicalEvaluationBlock(sourcePackage).criteria);
@@ -133,12 +134,12 @@ function inheritedTechnicalScore(sourceOpening, sourcePackage) {
     .filter((score) => score !== null);
   if (numericRows.length) {
     const total = numericRows.reduce((sum, score) => sum + score, 0);
-    return String(total);
+    return serializeTechnicalScore(total);
   }
   const reportScore = parseTechnicalScore(
     report.diemKyThuat ?? report.diem_ky_thuat ?? report.technicalScore,
   );
-  return reportScore === null ? null : String(reportScore);
+  return reportScore === null ? null : serializeTechnicalScore(reportScore);
 }
 
 function cleanServerFields(record) {

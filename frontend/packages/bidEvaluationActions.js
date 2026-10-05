@@ -25,6 +25,7 @@ import {
 import {
   parseTechnicalScore,
   requiresTechnicalScoreInput,
+  serializeTechnicalScore,
   validateTechnicalScore,
 } from "./evaluationMethodRules.js";
 import {
@@ -193,7 +194,9 @@ function applyCompletedBidRows({
     bid.danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
     const technicalValue = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
     const technicalScore = parseTechnicalScore(technicalValue);
-    bid.danhGiaKyThuat = technicalScore === null ? technicalValue : String(technicalScore);
+    bid.danhGiaKyThuat = technicalScore === null
+      ? technicalValue
+      : serializeTechnicalScore(technicalScore);
     const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
     bid.danhGiaKetLuan = selectKetLuan
       ? selectKetLuan.value
@@ -759,7 +762,9 @@ export async function saveDanhGiaHsdt(options = {}) {
         danhGiaNangLuc = tr.querySelector(".mt-dg-nang-luc")?.value.trim() || "";
         const technicalValue = tr.querySelector(".mt-dg-ky-thuat")?.value.trim() || "";
         const technicalScore = parseTechnicalScore(technicalValue);
-        danhGiaKyThuat = technicalScore === null ? technicalValue : String(technicalScore);
+        danhGiaKyThuat = technicalScore === null
+          ? technicalValue
+          : serializeTechnicalScore(technicalScore);
         const selectKetLuan = tr.querySelector(".mt-dg-ketluan");
         if (selectKetLuan) {
           danhGiaKetLuan = selectKetLuan.value;

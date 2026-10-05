@@ -30,12 +30,6 @@ class PackageAction(StrEnum):
     ALREADY_IMPORTED = "ALREADY_IMPORTED"
 
 
-class NoticeState(StrEnum):
-    UNLINKED = "UNLINKED"
-    LINKED = "LINKED"
-    UNKNOWN = "UNKNOWN"
-
-
 class RequiredFieldIssue(StrEnum):
     NAME = "name"
     PRICE = "priceVnd"

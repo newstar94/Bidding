@@ -6,9 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-MODES = frozenset({"data", "procurement_advice", "app_help"})
-
-
 @dataclass(frozen=True)
 class AiRequestContext:
     user_id: str

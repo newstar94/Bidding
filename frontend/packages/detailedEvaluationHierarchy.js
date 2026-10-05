@@ -8,6 +8,10 @@ function directChildren(criteria, parent) {
   if (parentParts.length === 0) return [];
   return criteria.filter((candidate) => {
     if (candidate.group !== parent.group || candidate.id === parent.id) return false;
+    const explicitParentId = String(
+      candidate.parentCriterionId ?? candidate.tieuChiChaId ?? "",
+    ).trim();
+    if (explicitParentId) return explicitParentId === String(parent.id);
     const candidateParts = sttParts(candidate);
     return candidateParts.length === parentParts.length + 1
       && parentParts.every((part, index) => candidateParts[index] === part);

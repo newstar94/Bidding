@@ -18,22 +18,12 @@ COMMERCIAL_EVENT_KEYS = frozenset({
     "checkout.cancelled", "subscription.cancel_intent", "downgrade.started",
 })
 
-# These stages are derived only from server/DB facts and are never accepted by
-# the browser event collector.
-SERVER_FUNNEL_KEYS = frozenset({
-    "quote.created", "checkout.created", "payment.verified",
-    "subscription.activated",
-})
 
 OWNER_KINDS = frozenset({"account", "organization"})
 SIZE_BUCKETS = frozenset({"1", "2_5", "6_15", "16_50", "over_50", "unknown"})
 EVENT_SOURCES = frozenset({
     "pricing_page", "commercial_storefront", "upgrade_prompt", "quota_warning",
     "checkout", "subscription_settings",
-})
-COST_TYPES = frozenset({
-    "procurement_fetch", "ai", "document_worker", "storage", "bandwidth",
-    "payment_fee", "email", "other_external_provider",
 })
 
 COMMERCIAL_FEEDBACK_MOMENTS = frozenset({

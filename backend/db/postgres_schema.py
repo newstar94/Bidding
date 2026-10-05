@@ -1061,14 +1061,6 @@ def _create_triggers(cursor) -> None:
         "procurement_raw_snapshot",
         "word_template_publication_event",
         "generated_document_provenance",
-        "procurement_case_response_revision",
-        "procurement_case_transition",
-        "procurement_case_attachment",
-        "procurement_case_legal_basis",
-        "procurement_case_source_observation",
-        "procurement_case_command",
-        "calendar_event_revision",
-        "bulk_operation_item",
     ):
         if table_name not in SCHEMA_DINH_NGHIA:
             continue

@@ -30,6 +30,17 @@ test("dashboard alert filter does not match unrelated alert categories", () => {
   assert.equal(dashboardAlertMatches(packageRecord, "delayedEvaluation", at), true);
 });
 
+test("dashboard delayed-evaluation alert parses serialized evaluation metadata", () => {
+  const packageRecord = {
+    id: "package-serialized-metadata",
+    trangThai: "Đã mở thầu",
+    thoiGianMoThau: "10/09/2026 15:00",
+    danhGiaHsdtMetadata: JSON.stringify({ technical: { saved: true } }),
+  };
+
+  assert.equal(dashboardAlertMatches(packageRecord, "delayedEvaluation", at), false);
+});
+
 test("dashboard action rows identify the record, reason, deadline source, and next step", () => {
   const markup = buildDashboardActionRows({
     items: [{

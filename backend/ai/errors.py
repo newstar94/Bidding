@@ -11,14 +11,6 @@ class AiError(RuntimeError):
         self.status_code = status_code
 
 
-class AiProviderError(AiError):
-    pass
-
-
-class AiToolError(AiError):
-    pass
-
-
 ERROR_STATUS = {
     "AI_DISABLED": 404,
     "AI_AUTH_REQUIRED": 401,

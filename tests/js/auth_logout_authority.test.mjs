@@ -18,7 +18,7 @@ import {
 
 const originalCapabilities = [PROCUREMENT_IMPORT_CAPABILITY, PROCUREMENT_LOOKUP_CAPABILITY];
 
-function logoutFixture(t, requestLogout, { pending = false } = {}) {
+function logoutFixture(t, requestLogout, { pending = false, advanceSetupClock = false } = {}) {
   const events = [];
   const storage = () => {
     const values = new Map();
@@ -87,7 +87,18 @@ function logoutFixture(t, requestLogout, { pending = false } = {}) {
     usageAnalyticsTracker: { stop: () => events.push(["analytics-stop"]) },
   };
   setAuthSessionActive(true, local);
-  setupAuth.call(controller);
+  if (advanceSetupClock) {
+    const originalNow = Date.now;
+    let setupTick = originalNow() - 1_000;
+    Date.now = () => ++setupTick;
+    try {
+      setupAuth.call(controller);
+    } finally {
+      Date.now = originalNow;
+    }
+  } else {
+    setupAuth.call(controller);
+  }
   t.after(() => {
     setAuthSessionActive(true, local);
     setAuthSessionActive(false, local);
@@ -96,11 +107,47 @@ function logoutFixture(t, requestLogout, { pending = false } = {}) {
       else delete globalThis[name];
     }
   });
-  return { events, local, session, model, button: nodes.get("btn-auth-logout") };
+  return { events, local, session, model, controller, button: nodes.get("btn-auth-logout") };
 }
 
 const response = (status, body) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },
+});
+
+test("prechecked bootstrap preserves original capabilities after failed logout when setup crosses a millisecond", async (t) => {
+  const fixture = logoutFixture(t, () => response(503, { success: false }), {
+    pending: true,
+    advanceSetupClock: true,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(await resolveServerCapabilities(), originalCapabilities);
+
+  const queue = structuredClone(fixture.model.getMutationQueue());
+  await fixture.button.onclick({ preventDefault() {} });
+
+  assert.deepEqual(await resolveServerCapabilities(), originalCapabilities);
+  assert.deepEqual(fixture.model.getMutationQueue(), queue);
+  assert.equal(isAuthSessionActive(), true);
+  assert.equal(isExplicitLogoutInProgress(fixture.local), false);
+});
+
+test("prechecked bootstrap ignores its stale result after a newer authoritative session", async (t) => {
+  const fixture = logoutFixture(t, () => response(503, { success: false }), {
+    advanceSetupClock: true,
+  });
+  const startChecker = t.mock.method(fixture.controller, "startBackgroundSessionChecker", () => {});
+  updateServerCapabilitiesFromSession({
+    valid: true,
+    user: { id: "user-b" },
+    serverCapabilities: [PROCUREMENT_LOOKUP_CAPABILITY],
+  });
+  fixture.model.state.activeuser = { id: "user-b", name: "User B" };
+  setAuthSessionActive(true, fixture.local);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(await resolveServerCapabilities(), [PROCUREMENT_LOOKUP_CAPABILITY]);
+  assert.equal(fixture.model.state.activeuser.id, "user-b");
+  assert.equal(startChecker.mock.callCount(), 0);
 });
 
 for (const [name, result] of [

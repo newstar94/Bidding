@@ -327,13 +327,15 @@ export function setupAuth() {
     ].filter(Boolean);
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
     const canShowLocalFirst = typeof this.hasLocalDataForRoute === "function" ? this.hasLocalDataForRoute(initialPath) : hasLocalWorkspaceData();
-    const sessionCheckStartedAt = Date.now();
+    let sessionCheckStartedAt = Date.now();
     const precheckedSession = this._initialSessionData;
     delete this._initialSessionData;
     const routeManagedByWorkspaceBootstrap = precheckedSession?.valid === true;
     if (routeManagedByWorkspaceBootstrap) {
       setAuthSessionActive(true);
       applySessionUser(precheckedSession.user);
+      // The prechecked session owns these synchronous auth-state updates.
+      sessionCheckStartedAt = Date.now();
     } else if (canShowLocalFirst) {
       requestAnimationFrame(() => {
         void showCachedWorkspace();

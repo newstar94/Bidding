@@ -8,7 +8,7 @@ import time
 import uuid
 
 from .document import canonical_json, checksum_document
-from .errors import CommercialPolicyError, POLICY_STALE, REFERENCE_IN_USE
+from .errors import CommercialPolicyError, POLICY_STALE
 
 
 def new_id(prefix):
@@ -431,16 +431,3 @@ class CommercialRepository:
             ),
         )
         return outbox_id
-
-    def assert_reference_not_used(self, table, identifier):
-        if table not in {"billing_plan_versions", "billing_skus", "billing_prices"}:
-            raise ValueError("Unsupported commercial reference table.")
-        row = self.cursor.execute(
-            f"SELECT 1 FROM {table} WHERE id = ? LIMIT 1", (identifier,)  # noqa: S608 - table is allowlisted above
-        ).fetchone()
-        if row:
-            raise CommercialPolicyError(
-                REFERENCE_IN_USE,
-                "Tham chiếu thương mại bất biến đang được sử dụng.",
-                status_code=409,
-            )

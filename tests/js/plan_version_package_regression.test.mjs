@@ -448,7 +448,7 @@ test("plan version inheritance projects a legacy combined technical result as a 
         id: "detail-technical-v00",
         tieuChiDanhGiaId: "criterion-technical",
         ketQua: "pass",
-        diem: 87,
+        diem: 87.125,
       }],
     }],
   };
@@ -465,7 +465,7 @@ test("plan version inheritance projects a legacy combined technical result as a 
     createId: (type) => `${type}-copy`,
   });
 
-  assert.equal(aggregate.thongtinmothau[0].danhGiaKyThuat, "87");
+  assert.equal(aggregate.thongtinmothau[0].danhGiaKyThuat, "87,125");
 });
 
 test("package copy-on-write clones mutable children and freezes the source aggregate", () => {
