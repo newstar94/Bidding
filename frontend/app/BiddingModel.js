@@ -979,28 +979,6 @@ export class BiddingModel {
     if (!checkpoint) return null;
     if (!mutationQueueHasChanges(checkpoint.queue)) return null;
     const { conflicting, unrelated } = splitConflictCheckpoint(checkpoint, data);
-    const rowConflicts = getSyncValidationErrors(data)
-      .filter((error) => error?.code === "ROW_VERSION_CONFLICT");
-    const supportedCaptureTables = new Set(["ke_hoach_lcnt", "goi_thau", "kehoach", "goithau"]);
-    const durableRecoveryEnabled = hasServerCapability(CONFLICT_CENTER_CAPABILITY)
-      && (rowConflicts.length === 0 || rowConflicts.some((error) => supportedCaptureTables.has(error.table)));
-    let drafts = [];
-    if (durableRecoveryEnabled) {
-      try {
-        drafts = await this._captureServerConflictDrafts(conflicting, data, snapshot);
-      } catch {
-        if (isWorkspaceLeaseCurrent(this, lease)) {
-          this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
-        }
-        return null;
-      }
-      if (drafts.length === 0) {
-        if (isWorkspaceLeaseCurrent(this, lease)) {
-          this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
-        }
-        return null;
-      }
-    }
     if (!isWorkspaceLeaseCurrent(this, lease)) return null;
     try {
       if (scopedReceipt) outbox.ack(snapshot);
@@ -1012,47 +990,18 @@ export class BiddingModel {
       this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true };
       outbox.restore(activeCheckpoint);
       try { await outbox.flush(); } catch { /* store exposes the durability failure */ }
-      drafts.forEach((draft) => this._getConflictRecoveryStore().remove(draft.id));
       return null;
     }
     if (!isWorkspaceLeaseCurrent(this, lease)) return null;
     // Only the retired receipt is held in this model. Newer same-row edits and
     // unrelated active mutations retain their own generation and cache.
-    const activeQueue = typeof outbox.snapshot === "function" ? outbox.snapshot() : null;
-    const projection = {};
-    for (const operation of ["upserts", "patches"]) {
-      for (const [table, records] of Object.entries(conflicting.queue[operation] || {})) {
-        for (const id of Object.keys(records || {})) {
-          const newer = activeQueue?.upserts?.[table]?.[id] || activeQueue?.patches?.[table]?.[id]
-            || activeQueue?.deletes?.some((row) => row.table === table && String(row.id) === id);
-          if (newer) continue;
-          const visible = (lease.state[table] || []).find((row) => String(row?.id) === id);
-          if (!visible) continue;
-          projection[table] ||= [];
-          projection[table].push(visible);
-        }
-      }
-    }
-    rememberConflictProjection(this, projection);
-    const recovery = durableRecoveryEnabled ? drafts[0] : { sessionOnly: true };
-    // The outbox has already retired durably. Cache cleanup must never roll
-    // that receipt back into the active queue if a separate cache write fails.
-    try {
-      const deletions = Object.fromEntries(Object.entries(projection).map(
-        ([table, records]) => [table, records.map((record) => record.id)],
-      ));
-      if (Object.keys(deletions).length && typeof lease.db?.applySyncChanges === "function") {
-        await lease.db.applySyncChanges({ deletions });
-      } else if (typeof lease.db?.deleteRecords === "function") {
-        await Promise.all(Object.entries(deletions).map(([table, ids]) => lease.db.deleteRecords(table, ids)));
-      }
-      if (!isWorkspaceLeaseCurrent(this, lease)) return null;
-      return recovery;
-    } catch {
-      if (!isWorkspaceLeaseCurrent(this, lease)) return null;
-      this.conflictQuarantineFailure = { storageDegraded: true, reloadUnsafe: true, receiptRetired: true };
-      return { ...recovery, ...this.conflictQuarantineFailure };
-    }
+    // The rejected receipt is retired and the next full pull replaces the
+    // visible records with the server snapshot.  Never preserve or replay a
+    // local conflict projection.
+    if (!isWorkspaceLeaseCurrent(this, lease)) return null;
+    this._getConflictRecoveryStore().clear();
+    this.workspaceStorage?.removeItem?.("bf_conflict_server_sync_version");
+    return { serverAuthoritative: true };
   }
   hasRetainedConflictRecord(type, id) {
     return Boolean(retainedConflictRecord(this, type, id));

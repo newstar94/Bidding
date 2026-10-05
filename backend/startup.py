@@ -59,29 +59,6 @@ def validate_word_template_catalog_configuration(environ, *, production=False):
     return {"enabled": enabled, "mode": mode}
 
 
-def validate_legal_versioning_configuration(environ):
-    value = str(
-        environ.get("LEGAL_VERSIONING_ENABLED", "false")
-    ).strip().casefold()
-    if value not in {"true", "false"}:
-        raise StartupValidationError(
-            "LEGAL_VERSIONING_ENABLED must be true or false."
-        )
-    return {"enabled": value == "true"}
-
-
-def validate_ai_compliance_configuration(environ):
-    value = str(environ.get("AI_COMPLIANCE_ENABLED", "false")).strip().casefold()
-    if value not in {"true", "false"}:
-        raise StartupValidationError("AI_COMPLIANCE_ENABLED must be true or false.")
-    enabled = value == "true"
-    if enabled and str(environ.get("LEGAL_VERSIONING_ENABLED", "false")).strip().casefold() != "true":
-        raise StartupValidationError(
-            "AI_COMPLIANCE_ENABLED requires LEGAL_VERSIONING_ENABLED=true."
-        )
-    return {"enabled": enabled}
-
-
 REQUIRED_APPLICATION_TABLES = frozenset(SCHEMA_DINH_NGHIA)
 
 
@@ -241,8 +218,6 @@ def validate_secret_separation(environ=None) -> None:
         "GOOGLE_CLIENT_SECRET",
         "AUDIT_CHECKPOINT_HMAC_KEY",
         "EMAIL_OUTBOX_ENCRYPTION_KEY",
-        "CONFLICT_DRAFT_ENCRYPTION_KEY",
-        "CONFLICT_RESOLUTION_SIGNING_KEY",
         "OTP_HMAC_KEY",
     ):
         value = str(environ.get(name, "")).strip()
@@ -542,8 +517,6 @@ def validate_startup_configuration(database, environ=None):
     validate_word_template_catalog_configuration(
         environ, production=is_production
     )
-    validate_legal_versioning_configuration(environ)
-    validate_ai_compliance_configuration(environ)
     try:
         from backend.commercial_policy.config import (
             validate_commercial_startup_configuration,
@@ -576,24 +549,6 @@ def validate_startup_configuration(database, environ=None):
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:
         validate_secret_separation(environ)
-        if str(environ.get("CONFLICT_CENTER_ENABLED", "")).strip().casefold() == "true":
-            conflict_signing_key = str(
-                environ.get("CONFLICT_RESOLUTION_SIGNING_KEY", "")
-            ).encode("utf-8")
-            if len(conflict_signing_key) < 32:
-                raise StartupValidationError(
-                    "CONFLICT_RESOLUTION_SIGNING_KEY must contain at least 32 bytes when the conflict center is enabled."
-                )
-            try:
-                from cryptography.fernet import Fernet
-
-                Fernet(
-                    str(environ.get("CONFLICT_DRAFT_ENCRYPTION_KEY", "")).encode("ascii")
-                )
-            except (TypeError, ValueError) as exc:
-                raise StartupValidationError(
-                    "CONFLICT_DRAFT_ENCRYPTION_KEY must be a valid Fernet key when the conflict center is enabled."
-                ) from exc
         smtp_errors = smtp_configuration_errors(environ, production=True)
         if smtp_errors:
             raise StartupValidationError(

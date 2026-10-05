@@ -42,7 +42,6 @@ _SECRET_STATUS_NAMES = (
     "DATABASE_URL",
     "OTP_HMAC_KEY",
     "EMAIL_OUTBOX_ENCRYPTION_KEY",
-    "CONFLICT_DRAFT_ENCRYPTION_KEY",
     "AUDIT_CHECKPOINT_HMAC_KEY",
     "ANALYTICS_HMAC_KEY",
     "TURNSTILE_SECRET_KEY",
@@ -53,15 +52,12 @@ _SECRET_STATUS_NAMES = (
 _ENV_WRITE_LOCK = threading.Lock()
 _FEATURE_SETTING_KEYS = {
     "aiEnabled": "AI_ENABLED",
-    "legalVersioningEnabled": "LEGAL_VERSIONING_ENABLED",
-    "versionComparisonEnabled": "VERSION_COMPARISON_ENABLED",
     "paymentCheckoutEnabled": "PAYMENT_CHECKOUT_ENABLED",
 }
 _SECRET_MINIMUM_LENGTHS = {
     "DATABASE_URL": 12,
     "OTP_HMAC_KEY": 32,
     "EMAIL_OUTBOX_ENCRYPTION_KEY": 32,
-    "CONFLICT_DRAFT_ENCRYPTION_KEY": 32,
     "AUDIT_CHECKPOINT_HMAC_KEY": 32,
     "ANALYTICS_HMAC_KEY": 32,
     "TURNSTILE_SECRET_KEY": 8,
@@ -133,10 +129,6 @@ def build_environment_payload(environment=None) -> dict:
         },
         "features": {
             "aiEnabled": _enabled(environ, "AI_ENABLED"),
-            "legalVersioningEnabled": _enabled(environ, "LEGAL_VERSIONING_ENABLED"),
-            "versionComparisonEnabled": _enabled(
-                environ, "VERSION_COMPARISON_ENABLED"
-            ),
             "paymentCheckoutEnabled": _enabled(
                 environ, "PAYMENT_CHECKOUT_ENABLED"
             ),

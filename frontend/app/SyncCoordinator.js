@@ -3,7 +3,6 @@ import {
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
-import { openConflictCenter } from "./ConflictCenter.js";
 
 
 const ACTIONABLE_PENDING_PHASES = new Set([
@@ -15,7 +14,11 @@ const ACTIONABLE_PENDING_PHASES = new Set([
 ]);
 
 function isSyncConflict(result) {
-  if (result?.conflictQuarantined || result?.idempotencyKeyReused || result?.reloadUnsafe) return false;
+  if (result?.idempotencyKeyReused || result?.reloadUnsafe) return false;
+  // A quarantined receipt has no local write left to replay.  When it asks
+  // for a reload, pull the server snapshot immediately instead of opening a
+  // local conflict-resolution workflow.
+  if (result?.conflictQuarantined && !result?.reloadRequired) return false;
   return Boolean(result?.conflict || result?.status === 409);
 }
 
@@ -32,15 +35,32 @@ async function resolveConflictRecoveryDraft(
   controller,
   workspace = captureWorkspace(controller),
 ) {
-  const draft = controller.model?.getConflictRecoveryDrafts?.()[0] || null;
-  if (!draft) return null;
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  // Conflict drafts are no longer a user-facing feature.  Any retired local
+  // receipt is discarded and the next full pull establishes the server row as
+  // the only visible value.
+  controller.model?.discardAllConflictRecoveryDrafts?.();
+  const refreshed = await controller.forceSyncData?.(
+    false,
+    true,
+    false,
+    { skipFlush: true },
+  );
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (refreshed?.ok) {
+    controller.view?.showToast?.(
+      "Đã tải dữ liệu máy chủ",
+      "Bản ghi xung đột đã được thay bằng dữ liệu mới nhất trên máy chủ.",
+      "info",
+    );
+    return { ok: false, conflict: true, serverReloaded: true, data: refreshed.data };
+  }
   controller.view?.showToast?.(
     "Dữ liệu đã thay đổi trên máy chủ",
-    "Mở Trung tâm xung đột để xem và xác nhận từng thay đổi.",
+    "Không thể tải lại ngay dữ liệu máy chủ. Vui lòng thử đồng bộ lại.",
     "warning",
   );
-  return { ok: false, conflict: true, reloadRequired: true, recoveryDraftId: draft.id };
+  return { ok: false, conflict: true, reloadRequired: true, reloadFailed: true };
 }
 
 export async function resolvePendingSyncConflict(
@@ -50,9 +70,30 @@ export async function resolvePendingSyncConflict(
 ) {
   if (!controller || !isSyncConflict(initialResult)) return initialResult;
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  controller.model?.discardAllConflictRecoveryDrafts?.();
+  const refreshed = await controller.forceSyncData?.(
+    false,
+    true,
+    false,
+    { skipFlush: true },
+  );
+  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+  if (refreshed?.ok) {
+    controller.view?.showToast?.(
+      "Đã tải dữ liệu máy chủ",
+      "Bản ghi xung đột đã được thay bằng dữ liệu mới nhất trên máy chủ.",
+      "info",
+    );
+    return {
+      ...initialResult,
+      conflictCleared: true,
+      serverReloaded: true,
+      data: refreshed.data,
+    };
+  }
   controller.view?.showToast?.(
     "Dữ liệu đã thay đổi trên máy chủ",
-    "Mở Trung tâm xung đột để xem và xác nhận từng thay đổi.",
+    "Không thể tải lại ngay dữ liệu máy chủ. Vui lòng thử đồng bộ lại.",
     "warning",
   );
   return { ...initialResult, conflictCleared: false, reloadRequired: true };
@@ -186,7 +227,7 @@ export function setupSyncUx() {
   const button = document.getElementById("btn-force-sync");
   button?.addEventListener("click", () => {
     if (Number(this.model?.getConflictRecoveryCount?.() || 0) > 0) {
-      void openConflictCenter(this);
+      void runManualSyncRetry(this);
       return;
     }
     void runManualSyncRetry(this);

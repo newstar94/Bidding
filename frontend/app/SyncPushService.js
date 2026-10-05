@@ -626,6 +626,45 @@ export async function applyFailedPush(controller, {
     if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
     const storageFailure = conflictStorageFailure(controller, { status, data, recoveryDraft });
     if (storageFailure) return storageFailure;
+    if (recoveryDraft?.serverAuthoritative === true) {
+      // A stale local write is discarded.  Pull a fresh server snapshot before
+      // rendering so the rejected value cannot remain visible in the cache.
+      const refreshed = await controller.forceSyncData?.(
+        false,
+        true,
+        false,
+        { skipFlush: true },
+      );
+      if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+      if (refreshed?.ok) {
+        controller._syncConflict = null;
+        controller.updateSyncState({ phase: "serverSaved", online: true, lastSyncedAt: Date.now() });
+        controller.view?.showToast?.(
+          "Đã dùng dữ liệu máy chủ",
+          "Thay đổi cục bộ bị xung đột đã được loại bỏ và dữ liệu mới nhất từ máy chủ đã được tải lại.",
+          "info",
+        );
+        return {
+          ok: false,
+          status,
+          data: refreshed.data || data,
+          conflict: true,
+          serverAuthoritative: true,
+          serverReloaded: true,
+        };
+      }
+      controller._syncConflict = {
+        serverSyncVersion: data.currentSyncVersion ?? null,
+        message: data.message || data.error || "Server data changed before local sync.",
+        reloadRequired: true,
+      };
+      controller.updateSyncState({
+        phase: "conflict",
+        online: true,
+        message: "Dữ liệu đã thay đổi trên máy chủ · Vui lòng thử đồng bộ lại",
+      });
+      return { ok: false, status, data, conflict: true, serverAuthoritative: true, reloadRequired: true };
+    }
     if (recoveryDraft?.id) {
       controller._syncConflict = null;
       controller.updateSyncState({

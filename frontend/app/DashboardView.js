@@ -458,15 +458,6 @@ export async function renderSuperAdminDashboard() {
   systemPackages = await packagesResponse.json();
   this.model.replaceTableState("systempackages", systemPackages);
   await this.model.persistData?.("systempackages", { trackMutation: false });
-  const legalCatalogContainer = document.getElementById("legal-catalog-admin-root");
-  if (
-    legalCatalogContainer
-    && this.model.state.activerole === "super_admin"
-    && document.querySelector('meta[name="bf-legal-versioning-enabled"]')?.content === "true"
-  ) {
-    const { mountLegalCatalogAdmin } = await import("../legal-versioning/LegalCatalogAdmin.js");
-    await mountLegalCatalogAdmin(legalCatalogContainer);
-  }
   const summary = summarizeSuperAdminOrganizations(users, systemPackages);
     const saStatOrgs = document.getElementById("sad-stat-orgs");
     if (saStatOrgs) saStatOrgs.textContent = `${summary.organizations.length} Đơn vị`;

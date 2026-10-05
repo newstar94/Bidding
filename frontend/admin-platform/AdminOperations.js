@@ -29,8 +29,6 @@ const SECRET_FIELDS = Object.freeze([
 
 const FEATURE_FIELDS = Object.freeze([
   ["aiEnabled", "Trợ lý AI"],
-  ["legalVersioningEnabled", "Phiên bản pháp lý"],
-  ["versionComparisonEnabled", "So sánh phiên bản"],
   ["paymentCheckoutEnabled", "Thanh toán trực tuyến"],
 ]);
 
@@ -219,8 +217,6 @@ export function settingsMarkup(payload) {
   const writable = payload.configuration?.writable === true;
   const descriptions = {
     aiEnabled: "Cho phép sử dụng trợ lý AI trong các nghiệp vụ được hỗ trợ.",
-    legalVersioningEnabled: "Bật quy trình quản lý phiên bản căn cứ pháp lý.",
-    versionComparisonEnabled: "Cho phép đối chiếu thay đổi giữa các phiên bản.",
     paymentCheckoutEnabled: "Cho phép bắt đầu luồng thanh toán trực tuyến.",
   };
   const controls = FEATURE_FIELDS.map(([key, label]) => `<label class="form-check form-switch bf-admin-setting-row"><span class="bf-admin-setting-copy"><span class="form-check-label">${escapeHtml(label)}</span><span class="text-secondary small">${escapeHtml(descriptions[key])}</span></span><input class="form-check-input" type="checkbox" data-admin-feature="${escapeHtml(key)}"${features[key] === true ? " checked" : ""}${writable ? "" : " disabled"}></label>`).join("");

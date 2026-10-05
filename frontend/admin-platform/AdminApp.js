@@ -155,11 +155,6 @@ function renderRoute() {
       history[push ? "pushState" : "replaceState"]({ adminPath: "/admin/invoices" }, "", path);
     },
   });
-  else if (route.path === "/admin/legal") {
-    void import("./AdminLegalCatalog.js").then(({ renderAdminLegalCatalog }) => renderAdminLegalCatalog(content, { signal: routeController.signal })).catch((error) => {
-      if (!routeController.signal.aborted) content.innerHTML = trustedHTML(adminStateMarkup("error", { message: error?.message || "Không thể tải danh mục pháp lý." }));
-    });
-  }
   else if (route.path === "/admin/audit") loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminAudit", content, { signal: routeController.signal });
   else if (route.path === "/admin/security") loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminSecurity", content, { signal: routeController.signal });
   else if (route.path === "/admin/health") loadAdminModule(() => import("./AdminOperations.js"), "renderAdminHealth", content, { signal: routeController.signal });

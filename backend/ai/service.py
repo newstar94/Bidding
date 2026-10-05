@@ -234,8 +234,6 @@ async def stream_message(
     mode = str(conversation.get("mode") or "")
     if mode not in {"data", "procurement_advice", "app_help"}:
         raise ai_error("AI_UNSUPPORTED_MODE", "Chế độ trợ lý không được hỗ trợ.")
-    if target_hint and mode != "procurement_advice":
-        raise ai_error("AI_SCOPE_VALIDATION_FAILED", "Compliance target requires procurement advice mode.")
     if not quota_consumed:
         await run_database_write(consume_request, context, config)
     user_message_id = await run_database_write(
@@ -249,12 +247,6 @@ async def stream_message(
     messages = await run_database_read(list_messages, context, conversation_id, config.max_history_messages, timeout_seconds=10)
     input_items = _input_items(messages)
     instructions = policy_for_mode(mode) + f"\nWorkspace hiện tại: {context.organization_name}. Múi giờ: {context.timezone}."
-    if target_hint:
-        instructions += (
-            "\nTARGET_HINT_UNTRUSTED: "
-            + json.dumps(target_hint, ensure_ascii=False, separators=(",", ":"))
-            + "\nCall get_compliance_context with exactly these values before explaining this target."
-        )
     if mode == "app_help":
         instructions += f"\nRoute ứng dụng hiện tại: {current_route or '/'}"
     knowledge = None
@@ -279,7 +271,7 @@ async def stream_message(
         if knowledge.prompt_context:
             instructions += f"\n\n{knowledge.prompt_context}"
     web_search: LegalSearchResult | None = None
-    if mode == "procurement_advice" and config.web_search_enabled and not target_hint:
+    if mode == "procurement_advice" and config.web_search_enabled:
         try:
             web_search = await asyncio.to_thread(_search_legal_sources, content, config)
         except AiError as exc:
@@ -301,7 +293,7 @@ async def stream_message(
                     "Chưa tìm thấy nguồn pháp luật chính thống phù hợp để trả lời.",
                 )
     provider = ResponsesProvider(config)
-    tools = tool_definitions(mode) if mode != "procurement_advice" or target_hint else []
+    tools = tool_definitions(mode)
     estimated_tokens = estimate_request_token_budget(
         input_items=input_items,
         instructions=instructions,

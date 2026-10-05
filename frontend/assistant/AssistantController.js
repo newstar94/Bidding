@@ -164,9 +164,6 @@ class AssistantController {
       this.setHistoryOpen(false);
     });
     window.addEventListener("bf:workspace-changed", () => this.resetForWorkspace());
-    window.addEventListener("bf:assistant-target", (event) => {
-      void this.setTargetHint(event.detail);
-    });
     window.addEventListener("resize", this.positionPanel);
     window.lucide?.createIcons?.({ root: this.panel });
   }
@@ -292,15 +289,6 @@ class AssistantController {
     modeSelect.value = this.mode;
     modeSelect.addEventListener("change", () => this.changeMode(modeSelect.value));
     context.append(modeSelect);
-    this.targetChip = make("div", "bf-assistant-target-chip");
-    this.targetChip.hidden = true;
-    const targetLabel = make("span", "bf-assistant-target-label");
-    const clearTarget = make("button", "bf-assistant-target-clear", "×");
-    clearTarget.type = "button";
-    clearTarget.setAttribute("aria-label", "Bỏ target tuân thủ");
-    clearTarget.addEventListener("click", () => this.clearTargetHint());
-    this.targetChip.append(targetLabel, clearTarget);
-    context.append(this.targetChip);
 
     this.historyPanel = make("section", "bf-assistant-history-panel");
     this.historyPanel.id = "bf-assistant-history-panel";
@@ -440,34 +428,6 @@ class AssistantController {
   }
 
   setStatus(text) { if (this.status) this.status.textContent = text; }
-
-  async setTargetHint(value) {
-    const targetType = String(value?.targetType || "").trim();
-    const targetId = String(value?.targetId || "").trim();
-    const versionId = String(value?.versionId || targetId).trim();
-    if (!["kehoach", "goithau"].includes(targetType) || !targetId || !versionId) return;
-    this.targetHint = { targetType, targetId, versionId };
-    if (this.mode !== "procurement_advice") {
-      this.modeSelect.value = "procurement_advice";
-      this.modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-      await Promise.resolve();
-      await this.historyReady;
-    } else {
-      await this.newConversation();
-    }
-    const label = this.targetChip?.querySelector(".bf-assistant-target-label");
-    if (label) label.textContent = `${targetType === "goithau" ? "Gói thầu" : "Kế hoạch"} · ${versionId}`;
-    if (this.targetChip) this.targetChip.hidden = false;
-    this.open();
-    this.setStatus("Target/version đã được ghim; server sẽ kiểm tra lại quyền khi gọi tool.");
-  }
-
-  clearTargetHint() {
-    this.targetHint = null;
-    if (this.targetChip) this.targetChip.hidden = true;
-    this.showWelcome();
-    this.setStatus("Đã bỏ target tuân thủ và kết quả cũ.");
-  }
 
   setHistoryOpen(open) {
     if (!this.historyPanel || !this.historyButton) return;
@@ -787,7 +747,6 @@ class AssistantController {
         operation.signal,
         globalThis.location?.pathname || "/",
         clientRequestId,
-        this.targetHint,
       );
       await consumeAssistantStream(response, (event) => this.onEvent(event), operation.signal);
     } catch (error) {
@@ -897,8 +856,6 @@ class AssistantController {
     this.historyRequestId += 1;
     this.conversationRequestId += 1;
     this.workspaceId = getActiveOrganizationId();
-    this.targetHint = null;
-    if (this.targetChip) this.targetChip.hidden = true;
     this.conversationId = "";
     this.conversations = [];
     this.historyReady = Promise.resolve();

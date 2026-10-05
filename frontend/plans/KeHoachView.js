@@ -13,8 +13,6 @@ import { getVersionLabel } from "../shared/formatters.js";
 import { getAppController } from "../app/controllerRef.js";
 import { hydrateVersionFamily } from "../shared/VersionFamilyLoader.js";
 import { selectVersionRepresentatives, versionRootId } from "../shared/versionResolver.js";
-import { bindVersionComparisonAction } from "../version-comparison/VersionComparisonPanel.js";
-import { bindLegalBindingAction } from "../legal-versioning/LegalBindingPanel.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
 import {
   ensureBusinessListControls,
@@ -516,25 +514,5 @@ export async function renderPlanVersionDetails(versionId) {
     };
     initCustomSelect("fullpage-kh-version-select");
   }
-  bindVersionComparisonAction(
-    document.getElementById("fullpage-kh-version-actions"),
-    {
-      entityType: "kehoach",
-      selectedId: versionId,
-      versions: allVersions.map((version) => ({
-        id: version.id,
-        label: getVersionLabel(version.phienBan),
-      })),
-    },
-  );
-  bindLegalBindingAction(
-    document.getElementById("fullpage-kh-version-actions"),
-    {
-      targetType: "plan",
-      targetId: versionId,
-      targetRowVersion: kh.rowVersion || 1,
-      canResolve: this.model.state.activerole === "super_admin",
-    },
-  );
   renderLucideIcons(document.getElementById("fullpage-kehoach-content"), lucide);
 }
