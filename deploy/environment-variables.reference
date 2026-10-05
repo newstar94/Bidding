@@ -227,13 +227,6 @@ EMAIL_OUTBOX_STALE_SECONDS=300
 EMAIL_OUTBOX_POLL_SECONDS=5
 EMAIL_OUTBOX_MAX_POLL_SECONDS=10
 
-# Durable conflict-center payload encryption and 15-minute preview authority.
-# Generate the Fernet key with the command documented above. The signing key
-# must contain at least 32 random bytes. Keep both in the secret manager.
-CONFLICT_CENTER_ENABLED=false
-CONFLICT_DRAFT_ENCRYPTION_KEY=
-CONFLICT_RESOLUTION_SIGNING_KEY=
-
 # Email-change step-up and OTP throttling.
 # Dedicated HMAC key for registration OTPs; at least 32 random bytes in production.
 OTP_HMAC_KEY=
@@ -516,14 +509,6 @@ VNEPS_PROCUREMENT_CIRCUIT_SECONDS=30
 # Runtime logs default to BIDDING_DATA_DIR/logs and rotate automatically.
 LOG_MAX_BYTES=5242880
 LOG_BACKUP_COUNT=5
-# Read-only version comparison. Development defaults to enabled; production
-# requires an explicit rollout decision.
-VERSION_COMPARISON_ENABLED=false
-
-# Immutable SYSTEM legal catalog/binding projection (ADR 0009).
-LEGAL_VERSIONING_ENABLED=false
-AI_COMPLIANCE_ENABLED=false
-
 # Versioned commercial catalog and payment rollout. Every flag is off by
 # default; production checkout/activation additionally requires all external
 # readiness confirmations below and the process-local payOS credentials.
