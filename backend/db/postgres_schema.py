@@ -14,6 +14,7 @@ from psycopg.errors import UndefinedColumn, UndefinedObject, UndefinedTable
 from backend.db.schema import (
     HISTORICAL_SCHEMA_DINH_NGHIA,
     MONEY_COLUMNS,
+    RETIRED_OPTIONAL_FEATURE_TABLES,
     RETIRED_PROCUREMENT_CENTER_TABLES,
     SCHEMA_DINH_NGHIA,
 )
@@ -651,8 +652,6 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_procurement_session_preview_expiry ON procurement_import_session (preview_expires_at) WHERE preview_expires_at IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_entity ON procurement_raw_snapshot (organization_id, provider, entity_kind, canonical_code, retrieved_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_procurement_raw_content ON procurement_raw_snapshot (organization_id, content_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_conflict_drafts_actor_workspace ON conflict_resolution_drafts (organization_id, actor_user_id, workspace_fingerprint, status, updated_at DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_conflict_drafts_expiry ON conflict_resolution_drafts (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_word_template_catalog ON word_template (organization_id, retired_at, updated_at DESC, id)",
         "CREATE INDEX IF NOT EXISTS idx_word_template_version_history ON word_template_version (organization_id, template_id, version_no DESC)",
         "CREATE INDEX IF NOT EXISTS idx_word_template_version_checksum ON word_template_version (organization_id, sha256)",
@@ -663,10 +662,6 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_word_assignment_template ON word_publication_assignment_v2 (organization_id, template_id, document_type, context_key, sort_order)",
         "CREATE INDEX IF NOT EXISTS idx_word_assignment_config_revision ON word_template_assignment_config (organization_id, revision)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_word_assignment_projection_digest ON word_template_projection_outbox (organization_id, event_type, desired_checksum) WHERE event_type = 'ASSIGNMENT'",
-        "CREATE INDEX IF NOT EXISTS idx_legal_instrument_version_effective ON legal_instrument_version (effective_from, effective_to, instrument_id)",
-        "CREATE INDEX IF NOT EXISTS idx_legal_profile_version_effective ON legal_source_profile_version (effective_from, effective_to, priority DESC, profile_id)",
-        "CREATE INDEX IF NOT EXISTS idx_plan_legal_binding_history ON plan_legal_binding (organization_id, plan_id, binding_revision DESC)",
-        "CREATE INDEX IF NOT EXISTS idx_package_legal_binding_history ON package_legal_binding (organization_id, package_id, binding_revision DESC)",
         "CREATE INDEX IF NOT EXISTS idx_generated_document_template ON generated_document_provenance (organization_id, template_version_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_generated_document_record ON generated_document_provenance (organization_id, record_type, record_id, created_at DESC) WHERE record_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",
@@ -692,7 +687,9 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
             *PRODUCT_ANALYTICS_V87_INDEXES,
         )
     for statement in statements:
-        if any(table_name in statement for table_name in RETIRED_PROCUREMENT_CENTER_TABLES):
+        if any(table_name in statement for table_name in (
+            RETIRED_PROCUREMENT_CENTER_TABLES | RETIRED_OPTIONAL_FEATURE_TABLES
+        )):
             continue
         cursor.execute(statement)
     _create_search_indexes(cursor)
@@ -1064,12 +1061,6 @@ def _create_triggers(cursor) -> None:
         "procurement_raw_snapshot",
         "word_template_publication_event",
         "generated_document_provenance",
-        "legal_instrument_version",
-        "legal_source_profile_version",
-        "legal_source_profile_member",
-        "legal_applicability_policy_version",
-        "plan_legal_binding",
-        "package_legal_binding",
         "procurement_case_response_revision",
         "procurement_case_transition",
         "procurement_case_attachment",

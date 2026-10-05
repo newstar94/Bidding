@@ -25,6 +25,7 @@ from backend.db.upgrades import (
     DB_SCHEMA_VERSION,
     DatabaseUpgradeContext,
     apply_database_upgrades,
+    retired_feature_archive_schema,
 )
 from scripts.audit_fk_indexes import find_missing_foreign_key_indexes
 
@@ -313,6 +314,11 @@ def _close_fixture_connection(connection, cursor, schema_name):
     try:
         connection.rollback()
         cursor.execute("SET search_path TO public")
+        cursor.execute(
+            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                sql.Identifier(retired_feature_archive_schema(schema_name))
+            )
+        )
         cursor.execute(
             sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
                 sql.Identifier(schema_name)

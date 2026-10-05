@@ -25,4 +25,4 @@ và xử lý theo metadata hiện tại.
 - `tests/js/detailed_evaluation_completion.test.mjs`
 - `tests/js/technical_evaluation_panel.test.mjs`
 - `tests/js/detailed_evaluation_tab_navigation.test.mjs`
-- `tests/js/evaluation_conflict_draft_hold.test.mjs`
+- `tests/js/sync_server_authoritative.test.mjs`

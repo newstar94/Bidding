@@ -24,12 +24,6 @@ const icon = (name) => {
   return node;
 };
 
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (/^\d+$/.test(String(value)) && String(value).length > 6) return `${new Intl.NumberFormat("vi-VN").format(Number(value))} ₫`;
-  return String(value);
-}
-
 function isSafeSourceUrl(value) {
   const url = String(value || "").trim();
   if (url.startsWith("/") && !url.startsWith("//")) return true;
@@ -103,8 +97,6 @@ class AssistantController {
     this.historyList = null;
     this.sourceList = null;
     this.sourceKeys = new Set();
-    this.targetHint = null;
-    this.targetChip = null;
     this.modeSelect = null;
     this.triggerDrag = null;
     this.suppressTriggerClick = false;
@@ -641,56 +633,6 @@ class AssistantController {
     return { row, bubble };
   }
 
-  renderToolResult(result) {
-    if (!result) return;
-    const card = make("section", "bf-assistant-result-card");
-    const title = make("div", "bf-assistant-result-title", "Kết quả dữ liệu");
-    const summary = make("div", "bf-assistant-result-summary");
-    Object.entries(result.summary || {}).slice(0, 4).forEach(([key, value]) => {
-      if (key === "widgets") return;
-      const item = make("div", "bf-assistant-stat"); item.append(make("span", "bf-assistant-stat-label", key === "recordCount" ? "Bản ghi" : key === "value" ? "Giá trị" : key), make("strong", "bf-assistant-stat-value", typeof value === "object" ? JSON.stringify(value) : formatValue(value))); summary.appendChild(item);
-    });
-    card.append(title, summary);
-    const compliance = result.records?.[0];
-    if (compliance?.findings && compliance?.target) {
-      title.textContent = "Kiểm tra tuân thủ xác định";
-      const target = make("p", "bf-assistant-compliance-target", `${compliance.target.type} · ${compliance.target.exactVersionId}`);
-      card.appendChild(target);
-      compliance.findings.forEach((finding) => {
-        const item = make("article", "bf-assistant-finding");
-        item.dataset.result = finding.result || "";
-        item.append(
-          make("strong", "", `${finding.ruleId} · ${finding.result}`),
-          make("span", "", `Mức: ${finding.severity}`),
-          make("code", "", (finding.evidencePaths || []).join(" · ") || "Chưa có evidence path"),
-        );
-        card.appendChild(item);
-      });
-      if (compliance.notEvaluated?.length) {
-        const unavailable = make("section", "bf-assistant-not-evaluated");
-        unavailable.appendChild(make("strong", "", "Chưa đánh giá"));
-        compliance.notEvaluated.forEach((item) => unavailable.appendChild(make("code", "", `${item.code}: ${item.reason}`)));
-        card.appendChild(unavailable);
-      }
-    }
-    if (result.filters && Object.keys(result.filters).length) {
-      const filters = make("div", "bf-assistant-filter-row", "Bộ lọc");
-      Object.entries(result.filters).forEach(([key, value]) => { if (value === null || value === "") return; filters.appendChild(make("span", "bf-assistant-filter", `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)); });
-      card.appendChild(filters);
-    }
-    (compliance ? [] : result.records || []).slice(0, 20).forEach((record) => {
-      const line = make("div", "bf-assistant-record");
-      line.append(make("span", "bf-assistant-record-name", record.name || record.group || record.code || record.id), make("span", "bf-assistant-record-meta", record.value ? formatValue(record.value) : record.status || ""));
-      const link = (result.sourceLinks || []).find((source) => source.url?.endsWith(`/${record.id}`));
-      if (link?.url) { const anchor = make("a", "bf-assistant-record-link", "Mở"); anchor.href = link.url; line.appendChild(anchor); }
-      card.appendChild(line);
-    });
-    const sources = make("div", "bf-assistant-source-row");
-    (result.sourceLinks || []).slice(0, 5).forEach((source) => { if (!source?.url?.startsWith("/") || source.url.startsWith("//")) return; const anchor = make("a", "bf-assistant-source", source.label || "Nguồn"); anchor.href = source.url; sources.appendChild(anchor); });
-    if (sources.childElementCount) card.appendChild(sources);
-    this.messages.appendChild(card); this.messages.scrollTop = this.messages.scrollHeight;
-  }
-
   renderSource(source) {
     const url = String(source?.url || "").trim();
     const title = String(source?.title || source?.label || "Nguồn pháp luật").trim();
@@ -769,10 +711,6 @@ class AssistantController {
     if (event.type === "tool.started") this.setStatus("Đang kiểm tra dữ liệu được phân quyền…");
     if (event.type === "tool.completed") {
       this.setStatus(event.status === "completed" ? "Đã kiểm tra dữ liệu và nguồn." : "Không thể hoàn tất truy vấn dữ liệu.");
-      if (
-        event.status === "completed"
-        && event.result?.records?.[0]?.findings
-      ) this.renderToolResult(event.result);
     }
     if (event.type === "source.added") this.setStatus("Đã thêm nguồn kiểm chứng.");
     if (event.type === "message.completed" && this.activeMessage) {

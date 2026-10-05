@@ -12,7 +12,7 @@ test("admin sidebar renders grouped IA with every destination once", () => {
   ]) assert.match(markup, new RegExp(`>${label}<`, "u"));
 
   const destinations = [...markup.matchAll(/data-admin-link="([^"]+)"/gu)].map((match) => match[1]);
-  assert.equal(destinations.length, 17);
+  assert.equal(destinations.length, 16);
   assert.equal(new Set(destinations).size, destinations.length);
   assert.doesNotMatch(markup, /role="presentation"/u);
   assert.ok(markup.indexOf("Khách hàng") < markup.indexOf('data-admin-link="/admin/organizations"'));

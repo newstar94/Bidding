@@ -51,9 +51,6 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "PRIVILEGED_REAUTH_TTL_SECONDS",
     "RATE_LIMIT_MAX_ATTEMPTS",
     "RATE_LIMIT_WINDOW_SECONDS",
-    "CONFLICT_CENTER_ENABLED",
-    "CONFLICT_DRAFT_ENCRYPTION_KEY",
-    "CONFLICT_RESOLUTION_SIGNING_KEY",
     "GOOGLE_AUTH_ENABLED",
     "GOOGLE_CLIENT_ID",
     "COMMERCIAL_POLICY_ENABLED",
@@ -66,9 +63,6 @@ REQUIRED_FEATURE_PROFILE_KEYS = {
     "COMMERCIAL_EXTERNAL_LEGAL_READY",
     "PAYOS_MERCHANT_AUTHORIZATION_CONFIRMED",
     "PAYOS_WEBHOOK_AUTHORIZATION_CONFIRMED",
-    "VERSION_COMPARISON_ENABLED",
-    "LEGAL_VERSIONING_ENABLED",
-    "AI_COMPLIANCE_ENABLED",
     "WORD_TEMPLATE_CATALOG_ENABLED",
     "WORD_TEMPLATE_CATALOG_MODE",
 }
@@ -174,14 +168,11 @@ def _assert_required_feature_profile(environment, *, compact=False):
     assert environment["COMMERCIAL_POLICY_ENABLED"] == "false"
     assert environment["COMMERCIAL_POLICY_MODE"] == "off"
     assert environment["COMMERCIAL_PAYMENT_PROVIDER"] == "fake"
-    assert environment["CONFLICT_CENTER_ENABLED"] == "false"
     from backend.ai.configuration import get_ai_config
     assert get_ai_config(environment).provider_store_responses is False
     for secret in ("PAYOS_CLIENT_ID", "PAYOS_API_KEY", "PAYOS_CHECKSUM_KEY"):
         assert environment[secret] == ""
     for secret in (
-        "CONFLICT_DRAFT_ENCRYPTION_KEY",
-        "CONFLICT_RESOLUTION_SIGNING_KEY",
     ):
         assert environment[secret] == ""
 

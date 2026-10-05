@@ -24,6 +24,8 @@ import {
   savePlanBreakdown,
 } from "../../frontend/plans/KeHoachWorkflow.js";
 import { WorkspaceMutationOutbox } from "../../frontend/app/WorkspaceMutationOutbox.js";
+import { BiddingModel } from "../../frontend/app/BiddingModel.js";
+import { ApiError } from "../../frontend/shared/apiClient.js";
 
 function draftState() {
   return {
@@ -103,6 +105,77 @@ function workspaceModel({ token = "user:org-a@1", state = draftState(), db = mem
     finishWorkspaceMutation(mutation) { mutation.done = true; },
   };
 }
+
+test("a direct finalize conflict retires its durable session, reloads server data and preserves unrelated outbox work", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => id === "breakdown-plan-id"
+      ? { value: "plan-00" }
+      : { querySelectorAll: () => [] },
+  };
+  const model = workspaceModel();
+  const other = { id: "unrelated-package", rowVersion: 7, tenGoiThau: "Independent local edit" };
+  model.state.goithau.push(other);
+  const outbox = new WorkspaceMutationOutbox({
+    store: { persist() {}, async flush() {} },
+    getBaseSyncVersion: () => "7",
+    createId: () => "independent-mutation",
+    isSyncedType: () => true,
+    normalizeRecord: (row) => structuredClone(row),
+    serializeRecord: (row) => structuredClone(row),
+  });
+  outbox.enqueue({ kind: "upsert", table: "goithau", records: [other] });
+  model._getMutationOutbox = () => outbox;
+  model.discardConflictingMutationBatch = BiddingModel.prototype.discardConflictingMutationBatch;
+  model.entityIndexes = { invalidate() {} };
+  const session = createPlanVersionDraftSession(model.state, "plan-00");
+  await savePlanVersionDraftSession(model, session);
+  const effects = [];
+  const serverPlan = { ...model.state.kehoach[0], rowVersion: 2, tenKeHoach: "Server plan" };
+  const controller = {
+    model,
+    tempPlanAction: "create",
+    tempPlanData: model.state.kehoach[0],
+    backupKeHoachState: structuredClone(model.state.kehoach),
+    backupGoiThauState: structuredClone(model.state.goithau),
+    planBreakdownDraft: { active: true, action: "create", planId: "plan-00", snapshot: draftState() },
+    updateBreakdownTotal() {}, recalculatePlanTotal() {}, updateSyncState() {},
+    async finalizePlanDraft() {
+      throw new ApiError("Server conflict", {
+        status: 409, code: "ROW_VERSION_CONFLICT",
+        data: { status: "conflict", errors: [{ table: "ke_hoach", id: "plan-00", code: "ROW_VERSION_CONFLICT", serverRecord: serverPlan }] },
+      });
+    },
+    async forceSyncData() {
+      assert.deepEqual(model.planVersionDraftSessions, [], "retired draft must not reapply over the canonical pull");
+      assert.equal(controller.planBreakdownDraft, null);
+      model.state.kehoach = [serverPlan];
+      effects.push("canonical-pull");
+      return { ok: true, localMutationsPending: true };
+    },
+    async closeModal() { effects.push("close-editor"); },
+    view: {
+      async renderKeHoachTable() {}, async renderGoiThauTable() {},
+      showToast(...args) { effects.push(args); },
+      customAlert() { assert.fail("rejected finalize must not report success"); },
+    },
+  };
+  try {
+    const result = await savePlanBreakdown.call(controller, {
+      loadingHandle: { async update() {}, async close() { effects.push("close-loading"); } },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.serverReloaded, true);
+    assert.deepEqual(effects, ["close-loading", "canonical-pull", "close-editor"]);
+    assert.deepEqual(model.db.values.get("plan_version_drafts_v1").sessions, []);
+    assert.equal(controller.tempPlanData, null);
+    assert.deepEqual(model.state.kehoach, [serverPlan]);
+    assert.deepEqual(outbox.snapshot().upserts.goithau[other.id], other);
+  } finally {
+    if (previousDocument) globalThis.document = previousDocument;
+    else delete globalThis.document;
+  }
+});
 
 test("draft sessions recover only from the active workspace database", async () => {
   const stateA = draftState();

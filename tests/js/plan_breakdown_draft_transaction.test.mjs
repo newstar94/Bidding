@@ -11,8 +11,7 @@ import {
   packageSaveBaseUpserts,
   packageSyncRequiresReload,
   renderPackageSaveTables,
-  restorePackageEditorAfterSyncConflict,
-  showPackageSyncReloadToast,
+  closePackageEditorAfterSyncConflict,
   persistPackageFormChanges,
   shouldShowPackageSyncFailureDialog,
 } from "../../frontend/packages/GoiThauWorkflow.js";
@@ -1086,10 +1085,10 @@ test("a durable plan-version draft keeps package modal saves out of /api/sync", 
   assert.deepEqual(calls, []);
 });
 
-test("confirmed package row conflict uses the F5 toast without a second failure dialog", () => {
+test("confirmed package row conflict uses canonical recovery without a second failure dialog", () => {
   assert.equal(shouldShowPackageSyncFailureDialog({
     ok: false,
-    conflictQuarantined: true,
+    serverReloaded: true, conflict: true,
   }), false);
   assert.equal(shouldShowPackageSyncFailureDialog({
     ok: false,
@@ -1105,7 +1104,7 @@ test("confirmed package row conflict uses the F5 toast without a second failure 
   }), true);
   assert.equal(packageSyncRequiresReload({
     ok: false,
-    conflictQuarantined: true,
+    serverReloaded: true, conflict: true,
   }), true);
   assert.equal(packageSyncRequiresReload({
     ok: false,
@@ -1113,30 +1112,25 @@ test("confirmed package row conflict uses the F5 toast without a second failure 
   }), false);
 });
 
-test("legacy row conflict restores the package editor for retry after F5", () => {
-  const form = { dataset: { submitState: "saving" }, setAttribute() {}, removeAttribute() {} };
-  const modal = { dataset: { editorState: "saving" }, setAttribute() {}, removeAttribute() {} };
-
-  assert.equal(packageSyncRequiresReload({ ok: false, status: 409, conflict: true }), true);
-  restorePackageEditorAfterSyncConflict(form, modal);
-
-  assert.equal(form.dataset.submitState, "ready");
-  assert.equal(modal.dataset.editorState, "ready");
-});
-
-test("legacy row conflict toast keeps the actionable Vietnamese reload message", () => {
+test("row conflict closes the rejected package editor and paints canonical list data", async () => {
   const calls = [];
-  showPackageSyncReloadToast({
-    showToast(...args) {
-      calls.push(args);
+  const modal = { dataset: { editorState: "saving" }, setAttribute() {}, removeAttribute() {} };
+  const controller = {
+    async closeModal(id, options) { calls.push(["close", id, options]); },
+    view: {
+      async renderGoiThauTable() { calls.push(["packages"]); },
+      async renderKeHoachTable() { calls.push(["plans"]); },
+      showToast() { assert.fail("a rejected save must not display success"); },
     },
-  });
-
-  assert.deepEqual(calls, [[
-    "Dữ liệu đã thay đổi trên máy chủ",
-    "Nhấn F5 để tải trạng thái mới nhất trước khi chỉnh sửa lại.",
-    "warning",
-  ]]);
+  };
+  assert.equal(packageSyncRequiresReload({ ok: false, status: 409, conflict: true }), true);
+  await closePackageEditorAfterSyncConflict(controller, modal);
+  assert.equal(modal.dataset.editorState, "closed");
+  assert.deepEqual(calls, [
+    ["close", "modal-goithau", { restoreRoute: false, preserveProcurementImport: true }],
+    ["packages"],
+    ["plans"],
+  ]);
 });
 
 test("package form returns after local durability and reports an authoritative conflict in the background", async () => {
@@ -1174,7 +1168,7 @@ test("package form returns after local durability and reports an authoritative c
   assert.equal(localResult.local, true);
   assert.equal(localResult.queued, true);
 
-  const conflict = { ok: false, conflictQuarantined: true };
+  const conflict = { ok: false, serverReloaded: true, conflict: true };
   releaseSync(conflict);
   assert.deepEqual(await localResult.syncPromise, {
     ...conflict,

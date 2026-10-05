@@ -1,5 +1,7 @@
 # ADR 0044 — Lưu nguyên tử, giữ bản nháp và khóa thao tác
 
+> Nhánh xung đột hiện theo [ADR 0057](0057-server-authoritative-conflicts-and-feature-retirement.md): tải dữ liệu server, bỏ receipt bị từ chối và không giữ bản nháp xung đột. Các quy tắc validation, mạng và phản hồi lưu của ADR này vẫn áp dụng.
+
 - Trạng thái: Accepted
 - Ngày: 2026-09-14
 

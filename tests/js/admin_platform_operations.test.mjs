@@ -134,7 +134,7 @@ test("version view renders release contract and ignores unrecognized fields", ()
 
 test("settings view renders writable feature controls without secret data", () => {
   const markup = settingsMarkup({
-    features: { aiEnabled: true, legalVersioningEnabled: false },
+    features: { aiEnabled: true, paymentCheckoutEnabled: false },
     secretStatus: { DATABASE_URL: { configured: true, value: "private" } },
     configuration: { writable: true },
   });
@@ -149,7 +149,7 @@ test("settings view renders writable feature controls without secret data", () =
     "feature-flags", "application", "registration", "localization", "billing",
     "documents", "notifications", "storage", "sync",
   ]);
-  assert.equal((markup.match(/data-admin-feature=/gu) || []).length, 4);
+  assert.equal((markup.match(/data-admin-feature=/gu) || []).length, 2);
   assert.equal((markup.match(/data-admin-category-state="read-only"/gu) || []).length, 0);
   assert.match(markup, /Danh mục cấu hình/u);
   for (const path of [

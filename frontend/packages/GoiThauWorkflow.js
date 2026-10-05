@@ -208,15 +208,14 @@ export function shouldShowPackageSyncFailureDialog(syncResult) {
   return Boolean(
     syncResult?.ok === false
     && syncResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.OFFLINE_PENDING
-    && syncResult?.conflictQuarantined !== true
+    && syncResult?.serverReloaded !== true
     && syncResult?.reloadRequired !== true,
   );
 }
 
 export function packageSyncRequiresReload(syncResult) {
   return Boolean(
-    syncResult?.conflictQuarantined === true
-    || syncResult?.reloadRequired === true
+    syncResult?.reloadRequired === true
     || syncResult?.conflict === true
     || syncResult?.status === 409,
   );
@@ -229,17 +228,14 @@ export function renderPackageSaveTables(view) {
   ]);
 }
 
-export function restorePackageEditorAfterSyncConflict(form, modal) {
-  if (form) form.dataset.submitState = "ready";
-  setPackageEditorState(modal, "ready");
-}
-
-export function showPackageSyncReloadToast(view) {
-  return view?.showToast?.(
-    "Dữ liệu đã thay đổi trên máy chủ",
-    "Nhấn F5 để tải trạng thái mới nhất trước khi chỉnh sửa lại.",
-    "warning",
-  );
+export async function closePackageEditorAfterSyncConflict(controller, modal) {
+  setPackageEditorState(modal, "closing");
+  await controller.closeModal("modal-goithau", {
+    restoreRoute: false,
+    preserveProcurementImport: true,
+  });
+  setPackageEditorState(modal, "closed");
+  await renderPackageSaveTables(controller.view);
 }
 
 export function packageFamilyUpsertsForPlan(packages, finalPackage, {
@@ -1444,13 +1440,7 @@ export async function handleGoiThauSubmit(e) {
   const canonicalResult = await awaitCanonicalSyncResult(syncResult);
   if (packageSyncRequiresReload(canonicalResult)) {
     const packageModal = document.getElementById("modal-goithau");
-    restorePackageEditorAfterSyncConflict(form, packageModal);
-    if (
-      canonicalResult?.conflictQuarantined !== true
-      && canonicalResult?.reloadRequired !== true
-    ) {
-      showPackageSyncReloadToast(this.view);
-    }
+    await closePackageEditorAfterSyncConflict(this, packageModal);
     return;
   }
   if (shouldShowPackageSyncFailureDialog(canonicalResult)) {

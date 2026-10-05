@@ -1,5 +1,4 @@
 import { getJson } from "./apiClient.js";
-import { hasConflictProjection, retainAuthorizedConflictRecord } from "./conflictProjection.js";
 import {
   assertWorkspaceLeaseCurrent,
   captureWorkspaceLease,
@@ -303,11 +302,7 @@ function latestPendingUpserts(records, normalize) {
  * shows the previous value immediately after a successful local save.
  */
 export function overlayPendingPaginatedMutations(model, table, pageResult, params = {}) {
-  const originalSource = pageResult && typeof pageResult === "object" ? pageResult : {};
-  const source = hasConflictProjection(model, table) && Array.isArray(originalSource.items) ? {
-    ...originalSource,
-    items: originalSource.items.map((record) => retainAuthorizedConflictRecord(model, table, record)),
-  } : originalSource;
+  const source = pageResult && typeof pageResult === "object" ? pageResult : {};
   const mutationBatch = currentMutationBatch(model);
   const pendingUpserts = Object.values(mutationBatch?.upserts?.[table] || {});
   const pendingPatches = Object.values(mutationBatch?.patches?.[table] || {});
@@ -888,8 +883,7 @@ export function cachePaginatedRecords(
       ? { ...record, ...pending, ...patch, referenceOnly: false }
       : record;
   });
-  projected.forEach((canonicalRecord) => {
-    const record = retainAuthorizedConflictRecord(model, key, canonicalRecord);
+  projected.forEach((record) => {
     const index = lease.state[key].findIndex((item) => String(item.id) === String(record.id));
     if (index >= 0) {
       lease.state[key][index] = record;

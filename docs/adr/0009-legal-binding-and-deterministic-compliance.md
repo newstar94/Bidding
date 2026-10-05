@@ -1,5 +1,7 @@
 # ADR 0009 — Ràng buộc pháp lý lịch sử và AI chỉ giải thích finding xác định
 
+> Đã được thay thế bởi [ADR 0057](0057-server-authoritative-conflicts-and-feature-retirement.md) theo yêu cầu xóa tính năng ngày 2026-10-05. Nội dung bên dưới chỉ ghi lại quyết định lịch sử.
+
 - Trạng thái: Chấp nhận
 - Ngày: 2026-08-24
 - Phạm vi: Mục 8 và 12

@@ -177,7 +177,7 @@ test("workspace_change_during_conflict_resolution_cannot_set_conflict_on_new_wor
   assert.equal(race.controller._syncConflict, undefined);
   assert.deepEqual(race.updates, []);
   assert.deepEqual(race.toasts, []);
-  assert.equal(race.storageB.values.has("bf_conflict_server_sync_version"), false);
+  assert.equal(race.storageB.values.size, 0);
 });
 
 test("workspace_change_during_validation_recovery_cannot_restore_or_delete_new_workspace_records", async () => {

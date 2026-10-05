@@ -3670,6 +3670,15 @@ RETIRED_PROCUREMENT_CENTER_TABLES = frozenset({
     "calendar_connection", "calendar_event_binding", "calendar_delivery_outbox",
     "bulk_operation", "bulk_operation_item", "bulk_operation_artifact",
 })
+RETIRED_OPTIONAL_FEATURE_TABLES = frozenset({
+    "conflict_resolution_drafts",
+    "legal_instrument", "legal_instrument_draft", "legal_instrument_version",
+    "legal_source_profile", "legal_source_profile_draft",
+    "legal_source_profile_version", "legal_source_profile_member",
+    "legal_applicability_policy_version",
+    "plan_legal_binding", "package_legal_binding",
+    "plan_legal_binding_head", "package_legal_binding_head",
+})
 HISTORICAL_SCHEMA_DINH_NGHIA = dict(SCHEMA_DINH_NGHIA)
 for _retired_table in RETIRED_PROCUREMENT_CENTER_TABLES:
     SCHEMA_DINH_NGHIA.pop(_retired_table, None)
@@ -3786,3 +3795,8 @@ def _apply_tenant_constraints(schema):
 _apply_numeric_versions(SCHEMA_DINH_NGHIA)
 _apply_row_versions(SCHEMA_DINH_NGHIA)
 _apply_tenant_constraints(SCHEMA_DINH_NGHIA)
+
+# Preserve the released v64/v70 DDL, including the tenant transformations
+# above, for historical replay. Fresh installs omit the retired features.
+for _retired_table in RETIRED_OPTIONAL_FEATURE_TABLES:
+    SCHEMA_DINH_NGHIA.pop(_retired_table, None)

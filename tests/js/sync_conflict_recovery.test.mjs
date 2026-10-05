@@ -13,7 +13,6 @@ import {
 import {
   finalizePulledSyncState,
   resolvePendingSyncConflict,
-  resolveRowVersionConflicts,
 } from "../../frontend/app/BiddingControllerSync.js";
 import { runManualSyncRetry } from "../../frontend/app/SyncCoordinator.js";
 
@@ -55,7 +54,7 @@ test("startup does not submit the same mutation again after a conflict", async (
   const result = await reconcileRouteDataAtStartup(controller);
 
   assert.equal(result, false);
-  assert.deepEqual(calls, ["push", "pull"]);
+  assert.deepEqual(calls, ["push"]);
 });
 
 test("manual retry cannot resubmit a batch after startup entered conflict", async () => {
@@ -86,11 +85,11 @@ test("manual retry cannot resubmit a batch after startup entered conflict", asyn
   assert.equal(getStartupReconciliationState(controller).phase, "CONFLICT");
   const retry = await runManualSyncRetry(controller);
 
-  assert.equal(retry.reloadRequired, true);
+  assert.equal(retry.serverReloaded, true);
   assert.deepEqual(
     calls.filter((entry) => entry === "push"),
     ["push"],
-    "the rejected receipt must not be submitted again before F5",
+    "the rejected receipt must not be submitted again",
   );
 });
 
@@ -117,14 +116,14 @@ test("startup rebases and replays a preserved outbox after idempotency key reuse
   assert.deepEqual(calls, ["push", "pull", "push"]);
 });
 
-test("startup pulls authoritative state and completes after quarantining a row conflict", async () => {
+test("startup completes after the conflict has reloaded authoritative server data", async () => {
   const calls = [];
   const controller = {
     model: { workspaceScope: { key: "user:org-a" } },
     markStartup() {},
     async autoSync() {
       calls.push("push");
-      return { ok: false, status: 409, conflictQuarantined: true, recoveryDraftId: "recovery-1" };
+      return { ok: false, status: 409, conflict: true, serverReloaded: true };
     },
     async forceSyncData() {
       calls.push("pull");
@@ -136,32 +135,6 @@ test("startup pulls authoritative state and completes after quarantining a row c
   assert.deepEqual(calls, ["push", "pull"]);
   assert.equal(getStartupReconciliationState(controller).phase, "RECONCILED");
 });
-
-test("F5 retains conflict references without replay and preserves unrelated outbox work", async () => {
-  const calls = [];
-  const controller = {
-    model: {
-      workspaceScope: { key: "user:org-a" },
-      getConflictRecoveryCount: () => 1,
-    },
-    markStartup() {},
-    async forceSyncData(_background, forceFull) {
-      calls.push(["pull", forceFull]);
-      return { ok: true, localMutationsPending: true };
-    },
-    async autoSync() {
-      calls.push("push-unrelated");
-      return { ok: true };
-    },
-    view: {
-      customRecoveryDialog() { assert.fail("reload must not ask to restore a conflict draft"); },
-    },
-  };
-
-  assert.equal(await reconcileRouteDataAtStartup(controller), true);
-  assert.deepEqual(calls, [["pull", true], "push-unrelated"]);
-});
-
 
 test("startup flushes once, pulls once, and skips an empty replay", async () => {
   const calls = [];
@@ -605,58 +578,7 @@ test("a successful pull reports synced after the outbox is empty", () => {
 });
 
 
-test("row version conflicts preserve the local outbox until explicit resolution", async () => {
-  const calls = [];
-  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = () => 0;
-  const error = {
-    table: "ke_hoach_lcnt",
-    id: "plan-1",
-    code: "ROW_VERSION_CONFLICT",
-    serverRecord: { id: "plan-1", maKeHoach: "PL01", tenKeHoach: "Kế hoạch server" },
-  };
-  const controller = {
-    model: {
-      state: { kehoach: [] },
-      discardRejectedMutations(errors, snapshot) {
-        calls.push(["discard", errors, snapshot]);
-        return [{ type: "kehoach", id: "plan-1", conflictingId: "" }];
-      },
-      db: { async deleteRecord() {} },
-    },
-    view: {
-      showToast(title, message) { calls.push(["toast", title, message]); },
-      customConflictDialog() { throw new Error("Conflict dialog must not open"); },
-    },
-    async fetchRecordByLookup(type, id) {
-      calls.push(["fetch", type, id]);
-      return error.serverRecord;
-    },
-  };
-
-  try {
-    const result = await resolveRowVersionConflicts(controller, {
-      data: { errors: [error] },
-      snapshot: { id: "receipt-1" },
-    });
-
-    assert.deepEqual(result, {
-      resolved: false,
-      choice: null,
-      automatic: false,
-      conflicts: 1,
-      snapshot: { id: "receipt-1" },
-    });
-    assert.equal(calls.some(([kind]) => kind === "discard"), false);
-    assert.equal(calls.some(([kind]) => kind === "fetch"), false);
-    assert.equal(calls.some(([kind]) => kind === "toast"), true);
-  } finally {
-    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
-  }
-});
-
-
-test("an unresolved sync conflict asks for F5 without retrying, discarding, or opening a dialog", async () => {
+test("manual conflict recovery pulls canonical server data without retrying or opening a dialog", async () => {
   const calls = [];
   const controller = {
     model: {
@@ -685,11 +607,11 @@ test("an unresolved sync conflict asks for F5 without retrying, discarding, or o
     ok: false, conflict: true, status: 409,
   });
 
-  assert.equal(result.conflictCleared, false);
-  assert.equal(result.reloadRequired, true);
+  assert.equal(result.conflictCleared, true);
+  assert.equal(result.serverReloaded, true);
   assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "confirm"), false);
   assert.equal(calls.includes("discard"), false);
   assert.equal(calls.includes("retry"), false);
-  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "pull"), false);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "pull" && call[1] === true), true);
   assert.equal(calls.at(-1)[0], "toast");
 });

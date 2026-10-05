@@ -1198,14 +1198,19 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
         && ["goithau", "goi_thau"].includes(error.table)
         && String(error.id) === String(latestPackage.id)
     ))).toBe(true);
-    await expect(pageA.locator("#modal-goithau.active")).toBeVisible();
-    await expect(pageA.locator('#form-goithau[data-submit-state="ready"]')).toBeVisible();
-    await expect(pageA.locator("#form-goithau button[type='submit']")).toBeEnabled();
+    await expect(pageA.locator("#modal-goithau.active")).toBeHidden({ timeout: 30_000 });
+    await expect(pageA.locator("#modal-goithau")).toHaveAttribute("data-editor-state", "closed");
     await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
-    await expect(pageA.locator(".bf-toast").filter({ hasText: "Nhấn F5" }).last()).toBeVisible();
-
+    packageRow = await searchPackageRow(pageA, packageCode);
+    await expect(packageRow).toContainText(packageNameB);
+    // A fresh page must keep the server value and must not replay A's
+    // rejected outbox receipt from local durable storage.
     await reloadReady(pageA);
-    await expect(pageA.locator("#modal-custom-dialog.active")).toHaveCount(0);
+    packageRow = await searchPackageRow(pageA, packageCode);
+    await expect(packageRow).toContainText(packageNameB);
+    const durableServerPackage = (await readServerRows(pageA, { table: "goithau" }))
+      .find((row) => String(row.id) === String(latestPackage.id));
+    expect(durableServerPackage?.nguonVon).not.toBe("Nguồn vốn Local A");
     packageRow = await searchPackageRow(pageA, packageCode);
     await expect(packageRow).toContainText(packageNameB);
     await expect(packageRow.locator('[data-bf-action="edit-package"]')).toHaveCount(1);

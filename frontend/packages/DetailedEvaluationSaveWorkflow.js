@@ -92,43 +92,25 @@ function findInvalidConfiguredCriterion(criteria) {
   ));
 }
 
-async function retainConfirmedConflictInput(appController, state, report, recovery, workspaceToken, result, completionSummaryCheckpoint) {
+async function clearConfirmedConflictInput(appController, state, recovery, workspaceToken, result) {
   if (!isConfirmedRowVersionConflict(result) || result?.workspaceChanged
     || (workspaceToken && appController.model.isWorkspaceCurrent?.(workspaceToken) === false)) return;
-  const retainedInput = {
-    ...report,
-    trangThai: state.report.trangThai,
-    hoanThanhLuc: state.report.hoanThanhLuc,
-    ketLuan: state.report.ketLuan,
-    extension: {
-      ...(report.extension || {}),
-      completedGroups: [...(state.report.extension?.completedGroups || [])],
-      groupResults: { ...(state.report.extension?.groupResults || {}) },
-    },
-  };
-  appController._detailedEvaluationDrafts.set(state.draftKey, retainedInput);
-  // Keep the entered rows, not the optimistic official completion. Limit the
-  // normalization to this report; never replace a newly fetched canonical bid.
-  const normalizeReport = (bid) => {
-    if (!bid) return;
-    bid.baoCaoDanhGiaChiTietList = (bid.baoCaoDanhGiaChiTietList || []).map((item) => (
-      item.id === report.id && item.loaiVong === state.roundType ? retainedInput : item
-    ));
-    for (const [field, prior] of Object.entries(completionSummaryCheckpoint || {})) {
-      if (prior.present) bid[field] = prior.value;
-      else delete bid[field];
-    }
-  };
-  normalizeReport(state.bid);
-  const currentBid = (appController.model.state.thongtinmothau || []).find((bid) => String(bid.id) === String(state.bid.id));
-  if (currentBid !== state.bid && appController.model.hasRetainedConflictRecord?.("thongtinmothau", state.bid.id)) {
-    normalizeReport(currentBid);
-  }
-  appController.model.updateRetainedConflictRecord?.("thongtinmothau", currentBid || state.bid);
-  const held = recovery.holdUntilReload(state.draftKey, retainedInput);
-  if (!held.durableRemoval) {
-    await appController.view.customAlert?.("Bộ nhớ bản nháp chưa an toàn",
-      "Không thể xác nhận đã loại bản khôi phục xung đột khỏi bộ nhớ. Hãy giữ tab mở và khôi phục bộ nhớ trước khi tải lại.", "alert-triangle");
+  appController._detailedEvaluationDrafts.delete(state.draftKey);
+  const retired = await recovery.retireDurably(state.draftKey);
+  if (workspaceToken && appController.model.isWorkspaceCurrent?.(workspaceToken) === false) return;
+  const criteriaKey = state.criteriaKey || `${state.pkg.id}:${state.roundType}`;
+  appController._detailedEvaluationCriteriaOverrides?.delete(criteriaKey);
+  appController._technicalEvaluationMethodDrafts?.delete(criteriaKey);
+  appController._editingDetailedEvaluationKey = null;
+  appController._detailedEvaluationDirty = false;
+  await appController.renderDetailedEvaluation?.();
+  if (retired === false
+    && (!workspaceToken || appController.model.isWorkspaceCurrent?.(workspaceToken) !== false)) {
+    appController.view.showToast?.(
+      "Chưa thể xóa bản nháp cũ trên thiết bị",
+      "Bộ nhớ cục bộ chưa xác nhận việc xóa bản nháp xung đột. Vui lòng giữ màn hình này mở và thử đồng bộ lại.",
+      "warning",
+    );
   }
 }
 
@@ -202,7 +184,6 @@ function prepareDetailedEvaluationBidMutation({
   completeGroup,
   completeReport,
 } = {}) {
-  let completionSummaryCheckpoint = null;
   if (completeGroup && activeGroup === "technical" && requiresTechnicalScoreInput(state.pkg)) {
     const score = technicalScoreFromReport(report, configuredCriteria);
     if (score === null) {
@@ -210,12 +191,6 @@ function prepareDetailedEvaluationBidMutation({
         error: "Vui lòng nhập điểm kỹ thuật bằng số trước khi hoàn thành tab đánh giá.",
       };
     }
-    completionSummaryCheckpoint = {
-      danhGiaKyThuat: {
-        present: Object.prototype.hasOwnProperty.call(state.bid, "danhGiaKyThuat"),
-        value: state.bid.danhGiaKyThuat,
-      },
-    };
     state.bid.danhGiaKyThuat = String(score);
   }
   if (completeReport) {
@@ -232,12 +207,6 @@ function prepareDetailedEvaluationBidMutation({
         error: "Vui lòng nhập điểm kỹ thuật bằng số trước khi hoàn thành đánh giá nhà thầu.",
       };
     }
-    completionSummaryCheckpoint = Object.fromEntries(Object.entries(projected)
-      .filter(([field, value]) => !Object.is(state.bid[field], value))
-      .map(([field]) => [field, {
-        present: Object.prototype.hasOwnProperty.call(state.bid, field),
-        value: state.bid[field],
-      }]));
     Object.assign(state.bid, projected);
   }
   const bidUpsert = { ...state.bid };
@@ -248,7 +217,7 @@ function prepareDetailedEvaluationBidMutation({
     // completed; the server then preserves the existing canonical value.
     delete bidUpsert.danhGiaKyThuat;
   }
-  return { bidUpsert, completionSummaryCheckpoint };
+  return { bidUpsert };
 }
 
 export async function executeDetailedEvaluationSave({
@@ -463,14 +432,14 @@ export async function executeDetailedEvaluationSave({
     );
     return false;
   }
-  const { bidUpsert, completionSummaryCheckpoint } = preparedMutation;
+  const { bidUpsert } = preparedMutation;
   const result = await commitDetailedChanges(appController, commit, {
     goithau: [state.pkg],
     thongtinmothau: [bidUpsert],
     ...(invalidatedBidderGoods ? { hanghoaduthaunhathau: changedBidderGoods } : {}),
   }, bases, boundaryChecked);
   if (!result?.ok) {
-    await retainConfirmedConflictInput(appController, state, report, recovery, workspaceToken, result, completionSummaryCheckpoint);
+    await clearConfirmedConflictInput(appController, state, recovery, workspaceToken, result);
     return false;
   }
   appController._detailedEvaluationDrafts.set(state.draftKey, report);

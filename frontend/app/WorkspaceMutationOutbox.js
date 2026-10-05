@@ -370,6 +370,12 @@ export class WorkspaceMutationOutbox {
     await this.store.flush();
   }
 
+  async retryPersistence() {
+    // Re-persist the current intent without rebuilding receipt generations.
+    this._persist();
+    await this.flush();
+  }
+
   enqueue(command = {}) {
     const kind = String(command.kind || "");
     let changed = false;

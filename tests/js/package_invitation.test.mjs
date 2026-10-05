@@ -166,7 +166,7 @@ test("invitation save returns reloaded aggregate only after canonical commit", a
 
 for (const [name, result] of [
   ["rejected", { ok: false, code: "SYNC_VALIDATION_FAILED" }],
-  ["conflict", { ok: false, status: 409, conflictQuarantined: true }],
+  ["conflict", { ok: false, status: 409, serverReloaded: true, conflict: true }],
   ["remote pending", { ok: true, localMutationsPending: true }],
   ["offline pending", { ok: false, transport: true }],
   ["role switch pending", { ok: true, requiredActiveRole: "employee" }],

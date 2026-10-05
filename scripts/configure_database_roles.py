@@ -44,6 +44,28 @@ def _ensure_login_role(cursor, role: str, password: str) -> None:
         )
 
 
+def _grant_retired_archive_backup_access(cursor, backup_role: str) -> None:
+    """Keep full-database backup readable after the v99 namespace move."""
+    from backend.db.upgrades import retired_feature_archive_schema
+
+    archive_schema = retired_feature_archive_schema("public")
+    exists = cursor.execute(
+        "SELECT 1 FROM pg_namespace WHERE nspname = %s", (archive_schema,)
+    ).fetchone()
+    if not exists:
+        return
+    for statement in (
+        "GRANT USAGE ON SCHEMA {} TO {}",
+        "GRANT SELECT ON ALL TABLES IN SCHEMA {} TO {}",
+        "GRANT SELECT ON ALL SEQUENCES IN SCHEMA {} TO {}",
+    ):
+        cursor.execute(
+            sql.SQL(statement).format(
+                sql.Identifier(archive_schema), sql.Identifier(backup_role),
+            )
+        )
+
+
 def main() -> int:
     load_env(ROOT)
     admin_url = os.environ.get("DATABASE_ADMIN_URL") or os.environ.get("DATABASE_URL", "")
@@ -274,6 +296,7 @@ def main() -> int:
                 sql.Identifier(backup_role)
             )
         )
+        _grant_retired_archive_backup_access(cursor, backup_role)
         if "document_jobs" in existing_tables:
             cursor.execute(
                 sql.SQL(

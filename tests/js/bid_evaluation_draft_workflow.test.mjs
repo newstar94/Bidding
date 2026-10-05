@@ -819,7 +819,7 @@ test("failed server draft keeps dirty state and local recovery without claiming 
   assert.equal(fixture.alerts.some(([title]) => title === "Đã lưu nháp"), false);
 });
 
-test("confirmed row conflict retains general draft in this session but fresh controller cannot restore it", async () => {
+test("confirmed row conflict clears general recovery in this session and after reload", async () => {
   const fixture = createController();
   fixture.controller.autoSync = async () => ({ ok: false, status: 409, data: { errors: [{ code: "ROW_VERSION_CONFLICT", table: "goi_thau", id: fixture.pkg.id }] } });
   const recovery = generalBidEvaluationRecoveryFor(fixture.controller);
@@ -828,11 +828,11 @@ test("confirmed row conflict retains general draft in this session but fresh con
   recovery.cancelTimer = () => {};
   recovery.schedule(fixture.recoveryKey, () => ({ packageId: fixture.pkg.id, report: { soBaoCao: "old timer input" } }));
   assert.equal(await saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" }), false);
-  assert.equal(bidEvaluationDirtyStateFor(fixture.controller, fixture.recoveryKey).hasChanges(), true);
+  assert.equal(bidEvaluationDirtyStateFor(fixture.controller, fixture.recoveryKey).hasChanges(), false);
   callbacks[0]();
   const fresh = { model: fixture.controller.model, view: fixture.controller.view };
   assert.equal(generalBidEvaluationRecoveryFor(fresh).restore(fixture.recoveryKey), null);
-  assert.equal(recovery.restore(fixture.recoveryKey).sessionOnly, true);
+  assert.equal(recovery.restore(fixture.recoveryKey), null);
   assert.equal(fixture.alerts.some(([title]) => title === "Đã lưu nháp"), false);
 });
 
@@ -850,7 +850,7 @@ for (const result of [
   });
 }
 
-test("confirmed conflict holds original and retargeted general draft keys without deleting unrelated recovery", async () => {
+test("confirmed conflict clears original and retargeted draft keys without deleting unrelated recovery", async () => {
   const authority = deferred();
   const fixture = createController({ authority });
   fixture.controller.autoSync = async () => ({ ok: false, status: 409, data: { fields: { errors: [{ code: "ROW_VERSION_CONFLICT", table: "goi_thau", id: "pkg-2" }] } } });
@@ -867,20 +867,8 @@ test("confirmed conflict holds original and retargeted general draft keys withou
   const fresh = generalBidEvaluationRecoveryFor({ model: fixture.controller.model });
   for (const key of [fixture.recoveryKey, latestKey]) {
     assert.equal(fresh.restore(key), null);
-    assert.equal(recovery.restore(key).sessionOnly, true);
-    assert.equal(bidEvaluationDirtyStateFor(fixture.controller, key).hasChanges(), true);
+    assert.equal(recovery.restore(key), null);
+    assert.equal(bidEvaluationDirtyStateFor(fixture.controller, key).hasChanges(), false);
   }
   assert.equal(fresh.restore("unrelated").draft.report.soBaoCao, "ordinary input");
-});
-
-test("general conflict cleanup failure reports keep-tab storage risk without claiming durable safety", async () => {
-  const fixture = createController();
-  fixture.controller.autoSync = async () => {
-    fixture.controller.model.workspaceStorage.setItem = () => { throw new Error("Storage unavailable during cleanup"); };
-    return { ok: false, data: { errors: [{ code: "ROW_VERSION_CONFLICT", table: "goi_thau", id: fixture.pkg.id }] } };
-  };
-  assert.equal(await saveDanhGiaHsdt.call(fixture.controller, { mode: "draft" }), false);
-  assert.equal(generalBidEvaluationRecoveryFor(fixture.controller).restore(fixture.recoveryKey).sessionOnly, true);
-  assert.match(fixture.alerts.at(-1)[1], /giữ tab mở.*khôi phục bộ nhớ/i);
-  assert.match(fixture.controller._bidEvaluationSaveStatusByKey.get(fixture.recoveryKey), /chưa an toàn/i);
 });

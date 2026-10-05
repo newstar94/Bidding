@@ -13,7 +13,6 @@ const PASSIVE_WORKSPACE_STORAGE_KEYS = new Set([
   "bf_last_sync_version",
   "bf_last_sync_timestamp",
   "bf_last_fetch_time",
-  "bf_conflict_server_sync_version"
 ]);
 
 export function shouldScheduleBackgroundSyncForStorageEvent(event, scope) {

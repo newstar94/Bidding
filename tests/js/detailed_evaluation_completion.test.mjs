@@ -2,6 +2,98 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { executeDetailedEvaluationSave } from "../../frontend/packages/DetailedEvaluationSaveWorkflow.js";
+import { detailedEvaluationAutosaveFor } from "../../frontend/packages/DetailedEvaluationDraftAutosave.js";
+import { resolveDetailedEvaluationState } from "../../frontend/packages/DetailedEvaluationState.js";
+
+for (const failDraftRemoval of [false, true]) {
+  test(`row conflict renders canonical report, criteria and method when draft removal ${failDraftRemoval ? "fails" : "succeeds"}`, async () => {
+    const stored = new Map();
+    let failWrites = false;
+    const storage = {
+      getItem: (key) => stored.get(key) || null,
+      setItem(key, value) {
+        if (failWrites) throw new Error("Local draft storage unavailable");
+        stored.set(key, value);
+      },
+    };
+    const localCriterion = {
+      id: "criterion-conflict", stt: "1", group: "technical",
+      name: "Rejected criterion", resultType: "score", maxScore: 100,
+      source: "custom", required: false,
+    };
+    const canonicalCriterion = { ...localCriterion, name: "Server criterion", resultType: "pass_fail" };
+    const localReport = {
+      id: "report-conflict", loaiVong: "single", trangThai: "draft",
+      chiTietList: [{ id: "row-conflict", tieuChiDanhGiaId: localCriterion.id, ketQua: "pass", diem: 75, nhanXet: "Rejected note" }],
+      extension: { technicalEvaluationMethod: "score" },
+    };
+    const canonicalReport = {
+      ...structuredClone(localReport),
+      chiTietList: [{ ...localReport.chiTietList[0], diem: null, nhanXet: "Server note" }],
+      extension: { technicalEvaluationMethod: "pass_fail" },
+    };
+    const pkg = { id: "package-conflict", rowVersion: 1, danhGiaHsdtMetadata: "{}" };
+    const bid = { id: "bid-conflict", rowVersion: 1, goiThauId: pkg.id, baoCaoDanhGiaChiTietList: [localReport] };
+    const draftKey = `${pkg.id}:${bid.id}:single`;
+    const criteriaKey = `${pkg.id}:single`;
+    const toasts = [];
+    const alerts = [];
+    let rendered;
+    const controller = {
+      model: {
+        workspaceStorage: storage,
+        getWorkspaceToken: () => "workspace-a",
+        isWorkspaceCurrent: (token) => token === "workspace-a",
+        state: { goithau: [pkg], thongtinmothau: [bid], hanghoaduthaunhathau: [] },
+        assertStorageTablesWritable() {},
+        commitLocalMutation() {},
+      },
+      view: {
+        getActiveElement: (id) => id === "danhgiahsdt-goithau-select" ? { value: pkg.id } : null,
+        customAlert: async (...args) => { alerts.push(args); },
+        showToast: (...args) => { toasts.push(args); },
+      },
+      _detailedEvaluationCriteriaOverrides: new Map([[criteriaKey, [localCriterion]], ["other:single", [localCriterion]]]),
+      _technicalEvaluationMethodDrafts: new Map([[criteriaKey, "score"], ["other:single", "score"]]),
+      _detailedEvaluationDrafts: new Map([[draftKey, localReport], ["other:bid:single", localReport]]),
+      _editingDetailedEvaluationKey: draftKey,
+      _detailedEvaluationDirty: true,
+      renderDetailedEvaluation: async () => { rendered = resolveDetailedEvaluationState(controller); },
+    };
+    const recovery = detailedEvaluationAutosaveFor(controller);
+    assert.equal(recovery.save(draftKey, localReport), true);
+    const result = await executeDetailedEvaluationSave({
+      appController: controller,
+      state: {
+        pkg, bid, report: localReport, draftKey, criteriaKey, roundType: "single",
+        criteria: [localCriterion], baseCriteria: [localCriterion],
+        context: { visibleGroups: ["technical"], editableGroups: ["technical"], configuredGroups: ["technical"], technicalEvaluationMethod: "score" },
+      },
+      root: { querySelectorAll: () => [], querySelector: () => null },
+      activeGroup: "technical",
+      commit: async () => {
+        controller.model.state.goithau = [{ ...pkg, rowVersion: 2, danhGiaHsdtMetadata: JSON.stringify({ criteria: [canonicalCriterion], technicalEvaluationMethod: "pass_fail" }) }];
+        controller.model.state.thongtinmothau = [{ ...bid, rowVersion: 2, baoCaoDanhGiaChiTietList: [canonicalReport] }];
+        failWrites = failDraftRemoval;
+        return { ok: false, conflict: true, serverReloaded: true, data: { errors: [{ code: "ROW_VERSION_CONFLICT" }] } };
+      },
+    });
+    assert.equal(result, false);
+    assert.equal(rendered.report.chiTietList[0].nhanXet, "Server note");
+    assert.equal(rendered.criteria[0].name, "Server criterion");
+    assert.equal(rendered.context.technicalEvaluationMethod, "pass_fail");
+    assert.equal(recovery.restore(draftKey), null);
+    assert.equal(controller._detailedEvaluationCriteriaOverrides.has(criteriaKey), false);
+    assert.equal(controller._technicalEvaluationMethodDrafts.has(criteriaKey), false);
+    assert.equal(controller._detailedEvaluationCriteriaOverrides.has("other:single"), true);
+    assert.equal(controller._technicalEvaluationMethodDrafts.has("other:single"), true);
+    assert.equal(controller._detailedEvaluationDrafts.has("other:bid:single"), true);
+    assert.equal(controller._detailedEvaluationDirty, false);
+    assert.equal(alerts.length, 0);
+    assert.equal(toasts.length, failDraftRemoval ? 1 : 0);
+    if (failDraftRemoval) assert.equal(toasts[0][2], "warning");
+  });
+}
 
 test("financial evaluation can complete the contractor report directly", async () => {
   const storage = new Map();

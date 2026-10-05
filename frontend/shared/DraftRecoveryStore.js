@@ -1,3 +1,87 @@
+export const DRAFT_RECOVERY_RETIREMENTS_KEY = "draft_recovery_retirements_v1";
+const RETIREMENT_LIMIT = 512;
+
+function fingerprint(value) {
+  const source = JSON.stringify(value);
+  const seeds = [0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35];
+  return `${source.length}:${seeds.map((seed) => {
+    let hash = seed;
+    for (let index = 0; index < source.length; index++) {
+      hash = Math.imul(hash ^ source.charCodeAt(index), 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }).join("")}`;
+}
+
+function validateRetirements(value) {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)
+    || Object.values(value).some((entries) => !entries || typeof entries !== "object"
+      || Array.isArray(entries) || Object.values(entries).some((stamp) => typeof stamp !== "string"))) {
+    throw new Error("Invalid draft retirement metadata");
+  }
+  return value;
+}
+
+function retirementMatches(stamp, draft) {
+  if (String(stamp || "").startsWith("before:")) {
+    const savedAt = Number(draft?.savedAt);
+    return !Number.isFinite(savedAt) || savedAt <= Number(stamp.slice(7));
+  }
+  return stamp === fingerprint(draft);
+}
+
+function pruneRetirements(entries, storage) {
+  const next = structuredClone(entries);
+  for (const [storageKey, keys] of Object.entries(next)) {
+    let drafts;
+    try { drafts = JSON.parse(storage?.getItem?.(storageKey) || "{}"); } catch { continue; }
+    if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) continue;
+    for (const [key, stamp] of Object.entries(keys)) {
+      if (!drafts[key] || !retirementMatches(stamp, drafts[key])) delete keys[key];
+    }
+    if (!Object.keys(keys).length) delete next[storageKey];
+  }
+  return next;
+}
+
+export async function hydrateDraftRecoveryRetirements(model) {
+  const database = model.db;
+  const cache = model._draftRecoveryRetirements ||= { ready: false, entries: {} };
+  try {
+    cache.entries = validateRetirements(await database.get(DRAFT_RECOVERY_RETIREMENTS_KEY));
+    cache.ready = true;
+    return true;
+  } catch (error) {
+    cache.ready = false;
+    cache.error = error;
+    return false;
+  }
+}
+
+export function draftRecoveryRetirementOptions(model) {
+  const database = model?.db;
+  const storage = model?.workspaceStorage;
+  const cache = model ? (model._draftRecoveryRetirements ||= { ready: true, entries: {} }) : null;
+  return {
+    retirementCache: cache,
+    async persistRetirement(storageKey, key, stamp) {
+      if (typeof database?.update !== "function") throw new Error("Draft retirement storage is unavailable");
+      const entries = await database.update(DRAFT_RECOVERY_RETIREMENTS_KEY, (current) => {
+        const next = pruneRetirements(validateRetirements(current), storage);
+        next[storageKey] ||= {};
+        next[storageKey][key] = stamp;
+        if (Object.values(next).reduce((count, keys) => count + Object.keys(keys).length, 0) > RETIREMENT_LIMIT) {
+          throw new Error("Draft retirement storage limit reached");
+        }
+        return next;
+      });
+      cache.entries = entries;
+      cache.ready = true;
+    },
+  };
+}
+
 export class DraftRecoveryStore {
   constructor(storage, {
     storageKey,
@@ -8,6 +92,8 @@ export class DraftRecoveryStore {
     cancel = (timer) => clearTimeout(timer),
     onError = () => {},
     shouldStore = () => true,
+    retirementCache = null,
+    persistRetirement = null,
   } = {}) {
     if (!String(storageKey || "").trim()) {
       throw new TypeError("Draft recovery store requires a storage key.");
@@ -21,8 +107,10 @@ export class DraftRecoveryStore {
     this.cancelTimer = cancel;
     this.onError = onError;
     this.shouldStore = shouldStore;
+    this.retirementCache = retirementCache;
+    this.persistRetirement = persistRetirement;
     this.pending = new Map();
-    this.heldUntilReload = new Map();
+    this.retired = new Set();
     this.sequence = 0;
     this.durability = "ready";
     this.lastError = null;
@@ -71,10 +159,6 @@ export class DraftRecoveryStore {
   save(key, payload, { pendingServerSync = true } = {}) {
     const normalizedKey = String(key || "").trim();
     if (!normalizedKey || !this.shouldStore(payload)) return false;
-    if (this.heldUntilReload.has(normalizedKey)) {
-      this.heldUntilReload.set(normalizedKey, this.sessionDraft(payload));
-      return false;
-    }
     const drafts = this.readAll();
     if (this.durability !== "ready") return false;
     drafts[normalizedKey] = {
@@ -82,16 +166,14 @@ export class DraftRecoveryStore {
       savedAt: this.now(),
       pendingServerSync: Boolean(pendingServerSync),
     };
-    return this.writeAll(drafts);
+    const saved = this.writeAll(drafts);
+    if (saved) this.retired.delete(normalizedKey);
+    return saved;
   }
 
   schedule(key, capture) {
     const normalizedKey = String(key || "").trim();
     if (!normalizedKey || typeof capture !== "function") return null;
-    if (this.heldUntilReload.has(normalizedKey)) {
-      this.heldUntilReload.set(normalizedKey, this.sessionDraft(capture()));
-      return null;
-    }
     const previous = this.pending.get(normalizedKey);
     if (previous) this.cancelTimer(previous.timer);
     const token = ++this.sequence;
@@ -107,8 +189,15 @@ export class DraftRecoveryStore {
 
   restore(key) {
     const normalizedKey = String(key || "");
-    const draft = this.heldUntilReload.get(normalizedKey) || this.readAll()[normalizedKey];
+    if (this.retired.has(normalizedKey)) return null;
+    if (this.retirementCache?.ready === false) {
+      this.reportError(this.retirementCache.error || new Error("Draft retirement metadata unavailable"), "unavailable");
+      return null;
+    }
+    const draft = this.readAll()[normalizedKey];
     if (!draft || !Object.prototype.hasOwnProperty.call(draft, this.payloadField)) return null;
+    const stamp = this.retirementCache?.entries?.[this.storageKey]?.[normalizedKey];
+    if (stamp && retirementMatches(stamp, draft)) return null;
     return structuredClone(draft);
   }
 
@@ -123,33 +212,28 @@ export class DraftRecoveryStore {
       delete drafts[normalizedKey];
       if (!this.writeAll(drafts)) return false;
     }
-    this.heldUntilReload.delete(normalizedKey);
     return true;
   }
 
-  sessionDraft(payload) {
-    return {
-      [this.payloadField]: structuredClone(payload), savedAt: this.now(),
-      pendingServerSync: false, sessionOnly: true, reloadRequired: true,
-    };
+  retire(key) {
+    const normalizedKey = String(key || "");
+    this.retired.add(normalizedKey);
+    return this.clear(normalizedKey);
   }
 
-  holdUntilReload(key, payload = undefined) {
-    const normalizedKey = String(key || "").trim();
-    if (!normalizedKey) return { held: false, durableRemoval: false };
-    const prior = this.restore(normalizedKey);
-    const snapshot = payload === undefined ? prior?.[this.payloadField] : payload;
-    const pending = this.pending.get(normalizedKey);
-    if (pending) this.cancelTimer(pending.timer);
-    this.pending.delete(normalizedKey);
-    // Keep the entered input in this instance, even if durable removal fails.
-    // Fresh instances never receive this session-only recovery.
-    this.heldUntilReload.set(normalizedKey, this.sessionDraft(snapshot));
-    const drafts = this.readAll();
-    if (this.durability !== "ready") return { held: true, durableRemoval: false };
-    if (!Object.prototype.hasOwnProperty.call(drafts, normalizedKey)) return { held: true, durableRemoval: true };
-    delete drafts[normalizedKey];
-    return { held: true, durableRemoval: this.writeAll(drafts) };
+  async retireDurably(key) {
+    const normalizedKey = String(key || "");
+    const draft = this.readAll()[normalizedKey];
+    if (this.retire(normalizedKey)) return true;
+    if (typeof this.persistRetirement !== "function") return false;
+    try {
+      await this.persistRetirement(this.storageKey, normalizedKey,
+        draft ? fingerprint(draft) : `before:${this.now()}`);
+      return true;
+    } catch (error) {
+      this.reportError(error, "degraded");
+      return false;
+    }
   }
 
   acknowledge(key, result) {

@@ -1,4 +1,4 @@
-import { DraftRecoveryStore } from "../shared/DraftRecoveryStore.js";
+import { DraftRecoveryStore, draftRecoveryRetirementOptions } from "../shared/DraftRecoveryStore.js";
 
 const STORAGE_KEY = "bf_detailed_evaluation_drafts_v1";
 
@@ -24,7 +24,8 @@ export function detailedEvaluationAutosaveFor(controller) {
   const storage = controller?.model?.workspaceStorage || globalThis.localStorage;
   if (!controller._detailedEvaluationAutosave
     || controller._detailedEvaluationAutosave.storage !== storage) {
-    controller._detailedEvaluationAutosave = new DraftAutosaveStore(storage);
+    controller._detailedEvaluationAutosave = new DraftAutosaveStore(storage,
+      draftRecoveryRetirementOptions(controller.model));
   }
   return controller._detailedEvaluationAutosave;
 }

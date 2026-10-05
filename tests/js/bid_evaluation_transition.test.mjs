@@ -139,7 +139,7 @@ test("complete_evaluation_waits_for_authority_before_mutation", async () => {
   await saving;
 });
 
-test("confirmed general completion conflict cannot auto-restore autosaved report after F5", async () => {
+test("confirmed completion conflict clears autosaved report input without retaining a local conflict draft", async () => {
   const scenario = completionScenario();
   const values = new Map();
   scenario.model.workspaceScope = { userId: "user", organizationId: "org" };
@@ -156,12 +156,7 @@ test("confirmed general completion conflict cannot auto-restore autosaved report
   await saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });
   callbacks[0]();
   assert.equal(generalBidEvaluationRecoveryFor({ model: scenario.model }).restore(key), null);
-  assert.equal(recovery.restore(key).sessionOnly, true);
-  assert.equal(recovery.restore(key).draft.report.soBaoCao, "01/BC-DG");
-  const retainedMetadata = JSON.parse(scenario.pkg.danhGiaHsdtMetadata);
-  assert.notEqual(retainedMetadata.saved, true);
-  assert.notEqual(retainedMetadata.trangThai, "completed");
-  assert.equal(retainedMetadata.soBaoCao, "01/BC-DG");
+  assert.equal(recovery.restore(key), null);
 });
 
 test("complete_evaluation_preserves_report_input_when_authoritative_refresh_replaces_controls", async () => {

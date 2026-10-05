@@ -10,8 +10,7 @@ import {
 } from "../shared/releaseDiagnostics.js";
 import {
   getSyncValidationErrors,
-  resolveRowVersionConflicts,
-} from "./ConflictResolver.js";
+} from "./SyncValidationErrors.js";
 import {
   applyDashboardSummaryAfterMutation,
   collectCommittedMutationKeys,
@@ -42,9 +41,9 @@ const VALIDATION_ERROR_CATEGORIES = Object.freeze([
   "system",
 ]);
 
-function conflictStorageFailure(controller, { status, data, recoveryDraft }) {
-  const failure = recoveryDraft?.storageDegraded
-    ? recoveryDraft : controller.model?.conflictQuarantineFailure;
+function conflictStorageFailure(controller, { status, data, discarded, snapshot }) {
+  const failure = discarded?.storageDegraded
+    ? discarded : controller.model?.conflictDiscardFailure;
   if (!failure?.storageDegraded) return null;
   const receiptRetired = failure.receiptRetired === true;
   controller._syncConflict = {
@@ -52,26 +51,27 @@ function conflictStorageFailure(controller, { status, data, recoveryDraft }) {
     message: data.message || data.error || "Server data changed before local sync.",
     reloadRequired: true,
     reloadUnsafe: true,
+    disposal: { data, snapshot },
+    discardedRecords: discarded?.records || failure.records || [],
   };
   controller.updateSyncState({
     phase: "storageError",
     online: true,
-    message: "Chưa thể hoàn tất lưu trữ xung đột · Giữ tab đang mở",
+    message: "Chưa thể hoàn tất cập nhật dữ liệu máy chủ · Vui lòng thử đồng bộ lại",
   });
   controller.view?.showToast?.(
-    "Chưa thể hoàn tất lưu trữ xung đột",
-    "Nội dung nhập vẫn đang được giữ trong tab này. Vui lòng giữ tab mở; chưa thể bảo đảm tải lại sẽ khôi phục đúng dữ liệu máy chủ.",
+    "Chưa thể hoàn tất cập nhật dữ liệu máy chủ",
+    "Bộ nhớ cục bộ chưa xác nhận được việc loại bỏ thay đổi xung đột. Vui lòng thử đồng bộ lại.",
     "warning",
   );
   return {
     ok: false,
     status,
     data,
-    conflictQuarantined: receiptRetired,
+    conflict: true,
     storageDegraded: true,
     reloadUnsafe: true,
     receiptRetired,
-    ...(recoveryDraft?.id ? { recoveryDraftId: recoveryDraft.id } : {}),
   };
 }
 
@@ -613,139 +613,62 @@ export async function applyFailedPush(controller, {
       retryable: renewed,
     };
   }
-  const hasRowVersionConflict = validationErrors.some(
-    (error) => error?.code === "ROW_VERSION_CONFLICT",
-  );
-  if (
-    (status === 409 || data.status === "conflict")
-    && hasRowVersionConflict
-    && typeof controller.model?.quarantineMutationBatch === "function"
-  ) {
-    logRowVersionConflicts(data, snapshot, workspace);
-    const recoveryDraft = await controller.model.quarantineMutationBatch({ data, snapshot });
-    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
-    const storageFailure = conflictStorageFailure(controller, { status, data, recoveryDraft });
-    if (storageFailure) return storageFailure;
-    if (recoveryDraft?.serverAuthoritative === true) {
-      // A stale local write is discarded.  Pull a fresh server snapshot before
-      // rendering so the rejected value cannot remain visible in the cache.
-      const refreshed = await controller.forceSyncData?.(
-        false,
-        true,
-        false,
-        { skipFlush: true },
-      );
-      if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
-      if (refreshed?.ok) {
-        controller._syncConflict = null;
-        controller.updateSyncState({ phase: "serverSaved", online: true, lastSyncedAt: Date.now() });
-        controller.view?.showToast?.(
-          "Đã dùng dữ liệu máy chủ",
-          "Thay đổi cục bộ bị xung đột đã được loại bỏ và dữ liệu mới nhất từ máy chủ đã được tải lại.",
-          "info",
-        );
-        return {
-          ok: false,
-          status,
-          data: refreshed.data || data,
-          conflict: true,
-          serverAuthoritative: true,
-          serverReloaded: true,
-        };
-      }
-      controller._syncConflict = {
-        serverSyncVersion: data.currentSyncVersion ?? null,
-        message: data.message || data.error || "Server data changed before local sync.",
-        reloadRequired: true,
-      };
-      controller.updateSyncState({
-        phase: "conflict",
-        online: true,
-        message: "Dữ liệu đã thay đổi trên máy chủ · Vui lòng thử đồng bộ lại",
-      });
-      return { ok: false, status, data, conflict: true, serverAuthoritative: true, reloadRequired: true };
-    }
-    if (recoveryDraft?.id) {
-      controller._syncConflict = null;
-      controller.updateSyncState({
-        phase: "conflict",
-        online: true,
-        message: "Dữ liệu đã thay đổi trên máy chủ · Nội dung nhập được giữ đến khi nhấn F5",
-      });
-      controller.view?.showToast?.(
-        "Dữ liệu đã thay đổi trên máy chủ",
-        "Nội dung nhập được giữ trên màn hình đến khi nhấn F5. Bản nháp trong Trung tâm xung đột sẽ không tự áp lại; F5 tải dữ liệu máy chủ.",
-        "warning",
-      );
-      return {
-        ok: false,
-        status,
-        data,
-        conflictQuarantined: true,
-        recoveryDraftId: recoveryDraft.id,
-      };
-    }
-    if (recoveryDraft?.sessionOnly === true) {
-      controller._syncConflict = {
-        serverSyncVersion: data.currentSyncVersion ?? null,
-        message: data.message || data.error || "Server data changed before local sync.",
-        reloadRequired: true,
-      };
-      controller.updateSyncState({
-        phase: "conflict",
-        online: true,
-        message: "Dữ liệu đã thay đổi trên máy chủ · Nhấn F5 để tải trạng thái mới nhất",
-      });
-      if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
-        (workspace.storage || currentWorkspaceStorage(controller)).setItem(
-          "bf_conflict_server_sync_version",
-          String(data.currentSyncVersion),
-        );
-      }
-      controller.view?.showToast?.(
-        "Dữ liệu đã thay đổi trên máy chủ",
-        "Nội dung nhập được giữ trên màn hình. Nhấn F5 để tải dữ liệu máy chủ; nội dung xung đột sẽ không tự áp lại.",
-        "warning",
-      );
-      return {
-        ok: false,
-        status,
-        data,
-        conflictQuarantined: true,
-        reloadRequired: true,
-        sessionOnlyConflict: true,
-      };
-    }
-  }
   if (status === 409 || data.status === "conflict") {
     void reportSyncConflict({
       workspaceKey: workspace.workspaceKey,
       correlationId: data.requestId,
     });
-    const resolution = await resolveRowVersionConflicts(controller, { data, snapshot });
+    logRowVersionConflicts(data, snapshot, workspace);
+    const discarded = await controller.model?.discardConflictingMutationBatch?.({ data, snapshot });
     if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
-    if (resolution.resolved) {
+    const storageFailure = conflictStorageFailure(controller, { status, data, discarded, snapshot });
+    if (storageFailure) return storageFailure;
+    if (discarded?.serverAuthoritative !== true) {
+      controller._syncConflict = { reloadRequired: true };
+      controller.updateSyncState({ phase: "conflict", online: true });
+      return { ok: false, status, data, conflict: true, reloadRequired: true };
+    }
+    // This pull belongs to the failed push. It must not await that same push,
+    // and the rejected receipt has already been retired durably.
+    let refreshed;
+    try {
+      refreshed = await controller.forceSyncData?.(
+        false,
+        true,
+        false,
+        { skipFlush: true, skipActivePush: true, discardedConflictRecords: discarded.records || [] },
+      );
+    } catch (error) {
+      refreshed = { ok: false, error };
+    }
+    if (!workspaceIsCurrent(controller, workspace)) return staleWorkspaceResult({ status, data });
+    if (refreshed?.ok) {
       controller._syncConflict = null;
-      controller.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
-      return { ok: true, status, data, resolvedConflict: resolution.choice };
+      controller.updateSyncState({
+        phase: refreshed.localMutationsPending ? "localPending" : "serverSaved",
+        online: true,
+        message: "Đã dùng dữ liệu máy chủ",
+        ...(refreshed.localMutationsPending ? {} : { lastSyncedAt: Date.now() }),
+      });
+      return { ok: false, status, data, conflict: true, serverAuthoritative: true, serverReloaded: true };
     }
     controller._syncConflict = {
       serverSyncVersion: data.currentSyncVersion ?? null,
-      message: data.message || data.error || "Server data changed before local sync."
+      message: data.message || data.error || "Server data changed before local sync.",
+      reloadRequired: true,
+      discardedRecords: discarded.records || [],
     };
-    controller.updateSyncState({ phase: "conflict" });
-    if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
-      (workspace.storage || currentWorkspaceStorage(controller)).setItem(
-        "bf_conflict_server_sync_version",
-        String(data.currentSyncVersion),
-      );
-    }
+    controller.updateSyncState({
+      phase: "conflict",
+      online: true,
+      message: "Dữ liệu đã thay đổi trên máy chủ · Vui lòng thử đồng bộ lại",
+    });
     controller.view?.showToast?.(
-      "Cảnh báo",
-      "Dữ liệu đã thay đổi trong lúc bạn thao tác. Ứng dụng đang tải lại dữ liệu mới nhất; vui lòng kiểm tra và lưu lại.",
+      "Dữ liệu đã thay đổi trên máy chủ",
+      "Thay đổi cục bộ bị xung đột đã được loại bỏ. Chưa thể tải dữ liệu máy chủ; vui lòng thử đồng bộ lại.",
       "warning",
     );
-    return { ok: false, status, data, conflict: true };
+    return { ok: false, status, data, conflict: true, serverAuthoritative: true, reloadRequired: true };
   }
   if (validationErrors.length > 0) {
     let recovery = null;

@@ -36,13 +36,6 @@ import {
   reconcileTimelinePackageOptionProjection,
 } from "../shared/tableDataUtils.js";
 import { observeProjectionAuthorizationVisibilityToken } from "../shared/PaginatedProjectionStore.js";
-import {
-  forgetConflictProjection,
-  hasConflictProjection,
-  retainAuthorizedConflictRecord,
-  retainedConflictRecord,
-} from "../shared/conflictProjection.js";
-
 
 const DETAIL_ROUTE_TABLE = {
   "goithau-detail": "goithau",
@@ -122,16 +115,33 @@ function reconcilePulledPlanBreakdownState(controller, localBefore, changedKeys,
   if (versionStateChanged) normalizePackageVersionSelection(controller.model.state);
 }
 
+function reconcileDiscardedPlanDraftRecords(controller, localBefore, discardedRecords = []) {
+  const draft = controller.planBreakdownDraft;
+  if (!draft?.active || !draft.snapshot || !localBefore) return;
+  const replace = (records, id, current) => {
+    if (!Array.isArray(records)) return records;
+    const remaining = records.filter((record) => String(record?.id) !== id);
+    return current ? [...remaining, structuredClone(current)] : remaining;
+  };
+  for (const { table, id: rawId } of discardedRecords) {
+    const id = String(rawId || "");
+    if (!id || !Array.isArray(localBefore[table])) continue;
+    // Rebase only the retired intent. Other active editor rows keep their
+    // ordinary local draft behavior, and later outbox generations keep CAS.
+    const current = controller.model.state?.[table]?.find((row) => String(row?.id) === id);
+    localBefore[table] = replace(localBefore[table], id, current);
+    draft.snapshot[table] = replace(draft.snapshot[table], id, current);
+    const backupField = { kehoach: "backupKeHoachState", goithau: "backupGoiThauState" }[table];
+    if (backupField) controller[backupField] = replace(controller[backupField], id, current);
+  }
+}
+
 export function finalizePulledSyncState(controller, timestamp = Date.now()) {
   const localMutationsPending = Boolean(
     controller?.model?.hasPendingMutationOutboxChanges?.()
     || controller?.model?.buildMutationSyncPayload?.(),
   );
   const currentPhase = String(controller?._syncUxState?.phase || "");
-  if (hasConflictProjection(controller?.model)) {
-    if (currentPhase !== "storageError") controller?.updateSyncState?.({ phase: "conflict", online: true });
-    return localMutationsPending;
-  }
   // A background pull can finish after an interrupted mutation has already
   // reported a recoverable failure. Keep that actionable state visible until
   // the user explicitly retries, rather than replacing it with a generic
@@ -189,7 +199,6 @@ export function detailRecordExists(model, tableKey, lookup) {
 
 export function storeFetchedRecord(model, tableKey, record) {
   if (!model || !tableKey || !record?.id) return null;
-  record = retainAuthorizedConflictRecord(model, tableKey, record);
   if (!Array.isArray(model.state[tableKey])) model.state[tableKey] = [];
   const index = model.state[tableKey].findIndex(
     (item) => String(item.id) === String(record.id),
@@ -198,22 +207,6 @@ export function storeFetchedRecord(model, tableKey, record) {
   else model.state[tableKey].push(record);
   model.entityIndexes?.invalidate?.(tableKey);
   return record;
-}
-
-async function dismissDeniedConflictRecord(model, tableKey, lookup, lease) {
-  const needle = String(decodeURIComponent(lookup)).toLowerCase();
-  const record = (lease.state[tableKey] || []).find((row) => (
-    [row.id, row.maGoiThau, row.maKeHoach, row.soHopDong, row.maChuDauTu, row.maNhaThau]
-      .some((value) => value !== undefined && String(value).toLowerCase() === needle)
-  ));
-  if (!record || !retainedConflictRecord(model, tableKey, record.id)) return;
-  forgetConflictProjection(model, tableKey, [record.id]);
-  lease.state[tableKey] = lease.state[tableKey].filter((row) => String(row.id) !== String(record.id));
-  model.entityIndexes?.invalidate?.(tableKey);
-  if (typeof lease.db?.deleteRecord === "function") {
-    await lease.db.deleteRecord(tableKey, record.id);
-    assertWorkspaceLeaseCurrent(model, lease);
-  }
 }
 
 export async function fetchRecordByLookup(tableKey, lookup, {
@@ -240,9 +233,6 @@ export async function fetchRecordByLookup(tableKey, lookup, {
           code: "RECORD_LOOKUP_UNCONFIRMED",
         });
       }
-      if (storeResult && [401, 403, 404].includes(response.status)) {
-        await dismissDeniedConflictRecord(model, tableKey, lookup, request.lease);
-      }
       return null;
     }
     const data = await response.json();
@@ -253,9 +243,6 @@ export async function fetchRecordByLookup(tableKey, lookup, {
           status: response.status,
           code: "RECORD_LOOKUP_UNCONFIRMED",
         });
-      }
-      if (storeResult && data?.item === null) {
-        await dismissDeniedConflictRecord(model, tableKey, lookup, request.lease);
       }
       return null;
     }
@@ -631,6 +618,7 @@ async function executeForceSyncData(
       dbData,
       { useVersionDelta, since, visibilityScopeChanged },
     );
+    reconcileDiscardedPlanDraftRecords(this, draftLocalState, options.discardedConflictRecords);
     reconcilePulledPlanBreakdownState(this, draftLocalState, changedKeys,
       visibilityScopeChanged ? deletionsByTable : {});
     await persistencePromise;
@@ -717,7 +705,7 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
     this._workspacePullFlights.set(key, flights);
   }
 
-  const requestKey = `${isBackground ? "background" : "foreground"}:${forceFull ? "full" : "delta"}:${routeOnly ? "route" : "workspace"}:${options.skipOutboxFlush ? "skip-flush" : "flush"}`;
+  const requestKey = `${isBackground ? "background" : "foreground"}:${forceFull ? "full" : "delta"}:${routeOnly ? "route" : "workspace"}:${options.skipFlush ? "skip-flush" : "flush"}:${options.skipActivePush ? "skip-push" : "wait-push"}`;
   const existing = flights.get(requestKey);
   if (existing?.promise) return existing.promise;
 
@@ -729,7 +717,7 @@ export function forceSyncData(isBackground = false, forceFull = false, routeOnly
   }
   const requestController = new AbortController();
 
-  const activePush = this._autoSyncOwner?.workspaceToken === key
+  const activePush = !options.skipActivePush && this._autoSyncOwner?.workspaceToken === key
     ? this._autoSyncOwner.promise
     : null;
   const run = Promise.resolve(activePush)

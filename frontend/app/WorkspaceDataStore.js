@@ -17,7 +17,6 @@ const LOCALLY_ACCEPTED_OUTCOMES = new Set([
   "committed",
   "offlineQueued",
   "transportFailed",
-  "conflict",
 ]);
 
 export const COMPLETED_MUTATION_CACHE_LIMIT = 750;

@@ -979,7 +979,6 @@ from backend.ai.routes import ai_routes
 from backend.contractor_risk.routes import contractor_risk_routes
 from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
-from backend.sync.conflict_resolution.routes import conflict_resolution_routes
 
 
 _holidays_cache = None
@@ -1307,7 +1306,6 @@ routes = [
     *contractor_risk_routes(Route),
     *procurement_import_routes(Route),
     *procurement_lookup_routes(Route),
-    *conflict_resolution_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),

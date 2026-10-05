@@ -3,6 +3,10 @@ import {
   workspaceIsCurrent,
 } from "./SyncWorkspaceContext.js";
 import { showSyncErrorDetails } from "./SyncPresenter.js";
+import {
+  STARTUP_RECONCILIATION_PHASE,
+  transitionStartupReconciliation,
+} from "./startupReconciliation.js";
 
 
 const ACTIONABLE_PENDING_PHASES = new Set([
@@ -14,11 +18,8 @@ const ACTIONABLE_PENDING_PHASES = new Set([
 ]);
 
 function isSyncConflict(result) {
-  if (result?.idempotencyKeyReused || result?.reloadUnsafe) return false;
-  // A quarantined receipt has no local write left to replay.  When it asks
-  // for a reload, pull the server snapshot immediately instead of opening a
-  // local conflict-resolution workflow.
-  if (result?.conflictQuarantined && !result?.reloadRequired) return false;
+  if (result?.idempotencyKeyReused) return false;
+  if (result?.serverReloaded === true) return false;
   return Boolean(result?.conflict || result?.status === 409);
 }
 
@@ -31,38 +32,6 @@ function workspaceChangedResult() {
   return { ok: false, stale: true, workspaceChanged: true, code: "WORKSPACE_CHANGED" };
 }
 
-async function resolveConflictRecoveryDraft(
-  controller,
-  workspace = captureWorkspace(controller),
-) {
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  // Conflict drafts are no longer a user-facing feature.  Any retired local
-  // receipt is discarded and the next full pull establishes the server row as
-  // the only visible value.
-  controller.model?.discardAllConflictRecoveryDrafts?.();
-  const refreshed = await controller.forceSyncData?.(
-    false,
-    true,
-    false,
-    { skipFlush: true },
-  );
-  if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  if (refreshed?.ok) {
-    controller.view?.showToast?.(
-      "Đã tải dữ liệu máy chủ",
-      "Bản ghi xung đột đã được thay bằng dữ liệu mới nhất trên máy chủ.",
-      "info",
-    );
-    return { ok: false, conflict: true, serverReloaded: true, data: refreshed.data };
-  }
-  controller.view?.showToast?.(
-    "Dữ liệu đã thay đổi trên máy chủ",
-    "Không thể tải lại ngay dữ liệu máy chủ. Vui lòng thử đồng bộ lại.",
-    "warning",
-  );
-  return { ok: false, conflict: true, reloadRequired: true, reloadFailed: true };
-}
-
 export async function resolvePendingSyncConflict(
   controller,
   initialResult,
@@ -70,15 +39,38 @@ export async function resolvePendingSyncConflict(
 ) {
   if (!controller || !isSyncConflict(initialResult)) return initialResult;
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
-  controller.model?.discardAllConflictRecoveryDrafts?.();
-  const refreshed = await controller.forceSyncData?.(
-    false,
-    true,
-    false,
-    { skipFlush: true },
-  );
+  const disposal = controller._syncConflict?.disposal;
+  let discardedRecords = controller._syncConflict?.discardedRecords || [];
+  if (disposal) {
+    const discarded = await controller.model?.discardConflictingMutationBatch?.(disposal);
+    if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
+    if (discarded?.serverAuthoritative !== true || discarded?.reloadUnsafe) return initialResult;
+    discardedRecords = [...discardedRecords, ...(discarded.records || [])];
+    controller._syncConflict = {
+      ...controller._syncConflict,
+      disposal: null,
+      reloadUnsafe: false,
+      discardedRecords,
+    };
+  }
+  let refreshed;
+  try {
+    refreshed = await controller.forceSyncData?.(
+      false,
+      true,
+      false,
+      { skipFlush: true, discardedConflictRecords: discardedRecords },
+    );
+  } catch (error) {
+    refreshed = { ok: false, error };
+  }
   if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
   if (refreshed?.ok) {
+    controller._syncConflict = null;
+    if (controller.getStartupReconciliationState?.().phase === STARTUP_RECONCILIATION_PHASE.CONFLICT) {
+      transitionStartupReconciliation(controller, STARTUP_RECONCILIATION_PHASE.RECONCILING);
+      transitionStartupReconciliation(controller, STARTUP_RECONCILIATION_PHASE.RECONCILED);
+    }
     controller.view?.showToast?.(
       "Đã tải dữ liệu máy chủ",
       "Bản ghi xung đột đã được thay bằng dữ liệu mới nhất trên máy chủ.",
@@ -142,6 +134,11 @@ export function runManualSyncRetry(controller) {
     return activeRetry.promise;
   }
   const run = (async () => {
+    if (controller._syncConflict) {
+      return resolvePendingSyncConflict(controller, {
+        ok: false, conflict: true, status: 409, reconciliationRequired: true,
+      }, workspace);
+    }
     if (controller._rejectedRecordRestoration?.workspaceToken === workspaceToken
       || controller._terminalRejectionRecovery?.workspace?.token === workspace.token) {
       const restored = await controller.autoSync();
@@ -190,13 +187,6 @@ export function runManualSyncRetry(controller) {
       }
       return { ok: false, reconciliationRequired: true };
     }
-    const hasActiveMutations = Boolean(
-      controller.model?.hasPendingMutationOutboxChanges?.()
-      || controller.model?.buildMutationSyncPayload?.(),
-    );
-    if (Number(controller.model?.getConflictRecoveryCount?.() || 0) > 0 && !hasActiveMutations) {
-      return resolveConflictRecoveryDraft(controller, workspace);
-    }
     const pushed = await controller.autoSync();
     if (!syncWorkspaceIsCurrent(controller, workspace)) return workspaceChangedResult();
     if (pushed?.ok) {
@@ -226,10 +216,6 @@ export function setupSyncUx() {
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
   button?.addEventListener("click", () => {
-    if (Number(this.model?.getConflictRecoveryCount?.() || 0) > 0) {
-      void runManualSyncRetry(this);
-      return;
-    }
     void runManualSyncRetry(this);
   });
   this.model.onMutationBatchChanged = ({ pendingCount }) => {
@@ -324,7 +310,7 @@ function assertExportSyncBoundary(controller, result, workspace, activeRole) {
   }
   if (!result?.ok) {
     if (result?.conflict || result?.status === 409) {
-      throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
+      throw new Error("Dữ liệu đã thay đổi trên máy chủ. Cần cập nhật dữ liệu từ máy chủ trước khi xuất lại.");
     }
     throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
   }

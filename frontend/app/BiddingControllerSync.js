@@ -12,8 +12,7 @@ export {
 } from "./SyncRenderCoordinator.js";
 export {
   getSyncValidationErrors,
-  resolveRowVersionConflicts,
-} from "./ConflictResolver.js";
+} from "./SyncValidationErrors.js";
 export {
   scheduleBackgroundSync,
   setupAutoSyncBackground,

@@ -18,7 +18,6 @@ export const CANONICAL_SAVE_STATUS = Object.freeze({
 
 export function classifyCanonicalSyncResult(result, { online = globalThis.navigator?.onLine !== false } = {}) {
   if (result?.conflict === true
-    || result?.conflictQuarantined === true
     || result?.reloadRequired === true
     || result?.status === 409) {
     return CANONICAL_SAVE_STATUS.CONFLICT;

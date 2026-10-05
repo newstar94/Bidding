@@ -47,6 +47,7 @@ import {
   workspaceChangedError,
 } from "../app/workspaceLease.js";
 import { awaitCurrentWorkspacePulls } from "../app/SyncWorkspaceContext.js";
+import { applyFailedPush } from "../app/SyncPushService.js";
 import {
   capturePlanBreakdownDraft,
   boundProcurementRevisionChanges,
@@ -1485,6 +1486,26 @@ export function ensureNewPlanCreatorAssignment(model, planId) {
   return assignment;
 }
 
+export async function closePlanBreakdownAfterSyncConflict(controller, planId) {
+  const activePlanId = controller.planBreakdownDraft?.planId || controller.tempPlanData?.id;
+  if (activePlanId && String(activePlanId) !== String(planId)) return false;
+  controller.backupKeHoachState = null;
+  controller.backupGoiThauState = null;
+  controller.tempPlanData = null;
+  controller.tempPlanAction = null;
+  controller.planBreakdownDraft = null;
+  await controller.closeModal("modal-plan-breakdown", {
+    restoreRoute: false,
+    preserveProcurementImport: true,
+    deferPlanTableRender: true,
+  });
+  await Promise.all([
+    controller.view.renderKeHoachTable?.(),
+    controller.view.renderGoiThauTable?.(),
+  ]);
+  return true;
+}
+
 function planPublicationTimeChanged(backupKh, nextPlan) {
   if (!backupKh) return false;
   const oldTime = backupKh.thoiGianDangMa ? String(backupKh.thoiGianDangMa).trim() : "";
@@ -1496,6 +1517,7 @@ function planPublicationTimeChanged(backupKh, nextPlan) {
   return oldDate.getTime() !== newDate.getTime();
 }
 
+// eslint-disable-next-line complexity -- Existing aggregate save orchestration preserves draft, workspace and canonical commit boundaries.
 export async function savePlanBreakdown({ loadingHandle = null } = {}) {
   const planId = document.getElementById("breakdown-plan-id").value;
   const closeLoadingBeforeFeedback = async () => {
@@ -1725,6 +1747,16 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
     if (finalizeResult?.workspaceChanged || !finalizeIsCurrent()) {
       return stalePlanFinalizeResult();
     }
+    if (finalizeResult?.planDraftConflict) {
+      if (String(this.planBreakdownDraft?.planId || "") === String(finalPlanId)) {
+        this.planBreakdownDraft = null;
+      }
+      await closeLoadingBeforeFeedback();
+      const recovered = await applyFailedPush(this, finalizeResult);
+      if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
+      await closePlanBreakdownAfterSyncConflict(this, finalPlanId);
+      return recovered;
+    }
     canonicalRefreshIsCurrent = finalizeIsCurrent;
     await renderVersionTables();
     if (!finalizeIsCurrent()) return stalePlanFinalizeResult();
@@ -1748,6 +1780,11 @@ export async function savePlanBreakdown({ loadingHandle = null } = {}) {
       });
   }
   const canonicalResult = await awaitCanonicalSyncResult(syncResult);
+  if (canonicalResult?.serverReloaded === true) {
+    await closePlanBreakdownAfterSyncConflict(this, finalPlanId);
+    await closeLoadingBeforeFeedback();
+    return canonicalResult;
+  }
   if (!canonicalResult?.ok && canonicalResult?.canonicalStatus !== CANONICAL_SAVE_STATUS.OFFLINE_PENDING) return;
   await localTableRefresh;
   {

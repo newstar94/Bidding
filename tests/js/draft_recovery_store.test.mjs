@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DraftRecoveryStore } from "../../frontend/shared/DraftRecoveryStore.js";
+import {
+  DraftRecoveryStore,
+  DRAFT_RECOVERY_RETIREMENTS_KEY,
+  draftRecoveryRetirementOptions,
+  hydrateDraftRecoveryRetirements,
+} from "../../frontend/shared/DraftRecoveryStore.js";
 import {
   bindBidEvaluationDraftTracking,
   generalBidEvaluationRecoveryFor,
@@ -14,6 +19,73 @@ function memoryStorage(initial = new Map()) {
     setItem(key, value) { this.values.set(key, value); },
   };
 }
+
+test("retiring a rejected draft cancels autosave and suppresses restore when durable clear fails", () => {
+  const storage = memoryStorage();
+  let callback;
+  let cancelled = false;
+  const store = new DraftRecoveryStore(storage, {
+    storageKey: "drafts",
+    schedule(fn) { callback = fn; return 1; },
+    cancel() { cancelled = true; },
+  });
+  store.save("scope", { value: "rejected" });
+  store.schedule("scope", () => ({ value: "late rejected autosave" }));
+  storage.setItem = () => { throw new Error("Storage full"); };
+  assert.equal(store.retire("scope"), false);
+  assert.equal(store.durability, "degraded");
+  assert.equal(cancelled, true);
+  callback();
+  assert.equal(store.restore("scope"), null);
+  assert.equal(JSON.parse(storage.values.get("drafts")).scope.payload.value, "rejected");
+  storage.setItem = (key, value) => storage.values.set(key, value);
+  assert.equal(store.save("scope", { value: "new explicit edit" }), true);
+  assert.equal(store.restore("scope").payload.value, "new explicit edit");
+});
+
+test("fallback retirement survives reload when local recovery deletion fails and keeps ordinary drafts", async () => {
+  const storage = memoryStorage();
+  const values = new Map();
+  const database = {
+    async get(key) { return structuredClone(values.get(key)); },
+    async update(key, change) {
+      const next = change(structuredClone(values.get(key)));
+      values.set(key, structuredClone(next));
+      return structuredClone(next);
+    },
+  };
+  const model = { db: database, workspaceStorage: storage };
+  const create = (scope) => new DraftRecoveryStore(storage, {
+    storageKey: "drafts", now: () => 10, ...draftRecoveryRetirementOptions(scope),
+  });
+  const store = create(model);
+  store.save("rejected", { value: "rejected input" });
+  store.save("ordinary", { value: "offline input" });
+  storage.setItem = () => { throw new Error("Local storage full"); };
+  assert.equal(await store.retireDurably("rejected"), true);
+  assert.equal(JSON.stringify(values.get(DRAFT_RECOVERY_RETIREMENTS_KEY)).includes("rejected input"), false);
+  const reloadedModel = { db: database, workspaceStorage: storage };
+  assert.equal(await hydrateDraftRecoveryRetirements(reloadedModel), true);
+  const reloaded = create(reloadedModel);
+  assert.equal(reloaded.restore("rejected"), null);
+  assert.equal(reloaded.restore("ordinary").payload.value, "offline input");
+  storage.setItem = (key, value) => storage.values.set(key, value);
+  reloaded.save("rejected", { value: "new explicit input" });
+  assert.equal(create(reloadedModel).restore("rejected").payload.value, "new explicit input");
+});
+
+test("unavailable retirement metadata suppresses unverified recovery until it can be read", async () => {
+  const storage = memoryStorage();
+  const store = new DraftRecoveryStore(storage, { storageKey: "drafts" });
+  store.save("scope", { value: "old input" });
+  const model = { db: { async get() { throw new Error("IndexedDB unavailable"); } }, workspaceStorage: storage };
+  assert.equal(await hydrateDraftRecoveryRetirements(model), false);
+  const reloaded = new DraftRecoveryStore(storage, {
+    storageKey: "drafts", ...draftRecoveryRetirementOptions(model),
+  });
+  assert.equal(reloaded.restore("scope"), null);
+  assert.equal(reloaded.durability, "unavailable");
+});
 
 test("workspace-scoped recovery survives reload and tracks pending server sync", () => {
   const storage = memoryStorage();

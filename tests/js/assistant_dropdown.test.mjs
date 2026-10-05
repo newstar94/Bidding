@@ -229,16 +229,6 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
           .map((item) => item.dataset.value),
         assistantMode: assistant.mode,
       };
-      await assistant.setTargetHint({
-        targetType: 'goithau', targetId: 'package-root', versionId: 'package-v2',
-      });
-      const targetPresentation = {
-        mode: assistant.mode,
-        targetHint: assistant.targetHint,
-        hidden: assistant.targetChip.hidden,
-        label: assistant.targetChip.querySelector('.bf-assistant-target-label').textContent,
-        panelHidden: assistant.panel.hidden,
-      };
       return {
         triggerPresentation,
         closePresentation: {
@@ -265,7 +255,6 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
         },
         ...dropdownPresentation,
         answerPresentation,
-        targetPresentation,
       };
     });
 
@@ -314,15 +303,6 @@ test("assistant mode dropdown uses the shared custom select and stays synchroniz
       feedbackButtons: 2,
       feedbackTitles: ['Hữu ích', 'Chưa đúng'],
       feedbackIcons: 2,
-    });
-    assert.deepEqual(result.targetPresentation, {
-      mode: 'procurement_advice',
-      targetHint: {
-        targetType: 'goithau', targetId: 'package-root', versionId: 'package-v2',
-      },
-      hidden: false,
-      label: 'Gói thầu · package-v2',
-      panelHidden: false,
     });
   } finally {
     await browser?.close();

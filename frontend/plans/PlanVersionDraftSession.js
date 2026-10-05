@@ -668,7 +668,28 @@ export async function finalizePlanVersionDraft(controller, session, {
   if (typeof onDurableDraftSaved === "function") {
     onDurableDraftSaved({ payload, session: clone(refreshed) });
   }
-  const response = await send(payload);
+  let response;
+  try {
+    response = await send(payload);
+  } catch (error) {
+    if (!isCurrent()) return staleFinalizeResult();
+    if (error?.status !== 409 || error?.code === "IDEMPOTENCY_KEY_REUSED") throw error;
+    // Retire the submitted draft before a canonical pull can reapply it.
+    // Revision checking preserves a newer explicit draft and other sessions.
+    await removePlanVersionDraftSession(resources, refreshed.draftId, {
+      expectedRevision: refreshed.revision,
+    });
+    if (!isCurrent()) return staleFinalizeResult();
+    model.planVersionDraftSessions = clone(resources.planVersionDraftSessions);
+    return {
+      ok: false,
+      status: 409,
+      conflict: true,
+      planDraftConflict: true,
+      data: error.data || { status: "conflict", message: error.message },
+      snapshot: finalizedMutationReceipt || { upserts: {}, patches: {}, deletes: {}, dirtyTables: {} },
+    };
+  }
   if (!isCurrent()) return staleFinalizeResult();
   const applied = await applyCanonicalFinalizeResponse(resources, response, isCurrent);
   if (!applied || !isCurrent()) return staleFinalizeResult();

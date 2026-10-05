@@ -328,38 +328,6 @@ export function reconcileRouteDataAtStartup(controller, {
   const run = (async () => {
     controller?.markStartup?.("route-data-sync:start");
     try {
-      if (typeof controller?.model?.refreshConflictRecoveryDrafts === "function") {
-        try {
-          await controller.model.refreshConflictRecoveryDrafts();
-        } catch {
-          // Offline startup keeps the local reference index. Resolution always
-          // requires an online server preview and fresh authorization.
-        }
-      }
-      const conflictRecoveryCount = Number(
-        controller?.model?.getConflictRecoveryCount?.() || 0,
-      );
-      if (conflictRecoveryCount > 0) {
-        let pullResult = { ok: true, skipped: true, localMutationsPending: false };
-        if (typeof controller?.forceSyncData === "function") {
-          pullResult = await controller.forceSyncData(true, true, true);
-        }
-        if (!isCurrentWorkspace(controller, workspaceToken)) return false;
-        if (!pullResult?.ok) {
-          completeStartupReconciliation(controller, pullResult, workspaceToken);
-          return false;
-        }
-        if (pullResult?.localMutationsPending && typeof controller?.autoSync === "function") {
-          const replay = await controller.autoSync({ startupReconciliation: true });
-          if (!isCurrentWorkspace(controller, workspaceToken)) return false;
-          if (!replay?.ok) {
-            completeStartupReconciliation(controller, replay, workspaceToken);
-            return false;
-          }
-        }
-        completeStartupReconciliation(controller, { ok: true }, workspaceToken);
-        return true;
-      }
       const currentGeneration = Number(
         controller?.model?.getMutationOutboxGeneration?.() || 0,
       );
@@ -375,19 +343,14 @@ export function reconcileRouteDataAtStartup(controller, {
         initialPush = await controller.autoSync({ startupReconciliation: true });
       }
       if (!isCurrentWorkspace(controller, workspaceToken)) return false;
-      if (initialPush?.conflict) {
-        if (typeof controller?.forceSyncData === "function") {
-          // The push already returned the conflict. Refresh authoritative
-          // state without flushing the rejected outbox a second time.
-          await controller.forceSyncData(true, true, true, { skipOutboxFlush: true });
-        }
+      if (initialPush?.conflict && !initialPush?.serverReloaded) {
         completeStartupReconciliation(controller, initialPush, workspaceToken);
         return false;
       }
       const recoveringReusedMutation = initialPush?.idempotencyKeyReused === true
         && initialPush?.retryable !== false;
-      const quarantinedConflict = initialPush?.conflictQuarantined === true;
-      if (!initialPush?.ok && !recoveringReusedMutation && !quarantinedConflict) {
+      const serverConflictReloaded = initialPush?.serverReloaded === true;
+      if (!initialPush?.ok && !recoveringReusedMutation && !serverConflictReloaded) {
         completeStartupReconciliation(controller, initialPush, workspaceToken);
         return false;
       }

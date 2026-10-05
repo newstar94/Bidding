@@ -283,16 +283,20 @@ async function notifyDraftFailure(controller, error = null, recoverySaved = true
   );
 }
 
-async function retainConfirmedConflictDraft({ controller, model, workspaceToken, result, recovery, recoveryKeys, activeRecoveryKey, payloads }) {
+async function clearConfirmedConflictDraft({ controller, model, workspaceToken, result, recovery, recoveryKeys, activeRecoveryKey }) {
   if (!workspaceIsCurrent(model, workspaceToken) || !isConfirmedRowVersionConflict(result)) return false;
-  const durableRemoval = recoveryKeys.map((key) => recovery.holdUntilReload(key, payloads.get(key)).durableRemoval).every(Boolean);
-  controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, durableRemoval
-    ? "Dữ liệu xung đột · Nội dung chỉ giữ trong tab này đến khi F5"
-    : "Dữ liệu xung đột · Bộ nhớ chưa an toàn, giữ tab mở");
+  for (const key of recoveryKeys) {
+    await recovery.retireDurably(key);
+    if (!workspaceIsCurrent(model, workspaceToken)) return true;
+    controller._bidEvaluationDirtyStates?.delete(key);
+    controller._pendingBidEvaluationDraftSnapshots?.delete(key);
+    controller._restoredBidEvaluationDraftBodies?.delete(key);
+  }
+  if (result.serverReloaded) await controller.renderDanhGiaHsdtPanel?.();
+  if (!workspaceIsCurrent(model, workspaceToken)) return true;
+  controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey,
+    result.serverReloaded ? "Đã dùng dữ liệu máy chủ" : "Dữ liệu xung đột · Chờ tải lại dữ liệu máy chủ");
   controller._renderBidEvaluationProgress?.();
-  await controller.view.customAlert?.("Dữ liệu đã thay đổi trên máy chủ", durableRemoval
-    ? "Nội dung vừa nhập được giữ trong tab này. Nhấn F5 để tải dữ liệu máy chủ; nội dung xung đột sẽ không tự khôi phục."
-    : "Không thể xác nhận đã loại bản khôi phục xung đột khỏi bộ nhớ. Hãy giữ tab mở và khôi phục bộ nhớ trước khi tải lại.", "alert-triangle");
   return true;
 }
 
@@ -525,12 +529,7 @@ export async function executeBidEvaluationDraftSave({
       return false;
     }
     if (!result?.ok || !workspaceIsCurrent(model, workspaceToken)) {
-      if (await retainConfirmedConflictDraft({ controller, model, workspaceToken, result, recovery, recoveryKeys, activeRecoveryKey,
-        payloads: new Map([
-          [recoveryKey, { packageId, round, lotIds: requestedLotIds, report: capturedReportDraft, bidderPatches: capturedRecoveryBidPatches }],
-          [targetRecoveryKey, { packageId: targetPackageId, round, lotIds: requestedLotIds, report: reportDraft, bidderPatches: bidPatches }],
-        ]),
-      })) return false;
+      if (await clearConfirmedConflictDraft({ controller, model, workspaceToken, result, recovery, recoveryKeys, activeRecoveryKey })) return false;
       controller._bidEvaluationSaveStatusByKey.set(activeRecoveryKey, failedStatus);
       controller._renderBidEvaluationProgress?.();
       if (!result?.workspaceChanged && workspaceIsCurrent(model, workspaceToken)) {

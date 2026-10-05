@@ -4,7 +4,6 @@ let sessionGeneration = 0;
 
 export const PROCUREMENT_IMPORT_CAPABILITY = "procurement-import-v2";
 export const PROCUREMENT_LOOKUP_CAPABILITY = "procurement-lookup-v1";
-export const CONFLICT_CENTER_CAPABILITY = "conflict-center-v1";
 
 function normalizedCapabilities(session) {
   return Array.isArray(session?.serverCapabilities)

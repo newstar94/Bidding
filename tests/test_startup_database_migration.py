@@ -13,8 +13,6 @@ from backend.lifecycle import database_auto_migration_enabled
 from backend.startup import (
     REQUIRED_APPLICATION_TABLES,
     StartupValidationError,
-    validate_legal_versioning_configuration,
-    validate_ai_compliance_configuration,
     validate_word_template_catalog_configuration,
     verify_database_readiness,
     verify_database_responsive,
@@ -67,8 +65,8 @@ def test_supported_runtime_schema_range_accepts_live_payos_profile_metadata(monk
         "_assert_runtime_schema_contract",
         lambda _connection: None,
     )
-    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (80, 98)
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 98
+    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (99, 99)
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 99
     for version in range(DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION + 1):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
@@ -80,7 +78,7 @@ def test_supported_runtime_schema_range_accepts_live_payos_profile_metadata(monk
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (75, 76, 77, 78, 79):
+    for version in (75, 76, 77, 78, 79, 80, 98):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,
@@ -127,28 +125,6 @@ def test_word_template_catalog_defaults_to_shadow_kill_switch():
         "mode": "shadow",
     }
 
-
-def test_legal_versioning_kill_switch_is_strict_and_defaults_off():
-    assert validate_legal_versioning_configuration({}) == {"enabled": False}
-    assert validate_legal_versioning_configuration({
-        "LEGAL_VERSIONING_ENABLED": "true",
-    }) == {"enabled": True}
-    with pytest.raises(StartupValidationError):
-        validate_legal_versioning_configuration({
-            "LEGAL_VERSIONING_ENABLED": "enabled",
-        })
-
-
-def test_ai_compliance_flag_requires_exact_legal_authority():
-    assert validate_ai_compliance_configuration({}) == {"enabled": False}
-    assert validate_ai_compliance_configuration({
-        "AI_COMPLIANCE_ENABLED": "true",
-        "LEGAL_VERSIONING_ENABLED": "true",
-    }) == {"enabled": True}
-    with pytest.raises(StartupValidationError, match="requires LEGAL_VERSIONING"):
-        validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "true"})
-    with pytest.raises(StartupValidationError, match="must be true or false"):
-        validate_ai_compliance_configuration({"AI_COMPLIANCE_ENABLED": "enabled"})
 
 
 def test_word_template_catalog_cutover_rejects_invalid_mode_and_prod_path():

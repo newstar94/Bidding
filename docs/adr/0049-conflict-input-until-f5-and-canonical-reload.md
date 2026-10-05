@@ -1,5 +1,7 @@
 # ADR 0049 — Giữ nội dung xung đột đến F5, tải lại dữ liệu máy chủ
 
+> Đã được thay thế bởi [ADR 0057](0057-server-authoritative-conflicts-and-feature-retirement.md) theo yêu cầu xóa tính năng ngày 2026-10-05. Nội dung bên dưới chỉ ghi lại quyết định lịch sử.
+
 - Trạng thái: Accepted theo xác nhận trực tiếp của chủ sản phẩm ngày 01/10/2026
 - Phạm vi: thao tác lưu bị máy chủ từ chối do xung đột phiên bản
 - Supersedes: yêu cầu rollback projection ngay khi conflict trong ADR 0044;

@@ -9,7 +9,6 @@ import {
   setAuthSessionActive,
 } from "../../frontend/auth/authRuntimeState.js";
 import {
-  CONFLICT_CENTER_CAPABILITY,
   hasServerCapability,
   PROCUREMENT_IMPORT_CAPABILITY,
   PROCUREMENT_LOOKUP_CAPABILITY,
@@ -17,7 +16,7 @@ import {
   updateServerCapabilitiesFromSession,
 } from "../../frontend/auth/serverCapabilities.js";
 
-const originalCapabilities = [PROCUREMENT_IMPORT_CAPABILITY, CONFLICT_CENTER_CAPABILITY];
+const originalCapabilities = [PROCUREMENT_IMPORT_CAPABILITY, PROCUREMENT_LOOKUP_CAPABILITY];
 
 function logoutFixture(t, requestLogout, { pending = false } = {}) {
   const events = [];
@@ -118,7 +117,7 @@ for (const [name, result] of [
       assert.equal(peer.isExplicitLogoutInProgress(local), true);
       assert.equal(peer.claimSessionTermination(local), false);
       assert.equal(hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY), false);
-      assert.equal(hasServerCapability(CONFLICT_CENTER_CAPABILITY), false);
+      assert.equal(hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY), false);
       return result();
     }, { pending: true });
     peer.setAuthSessionActive(true, fixture.local);
@@ -134,8 +133,8 @@ for (const [name, result] of [
     assert.equal(fixture.local.getItem("bf_explicit_logout_at"), null);
     assert.deepEqual(await resolveServerCapabilities(), originalCapabilities);
     assert.equal(hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY), true);
-    assert.equal(hasServerCapability(CONFLICT_CENTER_CAPABILITY), true);
-    assert.equal(hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY), false);
+    assert.equal(hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY), true);
+    assert.equal(hasServerCapability("aggregate-version-v1"), false);
     assert.equal(claimSessionTermination(fixture.local), true);
     assert.equal(peer.claimSessionTermination(fixture.local), true);
   });
@@ -163,7 +162,7 @@ test("real logout handler discards and purges only after confirmed server succes
   assert.equal(isExplicitLogoutInProgress(fixture.local), true);
   assert.deepEqual(await resolveServerCapabilities(), []);
   assert.equal(hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY), false);
-  assert.equal(hasServerCapability(CONFLICT_CENTER_CAPABILITY), false);
+  assert.equal(hasServerCapability(PROCUREMENT_LOOKUP_CAPABILITY), false);
 });
 
 test("failed logout rollback cannot overwrite a newer authoritative capability snapshot", async (t) => {
@@ -171,14 +170,14 @@ test("failed logout rollback cannot overwrite a newer authoritative capability s
     updateServerCapabilitiesFromSession({
       valid: true,
       user: { id: "user-a" },
-      serverCapabilities: [CONFLICT_CENTER_CAPABILITY],
+      serverCapabilities: [PROCUREMENT_LOOKUP_CAPABILITY],
     });
     return response(503, { success: false });
   });
   await new Promise((resolve) => setImmediate(resolve));
   await fixture.button.onclick({ preventDefault() {} });
 
-  assert.deepEqual(await resolveServerCapabilities(), [CONFLICT_CENTER_CAPABILITY]);
+  assert.deepEqual(await resolveServerCapabilities(), [PROCUREMENT_LOOKUP_CAPABILITY]);
   assert.equal(hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY), false);
   assert.equal(isAuthSessionActive(), true);
   assert.equal(isExplicitLogoutInProgress(fixture.local), false);

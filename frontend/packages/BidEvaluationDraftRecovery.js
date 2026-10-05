@@ -1,4 +1,4 @@
-import { DraftRecoveryStore } from "../shared/DraftRecoveryStore.js";
+import { DraftRecoveryStore, draftRecoveryRetirementOptions } from "../shared/DraftRecoveryStore.js";
 import { createBidEvaluationDirtyState } from "./BidEvaluationDraftState.js";
 import {
   BID_EVALUATION_FIELD_BY_SELECTOR,
@@ -37,6 +37,7 @@ export function generalBidEvaluationRecoveryFor(controller) {
   if (!controller._generalBidEvaluationRecovery
     || controller._generalBidEvaluationRecovery.storage !== storage) {
     controller._generalBidEvaluationRecovery = new DraftRecoveryStore(storage, {
+      ...draftRecoveryRetirementOptions(controller.model),
       storageKey: STORAGE_KEY,
       payloadField: "draft",
       onError: (error) => {

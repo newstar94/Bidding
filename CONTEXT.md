@@ -180,9 +180,9 @@ _Avoid_: Khóa toàn bộ giao diện, kiểm tra quyền phía client
 Thay đổi được người dùng tạo sau khi ảnh chụp cục bộ đã render nhưng trước khi đối soát khởi động hoàn tất; thay đổi này phải đi qua authoritative pull trước lần push đầu tiên.
 _Avoid_: Mutation khởi động có sẵn, mutation đã được máy chủ xác nhận
 
-**Xung đột đồng bộ chưa giải quyết**:
-Thay đổi bị máy chủ từ chối do xung đột phiên bản, chưa được coi là lưu thành công; nội dung đang nhập vẫn được giữ trên màn hình đến khi người dùng nhấn F5. Sau F5, nội dung xung đột không tự áp lại và được thay bằng dữ liệu máy chủ đã xác nhận; thay đổi khác không thuộc xung đột vẫn được bảo toàn.
-_Avoid_: Tự động merge field nhạy cảm, force overwrite, xóa toàn bộ outbox, áp lại conflict draft sau F5
+**Xung đột đồng bộ**:
+Thay đổi bị máy chủ từ chối do xung đột phiên bản không được coi là lưu thành công. Receipt bị từ chối được loại khỏi outbox, dữ liệu có thẩm quyền từ máy chủ được tải lại ngay. Không có lựa chọn giữ bản local, bản nháp xung đột hoặc tự phát lại thay đổi đã bị từ chối; thay đổi khác không thuộc xung đột vẫn được bảo toàn. Nếu chưa tải được bản máy chủ, workspace phải hoàn tất đối soát trước khi ghi tiếp.
+_Avoid_: Force overwrite, tự merge, xóa toàn bộ outbox, báo thành công khi bị từ chối
 
 **Plan breakdown edit session**:
 Hydration/delta sau khi draft được mở phải rebase vào snapshot ba chiều, không ghi đè business edit local. Assignment clone không đổi phải giữ `id`/`rowVersion`; không phát sinh assignment mới chỉ vì form được lưu lại.
@@ -191,22 +191,6 @@ _Avoid_: Pull ngay trước commit làm mất draft, thay identity assignment kh
 **Plan version draft session**:
 Chuỗi snapshot của một kế hoạch mới chưa từng persist, được lưu bền vững theo workspace và chỉ commit toàn bộ qua final save nguyên tử; intermediate save chỉ sinh snapshot local và phiên bản kế tiếp.
 _Avoid_: Ghi từng phiên bản trung gian lên server, dùng outbox như draft chain, clear draft trước server acknowledgement
-
-**Bản nháp giải quyết xung đột bền vững**:
-Ảnh chụp base/local/server của một mutation bị xung đột, được giữ qua tải lại trang để đúng người tạo xem và quyết định nhưng không bao giờ tự phát lại mutation.
-_Avoid_: Outbox đang hoạt động, force overwrite, auto replay sau F5
-
-**Văn bản pháp lý**:
-Định danh ổn định của một văn bản pháp lý xuyên suốt các lần công bố nội dung; mỗi nội dung bất biến là một phiên bản văn bản pháp lý riêng.
-_Avoid_: Tài liệu RAG mới nhất, file luật hiện hành
-
-**Hồ sơ nguồn pháp lý**:
-Manifest bất biến chứa chính xác các phiên bản văn bản pháp lý dùng làm nguồn cho một lần phân giải; hồ sơ nguồn không tự chứa quy tắc tuân thủ thực thi.
-_Avoid_: Danh sách luật mới nhất, kết quả tìm kiếm web
-
-**Ràng buộc pháp lý**:
-Kết quả bất biến gắn một phiên bản kế hoạch hoặc gói thầu với đúng hồ sơ nguồn pháp lý, hoặc ghi rõ trạng thái chưa thể phân giải.
-_Avoid_: Luật áp dụng suy ra theo ngày hiện tại, fallback latest
 
 **Căn cứ lập kế hoạch**:
 Văn bản hoặc tài liệu được viện dẫn khi lập một phiên bản Kế hoạch LCNT, được ghi nhận bằng câu nguyên văn và có thể phân tích thành loại hoặc tên văn bản, số hoặc ký hiệu, ngày ban hành, đơn vị ban hành và trích yếu.
@@ -219,10 +203,6 @@ _Avoid_: Tên văn bản, đơn vị ban hành, toàn bộ câu căn cứ nguyê
 **Tên căn cứ**:
 Tên trình bày được dẫn xuất từ loại hoặc tên gọi văn bản và trích yếu khi có, nối bằng cụm “về việc”; tên căn cứ không thay thế hai thành phần nguồn hoặc câu căn cứ nguyên văn.
 _Avoid_: Tên văn bản, trích yếu, câu căn cứ nguyên văn
-
-**Finding tuân thủ xác định**:
-Kết quả do bộ quy tắc đã được duyệt tạo ra từ snapshot và bằng chứng cụ thể; AI chỉ được giải thích finding chứ không tạo hoặc đổi trạng thái finding.
-_Avoid_: Kết luận do mô hình suy đoán, lời khuyên RAG chung
 
 **Biểu mẫu Word logic**:
 Định danh bền vững của một biểu mẫu xuyên suốt các bản nháp, phiên bản xuất bản và việc đổi tên; tên file chỉ là alias tương thích.

@@ -8,6 +8,7 @@ contiguous and must never be rewritten after release.
 """
 
 from dataclasses import dataclass, replace
+from hashlib import sha256
 import uuid
 
 
@@ -2425,11 +2426,11 @@ def _upgrade_to_v63_scope_procurement_operation_idempotency(cursor, _context):
 def _upgrade_to_v64_add_conflict_resolution_drafts(cursor, context):
     """Add encrypted, actor/workspace-scoped durable conflict drafts."""
 
-    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.db.schema import HISTORICAL_SCHEMA_DINH_NGHIA
 
     create_sql = context.build_create_table_sql(
         "conflict_resolution_drafts",
-        SCHEMA_DINH_NGHIA["conflict_resolution_drafts"],
+        HISTORICAL_SCHEMA_DINH_NGHIA["conflict_resolution_drafts"],
     )
     if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
         create_sql = create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
@@ -2659,7 +2660,7 @@ def _upgrade_to_v69_index_word_assignment_config_owner(cursor, _context):
 def _upgrade_to_v70_add_legal_versioning(cursor, context):
     """Add immutable SYSTEM legal catalog and typed target bindings."""
 
-    from backend.db.schema import SCHEMA_DINH_NGHIA
+    from backend.db.schema import HISTORICAL_SCHEMA_DINH_NGHIA
 
     tables = (
         "legal_instrument", "legal_instrument_draft",
@@ -2671,7 +2672,7 @@ def _upgrade_to_v70_add_legal_versioning(cursor, context):
     )
     for table_name in tables:
         create_sql = context.build_create_table_sql(
-            table_name, SCHEMA_DINH_NGHIA[table_name]
+            table_name, HISTORICAL_SCHEMA_DINH_NGHIA[table_name]
         )
         if "CREATE TABLE IF NOT EXISTS" not in create_sql.upper():
             create_sql = create_sql.replace(
@@ -3858,6 +3859,108 @@ def _upgrade_to_v98_add_durable_procurement_previews(cursor, _context):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_procurement_session_preview_expiry ON procurement_import_session (preview_expires_at) WHERE preview_expires_at IS NOT NULL")
 
 
+def retired_feature_archive_schema(source_schema):
+    """Keep isolated migration rehearsals out of the public feature archive."""
+    source_schema = str(source_schema)
+    if source_schema == "public":
+        return "bidding_retired_features"
+    candidate = f"{source_schema}_retired_features"
+    if len(candidate.encode("utf-8")) <= 63:
+        return candidate
+    digest = sha256(source_schema.encode("utf-8")).hexdigest()[:12]
+    return f"bidding_retired_{digest}"
+
+
+def _upgrade_to_v99_retire_optional_features(cursor, context):
+    """Archive removed feature tables without discarding historical records."""
+    from psycopg import sql
+    from backend.db.schema import RETIRED_OPTIONAL_FEATURE_TABLES
+
+    source_schema = cursor.execute("SELECT current_schema()").fetchone()[0]
+    archive_schema = retired_feature_archive_schema(source_schema)
+    rows = cursor.execute(
+        """SELECT relation.relname, relation.oid
+             FROM pg_class AS relation
+             JOIN pg_namespace AS namespace
+               ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = ?
+              AND relation.relkind IN ('r', 'p')
+              AND relation.relname = ANY(?)
+            ORDER BY relation.relname""",
+        (source_schema, sorted(RETIRED_OPTIONAL_FEATURE_TABLES)),
+    ).fetchall()
+    if not rows:
+        return
+    table_names = [str(row[0]) for row in rows]
+    relation_ids = [int(row[1]) for row in rows]
+
+    # Never detach an active table's dependency on retired data. The old
+    # procurement-case legal FKs are already retired by the released v77 step.
+    inbound = cursor.execute(
+        """SELECT conrelid::regclass::text, conname
+             FROM pg_constraint
+            WHERE contype = 'f' AND confrelid = ANY(?::oid[])
+              AND NOT (conrelid = ANY(?::oid[]))
+            ORDER BY conrelid::regclass::text, conname""",
+        (relation_ids, relation_ids),
+    ).fetchall()
+    if inbound:
+        raise RuntimeError(
+            "Cannot archive retired features with external inbound foreign keys: "
+            + ", ".join(f"{row[0]}.{row[1]}" for row in inbound)
+        )
+    collisions = cursor.execute(
+        """SELECT relation.relname
+             FROM pg_class AS relation
+             JOIN pg_namespace AS namespace
+               ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = ? AND relation.relname = ANY(?)""",
+        (archive_schema, table_names),
+    ).fetchall()
+    if collisions:
+        raise RuntimeError(
+            "Retired-feature archive already contains destination objects: "
+            + ", ".join(str(row[0]) for row in collisions)
+        )
+
+    # Archived IDs remain intact, but their FKs must not restrict ordinary
+    # plan/package deletion or invoke actor CASCADE/SET NULL on immutable
+    # history after the feature has been removed. Keep all archive-internal FKs.
+    outbound = cursor.execute(
+        """SELECT relation.relname, constraint_record.conname
+             FROM pg_constraint AS constraint_record
+             JOIN pg_class AS relation
+               ON relation.oid = constraint_record.conrelid
+            WHERE constraint_record.contype = 'f'
+              AND constraint_record.conrelid = ANY(?::oid[])
+              AND NOT (constraint_record.confrelid = ANY(?::oid[]))
+            ORDER BY relation.relname, constraint_record.conname""",
+        (relation_ids, relation_ids),
+    ).fetchall()
+    cursor.execute(
+        sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+            sql.Identifier(archive_schema),
+        )
+    )
+    for table_name, constraint_name in outbound:
+        cursor.execute(
+            sql.SQL("ALTER TABLE {}.{} DROP CONSTRAINT {}").format(
+                sql.Identifier(source_schema),
+                sql.Identifier(str(table_name)),
+                sql.Identifier(str(constraint_name)),
+            )
+        )
+    for table_name in table_names:
+        cursor.execute(
+            sql.SQL("ALTER TABLE {}.{} SET SCHEMA {}").format(
+                sql.Identifier(source_schema),
+                sql.Identifier(table_name),
+                sql.Identifier(archive_schema),
+            )
+        )
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4308,6 +4411,7 @@ UPGRADES = (
     DatabaseUpgrade(96, "add_ai_token_reservations", _upgrade_to_v96_add_ai_token_reservations),
     DatabaseUpgrade(97, "add_free_organization_package", _upgrade_to_v97_add_free_organization_package),
     DatabaseUpgrade(98, "add_durable_procurement_previews", _upgrade_to_v98_add_durable_procurement_previews),
+    DatabaseUpgrade(99, "retire_optional_features", _upgrade_to_v99_retire_optional_features),
 )
 
 
@@ -4329,7 +4433,8 @@ DB_SCHEMA_VERSION = (
 # V90 makes plan project code and project/budget name optional without rewriting
 # any existing value.
 # V96 separates active reservations from billed tokens and persists idempotent state.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 80
+# V99 archives the removed conflict-draft and legal/compliance persistence model.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 99
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

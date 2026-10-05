@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from urllib.parse import urlparse
 
 from backend.ai.errors import AiError, ai_error
 from backend.ai.permission_context import build_request_context
@@ -21,7 +20,6 @@ def execute_tool(
     arguments: dict,
     *,
     mode: str = "data",
-    target_hint: dict | None = None,
 ) -> tuple[ToolResult, dict]:
     started_at = time.perf_counter()
     fresh_context = build_request_context(request)
@@ -35,10 +33,8 @@ def execute_tool(
             raise ai_error("AI_TOOL_FAILED", "Tool không trả về kết quả có cấu trúc.")
         for link in result.source_links:
             url = str(link.get("url") or "")
-            parsed = urlparse(url)
             internal = url.startswith("/") and not url.startswith("//") and "?" not in url and "#" not in url
-            exact_https_source = False
-            if not internal and not exact_https_source:
+            if not internal:
                 raise ai_error("AI_SCOPE_VALIDATION_FAILED", "Source link không hợp lệ.")
         return result, {
             "duration_ms": int((time.perf_counter() - started_at) * 1000),

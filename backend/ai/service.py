@@ -224,7 +224,6 @@ async def stream_message(
     current_route: str = "/",
     client_request_id: str | None = None,
     quota_consumed: bool = False,
-    target_hint: dict | None = None,
 ) -> AsyncIterator[dict]:
     config = get_ai_config()
     if not config.enabled:
@@ -378,7 +377,6 @@ async def stream_message(
                         name,
                         arguments,
                         mode=mode,
-                        target_hint=target_hint,
                         timeout_seconds=config.tool_timeout_seconds,
                     )
                     increment("ai_tool_duration_seconds", execution_meta["duration_ms"] / 1000)

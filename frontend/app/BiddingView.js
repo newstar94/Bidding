@@ -1692,52 +1692,6 @@ export class BiddingView {
     }
     input.value = new Intl.NumberFormat("vi-VN").format(parseInt(value, 10));
   }
-  customConflictDialog(title, message) {
-    return new Promise((resolve) => {
-      const modal = document.getElementById("modal-custom-dialog");
-      const titleEl = document.getElementById("dialog-title");
-      const messageEl = document.getElementById("dialog-message");
-      const iconContainer = document.getElementById("dialog-icon-container");
-      const iconEl = document.getElementById("dialog-icon");
-      const buttonsContainer = document.getElementById("dialog-buttons");
-      const closeBtn = document.getElementById("btn-dialog-close");
-      if (!modal || !titleEl || !messageEl || !buttonsContainer) {
-        console.error("Conflict modal element not found!");
-        return resolve("local");
-      }
-      titleEl.textContent = title;
-      messageEl.textContent = message;
-      if (closeBtn) setRuntimeStyle(closeBtn, "display", "none");
-      if (iconContainer && iconEl) {
-        setRuntimeStyle(iconContainer, "background", "var(--warning-soft)");
-        setRuntimeStyle(iconContainer, "color", "var(--warning)");
-        iconEl.setAttribute("data-lucide", "alert-circle");
-        applyDialogTone(modal, "alert-circle");
-        this.createIconsScoped(iconContainer);
-      }
-      buttonsContainer.innerHTML = trustedHTML(`
-                <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-server">Dùng bản Server</button>
-                <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-local">Dùng bản Local</button>
-                <button type="button" class="btn btn-primary bf-s-f6af272ae6" id="btn-conflict-new">Tạo bản mới</button>
-            `);
-      const cleanUp = (result) => {
-        modal.classList.remove("active");
-        buttonsContainer.innerHTML = trustedHTML(`
-                    <button type="button" class="btn btn-outline bf-s-649f9eeb60" id="btn-dialog-cancel">Hủy</button>
-                    <button type="button" class="btn btn-primary bf-s-649f9eeb60" id="btn-dialog-ok">Xác nhận</button>
-                `);
-        if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
-        resolve(result);
-      };
-      const btnServer = document.getElementById("btn-conflict-server");
-      const btnLocal = document.getElementById("btn-conflict-local");
-      const btnNew = document.getElementById("btn-conflict-new");
-      if (btnServer) btnServer.onclick = () => cleanUp("server");
-      if (btnLocal) btnLocal.onclick = () => cleanUp("local");
-      if (btnNew) btnNew.onclick = () => cleanUp("new");
-      modal.classList.add("active");
-    });
-  }
   getStatusBadge(status) {
     return renderPackageStatusBadge(status);
   }

@@ -18,7 +18,6 @@ const SECRET_FIELDS = Object.freeze([
   ["DATABASE_URL", "Kết nối cơ sở dữ liệu"],
   ["OTP_HMAC_KEY", "Khóa xác thực OTP"],
   ["EMAIL_OUTBOX_ENCRYPTION_KEY", "Mã hóa hộp thư đi"],
-  ["CONFLICT_DRAFT_ENCRYPTION_KEY", "Mã hóa bản nháp xung đột"],
   ["AUDIT_CHECKPOINT_HMAC_KEY", "Khóa kiểm tra nhật ký"],
   ["ANALYTICS_HMAC_KEY", "Khóa phân tích sản phẩm"],
   ["TURNSTILE_SECRET_KEY", "Khóa Turnstile"],
