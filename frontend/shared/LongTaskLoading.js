@@ -11,6 +11,7 @@ const DEFAULT_STAGES = Object.freeze([
 ]);
 const MINIMUM_VISIBLE_MS = 360;
 const EXIT_TRANSITION_MS = 180;
+const VISIBLE_PAINT_TIMEOUT_MS = 150;
 
 const taskStack = [];
 let previousBodyBusy = null;
@@ -133,8 +134,28 @@ function delay(documentRef, milliseconds) {
 function waitForVisiblePaint(documentRef) {
   const requestFrame = documentRef.defaultView?.requestAnimationFrame?.bind(documentRef.defaultView);
   if (!requestFrame) return delay(documentRef, 0);
+  const cancelFrame = documentRef.defaultView?.cancelAnimationFrame?.bind(documentRef.defaultView);
+  const setTimer = documentRef.defaultView?.setTimeout?.bind(documentRef.defaultView)
+    || globalThis.setTimeout;
+  const clearTimer = documentRef.defaultView?.clearTimeout?.bind(documentRef.defaultView)
+    || globalThis.clearTimeout;
   return new Promise((resolve) => {
-    requestFrame(() => requestFrame(resolve));
+    let settled = false;
+    let frameId = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimer(timerId);
+      if (frameId !== null) cancelFrame?.(frameId);
+      resolve();
+    };
+    // Animation frames may pause in a hidden or throttled tab. Painting the
+    // progress surface must not prevent a durable save from reaching sync or
+    // leave a confirmed save waiting indefinitely on a cosmetic callback.
+    const timerId = setTimer(finish, VISIBLE_PAINT_TIMEOUT_MS);
+    frameId = requestFrame(() => {
+      if (!settled) frameId = requestFrame(finish);
+    });
   });
 }
 

@@ -142,8 +142,10 @@ test("shared application loading surface announces Excel and Word progress", asy
       const originalTimer = window.setTimeout;
       const delays = [];
       window.setTimeout = (callback, milliseconds, ...args) => {
-        delays.push(milliseconds);
-        return originalTimer(callback, milliseconds, ...args);
+        return originalTimer((...callbackArgs) => {
+          delays.push(milliseconds);
+          callback(...callbackArgs);
+        }, milliseconds, ...args);
       };
       try {
         await persistAndSync({ model: { persistChanges: async () => {} }, autoSync: async () => ({ ok: true }) },
@@ -151,7 +153,8 @@ test("shared application loading surface announces Excel and Word progress", asy
       } finally { window.setTimeout = originalTimer; }
       return delays.filter((milliseconds) => milliseconds > 0);
     });
-    assert.deepEqual(saveDelays, [], 'saving must not wait for cosmetic minimum-duration or exit timers');
+    assert.ok(saveDelays.every((milliseconds) => milliseconds <= 150),
+      'saving may use the bounded paint fallback, without cosmetic minimum-duration or exit delays');
     assert.equal(await page.locator("body").getAttribute("aria-busy"), null);
     assert.equal(await page.locator("main").getAttribute("inert"), null);
     const inertAfterModalSave = await page.evaluate(async () => {
