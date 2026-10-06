@@ -16,6 +16,7 @@ Trong Admin, mở **Gói dịch vụ**. Khi chưa có bảng giá, vẫn có th�
 - Mở **Chính sách chung & kỳ hạn** để nhập số ngày năm/tháng và lựa chọn các chính sách được hỗ trợ. Các cấu hình khác vẫn có trong phần nâng cao.
 - Lưu nháp được khi chưa điền hết. Kiểm tra vẫn yêu cầu đủ khung 8 gói năm, giá/thuế/quota, kỳ hạn và điều kiện phát hành. Gói tháng là tùy chọn và có giá riêng.
 - Chỉnh gói đã phát hành tạo bản nháp mới. Ngừng bán từng kỳ trong trường Trạng thái bán rồi phát hành; gói đã mua giữ điều kiện cũ.
+- Trong bảng **Bản nháp thương mại**, chọn **Bỏ bản nháp** để lưu trữ bản không còn dùng. Hệ thống hỏi xác nhận, kiểm tra revision và ghi audit; thao tác này không xóa release, đơn hàng hay thuê bao.
 
 1. Tạo hoặc chọn bản nháp.
 2. Sửa giá/quota/sales state. Các giá trị tiền và quota dùng số nguyên.

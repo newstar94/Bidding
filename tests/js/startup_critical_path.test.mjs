@@ -69,7 +69,7 @@ test("notification click initializes immediately even before scheduled maintenan
   } finally { globalThis.document = previousDocument; }
 });
 
-test("assistant and notification imports wait behind the post-startup interaction grace", async () => {
+test("assistant trigger loads with the interactive shell while notifications stay deferred", async () => {
   const scheduled = [];
   const imports = [];
   const controller = {
@@ -90,10 +90,14 @@ test("assistant and notification imports wait behind the post-startup interactio
 
   assert.deepEqual(imports, [], "optional chunks must not compete with the first interaction");
   assert.equal(scheduled.length, 2);
-  assert.ok(scheduled.every(({ options }) => (
-    options.delay >= POST_STARTUP_INTERACTION_GRACE_MS
-  )));
-  assert.ok(scheduled.every(({ options }) => options.priority === "maintenance"));
+  const notification = scheduled.find(({ options }) => options.key === "notification-center");
+  const assistant = scheduled.find(({ options }) => options.key === "assistant");
+  assert.ok(notification);
+  assert.ok(assistant);
+  assert.ok(notification.options.delay >= POST_STARTUP_INTERACTION_GRACE_MS);
+  assert.equal(notification.options.priority, "maintenance");
+  assert.equal(assistant.options.delay, 0);
+  assert.equal(assistant.options.priority, "local");
 
   await scheduled[0].task();
   await scheduled[1].task();

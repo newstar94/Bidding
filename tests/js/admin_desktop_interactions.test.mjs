@@ -174,6 +174,32 @@ test("admin bootstraps and saves a package when the public catalog has no effect
   });
 });
 
+test("draft list can archive a draft after confirmation and keeps it after cancellation", async () => {
+  let archived = false;
+  interceptApi = async (entry) => {
+    if (entry.path === "/api/commercial/admin/overview") {
+      return { payload: { currentRelease: { id: "release-1", versionLabel: "v1", nonSellable: false }, drafts: archived ? [{ id: "draft-b", revision: 1 }] : [{ id: "draft-a", revision: 1 }, { id: "draft-b", revision: 1 }], releaseHistory: [] } };
+    }
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "DELETE") {
+      archived = true;
+      return { payload: { id: "draft-a", status: "archived", revision: 2 } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await page.locator(".admin-plans-page").waitFor();
+    assert.equal(await page.locator('[data-admin-draft-archive="draft-a"]').count(), 1);
+    nextDialog(page, false);
+    await page.locator('[data-admin-draft-archive="draft-a"]').click();
+    assert.equal(requests.some(entry => entry.method === "DELETE"), false);
+    assert.equal(await page.locator('[data-admin-draft-archive="draft-a"]').count(), 1);
+    nextDialog(page, true);
+    await page.locator('[data-admin-draft-archive="draft-a"]').click();
+    await page.locator('[data-admin-draft-archive="draft-a"]').waitFor({ state: "detached" });
+    assert.equal(requests.filter(entry => entry.path === "/api/commercial/drafts/draft-a" && entry.method === "DELETE").length, 1);
+  });
+});
+
 test("a failed package save keeps edited content and blocks publish until authoritative retry succeeds", async () => {
   let fail = true;
   let documentValue = null;

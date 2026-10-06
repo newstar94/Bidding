@@ -350,6 +350,68 @@ async def save_commercial_draft_api(request):
         return _error_response(exc)
 
 
+def _archive_commercial_draft_sync(request, body, revision):
+    conn = None
+    try:
+        conn = database.get_connection()
+        conn.execute("BEGIN")
+        cursor = conn.cursor()
+        valid, actor = verify_session_in_transaction(cursor, request, required_role="super_admin")
+        if not valid:
+            conn.rollback()
+            return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
+        repository = CommercialRepository(cursor)
+        draft = repository.archive_draft(request.path_params["draft_id"], revision, actor.user_id)
+        if draft["status"] != "archived":
+            raise CommercialPolicyError(
+                "COMMERCIAL_POLICY_INVALID",
+                "Không thể bỏ bản nháp.",
+                status_code=409,
+            )
+        log_audit(
+            "commercial.draft_archived",
+            actor_user_id=actor.user_id,
+            target_type="commercial_draft",
+            target_id=draft["id"],
+            request=request,
+            metadata={"beforeRevision": revision, "afterRevision": draft["revision"]},
+            cursor=cursor,
+            required=True,
+        )
+        repository.insert_outbox(
+            "commercial.draft_archived",
+            "commercial_draft",
+            draft["id"],
+            {"revision": draft["revision"]},
+        )
+        conn.commit()
+        return JSONResponse(_draft_payload(draft))
+    except Exception as exc:  # noqa: BLE001
+        if conn:
+            conn.rollback()
+        if not isinstance(exc, CommercialPolicyError):
+            log_error(exc, "archive_commercial_draft_api")
+        return _error_response(exc)
+    finally:
+        if conn:
+            conn.close()
+
+
+async def archive_commercial_draft_api(request):
+    try:
+        body = await _json_body(request)
+        revision = _expected_revision(request, body)
+        return await run_database_write(
+            _archive_commercial_draft_sync, request, body, revision
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận bỏ bản nháp thương mại.", "COMMERCIAL_WRITE_UNAVAILABLE"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error_response(exc)
+
+
 def _validate_commercial_draft_sync(request, body, revision):
     conn = None
     try:
@@ -788,6 +850,7 @@ def commercial_policy_routes(Route):
         Route("/api/commercial/drafts", create_commercial_draft_api, methods=["POST"]),
         Route("/api/commercial/drafts/{draft_id}", get_commercial_draft_api, methods=["GET"]),
         Route("/api/commercial/drafts/{draft_id}", save_commercial_draft_api, methods=["PATCH"]),
+        Route("/api/commercial/drafts/{draft_id}", archive_commercial_draft_api, methods=["DELETE"]),
         Route("/api/commercial/drafts/{draft_id}/validate", validate_commercial_draft_api, methods=["POST"]),
         Route("/api/commercial/drafts/{draft_id}/publish", publish_commercial_draft_api, methods=["POST"]),
         Route("/api/commercial/releases/{release_id}/clone", clone_commercial_release_api, methods=["POST"]),

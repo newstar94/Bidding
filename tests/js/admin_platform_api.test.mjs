@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   AdminApiError,
+  deleteAdminJson,
   getAdminJson,
   patchAdminJson,
   postAdminJson,
@@ -147,6 +148,35 @@ test("admin API permits the exact authoritative public commercial catalog", asyn
   });
   assert.equal(request.url, "/api/public/commercial/offers");
   assert.equal(request.options.method, "GET");
+});
+
+test("admin API permits only draft archive with revision and idempotency headers", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { cookie: "csrf_token=csrf-test-token" };
+  let request;
+  try {
+    await deleteAdminJson("/api/commercial/drafts/draft-1", {
+      body: { expectedRevision: 3 },
+      expectedRevision: 3,
+      idempotencyKey: "admin-archive:test-1234",
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return new Response(JSON.stringify({ status: "archived" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+    assert.equal(request.url, "/api/commercial/drafts/draft-1");
+    assert.equal(request.options.method, "DELETE");
+    assert.equal(new Headers(request.options.headers).get("X-CSRF-Token"), "csrf-test-token");
+    assert.equal(new Headers(request.options.headers).get("Idempotency-Key"), "admin-archive:test-1234");
+    assert.equal(new Headers(request.options.headers).get("If-Match"), '"3"');
+    assert.deepEqual(JSON.parse(request.options.body), { expectedRevision: 3 });
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test("admin API classifies permission denial", async () => {

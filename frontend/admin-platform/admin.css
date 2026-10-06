@@ -277,6 +277,14 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-package-policies > summary { font-weight: 600; cursor: pointer; }
 .bf-admin-package-policies .bf-admin-editor-group { margin-top: 1rem; }
 .bf-admin-package-manager table td { font-variant-numeric: tabular-nums; }
+.bf-admin-draft-actions { display: inline-flex; justify-content: flex-end; gap: .4rem; flex-wrap: wrap; }
+.bf-admin-draft-id { display: inline-block; max-width: 24rem; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.bf-admin-package-manager .btn-group[aria-label="Nhóm gói"] { justify-content: center; }
+.bf-admin-package-manager .btn-group[aria-label="Cách xem gói"] { margin-left: auto; }
+.bf-admin-package-manager .table th, .bf-admin-package-manager .table td { vertical-align: middle; }
+.bf-admin-package-manager .table th:nth-child(2), .bf-admin-package-manager .table th:nth-child(3), .bf-admin-package-manager .table td:nth-child(2), .bf-admin-package-manager .table td:nth-child(3) { text-align: right; white-space: nowrap; }
+.bf-admin-editor-shell .card-body { padding-block: 1.15rem; }
+.bf-admin-editor-shell .bf-admin-offer-editor .card-body { padding: 1rem; }
 @media (max-width: 1199.98px) {
   .bf-admin-package-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -285,6 +293,8 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
   .bf-admin-analytics-primary { grid-template-columns: 1fr; }
   .bf-admin-plan-tabs { position: static; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
   .bf-admin-plan-tabs .nav-link { flex: 0 0 auto; }
+  .bf-admin-draft-id { max-width: 14rem; }
+  .bf-admin-package-manager .btn-group[aria-label="Cách xem gói"] { margin-left: 0; }
   .bf-admin-page-intro, .bf-admin-section-heading, .bf-admin-editor-intro, .bf-admin-editor-actions { align-items: stretch; flex-direction: column; }
   .bf-admin-workflow-guide { grid-template-columns: 1fr; gap: .6rem; }
   .bf-admin-workflow-line { display: none; }

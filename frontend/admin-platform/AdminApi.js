@@ -21,6 +21,8 @@ function assertAdminPath(path, method = "GET") {
   const commercialDraftCollection = verb === "POST" && value === "/api/commercial/drafts";
   const commercialDraftItem = /^(?:GET|PATCH)$/u.test(verb)
     && /^\/api\/commercial\/drafts\/[^/?#]+$/u.test(value);
+  const commercialDraftArchive = verb === "DELETE"
+    && /^\/api\/commercial\/drafts\/[^/?#]+$/u.test(value);
   const commercialDraftCommand = verb === "POST"
     && /^\/api\/commercial\/drafts\/[^/?#]+\/(?:validate|publish)$/u.test(value);
   const commercialReleaseCommand = verb === "POST"
@@ -38,7 +40,7 @@ function assertAdminPath(path, method = "GET") {
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
   const approvedActiveRoleTransition = verb === "POST" && value === "/api/auth/active-role";
   const approved = platformPath || approvedEnvironmentUpdate || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
-    || commercialDraftItem || commercialDraftCommand || commercialReleaseCommand
+    || commercialDraftItem || commercialDraftArchive || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
     || approvedUserAccessSettings
     || approvedOrganizationSubscription || approvedReauthentication
@@ -223,19 +225,27 @@ export async function patchAdminJson(path, {
 }
 
 export async function deleteAdminJson(path, {
+  body = undefined,
+  expectedRevision,
+  idempotencyKey = "",
   signal,
   fetchImpl = globalThis.fetch,
 } = {}) {
   const url = assertAdminPath(path, "DELETE");
+  const headers = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (Number.isSafeInteger(Number(expectedRevision))) headers["If-Match"] = `"${Number(expectedRevision)}"`;
+  if (idempotencyKey) headers["Idempotency-Key"] = String(idempotencyKey);
   let response;
   try {
     response = await apiFetch(url, {
       method: "DELETE",
-      headers: { Accept: "application/json" },
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal,
       handleHttpErrors: false,
       workspaceContext: false,
-      retries: 0,
+      retries: idempotencyKey ? 1 : 0,
     }, fetchImpl);
   } catch (cause) {
     if (signal?.aborted) throw cause;

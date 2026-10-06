@@ -117,6 +117,50 @@ class CommercialRepository:
             )
         return self.get_draft(draft_id)
 
+    def archive_draft(self, draft_id, expected_revision, actor_user_id):
+        """Archive an editable draft without deleting its audit/history row."""
+
+        current = self.get_draft(draft_id, for_update=True)
+        if not current:
+            raise CommercialPolicyError(
+                "COMMERCIAL_DRAFT_NOT_FOUND",
+                "Không tìm thấy bản nháp.",
+                status_code=404,
+            )
+        if current["status"] == "archived":
+            return current
+        if int(current["revision"]) != int(expected_revision):
+            raise CommercialPolicyError(
+                POLICY_STALE,
+                "Bản nháp đã được thay đổi ở cửa sổ khác.",
+                status_code=409,
+                details={
+                    "expectedRevision": int(expected_revision),
+                    "currentRevision": int(current["revision"]),
+                    "currentChecksum": current.get("checksum"),
+                },
+            )
+        updated = self.cursor.execute(
+            """UPDATE commercial_drafts
+                  SET status = 'archived', revision = revision + 1,
+                      updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND revision = ? AND status != 'archived'""",
+            (actor_user_id, draft_id, int(expected_revision)),
+        )
+        if updated.rowcount != 1:
+            current = self.get_draft(draft_id)
+            raise CommercialPolicyError(
+                POLICY_STALE,
+                "Bản nháp đã được thay đổi ở cửa sổ khác.",
+                status_code=409,
+                details={
+                    "expectedRevision": int(expected_revision),
+                    "currentRevision": current.get("revision") if current else None,
+                    "currentChecksum": current.get("checksum") if current else None,
+                },
+            )
+        return self.get_draft(draft_id)
+
     def store_validation(self, draft_id, revision, result, digest, expires_at):
         updated = self.cursor.execute(
             """UPDATE commercial_drafts

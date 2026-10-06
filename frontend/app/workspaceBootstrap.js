@@ -146,7 +146,7 @@ export function scheduleWorkspaceEnhancements(controller, {
     timeout: 3000,
     delay: POST_STARTUP_TIMING.assistant,
     key: "assistant",
-    priority: "maintenance",
+    priority: "local",
   });
   return true;
 }

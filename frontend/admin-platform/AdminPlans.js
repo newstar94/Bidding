@@ -1,4 +1,5 @@
 import {
+  deleteAdminJson,
   getAdminJson,
   patchAdminJson,
   postAdminJson,
@@ -64,8 +65,8 @@ function workflowGuideMarkup({ draftOpen = false, dirty = false, validated = fal
 
 function draftTable(drafts) {
   if (!drafts.length) return adminStateMarkup("empty", { message: "Chưa có bản nháp chính sách thương mại đang mở." });
-  const rows = drafts.map((draft) => `<tr><td><strong>${text(draft?.id)}</strong></td><td>${text(draft?.status)}</td><td class="text-end">${Number.isSafeInteger(draft?.revision) ? escapeHtml(draft.revision) : "N/A"}</td><td>${text(draft?.baseReleaseId ?? draft?.base_release_id)}</td><td>${formatDate(draft?.updatedAt ?? draft?.updated_at)}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-draft-open="${text(draft?.id)}">Mở</button></td></tr>`).join("");
-  return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Bản nháp</th><th>Trạng thái</th><th class="text-end">Lần sửa</th><th>Phiên bản gốc</th><th>Cập nhật</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const rows = drafts.map((draft) => `<tr><td><strong class="bf-admin-draft-id" title="${text(draft?.id)}">${text(draft?.id)}</strong></td><td><span class="badge bg-secondary-lt">${text(draft?.status)}</span></td><td class="text-end">${Number.isSafeInteger(draft?.revision) ? escapeHtml(draft.revision) : "N/A"}</td><td>${text(draft?.baseReleaseId ?? draft?.base_release_id)}</td><td>${formatDate(draft?.updatedAt ?? draft?.updated_at)}</td><td class="text-end"><div class="bf-admin-draft-actions"><button class="btn btn-sm btn-outline-primary" type="button" data-admin-draft-open="${text(draft?.id)}">Mở</button><button class="btn btn-sm btn-outline-danger" type="button" data-admin-draft-archive="${text(draft?.id)}" data-admin-draft-revision="${Number.isSafeInteger(draft?.revision) ? draft.revision : ""}">Bỏ bản nháp</button></div></td></tr>`).join("");
+  return `<div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Bản nháp</th><th>Trạng thái</th><th class="text-end">Lần sửa</th><th>Phiên bản gốc</th><th>Cập nhật</th><th class="text-end">Thao tác</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function releaseHistoryMarkup(releases) {
@@ -624,6 +625,29 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         } finally {
           signal?.removeEventListener?.("abort", cancelOpen);
         }
+      });
+    });
+    container.querySelectorAll?.("[data-admin-draft-archive]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (busy) return;
+        const draftId = button.dataset.adminDraftArchive;
+        const revision = Number(button.dataset.adminDraftRevision);
+        const isOpen = draft?.id === draftId;
+        const message = isOpen && (dirty || creatorDirty)
+          ? "Bản nháp đang mở có thay đổi chưa lưu. Bỏ bản nháp sẽ đóng và lưu trữ toàn bộ thay đổi này. Bạn có muốn tiếp tục?"
+          : "Bỏ bản nháp này? Bản nháp sẽ được lưu trữ và không còn xuất hiện trong danh sách."
+        if (globalThis.confirm?.(message) === false) return;
+        await execute(
+          "archive-draft",
+          () => deleteAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}`, {
+            body: { expectedRevision: revision },
+            expectedRevision: revision,
+            idempotencyKey: mutationKey("archive-draft"),
+            fetchImpl,
+            signal,
+          }),
+          "Đã bỏ bản nháp.",
+        );
       });
     });
     container.querySelectorAll?.("[data-admin-plan-action]").forEach((button) => {

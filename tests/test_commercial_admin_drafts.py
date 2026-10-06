@@ -123,3 +123,46 @@ def test_admin_draft_creation_denies_unauthorized_sessions_and_rolls_back_audit_
     assert response.status_code == 500
     assert seen["rollback"] and not seen["commit"]
     assert not seen["outbox"]
+
+
+def test_admin_draft_archive_requires_authorization_and_commits_audit(monkeypatch):
+    seen = _route_fixture(monkeypatch)
+
+    class Repository:
+        def __init__(self, cursor):
+            pass
+
+        def archive_draft(self, draft_id, revision, actor):
+            seen["archive"] = (draft_id, revision, actor)
+            return {
+                "id": draft_id,
+                "status": "archived",
+                "revision": revision + 1,
+                "checksum": "fixture",
+                "validation_digest": None,
+                "validation_revision": None,
+                "readiness_expires_at": None,
+                "validation": None,
+                "document": {},
+                "created_at": 1,
+                "updated_at": 2,
+            }
+
+        def insert_outbox(self, *args):
+            seen["outbox"].append(args)
+
+    monkeypatch.setattr(routes, "CommercialRepository", Repository)
+    request = SimpleNamespace(path_params={"draft_id": "draft-1"}, headers={})
+    response = routes._archive_commercial_draft_sync(request, {"expectedRevision": 3}, 3)
+    assert response.status_code == 200
+    assert json.loads(response.body)["status"] == "archived"
+    assert seen["archive"] == ("draft-1", 3, "admin")
+    assert seen["commit"] and not seen["rollback"]
+    assert seen["audit"][0]["required"] is True
+    assert len(seen["outbox"]) == 1
+
+    seen = _route_fixture(monkeypatch, authorized=False)
+    monkeypatch.setattr(routes, "CommercialRepository", Repository)
+    response = routes._archive_commercial_draft_sync(request, {"expectedRevision": 3}, 3)
+    assert response.status_code == 403
+    assert seen["rollback"] and not seen["commit"]
