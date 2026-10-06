@@ -4,7 +4,9 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 const ACTIVE_ORG_KEY = "bf_active_org";
 
 export function applyWordNavigationPresentation(workspace, documentRef = globalThis.document) {
-  const isFree = String(workspace?.subscription?.package_id || "").toLowerCase() === "free";
+  const packageId = String(workspace?.subscription?.package_id || "").trim().toLowerCase();
+  const isFree = packageId === "free" || (Boolean(workspace)
+    && !workspace.subscription && workspace.entitlements?.word_export === false);
   documentRef?.querySelectorAll?.("[data-word-navigation]").forEach((node) => {
     node.hidden = isFree;
     node.inert = isFree;

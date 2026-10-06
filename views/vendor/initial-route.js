@@ -130,8 +130,12 @@
     document.querySelectorAll(".role-menu-manager").forEach((item) => {
       item.hidden = activeRole !== "manager";
     });
+    const packageId = String(selectedOrganization?.subscription?.package_id || "").trim().toLowerCase();
+    const freeWordNavigation = packageId === "free" || (Boolean(selectedOrganization)
+      && !selectedOrganization.subscription && selectedOrganization.entitlements?.word_export === false);
     document.querySelectorAll(".role-menu-client").forEach((item) => {
-      item.hidden = activeRole === "super_admin";
+      item.hidden = activeRole === "super_admin"
+        || (item.hasAttribute("data-word-navigation") && freeWordNavigation);
     });
     document.querySelectorAll(".dropdown-role-btn").forEach((button) => {
       const isActive = button.getAttribute("data-switch-role") === activeRole;

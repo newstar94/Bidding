@@ -4,7 +4,7 @@ import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { applyWordNavigationPresentation, normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import {
@@ -172,6 +172,11 @@ export function updateActiveUserProfileDisplay() {
   const saItems = document.querySelectorAll(".role-menu-superadmin");
   const managerItems = document.querySelectorAll(".role-menu-manager");
   const clientItems = document.querySelectorAll(".role-menu-client");
+  const activeUser = this.model.state.activeuser;
+  const activeWorkspace = normalizeOrganizations(activeUser).find(
+    (workspace) => workspace.id === String(activeUser?.activeOrganizationId || getActiveOrganizationId()),
+  );
+  applyWordNavigationPresentation(activeWorkspace);
   saItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none"));
   managerItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none"));
   clientItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" || item.hidden ? "none" : "block"));

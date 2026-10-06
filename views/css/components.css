@@ -587,10 +587,10 @@
   background: linear-gradient(135deg, var(--primary, #2563eb) 0%, var(--accent, #7c3aed) 100%) !important;
 }
 
-.sidebar[data-active-role="super_admin"] .role-menu-superadmin,
-.sidebar[data-active-role="manager"] .role-menu-manager,
-.sidebar[data-active-role="manager"] .role-menu-client,
-.sidebar[data-active-role="employee"] .role-menu-client {
+.sidebar[data-active-role="super_admin"] .role-menu-superadmin:not([hidden]),
+.sidebar[data-active-role="manager"] .role-menu-manager:not([hidden]),
+.sidebar[data-active-role="manager"] .role-menu-client:not([hidden]),
+.sidebar[data-active-role="employee"] .role-menu-client:not([hidden]) {
   display: block !important;
 }
 
