@@ -26,9 +26,12 @@ import {
 } from "../shared/versionResolver.js";
 import {
   assertWorkspaceLeaseCurrent,
+  captureWorkspaceLease,
+  isWorkspaceLeaseCurrent,
   beginWorkspaceRequest,
   finishWorkspaceRequest,
 } from "../app/workspaceLease.js";
+import { CANONICAL_SAVE_STATUS, classifyCanonicalSyncResult } from "../shared/MutationService.js";
 import {
   applyTimelineApplicability,
   applyAutomaticTimelineSources,
@@ -969,9 +972,19 @@ function updateRowFromControl(view, control) {
 async function saveTimeline(view) {
   const state = timelineState(view);
   if (!state.package || state.package.canEdit === false) return;
+  const lease = captureWorkspaceLease(view.model);
+  const packageId = state.package.id;
+  const isCurrent = () => isWorkspaceLeaseCurrent(view.model, lease)
+    && view._packageTimelineState === state && state.package?.id === packageId;
   const button = element("timeline-save");
   if (button) button.disabled = true;
   try {
+    const controller = getAppController();
+    if (typeof controller?.autoSync !== "function") throw new Error("Không thể xác nhận lưu timeline.");
+    await controller.awaitAuthoritativeMutationBoundary?.();
+    assertWorkspaceLeaseCurrent(view.model, lease);
+    if (!isCurrent()) return false;
+    const submittedRows = JSON.stringify(state.rows);
     const persistedRows = state.rows.map((row) => ({
       id: row.id,
       milestoneKey: row.milestoneKey,
@@ -998,29 +1011,33 @@ async function saveTimeline(view) {
       timelineItems: preserveHiddenTimelineRows(state.package.timelineItems, persistedRows),
     };
     await view.model.updateRecord("goithau", packageRecord);
+    assertWorkspaceLeaseCurrent(view.model, lease);
+    const syncResult = await controller.autoSync();
+    if (!isCurrent()) return false;
+    if (classifyCanonicalSyncResult(syncResult) !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+      const error = new Error("Máy chủ chưa xác nhận thay đổi timeline.");
+      error.syncResult = syncResult;
+      throw error;
+    }
+    if (JSON.stringify(state.rows) !== submittedRows) {
+      view.showToast("Còn thay đổi chưa lưu", "Máy chủ đã xác nhận nội dung đã gửi. Hãy lưu các thay đổi mới vừa nhập.", "warning");
+      return false;
+    }
     state.package = view.model.state.goithau.find(
       (item) => String(item.id) === String(packageRecord.id),
     ) || packageRecord;
-    const controller = getAppController();
-    if (typeof controller?.forceSyncData === "function") {
-      const syncResult = await controller.forceSyncData(false, false, true);
-      if (syncResult?.ok !== true || syncResult?.localMutationsPending === true) {
-        const error = new Error("Máy chủ chưa xác nhận thay đổi timeline.");
-        error.syncResult = syncResult;
-        throw error;
-      }
-    }
     state.dirty = false;
     const applicableCount = state.rows.filter((row) => row.applicability === "APPLICABLE").length;
     view.showToast("Thành công", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
     updateLiveStatus("Timeline đã được lưu.");
     return true;
   } catch {
+    if (!isCurrent()) return false;
     view.showToast("Thất bại", "Không thể lưu timeline. Vui lòng thử lại.", "error");
     updateLiveStatus("Chưa thể xác nhận lưu timeline; nội dung đang nhập được giữ lại.");
     return false;
   } finally {
-    setActionAvailability(state);
+    if (isCurrent()) setActionAvailability(state);
   }
 }
 

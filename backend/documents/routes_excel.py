@@ -15,7 +15,7 @@ from backend.shared.access_policy import can_read_record
 from backend.shared.subscription_policy import can_use_document_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
-from backend.shared.database_io import run_database_read
+from backend.shared.database_io import run_database_read, run_database_write
 # Keep the route test seam for the heavy context read while session/preflight DB work uses the lane directly.
 from backend.shared.database_io import run_database_read as _run_database_read
 
@@ -183,8 +183,8 @@ async def export_timeline_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = await _run_database_read(get_active_org, request, user_id)
-        entitlement_error = _timeline_export_entitlement_response(
-            role_or_err, org_name,
+        entitlement_error = await _run_database_read(
+            _timeline_export_entitlement_response, role_or_err, org_name,
         )
         if entitlement_error is not None:
             return entitlement_error
@@ -207,13 +207,14 @@ async def export_timeline_api(request):
             timeout_seconds=10,
         )
         out_stream = await _export_excel("create_timeline_excel", context)
-        snapshot_error = _ensure_export_snapshot_unchanged(
-            org_name, snapshot_version,
+        snapshot_error = await _run_database_read(
+            _ensure_export_snapshot_unchanged, org_name, snapshot_version,
         )
         if snapshot_error is not None:
             return snapshot_error
 
-        log_audit(
+        await run_database_write(
+            log_audit,
             "document.excel_exported",
             actor_user_id=user_id,
             organization_id=org_name,

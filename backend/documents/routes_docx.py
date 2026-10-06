@@ -36,7 +36,8 @@ from backend.shared.async_io import (
     BlockingIOTimeoutError,
     run_blocking_io,
 )
-from backend.shared.database_io import run_database_read
+from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.database_http import database_unavailable_response
 from backend.documents import custom_exporter
 from backend.documents.document_worker import (
     DocumentWorkerError,
@@ -2207,14 +2208,14 @@ async def delete_template_api(request):
         return _docx_error(request, e, "delete_template_api")
 
 
-async def list_word_mappings_api(request):
+def _list_word_mappings_sync(request):
     conn = None
     try:
-        is_valid, role_or_err = await run_database_read(verify_session, request)
+        is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = await run_database_read(get_active_org, request, user_id)
+        org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_read_word_config(cursor, role_or_err, user_id, org_name):
@@ -2254,16 +2255,21 @@ async def list_word_mappings_api(request):
             except DatabaseError:
                 pass
 
-async def save_word_mapping_api(request):
+async def list_word_mappings_api(request):
+    try:
+        return await run_database_read(_list_word_mappings_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
+
+
+def _save_word_mapping_sync(request, data, json_error):
     conn = None
     try:
-        is_valid, role_or_err = await run_database_read(verify_session, request)
+        is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = await run_database_read(get_active_org, request, user_id)
-
-        data, json_error = await read_json_object(request)
+        org_name = get_active_org(request, user_id)
         if json_error is not None:
             return json_error
         invalid = validate_or_response(request, data, {
@@ -2368,14 +2374,22 @@ async def save_word_mapping_api(request):
             except DatabaseError:
                 pass
 
-async def delete_word_mapping_api(request):
+async def save_word_mapping_api(request):
+    data, json_error = await read_json_object(request)
+    try:
+        return await run_database_write(_save_word_mapping_sync, request, data, json_error)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
+
+
+def _delete_word_mapping_sync(request):
     conn = None
     try:
-        is_valid, role_or_err = await run_database_read(verify_session, request)
+        is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = await run_database_read(get_active_org, request, user_id)
+        org_name = get_active_org(request, user_id)
 
         mapping_id = request.path_params.get('mapping_id')
         if not mapping_id:
@@ -2421,14 +2435,21 @@ async def delete_word_mapping_api(request):
                 pass
 
 
-async def reset_word_mapping_api(request):
+async def delete_word_mapping_api(request):
+    try:
+        return await run_database_write(_delete_word_mapping_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
+
+
+def _reset_word_mapping_sync(request):
     conn = None
     try:
-        is_valid, role_or_err = await run_database_read(verify_session, request)
+        is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = await run_database_read(get_active_org, request, user_id)
+        org_name = get_active_org(request, user_id)
         mapping_id = request.path_params.get('mapping_id')
         if not mapping_id:
             return JSONResponse({"error": "Missing mapping_id parameter"}, status_code=400)
@@ -2463,3 +2484,10 @@ async def reset_word_mapping_api(request):
                 conn.close()
             except DatabaseError:
                 pass
+
+
+async def reset_word_mapping_api(request):
+    try:
+        return await run_database_write(_reset_word_mapping_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)

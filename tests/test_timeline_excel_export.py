@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from datetime import datetime
 from io import BytesIO
 from types import SimpleNamespace
@@ -136,13 +137,19 @@ def test_timeline_export_entitlement_uses_excel_not_word(monkeypatch):
 
 def test_timeline_export_route_keeps_snapshot_and_access_guards(monkeypatch):
     calls = []
+    loop_thread = threading.get_ident()
+
+    def database_boundary(name, value, *args):
+        assert threading.get_ident() != loop_thread, f"{name} ran on request event loop"
+        calls.append((name, *args))
+        return value
     role = SimpleNamespace(user_id="user-1")
     monkeypatch.setattr(routes_excel, "verify_session", lambda _request: (True, role))
     monkeypatch.setattr(routes_excel, "get_active_org", lambda *_args: "org-1")
     monkeypatch.setattr(
         routes_excel,
         "_timeline_export_entitlement_response",
-        lambda *_args: None,
+        lambda *_args: database_boundary("entitlement", None),
     )
     monkeypatch.setattr(
         routes_excel,
@@ -174,11 +181,11 @@ def test_timeline_export_route_keeps_snapshot_and_access_guards(monkeypatch):
     monkeypatch.setattr(
         routes_excel,
         "_ensure_export_snapshot_unchanged",
-        lambda organization_id, version: calls.append(
-            ("snapshot-unchanged", organization_id, version)
-        ) or None,
+        lambda organization_id, version: database_boundary(
+            "snapshot-unchanged", None, organization_id, version,
+        ),
     )
-    monkeypatch.setattr(routes_excel, "log_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(routes_excel, "log_audit", lambda *_args, **_kwargs: database_boundary("audit", None))
 
     request = Request({
         "type": "http",

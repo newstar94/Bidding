@@ -31,7 +31,9 @@
 ## Regression seams
 
 - F01–F03: workflow lưu thất bại, panel giữ bản nháp; timeline giữ dirty và chặn export sau save thất bại; điều hướng có guard.
+- Timeline dùng kết quả mutation push để xác nhận; pull thành công không thay thế xác nhận lưu. Thay đổi nhập trong lúc chờ không bị đánh dấu đã lưu. Lưu mở thầu chỉ xóa dirty/thoát sửa sau canonical commit rồi mới chuyển bước.
 - F04/F07/F15: heartbeat event loop; số truy vấn membership theo request; phản hồi busy/timeout đúng 503 và Retry-After, giữ các kiểm tra session/quyền.
+- Bốn API ánh xạ Word kiểm tra thread tại session, scope, connection, policy, query, commit, audit và close; xuất Timeline kiểm tra entitlement, snapshot cuối và audit ngoài event loop, đồng thời giữ kiểm tra snapshot/quyền và nội dung workbook.
 - F05/F06: hủy/hết thời gian trong handshake CSRF; caller không chờ hết thời gian toast mới render.
 - F08–F14: thao tác thật trên Plans/Analytics/Settings/Jobs/Audit và vòng đời Admin shell; label offer có association duy nhất.
 - F16: HTTP/network thất bại, read-all thử lại và read thành công được kiểm tra qua NotificationCenter thật trên browser.
