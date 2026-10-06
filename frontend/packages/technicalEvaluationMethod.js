@@ -125,9 +125,44 @@ export function requiresTechnicalScore(pkg = {}, roundType = "single") {
     === TECHNICAL_EVALUATION_METHODS.SCORE;
 }
 
+const technicalScoreInputStates = new WeakMap();
+
+function bindTechnicalScoreInput(input) {
+  let state = technicalScoreInputStates.get(input);
+  if (!state) {
+    state = { enabled: false, accepted: "" };
+    technicalScoreInputStates.set(input, state);
+    input.addEventListener?.("beforeinput", (event) => {
+      if (state.enabled && event.inputType?.startsWith("insert")
+        && event.data != null && /[^0-9.,]/.test(event.data)) {
+        event.preventDefault();
+      }
+    });
+    // Capture runs before the row's bubbling input handler updates its draft.
+    // Restore the previous value rather than turning pasted text into a score.
+    input.addEventListener?.("input", () => {
+      if (!state.enabled) return;
+      if (/[^0-9.,]/.test(input.value)) input.value = state.accepted;
+      else state.accepted = input.value;
+    }, { capture: true });
+    const formatScore = () => {
+      if (!state.enabled) return;
+      const score = parseTechnicalScore(input.value);
+      if (score === null) return;
+      input.value = formatVietnameseNumber(score);
+      state.accepted = input.value;
+    };
+    input.addEventListener?.("change", formatScore, { capture: true });
+    input.addEventListener?.("blur", formatScore, { capture: true });
+  }
+  return state;
+}
+
 export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "single") {
   const scoreRequired = requiresTechnicalScore(pkg, roundType);
   root?.querySelectorAll?.("input.mt-dg-ky-thuat").forEach((input) => {
+    const inputState = bindTechnicalScoreInput(input);
+    inputState.enabled = scoreRequired;
     if (!scoreRequired) {
       input.type = "text";
       input.removeAttribute?.("data-technical-score-required");
@@ -149,6 +184,7 @@ export function configureBidTechnicalScoreInputs(root, pkg = {}, roundType = "si
     input.setAttribute?.("data-technical-score-required", "true");
     input.placeholder = "Nhập điểm kỹ thuật...";
     if (current) input.value = parsed === null ? "" : formatVietnameseNumber(parsed);
+    inputState.accepted = input.value;
     if (
       hadInvalidLegacyValue
       && typeof input.dispatchEvent === "function"

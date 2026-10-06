@@ -3,6 +3,44 @@ const WORKSPACE_PATH = "/tong-quan";
 const LANDING_HISTORY_SCROLL_KEY = "bfLandingScrollY";
 let landingHistoryCaptureInstalled = false;
 let landingMotionCleanup = null;
+const pricingState = {
+  offers: [],
+  group: "basic",
+  period: "yearly",
+};
+
+const PRICING_GROUPS = Object.freeze({
+  basic: { label: "Cơ bản", variant: "internal" },
+  advanced: { label: "Nâng cao", variant: "connected" },
+});
+
+function pricingGroupForOffer(offer) {
+  if (offer?.variant === PRICING_GROUPS.basic.variant) return "basic";
+  if (offer?.variant === PRICING_GROUPS.advanced.variant) return "advanced";
+  return "unclassified";
+}
+
+function pricingPeriodForOffer(offer) {
+  return typeof offer?.price?.period === "string" ? offer.price.period : "";
+}
+
+function pricingGroupOffers(offers, group, period) {
+  const periodOffers = offers.filter((offer) => pricingPeriodForOffer(offer) === period);
+  const knownOffers = periodOffers.filter((offer) => pricingGroupForOffer(offer) !== "unclassified");
+  if (knownOffers.length === 0) return periodOffers;
+  return periodOffers.filter((offer) => pricingGroupForOffer(offer) === group);
+}
+
+function pricingGroupLabel(group, offer) {
+  if (group === "basic") return "Cơ bản";
+  if (group === "advanced") return "Nâng cao";
+  return offer?.display?.variantLabel || "Gói dịch vụ";
+}
+
+function pricingTierLabel(offer, presented) {
+  const tierLabels = { personal: "Cá nhân", silver: "Bạc", gold: "Vàng", diamond: "Kim cương" };
+  return tierLabels[offer?.tier] || presented.name;
+}
 
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
@@ -118,15 +156,16 @@ function appendCommercialBenefit(list, label) {
   list.append(item);
 }
 
-function createCommercialOption(offer) {
+function createCommercialOption(offer, group) {
   const presented = presentCommercialOffer(offer);
   const option = document.createElement("div");
-  option.className = "landing-commercial-option";
+  option.className = `landing-commercial-option${group === "advanced" ? " is-connected" : ""}`;
+  option.dataset.commercialVariant = offer?.variant || "";
 
   const label = document.createElement("span");
   label.className = "landing-commercial-option-label";
   label.append(createLandingIcon("layers-3"));
-  label.append(document.createTextNode(presented.variantLabel));
+  label.append(document.createTextNode(pricingGroupLabel(group, offer)));
 
   const price = document.createElement("div");
   price.className = "landing-commercial-price";
@@ -149,26 +188,75 @@ function createCommercialOption(offer) {
   return option;
 }
 
+function renderPricingControls(offers = []) {
+  const periodButtons = document.querySelectorAll("[data-pricing-period]");
+  const availablePeriods = new Set(offers.map(pricingPeriodForOffer).filter(Boolean));
+  const preferredPeriod = availablePeriods.has(pricingState.period)
+    ? pricingState.period
+    : availablePeriods.has("yearly") ? "yearly" : [...availablePeriods][0] || "yearly";
+  pricingState.period = preferredPeriod;
+  periodButtons.forEach((button) => {
+    const period = button.dataset.pricingPeriod;
+    const available = availablePeriods.has(period);
+    button.disabled = !available;
+    button.setAttribute("aria-disabled", String(!available));
+    button.setAttribute("aria-selected", String(period === pricingState.period));
+    button.classList.toggle("is-active", period === pricingState.period);
+  });
+  document.querySelectorAll("[data-pricing-group]").forEach((button) => {
+    const group = button.dataset.pricingGroup;
+    const active = group === pricingState.group;
+    button.setAttribute("aria-selected", String(active));
+    button.classList.toggle("is-active", active);
+  });
+  const periodNote = document.querySelector("[data-landing-period-note]");
+  if (periodNote) {
+    periodNote.hidden = availablePeriods.has("monthly");
+    periodNote.textContent = availablePeriods.has("monthly")
+      ? ""
+      : "Gói hàng tháng sẽ hiển thị khi được công bố trong catalog thương mại hiện hành.";
+  }
+}
+
+function installPricingControls() {
+  const controls = document.querySelector("[data-landing-pricing-controls]");
+  if (!controls || controls.dataset.installed === "true") return;
+  controls.dataset.installed = "true";
+  controls.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button[data-pricing-group], button[data-pricing-period]");
+    if (!button || button.disabled) return;
+    if (button.dataset.pricingGroup) pricingState.group = button.dataset.pricingGroup;
+    if (button.dataset.pricingPeriod) pricingState.period = button.dataset.pricingPeriod;
+    renderCommercialOffers(pricingState.offers);
+  });
+}
+
 function renderCommercialOffers(offers = []) {
   const pricingGrid = document.getElementById("landing-pricing-grid");
   const visibleOffers = visibleOffersForOwner(offers);
-  if (!pricingGrid || visibleOffers.length === 0) return false;
+  pricingState.offers = visibleOffers;
+  renderPricingControls(visibleOffers);
+  const selectedOffers = pricingGroupOffers(visibleOffers, pricingState.group, pricingState.period);
+  if (!pricingGrid || selectedOffers.length === 0) return false;
 
   pricingGrid.replaceChildren();
-  pricingGrid.className = "landing-commercial-grid";
-  pricingGrid.dataset.offerCount = String(Math.min(visibleOffers.length, 5));
-  visibleOffers.forEach((offer) => {
+  pricingGrid.className = "landing-commercial-grid landing-commercial-grid-by-tier";
+  pricingGrid.dataset.offerCount = String(Math.min(selectedOffers.length, 5));
+  selectedOffers.forEach((offer) => {
       const presented = presentCommercialOffer(offer);
       const card = document.createElement("article");
       card.className = `landing-commercial-tier${presented.recommended ? " is-recommended" : ""}`;
       card.dataset.commercialOfferCode = presented.code;
+      card.dataset.commercialGroup = pricingGroupForOffer(offer);
 
       const header = document.createElement("div");
       header.className = "landing-commercial-tier-head";
       const title = document.createElement("span");
+      const audience = document.createElement("small");
+      audience.textContent = offer?.ownerKind === "organization" ? "Tổ chức" : "Cá nhân";
       const heading = document.createElement("h3");
-      heading.textContent = presented.name;
-      title.append(heading);
+      heading.textContent = pricingTierLabel(offer, presented);
+      title.append(audience, heading);
       header.append(title);
       if (presented.badge) {
         const badge = document.createElement("b");
@@ -182,7 +270,7 @@ function renderCommercialOffers(offers = []) {
 
       const options = document.createElement("div");
       options.className = "landing-commercial-options";
-      options.append(createCommercialOption(offer));
+      options.append(createCommercialOption(offer, pricingGroupForOffer(offer)));
       card.append(header);
       if (presented.description) card.append(description);
       card.append(options);
@@ -193,7 +281,7 @@ function renderCommercialOffers(offers = []) {
   pricingGrid.removeAttribute("aria-busy");
   const notice = document.querySelector("[data-landing-pricing-notice]");
   if (notice) notice.hidden = true;
-  renderDecisionSupport(visibleOffers);
+  renderDecisionSupport(selectedOffers);
   return true;
 }
 
@@ -363,6 +451,7 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   applySessionAwareLinks(session);
   installHeaderState();
   installMobileNavigation();
+  installPricingControls();
   installLandingMotion();
   installLandingHistoryScrollCapture();
   // WebKit resolves the fragment while the landing shell is still hidden and

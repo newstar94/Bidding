@@ -292,15 +292,26 @@
                     <p>Bắt đầu ở quy mô phù hợp, giữ nguyên một nền tảng khi đội ngũ lớn lên. Giá, hạn mức và lựa chọn kết nối luôn lấy trực tiếp từ catalog đang có hiệu lực.</p>
                 </div>
                 <div class="landing-pricing-context" data-landing-reveal>
-                    <div><i data-lucide="layers-3"></i><p><strong>Nền tảng Nội bộ</strong><small>Tổ chức công việc, dữ liệu và biểu mẫu trên một không gian chung.</small></p></div>
-                    <div><i data-lucide="radio-tower"></i><p><strong>Gói Kết nối</strong><small>Bổ sung quota lấy dữ liệu tự động và kiểm tra vi phạm nhà thầu.</small></p></div>
+                    <div><i data-lucide="layers-3"></i><p><strong>Gói Cơ bản</strong><small>Quản lý công việc, dữ liệu và biểu mẫu nội bộ; không lấy dữ liệu từ Mua Sắm Công.</small></p></div>
+                    <div><i data-lucide="radio-tower"></i><p><strong>Gói Nâng cao</strong><small>Bổ sung lấy dữ liệu Mua Sắm Công và các quyền lợi kết nối theo catalog.</small></p></div>
                 </div>
+                <div class="landing-pricing-controls" data-landing-pricing-controls data-landing-reveal>
+                    <div class="landing-pricing-tabs" role="tablist" aria-label="Nhóm gói dịch vụ">
+                        <button type="button" class="is-active" role="tab" aria-selected="true" data-pricing-group="basic">Cơ bản</button>
+                        <button type="button" role="tab" aria-selected="false" data-pricing-group="advanced">Nâng cao</button>
+                    </div>
+                    <div class="landing-pricing-periods" role="tablist" aria-label="Chu kỳ thanh toán">
+                        <button type="button" class="is-active" role="tab" aria-selected="true" data-pricing-period="monthly" disabled aria-disabled="true">Hàng tháng</button>
+                        <button type="button" class="is-active" role="tab" aria-selected="true" data-pricing-period="yearly">Hàng năm</button>
+                    </div>
+                </div>
+                <p class="landing-pricing-period-note" data-landing-period-note role="status"></p>
                 <div class="landing-pricing-grid" id="landing-pricing-grid" aria-live="polite" aria-busy="true">
                     <div class="landing-pricing-loading" aria-hidden="true">
                         <span></span><span></span><span></span>
                     </div>
                 </div>
-                <p class="landing-pricing-note"><i data-lucide="info"></i>Đơn giá được tính theo năm. Catalog mới chỉ hiển thị khi được Super Admin xuất bản và cấu hình thương mại cho phép bán.</p>
+                <p class="landing-pricing-note"><i data-lucide="info"></i>Giá, hạn mức và quyền lợi luôn lấy trực tiếp từ catalog đang có hiệu lực do Super Admin xuất bản.</p>
                 <p class="landing-pricing-note" data-landing-pricing-notice hidden role="status"></p>
             </div>
         </section>
