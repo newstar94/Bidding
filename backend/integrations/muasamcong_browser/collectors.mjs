@@ -570,7 +570,7 @@ export class MscCollectors {
     };
   }
 
-  async getOpeningBundle(noticeNo, revisionId) {
+  async getOpeningBundle(noticeNo, revisionId, { openingPhase = null } = {}) {
     const { response: detailResponse, notice, operation } = await this._noticeDetail(
       noticeNo,
       revisionId,
@@ -609,7 +609,7 @@ export class MscCollectors {
           tasks.push((async () => {
             try {
               const key = `${openingOperation.toLowerCase()}_${packType}`;
-              const request = { ...payload, packType };
+              const request = { ...payload, packType, ...(packType === 2 ? { viewType: 0 } : {}) };
               sourceRequests[key] = request;
               const response = await this.client.request(
                 openingOperation, request,
@@ -628,7 +628,7 @@ export class MscCollectors {
         const isMultiLot = flagEnabled(findFirstValue(notice, "isMultiLot"))
           || flagEnabled(findFirstValue(roundData, "isMultiLot"))
           || flagEnabled(findFirstValue(bidData, "isMultiLot"));
-        if (isMultiLot) {
+        if (isMultiLot || openingPhase === "FINANCIAL") {
           requiredOpeningSources.push(
             { operation: "OPENING_LOT", packType },
             { operation: "OPENING_LOT_DETAIL", packType },
@@ -636,7 +636,7 @@ export class MscCollectors {
           await Promise.all(["OPENING_LOT", "OPENING_LOT_DETAIL"].map(async (openingOperation) => {
             try {
               const key = `${openingOperation.toLowerCase()}_${packType}`;
-              const request = { ...payload, packType };
+              const request = { ...payload, packType, ...(packType === 2 ? { viewType: 0 } : {}) };
               sourceRequests[key] = request;
               const response = await this.client.request(
                 openingOperation, request,
@@ -652,10 +652,11 @@ export class MscCollectors {
         return roundData;
       };
       const technicalPackType = bidMode === "1_MTHS" ? 0 : 1;
-      const roundData = await collectPackType(technicalPackType);
+      const roundData = await collectPackType(openingPhase === "FINANCIAL" ? 2 : technicalPackType);
       const bidStatus = String(findFirstValue(roundData, "bidStatus") || "").toUpperCase();
       if (
         bidMode === "1_HTHS"
+        && openingPhase !== "FINANCIAL"
         && ["OPEN_DXTC", "PUB_KQLCNT"].includes(bidStatus)
       ) {
         requiredOpeningSources.push({

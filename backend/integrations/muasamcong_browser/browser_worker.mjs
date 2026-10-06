@@ -136,6 +136,7 @@ async function handle(request) {
         result: await integration.getOpeningBundle(
           String(request.noticeNo || ""),
           String(request.revisionId || ""),
+          { openingPhase: request.openingPhase || null },
         ),
       };
     }

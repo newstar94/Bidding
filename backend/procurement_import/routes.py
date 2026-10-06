@@ -144,7 +144,7 @@ _NOTICE_APPLY_FIELDS = {
     "workspaceLease",
 }
 _OPENING_PREPARE_FIELDS = {
-    "packageId", "noticeNo", "selectedRevision", "workspaceLease",
+    "packageId", "noticeNo", "selectedRevision", "workspaceLease", "openingPhase",
 }
 _OPENING_APPLY_FIELDS = {
     "previewId", "expectedPackageRowVersion", "workspaceLease",
@@ -1280,6 +1280,11 @@ def _prepare_opening_blocking(request, payload):
             "PROCUREMENT_REVISION_INVALID", "Phiên bản TBMT không hợp lệ.", 400
         )
     raw_repository = ProcurementRawSnapshotRepository(database=database)
+    opening_phase = payload.get("openingPhase")
+    if opening_phase not in (None, "FINANCIAL"):
+        raise ProcurementRouteError(
+            "PROCUREMENT_CODE_INVALID", "Loại biên bản mở thầu không hợp lệ.", 400,
+        )
     opening = _load_opening_from_raw_snapshot(
         source,
         raw_repository,
@@ -1289,9 +1294,13 @@ def _prepare_opening_blocking(request, payload):
         max_age_seconds=(
             ProcurementLookupSettings.from_environ().raw_cache_ttl_seconds
         ),
+        require_financial=opening_phase == "FINANCIAL",
     )
     if opening is None:
-        opening = source.get_opening_bundle(notice_no, selected["revisionId"])
+        opening = source.get_opening_bundle(
+            notice_no, selected["revisionId"],
+            **({"opening_phase": opening_phase} if opening_phase else {}),
+        )
         captured_bundle = opening.pop("rawBundle", None)
         if isinstance(captured_bundle, dict):
             raw_repository.save_bundle(organization_id, captured_bundle)

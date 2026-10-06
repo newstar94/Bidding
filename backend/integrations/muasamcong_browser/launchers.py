@@ -173,11 +173,12 @@ class NodeBrowserRuntime:
             revisionId=str(revision_id),
         )
 
-    def get_opening_bundle(self, notice_no, revision_id):
+    def get_opening_bundle(self, notice_no, revision_id, *, opening_phase=None):
         return self._exchange(
             "getOpeningBundle",
             noticeNo=str(notice_no),
             revisionId=str(revision_id),
+            **({"openingPhase": opening_phase} if opening_phase else {}),
         )
 
     def get_result_bundle(self, notice_no, revision_id):

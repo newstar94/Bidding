@@ -10,6 +10,8 @@ import {
 } from "../lotEvaluationScope.js";
 import { mergeScopedAwardLotResults } from "../lotAwardResultScope.js";
 import { selectPackageDetailTab } from "./PackageDetailState.js";
+import { completePackageWorkspaceEdit } from "./PackageWorkspaceState.js";
+import { CANONICAL_SAVE_STATUS, classifyCanonicalSyncResult } from "../../shared/MutationService.js";
 import {
   parseEvaluationMetadataStrict,
   serializeEvaluationMetadata,
@@ -29,6 +31,7 @@ function parseMetadata(value) {
 }
 
 const parseCommandLots = (value) => parseLotListStrict(value, { context: "award_command" });
+const isCommitted = (result) => classifyCanonicalSyncResult(result) === CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED;
 
 function normalizeStoredId(value) {
   if (!value) return "";
@@ -153,6 +156,7 @@ export function shouldFinalizeOfficialResultLifecycle(batch, isEditingOfficialRe
 }
 
 async function showResult(view, pkg, tab) {
+  completePackageWorkspaceEdit(view);
   const packageId = selectPackageDetailTab(view, tab, pkg, view.model);
   await view.showPackageDetails(packageId);
 }
@@ -252,7 +256,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
               contractorRecords: createdContractors,
               packageRecord: pkg,
             });
-            if (!dependencySync?.ok) return { ok: false, kind: "sync_failed" };
+            if (!isCommitted(dependencySync)) return { ok: false, kind: "sync_failed" };
             const lots = parseCommandLots(pkg.phanLoList);
             const lotsById = new Map(lots.map((lot) => [String(lot.id || ""), lot]));
             lifecycle = await ports.finalizeLotBatch({
@@ -315,7 +319,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
             packageRecord: pkg,
             afterPersist: () => view.renderGoiThauTable(),
           });
-          if (!syncResult?.ok) return { ok: false, kind: "sync_failed" };
+          if (!isCommitted(syncResult)) return { ok: false, kind: "sync_failed" };
         }
         view._continueOfficialLotEvaluation = view._continueOfficialLotEvaluation || {};
         view._continueOfficialLotEvaluation[pkg.id] = false;
@@ -354,7 +358,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
           packageRecord: pkg,
           afterPersist: () => view.renderGoiThauTable(),
         });
-        if (!syncResult?.ok) return { ok: false, kind: "sync_failed" };
+        if (!isCommitted(syncResult)) return { ok: false, kind: "sync_failed" };
         await showResult(view, pkg, "cancel");
         await view.customAlert(
           "Không có nhà thầu trúng thầu",
@@ -376,7 +380,7 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
         packageRecord: pkg,
         afterPersist: () => view.renderGoiThauTable(),
       });
-      if (!syncResult?.ok) return { ok: false, kind: "sync_failed" };
+      if (!isCommitted(syncResult)) return { ok: false, kind: "sync_failed" };
       view._editingWholePackageResult = false;
       view._editingWholePackageResultPackageId = "";
       await showResult(view, pkg, "result");

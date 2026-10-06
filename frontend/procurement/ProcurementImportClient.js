@@ -160,6 +160,7 @@ export class ProcurementImportClient {
         noticeNo: request.noticeNo || null,
         selectedRevision: request.selectedRevision || null,
         workspaceLease: request.workspaceLease || null,
+        ...(request.openingPhase ? { openingPhase: request.openingPhase } : {}),
       },
       { signal, retries: 0, timeoutMs: 120_000 },
     );

@@ -1306,6 +1306,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 continue
             key = (contractor_identity, phase)
             security = bid_open_security.setdefault(key, {
+                "discountRate": None,
                 "bidGuarantee": None,
                 "bidValidityDays": None,
                 "bidGuaranteeValidityDays": None,
@@ -1314,6 +1315,9 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
                 "jointVentureMembers": [],
             })
             guarantee = opening_bidder_guarantee(item)
+            discount = pick(item, "saleNumber", "discountRate", "discountPercent")
+            if discount is not None and security["discountRate"] is None:
+                security["discountRate"] = discount
             validity = pick(
                 item, "bidGuaranteeValidity", "bidGuaranteeValidityDays"
             )
@@ -1370,6 +1374,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
         if security is None:
             return None
         return {
+            "discountRate": security.get("discountRate"),
             "bidGuarantee": security.get("bidGuarantee"),
             "bidValidityDays": security.get("bidValidityDays"),
             "bidGuaranteeValidityDays": security.get(
@@ -1406,17 +1411,19 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             remember_opening_time(
                 phase,
                 "completed",
-                pick(item, "successBidOpenDate", "successBidOpenDateTc"),
+                (pick(item, "successBidOpenDateTc") if phase == "FINANCIAL"
+                 else pick(item, "successBidOpenDate")),
             )
             remember_opening_time(
                 phase,
                 "actual",
-                pick(item, "bidRealityOpenDate", "actualOpeningAt"),
+                (pick(item, "bidRealityOpenDate", "actualOpeningAt", "createdDateBidOpen")
+                 if phase == "FINANCIAL" else pick(item, "bidRealityOpenDate", "actualOpeningAt")),
             )
             remember_opening_time(
                 phase,
                 "scheduled",
-                pick(item, "bidOpenDate", "bidOpeningAt"),
+                (None if phase == "FINANCIAL" else pick(item, "bidOpenDate", "bidOpeningAt")),
             )
             if isinstance(item.get("lotNoValueDTOList"), list):
                 lot_rows.extend(item["lotNoValueDTOList"])
@@ -1573,6 +1580,16 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
             bidder["lotName"] = lot_names_by_no.get(str(lot_no))
         security = authoritative_bid_open_security(bidder)
         if security is not None:
+            # A zero summary reduction can confirm an unchanged lot price.
+            # Never distribute a package total or a positive summary rate to lots.
+            if (
+                bidder.get("phase") == "FINANCIAL"
+                and bidder.get("discountRate") is None
+                and str(security.get("discountRate")) in {"0", "0.0"}
+                and bidder.get("bidPrice") is not None
+                and bidder.get("bidPrice") == bidder.get("priceAfterDiscount")
+            ):
+                bidder["discountRate"] = 0
             bidder["bidGuarantee"] = security["bidGuarantee"]
             if security["bidValidityDays"] is not None:
                 bidder["bidValidityDays"] = security["bidValidityDays"]

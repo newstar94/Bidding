@@ -96,7 +96,7 @@ class MuaSamCongProcurementSource:
 
     name = "MUASAMCONG"
     schema_version = "biddingflow-muasamcong-source-v1"
-    parser_version = "2026.10.03.5"
+    parser_version = "2026.10.06.1"
 
     def __init__(
         self,
@@ -518,11 +518,12 @@ class MuaSamCongProcurementSource:
             "symbol": notice.get("symbol"),
         }
 
-    def get_opening_bundle(self, notice_no: str, revision_id: str) -> dict:
+    def get_opening_bundle(self, notice_no: str, revision_id: str, *, opening_phase=None) -> dict:
         notice_no = _canonical_code(notice_no, _NOTICE_PATTERN)
         hint = self._notice_revision_hint(notice_no, revision_id)
         result = self._call(
-            self.runtime.get_opening_bundle, notice_no, str(revision_id)
+            self.runtime.get_opening_bundle, notice_no, str(revision_id),
+            **({"opening_phase": opening_phase} if opening_phase else {}),
         )
         raw = result.get("raw")
         if not isinstance(raw, dict):

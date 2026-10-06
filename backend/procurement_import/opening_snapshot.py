@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 
-def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision):
+def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision, *, require_financial=False):
     """Whether an exact revision has all validated opening evidence."""
 
     revisions = raw_bundle.get("revisions") or {}
@@ -93,6 +93,13 @@ def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision):
             required_operations.update({"OPENING_LOT", "OPENING_LOT_DETAIL"})
     if required_operations and not required_operations.issubset(opening_operations):
         return False
+    if require_financial:
+        financial_operations = {operation for operation, pack in opening_sources if pack == 2}
+        required_financial = {"OPENING_ROUND", "OPENING_BID"}
+        if bool((revision.get("identifiers") or {}).get("isMultiLot")) or financial_operations & {"OPENING_LOT", "OPENING_LOT_DETAIL"}:
+            required_financial.update({"OPENING_LOT", "OPENING_LOT_DETAIL"})
+        if not required_financial.issubset(financial_operations):
+            return False
 
     for failure in raw_bundle.get("failures") or []:
         if isinstance(failure, dict) and str(failure.get("operation") or "").strip().upper().startswith("OPENING"):
@@ -108,6 +115,13 @@ def raw_snapshot_has_complete_opening_sources(raw_bundle, selected_revision):
         notice_no=str((raw_bundle.get("entity") or {}).get("canonicalCode") or ""),
         revision_id=str(revision.get("revisionId") or ""),
     )
+    if require_financial and not any(
+        bidder.get("phase") == "FINANCIAL" and bidder.get("bidPrice") is not None
+        for bidder in opening.get("bidders") or []
+    ):
+        # Empty financial evidence must not suppress a later user retry after
+        # the portal publishes the financial opening for the same revision.
+        return False
     return not opening.get("partial")
 
 
@@ -119,6 +133,7 @@ def load_complete_opening_snapshot(
     selected_revision,
     *,
     max_age_seconds=900,
+    require_financial=False,
 ):
     """Project an exact complete opening snapshot without an upstream call."""
 
@@ -136,7 +151,7 @@ def load_complete_opening_snapshot(
         max_age_seconds=max_age_seconds,
     )
     if not isinstance(raw_bundle, dict) or not raw_snapshot_has_complete_opening_sources(
-        raw_bundle, selected_revision
+        raw_bundle, selected_revision, require_financial=require_financial,
     ):
         return None
     projected = projector(

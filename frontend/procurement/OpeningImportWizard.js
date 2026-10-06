@@ -347,7 +347,18 @@ export async function importFinancialOpeningFromMuasamcong({
   client = new ProcurementImportClient(),
 }) {
   const button = contentWrapper?.querySelector?.("#btn-opening-fin-import-msc");
-  if (!button || button.dataset.loading === "true") return false;
+  const saveButton = contentWrapper?.querySelector?.("#btn-save-opening-fin");
+  if (!button || button.dataset.loading === "true" || saveButton?.disabled) return false;
+  const draftFingerprint = () => JSON.stringify([
+    contentWrapper.querySelector("#op-fin-thoigianmothau")?.value || "",
+    ...Array.from(contentWrapper.querySelectorAll("#opening-fin-table tbody tr"), (row) => [
+      row.dataset.openingBidId,
+      ...[".op-gia-du-thau", ".op-ty-le-giam", ".op-gia-sau-giam", ".op-hieu-luc-hsdt"]
+        .map((selector) => row.querySelector(selector)?.value || ""),
+    ]),
+  ]);
+  const initialDraft = draftFingerprint();
+  if (saveButton) saveButton.disabled = true;
   const originalLabel = button.innerHTML;
   button.dataset.loading = "true";
   button.disabled = true;
@@ -380,6 +391,7 @@ export async function importFinancialOpeningFromMuasamcong({
       packageId: pkg.id,
       noticeNo: possibleNotice,
       workspaceLease: workspaceToken || null,
+      openingPhase: "FINANCIAL",
     });
     assertCurrentWorkspace();
     if (!canApplyOpeningPreview(preview, pkg)) {
@@ -391,22 +403,49 @@ export async function importFinancialOpeningFromMuasamcong({
       workspaceLease: workspaceToken || null,
     });
     assertCurrentWorkspace();
-    const byIdentity = new Map(
-      (applied.opening?.bidders || [])
-        .filter((bidder) => bidder.phase === "FINANCIAL")
-        .map((bidder) => [
-          openingBidKey(bidder.contractorCode, bidder.lotNo),
-          bidder,
-        ]),
-    );
-    contentWrapper.querySelectorAll("#opening-fin-table tbody tr").forEach((row) => {
+    const current = view.model.state.goithau.find((item) => String(item.id) === String(pkg.id));
+    if (applied.package?.id !== current?.id
+      || Number(current?.rowVersion || 1) !== Number(applied.package?.rowVersion)) {
+      throw new Error("PROCUREMENT_PREVIEW_STALE");
+    }
+    if (draftFingerprint() !== initialDraft) throw new Error("FINANCIAL_DRAFT_CHANGED");
+    if (applied.opening?.partial) throw new Error("PROCUREMENT_PARTIAL_DATA");
+    const byIdentity = new Map();
+    for (const bidder of applied.opening?.bidders || []) {
+      if (bidder.phase !== "FINANCIAL") continue;
+      const key = openingBidKey(bidder.contractorCode, bidder.lotNo);
+      if (!bidder.contractorCode || byIdentity.has(key)) throw new Error("FINANCIAL_SOURCE_AMBIGUOUS");
+      for (const field of ["bidPrice", "discountRate", "priceAfterDiscount", "bidValidityDays"]) {
+        if (bidder[field] != null && (bidder[field] === "" || !Number.isFinite(Number(bidder[field]))
+          || Number(bidder[field]) < 0 || (field === "discountRate" && Number(bidder[field]) > 100)
+          || (field === "bidPrice" && Number(bidder[field]) === 0)
+          || (field === "bidValidityDays" && (!Number.isInteger(Number(bidder[field])) || Number(bidder[field]) === 0)))) {
+          throw new Error("PROCUREMENT_SCHEMA_CHANGED");
+        }
+      }
+      byIdentity.set(key, bidder);
+    }
+    const updates = [];
+    const rows = Array.from(contentWrapper.querySelectorAll("#opening-fin-table tbody tr"));
+    rows.forEach((row) => {
       const bid = view.model.state.thongtinmothau.find(
         (item) => String(item.id) === String(row.dataset.openingBidId || ""),
       );
+      if (String(bid?.goiThauId || "") !== String(pkg.id)) return;
       const source = byIdentity.get(
         openingBidKey(bid?.maNhaThau || bid?.maDinhDanh, bid?.maPhanLo),
       );
-      if (!source) return;
+      if (!source || source.bidPrice == null) return;
+      updates.push({ row, source });
+    });
+    if (!updates.length) throw new Error("FINANCIAL_SOURCE_NO_MATCH");
+    const openingTime = contentWrapper.querySelector("#op-fin-thoigianmothau");
+    const financialOpeningAt = financialOpeningTimestamp(applied.opening);
+    const formattedOpeningTime = financialOpeningAt
+      ? view.model.formatForDatetimeLocal(financialOpeningAt) : "";
+    if (financialOpeningAt && !formattedOpeningTime) throw new Error("PROCUREMENT_SCHEMA_CHANGED");
+    // Validate the entire plan before changing any draft control.
+    updates.forEach(({ row, source }) => {
       const price = row.querySelector(".op-gia-du-thau");
       const discount = row.querySelector(".op-ty-le-giam");
       if (
@@ -422,30 +461,45 @@ export async function importFinancialOpeningFromMuasamcong({
         discount.value = String(source.discountRate).replace(".", ",");
       }
       price?.dispatchEvent(new Event("input", { bubbles: true }));
+      const finalPrice = row.querySelector(".op-gia-sau-giam");
+      if (finalPrice && source.priceAfterDiscount != null) {
+        finalPrice.value = view.model.formatVND(source.priceAfterDiscount);
+        finalPrice.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      const validity = row.querySelector(".op-hieu-luc-hsdt");
+      if (validity && source.bidValidityDays != null) {
+        validity.value = `${source.bidValidityDays} ngày`;
+        validity.dispatchEvent(new Event("input", { bubbles: true }));
+      }
     });
-    const openingTime = contentWrapper.querySelector("#op-fin-thoigianmothau");
-    const financialOpeningAt = financialOpeningTimestamp(applied.opening);
     if (openingTime && financialOpeningAt) {
-      openingTime.value = view.model.formatForDatetimeLocal(
-        financialOpeningAt,
-      );
+      openingTime.value = formattedOpeningTime;
+      openingTime._flatpickr?.setDate(openingTime.value, false, "d/m/Y H:i");
       openingTime.dispatchEvent(new Event("change", { bubbles: true }));
     }
+    view.showToast?.("Đã lấy dữ liệu tài chính", `Đã điền ${updates.length}/${rows.length} dòng. Kiểm tra thông tin và bấm Lưu Biên bản mở E-HSĐXTC.`, "success");
     return true;
   } catch (error) {
     if (!isCurrentOperation()) return false;
     if (error?.code === "WORKSPACE_CHANGED" || error?.name === "AbortError") return false;
     const stale = String(error?.message || error).includes("PROCUREMENT_PREVIEW_STALE");
+    const draftChanged = error?.message === "FINANCIAL_DRAFT_CHANGED";
+    const noMatch = error?.message === "FINANCIAL_SOURCE_NO_MATCH";
     await view.customAlert(
       stale ? "Preview đã cũ" : "Không thể lấy dữ liệu tài chính",
       stale
         ? "Gói thầu đã thay đổi. Hãy lấy lại preview."
-        : "Không thể lấy biên bản mở E-HSĐXTC tự động.",
+        : draftChanged
+          ? "Bạn đã thay đổi nội dung trong khi lấy dữ liệu. Nội dung đang nhập được giữ lại; hãy lấy lại khi hoàn tất chỉnh sửa."
+          : noMatch
+            ? "Nguồn chưa có dữ liệu tài chính khớp mã nhà thầu và phần lô trong danh sách này. Nội dung đang nhập được giữ lại."
+            : "Không thể lấy biên bản mở E-HSĐXTC tự động. Nội dung đang nhập được giữ lại; hãy kiểm tra nguồn và thử lại.",
       "alert-triangle",
     );
     return false;
   } finally {
     if (isCurrentOperation()) {
+      if (saveButton && contentWrapper.querySelector("#btn-save-opening-fin") === saveButton) saveButton.disabled = false;
       openingButtonOperations.delete(button);
       delete button.dataset.loading;
       button.disabled = false;

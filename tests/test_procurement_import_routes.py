@@ -2315,6 +2315,38 @@ def test_opening_import_authorizes_the_canonical_package_module(monkeypatch):
     assert state["authorized_modules"] == ["goithau"]
 
 
+def test_financial_opening_prepare_requires_phase_cache_and_fetches_financial_sources(monkeypatch):
+    state = _install_opening_http_harness(monkeypatch)
+    calls = []
+
+    class FinancialSource(_OpeningSource):
+        def get_opening_bundle(self, notice_no, revision_id, *, opening_phase=None):
+            calls.append((notice_no, revision_id, opening_phase))
+            return {"bidders": [{"phase": "FINANCIAL", "contractorCode": "vn1", "bidPrice": 100}],
+                    "financialOpeningAt": "2026-10-06T12:00:00", "partial": False}
+
+    def cache(*_args, **options):
+        assert options["require_financial"] is True
+        return None
+
+    monkeypatch.setattr(routes_module, "build_procurement_source", FinancialSource)
+    monkeypatch.setattr(routes_module, "_load_opening_from_raw_snapshot", cache)
+    with TestClient(Starlette(routes=procurement_import_routes(Route))) as client:
+        response = client.post("/api/procurement/imports/opening/prepare", json={
+            "packageId": "package-1", "workspaceLease": "workspace-1", "openingPhase": "FINANCIAL",
+        })
+        assert response.status_code == 200
+        preview = response.json()
+        applied = client.post("/api/procurement/imports/opening/apply", json={
+            "previewId": preview["previewId"], "workspaceLease": "workspace-1",
+            "expectedPackageRowVersion": preview["package"]["rowVersion"],
+        })
+    assert applied.status_code == 200
+    assert applied.json()["opening"]["bidders"][0]["phase"] == "FINANCIAL"
+    assert calls == [("IB2600000002", "notice-01", "FINANCIAL")]
+    assert state["authorized_modules"] == ["goithau", "goithau"]
+
+
 def test_opening_prepare_and_apply_use_server_preview_and_reject_stale_package(
     monkeypatch,
 ):

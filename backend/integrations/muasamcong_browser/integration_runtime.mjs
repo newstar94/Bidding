@@ -74,9 +74,9 @@ export class MscIntegrationRuntime {
     return this.collectors.getNoticeRevision(noticeNo, revisionId);
   }
 
-  async getOpeningBundle(noticeNo, revisionId) {
+  async getOpeningBundle(noticeNo, revisionId, options = {}) {
     this._ready();
-    return this.collectors.getOpeningBundle(noticeNo, revisionId);
+    return this.collectors.getOpeningBundle(noticeNo, revisionId, options);
   }
 
   async getResultBundle(noticeNo, revisionId) {

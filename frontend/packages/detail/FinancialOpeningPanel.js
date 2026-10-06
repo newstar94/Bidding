@@ -179,7 +179,9 @@ export function collectFinancialOpeningRows(rows, { parseVND } = {}) {
       id: row.getAttribute("data-opening-bid-id"),
       giaDuThau,
       tyLeGiamGia,
-      giaSauGiamGia: giaDuThau * (1 - tyLeGiamGia / 100),
+      giaSauGiamGia: row.querySelector(".op-gia-sau-giam")?.value
+        ? parseVND(row.querySelector(".op-gia-sau-giam").value)
+        : giaDuThau * (1 - tyLeGiamGia / 100),
       hieuLucHsdt: validityInput ? Number.parseInt(validityInput.value, 10) || 0 : null
     };
   });
@@ -319,6 +321,7 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
     const saveButton = contentWrapper.querySelector("#btn-save-opening-fin");
     if (saveButton) {
       saveButton.onclick = async () => {
+        if (saveButton.disabled || contentWrapper.querySelector("#btn-opening-fin-import-msc")?.dataset.loading === "true") return;
         const timeInput = contentWrapper.querySelector("#op-fin-thoigianmothau");
         const openingTime = timeInput?.value
           ? view.model.convertDMYHMSToYMDHMS(timeInput.value)

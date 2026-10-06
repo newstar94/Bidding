@@ -1,0 +1,116 @@
+{
+  "request": {
+    "notifyNo": "IB2600512536",
+    "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+    "type": "TBMT",
+    "packType": 2,
+    "viewType": 0
+  },
+  "sourceRequests": {
+    "opening_notify_2": {
+      "notifyNo": "IB2600512536",
+      "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+      "type": "TBMT",
+      "packType": 2,
+      "viewType": 0
+    },
+    "opening_round_2": {
+      "notifyNo": "IB2600512536",
+      "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+      "type": "TBMT",
+      "packType": 2,
+      "viewType": 0
+    },
+    "opening_bid_2": {
+      "notifyNo": "IB2600512536",
+      "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+      "type": "TBMT",
+      "packType": 2,
+      "viewType": 0
+    },
+    "opening_lot_detail_2": {
+      "notifyNo": "IB2600512536",
+      "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+      "type": "TBMT",
+      "packType": 2,
+      "viewType": 0
+    },
+    "opening_lot_2": {
+      "notifyNo": "IB2600512536",
+      "notifyId": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+      "type": "TBMT",
+      "packType": 2,
+      "viewType": 0
+    }
+  },
+  "raw": {
+    "opening_notify_2": {
+      "bidoBidroundMngViewDTO": null,
+      "bidSubmissionByContractorViewResponse": null
+    },
+    "opening_round_2": {
+      "bidoBidroundMngViewDTO": {
+        "id": "3fa80284-4446-4cba-9b6e-7ee1df222323",
+        "notifyNo": "IB2600512536",
+        "bidNo": "BP2600725730",
+        "bidMode": "1_HTHS",
+        "bidCloseDate": "2026-09-17T08:00:00",
+        "bidOpenDate": "2026-09-17T08:00:00",
+        "bidPrice": 4377357000,
+        "processApply": "LDT",
+        "bidStatus": "OPEN_DXTC",
+        "successBidOpenDate": "2026-09-17T08:28:31",
+        "successBidOpenDateTc": "2026-09-29T08:45:34",
+        "isMultiLot": false,
+        "packType": 1,
+        "bidSubmissionByContractorViewResponse": null
+      },
+      "bidSubmissionByContractorViewResponse": null
+    },
+    "opening_bid_2": {
+      "bidoBidroundMngViewDTO": null,
+      "bidSubmissionByContractorViewResponse": {
+        "bidSubmissionDTOList": [
+          {
+            "id": "6cc251a9-c882-4d26-835a-8a33891e6844",
+            "contractorCode": "vn0101272842",
+            "contractorName": "TRUNG TÂM KINH TẾ VÀ QUY HOẠCH THUỶ SẢN",
+            "bidValidityNum": 90,
+            "bidGuarantee": null,
+            "bidGuaranteeValidity": null,
+            "lotNoValueDTOList": null,
+            "bidPrice": 4374840000,
+            "saleNumber": 0.0,
+            "bidFinalPrice": 4374840000,
+            "contractPeriodDT": 27,
+            "contractPeriodDTUnit": "M",
+            "ventureCode": null,
+            "ventureName": null,
+            "techScore": 97.05,
+            "techResult": 1,
+            "totalGuaranteeValue": null,
+            "createdDateBidOpen": "2026-09-29T08:45:33.346"
+          }
+        ],
+        "bidoLotOpenDetailDTOS": null
+      }
+    },
+    "opening_lot_detail_2": [],
+    "opening_lot_2": [
+      {
+        "lotNo": "BP2600725730",
+        "lotName": "Điều tra đánh giá nghề cá thương phẩm hàng năm trên địa bàn thành phố Quảng Ninh giai đoạn 2026 - 2028",
+        "lotPrice": 4374840000,
+        "saleNumber": 0.0,
+        "lotFinalPrice": 4374840000,
+        "bidGuaranteeEff": null,
+        "contractPeriodDT": null,
+        "contractPeriodDTUnit": null,
+        "bidNo": null,
+        "bidOpenView": [],
+        "contractorCode": "vn0101272842",
+        "contractorName": "TRUNG TÂM KINH TẾ VÀ QUY HOẠCH THUỶ SẢN"
+      }
+    ]
+  }
+}

@@ -23,3 +23,36 @@ def test_opening_contract_registry_keeps_distinct_semantic_authorities():
 def test_opening_snapshot_seam_preserves_route_compatibility_aliases():
     assert routes._load_opening_from_raw_snapshot is load_complete_opening_snapshot
     assert routes._raw_snapshot_has_complete_opening_sources is raw_snapshot_has_complete_opening_sources
+
+
+def test_financial_snapshot_requires_financial_evidence_for_the_same_revision():
+    revision = {"revisionId": "rev", "revisionNumber": "01", "sources": {
+        "opening_round_1": {"operation": "OPENING_ROUND", "success": True,
+                            "response": {"bidStatus": "OPEN_DXTC"}},
+        "opening_bid_1": {"operation": "OPENING_BID", "success": True,
+                          "response": {"bidSubmissionByContractorViewResponse": {"bidSubmissionDTOList": []}}},
+    }}
+    bundle = {"revisions": {"01": revision}}
+    selected = {"revisionId": "rev", "revisionNumber": "01"}
+    assert raw_snapshot_has_complete_opening_sources(bundle, selected)
+    assert not raw_snapshot_has_complete_opening_sources(bundle, selected, require_financial=True)
+    revision["sources"].update({key.replace("_1", "_2"): value.copy()
+                                for key, value in list(revision["sources"].items())})
+    assert not raw_snapshot_has_complete_opening_sources(bundle, selected, require_financial=True)
+    revision["sources"]["opening_bid_2"]["response"] = {
+        "bidSubmissionByContractorViewResponse": {"bidSubmissionDTOList": [{
+            "contractorCode": "vn1", "contractorName": "Bidder", "bidPrice": 100,
+        }]},
+    }
+    assert raw_snapshot_has_complete_opening_sources(bundle, selected, require_financial=True)
+    revision["identifiers"] = {"isMultiLot": True}
+    assert not raw_snapshot_has_complete_opening_sources(bundle, selected, require_financial=True)
+    for pack in (1, 2):
+        for operation in ("OPENING_LOT", "OPENING_LOT_DETAIL"):
+            revision["sources"][f"{operation.lower()}_{pack}"] = {
+                "operation": operation, "success": True, "response": [],
+            }
+    assert raw_snapshot_has_complete_opening_sources(bundle, selected, require_financial=True)
+    assert not raw_snapshot_has_complete_opening_sources(
+        bundle, {**selected, "revisionId": "different"}, require_financial=True,
+    )
