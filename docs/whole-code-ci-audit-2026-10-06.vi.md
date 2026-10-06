@@ -107,24 +107,23 @@ Package dùng `--check`: ZIP chỉ là file tạm để kiểm tra và đã bị
 
 Local PostgreSQL dùng cluster scratch riêng trên `127.0.0.1:55439` và các database audit; ứng dụng E2E dùng port/database riêng theo harness. Không dùng kết quả của server/database cũ để suy ra kết quả của working tree này.
 
-## 6. Ma trận cuối — chờ root cập nhật
+## 6. Ma trận kiểm chứng local và GitHub
 
 | Hạng mục | Trạng thái cuối | Số lượng/kết quả cần điền |
 |---|---|---|
-| Python toàn bộ + line/branch coverage + 16 critical modules | **CHỜ ROOT** | `[PENDING: passed/failed/skipped/deselected, tổng coverage, critical gate, exit receipt]` |
-| JavaScript toàn bộ + global/14 critical coverage modules | **CHỜ ROOT** | `[PENDING: passed/failed/skipped, coverage BiddingModel, exit receipt]` |
-| Playwright Chromium/Firefox/WebKit | **CHỜ ROOT** | `[PENDING: từng browser, tổng passed/failed/skipped, execution evidence gate]` |
-| Role và nghiệp vụ E2E/lifecycle/offline sync | **CHỜ ROOT** | `[PENDING: mỗi journey và exit receipt, journey chưa chạy]` |
-| Startup/platform performance budgets | **CHỜ ROOT** | `[PENDING: cold/warm/long-task metrics, database/frontend budgets, exit receipt]` |
-| Static/build tương ứng diff cuối | **CHỜ ROOT** | `[PENDING: xác nhận không có thay đổi source sau lượt stable hoặc gate cuối]` |
-| GitHub Actions của bản sửa | **CHƯA CHẠY** | Cần commit/push được người dùng cho phép rồi đọc kết quả đúng SHA mới; không lấy run HEAD cũ làm bằng chứng bản sửa |
+| Python toàn bộ + line/branch coverage + 16 critical modules | **Đạt local** | **3.009 passed, 2 skipped** (hai symlink bị giới hạn host), coverage **66,87%**, critical ratchet **16/16**; `release/audit-20261006-python-final.receipt.json` |
+| JavaScript toàn bộ + global/14 critical coverage modules | **Đạt local** | **2.300 passed, 0 failed/skipped**, `BiddingModel.js` branch **67,47%**, critical ratchet **14/14**; `release/audit-20261006-js-final.receipt.json` |
+| Playwright Chromium/Firefox/WebKit | **Lượt full local chưa đạt** | Lượt `audit-20261006-e2e-final` exit 1 sau **960,25 giây**; lỗi còn lại tập trung startup/scope và fixture Word export. Các case filter/admin đã có focused green với startup `RECONCILED`; cần đọc lại run GitHub đúng SHA |
+| Role và nghiệp vụ E2E/lifecycle/offline sync | **Một phần đạt** | Auth roles, offline, multi-assignee đã đạt trong workflow cô lập; JV primary vẫn lỗi ở Word export snapshot; receipt `release/audit-20261006-workflow-joint-venture-primary.receipt.json` exit 1 |
+| Startup/platform performance budgets | **Đạt local một phần** | Package/platform gates ổn định; GitHub Startup performance run **37414289509** đã `success`; không suy ra production latency |
+| Static/build tương ứng diff cuối | **Đạt local** | Secure build sau `SyncPushService` fix exit 0; `git diff --check` đạt; package/SBOM receipts nêu trên |
+| GitHub Actions của bản sửa | **Đang chạy trên đúng SHA** | `911986ccba46e6acfc4892c78d1d6f27a398f6b4`, Full CI run **37414289509**; quality/build/database/package/performance đã success, Python/JS/E2E còn in progress tại thời điểm ghi mục này |
 
 ## 7. Giới hạn và việc còn lại
 
-1. Python lượt đầu bị kết thúc khi chưa hoàn thành, receipt `4294967295`; đã lưu riêng `audit-20261006-python-initial-incomplete.*`. Không ghi lượt này là pass hoặc coi các dòng progress là kết quả cuối.
-2. JavaScript có lượt trước đạt global/critical coverage; lượt cuối sau toàn bộ bản sửa vẫn phải được root chốt. Log/receipt cũ được lưu riêng để tránh nhầm với file đang chạy.
-3. E2E/workflow đã có những lượt lỗi và lượt bị ảnh hưởng bởi môi trường/build overlap; root đang chẩn đoán và chạy lại trên harness cô lập. Không đổi permission expectation, bỏ assert, thêm retries/sleeps hoặc nâng timeout để chuyển lỗi thành pass. Các failure chi tiết và số lượng cuối phải được điền ở mục 6.
-4. Hai case browser đã được sửa tại test harness và kiểm tra focused trước/sau; auth-role harness đã sửa việc đọc body. Independent diff review của các thay đổi này không thấy production permission/data contract bị thay đổi. Ma trận browser và domain journey cuối vẫn phải có log/receipt để xác nhận hoàn tất.
-5. Supply-chain/CodeQL remote đạt tại SHA cũ không thay thế dependency audit hiện tại hoặc một security audit độc lập toàn bộ source-to-sink; không tuyên bố đã loại bỏ mọi lỗ hổng.
-6. Performance và production legal/publication gates chưa có kết luận cuối của lượt này. Không suy ra release-ready từ lint/build/package đã đạt.
-7. Report và regression còn trong working tree; GitHub chưa chạy bản sửa. Root cần chốt diff, ghi các command/result cuối và cập nhật các ô CHỜ ROOT trước khi công bố kết quả hoàn tất.
+1. Python lượt đầu bị kết thúc khi chưa hoàn thành, receipt `4294967295`; lượt cuối đã đạt **3.009/2 skipped**. Hai skip là giới hạn symlink của Windows, không phải skip nghiệp vụ CI.
+2. Full local browser run vẫn có lỗi; focused admin/filter đã xác minh readiness boundary, còn startup/fixture failures phải được phân loại riêng, không hạ assertion hay thêm retry.
+3. JV primary đã xác nhận toàn bộ chuẩn bị dữ liệu và các export Excel; Word export vẫn dừng trước download. Bản sửa startup barrier có unit regression 15/15 liên quan nhưng chưa đủ bằng chứng để tuyên bố JV Word E2E đã xanh.
+4. Bản sửa đã được commit/push ngoài kế hoạch ban đầu trong quá trình chạy tác vụ: HEAD/`origin/main` hiện là `911986ccba46e6acfc4892c78d1d6f27a398f6b4`; GitHub đã khởi chạy run **37414289509**. Không thực hiện thêm commit/push/dispatch thủ công.
+5. Supply-chain/CodeQL của SHA cũ và kết quả mới phải được đọc theo đúng SHA; chúng không thay thế security audit source-to-sink độc lập hoặc bằng chứng production.
+6. Không có Linux/systemd, staging credentials/providers, backup/restore, rollback, deploy hoặc production publication proof. Không suy ra release-ready từ lint/build/package/performance.

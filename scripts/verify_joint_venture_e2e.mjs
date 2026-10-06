@@ -1,7 +1,6 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
@@ -1146,23 +1145,6 @@ try {
     `#word-publication-package-select option[value="${packageData.id}"]`,
   ).waitFor({ state: "attached", timeout: 20_000 });
   await select(page, "#word-publication-package-select", { value: packageData.id });
-  await page.evaluate(() => {
-    const app = globalThis.app;
-    globalThis.__bfAuditExportSync = [];
-    for (const methodName of ["autoSync", "forceSyncData"]) {
-      const original = app[methodName];
-      app[methodName] = async function (...args) {
-        const before = this.getStartupReconciliationState?.().phase;
-        const startupPending = Boolean(this._startupReconciliationPromise);
-        const result = await original.apply(this, args);
-        globalThis.__bfAuditExportSync.push({ methodName, before, startupPending,
-          after: this.getStartupReconciliationState?.().phase,
-          result: { ...result, data: result?.data ? { syncVersion: result.data.syncVersion,
-            partial: result.data.partial, code: result.data.code } : null } });
-        return result;
-      };
-    }
-  });
   const wordExportButton = page.locator(
     '[data-word-publication-export="award_result_appraisal_report"]',
   );
@@ -1190,14 +1172,7 @@ try {
     new Promise((resolveOutcome) => setTimeout(() => resolveOutcome(null), 31_000)),
   ]);
   if (!wordOutcome || wordOutcome.type !== "download") {
-    const auditSync = await page.evaluate(() => globalThis.__bfAuditExportSync || []);
-    await fs.writeFile(
-      "release/audit-20261006-jv-export-sync.json",
-      JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync }, null, 2),
-      "utf8",
-    );
-    console.error("[JV-E2E] Word export diagnostics", JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync }));
-    throw new Error(`Word export failed: ${JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync })}`);
+    throw new Error(`Word export failed: ${JSON.stringify({ wordOutcome, httpErrors, pageErrors })}`);
   }
   const wordDownload = wordOutcome.download;
   await wordDownload.saveAs(wordExportPath);
