@@ -4228,6 +4228,8 @@ html[data-bf-shell="landing"] body {
   margin: 2.25rem auto 0;
 }
 
+.landing-pricing-controls[hidden] { display: none; }
+
 .landing-pricing-tabs,
 .landing-pricing-periods {
   display: inline-flex;
@@ -4239,7 +4241,8 @@ html[data-bf-shell="landing"] body {
   background: rgba(255, 255, 255, 0.72);
 }
 
-.landing-pricing-controls button {
+.landing-pricing-controls button,
+.landing-pricing-periods button {
   min-height: 2.5rem;
   padding: 0.55rem 1rem;
   border: 0;
@@ -4252,56 +4255,59 @@ html[data-bf-shell="landing"] body {
   cursor: pointer;
 }
 
-.landing-pricing-controls button.is-active {
+.landing-pricing-controls button.is-active,
+.landing-pricing-periods button.is-active {
   color: var(--landing-literal-white);
   background: var(--landing-cobalt-950);
 }
 
-.landing-pricing-controls button:disabled {
+.landing-pricing-controls button:disabled,
+.landing-pricing-periods button:disabled {
   color: #9aa7ba;
   cursor: not-allowed;
   opacity: 0.72;
 }
 
-.landing-pricing-controls button:focus-visible {
+.landing-pricing-controls button:focus-visible,
+.landing-pricing-periods button:focus-visible {
   outline: 3px solid rgba(49, 91, 232, 0.3);
   outline-offset: 2px;
 }
 
-.landing-pricing-period-note {
-  max-width: 56rem;
-  margin: 0.7rem auto 0;
+.landing-pricing-card-note {
+  padding: 0 1.75rem 1rem;
   color: var(--landing-muted);
   font-size: 0.78rem;
-  text-align: right;
 }
 
-.landing-pricing-period-note[hidden] {
-  display: none;
-}
+.landing-pricing-controls { justify-content: center; }
+.landing-commercial-tier-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; }
+.landing-commercial-tier-head .landing-pricing-periods { grid-column: 1 / -1; justify-self: center; max-width: 100%; }
+.landing-commercial-tier-head .landing-pricing-periods button { padding-inline: 0.7rem; font-size: 0.73rem; white-space: nowrap; }
 
-.landing-commercial-grid-by-tier {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.landing-commercial-groups { display: grid; gap: 2rem; margin-top: 2rem; }
+.landing-commercial-audience { min-width: 0; }
+.landing-commercial-audience-title { margin: 0 0 1rem; color: var(--landing-cobalt-950); font-size: 1.1rem; }
+.landing-commercial-audience-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.landing-commercial-audience[data-pricing-audience="account"] .landing-commercial-audience-grid {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 34rem;
 }
-
-.landing-commercial-grid-by-tier .landing-commercial-options {
-  display: flex;
-}
-
-.landing-commercial-grid-by-tier .landing-commercial-option {
+.landing-commercial-empty { margin: 0; color: var(--landing-muted); }
+.landing-commercial-groups .landing-commercial-option {
   min-height: 19rem;
 }
 
-.landing-commercial-grid-by-tier .landing-commercial-option-label {
+.landing-commercial-groups .landing-commercial-option-label {
   text-transform: none;
 }
 
-.landing-commercial-grid-by-tier .landing-commercial-tier-head small {
+.landing-commercial-tier-head small {
   color: var(--landing-muted);
 }
 
 @media (max-width: 1100px) {
-  .landing-commercial-grid-by-tier {
+  .landing-commercial-audience-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -4317,17 +4323,15 @@ html[data-bf-shell="landing"] body {
     justify-content: center;
   }
 
-  .landing-pricing-period-note {
-    text-align: center;
-  }
 }
 
 @media (max-width: 560px) {
-  .landing-commercial-grid-by-tier {
+  .landing-commercial-audience-grid {
     grid-template-columns: 1fr;
   }
 
-  .landing-pricing-controls button {
+  .landing-pricing-controls button,
+  .landing-pricing-periods button {
     flex: 1;
     padding-inline: 0.75rem;
   }

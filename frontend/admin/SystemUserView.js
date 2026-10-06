@@ -174,7 +174,7 @@ export function updateActiveUserProfileDisplay() {
   const clientItems = document.querySelectorAll(".role-menu-client");
   saItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none"));
   managerItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none"));
-  clientItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "none" : "block"));
+  clientItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" || item.hidden ? "none" : "block"));
   this.applySecurityLockOverlay();
   this.populateNhanVienPhuTrachDropdowns();
 }

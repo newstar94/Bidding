@@ -468,14 +468,16 @@ class BillingActivationService:
         if snapshot.get("itemType") == "procurement_credit_pack":
             return self._apply_credit_pack(order, item, benefits)
         policy = snapshot.get("policySnapshot") or {}
-        term = (policy.get("baseTerm") or {}).get("kind")
+        period = (snapshot.get("price") or decision.get("price") or {}).get("period", "yearly")
+        term_policy = policy.get("monthlyBaseTerm" if period == "monthly" else "baseTerm") or {}
+        term = term_policy.get("kind")
         if term in {None, "blocked_decision", "calendar_anniversary"}:
             return self._mark_review(order, "BASE_TERM_DECISION_REQUIRED")
         if not item.get("legacy_package_id"):
             return self._mark_review(order, "PLAN_PACKAGE_MAPPING_MISSING")
         now = int(self.clock())
         if term == "fixed_days":
-            days = int((policy.get("baseTerm") or {}).get("days") or 0)
+            days = int(term_policy.get("days") or 0)
             if days <= 0:
                 return self._mark_review(order, "BASE_TERM_INVALID")
             expires = now + days * 86400

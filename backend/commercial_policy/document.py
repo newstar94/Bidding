@@ -17,7 +17,7 @@ SUPPORTED_TIERS = ("personal", "silver", "gold", "diamond")
 SUPPORTED_VARIANTS = ("internal", "connected")
 SUPPORTED_OWNER_KINDS = ("account", "organization")
 SUPPORTED_SALES_STATES = ("sellable", "stopped", "non_sellable")
-SUPPORTED_PRICE_PERIODS = ("yearly",)
+SUPPORTED_PRICE_PERIODS = ("yearly", "monthly")
 SUPPORTED_PUBLIC_VISIBILITY = ("public", "hidden")
 SUPPORTED_EXPORT_CAPABILITIES = (
     "document.export.word",
@@ -222,15 +222,17 @@ def _minimum_pack_cost(target, packs):
 def connected_savings(document):
     packs = list(document.get("creditPacks") or [])
     by_tier_variant = {
-        (offer.get("tier"), offer.get("variant")): offer
+        (offer.get("tier"), offer.get("variant"), offer.get("price", {}).get("period")): offer
         for offer in document.get("offers") or []
     }
     result = []
     if not packs:
         return result
-    for tier in SUPPORTED_TIERS:
-        internal = by_tier_variant.get((tier, "internal"))
-        connected = by_tier_variant.get((tier, "connected"))
+    for tier, period in (
+        (tier, period) for period in SUPPORTED_PRICE_PERIODS for tier in SUPPORTED_TIERS
+    ):
+        internal = by_tier_variant.get((tier, "internal", period))
+        connected = by_tier_variant.get((tier, "connected", period))
         if not internal or not connected:
             continue
         quota = int(connected.get("includedProcurementQuota") or 0)
@@ -244,6 +246,7 @@ def connected_savings(document):
         )
         result.append({
             "tier": tier,
+            "period": period,
             "internalPlusCredits": equivalent,
             "connected": connected_total,
             "saving": saving,
@@ -294,12 +297,12 @@ def validate_document(document, *, require_production_ready=False):
             errors.append(_error("OFFER_OBJECT_REQUIRED", path, "Mỗi offer phải là một object."))
             continue
         code = str(offer.get("code") or "").strip()
-        pair = (offer.get("tier"), offer.get("variant"))
+        pair = (offer.get("tier"), offer.get("variant"), (offer.get("price") or {}).get("period") if isinstance(offer.get("price"), dict) else None)
         if not code or code in codes:
             errors.append(_error("DUPLICATE_OFFER", f"{path}.code", "Mã offer trống hoặc bị trùng."))
         codes.add(code)
         if pair in pairs or pair[0] not in SUPPORTED_TIERS or pair[1] not in SUPPORTED_VARIANTS:
-            errors.append(_error("OFFER_PAIR_INVALID", path, "Cặp quy mô/biến thể không hợp lệ hoặc bị trùng."))
+            errors.append(_error("OFFER_PAIR_INVALID", path, "Bộ quy mô/biến thể/chu kỳ không hợp lệ hoặc bị trùng."))
         pairs.add(pair)
         if offer.get("ownerKind") not in SUPPORTED_OWNER_KINDS:
             errors.append(_error("OWNER_KIND_INVALID", f"{path}.ownerKind", "Đối tượng sở hữu offer không hợp lệ."))
@@ -359,8 +362,9 @@ def validate_document(document, *, require_production_ready=False):
             or any(not isinstance(value, str) or not value.strip() for value in benefits)
         ):
             errors.append(_error("DISPLAY_BENEFITS_INVALID", f"{path}.display.benefits", "Danh sách lợi ích phải gồm các chuỗi không rỗng."))
-    expected_pairs = {(tier, variant) for tier in SUPPORTED_TIERS for variant in SUPPORTED_VARIANTS}
-    if pairs != expected_pairs:
+    expected_pairs = {(tier, variant, "yearly") for tier in SUPPORTED_TIERS for variant in SUPPORTED_VARIANTS}
+    yearly_pairs = {pair for pair in pairs if pair[2] == "yearly"}
+    if yearly_pairs != expected_pairs:
         errors.append(_error("OFFER_MATRIX_INCOMPLETE", "offers", "Cấu hình bán năm phải có đủ 4 quy mô x 2 biến thể."))
 
     packs = document.get("creditPacks")
@@ -396,6 +400,15 @@ def validate_document(document, *, require_production_ready=False):
         errors.append(_error("BASE_TERM_INVALID", "policies.baseTerm.days", "Kỳ fixed-days cần số ngày nguyên dương."))
     if base_term.get("kind") == "calendar_anniversary":
         errors.append(_error("BLOCKED_DECISION", "policies.baseTerm", "Calendar anniversary cần chốt 29/02 và boundary trước khi publish."))
+    if any(isinstance(offer, dict) and isinstance(offer.get("price"), dict)
+           and offer["price"].get("period") == "monthly" for offer in offers):
+        monthly_term = policies.get("monthlyBaseTerm")
+        if not isinstance(monthly_term, dict) or monthly_term.get("kind") != "fixed_days":
+            errors.append(_error("BLOCKED_DECISION", "policies.monthlyBaseTerm", "Cần cấu hình riêng số ngày hiệu lực cho gói tháng trước khi xuất bản."))
+        elif (not isinstance(monthly_term.get("days"), int)
+              or isinstance(monthly_term.get("days"), bool)
+              or not 1 <= monthly_term["days"] <= 3660):
+            errors.append(_error("BASE_TERM_INVALID", "policies.monthlyBaseTerm.days", "Kỳ tháng cần số ngày nguyên dương đã cấu hình."))
     credit_expiry = policies.get("creditPackExpiry") or {}
     if credit_expiry.get("kind") != "fixed_days" or (
         not isinstance(credit_expiry.get("days"), int)
@@ -428,7 +441,7 @@ def validate_document(document, *, require_production_ready=False):
         savings = connected_savings(document)
         for item in savings:
             if item["savingBasisPoints"] < threshold:
-                errors.append(_error("CONNECTED_ADVANTAGE_TOO_LOW", f"offers.{item['tier']}", "Lợi ích Kết nối thấp hơn ngưỡng đã cấu hình."))
+                errors.append(_error("CONNECTED_ADVANTAGE_TOO_LOW", f"offers.{item['tier']}.{item['period']}", "Lợi ích Kết nối thấp hơn ngưỡng đã cấu hình."))
 
     rollout_mode = (document.get("rollout") or {}).get("mode")
     if rollout_mode not in {"shadow", "pilot", "production"}:

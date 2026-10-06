@@ -55,7 +55,7 @@ function offer(code, ownerKind, name) {
   };
 }
 
-async function renderScenario(catalog, activeuser = { id: "user-1" }) {
+async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect) {
   let billingRequests = 0;
   const billingPaths = [];
   const server = createServer(async (request, response) => {
@@ -102,6 +102,7 @@ async function renderScenario(catalog, activeuser = { id: "user-1" }) {
       const module = await import("/frontend/commercial-policy/CommercialStorefront.js");
       await module.mountCommercialStorefront({ model: { state: { activeuser: actor } } });
     }, activeuser);
+    if (inspect) await inspect(page);
     return {
       billingRequests,
       billingPaths,
@@ -114,6 +115,7 @@ async function renderScenario(catalog, activeuser = { id: "user-1" }) {
     };
   } finally {
     await page?.close();
+    server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 }
@@ -149,5 +151,39 @@ test("storefront filters by authoritative owner and preserves response presentat
   assert.match(result.offersText, /\/ chu kỳ riêng/u);
   assert.match(result.offersText, /Lợi ích tùy chỉnh/u);
   assert.doesNotMatch(result.offersText, /Không dành cho tài khoản|Nội bộ|Kết nối/u);
+  assert.deepEqual(result.errors, []);
+});
+
+test("storefront group and period switches keep the workspace owner and selected checkout SKU", async () => {
+  const offers = ["account", "organization"].flatMap((ownerKind) => ["internal", "connected"].flatMap((variant) => ["yearly", "monthly"].map((period) => ({
+    ...offer(`${ownerKind}.${variant}.${period}`, ownerKind, `Tên ${ownerKind}`), variant,
+    price: { period, currency: "VND", subtotal: period === "monthly" ? 123456 : 987654, tax: 0, total: period === "monthly" ? 123456 : 987654 },
+  }))));
+  const result = await renderScenario({ releaseId: "matrix", releaseChecksum: "matrix", offers, creditPacks: [{ code: "procurement.20", quantity: 20, price: 99000 }], quotaWarnings: [] },
+    { id: "user-1", activeOrganizationId: "org-1" }, async (page) => {
+      await page.locator('[data-storefront-group="advanced"]').click();
+      await page.locator('[data-storefront-period="monthly"]').click();
+      const cards = page.locator("[data-commercial-offer-code]");
+      assert.equal(await cards.count(), 1);
+      assert.equal(await cards.first().getAttribute("data-commercial-offer-code"), "organization.connected.monthly");
+      assert.equal(await cards.locator("button.storefront-buy").getAttribute("data-sku"), "organization.connected.monthly");
+      assert.match(await cards.textContent(), /123\.456/u);
+      assert.doesNotMatch(await cards.textContent(), /987\.654/u);
+      assert.equal(await page.locator('[data-operation="credit_pack"]').count(), 1);
+      assert.equal(await page.locator('[data-storefront-period="monthly"]').getAttribute("aria-pressed"), "true");
+      await page.evaluate(() => { document.cookie = "csrf_token=storefront-test-token; path=/"; });
+      let quoteRequest;
+      await page.route("**/api/billing/quotes", async (route) => {
+        quoteRequest = route.request().postDataJSON();
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ publicId: "quote-fixture" }) });
+      });
+      await page.route("**/api/billing/checkouts", async (route) => {
+        await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ code: "FIXTURE_STOP", error: "Stop before payment" }) });
+      });
+      await cards.locator("button.storefront-buy").click();
+      await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("FIXTURE_STOP"));
+      assert.deepEqual(quoteRequest, { ownerKind: "organization", ownerId: "org-1", operation: "purchase", skuCode: "organization.connected.monthly" });
+    });
+  assert.deepEqual(result.cardCodes, ["organization.connected.monthly"]);
   assert.deepEqual(result.errors, []);
 });

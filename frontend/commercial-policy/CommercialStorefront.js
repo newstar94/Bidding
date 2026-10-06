@@ -7,6 +7,7 @@ import {
   presentCommercialOffer,
   visibleOffersForOwner,
 } from "./PublicCommercialCatalog.js";
+import { COMMERCIAL_GROUPS, selectCommercialOffers } from "./CommercialOfferSelection.js";
 
 const STYLE_URL = new URL("./CommercialStorefront.css", import.meta.url).pathname;
 const TERMINAL_ACTIVATIONS = new Set(["applied", "review_required", "reversed"]);
@@ -14,6 +15,7 @@ const state = {
   availability: "available",
   offers: [], creditPacks: [], quotaWarnings: [70, 90, 100],
   balance: null, orders: [], loading: false, polling: null, commercialReleaseId: "",
+  group: "basic", periods: {},
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const money = (value) => formatCommercialMoney(value, "VND");
@@ -52,7 +54,8 @@ function renderOffers(controller) {
   const emptyState = state.availability === "off"
     ? `<div class="commercial-empty"><strong>Cửa hàng chưa mở bán.</strong><p>Bảng giá mới sẽ xuất hiện tại đây sau khi chính sách thương mại được phê duyệt và phát hành.</p></div>`
     : `<div class="commercial-empty"><strong>Chưa có gói phù hợp.</strong><p>Catalog hiện hành chưa công bố gói bán cho không gian làm việc này.</p></div>`;
-  const cards = state.offers.map((offer) => {
+  const selection = selectCommercialOffers(state.offers, state);
+  const card = (offer, selectedCard = null) => {
     const presented = presentCommercialOffer(offer);
     const badge = presented.badge
       ? `<span class="commercial-badge" data-tone="${presented.recommended ? "success" : "neutral"}">${escapeHtml(presented.badge)}</span>`
@@ -60,12 +63,38 @@ function renderOffers(controller) {
     const variantLabel = presented.variantLabel ? `<span>${escapeHtml(presented.variantLabel)}</span>` : "";
     const description = presented.description ? `<p>${escapeHtml(presented.description)}</p>` : "";
     const benefits = presented.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("");
-    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button></article>`;
-  }).join("");
+    const cardId = selectedCard ? `storefront-offer-${encodeURIComponent(selectedCard.key)}` : "";
+    const periods = selectedCard ? `<div class="commercial-storefront__card-periods" role="group" aria-label="Chu kỳ thanh toán ${escapeHtml(presented.name)}">${[["monthly", "Hàng tháng"], ["yearly", "Hàng năm"]].map(([period, label]) => `<button type="button" data-storefront-period="${period}" data-storefront-card-key="${escapeHtml(selectedCard.key)}" aria-controls="${cardId}" aria-pressed="${period === selectedCard.period}"${selectedCard.periods.includes(period) ? "" : ' disabled aria-disabled="true"'}>${label}</button>`).join("")}</div>` : "";
+    const note = selectedCard && !selectedCard.periods.includes("monthly") ? '<small class="commercial-storefront__period-note">Giá hàng tháng chưa được công bố.</small>' : "";
+    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"${selectedCard ? ` id="${cardId}" data-pricing-card="${escapeHtml(selectedCard.key)}"` : ""}><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${periods}${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button>${note}</article>`;
+  };
+  const groupControls = selection.grouped
+    ? `<div class="commercial-storefront__pricing-controls"><div role="group" aria-label="Nhóm gói dịch vụ">${Object.entries(COMMERCIAL_GROUPS).map(([group, item]) => `<button type="button" data-storefront-group="${group}" aria-controls="storefront-price-list" aria-pressed="${group === state.group}">${item.label}</button>`).join("")}</div></div>`
+    : "";
+  const audience = (label, offers, kind) => offers.length
+    ? `<section class="commercial-storefront__audience" data-pricing-audience="${kind}"><h3>${label}</h3><div class="commercial-storefront__grid">${offers.map((item) => item.offer ? card(item.offer, item) : card(item)).join("")}</div></section>` : "";
+  const offerContent = selection.grouped
+    ? `${audience("Cá nhân", selection.personal, "account")}${audience("Tổ chức", selection.organization, "organization")}${selection.selected.length ? "" : `<p class="commercial-empty">Chưa có gói ${COMMERCIAL_GROUPS[state.group].label} đang bán.</p>`}${audience("Các gói khác", selection.additional, "other")}`
+    : `<div class="commercial-storefront__grid">${selection.additional.map((item) => card(item)).join("")}</div>`;
   const packs = state.creditPacks.length
     ? `<div class="commercial-storefront__packs"><h3>Mua thêm lượt lấy hồ sơ Mua Sắm Công</h3>${state.creditPacks.map((pack) => `<article><div><strong>${Number(pack.quantity || 0).toLocaleString("vi-VN")} lượt</strong><span>${money(pack.price)}</span></div><button type="button" class="btn btn-outline storefront-buy" data-operation="credit_pack" data-sku="${escapeHtml(pack.code)}">Mua thêm</button><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(pack.code)}" role="alert"></p></article>`).join("")}</div>`
     : "";
-  root.innerHTML = trustedHTML(state.offers.length ? `<div class="commercial-storefront__grid">${cards}</div>${packs}` : emptyState);
+  root.innerHTML = trustedHTML(state.offers.length ? `${groupControls}<div id="storefront-price-list" aria-live="polite">${offerContent}</div>${packs}` : emptyState);
+  root.querySelectorAll("[data-storefront-group], [data-storefront-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      if (button.dataset.storefrontGroup) state.group = button.dataset.storefrontGroup;
+      const cardKey = button.dataset.storefrontCardKey;
+      if (cardKey && button.dataset.storefrontPeriod) state.periods[cardKey] = button.dataset.storefrontPeriod;
+      const selector = button.dataset.storefrontGroup
+        ? `[data-storefront-group="${state.group}"]` : null;
+      const period = button.dataset.storefrontPeriod;
+      renderOffers(controller);
+      const target = selector ? root.querySelector(selector)
+        : [...root.querySelectorAll("[data-storefront-period]")].find((node) => node.dataset.storefrontCardKey === cardKey && node.dataset.storefrontPeriod === period);
+      target?.focus({ preventScroll: true });
+    });
+  });
   root.querySelectorAll(".storefront-buy").forEach((button) => button.addEventListener("click", () => {
     sendCommercialEvent("pricing.offer_selected", { skuCode: button.dataset.sku });
     void startCheckout(button.dataset.sku, controller, button.dataset.operation, button);

@@ -70,6 +70,8 @@ def _insert_base_plan_order(
     item_type="base_plan",
     create_order=True,
     actor_user_id=None,
+    period="yearly",
+    monthly_term=None,
 ):
     token = uuid.uuid4().hex
     actor = cursor.execute(
@@ -142,13 +144,14 @@ def _insert_base_plan_order(
         """INSERT INTO billing_prices
                (id, release_id, sku_id, period, subtotal_amount,
                 tax_amount, total_amount, effective_at)
-           VALUES (?, ?, ?, 'yearly', 100000, 0, 100000, ?)""",
-        (price_id, release_id, sku_id, now - 100),
+           VALUES (?, ?, ?, ?, 100000, 0, 100000, ?)""",
+        (price_id, release_id, sku_id, period, now - 100),
     )
     decision_payload = {
             "itemType": item_type,
             "skuCode": f"test-sku-{token}",
             "releaseChecksum": release_checksum,
+            "price": {"period": period},
             "benefits": (
                 {
                     "procurementCredits": 25,
@@ -159,6 +162,8 @@ def _insert_base_plan_order(
             ),
             "policySnapshot": {"baseTerm": {"kind": "fixed_days", "days": 30}},
         }
+    if monthly_term is not None:
+        decision_payload["policySnapshot"]["monthlyBaseTerm"] = monthly_term
     decision = json.dumps(
         decision_payload,
         ensure_ascii=False,
@@ -373,6 +378,33 @@ def test_verified_base_plan_activation_is_exactly_once(billing_cursor):
         (order["user_id"],),
     ).fetchone()
     assert tuple(subscription) == ("order", order["order_id"])
+
+
+@pytest.mark.parametrize("owner_kind", ["account", "organization"])
+def test_monthly_plan_uses_its_configured_duration_and_grant_expiry(billing_cursor, owner_kind):
+    order = _insert_base_plan_order(billing_cursor, owner_kind=owner_kind, period="monthly",
+                                    monthly_term={"kind": "fixed_days", "days": 31})
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    result = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    assert result["status"] == "applied"
+    if owner_kind == "account":
+        row = billing_cursor.execute("SELECT expires_at FROM account_subscriptions WHERE user_id = ?", (order["user_id"],)).fetchone()
+    else:
+        row = billing_cursor.execute("SELECT expires_at FROM organization_subscriptions WHERE organization_id = ?", (order["organization_id"],)).fetchone()
+    expected_expiry = order["now"] + 31 * 86400
+    assert row[0] == expected_expiry
+    grant = billing_cursor.execute("SELECT expires_at FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()
+    assert grant[0] == expected_expiry
+    replay = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    assert replay["status"] == "applied"
+
+
+def test_monthly_plan_missing_term_never_falls_back_to_annual_duration(billing_cursor):
+    order = _insert_base_plan_order(billing_cursor, period="monthly")
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    result = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    assert result["status"] == "review_required"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM account_subscriptions WHERE source_order_id = ?", (order["order_id"],)).fetchone()[0] == 0
 
 
 def test_provider_transaction_cannot_activate_two_orders(billing_cursor):

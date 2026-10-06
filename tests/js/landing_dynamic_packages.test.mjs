@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
+import AxeBuilder from "@axe-core/playwright";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const template = await readFile(join(root, "views/components/landing_page.html"), "utf8");
@@ -71,7 +72,7 @@ function commercialOffer(code, name, overrides = {}) {
   };
 }
 
-async function renderScenario({ commercial, legacy = { status: 200, payload: { packages: [compatibilityPackage] } } }) {
+async function renderScenario({ commercial, legacy = { status: 200, payload: { packages: [compatibilityPackage] } }, inspect }) {
   const requests = { commercial: 0, legacy: 0 };
   const server = createServer(async (request, response) => {
     try {
@@ -96,7 +97,7 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
         writeJson(response, legacy.status, legacy.payload);
         return;
       }
-      const relativePath = pathname.startsWith("/assets/")
+      const relativePath = pathname.startsWith("/assets/") || pathname.startsWith("/vendor/")
         ? join("views", pathname.replace(/^\//u, ""))
         : pathname.replace(/^\//u, "");
       const payload = await readFile(join(root, relativePath));
@@ -110,8 +111,10 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
   let page;
+  let context;
   try {
-    page = await browser.newPage();
+    context = await browser.newContext();
+    page = await context.newPage();
     const errors = [];
     page.on("console", (message) => {
       if (message.type() === "error") errors.push(`console: ${message.location().url} ${message.text()}`);
@@ -132,7 +135,9 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
       const pricingGrid = document.getElementById("landing-pricing-grid");
       return pricingGrid && !pricingGrid.hasAttribute("aria-busy");
     });
+    const inspection = inspect ? await inspect(page) : null;
     return {
+      inspection,
       requests,
       cardCount: await page.locator(".landing-price-card, .landing-commercial-tier").count(),
       compatibilityCardCount: await page.locator("[data-package-id='fixture-plan']").count(),
@@ -145,7 +150,8 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
       errors,
     };
   } finally {
-    await page?.close();
+    await context?.close();
+    server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 }
@@ -278,4 +284,106 @@ test("commercial renderer supports any published offer count without creating pl
     assert.deepEqual(result.commercialCardCodes, offers.map((offer) => offer.code));
     assert.equal(result.compatibilityCardCount, 0);
   }
+});
+
+function pricingMatrix(periods = ["yearly", "monthly"]) {
+  return periods.flatMap((period) => ["internal", "connected"].flatMap((variant) => (
+    ["personal", "silver", "gold", "diamond"].map((tier, index) => commercialOffer(
+      `${tier}.${variant}.${period}`, `Tên ${tier} do Admin đặt`, {
+        tier, variant, ownerKind: tier === "personal" ? "account" : "organization",
+        includedProcurementQuota: variant === "internal" ? 0 : 20,
+        memberQuota: [1, 5, 15, 50][index],
+        price: { period, currency: "VND", subtotal: period === "monthly" ? 123456 : 987654, tax: 0, total: period === "monthly" ? 123456 : 987654 },
+        display: { name: `Tên ${tier} do Admin đặt`, benefits: [] },
+      },
+    ))
+  )));
+}
+
+const pricingCatalog = (offers) => ({ status: 200, payload: {
+  releaseId: "matrix", releaseChecksum: "matrix-checksum", offers, creditPacks: [], quotaWarnings: [],
+} });
+
+test("each pricing card selects its own period without changing other cards", async () => {
+  const result = await renderScenario({
+    commercial: pricingCatalog(pricingMatrix()),
+    inspect: async (page) => {
+      const codes = () => page.locator("[data-commercial-offer-code]").evaluateAll((nodes) => nodes.map((node) => node.dataset.commercialOfferCode));
+      assert.deepEqual(await codes(), ["personal", "silver", "gold", "diamond"].map((tier) => `${tier}.internal.yearly`));
+      assert.equal(await page.locator('[data-pricing-audience="account"] article').count(), 1);
+      assert.equal(await page.locator('[data-pricing-audience="organization"] article').count(), 3);
+      assert.equal(await page.locator('.landing-pricing-controls [data-pricing-period]').count(), 0);
+      assert.equal(await page.locator('article [data-pricing-period="monthly"]').count(), 4);
+      assert.doesNotMatch(await page.locator("#landing-pricing-grid").textContent(), /lượt lấy hồ sơ Mua Sắm Công/u);
+      await page.locator('[data-pricing-group="advanced"]').focus();
+      await page.keyboard.press("Enter");
+      assert.deepEqual(await codes(), ["personal", "silver", "gold", "diamond"].map((tier) => `${tier}.connected.yearly`));
+      assert.match(await page.locator("#landing-pricing-grid").textContent(), /20 lượt lấy hồ sơ Mua Sắm Công/u);
+      await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
+      assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.yearly", "gold.connected.yearly", "diamond.connected.yearly"]);
+      const personal = page.locator('[data-pricing-audience="account"] article');
+      assert.match(await personal.textContent(), /123\.456/u);
+      assert.doesNotMatch(await personal.textContent(), /987\.654/u);
+      assert.equal(await personal.locator('[data-pricing-period="monthly"]').getAttribute("aria-pressed"), "true");
+      await page.locator('[data-commercial-offer-code="silver.connected.yearly"] [data-pricing-period="monthly"]').click();
+      assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.monthly", "gold.connected.yearly", "diamond.connected.yearly"]);
+      assert.match(await page.locator("#landing-pricing-grid").textContent(), /Tên personal do Admin đặt/u);
+      assert.equal(new URL(await page.locator(".landing-commercial-option a").first().getAttribute("href"), page.url()).pathname, "/dang-nhap");
+      await page.addStyleTag({ url: "/views/css/tokens.css" });
+      await page.addStyleTag({ url: "/views/css/variables.css" });
+      await page.addStyleTag({ url: "/views/css/base.css" });
+      await page.addStyleTag({ url: "/views/css/landing.css" });
+      for (const width of [320, 375, 414, 768, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+        assert.ok(dimensions.scroll <= dimensions.client + 1, `Grouped pricing overflow at ${width}: ${JSON.stringify(dimensions)}`);
+      }
+      const accessibility = await new AxeBuilder({ page }).include("#bang-gia").analyze();
+      assert.deepEqual(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact))
+        .map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) })), []);
+      await page.setViewportSize({ width: 1440, height: 1100 });
+      await page.locator("#bang-gia").screenshot({ path: `artifacts/pricing-card-periods-${process.pid}-desktop.png`, style: ".landing-header, .landing-skip-link { visibility: hidden; }" });
+      await page.setViewportSize({ width: 375, height: 900 });
+      await page.locator("#bang-gia").screenshot({ path: `artifacts/pricing-card-periods-${process.pid}-mobile.png`, style: ".landing-header, .landing-skip-link { visibility: hidden; }" });
+    },
+  });
+  assert.deepEqual(result.requests, { commercial: 1, legacy: 0 });
+  assert.deepEqual(result.errors, []);
+});
+
+test("year-only catalogs disable monthly per group and unavailable groups never retain old cards", async () => {
+  const offers = pricingMatrix(["yearly"]).filter((item) => item.variant === "internal");
+  offers.push(commercialOffer("custom.once", "Gói riêng", { price: { period: "one_time", currency: "VND", total: 789 } }));
+  const result = await renderScenario({
+    commercial: pricingCatalog(offers),
+    inspect: async (page) => {
+      assert.equal(await page.locator('[data-pricing-period="monthly"]').count(), 4);
+      assert.equal(await page.locator('[data-pricing-period="monthly"]:disabled').count(), 4);
+      await page.locator('[data-pricing-group="advanced"]').click();
+      assert.equal(await page.locator('[data-commercial-group="basic"]').count(), 0);
+      assert.match(await page.locator("#landing-pricing-grid").textContent(), /Chưa có gói Nâng cao đang bán/u);
+      assert.equal(await page.locator('[data-commercial-offer-code="custom.once"]').count(), 1);
+      await page.locator('[data-pricing-group="basic"]').click();
+      assert.equal(await page.locator('[data-commercial-group="basic"]').count(), 4);
+    },
+  });
+  assert.deepEqual(result.errors, []);
+});
+
+test("monthly availability is independent for each card and selections survive group changes", async () => {
+  const offers = pricingMatrix().filter((item) => item.price.period === "yearly" || (item.variant === "connected" && item.tier === "personal"));
+  await renderScenario({
+    commercial: pricingCatalog(offers),
+    inspect: async (page) => {
+      assert.equal(await page.locator('[data-pricing-period="monthly"]:disabled').count(), 4);
+      await page.locator('[data-pricing-group="advanced"]').click();
+      assert.equal(await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').isDisabled(), false);
+      assert.equal(await page.locator('[data-pricing-audience="organization"] [data-pricing-period="monthly"]:disabled').count(), 3);
+      await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
+      await page.locator('[data-pricing-group="basic"]').click();
+      assert.equal(await page.locator('[data-commercial-offer-code$="internal.yearly"]').count(), 4);
+      await page.locator('[data-pricing-group="advanced"]').click();
+      assert.equal(await page.locator('[data-commercial-offer-code="personal.connected.monthly"]').count(), 1);
+    },
+  });
 });

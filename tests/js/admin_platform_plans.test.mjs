@@ -2,12 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  addMonthlyOffer,
   catalogMarkup,
   draftEditorMarkup,
   plansMarkup,
   requestPlanActionInput,
   serializeDraftDocument,
 } from "../../frontend/admin-platform/AdminPlans.js";
+
+test("Admin adds a monthly candidate without inventing prices or mutating annual offers and rights", () => {
+  const source = { offers: [{
+    code: "gold.connected.yearly", tier: "gold", variant: "connected", ownerKind: "organization",
+    price: { period: "yearly", currency: "VND", subtotal: 12000000, tax: 0, total: 12000000 },
+    memberQuota: 15, includedProcurementQuota: 7000, violationCheckEnabled: true,
+    exportCapabilities: { "document.export.word": true }, salesState: "sellable",
+    display: { name: "Tên từ Admin", benefits: ["Quota cũ"], periodLabel: "/ năm" },
+  }], policies: { baseTerm: { kind: "fixed_days", days: 365 } } };
+  const before = JSON.stringify(source);
+  const result = addMonthlyOffer(source, 0);
+  assert.equal(JSON.stringify(source), before);
+  assert.deepEqual(result.offers[0], source.offers[0]);
+  const month = result.offers[1];
+  assert.equal(month.code, "gold.connected.monthly");
+  assert.equal(month.price.period, "monthly");
+  assert.equal(month.price.total, null);
+  assert.equal(month.price.tax, null);
+  assert.equal(month.includedProcurementQuota, null);
+  assert.equal(month.salesState, "non_sellable");
+  assert.equal(month.display.periodLabel, undefined);
+  assert.deepEqual(month.exportCapabilities, source.offers[0].exportCapabilities);
+  assert.equal(month.memberQuota, 15);
+  assert.equal(month.violationCheckEnabled, true);
+  assert.deepEqual(result.policies.baseTerm, source.policies.baseTerm);
+  assert.equal(result.policies.monthlyBaseTerm.kind, "blocked_decision");
+  assert.throws(() => addMonthlyOffer(result, 0), /đã có cấu hình/u);
+});
 
 test("plan mutations use the shared accessible dialog and preserve required reasons", async () => {
   const requests = [];
@@ -55,6 +84,27 @@ function draftRoot(advanced, offerValues) {
     },
   };
 }
+
+test("monthly duration entered in Admin survives serialization without changing annual policy", () => {
+  const policies = {
+    baseTerm: { kind: "fixed_days", days: 365 },
+    monthlyBaseTerm: { kind: "blocked_decision", reason: "pending" },
+    creditPackExpiry: { kind: "fixed_days", days: 90 },
+  };
+  const root = draftRoot({ policies }, []);
+  const querySelector = root.querySelector;
+  const monthlyDays = field("28");
+  root.querySelector = (selector) => selector === "#admin-monthly-term-days"
+    ? monthlyDays : querySelector(selector);
+  const result = serializeDraftDocument(root, { offers: [], policies });
+  assert.equal(result.policies.monthlyBaseTerm.kind, "fixed_days");
+  assert.equal(result.policies.monthlyBaseTerm.days, 28);
+  assert.deepEqual(result.policies.baseTerm, policies.baseTerm);
+  assert.deepEqual(result.policies.creditPackExpiry, policies.creditPackExpiry);
+  assert.equal(policies.monthlyBaseTerm.kind, "blocked_decision");
+  monthlyDays.value = "";
+  assert.throws(() => serializeDraftDocument(root, { offers: [] }), /phải là số nguyên/u);
+});
 
 test("plans catalog renders authoritative offers prices benefits and entitlement values", () => {
   const markup = catalogMarkup({
@@ -133,7 +183,7 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, /bf-admin-workflow-guide/u);
   assert.match(markup, /2[.] Phiên bản và xuất bản/u);
   assert.match(markup, /3[.] Mô hình quyền lợi/u);
-  assert.match(markup, /Giá theo tháng[\s\S]*N\/A/u);
+  assert.match(markup, /Giá theo tháng<\/th><td><span[^>]*>Được hỗ trợ<\/span>/u);
   assert.match(markup, /Hạn mức lưu trữ[\s\S]*N\/A/u);
   assert.doesNotMatch(markup, /do-not-render|hidden-document|never-render/u);
 });

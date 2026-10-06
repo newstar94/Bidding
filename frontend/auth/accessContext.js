@@ -1,6 +1,16 @@
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 
 const ACTIVE_ORG_KEY = "bf_active_org";
+
+export function applyWordNavigationPresentation(workspace, documentRef = globalThis.document) {
+  const isFree = String(workspace?.subscription?.package_id || "").toLowerCase() === "free";
+  documentRef?.querySelectorAll?.("[data-word-navigation]").forEach((node) => {
+    node.hidden = isFree;
+    node.inert = isFree;
+    setRuntimeStyle(node, "display", isFree ? "none" : "");
+  });
+}
 
 export function normalizeOrganizations(payload = {}) {
   if (Array.isArray(payload.organizations)) {
@@ -120,6 +130,7 @@ export function applyAccessContext(target, payload = {}, storage = null) {
   target.awardResultExcelExportEnabled = Boolean(
     target.entitlements.award_result_excel_export,
   );
+  applyWordNavigationPresentation(selected);
   const wordNavigation = globalThis.document?.getElementById?.("btn-tab-bieumau");
   if (wordNavigation) {
     wordNavigation.disabled = !target.wordExportEnabled;

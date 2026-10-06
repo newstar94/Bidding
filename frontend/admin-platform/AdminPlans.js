@@ -65,7 +65,7 @@ function releaseHistoryMarkup(releases) {
 }
 
 function planModelMarkup() {
-  return `<section class="card mt-3" aria-labelledby="admin-plan-model-title"><div class="card-header"><div><h3 class="card-title" id="admin-plan-model-title">Khả năng cấu hình gói hiện hành</h3><p class="text-secondary small mb-0">Chỉ những trường được commercial policy hiện tại xác thực mới có thể chỉnh sửa.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody><tr><th scope="row">Giá theo năm</th><td><span class="badge bg-success-lt">Được hỗ trợ</span></td></tr><tr><th scope="row">Giá theo tháng</th><td>N/A · policy hiện tại chỉ hỗ trợ chu kỳ năm</td></tr><tr><th scope="row">Số ngày dùng thử</th><td>N/A · chưa có hợp đồng thương mại</td></tr><tr><th scope="row">Hạn mức lưu trữ</th><td>N/A · chưa có nguồn dữ liệu có thẩm quyền</td></tr><tr><th scope="row">Hạn mức tài liệu</th><td>N/A · hiện chỉ có quyền xuất tài liệu, không có quota</td></tr></tbody></table></div></section>`;
+  return `<section class="card mt-3" aria-labelledby="admin-plan-model-title"><div class="card-header"><div><h3 class="card-title" id="admin-plan-model-title">Khả năng cấu hình gói hiện hành</h3><p class="text-secondary small mb-0">Chỉ những trường được commercial policy hiện tại xác thực mới có thể chỉnh sửa.</p></div></div><div class="table-responsive"><table class="table table-vcenter card-table bf-admin-operation-table"><tbody><tr><th scope="row">Giá theo năm</th><td><span class="badge bg-success-lt">Được hỗ trợ</span></td></tr><tr><th scope="row">Giá theo tháng</th><td><span class="badge bg-success-lt">Được hỗ trợ</span> · nhập giá và kỳ hạn trong bản nháp</td></tr><tr><th scope="row">Số ngày dùng thử</th><td>N/A · chưa có hợp đồng thương mại</td></tr><tr><th scope="row">Hạn mức lưu trữ</th><td>N/A · chưa có nguồn dữ liệu có thẩm quyền</td></tr><tr><th scope="row">Hạn mức tài liệu</th><td>N/A · hiện chỉ có quyền xuất tài liệu, không có quota</td></tr></tbody></table></div></section>`;
 }
 
 const CAPABILITY_LABELS = Object.freeze({
@@ -163,6 +163,37 @@ function cloneJson(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+export function addMonthlyOffer(documentValue, sourceIndex) {
+  const next = cloneJson(documentValue);
+  const source = next?.offers?.[sourceIndex];
+  if (!source || source.price?.period !== "yearly") throw new TypeError("Chọn gói năm để thêm giá tháng.");
+  if (next.offers.some((offer) => offer.tier === source.tier && offer.variant === source.variant && offer.price?.period === "monthly")) {
+    throw new TypeError("Gói này đã có cấu hình giá tháng.");
+  }
+  const monthly = cloneJson(source);
+  monthly.code = `${source.tier}.${source.variant}.monthly`;
+  if (next.offers.some((offer) => offer.code === monthly.code)) throw new TypeError("Mã gói tháng đã tồn tại.");
+  monthly.price = { ...monthly.price, period: "monthly", subtotal: null, tax: null, total: null };
+  monthly.includedProcurementQuota = source.variant === "internal" ? 0 : null;
+  monthly.salesState = "non_sellable";
+  monthly.display = { ...monthly.display, benefits: [] };
+  delete monthly.display.periodLabel;
+  next.offers.push(monthly);
+  next.policies ||= {};
+  next.policies.monthlyBaseTerm ||= { kind: "blocked_decision", reason: "Chưa cấu hình số ngày hiệu lực gói tháng." };
+  return next;
+}
+
+function monthlyConfigurationMarkup(documentValue) {
+  const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
+  const candidates = offers.map((offer, index) => ({ offer, index })).filter(({ offer }) => offer.price?.period === "yearly"
+    && !offers.some((item) => item.tier === offer.tier && item.variant === offer.variant && item.price?.period === "monthly"));
+  const buttons = candidates.map(({ offer, index }) => `<button type="button" class="btn btn-outline-primary btn-sm" data-admin-plan-action="add-monthly" data-source-offer-index="${index}">Thêm giá tháng: ${text(offer.display?.name, offer.code)} · ${offer.variant === "internal" ? "Cơ bản" : "Nâng cao"}</button>`).join("");
+  const hasMonthly = offers.some((offer) => offer.price?.period === "monthly");
+  const term = documentValue.policies?.monthlyBaseTerm;
+  return `<section class="bf-admin-editor-group" aria-labelledby="admin-monthly-pricing-title"><h5 id="admin-monthly-pricing-title">Cấu hình giá hàng tháng</h5><p class="text-secondary small">Thêm gói tháng khi cần, nhập giá, thuế và lượt Mua Sắm Công. Gói mới chưa được bán cho đến khi bạn bật trạng thái bán, lưu, kiểm tra và xuất bản.</p><div class="d-flex flex-wrap gap-2 mb-3">${buttons}</div>${hasMonthly ? `<label class="form-label" for="admin-monthly-term-days">Số ngày hiệu lực một kỳ tháng</label><input class="form-control" id="admin-monthly-term-days" type="number" min="1" max="3660" value="${text(term?.kind === "fixed_days" ? term.days : "", "")}"><p class="text-secondary small mt-2">Nhập số ngày theo chính sách bạn quyết định; giá tháng không được suy ra từ giá năm.</p>` : ""}</section>`;
+}
+
 function parseIntegerField(field, label, { optional = false } = {}) {
   const raw = String(field?.value ?? "").trim();
   if (optional && raw === "") return undefined;
@@ -196,6 +227,15 @@ export function serializeDraftDocument(root, originalDocument) {
     throw error;
   }
   delete advanced.offers;
+  const monthlyDays = root.querySelector?.("#admin-monthly-term-days");
+  if (monthlyDays) {
+    advanced.policies ||= {};
+    advanced.policies.monthlyBaseTerm = {
+      ...advanced.policies.monthlyBaseTerm,
+      kind: "fixed_days",
+      days: parseIntegerField(monthlyDays, "Số ngày hiệu lực gói tháng"),
+    };
+  }
   const originalOffers = Array.isArray(originalDocument?.offers) ? originalDocument.offers : [];
   const editors = [...(root.querySelectorAll?.("[data-admin-offer-editor]") || [])];
   if (editors.length !== originalOffers.length) throw new TypeError("Danh sách gói không khớp tài liệu gốc.");
@@ -240,7 +280,7 @@ export function draftEditorMarkup(draft, validation = null) {
   const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
   const advanced = cloneJson(documentValue) || {};
   delete advanced.offers;
-  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại</div><h3 class="card-title mb-1">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Lần sửa ${text(draft.revision)} · thay đổi chưa có hiệu lực cho đến khi xuất bản.</p></div><span class="badge bg-warning-lt">Đang chỉnh sửa</span></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div class="bf-admin-editor-intro"><div><h4 class="mb-1">Các gói đăng ký</h4><p class="text-secondary small mb-0">Chỉnh các trường theo từng nhóm. Trường chỉ đọc được giữ nguyên theo chính sách hiện hành.</p></div><span class="text-secondary small">${offers.length} gói</span></div>${offers.map(offerEditorMarkup).join("")}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống nếu muốn áp dụng ngay sau khi xuất bản.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
+  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại</div><h3 class="card-title mb-1">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Lần sửa ${text(draft.revision)} · thay đổi chưa có hiệu lực cho đến khi xuất bản.</p></div><span class="badge bg-warning-lt">Đang chỉnh sửa</span></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div class="bf-admin-editor-intro"><div><h4 class="mb-1">Các gói đăng ký</h4><p class="text-secondary small mb-0">Chỉnh các trường theo từng nhóm. Trường chỉ đọc được giữ nguyên theo chính sách hiện hành.</p></div><span class="text-secondary small">${offers.length} gói</span></div>${monthlyConfigurationMarkup(documentValue)}${offers.map(offerEditorMarkup).join("")}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống nếu muốn áp dụng ngay sau khi xuất bản.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
 }
 
 export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
@@ -371,7 +411,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   };
   const readDocument = () => {
     try {
-      const documentValue = serializeDraftDocument(container, draft?.document);
+      const documentValue = serializeDraftDocument(container, workingDocument || draft?.document);
       container.querySelectorAll?.(".is-invalid").forEach((field) => field.classList.remove("is-invalid"));
       return documentValue;
     } catch (error) {
@@ -420,6 +460,19 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (!draft) return;
+        if (action === "add-monthly") {
+          const documentValue = readDocument();
+          if (!documentValue) return;
+          try {
+            workingDocument = addMonthlyOffer(documentValue, Number(button.dataset.sourceOfferIndex));
+            validation = null;
+            dirty = true;
+            render();
+            container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach((node) => { node.disabled = true; });
+            setStatus(container, "Đã thêm gói tháng vào bản nháp. Nhập đầy đủ giá, thuế, hạn mức và số ngày hiệu lực trước khi lưu.");
+          } catch (error) { setStatus(container, error.message, "danger"); }
+          return;
+        }
         if (action === "save") {
           const documentValue = readDocument();
           if (!documentValue) return;
@@ -464,7 +517,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         }
       });
     });
-    container.querySelectorAll?.("[data-admin-offer-field], #admin-plan-advanced-document").forEach((field) => {
+    container.querySelectorAll?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days").forEach((field) => {
       const markDirty = () => {
         dirty = true;
         validation = null;

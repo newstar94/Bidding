@@ -128,6 +128,53 @@ def test_offer_price_rejects_noncanonical_period_and_currency(field, value, expe
     )
 
 
+def test_monthly_offers_are_optional_distinct_and_require_their_own_term_policy():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    annual = deepcopy(document["offers"])
+    monthly = deepcopy(annual[2])
+    monthly["code"] = "silver.internal.monthly"
+    monthly["price"] = {"period": "monthly", "currency": "VND", "subtotal": 123456, "tax": 0, "total": 123456}
+    document["offers"].append(monthly)
+    result = validate_document(document)
+    assert not any(error["code"] in {"OFFER_PAIR_INVALID", "OFFER_MATRIX_INCOMPLETE", "PRICE_PERIOD_INVALID"} for error in result["errors"])
+    assert any(error["path"] == "policies.monthlyBaseTerm" for error in result["errors"])
+    document["policies"]["monthlyBaseTerm"] = {"kind": "fixed_days", "days": 31}
+    result = validate_document(document)
+    assert not any(error["path"].startswith("policies.monthlyBaseTerm") for error in result["errors"])
+    assert document["offers"][:8] == annual
+    document["offers"].append(deepcopy(monthly))
+    assert any(error["code"] == "OFFER_PAIR_INVALID" for error in validate_document(document)["errors"])
+
+
+def test_monthly_prices_do_not_overwrite_annual_savings():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    annual_savings = connected_savings(document)
+    for original in document["offers"][2:4]:
+        monthly = deepcopy(original)
+        monthly["code"] = monthly["code"].replace("yearly", "monthly")
+        monthly["price"]["period"] = "monthly"
+        monthly["price"]["total"] = 100000 if monthly["variant"] == "internal" else 110000
+        monthly["price"]["subtotal"] = monthly["price"]["total"]
+        monthly["includedProcurementQuota"] = 0 if monthly["variant"] == "internal" else 20
+        document["offers"].append(monthly)
+    savings = connected_savings(document)
+    assert [item for item in savings if item["period"] == "yearly"] == annual_savings
+    month = next(item for item in savings if item["period"] == "monthly")
+    assert month["internalPlusCredits"] == 199000
+    assert month["connected"] == 110000
+
+
+@pytest.mark.parametrize("days", [0, -1, True, 30.5, 3661, None])
+def test_monthly_term_rejects_invalid_explicit_duration(days):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    monthly = deepcopy(document["offers"][2])
+    monthly["code"] = "silver.internal.monthly"
+    monthly["price"]["period"] = "monthly"
+    document["offers"].append(monthly)
+    document["policies"]["monthlyBaseTerm"] = {"kind": "fixed_days", "days": days}
+    assert any(error["path"] == "policies.monthlyBaseTerm.days" for error in validate_document(document)["errors"])
+
+
 @pytest.mark.parametrize(
     ("field", "value", "expected_code"),
     [
