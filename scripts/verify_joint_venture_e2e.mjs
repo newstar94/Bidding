@@ -1,6 +1,7 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { createE2ETestClock } from "./e2e_test_clock.mjs";
@@ -1190,6 +1191,12 @@ try {
   ]);
   if (!wordOutcome || wordOutcome.type !== "download") {
     const auditSync = await page.evaluate(() => globalThis.__bfAuditExportSync || []);
+    await fs.writeFile(
+      "release/audit-20261006-jv-export-sync.json",
+      JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync }, null, 2),
+      "utf8",
+    );
+    console.error("[JV-E2E] Word export diagnostics", JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync }));
     throw new Error(`Word export failed: ${JSON.stringify({ wordOutcome, httpErrors, pageErrors, auditSync })}`);
   }
   const wordDownload = wordOutcome.download;
