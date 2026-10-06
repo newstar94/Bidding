@@ -117,13 +117,13 @@ Local PostgreSQL dùng cluster scratch riêng trên `127.0.0.1:55439` và các d
 | Role và nghiệp vụ E2E/lifecycle/offline sync | **Một phần đạt** | Auth roles, offline, multi-assignee đã đạt trong workflow cô lập; JV primary vẫn lỗi ở Word export snapshot; receipt `release/audit-20261006-workflow-joint-venture-primary.receipt.json` exit 1 |
 | Startup/platform performance budgets | **Đạt local một phần** | Package/platform gates ổn định; GitHub Startup performance run **37414289509** đã `success`; không suy ra production latency |
 | Static/build tương ứng diff cuối | **Đạt local** | Secure build sau `SyncPushService` fix exit 0; `git diff --check` đạt; package/SBOM receipts nêu trên |
-| GitHub Actions của bản sửa | **Đang chạy trên đúng SHA** | `911986ccba46e6acfc4892c78d1d6f27a398f6b4`, Full CI run **37414289509**; quality/build/database/package/performance đã success, Python/JS/E2E còn in progress tại thời điểm ghi mục này |
+| GitHub Actions của bản sửa | **Full CI chưa xanh** | SHA `69b20b2ee1430451b136c700a3afe9a11bacfc8a`, Full CI run **37415789368**: quality/build/database/package/performance/Python/JavaScript success; Cross-browser matrix success; Full role/workflow E2E thất bại một case Chromium startup-sync (409 bị bắt nhưng UI đã ở `server-saved` thay vì `conflict`). N+1 **37415789306** success, Supply-chain **37415789237** success; CodeQL **37415789238** đang/đã hoàn tất theo API tại thời điểm đọc |
 
 ## 7. Giới hạn và việc còn lại
 
 1. Python lượt đầu bị kết thúc khi chưa hoàn thành, receipt `4294967295`; lượt cuối đã đạt **3.009/2 skipped**. Hai skip là giới hạn symlink của Windows, không phải skip nghiệp vụ CI.
 2. Full local browser run vẫn có lỗi; focused admin/filter đã xác minh readiness boundary, còn startup/fixture failures phải được phân loại riêng, không hạ assertion hay thêm retry.
 3. JV primary đã xác nhận toàn bộ chuẩn bị dữ liệu và các export Excel; Word export vẫn dừng trước download. Bản sửa startup barrier có unit regression 15/15 liên quan nhưng chưa đủ bằng chứng để tuyên bố JV Word E2E đã xanh.
-4. Bản sửa đã được commit/push ngoài kế hoạch ban đầu trong quá trình chạy tác vụ: HEAD/`origin/main` hiện là `911986ccba46e6acfc4892c78d1d6f27a398f6b4`; GitHub đã khởi chạy run **37414289509**. Không thực hiện thêm commit/push/dispatch thủ công.
+4. Bản sửa đã được commit/push ngoài kế hoạch ban đầu trong quá trình chạy tác vụ: HEAD/`origin/main` hiện là `69b20b2ee1430451b136c700a3afe9a11bacfc8a`. Run **37414289509** đã xác nhận lỗi diagnostics instrumentation; commit `69b20b2e` loại bỏ phần đó. Run mới **37415789368** còn một failure startup-sync Chromium như mục 6; chưa tuyên bố Full CI xanh.
 5. Supply-chain/CodeQL của SHA cũ và kết quả mới phải được đọc theo đúng SHA; chúng không thay thế security audit source-to-sink độc lập hoặc bằng chứng production.
 6. Không có Linux/systemd, staging credentials/providers, backup/restore, rollback, deploy hoặc production publication proof. Không suy ra release-ready từ lint/build/package/performance.
