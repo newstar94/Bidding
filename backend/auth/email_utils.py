@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 import hashlib
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import smtplib
 import ssl
 
 from backend.shared.logging_utils import log_structured_event
-from backend.shared.email_templates import EMAIL_BRAND_CONTENT_ID, html_to_plain_text
+from backend.shared.email_templates import BRAND_NAME, EMAIL_BRAND_CONTENT_ID, html_to_plain_text
 
 
 EMAIL_BRAND_ICON_PATH = Path(__file__).resolve().parents[2] / "views" / "assets" / "email-brand-icon.png"
@@ -39,6 +40,7 @@ class SmtpConfiguration:
     security: str
     timeout_seconds: float
     ca_file: str | None
+    sender_name: str = BRAND_NAME
 
 
 def _recipient_hash(value: str) -> str:
@@ -69,6 +71,9 @@ def smtp_configuration_errors(environ=None, *, production=False) -> list[str]:
     sender = str(environ.get("SMTP_SENDER", "")).strip()
     if sender and ("@" not in sender or "\r" in sender or "\n" in sender):
         errors.append("SMTP_SENDER must be a valid single email address")
+    sender_name = str(environ.get("SMTP_SENDER_NAME", "")).strip()
+    if any(char in sender_name for char in ("\r", "\n")):
+        errors.append("SMTP_SENDER_NAME must not contain newline characters")
     ca_file = str(environ.get("SMTP_CA_FILE", "")).strip()
     if ca_file and (not Path(ca_file).is_file()):
         errors.append("SMTP_CA_FILE must point to a readable CA bundle")
@@ -83,6 +88,7 @@ def _load_configuration() -> SmtpConfiguration | None:
     errors = smtp_configuration_errors(os.environ, production=False)
     if errors:
         raise ValueError("; ".join(errors))
+    sender_name = str(os.environ.get("SMTP_SENDER_NAME", "")).strip() or BRAND_NAME
     return SmtpConfiguration(
         host=os.environ.get("SMTP_HOST", "smtp.gmail.com").strip(),
         port=int(os.environ.get("SMTP_PORT", "587")),
@@ -92,6 +98,7 @@ def _load_configuration() -> SmtpConfiguration | None:
         security=os.environ.get("SMTP_SECURITY", "starttls").strip().casefold(),
         timeout_seconds=float(os.environ.get("SMTP_TIMEOUT_SECONDS", "10")),
         ca_file=os.environ.get("SMTP_CA_FILE", "").strip() or None,
+        sender_name=sender_name,
     )
 
 
@@ -139,7 +146,8 @@ def gui_email(email_nhan, tieu_de, noi_dung_html, sensitive_content=False):
         return EmailDeliveryResult(False, "mock", "SMTP_NOT_CONFIGURED")
 
     message = MIMEMultipart("related")
-    message["From"] = configuration.sender
+    sender_name = str(getattr(configuration, "sender_name", "") or BRAND_NAME).strip()
+    message["From"] = formataddr((sender_name, configuration.sender), charset="utf-8")
     message["To"] = recipient
     message["Subject"] = subject
     html_body = str(noi_dung_html)

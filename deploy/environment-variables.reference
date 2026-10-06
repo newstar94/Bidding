@@ -11,6 +11,8 @@ SMTP_PORT=587
 SMTP_USER=REPLACE_WITH_SMTP_USER
 SMTP_PASSWORD=
 SMTP_SENDER=REPLACE_WITH_SMTP_SENDER
+# Optional display name in email From header. Defaults to BiddingFlow when omitted.
+SMTP_SENDER_NAME=BiddingFlow
 SMTP_SECURITY=starttls
 SMTP_TIMEOUT_SECONDS=10
 # Optional private CA bundle for an internal SMTP service. Public providers use

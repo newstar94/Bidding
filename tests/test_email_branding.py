@@ -70,6 +70,7 @@ def test_smtp_message_embeds_brand_icon_as_related_content(monkeypatch):
 
     assert result.accepted is True
     message = captured["message"]
+    assert message["From"] == "BiddingFlow <mailer@example.test>"
     assert message.get_content_type() == "multipart/related"
     inline_images = [
         part
@@ -79,3 +80,17 @@ def test_smtp_message_embeds_brand_icon_as_related_content(monkeypatch):
     assert len(inline_images) == 1
     assert inline_images[0]["Content-ID"] == "<biddingflow-brand-icon>"
     assert inline_images[0].get_filename() == "biddingflow-email-icon.png"
+
+
+def test_smtp_configuration_sender_name_and_crlf_validation(monkeypatch):
+    errors = email_utils.smtp_configuration_errors({
+        "SMTP_SENDER_NAME": "Bad\nName",
+    })
+    assert "SMTP_SENDER_NAME must not contain newline characters" in errors
+
+    monkeypatch.setenv("SMTP_USER", "mailer@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("SMTP_SENDER_NAME", "BiddingFlow Thông Báo")
+    cfg = email_utils._load_configuration()
+    assert cfg is not None
+    assert cfg.sender_name == "BiddingFlow Thông Báo"
