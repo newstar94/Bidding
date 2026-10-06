@@ -5,6 +5,7 @@ import {
   ApiError,
   apiFetch,
   configureApiClient,
+  ensureCsrfToken,
   requestJson,
 } from "../../frontend/shared/apiClient.js";
 
@@ -40,6 +41,28 @@ function stalledResponse(options, contentType = "text/plain") {
     headers: { "Content-Type": contentType },
   });
 }
+
+test("CSRF handshake observes caller timeout and abort signal", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { cookie: "" };
+  let observedSignal;
+  try {
+    await assert.rejects(
+      ensureCsrfToken(async (_url, options) => {
+        observedSignal = options.signal;
+        await new Promise((resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        });
+        return { ok: true };
+      }, { timeoutMs: 10 }),
+      (error) => error?.name === "TimeoutError" || error?.name === "AbortError",
+    );
+    assert.equal(observedSignal?.aborted, true);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
 
 
 test("storage access failure omits the active organization header safely", async () => {

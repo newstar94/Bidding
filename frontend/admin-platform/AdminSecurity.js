@@ -108,7 +108,7 @@ function bindSafeDetails(results, payload, markup) {
   });
 }
 
-function bindAuditDetails(results, payload) {
+function bindAuditDetails(results, payload, { signal } = {}) {
   results.querySelectorAll("[data-admin-security-detail-index]").forEach((button) => {
     button.addEventListener("click", () => {
       document.querySelector("[data-admin-audit-detail-drawer]")?.remove();
@@ -129,10 +129,16 @@ function bindAuditDetails(results, payload) {
       backdrop.setAttribute("data-admin-audit-detail-backdrop", "");
       let closed = false;
       let releaseFocusTrap = () => {};
+      const dismissForNavigation = () => close();
+      const removeNavigationListeners = () => {
+        window.removeEventListener("popstate", dismissForNavigation);
+        window.removeEventListener("admin:navigate", dismissForNavigation);
+      };
       const close = () => {
         if (closed) return;
         closed = true;
         releaseFocusTrap();
+        removeNavigationListeners();
         drawer.remove();
         backdrop.remove();
         button.focus();
@@ -140,6 +146,9 @@ function bindAuditDetails(results, payload) {
       drawer.querySelector("[data-admin-security-detail-close]")?.addEventListener("click", close);
       backdrop.addEventListener("click", close);
       releaseFocusTrap = trapAdminDialogFocus(drawer, { onEscape: close });
+      window.addEventListener("popstate", dismissForNavigation);
+      window.addEventListener("admin:navigate", dismissForNavigation);
+      signal?.addEventListener?.("abort", close, { once: true });
       document.body.append(drawer, backdrop);
       drawer.querySelector("button")?.focus();
     });
@@ -183,7 +192,7 @@ export const AUDIT_DIRECTORY = Object.freeze({
   rowMarkup(item, index) {
     return `<tr><td data-label="Thời gian">${formatDateTime(item?.createdAt)}</td><td data-label="Hành động"><strong>${text(item?.action)}</strong></td><td data-label="Đối tượng">${auditTarget(item)}</td><td data-label="Người thực hiện">${text(item?.actorUserId, "Hệ thống")}</td><td data-label="Tổ chức">${text(item?.organizationId, "Toàn nền tảng")}</td><td data-label="Kết quả">${escapeHtml(outcomeText(item?.result))}</td><td data-label="Request ID">${text(item?.requestId)}</td><td data-label="Chuỗi / thứ tự"><div>${text(item?.chainId)}</div><div class="small text-secondary">#${text(item?.sequence)}</div></td><td data-label="Chi tiết"><button class="btn btn-sm btn-outline-secondary" type="button" data-admin-security-detail-index="${index}">Xem</button></td></tr>`;
   },
-  bindResultActions(results, { payload }) { bindAuditDetails(results, payload); },
+  bindResultActions(results, { payload, signal }) { bindAuditDetails(results, payload, { signal }); },
 });
 
 export const SESSION_DIRECTORY = Object.freeze({

@@ -565,7 +565,8 @@ export function renderAdminAnalytics(container, { fetchImpl, signal } = {}) {
   });
   for (const button of form?.querySelectorAll("[data-analytics-preset]") || []) {
     button.addEventListener("click", () => {
-      filters = normalizeAnalyticsFilters({ ...filters, preset: button.dataset.analyticsPreset });
+      const visibleValues = form ? Object.fromEntries(new FormData(form).entries()) : {};
+      filters = normalizeAnalyticsFilters({ ...filters, ...visibleValues, preset: button.dataset.analyticsPreset });
       syncFilterControls(form, filters);
       void load();
     });

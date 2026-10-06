@@ -22,6 +22,7 @@ import {
 } from "../evaluationMethodRules.js";
 import { parseEvaluationMetadataForDisplay } from "../evaluationMetadata.js";
 import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
+import { offlinePackageSaveResult, reportPackageSaveFailure } from "../packageSaveResult.js";
 
 const qualifiedApprovalCacheOwner = (pkg) => `qualified-approval:${pkg?.id || "unknown"}`;
 
@@ -293,6 +294,8 @@ function bindPanel(view, contentWrapper, state, appController) {
       return;
     }
 
+    if (saveButton.disabled) return;
+    captureDraft();
     state.target.soQdPheDuyetKt = decisionNumber.value.trim();
     state.target.ngayQdPheDuyetKt = view.model.convertDMYToYMD(decisionDate.value.trim());
     if (appraisalNumber) state.target.soBctdKt = appraisalNumber.value.trim();
@@ -302,7 +305,22 @@ function bindPanel(view, contentWrapper, state, appController) {
       delete state.target.ngayBctdKt;
     }
     state.target.qualifiedSaved = true;
-    await saveQualifiedApproval(appController || view, state.pkg, state.metadata);
+    saveButton.disabled = true;
+    try {
+      await saveQualifiedApproval(appController || view, state.pkg, state.metadata);
+    } catch (error) {
+      await reportPackageSaveFailure(view, error, { onConflict: async () => {
+        // The captured field values remain a local draft for an explicit retry.
+        view._packageSaveDraftState = { key: state.draftKey, preserved: true };
+      } });
+      return;
+    } finally {
+      saveButton.disabled = false;
+    }
+    if (offlinePackageSaveResult(state.pkg)) {
+      view.showToast?.("Đã lưu trên thiết bị", "Thay đổi đang chờ máy chủ xác nhận. Trình chỉnh sửa vẫn mở để bạn tiếp tục.", "warning");
+      return;
+    }
     clearQualifiedApprovalDraft(view, state.draftKey);
     packageWorkspaceFor(view).transition({ type: "SET_DIRTY", dirty: false });
     if (view._editingState) view._editingState.qualified = false;

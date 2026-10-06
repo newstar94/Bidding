@@ -16,6 +16,8 @@ from backend.shared.subscription_policy import can_use_document_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.database_io import run_database_read
+# Keep the route test seam for the heavy context read while session/preflight DB work uses the lane directly.
+from backend.shared.database_io import run_database_read as _run_database_read
 
 from backend.documents import excel_service
 from backend.documents.document_worker import (
@@ -176,24 +178,22 @@ async def _export_excel(function_name, *args):
 async def export_timeline_api(request):
     package_id = clean_id(request.path_params.get("package_id"))
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
+        org_name = await _run_database_read(get_active_org, request, user_id)
         entitlement_error = _timeline_export_entitlement_response(
-            role_or_err,
-            org_name,
+            role_or_err, org_name,
         )
         if entitlement_error is not None:
             return entitlement_error
-        snapshot_version, snapshot_error = _validate_export_snapshot(
-            request,
-            org_name,
+        snapshot_version, snapshot_error = await _run_database_read(
+            _validate_export_snapshot, request, org_name,
         )
         if snapshot_error is not None:
             return snapshot_error
-        if not _can_export_package(role_or_err, org_name, package_id):
+        if not await _run_database_read(_can_export_package, role_or_err, org_name, package_id):
             return JSONResponse(
                 {"error": "Bạn không có quyền xuất timeline gói thầu này."},
                 status_code=403,
@@ -208,8 +208,7 @@ async def export_timeline_api(request):
         )
         out_stream = await _export_excel("create_timeline_excel", context)
         snapshot_error = _ensure_export_snapshot_unchanged(
-            org_name,
-            snapshot_version,
+            org_name, snapshot_version,
         )
         if snapshot_error is not None:
             return snapshot_error
@@ -247,7 +246,7 @@ async def export_timeline_api(request):
 
 async def import_excel_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -295,7 +294,7 @@ async def import_excel_api(request):
 async def export_excel_template_api(request):
     try:
         export_policy("excel.generic_import_template")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -319,7 +318,7 @@ async def export_excel_template_api(request):
 async def export_mothau_template_api(request):
     try:
         export_policy("excel.opening_template")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -347,12 +346,12 @@ async def export_mothau_template_api(request):
 async def export_opening_fin_template_api(request):
     try:
         policy = export_policy("excel.financial_opening")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        org_name = get_active_org(request, role_or_err.user_id)
-        entitlement_error = _export_entitlement_response(
-            role_or_err, org_name, policy,
+        org_name = await run_database_read(get_active_org, request, role_or_err.user_id)
+        entitlement_error = await run_database_read(
+            _export_entitlement_response, role_or_err, org_name, policy,
         )
         if entitlement_error is not None:
             return entitlement_error
@@ -366,7 +365,7 @@ async def export_opening_fin_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
-        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+        if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         workbook_spec = await run_database_read(
@@ -391,12 +390,12 @@ async def export_opening_fin_template_api(request):
 async def export_danhgiahsdt_template_api(request):
     try:
         policy = export_policy("excel.evaluation")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        org_name = get_active_org(request, role_or_err.user_id)
-        entitlement_error = _export_entitlement_response(
-            role_or_err, org_name, policy,
+        org_name = await run_database_read(get_active_org, request, role_or_err.user_id)
+        entitlement_error = await run_database_read(
+            _export_entitlement_response, role_or_err, org_name, policy,
         )
         if entitlement_error is not None:
             return entitlement_error
@@ -416,7 +415,7 @@ async def export_danhgiahsdt_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
-        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+        if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         workbook_spec = await run_database_read(
@@ -445,12 +444,12 @@ async def export_danhgiahsdt_template_api(request):
 async def export_ketquaqd_template_api(request):
     try:
         policy = export_policy("excel.award_result")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        org_name = get_active_org(request, role_or_err.user_id)
-        entitlement_error = _export_entitlement_response(
-            role_or_err, org_name, policy,
+        org_name = await run_database_read(get_active_org, request, role_or_err.user_id)
+        entitlement_error = await run_database_read(
+            _export_entitlement_response, role_or_err, org_name, policy,
         )
         if entitlement_error is not None:
             return entitlement_error
@@ -464,7 +463,7 @@ async def export_ketquaqd_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
-        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+        if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         workbook_spec = await run_database_read(
@@ -491,7 +490,7 @@ async def export_ketquaqd_template_api(request):
 async def export_phanlo_excel_api(request):
     try:
         export_policy("excel.package_lot_draft_template")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -522,7 +521,7 @@ async def export_phanlo_excel_api(request):
 async def export_tuychonmuathem_excel_api(request):
     try:
         export_policy("excel.optional_purchase_draft_template")
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 

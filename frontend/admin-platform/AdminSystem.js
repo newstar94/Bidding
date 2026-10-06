@@ -108,14 +108,22 @@ function openJobDetail(opener) {
   document.body.append(drawer, backdrop);
   let closed = false;
   let releaseFocusTrap = () => {};
+  const dismissForNavigation = () => close();
+  const removeNavigationListeners = () => {
+    window.removeEventListener("popstate", dismissForNavigation);
+    window.removeEventListener("admin:navigate", dismissForNavigation);
+  };
   const close = () => {
     if (closed) return;
     closed = true;
     releaseFocusTrap();
+    removeNavigationListeners();
     drawer.remove(); backdrop.remove(); opener?.focus?.();
   };
   backdrop.addEventListener("click", close);
   releaseFocusTrap = trapAdminDialogFocus(drawer, { onEscape: close });
+  window.addEventListener("popstate", dismissForNavigation);
+  window.addEventListener("admin:navigate", dismissForNavigation);
   return { drawer, close };
 }
 
@@ -124,6 +132,7 @@ function bindJobActions(root, jobs, options) {
     const jobId = String(button.dataset.adminJobDetailId || "");
     if (!jobs.some((job) => job?.id === jobId)) return;
     const detail = openJobDetail(button);
+    options.signal?.addEventListener?.("abort", detail.close, { once: true });
     detail.drawer.innerHTML = trustedHTML(`<div class="offcanvas-header"><h2 class="offcanvas-title">Đang tải chi tiết</h2><button class="btn-close" type="button" aria-label="Đóng" data-admin-job-detail-close></button></div><div class="offcanvas-body">${adminLoadingMarkup("Đang tải chi tiết tác vụ…")}</div>`);
     detail.drawer.querySelector("[data-admin-job-detail-close]")?.addEventListener("click", detail.close);
     try {
@@ -146,6 +155,8 @@ function bindJobActions(root, jobs, options) {
           if (options.signal?.aborted) return;
           retry.disabled = false;
           if (status) { status.textContent = error?.message || "Không thể chạy lại tác vụ."; status.className = "mt-3 small text-danger"; }
+        } finally {
+          if (retry.isConnected) retry.disabled = false;
         }
       });
       detail.drawer.querySelector("[data-admin-job-detail-close]")?.focus();

@@ -38,8 +38,9 @@ from backend.shared.subscription_policy import (
     SECONDS_PER_DAY,
 )
 from backend.commercial_policy.config import trial_full_access_enabled
-from backend.shared.async_io import BlockingIOBusyError
-from backend.shared.database_io import run_database_write
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.database_http import database_unavailable_response
 from backend.notifications.service import (
     queue_assignment_state_changes,
     queue_membership_notification,
@@ -119,7 +120,10 @@ def _create_organization_sync(request, role_or_err, data):
         if conn: conn.close()
 
 async def create_organization_api(request):
-    valid, role = verify_session(request)
+    try:
+        valid, role = await run_database_read(verify_session, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
     if not valid: return JSONResponse({"error": role}, status_code=403)
     data, error = await read_json_object(request)
     if error: return error
@@ -371,7 +375,7 @@ def _organization_member_quota_error(cursor, organization_id):
     return None
 
 
-async def update_organization_subscription_api(request):
+def _update_organization_subscription_sync(request, *, _data=None, _json_error=None):
     """Lock, unlock, renew or change an organization subscription atomically."""
     conn = None
     try:
@@ -379,7 +383,7 @@ async def update_organization_subscription_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data, json_error = await read_json_object(request)
+        data, json_error = _data, _json_error
         if json_error:
             return json_error
         invalid = validate_or_response(request, data, {
@@ -613,6 +617,17 @@ async def update_organization_subscription_api(request):
         if conn:
             conn.close()
 
+
+
+async def update_organization_subscription_api(request):
+    data, json_error = await read_json_object(request)
+    try:
+        return await run_database_write(
+            _update_organization_subscription_sync, request, _data=data, _json_error=json_error,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
+
 def _lookup_membership_candidate_sync(request, role_or_err):
     email = normalize_email(request.query_params.get("email"))
     if (
@@ -719,7 +734,10 @@ def _lookup_membership_candidate_sync(request, role_or_err):
 
 
 async def lookup_membership_candidate_api(request):
-    is_valid, role_or_err = verify_session(request)
+    try:
+        is_valid, role_or_err = await run_database_read(verify_session, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
     try:
@@ -943,7 +961,10 @@ def _add_user_to_org_sync(request, role_or_err, data):
 
 
 async def add_user_to_org_api(request):
-    is_valid, role_or_err = verify_session(request)
+    try:
+        is_valid, role_or_err = await run_database_read(verify_session, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
     data, json_error = await read_json_object(request)
@@ -956,25 +977,18 @@ async def add_user_to_org_api(request):
             role_or_err,
             data,
         )
-    except BlockingIOBusyError:
-        response = error_response(
-            request,
-            "DATABASE_WRITE_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
 
 
-async def remove_user_from_org_api(request):
+def _remove_user_from_org_sync(request, *, _data=None, _json_error=None):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data, json_error = await read_json_object(request)
+        data, json_error = _data, _json_error
         if json_error:
             return json_error
         invalid = validate_or_response(request, data, {
@@ -1298,10 +1312,21 @@ async def remove_user_from_org_api(request):
         )
 
 
+
+async def remove_user_from_org_api(request):
+    data, json_error = await read_json_object(request)
+    try:
+        return await run_database_write(
+            _remove_user_from_org_sync, request, _data=data, _json_error=json_error,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
+
+
 _DOCUMENT_EXPORT_FIELDS = ("financial", "identity", "signature")
 
 
-async def list_former_organization_members_api(request):
+def _list_former_organization_members_sync(request, *, _data=None, _json_error=None):
     valid, session = verify_session(request)
     if not valid:
         return JSONResponse({"error": session}, status_code=403)
@@ -1337,6 +1362,14 @@ async def list_former_organization_members_api(request):
         return JSONResponse(list(members.values()))
     finally:
         conn.close()
+
+
+
+async def list_former_organization_members_api(request):
+    try:
+        return await run_database_read(_list_former_organization_members_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
 
 
 def _stored_document_export_grants(cursor, organization_id, user_id):
@@ -1397,7 +1430,7 @@ def _document_export_grant_payload(cursor, organization_id, user_id, role_str):
     }
 
 
-async def get_document_export_capabilities_api(request):
+def _get_document_export_capabilities_sync(request, *, _data=None, _json_error=None):
     """Read explicit and effective sensitive-export capabilities in the active org."""
 
     conn = None
@@ -1465,7 +1498,15 @@ async def get_document_export_capabilities_api(request):
             conn.close()
 
 
-async def update_document_export_capabilities_api(request):
+
+async def get_document_export_capabilities_api(request):
+    try:
+        return await run_database_read(_get_document_export_capabilities_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
+
+
+def _update_document_export_capabilities_sync(request, *, _data=None, _json_error=None):
     """Replace an ordinary member's sensitive-export grants in the active org."""
 
     conn = None
@@ -1486,7 +1527,7 @@ async def update_document_export_capabilities_api(request):
                 "Mã người dùng không hợp lệ.",
                 status_code=400,
             )
-        data, json_error = await read_json_object(request)
+        data, json_error = _data, _json_error
         if json_error:
             return json_error
         invalid = validate_or_response(
@@ -1618,3 +1659,14 @@ async def update_document_export_capabilities_api(request):
     finally:
         if conn:
             conn.close()
+
+
+
+async def update_document_export_capabilities_api(request):
+    data, json_error = await read_json_object(request)
+    try:
+        return await run_database_write(
+            _update_document_export_capabilities_sync, request, _data=data, _json_error=json_error,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)

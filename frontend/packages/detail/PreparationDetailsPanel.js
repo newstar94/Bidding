@@ -1,6 +1,8 @@
 import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { savePackagePreparation } from "../packagePreparation.js";
+import { offlinePackageSaveResult, reportPackageSaveFailure } from "../packageSaveResult.js";
+import { completePackageWorkspaceEdit } from "./PackageWorkspaceState.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { assigneeLabelsForTarget } from "../../shared/MultiAssigneeSelect.js";
 import {
@@ -418,10 +420,27 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                 soBaoCaoThamDinhHsmt: valYeuCauThamDinh === "Không" ? "" : valSoBaoCao,
                 ngayBaoCaoThamDinhHsmt: valYeuCauThamDinh === "Không" || !valNgayBaoCao ? "" : view.model.convertDMYToYMD(valNgayBaoCao)
               };
-              const savedPackage = await savePackagePreparation(appController || view, gt, gtData, {
-                generateRecordId: generateRecordId
-              });
+              if (btnSave.disabled) return;
+              btnSave.disabled = true;
+              let savedPackage;
+              try {
+                savedPackage = await savePackagePreparation(appController || view, gt, gtData, {
+                  generateRecordId: generateRecordId
+                });
+              } catch (error) {
+                await reportPackageSaveFailure(view, error, { onConflict: async () => {
+                  view._packageSaveDraftState = { key: `preparation:${gt.id}`, preserved: true };
+                } });
+                return;
+              } finally {
+                btnSave.disabled = false;
+              }
+              if (offlinePackageSaveResult(savedPackage)) {
+                view.showToast?.("Đã lưu trên thiết bị", "Thay đổi đang chờ máy chủ xác nhận. Trình chỉnh sửa vẫn mở để bạn tiếp tục.", "warning");
+                return;
+              }
               view._inPlaceEditMode = false;
+              completePackageWorkspaceEdit(view);
               view.showPackageDetails(savedPackage.id);
               await view.customAlert("Thành công", "Cập nhật thông tin gói thầu thành công!", "check-circle");
             };

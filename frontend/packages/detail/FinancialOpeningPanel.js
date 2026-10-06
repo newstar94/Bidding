@@ -28,6 +28,7 @@ import {
   PROCUREMENT_IMPORT_CAPABILITY,
 } from "../../auth/serverCapabilities.js";
 import { completePackageWorkspaceEdit } from "./PackageWorkspaceState.js";
+import { offlinePackageSaveResult, reportPackageSaveFailure } from "../packageSaveResult.js";
 
 const financialOpeningCacheOwner = (pkg) => `financial-opening:${pkg?.id || "unknown"}`;
 
@@ -351,13 +352,28 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
           return;
         }
 
-        stageScopedFinancialOpening(state, openingTime);
-        await savePackageFinancialOpening(
+        if (saveButton.disabled) return;
+        saveButton.disabled = true;
+        try {
+          stageScopedFinancialOpening(state, openingTime);
+          await savePackageFinancialOpening(
           appController || view,
           state.pkg,
           collectFinancialOpeningRows(rows, { parseVND: (value) => view.model.parseVND(value) }),
           { openingTime },
-        );
+          );
+        } catch (error) {
+          await reportPackageSaveFailure(view, error, { onConflict: async () => {
+            view._packageSaveDraftState = { key: `financial-opening:${state.pkg.id}`, preserved: true };
+          } });
+          return;
+        } finally {
+          saveButton.disabled = false;
+        }
+        if (offlinePackageSaveResult(state.pkg)) {
+          view.showToast?.("Đã lưu trên thiết bị", "Thay đổi đang chờ máy chủ xác nhận. Trình chỉnh sửa vẫn mở để bạn tiếp tục.", "warning");
+          return;
+        }
         if (view._editingState) view._editingState.opening_fin = false;
         completePackageWorkspaceEdit(view);
         await view.customAlert("Thành công", "Đã lưu Biên bản mở thầu E-HSĐXTC thành công!", "check-circle");

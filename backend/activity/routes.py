@@ -8,6 +8,8 @@ from starlette.responses import JSONResponse
 from backend.shared.access_policy import can_read_record
 from backend.shared.helpers import database, get_active_org, verify_session
 from backend.shared.database_io import run_database_read
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_http import database_unavailable_response
 
 
 _TARGETS = {
@@ -26,7 +28,10 @@ def _error(message: str, code: str, status: int) -> JSONResponse:
 
 
 async def list_activity_timeline_api(request):
-    return await run_database_read(_list_activity_timeline, request)
+    try:
+        return await run_database_read(_list_activity_timeline, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
 
 
 def _list_activity_timeline(request):

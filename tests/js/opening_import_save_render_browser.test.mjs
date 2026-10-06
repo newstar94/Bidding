@@ -233,6 +233,40 @@ test("a previously mounted standalone opening cannot receive the active package'
   });
 });
 
+test("unconfirmed opening saves retain dirty input and edit mode without advancing", async () => {
+  for (const syncResult of [
+    { ok: false, status: 400, validation: true },
+    { ok: false, status: 409, conflict: true },
+    { ok: false, transport: true },
+    { ok: true, localMutationsPending: true },
+  ]) {
+    await withOpeningFixture(async (page, errors) => {
+      const result = await page.evaluate(async (syncResult) => {
+        const fixture = window.__openingFixture;
+        const { packageWorkspaceFor } = await import("/frontend/packages/detail/PackageWorkspaceState.js");
+        await fixture.mount();
+        await fixture.importDraft();
+        fixture.view._editingState.opening = true;
+        fixture.controller.autoSync = async () => syncResult;
+        await fixture.save();
+        return {
+          dirty: packageWorkspaceFor(fixture.view).isDirty(),
+          editing: fixture.view._editingState.opening,
+          renderedTab: document.getElementById("detail-workflow-content-wrapper").dataset.renderedWorkflowTab,
+          name: document.querySelector("#tab-goithau-detail .mt-ten-nha-thau")?.value,
+          alerts: fixture.alerts,
+        };
+      }, syncResult);
+      assert.deepEqual(errors, []);
+      assert.equal(result.dirty, true, JSON.stringify(result));
+      assert.equal(result.editing, true, JSON.stringify(result));
+      assert.equal(result.renderedTab, "opening", JSON.stringify(result));
+      assert.equal(result.name, "Nhà thầu nguồn", JSON.stringify(result));
+      assert.equal(result.alerts.some((alert) => alert.title === "Lưu thành công"), false, JSON.stringify(result));
+    });
+  }
+});
+
 test("the observed persisted opening schema renders both small and chunked evaluation tables", async () => {
   await withOpeningFixture(async (page, errors) => {
     for (const count of [1, 202]) {

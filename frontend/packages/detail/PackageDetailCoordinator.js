@@ -8,6 +8,24 @@ import { getAppController } from "../../app/controllerRef.js";
 import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
 import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
 
+export async function confirmPackageDetailNavigation(view, {
+  message = "Bạn đang có nội dung chưa lưu. Bạn có muốn bỏ thay đổi để chuyển bước không?",
+} = {}) {
+  const workspace = packageWorkspaceFor(view);
+  if (!workspace.isDirty()) return true;
+  if (typeof view?.customConfirm !== "function") return true;
+  const confirmed = await view.customConfirm("Nội dung chưa lưu", message, "alert-triangle", {
+    confirmLabel: "Bỏ thay đổi",
+    cancelLabel: "Tiếp tục chỉnh sửa",
+  });
+  if (!confirmed) return false;
+  workspace.transition({ type: "SET_DIRTY", dirty: false });
+  workspace.transition({ type: "SET_DRAFT", draft: null });
+  delete view._qualifiedApprovalDraft;
+  delete view._packageSaveDraftState;
+  return true;
+}
+
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return () => {};
   setRuntimeStyle(container, "display", "flex");
@@ -55,7 +73,15 @@ function renderVersionSelector(view, detail) {
   );
   verSelect.onchange = verSelect.disabled
     ? null
-    : (event) => view.showPackageDetails(event.target.value, true);
+    : (event) => {
+      void (async () => {
+        if (!await confirmPackageDetailNavigation(view)) {
+          event.target.value = detail.pkg.id;
+          return;
+        }
+        await view.showPackageDetails(event.target.value, true);
+      })();
+    };
   initCustomSelect("detail-workflow-version-select");
   return () => {
     verSelect.onchange = null;
@@ -86,6 +112,7 @@ export function bindPackageDetailChrome(view, detail) {
     detail.tabs,
     detail.activeTab,
     async (tabId) => {
+      if (!await confirmPackageDetailNavigation(view)) return;
       const appController = getAppController();
       if (appController?.currentEvaluationView === "contractor-detail") {
         appController.currentEvaluationView = "summary";

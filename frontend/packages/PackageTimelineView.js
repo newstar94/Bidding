@@ -879,6 +879,26 @@ async function selectPackage(view, packageId) {
   }
 }
 
+function confirmTimelineSelectionChange(view, _nextValue) {
+  const state = timelineState(view);
+  if (!state.dirty) return true;
+  if (typeof view?.customConfirm !== "function") return true;
+  return view.customConfirm(
+    "Nội dung timeline chưa lưu",
+    "Bạn đang có thay đổi chưa lưu. Bạn có muốn bỏ thay đổi để chuyển lựa chọn không?",
+    "alert-triangle",
+    { confirmLabel: "Bỏ thay đổi", cancelLabel: "Tiếp tục chỉnh sửa" },
+  ).then((confirmed) => {
+    if (!confirmed) return false;
+    state.dirty = false;
+    state.rows = [];
+    state.package = null;
+    state.plan = null;
+    updateLiveStatus("Đã bỏ thay đổi timeline chưa lưu.");
+    return true;
+  });
+}
+
 async function restoreTimelineSelection(view, selection) {
   const state = timelineState(view);
   const requestVersion = Number(state.restoreRequestVersion || 0) + 1;
@@ -982,13 +1002,23 @@ async function saveTimeline(view) {
       (item) => String(item.id) === String(packageRecord.id),
     ) || packageRecord;
     const controller = getAppController();
-    if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
+    if (typeof controller?.forceSyncData === "function") {
+      const syncResult = await controller.forceSyncData(false, false, true);
+      if (syncResult?.ok !== true || syncResult?.localMutationsPending === true) {
+        const error = new Error("Máy chủ chưa xác nhận thay đổi timeline.");
+        error.syncResult = syncResult;
+        throw error;
+      }
+    }
     state.dirty = false;
     const applicableCount = state.rows.filter((row) => row.applicability === "APPLICABLE").length;
     view.showToast("Thành công", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
     updateLiveStatus("Timeline đã được lưu.");
+    return true;
   } catch {
     view.showToast("Thất bại", "Không thể lưu timeline. Vui lòng thử lại.", "error");
+    updateLiveStatus("Chưa thể xác nhận lưu timeline; nội dung đang nhập được giữ lại.");
+    return false;
   } finally {
     setActionAvailability(state);
   }
@@ -1004,7 +1034,7 @@ async function exportTimeline(view) {
   const button = element("timeline-export-excel");
   if (button) button.disabled = true;
   try {
-    if (state.dirty) await saveTimeline(view);
+    if (state.dirty && !await saveTimeline(view)) return;
     const controller = getAppController();
     const snapshotVersion = await controller.prepareExportSnapshot();
     const url = appendExportSnapshotVersion(`/api/export-timeline/${encodeURIComponent(state.package.id)}`, snapshotVersion);
@@ -1058,24 +1088,40 @@ function bindTimelineEvents(view, pane) {
   if (pane.dataset.eventsBound === "true") return;
   pane.dataset.eventsBound = "true";
   initTimelineComboboxes(view);
-  element("timeline-plan-select")?.addEventListener("change", () => {
+  element("timeline-plan-select")?.addEventListener("change", (event) => {
     const state = timelineState(view);
-    cancelTimelineSelectionRestore(state);
-    clearTimeout(state.packageSearchTimer);
-    state.packageSearchTimer = null;
-    state.packageQuery = "";
-    const packageSelect = element("timeline-package-select");
-    if (packageSelect) packageSelect.value = "";
-    void selectPackage(view, "");
-    const planId = element("timeline-plan-select")?.value || "";
-    renderPackageOptions(view, immediateTimelinePackageOptions(view, planId), "");
-    void loadPackageOptions(view, "");
+    const previousPlanId = state.package?.keHoachId || state.plan?.id || "";
+    const apply = () => {
+      cancelTimelineSelectionRestore(state);
+      clearTimeout(state.packageSearchTimer);
+      state.packageSearchTimer = null;
+      state.packageQuery = "";
+      const packageSelect = element("timeline-package-select");
+      if (packageSelect) packageSelect.value = "";
+      void selectPackage(view, "");
+      const planId = element("timeline-plan-select")?.value || "";
+      renderPackageOptions(view, immediateTimelinePackageOptions(view, planId), "");
+      void loadPackageOptions(view, "");
+    };
+    const decision = confirmTimelineSelectionChange(view, event.target.value);
+    if (decision && typeof decision.then === "function") {
+      void decision.then((confirmed) => { if (confirmed) apply(); else event.target.value = previousPlanId; });
+    } else if (decision) apply();
+    else event.target.value = previousPlanId;
   });
   element("timeline-package-select")?.addEventListener("change", (event) => {
     const state = timelineState(view);
-    cancelTimelineSelectionRestore(state);
-    state.packageQuery = "";
-    void selectPackage(view, event.target.value);
+    const previousPackageId = state.package?.id || "";
+    const apply = () => {
+      cancelTimelineSelectionRestore(state);
+      state.packageQuery = "";
+      void selectPackage(view, event.target.value);
+    };
+    const decision = confirmTimelineSelectionChange(view, event.target.value);
+    if (decision && typeof decision.then === "function") {
+      void decision.then((confirmed) => { if (confirmed) apply(); else event.target.value = previousPackageId; });
+    } else if (decision) apply();
+    else event.target.value = previousPackageId;
   });
   element("timeline-status-filter")?.addEventListener("change", (event) => {
     timelineState(view).filters.status = event.target.value;

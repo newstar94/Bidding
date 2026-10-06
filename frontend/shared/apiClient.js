@@ -170,16 +170,23 @@ async function readErrorPayload(response) {
   }
 }
 
-export async function ensureCsrfToken(fetchImpl = globalThis.fetch) {
+export async function ensureCsrfToken(fetchImpl = globalThis.fetch, { signal = null, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   let token = readCookie("csrf_token");
   if (token || !globalThis.document || typeof fetchImpl !== "function") return token;
 
-  const response = await fetchImpl("/api/auth/check-session", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ remember: false })
-  });
+  const abort = combineAbortSignals(signal, timeoutMs);
+  let response;
+  try {
+    response = await fetchImpl("/api/auth/check-session", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remember: false }),
+      signal: abort.signal,
+    });
+  } finally {
+    abort.cleanup();
+  }
   if (!response.ok) {
     throw new ApiError("Không thể khởi tạo bảo vệ CSRF", {
       status: response.status,
@@ -214,7 +221,10 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
   baseHeaders.delete("X-Username");
   if (path) {
     if (csrf && MUTATING_METHODS.has(method) && !CSRF_EXEMPT_PATHS.has(path)) {
-      const token = await ensureCsrfToken(fetchImpl);
+      const token = await ensureCsrfToken(fetchImpl, {
+        signal: requestOptions.signal,
+        timeoutMs,
+      });
       if (token) baseHeaders.set("X-CSRF-Token", token);
     }
   }

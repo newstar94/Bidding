@@ -105,6 +105,7 @@ async function selectWorkspaceRole(event) {
 }
 let routeController = null;
 let sessionExpiryHandled = false;
+let renderedAdminLocation = "";
 function handleSessionExpiry() {
   if (sessionExpiryHandled) return;
   sessionExpiryHandled = true;
@@ -125,7 +126,7 @@ function renderRoute() {
   routeController?.abort(); routeController = new AbortController();
   const route = getAdminRoute(window.location.pathname); const view = document.getElementById("admin-view");
   document.querySelectorAll("[data-admin-link]").forEach((link) => { const active = link.dataset.adminLink === route?.path; link.classList.toggle("active", active); if (active) link.setAttribute("aria-current", "page"); else link.removeAttribute("aria-current"); });
-  if (!route) { view.innerHTML = trustedHTML(`<div class="empty"><p class="empty-title">Không tìm thấy trang quản trị</p><div class="empty-action"><a class="btn btn-primary" href="/admin" data-admin-link="/admin">Về tổng quan</a></div></div>`); document.title = "Không tìm thấy | BiddingFlow Admin"; return; }
+  if (!route) { view.innerHTML = trustedHTML(`<div class="empty"><p class="empty-title">Không tìm thấy trang quản trị</p><div class="empty-action"><a class="btn btn-primary" href="/admin" data-admin-link="/admin">Về tổng quan</a></div></div>`); document.title = "Không tìm thấy | BiddingFlow Admin"; renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`; return; }
   document.title = `${route.title} | BiddingFlow Admin`;
   const breadcrumb = document.querySelector(".bf-admin-header-crumb");
   if (breadcrumb) breadcrumb.textContent = route.title;
@@ -162,7 +163,19 @@ function renderRoute() {
   else if (route.path === "/admin/system/jobs") loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemJobs", content, { signal: routeController.signal });
   else if (route.path === "/admin/system/sync") loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemSync", content, { signal: routeController.signal });
   else content.innerHTML = trustedHTML(adminStateMarkup("empty", { message: "Chức năng này chưa có nguồn dữ liệu quản trị được xác thực." }));
+  renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   document.getElementById("admin-main")?.focus({ preventScroll: true });
+}
+function handleAdminPopState() {
+  const guard = new CustomEvent("admin:before-navigate", {
+    cancelable: true,
+    detail: { route: getAdminRoute(window.location.pathname), source: "popstate" },
+  });
+  if (!window.dispatchEvent(guard)) {
+    if (renderedAdminLocation) history.pushState(history.state, "", renderedAdminLocation);
+    return;
+  }
+  renderRoute();
 }
 const app = document.getElementById("admin-app"); const session = readSession();
 if (!session.valid || session.user?.platform_role !== "super_admin") app.innerHTML = trustedHTML(`<main class="page-body"><div class="container-tight py-5"><div class="empty"><p class="empty-title">Không có quyền truy cập</p></div></div></main>`);
@@ -175,6 +188,12 @@ else {
   bindAdminDates(app);
   window.addEventListener("admin:session-expired", handleSessionExpiry);
   document.querySelector("[data-admin-workspace-link]")?.addEventListener("click", selectWorkspaceRole);
-  document.addEventListener("click", (event) => { const link = event.target.closest("a[data-admin-link]"); if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; if (navigateAdmin(link.dataset.adminLink)) event.preventDefault(); });
-  window.addEventListener("popstate", renderRoute); window.addEventListener("admin:navigate", renderRoute); renderRoute(); markStartupReady();
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-admin-link]");
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigateAdmin(link.dataset.adminLink);
+  });
+  renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.addEventListener("popstate", handleAdminPopState); window.addEventListener("admin:navigate", renderRoute); renderRoute(); markStartupReady();
 }

@@ -32,6 +32,24 @@ if (!fs.statSync(path.join(DIST_ROOT, landingShellCss), { throwIfNoEntry: false 
   throw new Error("Route CSS visual smoke requires an existing landing shell stylesheet.");
 }
 const landingMarkup = fs.readFileSync("views/components/landing_page.html", "utf8");
+// Representative test data only; these prices are never published or persisted.
+const commercialFixture = {
+  releaseId: "route-fixture", releaseChecksum: "route-fixture-checksum",
+  offers: [
+    ["account", "personal", "Cá nhân"],
+    ["organization", "silver", "Bạc"],
+    ["organization", "gold", "Vàng"],
+    ["organization", "diamond", "Kim cương"],
+  ].flatMap(([ownerKind, tier, name], index) => ["internal", "connected"].flatMap((variant) => ["yearly", "monthly"].map((period) => ({
+    code: `fixture.${tier}.${variant}.${period}`, ownerKind, tier, variant,
+    salesState: "sellable", memberQuota: index + 1,
+    includedProcurementQuota: variant === "connected" ? 20 : 0,
+    violationCheckEnabled: false,
+    price: { period, currency: "VND", subtotal: 100000 * (index + 1), tax: 0, total: 100000 * (index + 1) },
+    display: { name, description: "Dữ liệu minh họa kiểm tra giao diện", visibility: "public", benefits: ["Quyền lợi minh họa"] },
+  })))),
+  creditPacks: [], quotaWarnings: [70, 90, 100],
+};
 const landingPreloads = resolveLandingFixturePreloads(manifest, (file) => (
   fs.statSync(path.join(DIST_ROOT, file), { throwIfNoEntry: false })?.isFile() === true
 ));
@@ -119,7 +137,7 @@ const server = http.createServer((request, response) => {
   }
   if (pathname === "/api/public/commercial/offers") {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end('{"releaseId":"route-fixture","offers":[],"creditPacks":[],"quotaWarnings":[]}');
+    response.end(JSON.stringify(commercialFixture));
     return;
   }
   const routeName = pathname.slice(1);
@@ -258,6 +276,11 @@ const measureNavigation = async (page) => {
       { cause: error },
     );
   }
+  await page.waitForFunction(() => (
+    document.querySelectorAll("#landing-pricing-grid [data-commercial-offer-code]").length === 4
+    && document.getElementById("landing-pricing-grid")?.dataset.offerCount === "16"
+    && document.querySelector("[data-landing-pricing-notice]")?.hidden === true
+  ));
   const readyMs = await page.evaluate(() => Math.round(performance.now() * 100) / 100);
   // Include font application as well as app readiness. Access the FontFaceSet
   // only after a natural first paint, avoiding an eager forced initial layout.

@@ -27,7 +27,7 @@ export function classifyCanonicalSyncResult(result, { online = globalThis.naviga
     && !result?.requiredActiveRole) {
     return CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED;
   }
-  if (online === false || result?.transport === true) {
+  if (online === false || result?.offline === true || result?.transport === true) {
     return CANONICAL_SAVE_STATUS.OFFLINE_PENDING;
   }
   if (result?.ok === true && result?.localMutationsPending === true) {

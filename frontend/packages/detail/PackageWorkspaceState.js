@@ -44,8 +44,6 @@ export class PackageWorkspaceState {
       effects = [{ type: "RENDER_WORKSPACE" }];
     } else if (event.type === "SELECT_TAB") {
       next.workflowTab = String(event.tab || "preparation");
-      next.dirty = false;
-      next.draft = null;
       this.#state = workspaceState(next);
       effects = [{ type: "SYNC_ROUTE" }];
     } else if (event.type === "SELECT_BID") {

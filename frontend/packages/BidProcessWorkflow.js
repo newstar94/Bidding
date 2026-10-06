@@ -29,7 +29,8 @@ import { getPartnerLookupInput } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 import { resolveLatestPackage, selectPackageDetailTab } from "./detail/PackageDetailState.js";
-import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { CANONICAL_SAVE_STATUS, classifyCanonicalSyncResult, persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { completePackageWorkspaceEdit } from "./detail/PackageWorkspaceState.js";
 import { resolvePackageResultStatus } from "./lotEvaluationScope.js";
 import {
   enrichOpeningRowsWithPartnerInfo,
@@ -1044,9 +1045,6 @@ async function performSaveThongTinMoThau() {
   this.model.state.thongtinmothau.push(...tempBids);
   gt.trangThai = "Đang chấm thầu";
   const stepKey = is1G2T ? "opening_tech" : "opening";
-  if (this.view._editingState) {
-    this.view._editingState[stepKey] = false;
-  }
   stageLocalRecords(this.model, "thongtinmothau", tempBids);
   stageLocalRecords(this.model, "goithau", gt);
   const uniqueContractors = [...new Map(
@@ -1068,7 +1066,7 @@ async function performSaveThongTinMoThau() {
     { changes: openingChanges },
   );
   if (!isCurrentRoute()) return;
-  if (!syncResult?.ok) {
+  if (classifyCanonicalSyncResult(syncResult) !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
     await this.view.customAlert(
       "Không thể lưu thông tin mở thầu",
       syncResult?.message || "Dữ liệu chưa được lưu. Vui lòng kiểm tra kết nối và thử lại.",
@@ -1076,6 +1074,8 @@ async function performSaveThongTinMoThau() {
     );
     return;
   }
+  if (this.view._editingState) this.view._editingState[stepKey] = false;
+  completePackageWorkspaceEdit(this.view);
   this.view.renderGoiThauTable();
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
   this.renderMoThauPanel();

@@ -55,7 +55,7 @@ function offer(code, ownerKind, name) {
   };
 }
 
-async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect) {
+async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect, orders = []) {
   let billingRequests = 0;
   const billingPaths = [];
   const server = createServer(async (request, response) => {
@@ -79,7 +79,7 @@ async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect) {
       if (pathname.startsWith("/api/billing/orders")) {
         billingRequests += 1;
         billingPaths.push(pathname);
-        writeJson(response, 200, { orders: [] });
+        writeJson(response, 200, { orders });
         return;
       }
       const payload = await readFile(join(root, pathname.replace(/^\//u, "")));
@@ -94,7 +94,7 @@ async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect) {
 
   let page;
   try {
-    page = await browser.newPage();
+    page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -126,6 +126,46 @@ test("commercial-off storefront renders a controlled state without billing reque
   assert.equal(result.billingRequests, 0);
   assert.match(result.statusText, /Cửa hàng đang tạm đóng/u);
   assert.match(result.offersText, /Cửa hàng chưa mở bán/u);
+  assert.deepEqual(result.errors, []);
+});
+
+const recoveryCatalog = { releaseId: "recovery", releaseChecksum: "recovery", offers: [offer("account.year", "account", "Cá nhân")], creditPacks: [], quotaWarnings: [] };
+const pendingOrder = { publicId: "order-recovery", checkoutUrl: "https://example.test/payment", checkoutState: "open", paymentState: "unverified", activationState: "pending", totalAmount: 1000000, checkoutExpiresAt: Math.floor(Date.now() / 1000) + 3600 };
+
+test("popup-blocked checkout immediately offers recovery without creating another order", async () => {
+  let checkoutRequests = 0;
+  const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async (page) => {
+    await page.evaluate(() => { document.cookie = "csrf_token=storefront-test-token; path=/"; window.open = () => null; });
+    await page.route("**/api/billing/quotes", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "quote-recovery" }) }));
+    await page.route("**/api/billing/checkouts", (route) => {
+      checkoutRequests += 1;
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: pendingOrder }) });
+    });
+    await page.route("**/api/billing/orders/order-recovery", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: pendingOrder }) }));
+    await page.locator(".storefront-buy").click();
+    await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("chặn cửa sổ"));
+    const recovery = page.locator('[data-order="order-recovery"] a');
+    assert.equal(await recovery.count(), 1);
+    assert.equal(await recovery.getAttribute("href"), pendingOrder.checkoutUrl);
+    assert.equal(await recovery.getAttribute("target"), "_blank");
+    assert.match(await recovery.getAttribute("rel"), /noopener/u);
+    assert.equal(checkoutRequests, 1);
+  });
+  assert.deepEqual(result.errors, []);
+});
+
+test("history resumes only unexpired open unpaid checkouts", async () => {
+  const orders = [pendingOrder,
+    { ...pendingOrder, publicId: "paid", paymentState: "verified_paid", activationState: "applied" },
+    { ...pendingOrder, publicId: "expired", checkoutState: "expired" },
+    { ...pendingOrder, publicId: "past-expiry", checkoutExpiresAt: 1 },
+    { ...pendingOrder, publicId: "unsafe-url", checkoutUrl: "javascript:alert(1)" },
+  ];
+  const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async (page) => {
+    assert.equal(await page.locator("#storefront-orders a").count(), 1);
+    assert.equal(await page.locator('[data-order="order-recovery"] a').getAttribute("href"), pendingOrder.checkoutUrl);
+    assert.equal(await page.locator("[data-order]").count(), orders.length);
+  }, orders);
   assert.deepEqual(result.errors, []);
 });
 

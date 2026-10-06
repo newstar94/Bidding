@@ -35,7 +35,8 @@ from backend.sync.aggregate_mutability import package_mutability_error
 from backend.shared.logging_utils import log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.database_io import run_database_read, run_database_write
-from backend.shared.async_io import BlockingIOBusyError
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_http import database_unavailable_response
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -136,7 +137,10 @@ def _store_lot_finalize_idempotency(
 
 
 async def get_lot_lifecycle_api(request):
-    return await run_database_read(_get_lot_lifecycle, request)
+    try:
+        return await run_database_read(_get_lot_lifecycle, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
 
 
 def _get_lot_lifecycle(request):

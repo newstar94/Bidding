@@ -315,23 +315,43 @@ export function bindEnvironmentControls(root, payload, options = {}) {
 export function bindSettingsControls(root, payload, options = {}) {
   const form = root.querySelector?.("[data-admin-settings-form]");
   if (!form || payload.configuration?.writable !== true) return;
-  const save = root.querySelector?.("[data-admin-settings-save]");
   const status = root.querySelector?.("[data-admin-settings-status]");
+  const readFeatures = () => Object.fromEntries(
+    Array.from(root.querySelectorAll?.("[data-admin-feature]") || [])
+      .map((input) => [String(input.dataset.adminFeature), input.checked === true]),
+  );
+  let savedFeatures = readFeatures();
+  let saving = false;
+  const setControlsDisabled = (disabled) => {
+    form.querySelectorAll("button, input, select, textarea").forEach((control) => {
+      if (disabled) control.dataset.adminSettingsWasDisabled = String(control.disabled);
+      control.disabled = disabled || control.dataset.adminSettingsWasDisabled === "true";
+      if (!disabled) delete control.dataset.adminSettingsWasDisabled;
+    });
+  };
+  const markDirty = () => {
+    if (saving) return;
+    const dirty = JSON.stringify(readFeatures()) !== JSON.stringify(savedFeatures);
+    if (dirty) updateStatus(status, "Có thay đổi chưa lưu. Hãy lưu cấu hình.", "warning");
+    else updateStatus(status, "");
+  };
+  form.addEventListener("change", markDirty);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const features = {};
-    root.querySelectorAll?.("[data-admin-feature]").forEach((input) => {
-      features[String(input.dataset.adminFeature)] = input.checked === true;
-    });
-    if (save) save.disabled = true;
+    if (saving) return;
+    const features = readFeatures();
+    saving = true;
+    setControlsDisabled(true);
     updateStatus(status, "Đang lưu…");
     try {
       const result = await privilegedEnvironmentUpdate({ features }, options);
+      if (result) savedFeatures = features;
       updateStatus(status, result ? "Đã lưu trên máy chủ. Cần khởi động lại để áp dụng." : "Đã hủy thao tác.", result ? "success" : "secondary");
     } catch (error) {
       if (!options.signal?.aborted) updateStatus(status, error?.message || "Không thể lưu cấu hình.", "danger");
     } finally {
-      if (save) save.disabled = false;
+      saving = false;
+      setControlsDisabled(false);
     }
   });
 }

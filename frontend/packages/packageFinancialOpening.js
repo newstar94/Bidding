@@ -1,4 +1,5 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { markOfflinePackageSave, requireCanonicalPackageSave } from "./packageSaveResult.js";
 
 function parseStoredDateTime(value) {
   const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
@@ -45,7 +46,7 @@ export async function savePackageFinancialOpening(controller, pkg, bidUpdates, {
   const updatedBids = (controller.model.state.thongtinmothau || []).filter((bid) => updates.has(String(bid.id)));
   stageLocalRecords(controller.model, "thongtinmothau", updatedBids);
   stageLocalRecords(controller.model, "goithau", pkg);
-  await persistAndSync(controller, ["thongtinmothau", "goithau"], {
+  const syncResult = await persistAndSync(controller, ["thongtinmothau", "goithau"], {
     changes: {
       upserts: {
         goithau: [pkg],
@@ -53,5 +54,7 @@ export async function savePackageFinancialOpening(controller, pkg, bidUpdates, {
       },
     },
   });
+  markOfflinePackageSave(pkg, syncResult);
+  requireCanonicalPackageSave(syncResult);
   return pkg;
 }

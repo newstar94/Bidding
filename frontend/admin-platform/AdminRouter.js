@@ -48,6 +48,13 @@ export function getAdminRoute(pathname) {
 export function navigateAdmin(path, { replace = false } = {}) {
   const route = getAdminRoute(path);
   if (!route) return false;
+  if (typeof window !== "undefined" && typeof window.CustomEvent === "function") {
+    const guard = new window.CustomEvent("admin:before-navigate", {
+      cancelable: true,
+      detail: { route, source: "link" },
+    });
+    if (!window.dispatchEvent(guard)) return false;
+  }
   history[replace ? "replaceState" : "pushState"]({ adminPath: route.path }, "", route.href || route.path);
   window.dispatchEvent(new CustomEvent("admin:navigate", { detail: route }));
   return true;

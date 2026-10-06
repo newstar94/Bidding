@@ -9,6 +9,8 @@ from starlette.responses import JSONResponse
 from backend.shared.helpers import database, verify_session
 from backend.shared.logging_utils import log_and_error
 from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_http import database_unavailable_response
 
 
 def _limit(request) -> int:
@@ -19,7 +21,10 @@ def _limit(request) -> int:
 
 
 async def list_notifications_api(request):
-    return await run_database_read(_list_notifications, request)
+    try:
+        return await run_database_read(_list_notifications, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error)
 
 
 def _list_notifications(request):
@@ -77,7 +82,10 @@ def _list_notifications(request):
 
 
 async def mark_notification_read_api(request):
-    return await run_database_write(_mark_notification_read, request)
+    try:
+        return await run_database_write(_mark_notification_read, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
 
 
 def _mark_notification_read(request):
@@ -117,7 +125,10 @@ def _mark_notification_read(request):
 
 
 async def mark_all_notifications_read_api(request):
-    return await run_database_write(_mark_all_notifications_read, request)
+    try:
+        return await run_database_write(_mark_all_notifications_read, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
 
 
 def _mark_all_notifications_read(request):
@@ -152,7 +163,10 @@ def _mark_all_notifications_read(request):
 
 
 async def delete_notification_api(request):
-    return await run_database_write(_delete_notification, request)
+    try:
+        return await run_database_write(_delete_notification, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
+        return database_unavailable_response(request, error, write=True)
 
 
 def _delete_notification(request):

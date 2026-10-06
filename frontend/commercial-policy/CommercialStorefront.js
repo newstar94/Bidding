@@ -117,10 +117,36 @@ function renderBalance() {
   document.getElementById("storefront-quota-cta")?.addEventListener("click", () => document.querySelector(".commercial-storefront__packs")?.scrollIntoView({ behavior: "smooth", block: "start" }));
 }
 
+function resumableCheckoutUrl(order) {
+  if (order.checkoutState !== "open" || order.paymentState !== "unverified"
+      || TERMINAL_ACTIVATIONS.has(order.activationState)) return "";
+  if (order.checkoutExpiresAt && Number(order.checkoutExpiresAt) * 1000 <= Date.now()) return "";
+  try {
+    const url = new URL(order.checkoutUrl, window.location.origin);
+    return ["http:", "https:"].includes(url.protocol) && order.checkoutUrl ? url.href : "";
+  } catch { return ""; }
+}
+
+function rememberOrder(order) {
+  if (!order?.publicId) return;
+  const existing = state.orders.findIndex((item) => item.publicId === order.publicId);
+  if (existing < 0) state.orders.unshift(order);
+  else state.orders[existing] = order;
+  renderOrders();
+}
+
 function renderOrders() {
   const node = document.getElementById("storefront-orders");
   if (!node) return;
-  node.innerHTML = trustedHTML(state.orders.length ? `<div class="commercial-storefront__orders">${state.orders.map((order) => `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(order.paymentState)} · ${escapeHtml(order.activationState)}</span><b>${money(order.totalAmount)}</b></div>`).join("")}</div>` : '<div class="commercial-empty">Chưa có order.</div>');
+  node.innerHTML = trustedHTML(state.orders.length ? `<div class="commercial-storefront__orders">${state.orders.map((order) => {
+    const checkoutUrl = resumableCheckoutUrl(order);
+    const resume = checkoutUrl ? `<a class="btn btn-outline" href="${escapeHtml(checkoutUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Mở lại thanh toán ${escapeHtml(order.publicId)}">Mở lại thanh toán</a>` : "";
+    return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(order.paymentState)} · ${escapeHtml(order.activationState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div></div>`;
+  }).join("")}</div>` : '<div class="commercial-empty">Chưa có order.</div>');
+  node.querySelectorAll(".commercial-storefront__order-actions a").forEach((link) => {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  });
 }
 
 async function pollOrder(publicId, controller, attempt = 0) {
@@ -138,6 +164,7 @@ async function pollOrder(publicId, controller, attempt = 0) {
     return;
   }
   const order = payload.order;
+  rememberOrder(order);
   if (TERMINAL_ACTIVATIONS.has(order.activationState) || ["cancelled", "expired", "create_failed"].includes(order.checkoutState)) {
     status(order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt." : `Order cần xử lý: ${order.activationState}.`, order.activationState === "applied" ? "success" : "warning");
     await refresh(controller);
@@ -163,6 +190,7 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
     const ownerId = ownerKind === "organization" ? activeScope : actor.id || actor.user_id;
     const quote = await request("/api/billing/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerKind, ownerId, operation, skuCode }) });
     const order = await request("/api/billing/checkouts", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `storefront-${crypto.randomUUID()}` }, body: JSON.stringify({ quotePublicId: quote.publicId }) });
+    rememberOrder(order.order);
     let popupBlocked = false;
     if (order.order?.checkoutUrl && checkoutWindow && !checkoutWindow.closed) {
       checkoutWindow.location.href = order.order.checkoutUrl;

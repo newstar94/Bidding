@@ -1,4 +1,5 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { markOfflinePackageSave, requireCanonicalPackageSave } from "./packageSaveResult.js";
 import {
   ensureVersionEhsmtAdjustment,
   getNextVersion,
@@ -293,9 +294,11 @@ export async function savePackagePreparation(controller, pkg, changes, {
       stageLocalRecords(model, key, records);
     });
   }
-  await persistAndSync(controller, tables, {
+  const syncResult = await persistAndSync(controller, tables, {
     authoritativeBoundaryChecked: boundaryChecked,
     changes: { upserts: explicitUpserts },
   });
+  markOfflinePackageSave(savedPackage, syncResult);
+  requireCanonicalPackageSave(syncResult);
   return savedPackage;
 }

@@ -136,17 +136,21 @@ function validationReady(validation) {
   );
 }
 
+function offerFieldId(index, name) {
+  return `admin-offer-${index}-${String(name).replace(/[^a-z0-9]+/giu, "-").replace(/^-|-$/gu, "")}`;
+}
+
 function offerField(index, name, value, { type = "text", readonly = false, min = null } = {}) {
   const minAttribute = min === null ? "" : ` min="${escapeHtml(min)}"`;
-  return `<input class="form-control" type="${escapeHtml(type)}" data-admin-offer-field="${escapeHtml(name)}" value="${escapeHtml(value ?? "")}"${readonly ? " readonly" : ""}${minAttribute} data-offer-index="${index}">`;
+  return `<input id="${offerFieldId(index, name)}" class="form-control" type="${escapeHtml(type)}" data-admin-offer-field="${escapeHtml(name)}" value="${escapeHtml(value ?? "")}"${readonly ? " readonly" : ""}${minAttribute} data-offer-index="${index}">`;
 }
 
 function offerSelect(index, name, value, options) {
-  return `<select class="form-select" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}">${options.map(([optionValue, label]) => `<option value="${escapeHtml(optionValue)}"${value === optionValue ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`;
+  return `<select id="${offerFieldId(index, name)}" class="form-select" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}">${options.map(([optionValue, label]) => `<option value="${escapeHtml(optionValue)}"${value === optionValue ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`;
 }
 
 function offerCheckbox(index, name, checked, label) {
-  return `<label class="form-check"><input class="form-check-input" type="checkbox" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}"${checked ? " checked" : ""}><span class="form-check-label">${escapeHtml(label)}</span></label>`;
+  return `<label class="form-check" for="${offerFieldId(index, name)}"><input id="${offerFieldId(index, name)}" class="form-check-input" type="checkbox" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}"${checked ? " checked" : ""}><span class="form-check-label">${escapeHtml(label)}</span></label>`;
 }
 
 function offerEditorMarkup(offer, index) {
@@ -156,7 +160,7 @@ function offerEditorMarkup(offer, index) {
   const capabilityFields = capabilities === null
     ? '<div class="alert alert-warning mb-0" role="status">Quyền xuất của gói này đang ở trạng thái ánh xạ cũ chưa xác định và sẽ được giữ nguyên.</div>'
     : Object.entries(CAPABILITY_LABELS).map(([key, label]) => offerCheckbox(index, `capability:${key}`, capabilities?.[key] === true, label)).join("");
-  return `<article class="card mb-3 bf-admin-offer-editor" data-admin-offer-editor data-offer-index="${index}"><div class="card-header"><div><div class="text-secondary small mb-1">Gói ${index + 1}</div><h4 class="card-title mb-1">${text(display.name, offer?.code)}</h4><div class="text-secondary small">${text(offer?.code)}</div></div><span class="badge bg-secondary-lt">${text(offer?.salesState, "N/A")}</span></div><div class="card-body"><section class="bf-admin-editor-group" aria-labelledby="admin-offer-identity-${index}"><h5 id="admin-offer-identity-${index}">Thông tin hiển thị</h5><p class="text-secondary small">Tên, thứ tự và mô tả xuất hiện trong danh mục công khai.</p><div class="row g-3"><div class="col-md-4"><label class="form-label">Mã gói</label>${offerField(index, "code", offer?.code, { readonly: true })}</div><div class="col-md-4"><label class="form-label">Tên hiển thị</label>${offerField(index, "display.name", display.name)}</div><div class="col-md-4"><label class="form-label">Thứ tự hiển thị</label>${offerField(index, "display.order", display.order, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Hạng gói</label>${offerField(index, "tier", offer?.tier, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Biến thể</label>${offerField(index, "variant", offer?.variant, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Chủ thể</label>${offerField(index, "ownerKind", offer?.ownerKind, { readonly: true })}</div><div class="col-md-3"><label class="form-label">Chu kỳ</label>${offerField(index, "price.period", price.period, { readonly: true })}</div><div class="col-12"><label class="form-label">Mô tả</label><textarea class="form-control" rows="2" data-admin-offer-field="display.description" data-offer-index="${index}">${escapeHtml(display.description ?? "")}</textarea></div><div class="col-12"><label class="form-label">Quyền lợi <span class="text-secondary fw-normal">(mỗi dòng một nội dung)</span></label><textarea class="form-control" rows="3" data-admin-offer-field="display.benefits" data-offer-index="${index}">${escapeHtml(Array.isArray(display.benefits) ? display.benefits.join("\n") : "")}</textarea></div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-commercial-${index}"><h5 id="admin-offer-commercial-${index}">Giá và hạn mức</h5><p class="text-secondary small">Các giá trị này được kiểm tra lại khi bấm “Kiểm tra”.</p><div class="row g-3"><div class="col-md-3"><label class="form-label">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Thuế</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Tổng tiền</label>${offerField(index, "price.total", price.total, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div><div class="col-md-4"><label class="form-label">Hạn mức thành viên</label>${offerField(index, "memberQuota", offer?.memberQuota, { type: "number", min: 1 })}</div><div class="col-md-4"><label class="form-label">Lượt Mua Sắm Công</label>${offerField(index, "includedProcurementQuota", offer?.includedProcurementQuota, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label">Trạng thái bán</label>${offerSelect(index, "salesState", offer?.salesState, [["sellable", "Đang bán"], ["stopped", "Đã dừng bán"], ["non_sellable", "Không bán"]])}</div><div class="col-md-6"><label class="form-label">Phạm vi hiển thị</label>${offerSelect(index, "display.visibility", display.visibility ?? "", [["", "Theo cấu hình hiện có"], ["public", "Công khai"], ["hidden", "Ẩn"]])}</div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-entitlements-${index}"><h5 id="admin-offer-entitlements-${index}">Quyền và tính năng</h5><div class="row g-3"><div class="col-md-6"><label class="form-label d-block">Quyền xuất</label><div class="bf-admin-check-grid">${capabilityFields}</div></div><div class="col-md-6"><label class="form-label d-block">Tùy chọn</label><div class="bf-admin-check-grid">${offerCheckbox(index, "violationCheckEnabled", offer?.violationCheckEnabled === true, "Kiểm tra vi phạm nhà thầu")}${offerCheckbox(index, "display.recommended", display.recommended === true, "Gói được đề xuất")}</div></div></div></section></div></article>`;
+  return `<article class="card mb-3 bf-admin-offer-editor" data-admin-offer-editor data-offer-index="${index}"><div class="card-header"><div><div class="text-secondary small mb-1">Gói ${index + 1}</div><h4 class="card-title mb-1">${text(display.name, offer?.code)}</h4><div class="text-secondary small">${text(offer?.code)}</div></div><span class="badge bg-secondary-lt">${text(offer?.salesState, "N/A")}</span></div><div class="card-body"><section class="bf-admin-editor-group" aria-labelledby="admin-offer-identity-${index}"><h5 id="admin-offer-identity-${index}">Thông tin hiển thị</h5><p class="text-secondary small">Tên, thứ tự và mô tả xuất hiện trong danh mục công khai.</p><div class="row g-3"><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "code")}">Mã gói</label>${offerField(index, "code", offer?.code, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.name")}">Tên hiển thị</label>${offerField(index, "display.name", display.name)}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.order")}">Thứ tự hiển thị</label>${offerField(index, "display.order", display.order, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "tier")}">Hạng gói</label>${offerField(index, "tier", offer?.tier, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "variant")}">Biến thể</label>${offerField(index, "variant", offer?.variant, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "ownerKind")}">Chủ thể</label>${offerField(index, "ownerKind", offer?.ownerKind, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.period")}">Chu kỳ</label>${offerField(index, "price.period", price.period, { readonly: true })}</div><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.description")}">Mô tả</label><textarea id="${offerFieldId(index, "display.description")}" class="form-control" rows="2" data-admin-offer-field="display.description" data-offer-index="${index}">${escapeHtml(display.description ?? "")}</textarea></div><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.benefits")}">Quyền lợi <span class="text-secondary fw-normal">(mỗi dòng một nội dung)</span></label><textarea id="${offerFieldId(index, "display.benefits")}" class="form-control" rows="3" data-admin-offer-field="display.benefits" data-offer-index="${index}">${escapeHtml(Array.isArray(display.benefits) ? display.benefits.join("\n") : "")}</textarea></div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-commercial-${index}"><h5 id="admin-offer-commercial-${index}">Giá và hạn mức</h5><p class="text-secondary small">Các giá trị này được kiểm tra lại khi bấm “Kiểm tra”.</p><div class="row g-3"><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.subtotal")}">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.tax")}">Thuế</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.total")}">Tổng tiền</label>${offerField(index, "price.total", price.total, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.currency")}">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "memberQuota")}">Hạn mức thành viên</label>${offerField(index, "memberQuota", offer?.memberQuota, { type: "number", min: 1 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "includedProcurementQuota")}">Lượt Mua Sắm Công</label>${offerField(index, "includedProcurementQuota", offer?.includedProcurementQuota, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "salesState")}">Trạng thái bán</label>${offerSelect(index, "salesState", offer?.salesState, [["sellable", "Đang bán"], ["stopped", "Đã dừng bán"], ["non_sellable", "Không bán"]])}</div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "display.visibility")}">Phạm vi hiển thị</label>${offerSelect(index, "display.visibility", display.visibility ?? "", [["", "Theo cấu hình hiện có"], ["public", "Công khai"], ["hidden", "Ẩn"]])}</div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-entitlements-${index}"><h5 id="admin-offer-entitlements-${index}">Quyền và tính năng</h5><div class="row g-3"><div class="col-md-6"><label class="form-label d-block">Quyền xuất</label><div class="bf-admin-check-grid">${capabilityFields}</div></div><div class="col-md-6"><label class="form-label d-block">Tùy chọn</label><div class="bf-admin-check-grid">${offerCheckbox(index, "violationCheckEnabled", offer?.violationCheckEnabled === true, "Kiểm tra vi phạm nhà thầu")}${offerCheckbox(index, "display.recommended", display.recommended === true, "Gói được đề xuất")}</div></div></div></section></div></article>`;
 }
 
 function cloneJson(value) {
@@ -280,7 +284,7 @@ export function draftEditorMarkup(draft, validation = null) {
   const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
   const advanced = cloneJson(documentValue) || {};
   delete advanced.offers;
-  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại</div><h3 class="card-title mb-1">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Lần sửa ${text(draft.revision)} · thay đổi chưa có hiệu lực cho đến khi xuất bản.</p></div><span class="badge bg-warning-lt">Đang chỉnh sửa</span></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div class="bf-admin-editor-intro"><div><h4 class="mb-1">Các gói đăng ký</h4><p class="text-secondary small mb-0">Chỉnh các trường theo từng nhóm. Trường chỉ đọc được giữ nguyên theo chính sách hiện hành.</p></div><span class="text-secondary small">${offers.length} gói</span></div>${monthlyConfigurationMarkup(documentValue)}${offers.map(offerEditorMarkup).join("")}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống nếu muốn áp dụng ngay sau khi xuất bản.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
+  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại</div><h3 class="card-title mb-1">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Lần sửa ${text(draft.revision)} · thay đổi chưa có hiệu lực cho đến khi xuất bản.</p></div><span class="badge bg-warning-lt">Đang chỉnh sửa</span></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div class="bf-admin-editor-intro"><div><h4 class="mb-1">Các gói đăng ký</h4><p class="text-secondary small mb-0">Chỉnh các trường theo từng nhóm. Trường chỉ đọc được giữ nguyên theo chính sách hiện hành.</p></div><span class="text-secondary small">${offers.length} gói</span></div>${monthlyConfigurationMarkup(documentValue)}${offers.map(offerEditorMarkup).join("")}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><label class="form-label" for="admin-plan-advanced-document">Cấu hình chính sách nâng cao (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống nếu muốn áp dụng ngay sau khi xuất bản.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
 }
 
 export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
@@ -368,6 +372,26 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   let validation = null;
   let dirty = false;
   let busy = false;
+  let draftOpenController = null;
+  let draftOpenSequence = 0;
+
+  const discardMessage = "Thay đổi chưa lưu sẽ bị bỏ. Bạn có muốn rời khỏi trình chỉnh sửa?";
+  const beforeNavigate = (event) => {
+    if (!dirty || globalThis.confirm?.(discardMessage) !== false) return;
+    event.preventDefault();
+  };
+  const beforeUnload = (event) => {
+    if (!dirty) return;
+    event.preventDefault();
+    event.returnValue = discardMessage;
+  };
+  globalThis.addEventListener?.("admin:before-navigate", beforeNavigate);
+  globalThis.addEventListener?.("beforeunload", beforeUnload);
+  signal?.addEventListener?.("abort", () => {
+    draftOpenController?.abort();
+    globalThis.removeEventListener?.("admin:before-navigate", beforeNavigate);
+    globalThis.removeEventListener?.("beforeunload", beforeUnload);
+  }, { once: true });
 
   const render = () => {
     renderAdminMarkup(container, plansMarkup(overview, {
@@ -424,14 +448,27 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     container.querySelectorAll?.("[data-admin-draft-open]").forEach((button) => {
       button.addEventListener("click", async () => {
         if (dirty && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Mở bản nháp khác?")) return;
+        draftOpenController?.abort();
+        const openController = new AbortController();
+        draftOpenController = openController;
+        const openSequence = ++draftOpenSequence;
+        const cancelOpen = () => openController.abort(signal?.reason);
+        if (signal?.aborted) cancelOpen();
+        else signal?.addEventListener?.("abort", cancelOpen, { once: true });
         try {
-          draft = await getAdminJson(`/api/commercial/drafts/${encodeURIComponent(button.dataset.adminDraftOpen)}`, { fetchImpl, signal });
+          const loadedDraft = await getAdminJson(`/api/commercial/drafts/${encodeURIComponent(button.dataset.adminDraftOpen)}`, { fetchImpl, signal: openController.signal });
+          if (openSequence !== draftOpenSequence || openController.signal.aborted) return;
+          draft = loadedDraft;
           workingDocument = cloneJson(draft.document);
           dirty = false;
           validation = draft.validation ? { ...draft.validation, validationDigest: draft.validationDigest, readinessExpiresAt: draft.readinessExpiresAt } : null;
           render();
           container.querySelector?.("#admin-commercial-editor")?.scrollIntoView?.({ block: "start" });
-        } catch (error) { setStatus(container, error.message, "danger"); }
+        } catch (error) {
+          if (!openController.signal.aborted && openSequence === draftOpenSequence) setStatus(container, error.message, "danger");
+        } finally {
+          signal?.removeEventListener?.("abort", cancelOpen);
+        }
       });
     });
     container.querySelectorAll?.("[data-admin-plan-action]").forEach((button) => {
@@ -442,11 +479,13 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           draft = null; workingDocument = null; validation = null; dirty = false; render(); return;
         }
         if (action === "create") {
+          if (dirty && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Tạo bản nháp mới?") === false) return;
           const key = mutationKey(action);
           await execute(action, () => postAdminJson("/api/commercial/drafts", { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp mới.", { keepDraft: true });
           return;
         }
         if (action === "clone") {
+          if (dirty && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Nhân bản bản phát hành?") === false) return;
           if (!await requestPlanActionInput(action)) return;
           const key = mutationKey(action);
           await execute(action, () => postAdminJson(`/api/commercial/releases/${encodeURIComponent(button.dataset.releaseId)}/clone`, { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp từ bản đang hiệu lực.", { keepDraft: true });
@@ -529,6 +568,21 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       field.addEventListener("change", markDirty);
     });
   };
+
+  // Keep the draft guard attached to the stable route host. The editor is
+  // re-rendered after opening a draft and after every action, so listeners on
+  // individual fields can otherwise be lost between renders.
+  const markStableEditorDirty = (event) => {
+    if (!event.target?.matches?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days")) return;
+    dirty = true;
+    validation = null;
+  };
+  container.addEventListener?.("input", markStableEditorDirty);
+  container.addEventListener?.("change", markStableEditorDirty);
+  signal?.addEventListener?.("abort", () => {
+    container.removeEventListener?.("input", markStableEditorDirty);
+    container.removeEventListener?.("change", markStableEditorDirty);
+  }, { once: true });
 
   renderAdminMarkup(container, adminLoadingMarkup("Đang tải phiên bản gói dịch vụ…"), { busy: true });
   try { await refresh(); }

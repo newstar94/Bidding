@@ -120,7 +120,7 @@ function renderNotifications(state, controller, elements) {
   const visibleIds = new Set(selectableNotifications(state, controller).map((item) => item.id));
   state.selected = new Set([...state.selected].filter((id) => visibleIds.has(id)));
   const alerts = workAlerts(controller);
-  elements.readAll.disabled = !state.unreadCount;
+  elements.readAll.disabled = !state.unreadCount || state.readingAll;
   if (!items.length && !alerts.length) {
     elements.list.innerHTML = trustedHTML(EMPTY_ACTIVITY);
     return;
@@ -212,6 +212,8 @@ export function initializeNotificationCenter(controller) {
   root.dataset.initialized = "true";
   const state = { items: [], unreadCount: 0, loading: false, unavailable: false };
   let activeRequest = null;
+  const mutationRequests = new Set();
+  const readingIds = new Set();
   let disposed = false;
   const deleteToggle = document.getElementById("notification-delete-toggle");
   const onDeleteToggle = () => {
@@ -276,9 +278,33 @@ export function initializeNotificationCenter(controller) {
     setOpen(elements.panel.hidden);
   };
   const onReadAllClick = async () => {
-    if (disposed || !state.unreadCount) return;
-    const response = await apiFetch("/api/notifications/read-all", { method: "POST" });
-    if (!disposed && response.ok) await refresh();
+    if (disposed || !state.unreadCount || state.readingAll) return;
+    state.readingAll = true;
+    elements.readAll.disabled = true;
+    const request = beginWorkspaceRequest(controller.model);
+    mutationRequests.add(request);
+    try {
+      const response = await apiFetch("/api/notifications/read-all", {
+        method: "POST", signal: request.signal, timeoutMs: 10_000, retries: 0,
+      });
+      assertWorkspaceLeaseCurrent(controller.model, request.lease);
+      if (disposed) return;
+      if (!response.ok) throw new Error("Không thể đánh dấu đã đọc.");
+      const readAt = Math.floor(Date.now() / 1000);
+      state.items.forEach((item) => { if (!item.readAt) item.readAt = readAt; });
+      state.unreadCount = 0;
+      updateBadge(state, elements);
+      await refresh();
+    } catch (error) {
+      if (!disposed && error?.code !== "WORKSPACE_CHANGED") {
+        controller.view.showToast?.("Chưa thể đánh dấu đã đọc", "Vui lòng thử lại.", "error");
+      }
+    } finally {
+      finishWorkspaceRequest(controller.model, request);
+      mutationRequests.delete(request);
+      state.readingAll = false;
+      if (!disposed) renderNotifications(state, controller, elements);
+    }
   };
   const onListClick = async (event) => {
     if (disposed) return;
@@ -359,17 +385,46 @@ export function initializeNotificationCenter(controller) {
         return;
       }
       const current = state.items.find((entry) => entry.id === id);
-      if (current && !current.readAt) {
-        await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+      if (readingIds.has(id)) return;
+      const request = beginWorkspaceRequest(controller.model);
+      mutationRequests.add(request);
+      readingIds.add(id);
+      try {
+        if (current && !current.readAt) {
+          try {
+            const response = await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, {
+              method: "POST", signal: request.signal, timeoutMs: 10_000, retries: 0,
+            });
+            assertWorkspaceLeaseCurrent(controller.model, request.lease);
+            if (disposed) return;
+            if (!response.ok) throw new Error("Không thể đánh dấu đã đọc.");
+            const visible = state.items.find((entry) => entry.id === id);
+            if (visible && !visible.readAt) {
+              visible.readAt = Math.floor(Date.now() / 1000);
+              state.unreadCount = Math.max(0, state.unreadCount - 1);
+            }
+            renderNotifications(state, controller, elements);
+            updateBadge(state, elements);
+          } catch (_error) {
+            assertWorkspaceLeaseCurrent(controller.model, request.lease);
+            if (disposed) return;
+            controller.view.showToast?.("Chưa thể đánh dấu đã đọc", "Thông báo vẫn được giữ là chưa đọc. Vui lòng thử lại.", "error");
+          }
+        }
+        assertWorkspaceLeaseCurrent(controller.model, request.lease);
         if (disposed) return;
-        current.readAt = Math.floor(Date.now() / 1000);
-        state.unreadCount = Math.max(0, state.unreadCount - 1);
-        renderNotifications(state, controller, elements);
-        updateBadge(state, elements);
-      }
-      if (notificationItem.dataset.static !== "true") {
-        setOpen(false);
-        navigateToTarget(controller, notificationItem.dataset.targetType, notificationItem.dataset.targetId);
+        if (notificationItem.dataset.static !== "true") {
+          setOpen(false);
+          navigateToTarget(controller, notificationItem.dataset.targetType, notificationItem.dataset.targetId);
+        }
+      } catch (error) {
+        if (!disposed && error?.code !== "WORKSPACE_CHANGED") {
+          controller.view.showToast?.("Không thể mở thông báo", "Vui lòng thử lại.", "error");
+        }
+      } finally {
+        finishWorkspaceRequest(controller.model, request);
+        mutationRequests.delete(request);
+        readingIds.delete(id);
       }
       return;
     }
@@ -418,6 +473,7 @@ export function initializeNotificationCenter(controller) {
       if (disposed) return;
       disposed = true;
       activeRequest?.controller?.abort?.(workspaceChangedError());
+      mutationRequests.forEach((request) => request.controller?.abort?.(workspaceChangedError()));
       window.clearInterval(intervalId);
       elements.trigger.removeEventListener("click", onTriggerClick);
       deleteToggle?.removeEventListener("click", onDeleteToggle);

@@ -352,6 +352,7 @@ def _word_template_upload_access_response(request, role_or_err, organization_id)
     )
 
 
+
 def _word_template_scope(user_id, organization_id):
     if is_personal_scope_for_user(organization_id, user_id):
         return "personal", user_id
@@ -1393,18 +1394,18 @@ async def export_plan_api(request):
         except PlanBasisSelectionError as error:
             return JSONResponse({"code": str(error)}, status_code=400)
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
-        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
+        org_name = await run_database_read(get_active_org, request, user_id)
+        entitlement_error = await run_database_read(_word_export_subscription_response, role_or_err, org_name)
         if entitlement_error is not None:
             return entitlement_error
-        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
+        snapshot_version, snapshot_error = await run_database_read(_validate_export_snapshot, request, org_name)
         if snapshot_error is not None:
             return snapshot_error
-        if not _can_export_record(role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
+        if not await run_database_read(_can_export_record, role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
             return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
         try:
             (
@@ -1447,7 +1448,7 @@ async def export_plan_api(request):
         )
         document_stream = BytesIO(document_bytes)
 
-        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
+        snapshot_error = await run_database_read(_ensure_export_snapshot_unchanged, org_name, snapshot_version)
         if snapshot_error is not None:
             return snapshot_error
 
@@ -1498,12 +1499,12 @@ async def export_report_api(request):
         else None
     )
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
-        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
+        org_name = await run_database_read(get_active_org, request, user_id)
+        entitlement_error = await run_database_read(_word_export_subscription_response, role_or_err, org_name)
         if entitlement_error is not None:
             return entitlement_error
         if type_param not in REPORT_DOCUMENT_TYPES:
@@ -1514,10 +1515,10 @@ async def export_report_api(request):
                 },
                 status_code=400,
             )
-        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
+        snapshot_version, snapshot_error = await run_database_read(_validate_export_snapshot, request, org_name)
         if snapshot_error is not None:
             return snapshot_error
-        if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
+        if not await run_database_read(_can_export_record, role_or_err, org_name, "goithau", "goi_thau", package_id):
             return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
         try:
             (
@@ -1562,7 +1563,7 @@ async def export_report_api(request):
         )
         document_stream = BytesIO(document_bytes)
 
-        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
+        snapshot_error = await run_database_read(_ensure_export_snapshot_unchanged, org_name, snapshot_version)
         if snapshot_error is not None:
             return snapshot_error
 
@@ -1597,14 +1598,14 @@ async def export_report_api(request):
 
 async def list_templates_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
+        organization_id = await run_database_read(get_active_org, request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
 
         templates = await run_blocking_io(
@@ -1620,14 +1621,14 @@ async def list_templates_api(request):
 
 async def get_word_publication_template_assignments_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
+        organization_id = await run_database_read(get_active_org, request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
         from backend.documents.template_catalog.compatibility import (
             catalog_enabled,
@@ -1664,18 +1665,18 @@ async def get_word_publication_template_assignments_api(request):
 
 async def save_word_publication_template_assignments_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(
+        access_error = await run_database_read(_word_config_access_response,
             request,
             role_or_err,
             write=True,
         )
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
+        organization_id = await run_database_read(get_active_org, request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
         data, json_error = await read_json_object(request)
         if json_error is not None:
@@ -1788,14 +1789,14 @@ async def save_word_publication_template_assignments_api(request):
 
 async def view_template_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
+        organization_id = await run_database_read(get_active_org, request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
         template_path, safe_name = await run_blocking_io(
             _resolve_template_path,
@@ -1828,14 +1829,14 @@ async def view_template_api(request):
 
 async def set_active_template_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err, write=True)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err, write=True)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
+        organization_id = await run_database_read(get_active_org, request, user_id)
         owner_type, owner_id = _word_template_scope(user_id, organization_id)
 
         data, json_error = await read_json_object(request)
@@ -1923,15 +1924,15 @@ async def set_active_template_api(request):
 
 async def upload_template_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err, write=True)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err, write=True)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
-        upload_access_error = _word_template_upload_access_response(
+        organization_id = await run_database_read(get_active_org, request, user_id)
+        upload_access_error = await run_database_read(_word_template_upload_access_response,
             request,
             role_or_err,
             organization_id,
@@ -2013,15 +2014,15 @@ async def upload_template_api(request):
 
 async def replace_template_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err, write=True)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err, write=True)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
-        upload_access_error = _word_template_upload_access_response(
+        organization_id = await run_database_read(get_active_org, request, user_id)
+        upload_access_error = await run_database_read(_word_template_upload_access_response,
             request,
             role_or_err,
             organization_id,
@@ -2132,15 +2133,15 @@ async def replace_template_api(request):
 
 async def delete_template_api(request):
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        access_error = _word_config_access_response(request, role_or_err, write=True)
+        access_error = await run_database_read(_word_config_access_response, request, role_or_err, write=True)
         if access_error is not None:
             return access_error
-        organization_id = get_active_org(request, user_id)
-        upload_access_error = _word_template_upload_access_response(
+        organization_id = await run_database_read(get_active_org, request, user_id)
+        upload_access_error = await run_database_read(_word_template_upload_access_response,
             request,
             role_or_err,
             organization_id,
@@ -2209,11 +2210,11 @@ async def delete_template_api(request):
 async def list_word_mappings_api(request):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
+        org_name = await run_database_read(get_active_org, request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_read_word_config(cursor, role_or_err, user_id, org_name):
@@ -2256,11 +2257,11 @@ async def list_word_mappings_api(request):
 async def save_word_mapping_api(request):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
+        org_name = await run_database_read(get_active_org, request, user_id)
 
         data, json_error = await read_json_object(request)
         if json_error is not None:
@@ -2370,11 +2371,11 @@ async def save_word_mapping_api(request):
 async def delete_word_mapping_api(request):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
+        org_name = await run_database_read(get_active_org, request, user_id)
 
         mapping_id = request.path_params.get('mapping_id')
         if not mapping_id:
@@ -2423,11 +2424,11 @@ async def delete_word_mapping_api(request):
 async def reset_word_mapping_api(request):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await run_database_read(verify_session, request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
-        org_name = get_active_org(request, user_id)
+        org_name = await run_database_read(get_active_org, request, user_id)
         mapping_id = request.path_params.get('mapping_id')
         if not mapping_id:
             return JSONResponse({"error": "Missing mapping_id parameter"}, status_code=400)

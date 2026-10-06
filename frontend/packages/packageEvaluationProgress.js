@@ -1,4 +1,5 @@
 import { persistAndSync, stageLocalRecords } from "../shared/MutationService.js";
+import { markOfflinePackageSave, requireCanonicalPackageSave } from "./packageSaveResult.js";
 import { getAppController } from "../app/controllerRef.js";
 import { serializeEvaluationMetadata } from "./evaluationMetadata.js";
 
@@ -27,9 +28,11 @@ export async function saveQualifiedApproval(controller, pkg, metadata) {
     danhGiaHsdtMetadata: serializeEvaluationMetadata(metadata),
   };
   const persistedPackage = await stagePackageRecord(controller, stagedPackage);
-  await persistAndSync(controller, "goithau", {
+  const syncResult = await persistAndSync(controller, "goithau", {
     changes: { upserts: { goithau: [persistedPackage] } },
   });
+  markOfflinePackageSave(persistedPackage, syncResult);
+  requireCanonicalPackageSave(syncResult);
   return controller?.model?.state?.goithau?.find(
     (item) => String(item?.id) === String(packageId),
   ) || stagedPackage;

@@ -1289,9 +1289,7 @@ export class BiddingView {
     if (isSuccess) {
       const feedbackMessage = title && title !== "Thành công" ? `${title}. ${message || ""}` : message;
       this.showToast("Thành công", feedbackMessage, "success");
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(true), 1800);
-      });
+      return true;
     }
     if (iconName === "warning") iconName = "alert-triangle";
     return new Promise((resolve) => {

@@ -20,6 +20,8 @@ from backend.shared.helpers import (
 from backend.shared.access_policy import (
     OWNERSHIP_SCOPED_TABLES,
     authorize_record_write,
+    authorize_record_write_from_context,
+    build_batch_write_authorization_context,
     can_read_table,
 )
 from backend.shared.media_helper import public_image_path
@@ -563,6 +565,22 @@ def _paginate_records_blocking(request):
                 plan_snapshot_id=plan_snapshot_id,
             )
 
+        contractor_write_context = None
+        if table_name == "nha_thau" and rows:
+            # Prefetch the same write-authority inputs once for this page only.
+            # No authority is retained across requests or workspace changes.
+            contractor_write_context = build_batch_write_authorization_context(
+                cursor,
+                role_str,
+                user_id,
+                org_name,
+                {table_name: [
+                    {"id": row["id"], "rootId": row["id_goc"]}
+                    for row in rows
+                ]},
+                {table_name: {row["id"]: row for row in rows}},
+            )
+
         items = []
         for row in rows:
             row_dict = dict(row)
@@ -588,7 +606,11 @@ def _paginate_records_blocking(request):
                 )
 
             item = map_db_to_json(table_name, row_dict)
-            if table_name in OWNERSHIP_SCOPED_TABLES or table_name == "nha_thau":
+            if contractor_write_context is not None:
+                item["canEdit"] = authorize_record_write_from_context(
+                    contractor_write_context, table_key, table_name, item,
+                ).allowed
+            elif table_name in OWNERSHIP_SCOPED_TABLES:
                 item["canEdit"] = authorize_record_write(
                     cursor,
                     role_str,
