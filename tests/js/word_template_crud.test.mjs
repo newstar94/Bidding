@@ -13,6 +13,24 @@ import {
   templateResourceUrl,
   validateWordTemplateName,
 } from "../../frontend/documents/WordIntegration.js";
+import { normalizeToastFeedback } from "../../frontend/shared/toastFeedback.js";
+
+test("template availability toasts describe activation instead of export", () => {
+  assert.deepEqual(
+    normalizeToastFeedback(
+      'Biểu mẫu “bao-cao.docx” đã sẵn sàng để gán và xuất Word.',
+      "success",
+    ),
+    { title: "Thành công", message: "Kích hoạt biểu mẫu thành công.", type: "success" },
+  );
+  assert.deepEqual(
+    normalizeToastFeedback(
+      'Biểu mẫu “bao-cao.docx” đã được loại khỏi danh sách có thể gán và xuất Word.',
+      "success",
+    ),
+    { title: "Thành công", message: "Tạm ngừng biểu mẫu thành công.", type: "success" },
+  );
+});
 
 test("manager independently enables or pauses each Word template", () => {
   const enabled = buildWordTemplateStatus({

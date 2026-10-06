@@ -263,7 +263,7 @@ function overviewMarkup(payload, { healthPayload = null, healthPending = false }
   const statCards = [
     ["organizations", "Tổ chức", "organizations", "blue"],
     ["users", "Người dùng", "users", "green"],
-    ["activeSubscriptions", "Đăng ký hoạt động", "legal", "orange"],
+    ["activeSubscriptions", "Đăng ký hoạt động", "subscriptions", "orange"],
     ["verifiedRevenue", "Doanh thu tháng", "coins", "purple"],
   ].map(([key, label, icon, tone]) => {
     const hasNewCount = (key === "organizations" && Number.isFinite(metrics.newOrganizations30Days)) || (key === "users" && Number.isFinite(metrics.newUsers30Days));

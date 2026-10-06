@@ -138,6 +138,8 @@ function normalizeSuccessMessage(message) {
     if (/(?:nhập|import|xử lý).*?(?:dòng|dữ liệu|excel)/u.test(comparable)) return `Nhập ${entity} thành công.`;
     if (/(?:thêm lại|khôi phục)/u.test(comparable)) return `Khôi phục ${entity} thành công.`;
     if (/(?:thêm|tạo)(?: mới)?/u.test(comparable)) return `Thêm ${entity} thành công.`;
+    if (/(?:tạm ngừng|loại khỏi danh sách)/u.test(comparable)) return `Tạm ngừng ${entity} thành công.`;
+    if (/(?:kích hoạt|cho phép sử dụng|sẵn sàng để gán)/u.test(comparable)) return `Kích hoạt ${entity} thành công.`;
     if (/(?:cập nhật|thay đổi|thay (?:file|tài liệu)|chỉnh sửa|ghi đè|áp dụng|đồng bộ)/u.test(comparable)) {
       return `Cập nhật ${entity} thành công.`;
     }

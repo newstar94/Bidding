@@ -48,6 +48,21 @@ test("overview consumes the current authoritative backend metric contract", () =
   assert.match(markup, /data-admin-metric="verifiedRevenue">1[.]250[.]000 ₫/u);
 });
 
+test("overview renders an icon for every primary metric card", () => {
+  const markup = overviewMarkup({
+    metrics: {
+      organizations: 1,
+      users: 2,
+      activeSubscriptions: 3,
+      currentPeriodRevenue: { value: 4_000, currency: "VND", period: "current_month" },
+    },
+  });
+  const icons = [...markup.matchAll(/<div class="bf-admin-stat-icon">([\s\S]*?)<\/div>/gu)]
+    .map((match) => match[1]);
+  assert.equal(icons.length, 4);
+  icons.forEach((icon) => assert.match(icon, /^<svg[\s\S]*(?:<path|<ellipse)/u));
+});
+
 test("overview includes accessible charts, activity feed and actionable alerts", () => {
   const markup = overviewMarkup({
     generatedAt: "2026-09-11T00:00:00Z",
