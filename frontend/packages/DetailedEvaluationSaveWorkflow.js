@@ -221,6 +221,82 @@ function prepareDetailedEvaluationBidMutation({
   return { bidUpsert };
 }
 
+function completionBidderGoodsError(appController, state, completeReport) {
+  if (!shouldValidateBidderGoodsOnCompletion(state, completeReport)) return "";
+  const rows = getBidderGoodsForBid(appController.model, state.pkg, state.bid);
+  const requirements = getBidderGoodsRequirements(appController.model, state.pkg, state.bid);
+  const validation = validateBidderGoodsSubmission({
+    rows, requirements, bidPrice: state.bid?.giaDuThau,
+  });
+  const hasDraftRows = rows.some((row) => !isOfficialBidderGoodsRow(row));
+  if (validation.valid && !hasDraftRows) return "";
+  return hasDraftRows
+    ? "Hàng hóa dự thầu phải được lưu chính thức và đồng bộ trước khi hoàn thành đánh giá."
+    : validation.errors[0];
+}
+
+function invalidateFollowingDetailedEvaluationGroups(model, state, report, activeGroup) {
+  const configured = state.context.configuredGroups || state.context.editableGroups;
+  const activeIndex = configured.indexOf(activeGroup);
+  const invalidated = new Set(activeIndex >= 0 ? configured.slice(activeIndex) : [activeGroup]);
+  report.extension.completedGroups = report.extension.completedGroups.filter(
+    (group) => !invalidated.has(group),
+  );
+  report.extension.groupResults = Object.fromEntries(
+    Object.entries(report.extension.groupResults || {}).filter(([group]) => !invalidated.has(group)),
+  );
+  if (!configured.slice(Math.max(0, activeIndex + 1)).includes("bidder_goods")) return null;
+  const baseRows = (model.state.hanghoaduthaunhathau || [])
+    .filter((row) => String(row.thongTinMoThauId || "") === String(state.bid.id));
+  return {
+    bases: structuredClone(baseRows),
+    rows: baseRows.map((row) => ({ ...row, trangThaiUuDai: "stale" })),
+  };
+}
+
+async function alertInvalidDetailedEvaluation(appController, root, error) {
+  const row = root.querySelector(`[data-detailed-criterion-id="${error.criterionId}"]`);
+  const field = row?.querySelector(`[data-detailed-field="${error.field}"]`)
+    || row?.querySelector(`[data-detailed-config-field="${error.field}"]`);
+  field?.focus?.();
+  await appController.view.customAlert("Dữ liệu chưa hợp lệ", error.message, "alert-triangle", field);
+}
+
+async function finishDetailedEvaluationSave({
+  appController, state, report, activeGroup, completedGroupResult, completeGroup,
+  completeReport, notify, isContextCurrent, beforeContextRender, afterContextRender,
+}) {
+  appController._detailedEvaluationDrafts.set(state.draftKey, report);
+  detailedEvaluationAutosaveFor(appController).clear(state.draftKey);
+  appController._editingDetailedEvaluationKey = null;
+  appController._detailedEvaluationDirty = false;
+  const nextTab = getNextDetailedEvaluationTabAfterCompletion({
+    configuredGroups: state.context.configuredGroups || [],
+    activeGroup,
+    groupResult: completedGroupResult,
+    completeGroup,
+  });
+  if (nextTab) appController.selectedDetailedEvaluationTab = nextTab;
+  beforeContextRender?.();
+  await appController.renderDetailedEvaluation();
+  afterContextRender?.();
+  if (isContextCurrent && !isContextCurrent()) return false;
+  if (notify) {
+    await appController.view.customAlert(
+      "Lưu thành công",
+      completeReport
+        ? "Báo cáo chi tiết đã hoàn thành và cập nhật báo cáo tổng quát."
+        : completeGroup
+          ? nextTab
+            ? "Tab đánh giá đã hoàn thành. Hệ thống đã chuyển sang tab tiếp theo."
+            : "Tab đánh giá đã hoàn thành."
+          : "Đã lưu bản nháp báo cáo chi tiết.",
+      "check-circle",
+    );
+  }
+  return true;
+}
+
 export async function executeDetailedEvaluationSave({
   appController,
   state,
@@ -260,25 +336,10 @@ export async function executeDetailedEvaluationSave({
     if (!pkg || !bid || String(bid.goiThauId) !== String(pkg.id)) return false;
     state = { ...state, pkg, bid };
   }
-  if (shouldValidateBidderGoodsOnCompletion(state, completeReport)) {
-    const bidderGoodsRows = getBidderGoodsForBid(appController.model, state.pkg, state.bid);
-    const bidderGoodsRequirements = getBidderGoodsRequirements(appController.model, state.pkg, state.bid);
-    const bidderGoodsValidation = validateBidderGoodsSubmission({
-      rows: bidderGoodsRows,
-      requirements: bidderGoodsRequirements,
-      bidPrice: state.bid?.giaDuThau,
-    });
-    const hasDraftRows = bidderGoodsRows.some((row) => !isOfficialBidderGoodsRow(row));
-    if (!bidderGoodsValidation.valid || hasDraftRows) {
-      await appController.view.customAlert(
-        "Chưa thể hoàn thành đánh giá",
-        hasDraftRows
-          ? "Hàng hóa dự thầu phải được lưu chính thức và đồng bộ trước khi hoàn thành đánh giá."
-          : bidderGoodsValidation.errors[0],
-        "alert-triangle",
-      );
-      return false;
-    }
+  const goodsError = completionBidderGoodsError(appController, state, completeReport);
+  if (goodsError) {
+    await appController.view.customAlert("Chưa thể hoàn thành đánh giá", goodsError, "alert-triangle");
+    return false;
   }
   if (typeof commit !== "function") {
     throw new TypeError("Detailed evaluation save workflow requires a commit adapter.");
@@ -348,21 +409,12 @@ export async function executeDetailedEvaluationSave({
   let invalidatedBidderGoods = false;
   let changedBidderGoods = [];
   if (!completeGroup && !completeReport) {
-    const configured = state.context.configuredGroups || state.context.editableGroups;
-    const activeIndex = configured.indexOf(activeGroup);
-    const invalidated = new Set(activeIndex >= 0 ? configured.slice(activeIndex) : [activeGroup]);
-    report.extension.completedGroups = report.extension.completedGroups.filter(
-      (group) => !invalidated.has(group),
+    const invalidation = invalidateFollowingDetailedEvaluationGroups(
+      appController.model, state, report, activeGroup,
     );
-    report.extension.groupResults = Object.fromEntries(
-      Object.entries(report.extension.groupResults || {}).filter(([group]) => !invalidated.has(group)),
-    );
-    if (configured.slice(Math.max(0, activeIndex + 1)).includes("bidder_goods")) {
-      changedBidderGoods = (appController.model.state.hanghoaduthaunhathau || [])
-        .filter((row) => String(row.thongTinMoThauId || "") === String(state.bid.id))
-        .map((row) => ({ ...row, trangThaiUuDai: "stale" }));
-      bases.hanghoaduthaunhathau = structuredClone((appController.model.state.hanghoaduthaunhathau || [])
-        .filter((row) => String(row.thongTinMoThauId || "") === String(state.bid.id)));
+    if (invalidation) {
+      changedBidderGoods = invalidation.rows;
+      bases.hanghoaduthaunhathau = invalidation.bases;
       invalidatedBidderGoods = true;
     }
   }
@@ -375,17 +427,7 @@ export async function executeDetailedEvaluationSave({
       { completing: completeGroup },
     );
   if (!validation.valid) {
-    const first = validation.errors[0];
-    const row = root.querySelector(`[data-detailed-criterion-id="${first.criterionId}"]`);
-    const field = row?.querySelector(`[data-detailed-field="${first.field}"]`)
-      || row?.querySelector(`[data-detailed-config-field="${first.field}"]`);
-    field?.focus?.();
-    await appController.view.customAlert(
-      "Dữ liệu chưa hợp lệ",
-      first.message,
-      "alert-triangle",
-      field,
-    );
+    await alertInvalidDetailedEvaluation(appController, root, validation.errors[0]);
     return false;
   }
   let completedGroupResult = "";
@@ -414,9 +456,11 @@ export async function executeDetailedEvaluationSave({
   );
   allReports.push(report);
   if (isContextCurrent && !isContextCurrent()) return false;
-  if (invalidatedBidderGoods) {
-    applyInvalidatedGoodsProjection(appController.model, state.bid, changedBidderGoods);
-  }
+  // Build the candidate away from the live model: final score validation may
+  // still reject completion before any mutation is staged.
+  const liveState = state;
+  state = { ...state, pkg: structuredClone(state.pkg), bid: structuredClone(state.bid) };
+  if (invalidatedBidderGoods) state.bid.trangThaiTinhUuDai = "stale";
   persistCriteriaOnSave(
     state.pkg,
     state.roundType,
@@ -443,6 +487,12 @@ export async function executeDetailedEvaluationSave({
   }
   const { bidUpsert } = preparedMutation;
   if (isContextCurrent && !isContextCurrent()) return false;
+  Object.assign(liveState.pkg, state.pkg);
+  Object.assign(liveState.bid, state.bid);
+  state = liveState;
+  if (invalidatedBidderGoods) {
+    applyInvalidatedGoodsProjection(appController.model, state.bid, changedBidderGoods);
+  }
   beforeContextCommit?.();
   const result = await commitDetailedChanges(appController, commit, {
     goithau: [state.pkg],
@@ -454,33 +504,8 @@ export async function executeDetailedEvaluationSave({
     await clearConfirmedConflictInput(appController, state, recovery, workspaceToken, result);
     return false;
   }
-  appController._detailedEvaluationDrafts.set(state.draftKey, report);
-  detailedEvaluationAutosaveFor(appController).clear(state.draftKey);
-  appController._editingDetailedEvaluationKey = null;
-  appController._detailedEvaluationDirty = false;
-  const nextTab = getNextDetailedEvaluationTabAfterCompletion({
-    configuredGroups: state.context.configuredGroups || [],
-    activeGroup,
-    groupResult: completedGroupResult,
-    completeGroup,
+  return finishDetailedEvaluationSave({
+    appController, state, report, activeGroup, completedGroupResult,
+    completeGroup, completeReport, notify, isContextCurrent, beforeContextRender, afterContextRender,
   });
-  if (nextTab) appController.selectedDetailedEvaluationTab = nextTab;
-  beforeContextRender?.();
-  await appController.renderDetailedEvaluation();
-  afterContextRender?.();
-  if (isContextCurrent && !isContextCurrent()) return false;
-  if (notify) {
-    await appController.view.customAlert(
-      "Lưu thành công",
-      completeReport
-        ? "Báo cáo chi tiết đã hoàn thành và cập nhật báo cáo tổng quát."
-        : completeGroup
-          ? nextTab
-            ? "Tab đánh giá đã hoàn thành. Hệ thống đã chuyển sang tab tiếp theo."
-            : "Tab đánh giá đã hoàn thành."
-          : "Đã lưu bản nháp báo cáo chi tiết.",
-      "check-circle",
-    );
-  }
-  return true;
 }

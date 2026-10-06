@@ -23,6 +23,26 @@ class BlockingIOTimeoutError(TimeoutError):
     """A blocking operation did not complete within its route deadline."""
 
 
+async def finish_submitted_task(task: asyncio.Task[Any]) -> Any:
+    """Finish submitted cleanup even under repeated caller cancellation.
+
+    Cancellation still propagates after completion. Callers that own a newly
+    committed resource can retrieve ``task.result()`` to release it first.
+    """
+    cancellation = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            if task.cancelled():
+                raise
+            cancellation = error
+    result = task.result()
+    if cancellation is not None:
+        raise cancellation
+    return result
+
+
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     try:
         value = int(os.environ.get(name, str(default)))

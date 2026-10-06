@@ -24,7 +24,7 @@ test("secure build emits private release-keyed symbols without publishing source
   const workflow = fs.readFileSync(".github/workflows/ci.yml", "utf8");
   const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 
-  assert.equal(packageJson.devDependencies["source-map-js"], "1.2.1");
+  assert.equal(packageJson.devDependencies["source-map-js"], "1.2.2");
   assert.match(config, /sourcemap:\s*mode === ['"]secure['"] \? ['"]hidden['"] : false/u);
   assert.match(config, /sourceMap:\s*true/u);
   assert.match(config, /getSourceMap\(\)/u);

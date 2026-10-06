@@ -19,10 +19,11 @@ def parse_vnd_amount(value):
         return None
     if not amount.is_finite() or amount != amount.to_integral_value():
         return None
-    integer = int(amount)
-    if integer < 0 or integer > MAX_SIGNED_64BIT_INTEGER:
+    # Check the Decimal before int(): a small exponential string can describe
+    # an enormous integer that was already outside the accepted range.
+    if amount < 0 or amount > MAX_SIGNED_64BIT_INTEGER:
         return None
-    return integer
+    return int(amount)
 
 
 def money_json_value(value):

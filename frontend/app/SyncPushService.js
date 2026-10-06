@@ -834,6 +834,13 @@ export function autoSync(options = {}) {
     return Promise.resolve(this._startupReconciliationPromise).then(() => {
       if (!workspaceIsCurrent(this, workspace)) return staleWorkspaceResult();
       const settledPhase = this.getStartupReconciliationState?.().phase;
+      if (settledPhase === "RECONCILED") {
+        // The startup promise may still be visible for the short interval
+        // between its settlement and its cleanup callback. Continue with the
+        // normal mutation flush instead of reporting a false reconciliation
+        // failure to export/sync callers.
+        return this.autoSync(options);
+      }
       return {
         ok: false,
         conflict: settledPhase === "CONFLICT",

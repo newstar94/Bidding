@@ -32,25 +32,33 @@ if (junitPath) {
 }
 args.push(...testFiles);
 
-const execution = spawnSync(process.execPath, args, {
-  cwd: ROOT,
-  env: process.env,
-  encoding: "utf8",
-  maxBuffer: 20 * 1024 * 1024,
-  windowsHide: true,
-});
-if (execution.stdout) process.stdout.write(execution.stdout);
-if (execution.stderr) process.stderr.write(execution.stderr);
-if (execution.error) throw execution.error;
-if (execution.status !== 0) process.exit(execution.status || 1);
+function main() {
+  const execution = spawnSync(process.execPath, args, {
+    cwd: ROOT,
+    env: process.env,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (execution.stdout) process.stdout.write(execution.stdout);
+  if (execution.stderr) process.stderr.write(execution.stderr);
+  if (execution.error) throw execution.error;
+  if (execution.status !== 0) {
+    process.exitCode = execution.status || 1;
+    return;
+  }
 
-const errors = checkJsCriticalCoverage(execution.stdout);
-if (errors.length) {
-  process.stderr.write(
-    `Critical JS coverage ratchet failed:\n${errors.map((error) => `- ${error}`).join("\n")}\n`,
+  const errors = checkJsCriticalCoverage(execution.stdout);
+  if (errors.length) {
+    process.stderr.write(
+      `Critical JS coverage ratchet failed:\n${errors.map((error) => `- ${error}`).join("\n")}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(
+    `Critical JS coverage ratchet passed (${Object.keys(JS_CRITICAL_COVERAGE_THRESHOLDS).length} modules).\n`,
   );
-  process.exit(1);
 }
-process.stdout.write(
-  `Critical JS coverage ratchet passed (${Object.keys(JS_CRITICAL_COVERAGE_THRESHOLDS).length} modules).\n`,
-);
+
+main();

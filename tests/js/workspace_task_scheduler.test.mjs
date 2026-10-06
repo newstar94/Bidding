@@ -68,3 +68,20 @@ test("scheduler deduplicates an exact task key and bounds network concurrency", 
   releases[0]();
   await Promise.all([first, second, third]);
 });
+
+test("cancelling workspace tasks before dispatch prevents their callbacks from running", async () => {
+  const { scheduler } = schedulerHarness({ idle: false });
+  const calls = [];
+  const cancelled = scheduler.schedule(() => calls.push("obsolete workspace write"), {
+    key: "workspace-a:reconcile", priority: "reconcile",
+  });
+  const cancelledOutcome = assert.rejects(cancelled, { name: "AbortError" });
+  scheduler.cancelScope("workspace-a:");
+  const current = scheduler.schedule(() => { calls.push("current workspace read"); return "done"; }, {
+    key: "workspace-b:reconcile", priority: "reconcile",
+  });
+
+  await cancelledOutcome;
+  assert.equal(await current, "done");
+  assert.deepEqual(calls, ["current workspace read"]);
+});

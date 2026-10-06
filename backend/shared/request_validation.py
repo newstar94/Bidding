@@ -1,6 +1,5 @@
 """Small strict JSON request validator used at HTTP write boundaries."""
 
-import json
 import math
 
 from backend.shared.logging_utils import error_response
@@ -100,7 +99,9 @@ async def read_json_object(request):
     """
     try:
         data = await request.json()
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except ValueError:
+        # JSON syntax/UTF-8 failures and Python's integer digit limit all derive
+        # from ValueError and use the existing invalid-JSON response.
         return None, error_response(
             request,
             "REQUEST_JSON_INVALID",

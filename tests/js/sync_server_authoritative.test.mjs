@@ -95,6 +95,127 @@ test("row conflict keeps newer same-row generations and unrelated mutations", as
   assert.equal(f.outbox.snapshot().upserts.goithau["package-b"].tenGoiThau, "Unrelated local");
 });
 
+test("conflict retirement partitions patches and versioned deletes while preserving their bases", async () => {
+  const f = fixture();
+  f.outbox.discard();
+  const base = { id: "package-a", rowVersion: 1, tenGoiThau: "Base" };
+  const otherBase = { id: "package-b", rowVersion: 3, tenGoiThau: "Other base" };
+  f.outbox.enqueue({ kind: "patch", table: "goithau", records: [
+    { id: base.id, tenGoiThau: "Rejected patch" },
+    { id: otherBase.id, tenGoiThau: "Independent patch" },
+  ], baseRecords: [base, otherBase] });
+  f.outbox.enqueue({ kind: "delete", table: "goithau", records: [
+    { id: "rejected-delete", rowVersion: 4 },
+    { id: "independent-delete", rowVersion: 6 },
+  ] });
+  const snapshot = f.outbox.snapshotForSync(f.model.state).snapshot;
+  const data = { errors: [
+    ...f.data.errors,
+    { code: "ROW_VERSION_CONFLICT", table: "goi_thau", id: "rejected-delete" },
+  ] };
+  const result = await f.model.discardConflictingMutationBatch({ data, snapshot });
+
+  assert.deepEqual(result.records, [
+    { table: "goithau", id: "package-a" },
+    { table: "goithau", id: "rejected-delete" },
+  ]);
+  const queue = f.outbox.snapshot();
+  assert.equal(queue.patches.goithau[base.id], undefined);
+  assert.equal(queue.patches.goithau[otherBase.id].tenGoiThau, "Independent patch");
+  assert.deepEqual(queue.baseSnapshots.goithau[otherBase.id], otherBase);
+  assert.deepEqual(queue.deletes, [{ table: "goithau", id: "independent-delete", expectedVersion: 6 }]);
+  assert.deepEqual(f.persisted().localDeletions.map((row) => row.id), ["independent-delete"]);
+});
+
+test("legacy conflict without a receipt keeps independent changes in other tables", async () => {
+  const f = fixture();
+  const contractor = { id: "contractor", rowVersion: 5, tenNhaThau: "Independent contractor" };
+  f.model.state.nhathau = [contractor];
+  f.outbox.enqueue({ kind: "upsert", table: "nhathau", records: [contractor] });
+  const result = await f.model.discardConflictingMutationBatch({ data: f.data });
+
+  assert.equal(result.serverAuthoritative, true);
+  assert.equal(f.outbox.snapshot().upserts.goithau["package-a"], undefined);
+  assert.equal(f.outbox.snapshot().upserts.goithau["package-b"].tenGoiThau, "Unrelated local");
+  assert.deepEqual(f.outbox.snapshot().upserts.nhathau.contractor, contractor);
+});
+
+test("conflict server record is inserted and persisted through the single-record cache adapter", async () => {
+  const f = fixture();
+  f.model.state.goithau = f.model.state.goithau.filter((row) => row.id !== f.server.id);
+  const cacheWrites = [];
+  f.model.db = { async putRecord(table, row) { cacheWrites.push([table, structuredClone(row)]); } };
+  const result = await f.model.discardConflictingMutationBatch({ data: f.data, snapshot: f.snapshot });
+
+  assert.equal(result.serverAuthoritative, true);
+  assert.deepEqual(f.model.state.goithau.find((row) => row.id === f.server.id), f.server);
+  assert.deepEqual(cacheWrites, [["goithau", f.server]]);
+});
+
+test("a cache write failure keeps the rejected receipt retired and reports degraded storage", async () => {
+  const f = fixture();
+  f.model.db = { async applySyncChanges() { throw new Error("Cache unavailable"); } };
+  const result = await f.model.discardConflictingMutationBatch({ data: f.data, snapshot: f.snapshot });
+
+  assert.equal(result.serverAuthoritative, true);
+  assert.equal(result.receiptRetired, true);
+  assert.equal(result.storageDegraded, true);
+  assert.equal(result.reloadUnsafe, false);
+  assert.equal(f.outbox.snapshot().upserts.goithau["package-a"], undefined);
+  assert.equal(f.persisted().queue.upserts.goithau["package-a"], undefined);
+  assert.equal(f.outbox.snapshot().upserts.goithau["package-b"].tenGoiThau, "Unrelated local");
+});
+
+test("a late retirement flush does not apply conflict records to another workspace", async () => {
+  const f = fixture();
+  let release;
+  let entered;
+  const ready = new Promise((resolve) => { entered = resolve; });
+  f.outbox.store.flush = () => { entered(); return new Promise((resolve) => { release = resolve; }); };
+  const retiring = f.model.discardConflictingMutationBatch({ data: f.data, snapshot: f.snapshot });
+  await ready;
+  const nextState = { ...f.model.state, goithau: [{ id: "workspace-b-record" }] };
+  f.model.state = nextState;
+  release();
+
+  assert.equal(await retiring, null);
+  assert.deepEqual(nextState.goithau, [{ id: "workspace-b-record" }]);
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.model.conflictDiscardFailure, null);
+});
+
+test("unknown conflict table is not added to the workspace projection", async () => {
+  const f = fixture();
+  const data = { errors: [
+    ...f.data.errors,
+    { code: "ROW_VERSION_CONFLICT", table: "unknown_table", id: "unknown", serverRecord: { id: "unknown" } },
+  ] };
+  const result = await f.model.discardConflictingMutationBatch({ data, snapshot: f.snapshot });
+  assert.equal(result.serverAuthoritative, true);
+  assert.equal(f.model.state.unknown_table, undefined);
+  assert.deepEqual(f.writes, [{ upserts: { goithau: [f.server] } }]);
+});
+
+test("an empty retired outbox retries failed persistence without restoring the rejected batch", async () => {
+  const f = fixture();
+  f.outbox.discard();
+  f.outbox.enqueue({ kind: "upsert", table: "goithau", records: [f.model.state.goithau[0]] });
+  const snapshot = f.outbox.snapshotForSync(f.model.state).snapshot;
+  f.outbox.store.flush = async () => { throw new Error("Storage unavailable"); };
+  assert.equal(await f.model.discardConflictingMutationBatch({ data: f.data, snapshot }), null);
+  assert.equal(f.model.conflictDiscardFailure.retirementPending, true);
+  assert.equal(f.outbox.snapshot().upserts.goithau, undefined);
+
+  assert.equal(await f.model.discardConflictingMutationBatch({ data: f.data, snapshot }), null);
+  assert.equal(f.model.conflictDiscardFailure.retirementPending, true);
+  f.outbox.store.flush = async () => {};
+  const recovered = await f.model.discardConflictingMutationBatch({ data: f.data, snapshot });
+  assert.deepEqual(recovered, { serverAuthoritative: true, records: [{ table: "goithau", id: "package-a" }] });
+  assert.equal(f.model.conflictDiscardFailure, null);
+  assert.equal(f.outbox.snapshot().upserts.goithau, undefined);
+  assert.equal(f.persisted().queue, null);
+});
+
 test("conflict refresh bypasses its active push and reports the server result without save success", async () => {
   const f = fixture();
   const calls = [];

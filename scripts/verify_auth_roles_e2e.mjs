@@ -507,7 +507,7 @@ try {
   await workspaceUi.context.close();
   mark("workspace-switch-race-ui-reload-and-server-session");
 
-  const managerContext = await browser.newContext();
+  const managerContext = await browser.newContext({ serviceWorkers: "block" });
   auth = await apiLogin(managerContext, accounts.manager, password, organizationId);
   assert(auth.response.ok(), `Manager login failed: ${auth.response.status()}`);
   assert(auth.body.platform_role === "user", "Manager was promoted to platform role");
@@ -615,16 +615,42 @@ try {
   await gotoReady(xssPage, `${baseURL}/chuyen-gia`);
   await xssPage.locator("#auth-overlay").waitFor({ state: "hidden", timeout: 20_000 });
   await initialExpertPage;
-  const searchedExpertPage = xssPage.waitForResponse((candidate) => {
+  const isSearchedExpertRequest = (candidate) => {
     const url = new URL(candidate.url());
     return url.pathname === "/api/paginate"
       && url.searchParams.get("table") === "chuyengia"
-      && url.searchParams.get("search")?.includes(`xss ${runId}`)
-      && candidate.ok();
-  }, { timeout: 20_000 });
-  await xssPage.locator("#search-chuyengia").fill(`XSS ${runId}`);
-  const searchedExpertResponse = await searchedExpertPage;
-  const searchedExpertPayload = await searchedExpertResponse.json();
+      && url.searchParams.get("search")?.includes(`xss ${runId}`);
+  };
+  const searchedExpertPage = Promise.withResolvers();
+  const captureExpertSearch = async (route) => {
+    if (!isSearchedExpertRequest(route.request())) {
+      await route.continue();
+      return;
+    }
+    try {
+      // Retain the upstream bytes before delivering them to the page. Chromium
+      // can discard a browser Response body when its document changes state.
+      const response = await route.fetch({ timeout: 20_000 });
+      const body = await response.body();
+      const payload = JSON.parse(body.toString("utf8"));
+      await route.fulfill({ response, body });
+      assert(response.ok(), `Expert search returned HTTP ${response.status()}: ${JSON.stringify(payload)}`);
+      searchedExpertPage.resolve(payload);
+    } catch (error) {
+      searchedExpertPage.reject(error);
+    }
+  };
+  await xssPage.route("**/api/paginate?**", captureExpertSearch);
+  let searchedExpertPayload;
+  try {
+    await Promise.all([
+      xssPage.waitForRequest(isSearchedExpertRequest, { timeout: 20_000 }),
+      xssPage.locator("#search-chuyengia").fill(`XSS ${runId}`),
+    ]);
+    searchedExpertPayload = await searchedExpertPage.promise;
+  } finally {
+    await xssPage.unroute("**/api/paginate?**", captureExpertSearch);
+  }
   const xssRow = xssPage.locator("#chuyengia-table tbody tr").filter({ hasText: `XSS ${runId}` });
   const xssVisible = await xssRow.waitFor({ state: "visible", timeout: 20_000 }).then(() => true).catch(() => false);
   if (!xssVisible) {

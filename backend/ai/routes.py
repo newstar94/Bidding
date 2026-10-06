@@ -28,7 +28,11 @@ from backend.ai.permission_context import build_request_context
 from backend.ai.service import stream_message, validate_message
 from backend.ai.metrics import increment
 from backend.ai.quota_service import consume_request
-from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    finish_submitted_task,
+)
 from backend.db.db_helper import DatabaseError
 from backend.auth.session_utils import OrgPermissionError
 from backend.shared.database_io import run_database_read, run_database_write
@@ -208,6 +212,7 @@ async def send_ai_message_api(request: Request):
             client_request_id=client_request_id or None,
             quota_consumed=True,
         )
+        next_event = None
         try:
             iterator = provider_stream.__aiter__()
             while True:
@@ -238,10 +243,20 @@ async def send_ai_message_api(request: Request):
             }
             yield f"data: {json.dumps(event, ensure_ascii=False, separators=(',', ':'))}\n\n".encode("utf-8")
         finally:
-            with suppress(Exception):
-                await provider_stream.aclose()
-            increment("ai_request_duration_seconds", time.perf_counter() - started_at)
-            increment("ai_active_streams", -1)
+            async def close_stream():
+                if next_event is not None and not next_event.done():
+                    next_event.cancel()
+                if next_event is not None:
+                    with suppress(asyncio.CancelledError, Exception):
+                        await next_event
+                with suppress(Exception):
+                    await provider_stream.aclose()
+
+            try:
+                await finish_submitted_task(asyncio.create_task(close_stream()))
+            finally:
+                increment("ai_request_duration_seconds", time.perf_counter() - started_at)
+                increment("ai_active_streams", -1)
 
     return StreamingResponse(
         event_stream(),

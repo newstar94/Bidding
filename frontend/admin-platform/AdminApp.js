@@ -139,9 +139,7 @@ function renderRoute() {
   else if (route.path === "/admin/users") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminUsers", content, { signal: routeController.signal });
   else if (route.path === "/admin/organizations") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminOrganizations", content, { signal: routeController.signal });
   else if (route.path === "/admin/plans") {
-    void import("./AdminPlans.js").then(({ renderAdminPlans }) => renderAdminPlans(content, { signal: routeController.signal })).catch((error) => {
-      if (!routeController.signal.aborted) content.innerHTML = trustedHTML(adminStateMarkup("error", { message: error?.message || "Không thể tải trang gói dịch vụ." }));
-    });
+    loadAdminModule(() => import("./AdminPlans.js"), "renderAdminPlans", content, { signal: routeController.signal });
   }
   else if (route.path === "/admin/subscriptions") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminSubscriptions", content, { signal: routeController.signal });
   else if (route.path === "/admin/payments") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminPayments", content, { signal: routeController.signal });

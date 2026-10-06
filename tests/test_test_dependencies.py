@@ -289,6 +289,8 @@ def test_full_ci_keeps_runtime_and_integration_databases_isolated():
     )
     assert len(configured_databases) == 3
     assert len(set(configured_databases)) == 3
+    for opt_in_database in ("LOT_SCOPE_TEST_DATABASE_URL", "WEBHOOK_TEST_DATABASE_URL"):
+        assert workflow["env"][opt_in_database] == workflow["env"]["TEST_DATABASE_URL"]
     for job_name in ("unit-python", "database", "e2e", "performance", "package"):
         job = workflow["jobs"][job_name]
         assert "postgres" in job["services"]

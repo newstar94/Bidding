@@ -119,7 +119,12 @@ export class WorkspaceTaskScheduler {
       this.pending.splice(index, 1);
       this.active[entry.lane] += 1;
       Promise.resolve()
-        .then(() => entry.task({ signal: entry.controller.signal }))
+        .then(() => {
+          // Scope cancellation can happen after drain reserves a lane but
+          // before this callback reaches the microtask queue.
+          if (entry.controller.signal.aborted) return;
+          return entry.task({ signal: entry.controller.signal });
+        })
         .then(entry.resolve, entry.reject)
         .finally(() => {
           this.active[entry.lane] -= 1;

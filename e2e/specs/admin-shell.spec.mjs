@@ -530,7 +530,7 @@ test("operational admin routes render sanitized data and safe detail focus", asy
   }
   await context.route("**/api/admin/environment", (route) => fulfillJson(route, {
     runtime: { environment: "production", frontendAssetMode: "manifest", debugEnabled: false, secureCookies: true },
-    features: { aiEnabled: true, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: true },
+    features: { aiEnabled: true, paymentCheckoutEnabled: true },
     secretStatus: { DATABASE_URL: { configured: true }, PAYOS_API_KEY: { configured: true } },
   }));
   await context.route("**/api/admin/health", (route) => fulfillJson(route, {
@@ -573,7 +573,7 @@ test("local admin settings save through privileged reauthentication", async ({ c
     if (route.request().method() === "GET") {
       await fulfillJson(route, {
         runtime: { environment: "development", frontendAssetMode: "bundle", debugEnabled: false, secureCookies: false },
-        features: { aiEnabled: false, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: false },
+        features: { aiEnabled: false, paymentCheckoutEnabled: false },
         secretStatus: {},
         configuration: { writable: true, restartRequired: true, source: "local_env" },
       });
@@ -607,7 +607,7 @@ test("local environment replaces a secret only after explicit confirmation and r
     if (route.request().method() === "GET") {
       await fulfillJson(route, {
         runtime: { environment: "development", frontendAssetMode: "bundle", debugEnabled: false, secureCookies: false },
-        features: { aiEnabled: false, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: false },
+        features: { aiEnabled: false, paymentCheckoutEnabled: false },
         secretStatus: {
           OTP_HMAC_KEY: {
             configured: true, writable: true, restartRequired: true,
@@ -851,7 +851,7 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
   await installAuthorizedShell(context);
   await context.route("**/api/admin/environment", (route) => fulfillJson(route, {
     runtime: { environment: "production", frontendAssetMode: "manifest", debugEnabled: false, secureCookies: true },
-    features: { aiEnabled: true, legalVersioningEnabled: true, versionComparisonEnabled: true, paymentCheckoutEnabled: true },
+    features: { aiEnabled: true, paymentCheckoutEnabled: true },
     secretStatus: {
       DATABASE_URL: { configured: true, writable: false, source: "deployment" },
       PAYOS_API_KEY: { configured: false, writable: false, source: "deployment" },
@@ -880,8 +880,11 @@ test("settings, secret masking, charts, and primary journeys meet automated acce
 
   await page.goto("/admin/settings", { waitUntil: "commit" });
   await expectAdminReady(page, "Cài đặt");
-  for (const feature of ["Trợ lý AI", "Phiên bản pháp lý", "So sánh phiên bản", "Thanh toán trực tuyến"]) {
+  for (const feature of ["Trợ lý AI", "Thanh toán trực tuyến"]) {
     await expect(page.getByText(feature, { exact: true })).toBeVisible();
+  }
+  for (const feature of ["Phiên bản pháp lý", "So sánh phiên bản"]) {
+    await expect(page.getByText(feature, { exact: true })).toHaveCount(0);
   }
   await expect(page.getByText("Phân loại cấu hình hệ thống")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Lưu cấu hình" })).toBeDisabled();

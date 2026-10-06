@@ -34,7 +34,7 @@ from backend.ai.tool_result_formatter import format_tool_result
 from backend.ai.tool_registry import tool_definitions
 from backend.ai.types import AiRequestContext
 from backend.ai.metrics import increment
-from backend.shared.async_io import BlockingIOTimeoutError
+from backend.shared.async_io import BlockingIOTimeoutError, finish_submitted_task
 from backend.db.db_helper import OperationalError
 from backend.shared.database_io import run_database_read, run_database_write
 
@@ -172,10 +172,21 @@ def estimate_request_token_budget(*, input_items: list[dict], instructions: str,
 async def _cancellation_safe_write(function, *args, **kwargs):
     """Finish a short quota transition even if the client task is cancelled."""
     cleanup = asyncio.create_task(run_database_write(function, *args, **kwargs))
+    return await finish_submitted_task(cleanup)
+
+
+async def _reserve_stream_tokens(context, estimated_tokens, config):
+    """Retain the reservation handle when its submitted transaction commits."""
+    reserving = asyncio.create_task(
+        run_database_write(reserve_tokens, context, estimated_tokens, config=config)
+    )
     try:
-        return await asyncio.shield(cleanup)
+        return await finish_submitted_task(reserving)
     except asyncio.CancelledError:
-        await cleanup
+        if reserving.cancelled():
+            raise
+        reservation = reserving.result()
+        await _cancellation_safe_write(release_token_reservation, reservation)
         raise
 
 
@@ -299,7 +310,7 @@ async def stream_message(
         tools=tools,
         max_output_tokens=config.max_output_tokens,
     )
-    reservation = await run_database_write(reserve_tokens, context, estimated_tokens, config=config)
+    reservation = await _reserve_stream_tokens(context, estimated_tokens, config)
     settled = False
     all_sources = _merge_sources(
         knowledge.sources if knowledge else (),
@@ -310,10 +321,10 @@ async def stream_message(
     input_tokens = 0
     output_tokens = 0
 
-    yield {"type": "message.started", "messageId": user_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "mode": mode}
-    for source in all_sources:
-        yield {"type": "source.added", "source": source}
     try:
+        yield {"type": "message.started", "messageId": user_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "mode": mode}
+        for source in all_sources:
+            yield {"type": "source.added", "source": source}
         for _attempt in range(3):
             function_calls: dict[int, dict] = {}
             response_output: list[dict] = []

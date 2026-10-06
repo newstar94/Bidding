@@ -58,6 +58,11 @@ async function expectFilterModalToOpen(page, route, type, choiceField, dateField
     await page.goto(route, { waitUntil: "commit" });
     await waitForApp(page);
   }
+  // The loader exposes the local first frame. Initial authorization
+  // reconciliation can still replace the list scope and close its draft.
+  await expect(page.locator("#btn-force-sync")).toHaveAttribute(
+    "data-startup-reconciliation-phase", "RECONCILED",
+  );
 
   const button = page.locator(`[data-list-filter="${type}"]`);
   const dialog = page.locator(`#${type}-filter-panel`);
@@ -69,13 +74,17 @@ async function expectFilterModalToOpen(page, route, type, choiceField, dateField
   await expect(button).toHaveAttribute("aria-expanded", "true");
 
   await dialog.locator(".business-filter-field-picker > summary").click();
-  await dialog.locator(`[data-filter-field][value="${choiceField}:value"]`).check();
+  const choiceControl = dialog.locator(`[data-filter-field][value="${choiceField}:value"]`);
+  await choiceControl.locator("..").locator("span").click();
+  await expect(choiceControl).toBeChecked();
   const choices = dialog.locator('[data-filter-condition="0"]');
   await choices.locator("summary").click();
   await expect(choices.locator("[data-filter-option-list]")).toBeVisible();
   await expect(choices.getByRole("searchbox")).toBeVisible();
 
-  await dialog.locator(`[data-filter-field][value="${dateField}:value"]`).check();
+  const dateControl = dialog.locator(`[data-filter-field][value="${dateField}:value"]`);
+  await dateControl.locator("..").locator("span").click();
+  await expect(dateControl).toBeChecked();
   const dateRange = dialog.locator('[data-filter-condition="1"]');
   await expect(dateRange.getByLabel("Từ ngày", { exact: true })).toBeVisible();
   await expect(dateRange.getByLabel("Đến ngày", { exact: true })).toBeVisible();
