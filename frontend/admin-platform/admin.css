@@ -261,7 +261,27 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-effective-date small { display: block; margin-top: .35rem; }
 .bf-admin-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .bf-admin-editor-actions > div { display: flex; flex-wrap: wrap; gap: .5rem; }
+.bf-admin-package-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.bf-admin-package-tile { min-width: 0; display: flex; flex-direction: column; }
+.bf-admin-package-tile > .card { flex: 1; }
+.bf-admin-package-preview.is-recommended { border-color: var(--bf-admin-brand); }
+.bf-admin-package-period { display: flex; justify-content: center; gap: .35rem; margin: 1.25rem 0 .85rem; flex-wrap: wrap; }
+.bf-admin-package-period .btn { padding-inline: .65rem; }
+.bf-admin-package-editor-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(17rem, 1fr); gap: 1.25rem; align-items: start; }
+.bf-admin-package-editor-grid > * { min-width: 0; }
+.bf-admin-editor-shell, .bf-admin-page-section { scroll-margin-top: 5rem; }
+.bf-admin-package-editor-grid .bf-admin-editor-group { margin-top: 0; padding-top: 0; border-top: 0; }
+.bf-admin-package-editor-grid > aside { padding: 1rem; background: var(--bf-admin-surface-subtle); border-radius: .5rem; }
+.bf-admin-package-editor-grid .bf-admin-plan-price { overflow-wrap: anywhere; }
+.bf-admin-package-policies { padding: 1rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
+.bf-admin-package-policies > summary { font-weight: 600; cursor: pointer; }
+.bf-admin-package-policies .bf-admin-editor-group { margin-top: 1rem; }
+.bf-admin-package-manager table td { font-variant-numeric: tabular-nums; }
+@media (max-width: 1199.98px) {
+  .bf-admin-package-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 767.98px) {
+  .bf-admin-package-grid, .bf-admin-package-editor-grid { grid-template-columns: minmax(0, 1fr); }
   .bf-admin-analytics-primary { grid-template-columns: 1fr; }
   .bf-admin-plan-tabs { position: static; overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
   .bf-admin-plan-tabs .nav-link { flex: 0 0 auto; }

@@ -20,6 +20,7 @@ from .config import commercial_runtime_config
 from .document import canonical_json
 from .errors import CommercialPolicyError, QUOTE_NOT_AVAILABLE
 from .repository import CommercialRepository, new_id
+from .admin_drafts import prepare_admin_draft
 from .service import CommercialPolicy
 from .metrics import commercial_health_snapshot
 
@@ -225,11 +226,12 @@ def _create_commercial_draft_sync(request, body):
         else:
             initial = repository.get_draft("commercial-draft-initial-v1")
             current = repository.effective_release(include_shadow=True)
-            source_document = current["snapshot"] if current else initial["document"]
+            source_document = current["snapshot"] if current else (initial["document"] if initial else None)
+            source_document = prepare_admin_draft(source_document, template_mode=body.get("templateMode"))
             draft = repository.create_draft(
                 source_document,
                 actor.user_id,
-                base_release_id=current["id"] if current else initial.get("base_release_id"),
+                base_release_id=current["id"] if current else (initial.get("base_release_id") if initial else None),
             )
         log_audit(
             "commercial.draft_created",

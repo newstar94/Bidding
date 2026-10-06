@@ -5,6 +5,18 @@ offer/giá, policy, provider, order/activation và lịch sử.
 
 ## Quy trình thay đổi catalog
 
+### Tạo gói trong màn hình Gói dịch vụ
+
+Trong Admin, mở **Gói dịch vụ**. Khi chưa có bảng giá, vẫn có thể chọn **Tạo gói đầu tiên** hoặc **Tạo bộ 8 gói mẫu**. Bộ mẫu không có giá; admin nhập cấu hình trước khi mở bán.
+
+- Chọn Cơ bản/Nâng cao, Cá nhân hoặc một trong ba mức Tổ chức; đặt tên và chọn kỳ năm/tháng.
+- Chuyển **Bảng quản lý / Thẻ trực quan** để so sánh. Trong từng thẻ, Hàng tháng/Hàng năm được căn giữa và chọn độc lập.
+- Bấm **Sửa**, dùng ba phần Thông tin hiển thị, Giá và hạn mức, Quyền và tính năng. Thẻ bên cạnh cập nhật khi nhập. Có thể tính VAT và tổng tiền bằng nút tính; tiền VND được làm tròn đến số nguyên.
+- Quyền xuất chưa chốt được giữ nguyên đến khi bấm **Cấu hình quyền xuất** và xác nhận. Chỉ các quyền xuất hiện hữu được chọn.
+- Mở **Chính sách chung & kỳ hạn** để nhập số ngày năm/tháng và lựa chọn các chính sách được hỗ trợ. Các cấu hình khác vẫn có trong phần nâng cao.
+- Lưu nháp được khi chưa điền hết. Kiểm tra vẫn yêu cầu đủ khung 8 gói năm, giá/thuế/quota, kỳ hạn và điều kiện phát hành. Gói tháng là tùy chọn và có giá riêng.
+- Chỉnh gói đã phát hành tạo bản nháp mới. Ngừng bán từng kỳ trong trường Trạng thái bán rồi phát hành; gói đã mua giữ điều kiện cũ.
+
 1. Tạo hoặc chọn bản nháp.
 2. Sửa giá/quota/sales state. Các giá trị tiền và quota dùng số nguyên.
 3. Lưu bằng đúng revision. Nếu có xung đột, tải lại bản mới trước khi tiếp tục.

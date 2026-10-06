@@ -118,32 +118,32 @@ async function withAwardPanel(exercise) {
 }
 
 for (const dirty of [true, false]) {
-test(`confirmed whole-package award renders completed results with dirty=${dirty}`, async () => {
-  await withAwardPanel(async (page) => {
-    await fillAwardForm(page);
-    assert.equal(await page.evaluate(() => window.__award.dirty()), true);
-    if (!dirty) await page.evaluate(() => window.__award.clearDirty());
-    await page.evaluate(() => { window.pendingApproval = document.querySelector("#btn-approve-award").onclick(); });
-    await page.waitForFunction(() => window.__award.syncStarted);
-    assert.equal(await page.locator("#btn-approve-award").count(), 1, "approval remains while canonical confirmation is pending");
-    assert.equal(await page.evaluate(() => window.__award.alerts.some((item) => item.title === "Chúc mừng")), false);
-    const after = await page.evaluate(async () => {
-      const fixture = window.__award;
-      fixture.finishSync({ ok: true });
-      await window.pendingApproval;
-      return { alerts: fixture.alerts, dirty: fixture.dirty(), status: fixture.pkg.trangThai,
-        completed: Boolean(document.querySelector(".award-result-title")),
-        approvalForm: Boolean(document.querySelector("#btn-approve-award")),
-        decision: fixture.committed.goithau[0].soQuyetDinhKetQua };
+  test(`confirmed whole-package award renders completed results with dirty=${dirty}`, async () => {
+    await withAwardPanel(async (page) => {
+      await fillAwardForm(page);
+      assert.equal(await page.evaluate(() => window.__award.dirty()), true);
+      if (!dirty) await page.evaluate(() => window.__award.clearDirty());
+      await page.evaluate(() => { window.pendingApproval = document.querySelector("#btn-approve-award").onclick(); });
+      await page.waitForFunction(() => window.__award.syncStarted);
+      assert.equal(await page.locator("#btn-approve-award").count(), 1, "approval remains while canonical confirmation is pending");
+      assert.equal(await page.evaluate(() => window.__award.alerts.some((item) => item.title === "Chúc mừng")), false);
+      const after = await page.evaluate(async () => {
+        const fixture = window.__award;
+        fixture.finishSync({ ok: true });
+        await window.pendingApproval;
+        return { alerts: fixture.alerts, dirty: fixture.dirty(), status: fixture.pkg.trangThai,
+          completed: Boolean(document.querySelector(".award-result-title")),
+          approvalForm: Boolean(document.querySelector("#btn-approve-award")),
+          decision: fixture.committed.goithau[0].soQuyetDinhKetQua };
+      });
+      assert.equal(after.alerts.some((item) => item.title === "Chúc mừng"), true, JSON.stringify(after));
+      assert.equal(after.completed, true, JSON.stringify(after));
+      assert.equal(after.approvalForm, false, "the editable approval form must be replaced after success");
+      assert.equal(after.dirty, false);
+      assert.equal(after.status, "Đã có kết quả");
+      assert.equal(after.decision, "1041/QĐ-BVHN");
     });
-    assert.equal(after.alerts.some((item) => item.title === "Chúc mừng"), true, JSON.stringify(after));
-    assert.equal(after.completed, true, JSON.stringify(after));
-    assert.equal(after.approvalForm, false, "the editable approval form must be replaced after success");
-    assert.equal(after.dirty, false);
-    assert.equal(after.status, "Đã có kết quả");
-    assert.equal(after.decision, "1041/QĐ-BVHN");
   });
-});
 }
 
 for (const syncResult of [

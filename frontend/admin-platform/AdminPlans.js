@@ -18,6 +18,16 @@ import {
   formatCommercialMoney,
   presentCommercialOffer,
 } from "../commercial-policy/PublicCommercialCatalog.js";
+import {
+  addAdminServicePackage,
+  bindPackageManager,
+  calculateAdminVat,
+  configureAdminExportMapping,
+  packageCreatorMarkup,
+  packageManagerMarkup,
+  packagePreviewMarkup,
+  PACKAGE_TIERS,
+} from "./AdminServicePackages.js";
 
 function text(value, fallback = "N/A") {
   const normalized = typeof value === "string" || typeof value === "number"
@@ -111,9 +121,10 @@ export function catalogMarkup(catalogPayload) {
   }
   const catalog = classification.catalog;
   const offers = Array.isArray(catalog?.offers) ? catalog.offers : [];
+  const otherPeriods = offers.filter((offer) => !["monthly", "yearly"].includes(offer.price?.period));
   const packs = Array.isArray(catalog?.creditPacks) ? catalog.creditPacks : [];
   const offerContent = offers.length
-    ? `<div class="row row-cards">${offers.map(offerCard).join("")}</div>`
+    ? `${packageManagerMarkup({ offers }, { published: true, id: "published" })}${otherPeriods.length ? `<div class="row row-cards mt-3">${otherPeriods.map(offerCard).join("")}</div>` : ""}`
     : adminStateMarkup("empty", { message: "Release hiện hành chưa công bố gói dịch vụ." });
   return `<section aria-labelledby="admin-plan-catalog-title"><div class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-2 mb-3"><div><h3 class="h2 mb-1" id="admin-plan-catalog-title">Danh mục gói đang công bố</h3><p class="text-secondary mb-0">Release <strong>${text(catalog?.releaseId)}</strong> · ${text(catalog?.currency)}</p></div><span class="badge bg-success-lt align-self-start">Dữ liệu hiện hành</span></div>${offerContent}${creditPackMarkup(packs, catalog?.currency)}</section>`;
 }
@@ -158,7 +169,7 @@ function offerEditorMarkup(offer, index) {
   const price = offer?.price && typeof offer.price === "object" ? offer.price : {};
   const capabilities = offer?.exportCapabilities;
   const capabilityFields = capabilities === null
-    ? '<div class="alert alert-warning mb-0" role="status">Quyền xuất của gói này đang ở trạng thái ánh xạ cũ chưa xác định và sẽ được giữ nguyên.</div>'
+    ? `<div class="alert alert-warning mb-0" role="status">Quyền xuất chưa được cấu hình. Giá trị hiện có được giữ nguyên đến khi bạn xác nhận.<div class="mt-2"><button type="button" class="btn btn-sm btn-outline-primary" data-admin-plan-action="configure-exports" data-offer-index="${index}">Cấu hình quyền xuất</button></div></div>`
     : Object.entries(CAPABILITY_LABELS).map(([key, label]) => offerCheckbox(index, `capability:${key}`, capabilities?.[key] === true, label)).join("");
   return `<article class="card mb-3 bf-admin-offer-editor" data-admin-offer-editor data-offer-index="${index}"><div class="card-header"><div><div class="text-secondary small mb-1">Gói ${index + 1}</div><h4 class="card-title mb-1">${text(display.name, offer?.code)}</h4><div class="text-secondary small">${text(offer?.code)}</div></div><span class="badge bg-secondary-lt">${text(offer?.salesState, "N/A")}</span></div><div class="card-body"><section class="bf-admin-editor-group" aria-labelledby="admin-offer-identity-${index}"><h5 id="admin-offer-identity-${index}">Thông tin hiển thị</h5><p class="text-secondary small">Tên, thứ tự và mô tả xuất hiện trong danh mục công khai.</p><div class="row g-3"><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "code")}">Mã gói</label>${offerField(index, "code", offer?.code, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.name")}">Tên hiển thị</label>${offerField(index, "display.name", display.name)}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.order")}">Thứ tự hiển thị</label>${offerField(index, "display.order", display.order, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "tier")}">Hạng gói</label>${offerField(index, "tier", offer?.tier, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "variant")}">Biến thể</label>${offerField(index, "variant", offer?.variant, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "ownerKind")}">Chủ thể</label>${offerField(index, "ownerKind", offer?.ownerKind, { readonly: true })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.period")}">Chu kỳ</label>${offerField(index, "price.period", price.period, { readonly: true })}</div><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.description")}">Mô tả</label><textarea id="${offerFieldId(index, "display.description")}" class="form-control" rows="2" data-admin-offer-field="display.description" data-offer-index="${index}">${escapeHtml(display.description ?? "")}</textarea></div><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.benefits")}">Quyền lợi <span class="text-secondary fw-normal">(mỗi dòng một nội dung)</span></label><textarea id="${offerFieldId(index, "display.benefits")}" class="form-control" rows="3" data-admin-offer-field="display.benefits" data-offer-index="${index}">${escapeHtml(Array.isArray(display.benefits) ? display.benefits.join("\n") : "")}</textarea></div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-commercial-${index}"><h5 id="admin-offer-commercial-${index}">Giá và hạn mức</h5><p class="text-secondary small">Các giá trị này được kiểm tra lại khi bấm “Kiểm tra”.</p><div class="row g-3"><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.subtotal")}">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.tax")}">Thuế</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.total")}">Tổng tiền</label>${offerField(index, "price.total", price.total, { type: "number", min: 0 })}</div><div class="col-md-3"><label class="form-label" for="${offerFieldId(index, "price.currency")}">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "memberQuota")}">Hạn mức thành viên</label>${offerField(index, "memberQuota", offer?.memberQuota, { type: "number", min: 1 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "includedProcurementQuota")}">Lượt Mua Sắm Công</label>${offerField(index, "includedProcurementQuota", offer?.includedProcurementQuota, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "salesState")}">Trạng thái bán</label>${offerSelect(index, "salesState", offer?.salesState, [["sellable", "Đang bán"], ["stopped", "Đã dừng bán"], ["non_sellable", "Không bán"]])}</div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "display.visibility")}">Phạm vi hiển thị</label>${offerSelect(index, "display.visibility", display.visibility ?? "", [["", "Theo cấu hình hiện có"], ["public", "Công khai"], ["hidden", "Ẩn"]])}</div></div></section><section class="bf-admin-editor-group" aria-labelledby="admin-offer-entitlements-${index}"><h5 id="admin-offer-entitlements-${index}">Quyền và tính năng</h5><div class="row g-3"><div class="col-md-6"><label class="form-label d-block">Quyền xuất</label><div class="bf-admin-check-grid">${capabilityFields}</div></div><div class="col-md-6"><label class="form-label d-block">Tùy chọn</label><div class="bf-admin-check-grid">${offerCheckbox(index, "violationCheckEnabled", offer?.violationCheckEnabled === true, "Kiểm tra vi phạm nhà thầu")}${offerCheckbox(index, "display.recommended", display.recommended === true, "Gói được đề xuất")}</div></div></div></section></div></article>`;
 }
@@ -198,8 +209,9 @@ function monthlyConfigurationMarkup(documentValue) {
   return `<section class="bf-admin-editor-group" aria-labelledby="admin-monthly-pricing-title"><h5 id="admin-monthly-pricing-title">Cấu hình giá hàng tháng</h5><p class="text-secondary small">Thêm gói tháng khi cần, nhập giá, thuế và lượt Mua Sắm Công. Gói mới chưa được bán cho đến khi bạn bật trạng thái bán, lưu, kiểm tra và xuất bản.</p><div class="d-flex flex-wrap gap-2 mb-3">${buttons}</div>${hasMonthly ? `<label class="form-label" for="admin-monthly-term-days">Số ngày hiệu lực một kỳ tháng</label><input class="form-control" id="admin-monthly-term-days" type="number" min="1" max="3660" value="${text(term?.kind === "fixed_days" ? term.days : "", "")}"><p class="text-secondary small mt-2">Nhập số ngày theo chính sách bạn quyết định; giá tháng không được suy ra từ giá năm.</p>` : ""}</section>`;
 }
 
-function parseIntegerField(field, label, { optional = false } = {}) {
+function parseIntegerField(field, label, { optional = false, nullable = false } = {}) {
   const raw = String(field?.value ?? "").trim();
+  if (nullable && raw === "") return null;
   if (optional && raw === "") return undefined;
   if (!/^(0|[1-9]\d*)$/u.test(raw)) {
     const error = new TypeError(`${label} phải là số nguyên không âm.`);
@@ -216,6 +228,7 @@ function parseIntegerField(field, label, { optional = false } = {}) {
 }
 
 export function serializeDraftDocument(root, originalDocument) {
+  const incomplete = Boolean(root.querySelector?.("[data-admin-allow-incomplete]"));
   const advancedField = root.querySelector?.("#admin-plan-advanced-document");
   let advanced;
   try {
@@ -232,13 +245,32 @@ export function serializeDraftDocument(root, originalDocument) {
   }
   delete advanced.offers;
   const monthlyDays = root.querySelector?.("#admin-monthly-term-days");
-  if (monthlyDays) {
+  if (monthlyDays && (monthlyDays.value !== "" || !incomplete)) {
     advanced.policies ||= {};
     advanced.policies.monthlyBaseTerm = {
       ...advanced.policies.monthlyBaseTerm,
       kind: "fixed_days",
       days: parseIntegerField(monthlyDays, "Số ngày hiệu lực gói tháng"),
     };
+  } else if (monthlyDays) {
+    advanced.policies ||= {};
+    const term = advanced.policies.monthlyBaseTerm;
+    if (term?.kind !== "blocked_decision") advanced.policies.monthlyBaseTerm = { ...term, kind: "blocked_decision", reason: "Chưa cấu hình số ngày hiệu lực gói tháng." };
+  }
+  const annualDays = root.querySelector?.("#admin-annual-term-days");
+  if (annualDays) {
+    advanced.policies ||= {};
+    const term = advanced.policies.baseTerm;
+    if (annualDays.value !== "") advanced.policies.baseTerm = { ...term, kind: "fixed_days", days: parseIntegerField(annualDays, "Số ngày hiệu lực gói năm") };
+    else if (term?.kind !== "blocked_decision") advanced.policies.baseTerm = { ...term, kind: "blocked_decision", reason: "Chưa cấu hình số ngày hiệu lực gói năm." };
+  }
+  for (const field of root.querySelectorAll?.("[data-admin-policy-choice]") || []) {
+    if (!field.value) continue;
+    const key = field.dataset.adminPolicyChoice;
+    advanced.policies ||= {};
+    if (advanced.policies[key]?.kind === field.value) continue;
+    advanced.policies[key] = { ...advanced.policies[key], kind: field.value };
+    delete advanced.policies[key].reason;
   }
   const originalOffers = Array.isArray(originalDocument?.offers) ? originalDocument.offers : [];
   const editors = [...(root.querySelectorAll?.("[data-admin-offer-editor]") || [])];
@@ -261,14 +293,15 @@ export function serializeDraftDocument(root, originalDocument) {
     const benefits = String(field("display.benefits")?.value ?? "").split(/\r?\n/u).map((item) => item.trim()).filter(Boolean);
     if (Object.hasOwn(display, "benefits") || benefits.length) display.benefits = benefits;
     else delete display.benefits;
-    price.subtotal = parseIntegerField(field("price.subtotal"), "Giá trước thuế");
-    price.tax = parseIntegerField(field("price.tax"), "Thuế");
-    price.total = parseIntegerField(field("price.total"), "Tổng tiền");
-    offer.memberQuota = parseIntegerField(field("memberQuota"), "Hạn mức thành viên");
-    offer.includedProcurementQuota = parseIntegerField(field("includedProcurementQuota"), "Lượt Mua Sắm Công");
+    price.subtotal = parseIntegerField(field("price.subtotal"), "Giá trước thuế", { nullable: incomplete });
+    price.tax = parseIntegerField(field("price.tax"), "Thuế", { nullable: incomplete });
+    price.total = parseIntegerField(field("price.total"), "Tổng tiền", { nullable: incomplete });
+    offer.memberQuota = parseIntegerField(field("memberQuota"), "Hạn mức thành viên", { nullable: incomplete });
+    offer.includedProcurementQuota = parseIntegerField(field("includedProcurementQuota"), "Lượt Mua Sắm Công", { nullable: incomplete });
     offer.violationCheckEnabled = Boolean(field("violationCheckEnabled")?.checked);
     offer.salesState = String(field("salesState")?.value ?? "");
     if (offer.exportCapabilities !== null) {
+      offer.exportCapabilities ||= {};
       for (const key of Object.keys(CAPABILITY_LABELS)) {
         offer.exportCapabilities[key] = Boolean(field(`capability:${key}`)?.checked);
       }
@@ -278,16 +311,21 @@ export function serializeDraftDocument(root, originalDocument) {
   return { ...advanced, offers };
 }
 
-export function draftEditorMarkup(draft, validation = null) {
+export function draftEditorMarkup(draft, validation = null, { selectedIndex = 0, creator = false, sourceIndex = null } = {}) {
   if (!draft) return "";
   const documentValue = draft.document && typeof draft.document === "object" ? draft.document : {};
   const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
   const advanced = cloneJson(documentValue) || {};
   delete advanced.offers;
-  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}"><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại</div><h3 class="card-title mb-1">Chỉnh sửa ${text(draft.id)}</h3><p class="text-secondary small mb-0">Lần sửa ${text(draft.revision)} · thay đổi chưa có hiệu lực cho đến khi xuất bản.</p></div><span class="badge bg-warning-lt">Đang chỉnh sửa</span></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div class="bf-admin-editor-intro"><div><h4 class="mb-1">Các gói đăng ký</h4><p class="text-secondary small mb-0">Chỉnh các trường theo từng nhóm. Trường chỉ đọc được giữ nguyên theo chính sách hiện hành.</p></div><span class="text-secondary small">${offers.length} gói</span></div>${monthlyConfigurationMarkup(documentValue)}${offers.map(offerEditorMarkup).join("")}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Chỉ dành cho các phần chưa có biểu mẫu an toàn. Danh sách gói được quản lý ở phía trên.</p><label class="form-label" for="admin-plan-advanced-document">Cấu hình chính sách nâng cao (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống nếu muốn áp dụng ngay sau khi xuất bản.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
+  const policies = documentValue.policies || {};
+  const policyChoice = (key, label, options) => `<div class="col-md-6"><label class="form-label" for="admin-policy-${key}">${label}</label><select class="form-select" id="admin-policy-${key}" data-admin-policy-choice="${key}"><option value="">Giữ chính sách hiện có${policies[key]?.kind === "blocked_decision" ? " · Chưa chốt" : ""}</option>${options.map(([value, caption]) => `<option value="${value}"${policies[key]?.kind === value ? " selected" : ""}>${caption}</option>`).join("")}</select></div>`;
+  const terms = `<details class="bf-admin-package-policies mb-3"><summary>Chính sách chung & kỳ hạn</summary><div class="row g-3 mt-1">${["fixed_days", "blocked_decision", undefined].includes(policies.baseTerm?.kind) ? `<div class="col-md-6"><label class="form-label" for="admin-annual-term-days">Số ngày hiệu lực một kỳ năm</label><input class="form-control" id="admin-annual-term-days" type="number" min="1" max="3660" value="${text(policies.baseTerm?.kind === "fixed_days" ? policies.baseTerm.days : "", "")}"></div>` : '<div class="col-12 text-secondary">Kỳ năm giữ chính sách hiện có; xem cấu hình nâng cao để rà soát.</div>'}${policyChoice("renewalAnchor", "Khi gia hạn", [["start_new_term", "Bắt đầu kỳ mới"], ["end_of_term", "Từ cuối kỳ hiện tại"]])}${policyChoice("partialBatch", "Khi lượt không đủ cho toàn bộ danh sách", [["reject_all", "Từ chối toàn bộ"], ["process_affordable_in_stable_order", "Xử lý phần đủ lượt theo thứ tự ổn định"]])}</div>${monthlyConfigurationMarkup(documentValue)}</details>`;
+  const panes = offers.map((offer, index) => `<div data-admin-package-pane="${index}"${selectedIndex === index ? "" : " hidden"}>${offerEditorMarkup(offer, index)}</div>`).join("");
+  const selected = offers[selectedIndex];
+  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" data-draft-id="${text(draft.id)}" data-admin-allow-incomplete><div class="card-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại · Lần sửa ${text(draft.revision)}</div><h3 class="card-title mb-1">Các gói đăng ký</h3><p class="text-secondary small mb-0">Thay đổi chưa có hiệu lực cho đến khi xuất bản. ${offers.length} giá theo kỳ.</p></div><button class="btn btn-primary" type="button" data-admin-plan-action="new-package">Tạo gói</button></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div data-admin-package-list${selected && !creator ? " hidden" : ""}>${packageManagerMarkup(documentValue)}<p class="text-secondary small mt-2">Khung năm hiện hành gồm 8 gói: Cá nhân/Bạc/Vàng/Kim cương × Cơ bản/Nâng cao. Giá tháng tùy chọn.</p></div>${creator ? packageCreatorMarkup(sourceIndex === null ? null : offers[sourceIndex]) : ""}<div data-admin-package-editor-zone${selected && !creator ? "" : " hidden"}><div class="d-flex align-items-center justify-content-between flex-wrap gap-2 my-3"><button class="btn btn-ghost-primary" type="button" data-admin-package-back>← Danh sách gói</button><div class="btn-group" aria-label="Phần cấu hình gói"><button type="button" class="btn btn-sm btn-primary" data-admin-package-step="0" aria-pressed="true">Thông tin hiển thị</button><button type="button" class="btn btn-sm btn-outline-primary" data-admin-package-step="1" aria-pressed="false">Giá và hạn mức</button><button type="button" class="btn btn-sm btn-outline-primary" data-admin-package-step="2" aria-pressed="false">Quyền và tính năng</button></div></div><div class="bf-admin-package-editor-grid"><div>${panes}</div><aside><h4 class="h3">Thẻ xem trước</h4><div data-admin-package-live-preview>${selected ? packagePreviewMarkup(documentValue, selectedIndex) : ""}</div></aside></div></div>${terms}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Các cấu hình khác được giữ nguyên khi chỉnh từng gói.</p><label class="form-label" for="admin-plan-advanced-document">Cấu hình chính sách nâng cao (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống để áp dụng ngay sau khi xuất bản. Gói đã mua giữ điều kiện cũ.</small></div></div><div class="card-footer bf-admin-editor-actions"><div><button class="btn btn-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-primary" type="button" data-admin-plan-action="validate">Kiểm tra</button></div><div><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) ? "" : " disabled"}>Rà soát và xuất bản</button><button class="btn btn-ghost-secondary" type="button" data-admin-plan-action="close">Đóng</button></div></div></section>`;
 }
 
-export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
+export function plansMarkup(payload, { editor = "", catalog = null, catalogError = null, dirty = false, validated = false } = {}) {
   const current = payload?.currentRelease || null;
   const scheduled = payload?.scheduledRelease || null;
   const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
@@ -296,9 +334,22 @@ export function plansMarkup(payload, { editor = "", catalog = null } = {}) {
   const currentActions = current
     ? `<button class="btn btn-sm btn-outline-primary" type="button" data-admin-plan-action="clone" data-release-id="${text(current.id)}">Nhân bản</button> <button class="btn btn-sm btn-outline-danger" type="button" data-admin-plan-action="stop-sales" data-release-id="${text(current.id)}"${current.nonSellable ? " disabled" : ""}>Dừng bán</button>`
     : "";
-  const releaseManagement = empty ? adminStateMarkup("empty", { message: "Chưa có phiên bản gói dịch vụ hoặc bản nháp thương mại." }) : `<div class="row row-cards"><div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div><div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mọi thay đổi dùng quy trình versioned policy hiện hành.</p></div></div>${draftTable(drafts)}</section></div>${editor ? `<div class="col-12">${editor}</div>` : ""}</div>`;
+  const releaseManagement = empty ? adminStateMarkup("empty", { message: "Chưa có phiên bản gói dịch vụ hoặc bản nháp thương mại." }) : `<div class="row row-cards"><div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div><div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mở bản nháp để quản lý gói theo nhóm và kỳ thanh toán.</p></div></div>${draftTable(drafts)}</section></div></div>`;
   const history = `<section class="card mt-3" aria-labelledby="commercial-release-history-title"><div class="card-header"><div><h3 class="card-title" id="commercial-release-history-title">Lịch sử phát hành thương mại</h3><p class="text-secondary small mb-0">Tối đa 20 bản gần nhất từ kho phát hành bất biến.</p></div></div>${releaseHistoryMarkup(releaseHistory)}</section>`;
-  return `<div class="admin-plans-page"><header class="bf-admin-page-intro"><div><p class="page-pretitle mb-1">Thương mại</p><h2 class="h1 mb-2">Gói đăng ký</h2><p class="text-secondary mb-0">Theo dõi gói đang bán và đưa thay đổi qua đúng quy trình trước khi phát hành.</p></div><button class="btn btn-primary" type="button" data-admin-plan-action="create">Tạo bản nháp</button></header>${workflowGuideMarkup()}${catalog ? `<section aria-labelledby="admin-plan-catalog-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-catalog-title" class="h2 mb-1">1. Gói đang bán</h3><p class="text-secondary small mb-0">Đây là dữ liệu công khai hiện tại, không phải bản nháp.</p></div></div>${catalogMarkup(catalog)}</section>` : ""}<section aria-labelledby="admin-plan-release-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-release-title" class="h2 mb-1">2. Phiên bản và xuất bản</h3><p class="text-secondary small mb-0">Lưu bản nháp, kiểm tra rồi mới đưa thay đổi vào hiệu lực.</p></div></div>${releaseManagement}</section><section aria-labelledby="admin-plan-model-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-model-title" class="h2 mb-1">3. Mô hình quyền lợi</h3><p class="text-secondary small mb-0">Các capability dùng chung cho toàn bộ gói.</p></div></div>${planModelMarkup()}</section><section aria-labelledby="admin-plan-history-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-history-title" class="h2 mb-1">Lịch sử phát hành</h3><p class="text-secondary small mb-0">Tra cứu tối đa 20 phiên bản gần nhất.</p></div></div>${history}</section><div class="mt-3" id="admin-plan-status" aria-live="polite"></div></div>`;
+  const initial = !current && !scheduled;
+  const catalogNotice = catalogError
+    ? adminStateMarkup(catalogError.code === "COMMERCIAL_POLICY_DECISION_REQUIRED" ? "empty" : "error", {
+      title: catalogError.code === "COMMERCIAL_POLICY_DECISION_REQUIRED" ? "Chưa có bảng giá đang mở bán" : "Chưa tải được bảng giá công khai",
+      message: "Bạn vẫn có thể tạo và quản lý gói nháp ở bên dưới. " + catalogError.message,
+    }) : "";
+  return `<div class="admin-plans-page"><header class="bf-admin-page-intro"><div><p class="page-pretitle mb-1">Thương mại</p><h2 class="h1 mb-2">Gói dịch vụ</h2><p class="text-secondary mb-0">Quản lý giá tháng, giá năm và quyền lợi trước khi phát hành.</p></div><div class="d-flex gap-2 flex-wrap">${initial ? '<button class="btn btn-outline-primary" type="button" data-admin-plan-action="create-template">Tạo bộ 8 gói mẫu</button>' : ""}<button class="btn btn-primary" type="button" data-admin-plan-action="create"${initial ? ' data-admin-create-mode="empty"' : ""}>${initial ? "Tạo gói đầu tiên" : "Tạo gói"}</button></div></header>
+    ${workflowGuideMarkup({ draftOpen: Boolean(editor), dirty, validated })}
+    <div id="admin-plan-status" aria-live="polite"></div>
+    ${editor ? `<div class="bf-admin-page-section">${editor}</div>` : ""}
+    <section aria-labelledby="admin-plan-catalog-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-catalog-title" class="h2 mb-1">1. Gói đang bán</h3><p class="text-secondary small mb-0">Dữ liệu khách hàng đang thấy.</p></div></div>${catalogNotice || (catalog ? catalogMarkup(catalog) : adminStateMarkup("empty", { title: "Chưa có bảng giá đang mở bán", message: "Tạo gói đầu tiên hoặc bộ 8 gói mẫu để cấu hình." }))}</section>
+    <section aria-labelledby="admin-plan-release-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-release-title" class="h2 mb-1">2. Phiên bản và xuất bản</h3><p class="text-secondary small mb-0">Lưu bản nháp, kiểm tra rồi phát hành toàn bộ bảng giá.</p></div></div>${releaseManagement}</section>
+    <section aria-labelledby="admin-plan-model-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-model-title" class="h2 mb-1">3. Mô hình quyền lợi</h3><p class="text-secondary small mb-0">Các khả năng cấu hình được hỗ trợ hiện hành.</p></div></div>${planModelMarkup()}</section>
+    <section aria-labelledby="admin-plan-history-title" class="bf-admin-page-section"><div class="bf-admin-section-heading"><div><h3 id="admin-plan-history-title" class="h2 mb-1">Lịch sử phát hành</h3><p class="text-secondary small mb-0">Tra cứu tối đa 20 phiên bản gần nhất.</p></div></div>${history}</section></div>`;
 }
 
 function mutationKey(action) {
@@ -306,7 +357,7 @@ function mutationKey(action) {
   return `admin-plan-${action}-${suffix}`;
 }
 
-export async function requestPlanActionInput(action, { requestValue = requestAdminValue } = {}) {
+export async function requestPlanActionInput(action, { requestValue = requestAdminValue, summary = "" } = {}) {
   if (action === "clone") {
     const confirmed = await requestValue({
       title: "Nhân bản bản phát hành",
@@ -328,7 +379,7 @@ export async function requestPlanActionInput(action, { requestValue = requestAdm
   if (action === "publish") {
     const reason = await requestValue({
       title: "Xuất bản gói dịch vụ",
-      message: "Xuất bản toàn bộ bản nháp này?",
+      message: `Xuất bản toàn bộ bản nháp này?${summary ? ` ${summary}` : ""}`,
       label: "Lý do xuất bản (bắt buộc)",
       confirmLabel: "Xuất bản",
     });
@@ -367,6 +418,7 @@ function setStatus(container, message, tone = "success") {
 export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   let overview = null;
   let catalog = null;
+  let catalogError = null;
   let draft = null;
   let workingDocument = null;
   let validation = null;
@@ -374,14 +426,20 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   let busy = false;
   let draftOpenController = null;
   let draftOpenSequence = 0;
+  let selectedIndex = 0;
+  let creatorOpen = false;
+  let creatorDirty = false;
+  let creationSource = null;
+  let packageStep = 0;
+  const managerStates = { draft: { group: "internal", layout: "table" }, published: { group: "internal", layout: "table" } };
 
   const discardMessage = "Thay đổi chưa lưu sẽ bị bỏ. Bạn có muốn rời khỏi trình chỉnh sửa?";
   const beforeNavigate = (event) => {
-    if (!dirty || globalThis.confirm?.(discardMessage) !== false) return;
+    if (!(dirty || creatorDirty) || globalThis.confirm?.(discardMessage) !== false) return;
     event.preventDefault();
   };
   const beforeUnload = (event) => {
-    if (!dirty) return;
+    if (!(dirty || creatorDirty)) return;
     event.preventDefault();
     event.returnValue = discardMessage;
   };
@@ -395,20 +453,28 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
 
   const render = () => {
     renderAdminMarkup(container, plansMarkup(overview, {
-      editor: draftEditorMarkup(draft && workingDocument ? { ...draft, document: workingDocument } : draft, validation),
+      editor: draftEditorMarkup(draft && workingDocument ? { ...draft, document: workingDocument } : draft, validation, { selectedIndex, creator: creatorOpen, sourceIndex: creationSource }),
       catalog,
+      catalogError,
       draftOpen: Boolean(draft),
       dirty,
       validated: Boolean(validationReady(validation) && !dirty),
     }));
     bind();
+    if (dirty || creatorDirty) container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach(node => { node.disabled = true; });
   };
   const refresh = async ({ keepDraft = false } = {}) => {
-    [overview, catalog] = await Promise.all([
+    const results = await Promise.allSettled([
       getAdminJson("/api/commercial/admin/overview", { fetchImpl, signal }),
       getAdminJson("/api/public/commercial/offers", { fetchImpl, signal }),
     ]);
-    if (!keepDraft) { draft = null; workingDocument = null; validation = null; dirty = false; }
+    if (results[0].status === "rejected") throw results[0].reason;
+    overview = results[0].value;
+    if (results[1].status === "rejected") {
+      if ([401, 403].includes(results[1].reason?.status) || signal?.aborted) throw results[1].reason;
+      catalog = null; catalogError = results[1].reason;
+    } else { catalog = results[1].value; catalogError = null; }
+    if (!keepDraft) { draft = null; workingDocument = null; validation = null; dirty = false; creatorDirty = false; }
     render();
   };
   const execute = async (action, operation, success, { keepDraft = false } = {}) => {
@@ -417,6 +483,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     container.querySelectorAll?.("button, textarea, input, select").forEach((node) => { node.disabled = true; });
     try {
       const result = await runWithStepUp(operation, { fetchImpl, signal });
+      if (signal?.aborted) return;
       if (result?.document) { draft = result; workingDocument = cloneJson(result.document); dirty = false; }
       try {
         await refresh({ keepDraft: keepDraft || Boolean(result?.document) });
@@ -445,9 +512,92 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     }
   };
   const bind = () => {
+    container.querySelectorAll?.("[data-admin-offer-editor]").forEach(editor => {
+      const index = Number(editor.dataset.offerIndex);
+      const offer = workingDocument?.offers?.[index];
+      const badge = editor.querySelector(".card-header > .badge");
+      if (badge && offer) badge.textContent = ({ sellable: "Đang bán", stopped: "Đã dừng bán", non_sellable: "Chưa mở bán" })[offer.salesState] || offer.salesState;
+      if (offer) {
+        const labels = { tier: PACKAGE_TIERS[offer.tier] || offer.tier, variant: ({ internal: "Cơ bản", connected: "Nâng cao" })[offer.variant] || offer.variant, ownerKind: offer.ownerKind === "account" ? "Cá nhân" : offer.ownerKind === "organization" ? "Tổ chức" : offer.ownerKind, "price.period": offer.price?.period === "monthly" ? "Hàng tháng" : "Hàng năm" };
+        for (const [name, value] of Object.entries(labels)) {
+          const input = editor.querySelector(`[data-admin-offer-field="${name}"]`); if (input) input.value = value;
+        }
+      }
+      const priceGroup = editor.querySelectorAll(".bf-admin-editor-group")[1];
+      if (!priceGroup) return;
+      const calculator = globalThis.document?.createElement?.("div");
+      if (!calculator) return;
+      calculator.className = "row g-2 align-items-end mt-3";
+      calculator.innerHTML = trustedHTML(`<div class="col-md-5"><label class="form-label" for="admin-offer-vat-${index}">Tính thuế VAT (%)</label><input class="form-control" id="admin-offer-vat-${index}" type="text" inputmode="decimal" placeholder="Nhập tỷ lệ để tính thuế"></div><div class="col-md-7"><button type="button" class="btn btn-outline-primary" data-admin-vat-calculate="${index}">Tính thuế và tổng tiền</button></div>`);
+      priceGroup.append(calculator);
+      calculator.querySelector("button").addEventListener("click", () => {
+        if (busy) return;
+        try {
+          const amounts = calculateAdminVat(editor.querySelector('[data-admin-offer-field="price.subtotal"]').value, calculator.querySelector("input").value.trim());
+          for (const key of ["tax", "total"]) {
+            const input = editor.querySelector(`[data-admin-offer-field="price.${key}"]`); input.value = amounts[key]; input.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        } catch (error) { setStatus(container, error.message, "danger"); }
+      });
+    });
+    container.querySelectorAll?.("[data-admin-package-manager]").forEach(manager => {
+      const id = manager.dataset.adminPackageManager;
+      const documentValue = id === "published" ? catalog : workingDocument;
+      if (documentValue) bindPackageManager(manager, documentValue, { ...managerStates[id], onState: state => { managerStates[id] = state; } });
+    });
+    const showPackage = (index) => {
+      if (index !== null && !workingDocument?.offers?.[index]) return;
+      selectedIndex = index;
+      const zone = container.querySelector?.("[data-admin-package-editor-zone]");
+      const list = container.querySelector?.("[data-admin-package-list]");
+      if (zone) zone.hidden = index === null;
+      if (list) list.hidden = index !== null;
+      container.querySelectorAll?.("[data-admin-package-pane]").forEach(pane => {
+        pane.hidden = Number(pane.dataset.adminPackagePane) !== index;
+        pane.querySelectorAll(".bf-admin-editor-group").forEach((group, step) => { group.hidden = step !== packageStep; });
+      });
+      container.querySelectorAll?.("[data-admin-package-step]").forEach(button => {
+        const pressed = Number(button.dataset.adminPackageStep) === packageStep;
+        button.setAttribute("aria-pressed", String(pressed)); button.classList.toggle("btn-primary", pressed); button.classList.toggle("btn-outline-primary", !pressed);
+      });
+      const preview = container.querySelector?.("[data-admin-package-live-preview]");
+      if (preview) preview.innerHTML = trustedHTML(packagePreviewMarkup(workingDocument, index));
+    };
+    container.querySelectorAll?.("[data-admin-package-edit]").forEach(button => button.addEventListener("click", () => {
+      if (creatorDirty && globalThis.confirm?.(discardMessage) === false) return;
+      const documentValue = readDocument(); if (!documentValue) return;
+      workingDocument = documentValue; packageStep = 0; creatorOpen = false; creatorDirty = false; selectedIndex = Number(button.dataset.adminPackageEdit); render();
+    }));
+    container.querySelector?.("[data-admin-package-back]")?.addEventListener("click", () => {
+      const documentValue = readDocument(); if (!documentValue) return;
+      workingDocument = documentValue; selectedIndex = null; render();
+    });
+    container.querySelectorAll?.("[data-admin-package-step]").forEach(button => button.addEventListener("click", () => {
+      const documentValue = readDocument(); if (!documentValue) return;
+      workingDocument = documentValue; packageStep = Number(button.dataset.adminPackageStep); showPackage(selectedIndex);
+    }));
+    container.querySelector?.("[data-admin-package-live-preview]")?.addEventListener("click", event => {
+      const button = event.target.closest?.("[data-admin-package-period]");
+      if (!button || button.disabled) return;
+      const documentValue = readDocument(); if (!documentValue) return;
+      workingDocument = documentValue; showPackage(Number(button.dataset.adminPackagePeriod));
+    });
+    container.querySelectorAll?.("[data-admin-package-copy]").forEach(button => button.addEventListener("click", () => {
+      if (creatorDirty && globalThis.confirm?.(discardMessage) === false) return;
+      const documentValue = readDocument(); if (!documentValue) return;
+      workingDocument = documentValue; creationSource = Number(button.dataset.adminPackageCopy); creatorOpen = true; creatorDirty = false; render();
+    }));
+    container.querySelectorAll?.("[data-admin-package-edit-code]").forEach(button => button.addEventListener("click", async () => {
+      if (busy || ((dirty || creatorDirty) && globalThis.confirm?.(discardMessage) === false)) return;
+      const code = button.dataset.adminPackageEditCode;
+      creatorOpen = false; creatorDirty = false; creationSource = null;
+      await execute("edit-package", () => postAdminJson("/api/commercial/drafts", { body: { baseReleaseId: catalog.releaseId }, idempotencyKey: mutationKey("edit-package"), fetchImpl, signal, retries: 0 }), "Gói đã được sao chép vào bản nháp để chỉnh sửa.", { keepDraft: true });
+      if (workingDocument) { selectedIndex = workingDocument.offers.findIndex(offer => offer.code === code); render(); }
+    }));
+    if (draft && !creatorOpen) showPackage(selectedIndex);
     container.querySelectorAll?.("[data-admin-draft-open]").forEach((button) => {
       button.addEventListener("click", async () => {
-        if (dirty && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Mở bản nháp khác?")) return;
+        if ((dirty || creatorDirty) && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Mở bản nháp khác?")) return;
         draftOpenController?.abort();
         const openController = new AbortController();
         draftOpenController = openController;
@@ -462,6 +612,8 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           workingDocument = cloneJson(draft.document);
           dirty = false;
           validation = draft.validation ? { ...draft.validation, validationDigest: draft.validationDigest, readinessExpiresAt: draft.readinessExpiresAt } : null;
+          selectedIndex = workingDocument.offers?.length === 1 ? 0 : null;
+          creatorOpen = false; creatorDirty = false; creationSource = null; packageStep = 0;
           render();
           container.querySelector?.("#admin-commercial-editor")?.scrollIntoView?.({ block: "start" });
         } catch (error) {
@@ -474,19 +626,25 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     container.querySelectorAll?.("[data-admin-plan-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         const action = button.dataset.adminPlanAction;
+        if (busy) return;
         if (action === "close") {
-          if (dirty && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Đóng bản nháp?")) return;
-          draft = null; workingDocument = null; validation = null; dirty = false; render(); return;
+          if ((dirty || creatorDirty) && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Đóng bản nháp?")) return;
+          draft = null; workingDocument = null; validation = null; dirty = false; creatorDirty = false; render(); return;
         }
-        if (action === "create") {
-          if (dirty && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Tạo bản nháp mới?") === false) return;
+        if (action === "create" || action === "create-template") {
+          if ((dirty || creatorDirty) && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Tạo bản nháp mới?") === false) return;
           const key = mutationKey(action);
-          await execute(action, () => postAdminJson("/api/commercial/drafts", { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp mới.", { keepDraft: true });
+          creatorOpen = action === "create";
+          creatorDirty = false;
+          creationSource = null; selectedIndex = null;
+          const body = action === "create-template" ? { templateMode: "blank_templates" } : button.dataset.adminCreateMode === "empty" ? { templateMode: "empty" } : {};
+          await execute(action, () => postAdminJson("/api/commercial/drafts", { body, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp mới.", { keepDraft: true });
           return;
         }
         if (action === "clone") {
-          if (dirty && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Nhân bản bản phát hành?") === false) return;
+          if ((dirty || creatorDirty) && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Nhân bản bản phát hành?") === false) return;
           if (!await requestPlanActionInput(action)) return;
+          creatorOpen = false; creatorDirty = false; creationSource = null; selectedIndex = null;
           const key = mutationKey(action);
           await execute(action, () => postAdminJson(`/api/commercial/releases/${encodeURIComponent(button.dataset.releaseId)}/clone`, { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp từ bản đang hiệu lực.", { keepDraft: true });
           return;
@@ -499,11 +657,34 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (!draft) return;
+        if (action === "new-package" || action === "cancel-package") {
+          if (creatorDirty && action === "new-package" && globalThis.confirm?.(discardMessage) === false) return;
+          const documentValue = readDocument(); if (!documentValue) return;
+          workingDocument = documentValue; creatorOpen = action === "new-package"; creatorDirty = false; creationSource = null; selectedIndex = null; render(); return;
+        }
+        if (action === "confirm-package") {
+          const documentValue = readDocument(); if (!documentValue) return;
+          try {
+            const periods = [container.querySelector("#admin-new-package-year").checked ? "yearly" : null, container.querySelector("#admin-new-package-month").checked ? "monthly" : null].filter(Boolean);
+            workingDocument = addAdminServicePackage(documentValue, { tier: container.querySelector("#admin-new-package-tier").value, variant: container.querySelector("#admin-new-package-variant").value, name: container.querySelector("#admin-new-package-name").value, periods, sourceIndex: creationSource });
+            selectedIndex = documentValue.offers.length; creatorOpen = false; creatorDirty = false; creationSource = null; packageStep = 0; dirty = true; validation = null; render();
+            setStatus(container, "Đã thêm gói vào nội dung chưa lưu. Nhập giá và quyền lợi, rồi lưu bản nháp.");
+          } catch (error) { setStatus(container, error.message, "danger"); }
+          return;
+        }
+        if (action === "configure-exports") {
+          const documentValue = readDocument(); if (!documentValue) return;
+          const accepted = await requestAdminValue({ title: "Cấu hình quyền xuất của gói", message: "Chọn lại quyền xuất cho gói trong bản nháp? Ban đầu các quyền sẽ chưa được chọn. Quyền của gói đã mua không thay đổi.", label: null, confirmLabel: "Cấu hình" });
+          if (accepted === null || signal?.aborted) return;
+          const currentDocument = readDocument(); if (!currentDocument) return;
+          workingDocument = configureAdminExportMapping(currentDocument, Number(button.dataset.offerIndex)); dirty = true; validation = null; render(); return;
+        }
         if (action === "add-monthly") {
           const documentValue = readDocument();
           if (!documentValue) return;
           try {
             workingDocument = addMonthlyOffer(documentValue, Number(button.dataset.sourceOfferIndex));
+            selectedIndex = workingDocument.offers.length - 1; creatorOpen = false;
             validation = null;
             dirty = true;
             render();
@@ -513,6 +694,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "save") {
+          if (creatorDirty) { setStatus(container, "Thêm gói vào bản nháp hoặc hủy biểu mẫu tạo gói trước khi lưu.", "danger"); return; }
           const documentValue = readDocument();
           if (!documentValue) return;
           workingDocument = documentValue;
@@ -523,7 +705,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "validate") {
-          if (dirty) {
+          if (dirty || creatorDirty) {
             setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi kiểm tra.", "danger");
             return;
           }
@@ -532,7 +714,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           const revision = draft.revision;
           try {
             const result = await runWithStepUp(() => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}/validate`, { body: { expectedRevision: revision }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), { fetchImpl, signal });
-            if (dirty || draft?.id !== draftId || draft?.revision !== revision || signal?.aborted) return;
+            if (dirty || creatorDirty || draft?.id !== draftId || draft?.revision !== revision || signal?.aborted) return;
             validation = result;
             render();
             setStatus(container, validation.errors?.length ? "Kiểm tra còn lỗi cần xử lý." : "Kiểm tra đạt.", validation.errors?.length ? "danger" : "success");
@@ -540,14 +722,15 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "publish") {
-          if (dirty) {
+          if (dirty || creatorDirty) {
             setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi xuất bản.", "danger");
             return;
           }
           if (!validationReady(validation)) return;
-          const reason = await requestPlanActionInput(action);
+          const rows = workingDocument.offers.map(offer => `${offer.display?.name || offer.code} · ${offer.variant === "internal" ? "Cơ bản" : "Nâng cao"} · ${offer.price.period === "monthly" ? "tháng" : "năm"}: ${formatCommercialMoney(offer.price.total, offer.price.currency)} (${({ sellable: "đang bán", stopped: "dừng bán", non_sellable: "chưa mở bán" })[offer.salesState] || offer.salesState}).`);
+          const reason = await requestPlanActionInput(action, { summary: `${rows.join(" ")} Gói đã mua giữ điều kiện cũ.` });
           if (!reason) return;
-          if (dirty || !validationReady(validation)) return;
+          if (dirty || creatorDirty || !validationReady(validation)) return;
           const local = container.querySelector?.("#admin-plan-effective")?.value || "";
           const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);
           if (!Number.isFinite(effectiveAt)) { setStatus(container, "Thời điểm hiệu lực không hợp lệ.", "danger"); return; }
@@ -556,13 +739,30 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         }
       });
     });
-    container.querySelectorAll?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days").forEach((field) => {
+    container.querySelectorAll?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days, #admin-annual-term-days, [data-admin-policy-choice]").forEach((field) => {
       const markDirty = () => {
         dirty = true;
         validation = null;
         const status = container.querySelector?.("#admin-plan-status");
         if (status) status.innerHTML = trustedHTML('<div class="alert alert-warning" role="status">Có thay đổi chưa lưu. Hãy lưu bản nháp trước khi kiểm tra hoặc xuất bản.</div>');
         container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach((button) => { button.disabled = true; });
+        if (field.matches?.("[data-admin-offer-field]") && selectedIndex !== null) {
+          const candidate = cloneJson(workingDocument);
+          const offer = candidate?.offers?.[selectedIndex];
+          if (offer) {
+            const pane = container.querySelector(`[data-admin-package-pane="${selectedIndex}"]`);
+            pane.querySelectorAll("[data-admin-offer-field]").forEach(input => {
+              const key = input.dataset.adminOfferField;
+              if (input.readOnly) return;
+              if (key.startsWith("capability:")) { if (offer.exportCapabilities) offer.exportCapabilities[key.slice(11)] = input.checked; return; }
+              const value = input.type === "checkbox" ? input.checked : input.type === "number" ? (/^(0|[1-9]\d*)$/u.test(input.value) ? Number(input.value) : null) : input.value;
+              if (key.startsWith("display.")) offer.display[key.slice(8)] = key === "display.benefits" ? input.value.split(/\r?\n/u).filter(Boolean) : value;
+              else if (key.startsWith("price.")) offer.price[key.slice(6)] = value;
+              else offer[key] = value;
+            });
+            container.querySelector("[data-admin-package-live-preview]").innerHTML = trustedHTML(packagePreviewMarkup(candidate, selectedIndex));
+          }
+        }
       };
       field.addEventListener("input", markDirty);
       field.addEventListener("change", markDirty);
@@ -573,7 +773,12 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   // re-rendered after opening a draft and after every action, so listeners on
   // individual fields can otherwise be lost between renders.
   const markStableEditorDirty = (event) => {
-    if (!event.target?.matches?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days")) return;
+    if (event.target?.closest?.("[data-admin-package-creator]")) {
+      creatorDirty = true;
+      container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach(node => { node.disabled = true; });
+      return;
+    }
+    if (!event.target?.matches?.("[data-admin-offer-field], #admin-plan-advanced-document, #admin-monthly-term-days, #admin-annual-term-days, [data-admin-policy-choice]")) return;
     dirty = true;
     validation = null;
   };

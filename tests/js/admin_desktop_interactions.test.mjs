@@ -47,7 +47,7 @@ before(async () => {
       const url = new URL(request.url, "http://127.0.0.1");
       if (url.pathname.startsWith("/admin")) {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "csrf_token=fixture; Path=/" });
-        response.end(`<!doctype html><html lang="vi"><head><link rel="stylesheet" data-runtime-styles href="/views/css/runtime-styles.css"></head><body><script id="bf-admin-session" type="application/json">{"valid":true,"user":{"name":"Admin","platform_role":"super_admin"}}</script><div id="admin-app"></div><script type="module" src="/frontend/admin-platform/AdminApp.js"></script></body></html>`);
+        response.end(`<!doctype html><html lang="vi" data-bs-theme="light"><head><link rel="stylesheet" href="/node_modules/@tabler/core/dist/css/tabler.min.css"><link rel="stylesheet" href="/frontend/admin-platform/admin.css"><link rel="stylesheet" data-runtime-styles href="/views/css/runtime-styles.css"></head><body><script id="bf-admin-session" type="application/json">{"valid":true,"user":{"name":"Admin","platform_role":"super_admin"}}</script><div id="admin-app"></div><script type="module" src="/frontend/admin-platform/AdminApp.js"></script></body></html>`);
         return;
       }
       if (url.pathname.startsWith("/api/")) {
@@ -98,6 +98,130 @@ async function openDraft(page, id = "draft-a") {
   await page.locator(`[data-draft-id="${id}"]`).waitFor();
 }
 function nextDialog(page, accept) { page.once("dialog", (dialog) => accept ? dialog.accept() : dialog.dismiss()); }
+
+test("admin bootstraps and saves a package when the public catalog has no effective release", async () => {
+  let saved = null;
+  interceptApi = async (entry) => {
+    if (entry.path === "/api/commercial/admin/overview") return { payload: { currentRelease: null, scheduledRelease: null, drafts: saved ? [{ id: "first", revision: 2 }] : [], releaseHistory: [] } };
+    if (entry.path === "/api/public/commercial/offers") return { status: 503, payload: { code: "COMMERCIAL_POLICY_DECISION_REQUIRED", error: "Chưa có bản phát hành thương mại hợp lệ cho giao dịch mới." } };
+    if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: { id: "first", revision: 1, document: { schemaVersion: 1, currency: "VND", offers: [], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, unknown: { keep: true } } } };
+    if (entry.path === "/api/commercial/drafts/first" && entry.method === "PATCH") {
+      saved = entry.body.document;
+      return { payload: { id: "first", revision: 2, document: saved } };
+    }
+    if (entry.path === "/api/commercial/drafts/first" && entry.method === "GET") return { payload: { id: "first", revision: 2, document: saved } };
+    if (entry.path.endsWith("/validate")) return { payload: { errors: [{ path: "offers", code: "OFFER_MATRIX_INCOMPLETE", message: "Chưa đủ khung 8 gói năm" }] } };
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await page.getByRole("button", { name: "Tạo gói đầu tiên", exact: true }).click();
+    await page.locator("#admin-new-package-name").waitFor();
+    assert.equal(requests.find(entry => entry.path === "/api/commercial/drafts" && entry.method === "POST").body.templateMode, "empty");
+    await page.locator("#admin-new-package-name").fill("Cá nhân do Admin tạo");
+    nextDialog(page, false);
+    await page.locator('[data-admin-link="/admin/security"]').click();
+    assert.equal(new URL(page.url()).pathname, "/admin/plans");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 0);
+    assert.equal(await page.locator("#admin-new-package-name").inputValue(), "Cá nhân do Admin tạo");
+    await page.locator("#admin-new-package-month").check();
+    await page.locator('[data-admin-plan-action="confirm-package"]').click();
+    await page.locator('[data-admin-package-step="1"]').click();
+    const annual = page.locator('[data-admin-offer-editor][data-offer-index="0"]');
+    await annual.locator('[data-admin-offer-field="price.subtotal"]').fill("1200000");
+    await page.locator("#admin-offer-vat-0").fill("10");
+    await page.locator('[data-admin-vat-calculate="0"]').click();
+    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /1[.]320[.]000/u);
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
+    const monthly = page.locator('[data-admin-offer-editor][data-offer-index="1"]');
+    await monthly.locator('[data-admin-offer-field="price.subtotal"]').fill("150000");
+    await page.locator("#admin-offer-vat-1").fill("0");
+    await page.locator('[data-admin-vat-calculate="1"]').click();
+    const policies = page.locator(".bf-admin-package-policies");
+    await policies.locator("summary").click();
+    await page.locator("#admin-monthly-term-days").fill("30");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers.length, 2);
+    assert.equal(saved.offers[0].price.total, 1320000);
+    assert.equal(saved.offers[1].price.total, 150000);
+    assert.equal(saved.offers[0].exportCapabilities, null);
+    assert.equal(saved.offers[1].exportCapabilities, null);
+    assert.deepEqual(saved.unknown, { keep: true });
+    assert.equal(saved.policies.monthlyBaseTerm.days, 30);
+    assert.equal(saved.policies.baseTerm.days, 365);
+    assert.equal(saved.offers[0].salesState, "non_sellable");
+    await page.locator('[data-admin-plan-action="validate"]').click();
+    await page.getByText("Chưa đủ khung 8 gói năm").waitFor();
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    await page.locator('[data-admin-package-step="2"]').click();
+    await monthly.locator('[data-admin-plan-action="configure-exports"]').click();
+    await page.locator('.modal button[type="submit"]').click();
+    await monthly.locator('[data-admin-offer-field="capability:document.export.word"]').check();
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers[1].exportCapabilities["document.export.word"], true);
+    assert.equal(saved.offers[0].exportCapabilities, null);
+    await page.locator('[data-admin-plan-action="close"]').click();
+    await openDraft(page, "first");
+    await page.locator('[data-admin-package-edit="0"]').first().click();
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
+    await page.locator('[data-admin-package-step="2"]').click();
+    assert.equal(await monthly.locator('[data-admin-offer-field="capability:document.export.word"]').isChecked(), true);
+    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /150[.]000/u);
+    if (process.env.BIDDING_ADMIN_PACKAGE_CAPTURE_DIR) await page.locator("#admin-commercial-editor").screenshot({ path: resolve(process.env.BIDDING_ADMIN_PACKAGE_CAPTURE_DIR, "admin-package-implemented.png") });
+  });
+});
+
+test("a failed package save keeps edited content and blocks publish until authoritative retry succeeds", async () => {
+  let fail = true;
+  let documentValue = null;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      if (fail) return { status: 503, payload: { error: "Lưu thất bại" } };
+      documentValue = entry.body.document;
+      return { payload: { id: "draft-a", revision: 2, document: documentValue } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-offer-field="display.name"]').fill("Nội dung cần giữ");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.getByText("Lưu thất bại", { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-admin-offer-field="display.name"]').inputValue(), "Nội dung cần giữ");
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    fail = false;
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(documentValue.offers[0].display.name, "Nội dung cần giữ");
+  });
+});
+
+test("admin draft selection preserves independent package periods and unedited source data", async () => {
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-offer-field="display.name"]').fill("Tên mới");
+    await page.locator('[data-admin-package-back]').click();
+    await page.locator('[data-admin-package-manager="draft"] [data-admin-package-layout="cards"]').click();
+    assert.match(await page.locator('[data-admin-package-manager="draft"] [data-admin-package-cards]').textContent(), /Tên mới/u);
+    await page.locator('[data-admin-package-edit="0"]').last().click();
+    assert.equal(await page.locator('[data-admin-offer-field="display.name"]').inputValue(), "Tên mới");
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+  });
+});
+
+test("an unauthorized admin overview never shows bootstrap actions", async () => {
+  interceptApi = async entry => entry.path === "/api/commercial/admin/overview"
+    ? { status: 403, payload: { code: "FORBIDDEN", error: "Không có quyền" } } : null;
+  await withPage("/admin/plans", async page => {
+    await page.locator('[data-admin-state="permission"]').waitFor();
+    assert.equal(await page.locator('[data-admin-plan-action="create"]').count(), 0);
+    assert.equal(requests.filter(entry => entry.method === "POST").length, 0);
+  });
+});
 
 test("dirty commercial editor cancels create clone and route changes and confirms discard", async () => {
   await withPage("/admin/plans", async (page) => {

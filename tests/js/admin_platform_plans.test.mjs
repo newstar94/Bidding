@@ -130,7 +130,7 @@ test("plans catalog renders authoritative offers prices benefits and entitlement
       display: { name: "Vàng", variantLabel: "Kết nối", benefits: ["Quyền lợi từ release"], recommended: true },
       rawSecret: "must-not-render",
     }],
-    creditPacks: [{ code: "procurement.20", quantity: 20, price: 99000, internal: "hidden" }],
+    creditPacks: [{ code: "procurement.20", quantity: 20, price: 99000, internal: "must-not-render-pack" }],
   });
   assert.match(markup, /release-live-7/u);
   assert.match(markup, /Vàng/u);
@@ -142,7 +142,7 @@ test("plans catalog renders authoritative offers prices benefits and entitlement
   assert.match(markup, /Xuất Word:[\s\S]*Có/u);
   assert.match(markup, /Xuất Excel:[\s\S]*Không/u);
   assert.match(markup, /procurement[.]20[\s\S]*20[\s\S]*99[.]000/u);
-  assert.doesNotMatch(markup, /must-not-render|hidden/u);
+  assert.doesNotMatch(markup, /must-not-render/u);
 });
 
 test("plans catalog keeps off and malformed authoritative states explicit", () => {
