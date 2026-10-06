@@ -479,6 +479,8 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
   };
   const execute = async (action, operation, success, { keepDraft = false } = {}) => {
     if (busy) return;
+    draftOpenController?.abort();
+    draftOpenSequence += 1;
     busy = true;
     container.querySelectorAll?.("button, textarea, input, select").forEach((node) => { node.disabled = true; });
     try {
@@ -597,6 +599,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     if (draft && !creatorOpen) showPackage(selectedIndex);
     container.querySelectorAll?.("[data-admin-draft-open]").forEach((button) => {
       button.addEventListener("click", async () => {
+        if (busy) return;
         if ((dirty || creatorDirty) && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Mở bản nháp khác?")) return;
         draftOpenController?.abort();
         const openController = new AbortController();
@@ -624,11 +627,30 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       });
     });
     container.querySelectorAll?.("[data-admin-plan-action]").forEach((button) => {
+      const configureExports = async () => {
+        const documentValue = readDocument(); if (!documentValue) return;
+        const configuredDraftId = draft.id;
+        const configuredCode = documentValue.offers[Number(button.dataset.offerIndex)]?.code;
+        const accepted = await requestAdminValue({ title: "Cấu hình quyền xuất của gói", message: "Chọn lại quyền xuất cho gói trong bản nháp? Ban đầu các quyền sẽ chưa được chọn. Quyền của gói đã mua không thay đổi.", label: null, confirmLabel: "Cấu hình" });
+        if (accepted === null || signal?.aborted || draft?.id !== configuredDraftId || workingDocument?.offers?.[Number(button.dataset.offerIndex)]?.code !== configuredCode) return;
+        const currentDocument = readDocument(); if (!currentDocument) return;
+        workingDocument = configureAdminExportMapping(currentDocument, Number(button.dataset.offerIndex)); dirty = true; validation = null; render();
+      };
+      const addPackage = () => {
+        const documentValue = readDocument(); if (!documentValue) return;
+        try {
+          const periods = [container.querySelector("#admin-new-package-year").checked ? "yearly" : null, container.querySelector("#admin-new-package-month").checked ? "monthly" : null].filter(Boolean);
+          workingDocument = addAdminServicePackage(documentValue, { tier: container.querySelector("#admin-new-package-tier").value, variant: container.querySelector("#admin-new-package-variant").value, name: container.querySelector("#admin-new-package-name").value, periods, sourceIndex: creationSource });
+          selectedIndex = documentValue.offers.length; creatorOpen = false; creatorDirty = false; creationSource = null; packageStep = 0; dirty = true; validation = null; render();
+          setStatus(container, "Đã thêm gói vào nội dung chưa lưu. Nhập giá và quyền lợi, rồi lưu bản nháp.");
+        } catch (error) { setStatus(container, error.message, "danger"); }
+      };
       button.addEventListener("click", async () => {
         const action = button.dataset.adminPlanAction;
         if (busy) return;
         if (action === "close") {
           if ((dirty || creatorDirty) && !globalThis.confirm("Thay đổi chưa lưu sẽ bị bỏ. Đóng bản nháp?")) return;
+          draftOpenController?.abort(); draftOpenSequence += 1;
           draft = null; workingDocument = null; validation = null; dirty = false; creatorDirty = false; render(); return;
         }
         if (action === "create" || action === "create-template") {
@@ -663,21 +685,11 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           workingDocument = documentValue; creatorOpen = action === "new-package"; creatorDirty = false; creationSource = null; selectedIndex = null; render(); return;
         }
         if (action === "confirm-package") {
-          const documentValue = readDocument(); if (!documentValue) return;
-          try {
-            const periods = [container.querySelector("#admin-new-package-year").checked ? "yearly" : null, container.querySelector("#admin-new-package-month").checked ? "monthly" : null].filter(Boolean);
-            workingDocument = addAdminServicePackage(documentValue, { tier: container.querySelector("#admin-new-package-tier").value, variant: container.querySelector("#admin-new-package-variant").value, name: container.querySelector("#admin-new-package-name").value, periods, sourceIndex: creationSource });
-            selectedIndex = documentValue.offers.length; creatorOpen = false; creatorDirty = false; creationSource = null; packageStep = 0; dirty = true; validation = null; render();
-            setStatus(container, "Đã thêm gói vào nội dung chưa lưu. Nhập giá và quyền lợi, rồi lưu bản nháp.");
-          } catch (error) { setStatus(container, error.message, "danger"); }
+          addPackage();
           return;
         }
         if (action === "configure-exports") {
-          const documentValue = readDocument(); if (!documentValue) return;
-          const accepted = await requestAdminValue({ title: "Cấu hình quyền xuất của gói", message: "Chọn lại quyền xuất cho gói trong bản nháp? Ban đầu các quyền sẽ chưa được chọn. Quyền của gói đã mua không thay đổi.", label: null, confirmLabel: "Cấu hình" });
-          if (accepted === null || signal?.aborted) return;
-          const currentDocument = readDocument(); if (!currentDocument) return;
-          workingDocument = configureAdminExportMapping(currentDocument, Number(button.dataset.offerIndex)); dirty = true; validation = null; render(); return;
+          await configureExports(); return;
         }
         if (action === "add-monthly") {
           const documentValue = readDocument();
@@ -727,10 +739,13 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
             return;
           }
           if (!validationReady(validation)) return;
+          const publishedDraftId = draft.id;
+          const publishedRevision = draft.revision;
+          const publishedDigest = validation.validationDigest;
           const rows = workingDocument.offers.map(offer => `${offer.display?.name || offer.code} · ${offer.variant === "internal" ? "Cơ bản" : "Nâng cao"} · ${offer.price.period === "monthly" ? "tháng" : "năm"}: ${formatCommercialMoney(offer.price.total, offer.price.currency)} (${({ sellable: "đang bán", stopped: "dừng bán", non_sellable: "chưa mở bán" })[offer.salesState] || offer.salesState}).`);
           const reason = await requestPlanActionInput(action, { summary: `${rows.join(" ")} Gói đã mua giữ điều kiện cũ.` });
           if (!reason) return;
-          if (dirty || creatorDirty || !validationReady(validation)) return;
+          if (dirty || creatorDirty || !validationReady(validation) || draft?.id !== publishedDraftId || draft?.revision !== publishedRevision || validation.validationDigest !== publishedDigest) return;
           const local = container.querySelector?.("#admin-plan-effective")?.value || "";
           const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);
           if (!Number.isFinite(effectiveAt)) { setStatus(container, "Thời điểm hiệu lực không hợp lệ.", "danger"); return; }
