@@ -31,12 +31,12 @@ def _scalar(value):
 
 
 def _normalized_json(value):
+    # Transaction JSON retains null and literal string values when payOS signs
+    # a response. Only top-level scalar fields use the empty-string convention.
     if isinstance(value, dict):
         return {key: _normalized_json(value[key]) for key in sorted(value)}
     if isinstance(value, list):
         return [_normalized_json(item) for item in value]
-    if value is None or value in {"null", "undefined"}:
-        return ""
     return value
 
 
@@ -161,6 +161,7 @@ class PayOSPaymentProvider:
             data["transactions"] = []
         elif not isinstance(transactions, list):
             raise PaymentProviderError("PROVIDER_SCHEMA_INVALID", "payOS transactions shape không hợp lệ.")
+        self._project_paid_transaction_evidence(data)
         return data
 
     def cancel_payment(self, identifier, reason=None):
@@ -189,6 +190,7 @@ class PayOSPaymentProvider:
             "x-client-id": self.credentials.client_id,
             "x-api-key": self.credentials.api_key,
             "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": "BiddingFlow-Payments/1.0",
         }
         try:
             status, raw = self.transport(
@@ -219,6 +221,36 @@ class PayOSPaymentProvider:
         if checkout_url is not None and checkout_url != "":
             data["checkoutUrl"] = validate_checkout_url(checkout_url)
         return data
+
+    @staticmethod
+    def _project_paid_transaction_evidence(data):
+        """Expose one complete signed payment's reference/time after verification.
+
+        payOS GET places occurrence time inside transactions; createdAt is the
+        link creation time. Several transfers or incomplete amounts remain for
+        the existing activation review path instead of choosing a timestamp.
+        """
+        transactions = data.get("transactions")
+        if str(data.get("status") or "").upper() != "PAID" or len(transactions) != 1:
+            return
+        transaction = transactions[0]
+        if not isinstance(transaction, dict):
+            return
+        amount, paid, transaction_amount = data.get("amount"), data.get("amountPaid"), transaction.get("amount")
+        if not (type(amount) is int and type(paid) is int and type(transaction_amount) is int
+                and amount > 0 and amount == paid == transaction_amount):
+            return
+        reference, occurrence = transaction.get("reference"), transaction.get("transactionDateTime")
+        if not isinstance(reference, str) or not reference.strip():
+            return
+        if isinstance(occurrence, bool) or not isinstance(occurrence, (str, int, float)) or occurrence == "":
+            return
+        if not data.get("reference"):
+            data["reference"] = reference
+        if data.get("transactionDateTime") is None or data.get("transactionDateTime") == "":
+            # Preserve the original value and let the shared strict parser
+            # enforce the existing timezone and validity policy.
+            data["transactionDateTime"] = occurrence
 
     @staticmethod
     def _identifier(value):

@@ -188,10 +188,16 @@ class BillingWorkProcessor:
         connection = self.database.get_connection()
         try:
             row = connection.execute(
-                """SELECT id FROM billing_provider_commands
-                    WHERE (status IN ('pending', 'retry') AND available_at <= ?)
-                       OR (status = 'processing' AND lease_expires_at <= ?)
-                    ORDER BY available_at, created_at, id LIMIT 1""",
+                """SELECT command.id FROM billing_provider_commands AS command
+                    WHERE ((command.status IN ('pending', 'retry') AND command.available_at <= ?)
+                       OR (command.status = 'processing' AND command.lease_expires_at <= ?))
+                      AND (command.command_type != 'cancel_checkout' OR NOT EXISTS (
+                          SELECT 1 FROM billing_provider_commands AS creation
+                           WHERE creation.order_id = command.order_id
+                             AND creation.command_type = 'create_checkout'
+                             AND creation.status IN ('pending', 'processing', 'retry')
+                      ))
+                    ORDER BY command.available_at, command.created_at, command.id LIMIT 1""",
                 (int(self.clock()), int(self.clock())),
             ).fetchone()
             return str(row[0]) if row else None

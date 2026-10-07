@@ -100,6 +100,42 @@ async function openDraft(page, id = "draft-a") {
 }
 function nextDialog(page, accept) { page.once("dialog", (dialog) => accept ? dialog.accept() : dialog.dismiss()); }
 
+test("publishing keeps a short reason in the dialog until it satisfies the server contract", async () => {
+  const digest = "a".repeat(64);
+  interceptApi = async entry => {
+    if (entry.path.endsWith("/validate")) return { payload: { errors: [], validationDigest: digest, readinessExpiresAt: 9999999999 } };
+    if (entry.path.endsWith("/publish")) {
+      if (entry.body.validationDigest.length !== 64 || entry.body.reason.trim().length < 3) {
+        return { status: 422, payload: { code: "COMMERCIAL_POLICY_INVALID", error: "Thiếu digest hoặc lý do xuất bản hợp lệ." } };
+      }
+      return { payload: { id: "release-test" } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-plan-action="validate"]').click();
+    await page.locator('[data-admin-plan-action="publish"]:enabled').waitFor();
+    await page.locator('[data-admin-plan-action="publish"]').click();
+    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
+    const reason = dialog.locator('input[name="value"]');
+    await reason.fill("OK");
+    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
+    await page.waitForTimeout(100);
+    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0, "a short reason must not cause the reported server error");
+    assert.equal(await dialog.isVisible(), true);
+    assert.match(await reason.evaluate(input => input.validationMessage), /ít nhất 3 ký tự/u);
+    await reason.fill("  Mở bán gói thử nghiệm  ");
+    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
+    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
+    const publication = requests.filter(entry => entry.path.endsWith("/publish"));
+    assert.equal(publication.length, 1);
+    assert.equal(publication[0].body.reason, "Mở bán gói thử nghiệm");
+    assert.equal(publication[0].body.validationDigest, digest);
+    assert.equal(publication[0].body.expectedRevision, 1);
+  });
+});
+
 async function capturePackages(page, name, selector = "#admin-commercial-editor") {
   const captureDir = process.env.BIDDING_ADMIN_PACKAGE_CAPTURE_DIR;
   if (!captureDir) return;

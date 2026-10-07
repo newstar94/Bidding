@@ -2153,6 +2153,7 @@ SCHEMA_DINH_NGHIA = {
             "payment_state": "TEXT NOT NULL DEFAULT 'unverified' CHECK(payment_state IN ('unverified', 'verified_paid', 'refund_pending', 'partially_refunded', 'refunded', 'refund_failed'))",
             "activation_state": "TEXT NOT NULL DEFAULT 'not_ready' CHECK(activation_state IN ('not_ready', 'pending', 'applied', 'retry', 'review_required', 'reversed'))",
             "checkout_url": "TEXT",
+            "checkout_payment_json": "TEXT CHECK(length(checkout_payment_json) BETWEEN 2 AND 8192)",
             "checkout_expires_at": "INTEGER",
             "expected_subscription_revision": "INTEGER",
             "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",

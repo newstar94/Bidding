@@ -2086,15 +2086,11 @@ table th {
 #tab-profile .dashboard-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  box-shadow: var(--shadow);
   border-radius: var(--radius-md);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 #tab-profile .dashboard-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.08);
+  transform: none;
 }
 #tab-profile input[readonly] {
   font-weight: 600;

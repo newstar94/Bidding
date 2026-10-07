@@ -67,6 +67,83 @@ def test_payos_webhook_canonicalization_sorts_keys_not_array_items_and_preserves
     assert verify_signed_data(data, expected, KEY)
 
 
+def _paid_response_with_nullable_transaction_fields():
+    return {
+        "id": "payment-link-id", "orderCode": 0, "amount": 2000,
+        "amountPaid": 2000, "amountRemaining": 0, "status": "PAID",
+        "createdAt": "2025-12-12T09:00:00+07:00",
+        "transactions": [{
+            "accountNumber": "0123456789", "amount": 2000,
+            "counterAccountBankId": "01202001", "counterAccountBankName": None,
+            "counterAccountName": "NGUYEN VAN A", "counterAccountNumber": "9876543210",
+            "description": "TRANSACTION DESCRIPTION", "reference": "FT-REFERENCE",
+            "transactionDateTime": "2025-12-12T09:00:00+07:00",
+            "virtualAccountName": None, "virtualAccountNumber": None,
+        }],
+        "canceledAt": None, "cancellationReason": None,
+    }
+
+
+def test_payos_paid_get_accepts_official_signature_vector_with_nested_nulls():
+    # Independent vector from the official SDK's tests/_crypto/testCases.json
+    # (paid payment link with 1 transaction), key from test_provider.py.
+    data = _paid_response_with_nullable_transaction_fields()
+    signature = "6af5e2c9a28256c140169ed624114b43295915d7b6e2fa6278b17a7c43aadefd"
+    provider = PayOSPaymentProvider(
+        PayOSCredentials("client", "api", "test_checksum_key"),
+        transport=lambda *_args: (200, json.dumps({"code": "00", "data": data, "signature": signature}).encode()),
+    )
+    result = provider.get_payment("payment-link-id")
+    assert result["status"] == "PAID"
+    assert result["amountPaid"] == 2000
+    assert result["transactions"][0]["counterAccountBankName"] is None
+    assert result["transactions"][0]["virtualAccountName"] is None
+    assert result["reference"] == "FT-REFERENCE"
+    assert result["transactionDateTime"] == "2025-12-12T09:00:00+07:00"
+
+
+@pytest.mark.parametrize("field", ["counterAccountBankName", "virtualAccountName", "virtualAccountNumber"])
+def test_payos_paid_get_rejects_nested_null_changed_to_empty_string(field):
+    data = _paid_response_with_nullable_transaction_fields()
+    data["transactions"][0][field] = ""
+    provider = PayOSPaymentProvider(
+        PayOSCredentials("client", "api", "test_checksum_key"),
+        transport=lambda *_args: (200, json.dumps({
+            "code": "00", "data": data,
+            "signature": "6af5e2c9a28256c140169ed624114b43295915d7b6e2fa6278b17a7c43aadefd",
+        }).encode()),
+    )
+    with pytest.raises(PaymentProviderError) as error:
+        provider.get_payment("payment-link-id")
+    assert error.value.code == "PROVIDER_RESPONSE_UNVERIFIED"
+
+
+def test_payos_nested_json_preserves_literal_strings_and_array_order():
+    assert canonicalize_signed_data({
+        "transactions": [{"value": None}, {"value": "null"}, {"value": "undefined"}],
+        "optional": None,
+    }) == 'optional=&transactions=[{"value":null},{"value":"null"},{"value":"undefined"}]'
+
+
+@pytest.mark.parametrize("change", ["multiple", "underpaid", "wrong_transaction_amount", "missing_reference", "missing_time"])
+def test_payos_paid_get_does_not_guess_ambiguous_transaction_evidence(change):
+    data = _paid_response_with_nullable_transaction_fields()
+    if change == "multiple":
+        data["transactions"] = [dict(data["transactions"][0]), dict(data["transactions"][0])]
+    elif change == "underpaid":
+        data.update(status="UNDERPAID", amountPaid=1000, amountRemaining=1000)
+        data["transactions"][0]["amount"] = 1000
+    elif change == "wrong_transaction_amount":
+        data["transactions"][0]["amount"] = 1000
+    elif change == "missing_reference":
+        data["transactions"][0]["reference"] = None
+    else:
+        data["transactions"][0].pop("transactionDateTime")
+    result = _provider_with_signed_response(data).get_payment("payment-link-id")
+    assert "reference" not in result
+    assert "transactionDateTime" not in result
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -111,6 +188,55 @@ def test_payos_create_verifies_signed_response_and_does_not_send_idempotency_hea
     assert "x-idempotency-key" not in captured["headers"]
     assert captured["body"]["expiredAt"] == 1_800_000_900
     assert captured["body"]["signature"] == sign_create_request(captured["body"], KEY)
+
+
+@pytest.mark.parametrize("operation", ["create", "get", "cancel"])
+def test_payos_default_transport_identifies_the_application(monkeypatch, operation):
+    captured = {}
+    data = {
+        "orderCode": 123,
+        "amount": 2000,
+        "status": "CANCELLED" if operation == "cancel" else "PENDING",
+        "paymentLinkId": "link-1",
+        "checkoutUrl": "https://pay.payos.vn/web/link-1",
+        "transactions": [],
+    }
+    raw = json.dumps({
+        "code": "00", "data": data, "signature": sign_signed_data(data, KEY),
+    }).encode()
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size):
+            return raw[:size]
+
+    def urlopen(request, timeout):
+        captured["request"] = request
+        return Response()
+
+    monkeypatch.setattr("backend.billing.providers.base.urllib.request.urlopen", urlopen)
+    provider = PayOSPaymentProvider(PayOSCredentials("client", "api", KEY))
+    if operation == "create":
+        provider.create_payment({
+            "orderCode": 123,
+            "amount": 2000,
+            "description": "DH0000123",
+            "cancelUrl": "https://app.example/cancel",
+            "returnUrl": "https://app.example/return",
+        })
+    elif operation == "get":
+        provider.get_payment(123)
+    else:
+        provider.cancel_payment(123)
+
+    assert captured["request"].get_header("User-agent") == "BiddingFlow-Payments/1.0"
 
 
 def test_payos_rejects_unsigned_success_and_refund_capability():

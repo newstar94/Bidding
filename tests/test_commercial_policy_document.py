@@ -20,6 +20,19 @@ def test_initial_draft_has_exact_approved_offers_packs_and_dynamic_savings():
     document = build_initial_draft_document(LEGACY_EXPORTS)
 
     assert len(document["offers"]) == 8
+    assert {offer["code"]: offer["price"] for offer in document["offers"]} == {
+        code: {"period": "yearly", "currency": "VND", "subtotal": amount, "tax": 0, "total": amount}
+        for code, amount in (
+            ("personal.internal.yearly", 2_490_000),
+            ("personal.connected.yearly", 3_990_000),
+            ("silver.internal.yearly", 12_000_000),
+            ("silver.connected.yearly", 15_000_000),
+            ("gold.internal.yearly", 28_000_000),
+            ("gold.connected.yearly", 35_000_000),
+            ("diamond.internal.yearly", 60_000_000),
+            ("diamond.connected.yearly", 75_000_000),
+        )
+    }
     assert [(pack["quantity"], pack["price"]) for pack in document["creditPacks"]] == [
         (20, 99_000),
         (100, 399_000),
@@ -41,6 +54,7 @@ def test_initial_draft_uses_approved_defaults_and_passes_shadow_validation():
     assert document["policies"]["baseTerm"] == {"kind": "fixed_days", "days": 365}
     assert document["policies"]["renewalAnchor"] == {"kind": "end_of_term"}
     assert document["policies"]["partialBatch"] == {"kind": "process_affordable_in_stable_order"}
+    assert document["policies"]["refund"] == {"kind": "no_refunds", "partial": False}
     for offer in document["offers"][:2]:
         assert offer["exportCapabilities"] == {
             capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES
@@ -48,7 +62,37 @@ def test_initial_draft_uses_approved_defaults_and_passes_shadow_validation():
     assert all(offer["price"]["period"] == "yearly" for offer in document["offers"])
     assert document["taxInvoice"]["taxInclusive"] is True
     assert document["taxInvoice"]["invoiceEnabled"] is False
-    assert document["taxInvoice"]["taxBasisPoints"] is None
+    assert document["taxInvoice"]["taxBasisPoints"] == 0
+    assert document["taxInvoice"]["rounding"] == "ceil"
+    tax_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#tax-policy"
+    assert document["taxInvoice"]["approvalReference"] == tax_reference
+    assert document["externalReadiness"]["vatInvoice"] == tax_reference
+
+
+def test_approved_sample_tax_defaults_do_not_mark_other_production_settings_ready():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    assert document["rollout"] == {"mode": "shadow", "cohorts": []}
+    payos = next(profile for profile in document["providerProfiles"] if profile["provider"] == "payos")
+    assert payos["mode"] == "live"
+    assert payos["readiness"] == "blocked_external"
+    assert payos["credentialReference"] == "env://payos/default"
+    assert document["externalReadiness"]["payosMerchant"] is None
+    assert document["externalReadiness"]["credentialWebhook"] is None
+    terms_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#commercial-terms"
+    assert document["externalReadiness"]["ecommercePrivacy"] == f"{terms_reference}; views/legal/privacy.html"
+    assert document["externalReadiness"]["termsRefund"] == f"{terms_reference}; views/legal/terms.html"
+
+    document["rollout"]["mode"] = "production"
+    errors = {error["path"]: error for error in validate_document(document)["errors"]}
+    assert set(errors) == {"externalReadiness", "providerProfiles"}
+    assert "taxInvoice" not in errors
+    assert errors["externalReadiness"]["code"] == "BLOCKED_EXTERNAL"
+    assert "Chính sách thuế" not in errors["externalReadiness"]["message"]
+    assert "Thương mại điện tử và quyền riêng tư" not in errors["externalReadiness"]["message"]
+    assert "Điều khoản và hoàn tiền" not in errors["externalReadiness"]["message"]
+    assert "Tài khoản payOS" in errors["externalReadiness"]["message"]
+    assert "Bộ khóa và webhook" in errors["externalReadiness"]["message"]
+    assert errors["providerProfiles"]["code"] == "NO_HEALTHY_PROVIDER"
 
 
 def test_initial_draft_does_not_guess_missing_organization_exports():
@@ -109,6 +153,8 @@ def test_live_readiness_cannot_be_bypassed_by_omitting_all_references():
 def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled():
     document = build_initial_draft_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
+    document["taxInvoice"].update(approvalReference=None, taxBasisPoints=None, rounding=None)
+    document["externalReadiness"] = {key: None for key in document["externalReadiness"]}
     errors = {error["path"]: error for error in validate_document(document)["errors"]}
 
     assert errors["taxInvoice"]["code"] == "BLOCKED_EXTERNAL"
@@ -152,6 +198,16 @@ def test_live_payos_profile_requires_a_nonblank_credential_reference():
     payos = next(profile for profile in document["providerProfiles"] if profile["provider"] == "payos")
     payos.update(mode="live", readiness="ready", credentialReference="   ")
     assert any(error["code"] == "NO_HEALTHY_PROVIDER" for error in validate_document(document)["errors"])
+
+
+@pytest.mark.parametrize("partial", [None, True, 0, "false"])
+def test_no_refunds_policy_requires_an_explicit_false_partial_flag(partial):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["policies"]["refund"] = {"kind": "no_refunds", "partial": partial}
+    assert any(
+        error["code"] == "REFUND_POLICY_INVALID" and error["path"] == "policies.refund.partial"
+        for error in validate_document(document)["errors"]
+    )
 
 
 def test_configured_tax_requires_valid_types_and_matching_offer_amounts():

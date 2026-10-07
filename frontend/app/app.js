@@ -18,6 +18,10 @@ import {
 import { updateServerCapabilitiesFromSession } from "../auth/serverCapabilities.js";
 import { applyTrialCommercialPresentation } from "../commercial-policy/trialMode.js";
 import {
+  captureCheckoutIntentFromLocation,
+  readPendingCheckoutIntent,
+} from "../commercial-policy/pendingCheckout.js";
+import {
   handleApplicationBootstrapFailure,
   runApplicationBootstrap,
 } from "./bootstrapRecovery.js";
@@ -133,6 +137,9 @@ const loadAndRenderLucideIcons = async (roots = []) => {
 };
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
+  if (window.location.pathname === "/dang-nhap") {
+    captureCheckoutIntentFromLocation();
+  }
   installDialogAccessibility(document);
   installAuthOverlayAccessibility();
   installSemanticAccessibility(document);
@@ -169,7 +176,11 @@ const bootstrapApplication = async () => {
   updateServerCapabilitiesFromSession(initialSession);
   if (initialSession?.valid) {
     if (window.location.pathname === "/dang-nhap") {
-      window.history.replaceState({}, "", "/tong-quan");
+      const pendingCheckout = readPendingCheckoutIntent();
+      const destination = pendingCheckout
+        ? `/goi-va-thanh-toan?checkout=${encodeURIComponent(pendingCheckout.sku)}${pendingCheckout.period ? `&period=${encodeURIComponent(pendingCheckout.period)}` : ""}`
+        : "/tong-quan";
+      window.history.replaceState({}, "", destination);
     }
     startupMark("workspace-import-start");
     const { bootstrapWorkspace } = await import("./workspaceBootstrap.js");

@@ -3961,6 +3961,14 @@ def _upgrade_to_v99_retire_optional_features(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+def _upgrade_to_v100_add_checkout_payment_details(cursor, _context):
+    """Keep optional signed QR details without rewriting existing order intent."""
+    cursor.execute(
+        "ALTER TABLE billing_orders ADD COLUMN IF NOT EXISTS checkout_payment_json "
+        "TEXT CHECK(length(checkout_payment_json) BETWEEN 2 AND 8192)"
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4412,6 +4420,7 @@ UPGRADES = (
     DatabaseUpgrade(97, "add_free_organization_package", _upgrade_to_v97_add_free_organization_package),
     DatabaseUpgrade(98, "add_durable_procurement_previews", _upgrade_to_v98_add_durable_procurement_previews),
     DatabaseUpgrade(99, "retire_optional_features", _upgrade_to_v99_retire_optional_features),
+    DatabaseUpgrade(100, "add_checkout_payment_details", _upgrade_to_v100_add_checkout_payment_details),
 )
 
 
@@ -4434,7 +4443,8 @@ DB_SCHEMA_VERSION = (
 # any existing value.
 # V96 separates active reservations from billed tokens and persists idempotent state.
 # V99 archives the removed conflict-draft and legal/compliance persistence model.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 99
+# V100 stores signed provider QR details used by the checkout popup.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 100
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

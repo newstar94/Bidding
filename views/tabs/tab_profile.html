@@ -1,11 +1,26 @@
 
                 <section class="tab-pane" id="tab-profile">
-                    <div class="dashboard-grid bf-s-a57057342c">
+                    <div class="account-profile">
+                        <header class="account-profile__intro">
+                            <div>
+                                <p class="account-profile__eyebrow">Tài khoản cá nhân</p>
+                                <h2 id="profile-account-name">Tài khoản của bạn</h2>
+                                <p id="profile-account-email" class="text-muted"></p>
+                            </div>
+                            <p class="account-profile__context"><i data-lucide="user-round" aria-hidden="true"></i> Hồ sơ và giao dịch của riêng bạn</p>
+                        </header>
+                        <div class="account-profile__tabs" role="tablist" aria-label="Thông tin tài khoản">
+                            <button type="button" id="profile-tab-details" role="tab" aria-selected="true" aria-controls="profile-panel-details" data-profile-tab="details"><i data-lucide="user-cog" aria-hidden="true"></i> Hồ sơ cá nhân</button>
+                            <button type="button" id="profile-tab-billing" data-commercial-only role="tab" aria-selected="false" aria-controls="profile-panel-billing" tabindex="-1" data-profile-tab="billing"><i data-lucide="package" aria-hidden="true"></i> Gói và thanh toán</button>
+                            <button type="button" id="profile-tab-history" data-commercial-only role="tab" aria-selected="false" aria-controls="profile-panel-history" tabindex="-1" data-profile-tab="history"><i data-lucide="receipt-text" aria-hidden="true"></i> Lịch sử mua cá nhân</button>
+                        </div>
+                        <section id="profile-panel-details" role="tabpanel" aria-labelledby="profile-tab-details" tabindex="0">
+                        <div class="dashboard-grid account-profile__forms">
 
 
                         <div class="dashboard-card">
                             <div class="card-header">
-                                <h3 class="card-title">Cập nhật Thông tin cá nhân</h3>
+                                <h3 class="card-title">Hồ sơ cá nhân</h3>
                                 <i data-lucide="user-cog" class="text-muted"></i>
                             </div>
                             <form id="form-profile-update" novalidate>
@@ -15,7 +30,7 @@
                                        >
                                         <div class="avatar-preview-wrapper bf-s-28023c7fe8"
                                            >
-                                            <img id="profile-avatar-preview" alt="Avatar" hidden
+                                            <img id="profile-avatar-preview" alt="Ảnh đại diện của bạn" hidden
                                                 class="bf-s-0c80b285ce">
                                             <div id="profile-avatar-fallback"
                                                 class="bf-s-75c80c932b">
@@ -98,7 +113,7 @@
 
                         <div class="dashboard-card">
                             <div class="card-header">
-                                <h3 class="card-title">Đổi mật khẩu bảo mật</h3>
+                                <h3 class="card-title">Bảo mật tài khoản</h3>
                                 <i data-lucide="shield-alert" class="text-muted"></i>
                             </div>
                             <form id="form-profile-password" novalidate>
@@ -106,7 +121,7 @@
                                     <div class="form-group bf-s-04390d6d23">
                                         <label for="profile-old-password">Mật khẩu cũ <span
                                                 class="required">*</span></label>
-                                        <input type="password" id="profile-old-password" required maxlength="256"
+                                        <input type="password" id="profile-old-password" required maxlength="256" autocomplete="current-password"
                                             placeholder="Nhập mật khẩu hiện tại">
                                         <span class="error-text">Vui lòng nhập mật khẩu cũ</span>
                                     </div>
@@ -126,20 +141,38 @@
                                         <span class="error-text">Xác nhận mật khẩu phải trùng khớp với mật khẩu
                                             mới</span>
                                     </div>
-                                    <button type="submit" class="btn btn-purple btn-full-width">
+                                    <button type="submit" class="btn btn-primary btn-full-width">
                                         <i data-lucide="key-round"></i> Đổi mật khẩu đăng nhập
                                     </button>
                                 </div>
                             </form>
                         </div>
 
-                        <section class="dashboard-card profile-purchase-history" data-commercial-only
+                        </div>
+                        </section>
+                        <section id="profile-panel-billing" data-commercial-only role="tabpanel" aria-labelledby="profile-tab-billing" tabindex="0" hidden>
+                            <div class="account-profile__section-heading">
+                                <div><h3>Gói và thanh toán</h3><p>Gói, lượt Mua Sắm Công và thanh toán của tài khoản cá nhân, kể cả khi bạn đang làm việc tại một tổ chức.</p></div>
+                                <button type="button" class="btn btn-outline btn-sm" id="profile-billing-refresh"><i data-lucide="refresh-cw" aria-hidden="true"></i> Làm mới</button>
+                            </div>
+                            <p id="profile-billing-status" class="account-profile__status" role="status" aria-live="polite"></p>
+                            <div id="profile-account-billing" class="account-profile__billing-grid" aria-busy="true">
+                                <div class="account-profile__skeleton" aria-hidden="true"></div>
+                                <div class="account-profile__skeleton" aria-hidden="true"></div>
+                            </div>
+                            <section class="dashboard-card account-profile__payment-summary" aria-labelledby="profile-payment-summary-title">
+                                <div class="card-header"><h3 class="card-title" id="profile-payment-summary-title">Thanh toán gần nhất</h3><button type="button" class="btn btn-outline btn-sm" data-profile-open-history>Xem toàn bộ lịch sử</button></div>
+                                <div class="card-body" id="profile-payment-summary"><p class="text-muted">Đang tải giao dịch gần nhất…</p></div>
+                            </section>
+                        </section>
+                        <section id="profile-panel-history" data-commercial-only role="tabpanel" aria-labelledby="profile-tab-history" tabindex="0" hidden>
+                        <section class="dashboard-card profile-purchase-history"
                             aria-labelledby="profile-purchase-history-title">
                             <div class="card-header">
                                 <div>
                                     <h3 class="card-title" id="profile-purchase-history-title">Lịch sử mua cá nhân</h3>
                                     <p class="profile-purchase-history__description">
-                                        Các giao dịch do chính tài khoản này thực hiện.
+                                        Các giao dịch mua gói, gia hạn và mua thêm lượt cho tài khoản cá nhân này.
                                     </p>
                                 </div>
                                 <button type="button" class="btn btn-outline btn-sm"
@@ -157,7 +190,7 @@
                                             <tr>
                                                 <th scope="col">Mã giao dịch</th>
                                                 <th scope="col">Ngày tạo</th>
-                                                <th scope="col">Loại giao dịch</th>
+                                                <th scope="col">Gói / Nội dung</th>
                                                 <th scope="col">Thanh toán</th>
                                                 <th scope="col">Kích hoạt</th>
                                                 <th scope="col" class="text-right">Số tiền</th>
@@ -166,8 +199,9 @@
                                         <tbody id="profile-purchase-history-body"></tbody>
                                     </table>
                                 </div>
+                                <nav id="profile-purchase-history-pagination" class="account-profile__pagination" aria-label="Phân trang lịch sử mua" hidden></nav>
                             </div>
                         </section>
-
+                        </section>
                     </div>
                 </section>

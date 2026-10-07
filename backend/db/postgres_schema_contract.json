@@ -4238,7 +4238,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 99,
+  "schemaVersion": 100,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -6646,6 +6646,13 @@
           "notNull": false,
           "type": "integer"
         },
+        "checkout_payment_json": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "checkout_state": {
           "default": "'creating'::text",
           "generated": "",
@@ -6840,6 +6847,13 @@
         "billing_orders_check1": {
           "deferrable": false,
           "definition": "CHECK (owner_kind = 'account'::text AND account_user_id IS NOT NULL AND organization_id IS NULL OR owner_kind = 'organization'::text AND account_user_id IS NULL AND organization_id IS NOT NULL)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "billing_orders_checkout_payment_json_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(checkout_payment_json) >= 2 AND length(checkout_payment_json) <= 8192)",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

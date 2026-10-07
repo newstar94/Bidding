@@ -38,9 +38,11 @@ Các quyết định kỳ năm/gia hạn và batch thiếu lượt đã được
 Quyền đọc billing history tổ chức vẫn cần business contract riêng. Các blocker
 khác không phải lỗi kỹ thuật để bỏ qua.
 
-Provider payOS ở shadow cho tới khi merchant/legal/webhook/credential readiness
-đạt. Refund MVP là quy trình thủ công/off-platform có audit; thao tác cancel
-payment link không phải hoàn tiền.
+Mẫu mới chuẩn bị payOS production/live với tham chiếu `env://payos/default`,
+nhưng giữ trạng thái chờ xác nhận (`blocked_external`) và rollout shadow cho
+đến khi merchant/webhook/credential readiness đạt. Gói mới mặc định **Không hoàn
+tiền** theo ADR 0073; đơn cũ ghim chính sách hoàn thủ công vẫn giữ quy trình
+off-platform có audit. Hủy link thanh toán chưa trả tiền không phải hoàn tiền.
 
 Bộ mẫu đạt kiểm tra và phát hành nội bộ ở chế độ shadow. Mở bán thật vẫn cần
 thuế/hóa đơn và reference merchant/legal/webhook/provider live. Bản phát hành mới
@@ -53,11 +55,12 @@ Mở bản nháp, chọn khu vực **Thuế & hóa đơn** và **Thanh toán pay
 
 1. Chọn giá đã/chưa gồm thuế, nhập thuế suất được xác nhận, cách làm tròn VND và tham chiếu quyết định. Điền thông tin bên bán khi có.
 
-   Theo cấu hình chủ sản phẩm đã chốt, mẫu mới đặt **Giá đã gồm VAT** và **Không xuất hóa đơn**. Thuế suất và các thông tin còn lại cấu hình sau; chưa đủ thông tin thì bản nháp vẫn không mở bán chính thức.
+   Theo cấu hình chủ sản phẩm đã chốt tại ADR 0073, mẫu mới đặt **Giá đã gồm VAT**, **Thuế suất 0%**, **Luôn làm tròn lên** và **Không xuất hóa đơn**. Tham chiếu quyết định thuế đã có; không sửa hoặc reseed bản nháp cũ. Những giá trị này ghi nhận cấu hình chủ sản phẩm cung cấp.
 2. Đối chiếu subtotal/thuế/tổng của từng gói với chính sách chung. Thay chính sách chung không tự sửa giá đã nhập. Với gói lượt, giá nguồn là tổng nếu đã gồm thuế, hoặc giá trước thuế nếu chưa gồm thuế; hệ thống tính đúng tổng ở cửa hàng và checkout.
 3. Chọn **Có xuất hóa đơn** hoặc **Không xuất hóa đơn**. Khi bật, chọn thời điểm tạo yêu cầu: sau khi xác minh thanh toán hoặc khi kích hoạt. Lựa chọn xử lý ngoài luồng tự động; ứng dụng chưa phát hành hóa đơn điện tử qua một nhà cung cấp. Có thể để Không xuất hóa đơn khi bán với tư cách cá nhân và bật lại bằng một bản phát hành mới sau này.
-4. Cấu hình profile payOS production, reference kho bí mật, hạn mức và TTL. Chỉ chuyển live/ready sau khi người vận hành có đủ xác nhận thực tế. Không nhập client ID/API key/checksum key vào bản nháp hoặc gửi vào chat.
-5. Nhập đủ năm reference thuế/hóa đơn, merchant, credential/webhook, thương mại điện tử/quyền riêng tư, điều khoản/hoàn tiền. Lưu, kiểm tra, rồi phát hành bằng digest mới và tái xác thực như trước.
+4. Cấu hình profile payOS production, reference kho bí mật, hạn mức và TTL. Mẫu mới chuẩn bị sẵn chế độ thanh toán thực tế nhưng chưa sẵn sàng mở bán; chỉ chọn **Đã chuẩn bị cấu hình** sau khi có xác nhận merchant/webhook thực tế và đối chiếu runtime/DB. Không nhập client ID/API key/checksum key vào bản nháp hoặc gửi vào chat.
+5. Mẫu mới đã có ba reference thuế, quyền riêng tư và điều khoản/không hoàn tiền đến ADR và trang nguồn đã được duyệt. Bổ sung hai reference merchant và credential/webhook sau khi triển khai và xác nhận thực tế. Lưu, kiểm tra, rồi phát hành bằng digest mới và tái xác thực như trước.
+6. Trong **Chính sách chung & kỳ hạn**, chọn **Chính sách hoàn tiền → Không hoàn tiền** cho bản nháp hiện có nếu áp dụng quyết định mới. Lựa chọn này chỉ được áp dụng cho đơn ghim chính sách mới sau khi phát hành; đơn đã mua giữ điều kiện cũ.
 
 Khi kiểm tra còn lỗi, thông báo liệt kê từng cấu hình hoặc xác nhận còn thiếu.
 Nút **Mở cấu hình** mở phần thuế hoặc payOS tương ứng và giữ nguyên nội dung

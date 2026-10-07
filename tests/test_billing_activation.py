@@ -380,6 +380,39 @@ def test_verified_base_plan_activation_is_exactly_once(billing_cursor):
     assert tuple(subscription) == ("order", order["order_id"])
 
 
+def test_payos_paid_get_transaction_evidence_activates_exactly_once(billing_cursor):
+    occurred_at = 1_791_411_241
+    order = _insert_base_plan_order(billing_cursor, now=occurred_at - 30)
+    reference = f"bank-reference-{uuid.uuid4().hex}"
+    data = {
+        "id": f"payos-link-{order['order_id']}", "orderCode": order["order_code"],
+        "amount": 100000, "amountPaid": 100000, "amountRemaining": 0,
+        "status": "PAID", "createdAt": "2026-10-08T05:13:31+07:00",
+        "transactions": [{
+            "amount": 100000, "reference": reference,
+            "transactionDateTime": "2026-10-08T05:14:01+07:00",
+            "counterAccountBankName": None, "virtualAccountName": None,
+            "virtualAccountNumber": None,
+        }], "canceledAt": None, "cancellationReason": None,
+    }
+    provider = PayOSPaymentProvider(
+        PayOSCredentials("client", "api", "fixture-checksum"),
+        transport=lambda *_args: (200, json.dumps({
+            "code": "00", "data": data,
+            "signature": sign_signed_data(data, "fixture-checksum"),
+        }).encode()),
+    )
+    result = provider.get_payment(order["order_code"])
+    service = BillingActivationService(billing_cursor, clock=lambda: occurred_at + 10)
+    first = service.apply_order_result(order["order_id"], result, provider_profile_id="provider-fake-v1")
+    second = service.apply_order_result(order["order_id"], result, provider_profile_id="provider-fake-v1")
+    assert first["status"] == second["status"] == "applied"
+    payment = billing_cursor.execute("SELECT provider_transaction_id, provider_occurred_at FROM payment_transactions WHERE order_id=?", (order["order_id"],)).fetchall()
+    assert [tuple(row) for row in payment] == [(reference, occurred_at)]
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_subscription_activations WHERE order_id=?", (order["order_id"],)).fetchone()[0] == 1
+    assert billing_cursor.execute("SELECT COUNT(*) FROM usage_credit_grants WHERE account_user_id=?", (order["user_id"],)).fetchone()[0] == 1
+
+
 @pytest.mark.parametrize("owner_kind", ["account", "organization"])
 def test_monthly_plan_uses_its_configured_duration_and_grant_expiry(billing_cursor, owner_kind):
     order = _insert_base_plan_order(billing_cursor, owner_kind=owner_kind, period="monthly",

@@ -1,0 +1,254 @@
+#tab-profile [hidden] {
+  display: none !important;
+}
+#tab-profile .account-profile {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+#tab-profile .account-profile__intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+#tab-profile .account-profile__intro h2 {
+  margin: 4px 0 6px;
+  font-size: 1.5rem;
+  letter-spacing: -0.025em;
+}
+#tab-profile .account-profile__intro p {
+  margin: 0;
+}
+#tab-profile .account-profile__eyebrow {
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+#tab-profile .account-profile__context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+#tab-profile .account-profile__tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+#tab-profile .account-profile__tabs button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+#tab-profile .account-profile__tabs button[aria-selected="true"],
+#tab-profile .account-profile__tabs button:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+#tab-profile .account-profile__tabs button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+#tab-profile .account-profile__tabs svg {
+  width: 20px;
+  height: 20px;
+}
+#tab-profile .account-profile__forms {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: start;
+}
+#tab-profile .account-profile__section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+#tab-profile .account-profile__section-heading h3 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+#tab-profile .account-profile__section-heading p {
+  margin: 0;
+  max-width: 75ch;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+#tab-profile .account-profile__status {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+#tab-profile .account-profile__status[data-tone="danger"] {
+  color: var(--danger);
+}
+#tab-profile .account-profile__billing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-bottom: 24px;
+  align-items: start;
+}
+#tab-profile .account-profile__package-name {
+  margin: 0 0 8px;
+  color: var(--text-main);
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+#tab-profile .account-profile__package-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+#tab-profile .account-profile__facts {
+  margin: 24px 0 0;
+}
+#tab-profile .account-profile__facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+#tab-profile .account-profile__facts dt {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+#tab-profile .account-profile__facts dd {
+  max-width: 70%;
+  margin: 0;
+  color: var(--text-main);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+#tab-profile .account-profile__package-actions {
+  display: flex;
+  align-items: start;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+#tab-profile .account-profile__package-actions small,
+#tab-profile .account-profile__note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+#tab-profile .account-profile__note {
+  margin: 20px 0 0;
+}
+#tab-profile .account-profile__usage-number {
+  margin: 0;
+  color: var(--primary);
+  font-size: 2.1rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+#tab-profile .account-profile__usage-number small {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+#tab-profile .account-profile__latest-payment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 24px;
+}
+#tab-profile .account-profile__latest-payment p {
+  margin: 5px 0 8px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+#tab-profile .account-profile__payment-amount {
+  font-size: 1.4rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#tab-profile .account-profile__payment-states {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#tab-profile .account-profile__order-id {
+  display: inline-block;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+#tab-profile .account-profile__order-detail {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+#tab-profile .account-profile__pagination,
+#tab-profile .account-profile__pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#tab-profile .account-profile__pagination {
+  justify-content: space-between;
+  margin-top: 20px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+#tab-profile .account-profile__empty {
+  margin: 20px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+#tab-profile .account-profile__skeleton {
+  min-height: 320px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+#tab-profile .profile-purchase-history .data-table th,
+#tab-profile .profile-purchase-history .data-table td {
+  vertical-align: top;
+  white-space: normal;
+}
+#tab-profile .profile-purchase-history .data-table th:first-child {
+  width: 21%;
+}
+@media (max-width: 1100px) {
+  #tab-profile .account-profile__forms,
+  #tab-profile .account-profile__billing-grid {
+    grid-template-columns: 1fr;
+  }
+  #tab-profile .account-profile__tabs {
+    overflow-x: auto;
+  }
+  #tab-profile .account-profile__tabs button {
+    white-space: nowrap;
+  }
+  #tab-profile .account-profile__context {
+    display: none;
+  }
+}

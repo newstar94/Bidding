@@ -29,6 +29,12 @@ from .service import BillingService, ProviderCommandExecutor, public_order_paylo
 from .webhook import payment_webhook_api, webhook_event_id
 from .providers.fake import FakePaymentProvider
 from .runtime import payment_provider_registry
+from .account_read import (
+    history_pagination,
+    pagination_payload,
+    personal_account_summary,
+    personal_order_item,
+)
 from backend.usage_credits import UsageCreditService, UsageOwner
 
 
@@ -389,20 +395,57 @@ def _list_personal_orders_sync(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
+    pagination = history_pagination(request)
     connection = database.get_connection()
     try:
         # Account information always shows the signed-in user's own purchases,
         # even while that user is operating in an organization workspace. This
         # query deliberately cannot return organization-owned billing history.
-        rows = connection.execute(
-            """SELECT orders.*, activation.after_json AS activation_schedule_json
+        statement = """SELECT orders.*, activation.after_json AS activation_schedule_json,
+                      item.snapshot_json AS item_snapshot_json,
+                      sku.sku_code AS item_sku_code, sku.item_type,
+                      sku.quantity AS item_credit_quantity,
+                      plan.logical_package_code AS item_plan_code,
+                      plan.variant AS item_variant, plan.display_json AS item_display_json,
+                      package.ten_goi AS item_package_name,
+                      (SELECT MAX(payment.provider_occurred_at) FROM payment_transactions AS payment
+                        WHERE payment.order_id = orders.id AND payment.transaction_type = 'payment'
+                          AND payment.status IN ('verified', 'settled')) AS payment_confirmed_at
                  FROM billing_orders AS orders
                  LEFT JOIN billing_subscription_activations AS activation ON activation.order_id = orders.id
+                 LEFT JOIN billing_order_items AS item ON item.id =
+                   (SELECT first_item.id FROM billing_order_items AS first_item
+                     WHERE first_item.order_id = orders.id
+                     ORDER BY first_item.created_at, first_item.id LIMIT 1)
+                 LEFT JOIN billing_skus AS sku ON sku.id = item.sku_id
+                 LEFT JOIN billing_plan_versions AS plan ON plan.id = item.plan_version_id
+                 LEFT JOIN goi_dich_vu AS package ON package.id = plan.legacy_package_id
                 WHERE orders.owner_kind = 'account' AND orders.account_user_id = ?
-                ORDER BY orders.created_at DESC, orders.id DESC LIMIT 100""",
-            (actor.user_id,),
-        ).fetchall()
-        return JSONResponse({"orders": [public_order_payload(dict(row)) for row in rows]})
+                ORDER BY orders.created_at DESC, orders.id DESC"""
+        parameters = (actor.user_id,)
+        payload = {}
+        if pagination:
+            page, page_size = pagination
+            count = connection.execute(
+                """SELECT COUNT(*) AS total FROM billing_orders
+                    WHERE owner_kind = 'account' AND account_user_id = ?""",
+                (actor.user_id,),
+            ).fetchone()
+            payload["pagination"] = pagination_payload(page, page_size, int(count["total"]))
+            statement += " LIMIT ? OFFSET ?"
+            parameters += (page_size, (page - 1) * page_size)
+        else:
+            statement += " LIMIT 100"
+        rows = connection.execute(statement, parameters).fetchall()
+        payload["orders"] = []
+        for row in rows:
+            order = dict(row)
+            payload["orders"].append({
+                **public_order_payload(order),
+                "item": personal_order_item(order),
+                "paymentConfirmedAt": order.get("payment_confirmed_at"),
+            })
+        return JSONResponse(payload)
     finally:
         connection.close()
 
@@ -413,6 +456,29 @@ async def list_personal_orders_api(request):
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _database_lane_unavailable(
             "Hệ thống đang bận tải lịch sử thanh toán.", "BILLING_HISTORY_UNAVAILABLE"
+        )
+    except Exception as error:  # noqa: BLE001 - translated at HTTP seam
+        return _error(error)
+
+
+def _get_personal_account_summary_sync(request):
+    valid, actor = verify_session(request)
+    if not valid:
+        return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
+    connection = database.get_connection()
+    try:
+        payload = personal_account_summary(connection.cursor(), actor.user_id)
+        return JSONResponse({**payload, "serverTime": int(time.time())})
+    finally:
+        connection.close()
+
+
+async def get_personal_account_summary_api(request):
+    try:
+        return await run_database_read(_get_personal_account_summary_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable(
+            "Hệ thống đang bận tải thông tin gói cá nhân.", "BILLING_ACCOUNT_SUMMARY_UNAVAILABLE"
         )
     except Exception as error:  # noqa: BLE001 - translated at HTTP seam
         return _error(error)
@@ -744,6 +810,7 @@ def billing_routes(Route):
             methods=["POST"],
         ),
         Route("/api/billing/checkouts", create_checkout_api, methods=["POST"]),
+        Route("/api/billing/account-summary", get_personal_account_summary_api, methods=["GET"]),
         Route("/api/billing/orders", list_personal_orders_api, methods=["GET"]),
         Route("/api/billing/usage", get_usage_balance_api, methods=["GET"]),
         Route("/api/billing/orders/{public_id}", get_personal_order_api, methods=["GET"]),

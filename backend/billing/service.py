@@ -19,6 +19,7 @@ from backend.commercial_policy.repository import CommercialRepository, new_id
 
 from .providers.base import PaymentProviderError
 from .authorization import authorize_organization_buyer
+from .checkout_payment import checkout_payment_snapshot, public_checkout_payment_details
 from .renewal import validate_renewal_checkout
 from .runtime import payment_provider_registry
 
@@ -131,6 +132,7 @@ def public_order_payload(order):
         "activationStartsAt": schedule.get("startsAt") if scheduled else None,
         "activationExpiresAt": schedule.get("expiresAt") if scheduled else None,
         "checkoutUrl": order.get("checkout_url"),
+        "paymentDetails": public_checkout_payment_details(order.get("checkout_payment_json")),
         "checkoutExpiresAt": order.get("checkout_expires_at"),
         "createdAt": order.get("created_at"),
         "updatedAt": order.get("updated_at"),
@@ -326,6 +328,11 @@ class BillingService:
         return _row_dict(self.cursor.execute(statement, (str(public_id),)).fetchone())
 
     def request_cancel(self, public_id, actor_user_id, reason):
+        # Use the same owner -> order -> command lock order as the executor.
+        self.cursor.execute(
+            "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
+            (actor_user_id,),
+        ).fetchone()
         order = _row_dict(self.cursor.execute(
             """SELECT * FROM billing_orders
                 WHERE public_id = ? AND owner_kind = 'account'
@@ -334,23 +341,37 @@ class BillingService:
         ).fetchone())
         if not order:
             return None, None, False
-        self.cursor.execute(
-            "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
-            (actor_user_id,),
-        ).fetchone()
-        if order["payment_state"] != "unverified" or order["checkout_state"] not in {"creating", "open"}:
+        if order["payment_state"] != "unverified":
             raise CommercialPolicyError(
                 TRANSITION_NOT_ALLOWED,
                 "Chỉ checkout chưa thanh toán đang mở mới được hủy.",
                 status_code=409,
             )
         existing = self.cursor.execute(
-            """SELECT id FROM billing_provider_commands
+            """SELECT id, status FROM billing_provider_commands
                 WHERE order_id = ? AND command_type = 'cancel_checkout'""",
             (order["id"],),
         ).fetchone()
         if existing:
+            if str(existing[1]) == "dead" and order["checkout_state"] in {"creating", "open"}:
+                # An explicit retry reuses the original cancellation intent.
+                # Keep attempt_count so the executor queries the provider first
+                # before repeating a mutation whose previous outcome is unknown.
+                self.cursor.execute(
+                    """UPDATE billing_provider_commands
+                          SET status = 'pending', available_at = ?,
+                              lease_expires_at = NULL, locked_by = NULL,
+                              last_error_code = NULL, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND status = 'dead'""",
+                    (int(self.clock()), existing[0]),
+                )
             return order, existing[0], True
+        if order["checkout_state"] not in {"creating", "open"}:
+            raise CommercialPolicyError(
+                TRANSITION_NOT_ALLOWED,
+                "Chỉ checkout chưa thanh toán đang mở mới được hủy.",
+                status_code=409,
+            )
         command_id = new_id("billing-command")
         self.cursor.execute(
             """INSERT INTO billing_provider_commands
@@ -413,6 +434,22 @@ class BillingService:
                     status_code=409,
                 )
             return existing, True
+        # Refund eligibility comes from the purchase snapshot. Legacy orders
+        # without the explicit no-refunds policy keep their existing flow.
+        decision = order.get("decision_json")
+        if isinstance(decision, str):
+            try:
+                decision = json.loads(decision)
+            except (TypeError, ValueError):
+                decision = None
+        policy_snapshot = decision.get("policySnapshot") if isinstance(decision, dict) else None
+        refund_policy = policy_snapshot.get("refund") if isinstance(policy_snapshot, dict) else None
+        if isinstance(refund_policy, dict) and refund_policy.get("kind") == "no_refunds":
+            raise CommercialPolicyError(
+                "REFUND_DISABLED_BY_POLICY",
+                "Chính sách tại thời điểm mua không cho phép hoàn tiền.",
+                status_code=409,
+            )
         if order["payment_state"] not in {"verified_paid", "partially_refunded"}:
             raise CommercialPolicyError(
                 "PAYMENT_NOT_REFUNDABLE",
@@ -587,6 +624,12 @@ class ProviderCommandExecutor:
                            AND command.available_at <= ?)
                        OR (command.status = 'processing'
                            AND command.lease_expires_at <= ?))
+                      AND (command.command_type != 'cancel_checkout' OR NOT EXISTS (
+                          SELECT 1 FROM billing_provider_commands AS creation
+                           WHERE creation.order_id = command.order_id
+                             AND creation.command_type = 'create_checkout'
+                             AND creation.status IN ('pending', 'processing', 'retry')
+                      ))
                     FOR UPDATE OF command SKIP LOCKED""",
                 (command_id, int(self.clock()), int(self.clock())),
             ).fetchone()
@@ -627,7 +670,7 @@ class ProviderCommandExecutor:
                 checkout_state = "cancelled"
             elif status == "EXPIRED":
                 checkout_state = "expired"
-            elif claimed["command_type"] == "create_checkout":
+            elif claimed["command_type"] == "create_checkout" and checkout_state not in {"cancelled", "expired"}:
                 checkout_state = "open"
             checkout_url = result.get("checkoutUrl") or current_order[1]
             expires_at = current_order[2]
@@ -658,6 +701,16 @@ class ProviderCommandExecutor:
                     claimed["order_id"],
                 ),
             )
+
+            payment_details = checkout_payment_snapshot(result)
+            if claimed["command_type"] == "create_checkout" and payment_details:
+                # Keep quote/decision and provider request snapshots immutable.
+                # Queries or cancellation responses never erase the original QR.
+                connection.execute(
+                    """UPDATE billing_orders SET checkout_payment_json = ?
+                         WHERE id = ? AND checkout_payment_json IS NULL""",
+                    (canonical_json(payment_details), claimed["order_id"]),
+                )
 
             # A terminal paid query must not acknowledge the provider command
             # until its payment fact and activation transaction have committed.
@@ -741,7 +794,7 @@ class ProviderCommandExecutor:
                           updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
                 (status, next_attempt_count, available_at, error.code, claimed["id"]),
             )
-            if status == "dead":
+            if status == "dead" and claimed["command_type"] == "create_checkout":
                 connection.execute(
                     """UPDATE billing_orders SET checkout_state = 'create_failed',
                               revision = revision + 1, updated_at = CURRENT_TIMESTAMP

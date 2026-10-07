@@ -65,8 +65,8 @@ def test_supported_runtime_schema_range_accepts_live_payos_profile_metadata(monk
         "_assert_runtime_schema_contract",
         lambda _connection: None,
     )
-    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (99, 99)
-    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 99
+    assert (DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION) == (100, 100)
+    assert DB_SCHEMA_VERSION == DB_RUNTIME_MAX_SCHEMA_VERSION == 100
     for version in range(DB_RUNTIME_MIN_SCHEMA_VERSION, DB_RUNTIME_MAX_SCHEMA_VERSION + 1):
         verify_database_readiness(
             _RuntimeSchemaDatabase(version),
@@ -78,7 +78,7 @@ def test_supported_runtime_schema_range_accepts_live_payos_profile_metadata(monk
             DB_RUNTIME_MIN_SCHEMA_VERSION,
             DB_RUNTIME_MAX_SCHEMA_VERSION,
         )
-    for version in (75, 76, 77, 78, 79, 80, 98):
+    for version in (75, 76, 77, 78, 79, 80, 98, 99):
         for verification in (
             verify_database_readiness,
             verify_database_responsive,

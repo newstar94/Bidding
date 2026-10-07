@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   continueGoogleLoginAfterAuthentication,
   initializeGoogleWorkspaceAfterAuthentication,
+  runGoogleWorkspaceStepWithTimeout,
 } from "../../frontend/auth/GoogleAuthController.js";
 import { reloadWithInitLoader } from "../../frontend/auth/AuthUi.js";
 
@@ -82,6 +83,13 @@ test("Google completion hides its pending overlay even when the init loader is u
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
   }
+});
+
+test("Google workspace initialization exposes a bounded timeout instead of leaving a pending promise", async () => {
+  await assert.rejects(
+    runGoogleWorkspaceStepWithTimeout(() => new Promise(() => {}), 5),
+    (error) => error?.code === "GOOGLE_WORKSPACE_INIT_TIMEOUT",
+  );
 });
 
 

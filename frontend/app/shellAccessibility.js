@@ -88,21 +88,8 @@ export function setDesktopSidebarCollapsed(appContainer, collapseButton, collaps
     if (isCollapsed) button.title = button.dataset.tooltip || button.getAttribute("aria-label") || "";
     else button.removeAttribute("title");
   });
-  const brandIcon = appContainer?.querySelector?.(".brand-icon");
-  if (brandIcon) {
-    const canExpand = isCollapsed && interactive;
-    brandIcon.setAttribute("aria-hidden", String(!canExpand));
-    if (canExpand) {
-      brandIcon.setAttribute("aria-label", "Mở rộng thanh bên");
-      brandIcon.setAttribute("role", "button");
-      brandIcon.tabIndex = 0;
-    } else {
-      brandIcon.removeAttribute("aria-label");
-      brandIcon.removeAttribute("role");
-      brandIcon.tabIndex = -1;
-    }
-  }
   if (collapseButton) {
+    collapseButton.disabled = !interactive;
     collapseButton.setAttribute("aria-expanded", String(!isCollapsed));
     collapseButton.setAttribute("aria-label", isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên");
     collapseButton.title = isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên";
@@ -142,6 +129,7 @@ export function synchronizeSidebarViewport({
     appContainer?.classList.remove("sidebar-collapsed");
     appContainer?.classList.remove("sidebar-auto-collapsed");
     if (collapseButton) {
+      collapseButton.disabled = false;
       collapseButton.setAttribute("aria-expanded", "true");
       collapseButton.setAttribute("aria-label", "Đóng thanh điều hướng");
       collapseButton.title = "Đóng thanh điều hướng";

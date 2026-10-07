@@ -7,6 +7,7 @@ const pricingState = {
   offers: [],
   group: "basic",
   periods: {},
+  sessionValid: false,
 };
 
 function pricingGroupLabel(group, offer) {
@@ -15,6 +16,7 @@ function pricingGroupLabel(group, offer) {
 
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
+  pricingState.sessionValid = signedIn;
   const trialAvailable = document.documentElement.dataset.trialFullAccess === "true";
   const destination = signedIn ? WORKSPACE_PATH : LOGIN_PATH;
   const appLabel = signedIn
@@ -127,7 +129,7 @@ function appendCommercialBenefit(list, label) {
   list.append(item);
 }
 
-function createCommercialOption(offer, group) {
+function createCommercialOption(offer, group, selectionCard = null) {
   const presented = presentCommercialOffer(offer);
   const option = document.createElement("div");
   option.className = `landing-commercial-option${group === "advanced" ? " is-connected" : ""}`;
@@ -151,7 +153,9 @@ function createCommercialOption(offer, group) {
 
   const action = document.createElement("a");
   action.className = `landing-button ${presented.recommended ? "landing-button-primary" : "landing-button-secondary"}`;
-  action.href = document.querySelector("[data-landing-app-link]")?.href || LOGIN_PATH;
+  const destination = pricingState.sessionValid ? "/goi-va-thanh-toan" : LOGIN_PATH;
+  const periodValue = selectionCard?.period || offer?.price?.period || "yearly";
+  action.href = `${destination}?checkout=${encodeURIComponent(presented.code)}&period=${encodeURIComponent(periodValue)}`;
   action.textContent = "Bắt đầu với gói này";
   action.append(createLandingIcon("arrow-right"));
 
@@ -251,7 +255,7 @@ function renderCommercialOffers(offers = []) {
 
       const options = document.createElement("div");
       options.className = "landing-commercial-options";
-      options.append(createCommercialOption(offer, commercialGroupForOffer(offer)));
+      options.append(createCommercialOption(offer, commercialGroupForOffer(offer), selectionCard));
       card.append(header);
       if (presented.description) card.append(description);
       card.append(options);

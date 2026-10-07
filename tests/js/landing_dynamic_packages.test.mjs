@@ -328,7 +328,9 @@ test("each pricing card selects its own period without changing other cards", as
       await page.locator('[data-commercial-offer-code="silver.connected.yearly"] [data-pricing-period="monthly"]').click();
       assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.monthly", "gold.connected.yearly", "diamond.connected.yearly"]);
       assert.match(await page.locator("#landing-pricing-grid").textContent(), /Tên personal do Admin đặt/u);
-      assert.equal(new URL(await page.locator(".landing-commercial-option a").first().getAttribute("href"), page.url()).pathname, "/dang-nhap");
+      const packageLink = new URL(await page.locator(".landing-commercial-option a").first().getAttribute("href"), page.url());
+      assert.equal(packageLink.pathname, "/dang-nhap");
+      assert.equal(packageLink.searchParams.get("checkout"), "personal.connected.monthly");
       await page.addStyleTag({ url: "/views/css/tokens.css" });
       await page.addStyleTag({ url: "/views/css/variables.css" });
       await page.addStyleTag({ url: "/views/css/base.css" });

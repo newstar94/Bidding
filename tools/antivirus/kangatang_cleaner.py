@@ -51,7 +51,7 @@ except ImportError:
     olefile = None
 
 try:
-    from oletools.olevba import VBA_Parser
+    pass
 except ImportError:
     VBA_Parser = None
 
@@ -79,18 +79,15 @@ CLOUD_OFFLINE_ATTRS = (
 )
 
 VIRUS_SIGNATURES = [
-    b"Kangatang",
     b"kangatang",
-    b"mypersonnel",
-    b"mypersonel",
-    b"allocated",
+    b"mypersonnel.xls",
+    b"mypersonel.xls",
 ]
 
 MALICIOUS_SHEET_NAMES = [
     "kangatang",
     "xxxxxxxxx",
     "foxz",
-    "allocated"
 ]
 
 
@@ -330,7 +327,7 @@ class KangatangEngine:
             return False
 
     def is_file_infected(self, file_path: str) -> bool:
-        """Kiểm tra nhanh xem file có chứa mã độc Kangatang hay không."""
+        """Kiểm tra chính xác xem file có chứa mã độc Kangatang hay không."""
         if not os.path.isfile(file_path):
             return False
         if is_cloud_offline(file_path):
@@ -344,14 +341,13 @@ class KangatangEngine:
         try:
             with open(sp, "rb") as fp:
                 data = fp.read()
-                # 1. Kiểm tra chữ ký thô
-                has_sig = any(sig in data for sig in VIRUS_SIGNATURES)
-                if not has_sig:
-                    # Kiểm tra xem có sheet độc hại foxz hay xxxxxxxxx không
-                    if b"foxz" in data or b"XXXXXXXXX" in data:
-                        return True
-                    return False
-                return True
+                lower_data = data.lower()
+                # Chữ ký chuẩn xác: chứa Kangatang hoặc mypersonnel.xls
+                if b"kangatang" in lower_data:
+                    return True
+                if b"mypersonnel.xls" in lower_data or b"mypersonel.xls" in lower_data:
+                    return True
+                return False
         except Exception:
             return False
 
@@ -576,7 +572,8 @@ class KangatangEngine:
         results = []
         skip_dirs = {
             "windows", "$recycle.bin", "system volume information",
-            ".git", "node_modules", ".venv", "venv", "__pycache__",
+            "program files", "program files (x86)",
+            ".git", "node_modules", ".venv", "venv", "__pycache__", "appdata"
         }
 
         self.log(f"Bắt đầu quét thư mục: {target_dir}...", "INFO")

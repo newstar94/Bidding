@@ -23,6 +23,30 @@ import {
   showGoogleAuthPending,
   showGoogleSignInState
 } from "./AuthUi.js";
+import { readPendingCheckoutIntent } from "../commercial-policy/pendingCheckout.js";
+
+export const GOOGLE_WORKSPACE_INIT_TIMEOUT_MS = 15000;
+
+export function runGoogleWorkspaceStepWithTimeout(task, timeoutMs = GOOGLE_WORKSPACE_INIT_TIMEOUT_MS) {
+  const limit = Math.max(1, Number(timeoutMs) || GOOGLE_WORKSPACE_INIT_TIMEOUT_MS);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      callback(value);
+    };
+    const timer = globalThis.setTimeout(() => {
+      const error = new Error("Khởi tạo không gian làm việc Google quá thời gian chờ.");
+      error.code = "GOOGLE_WORKSPACE_INIT_TIMEOUT";
+      finish(reject, error);
+    }, limit);
+    Promise.resolve()
+      .then(() => task())
+      .then((value) => finish(resolve, value), (error) => finish(reject, error));
+  });
+}
 
 export function createGoogleIdentityOptions(clientId, callback) {
   return {
@@ -56,7 +80,7 @@ export async function initializeGoogleWorkspaceAfterAuthentication(
   if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
     await installAdmin(controller.constructor);
   }
-  await initializeInteractiveLoginModel(controller);
+  await runGoogleWorkspaceStepWithTimeout(() => initializeInteractiveLoginModel(controller));
   controller.model.state.activeuser = {
     ...controller.model.state.activeuser || {}
   };
@@ -135,7 +159,10 @@ export function setupGoogleSignIn() {
         window.location.assign("/admin");
         return;
       } else {
-        await this.switchTab("dashboard");
+        const pendingCheckout = readPendingCheckoutIntent();
+        if (pendingCheckout) this._pendingCommercialCheckout = pendingCheckout;
+        const destinationTab = pendingCheckout ? "commercial-storefront" : "dashboard";
+        await runGoogleWorkspaceStepWithTimeout(async () => await this.switchTab(destinationTab));
       }
       // Reconciliation derives its route projection from the selected URL.
       // Start it only after navigation so Google login cannot reconcile the
@@ -305,6 +332,11 @@ export function setupGoogleSignIn() {
       else if (effectiveRoles.includes("manager")) activeRole = "manager";
       await continueGoogleLoginAfterAuthentication(this, data, activeRole);
     } catch (err) {
+      if (err?.code === "GOOGLE_WORKSPACE_INIT_TIMEOUT") {
+        console.error("Google workspace initialization timed out; reloading the authenticated session.");
+        reloadWithInitLoader();
+        return;
+      }
       showGoogleLoginError("Lỗi kết nối Google: " + err.message);
     }
   };

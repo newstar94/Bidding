@@ -34,6 +34,7 @@ import {
   requireTurnstileToken,
   resetTurnstile
 } from "./TurnstileController.js";
+import { readPendingCheckoutIntent } from "../commercial-policy/pendingCheckout.js";
 
 export function resolveSessionRequestedRole({ previousUser, previousRole, sessionUser } = {}) {
   const serverRole = String(sessionUser?.active_role || "").trim().toLowerCase();
@@ -667,7 +668,9 @@ export function setupAuth() {
         window.location.assign("/admin");
         return;
       } else {
-        await this.switchTab("dashboard");
+        const pendingCheckout = readPendingCheckoutIntent();
+        if (pendingCheckout) this._pendingCommercialCheckout = pendingCheckout;
+        await this.switchTab(pendingCheckout ? "commercial-storefront" : "dashboard");
       }
       this.setupProfileDropdownEvents?.();
       hideAuthOverlay();

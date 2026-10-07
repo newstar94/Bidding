@@ -18,6 +18,24 @@ function configField(path, original, value = original, kind = "text") {
   return { value, dataset: { adminCommercialConfig: path, adminConfigOriginal: original, adminConfigKind: kind } };
 }
 
+test("Admin can select no refunds without changing other policies or rewriting a legacy draft", () => {
+  const source = { offers: [], policies: { refund: { kind: "manual_off_platform", partial: true, note: "keep" }, renewalAnchor: { kind: "end_of_term" } } };
+  const unchanged = serializeDraftDocument(candidateRoot(source), source);
+  assert.deepEqual(unchanged.policies, source.policies);
+  const root = candidateRoot(source);
+  const originalQuery = root.querySelectorAll;
+  root.querySelectorAll = selector => selector === "[data-admin-policy-choice]"
+    ? [{ value: "no_refunds", dataset: { adminPolicyChoice: "refund" } }]
+    : originalQuery(selector);
+  const configured = serializeDraftDocument(root, source);
+  assert.deepEqual(configured.policies.refund, { kind: "no_refunds", partial: false, note: "keep" });
+  assert.deepEqual(configured.policies.renewalAnchor, source.policies.renewalAnchor);
+  assert.equal(source.policies.refund.kind, "manual_off_platform");
+  const markup = draftEditorMarkup({ id: "draft", revision: 1, document: configured });
+  assert.match(markup, /data-admin-policy-choice="refund"/u);
+  assert.match(markup, /value="no_refunds" selected>Không hoàn tiền/u);
+});
+
 test("open sales errors use Vietnamese sections and link to settings without enabling publish", () => {
   const validation = {
     validationDigest: "test-digest", readinessExpiresAt: 9999999999,

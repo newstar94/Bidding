@@ -77,6 +77,10 @@ export function updateActiveUserProfileDisplay() {
     const storedUsername = sessionStorage.getItem("bf_username") || localStorage.getItem("bf_username") || "";
     const displayName = getUserDisplayName(user, storedUsername);
     h4.textContent = displayName;
+    const accountName = document.getElementById("profile-account-name");
+    const accountEmail = document.getElementById("profile-account-email");
+    if (accountName) accountName.textContent = displayName;
+    if (accountEmail) accountEmail.textContent = user.email || user.username || "";
     const orgs = normalizeOrganizations(user).filter((organization) => organization.status === "active");
     let activeOrg = getActiveOrganizationId();
     if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
@@ -548,6 +552,10 @@ export function renderManagerHoSoGiayPanel() {
 }
 export function renderProfileTab(user) {
   if (!user) return;
+  const accountName = document.getElementById("profile-account-name");
+  const accountEmail = document.getElementById("profile-account-email");
+  if (accountName) accountName.textContent = getUserDisplayName(user, user.username || "");
+  if (accountEmail) accountEmail.textContent = user.email || user.username || "";
   const usernameInput = document.getElementById("profile-username");
   const fullnameInput = document.getElementById("profile-fullname");
   const emailInput = document.getElementById("profile-email");

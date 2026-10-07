@@ -1,4 +1,5 @@
 from copy import deepcopy
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -8,6 +9,43 @@ from backend.commercial_policy.admin_drafts import load_legacy_export_capabiliti
 from backend.commercial_policy.document import SUPPORTED_EXPORT_CAPABILITIES, build_initial_draft_document, validate_document
 from backend.commercial_policy.errors import CommercialPolicyError
 from backend.commercial_policy import routes
+
+
+@pytest.mark.parametrize(("digest", "reason", "message"), [
+    ("a" * 64, "  OK  ", "Lý do xuất bản phải có ít nhất 3 ký tự."),
+    ("a" * 64, "   ", "Lý do xuất bản phải có ít nhất 3 ký tự."),
+    ("a" * 63, "Mở bán", "Kết quả kiểm tra bản nháp không hợp lệ. Hãy bấm Kiểm tra lại trước khi xuất bản."),
+])
+def test_publish_reports_the_invalid_field_before_a_database_write(monkeypatch, digest, reason, message):
+    async def request_json():
+        return {"expectedRevision": 1, "validationDigest": digest, "reason": reason}
+
+    async def unexpected_write(*args):
+        raise AssertionError("Invalid publication must not write data")
+
+    monkeypatch.setattr(routes, "run_database_write", unexpected_write)
+    response = asyncio.run(routes.publish_commercial_draft_api(SimpleNamespace(json=request_json, headers={})))
+    assert response.status_code == 422
+    assert json.loads(response.body)["error"] == message
+    assert json.loads(response.body)["code"] == "COMMERCIAL_POLICY_INVALID"
+
+
+def test_publish_passes_the_validated_digest_revision_and_trimmed_reason_to_the_existing_writer(monkeypatch):
+    body = {"expectedRevision": 2, "validationDigest": "a" * 64, "reason": "  Mở bán gói  ", "effectiveAt": 1790000000}
+    captured = []
+
+    async def request_json():
+        return body
+
+    async def capture_write(writer, *args):
+        captured.append((writer, args))
+        return "published"
+
+    monkeypatch.setattr(routes, "run_database_write", capture_write)
+    response = asyncio.run(routes.publish_commercial_draft_api(SimpleNamespace(json=request_json, headers={})))
+    assert response == "published"
+    assert captured[0][0] is routes._publish_commercial_draft_sync
+    assert captured[0][1][2:] == (2, "a" * 64, "Mở bán gói", 1790000000)
 
 
 LEGACY_EXPORTS = {

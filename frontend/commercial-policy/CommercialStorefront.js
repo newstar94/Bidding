@@ -9,6 +9,13 @@ import {
   visibleOffersForOwner,
 } from "./PublicCommercialCatalog.js";
 import { COMMERCIAL_GROUPS, selectCommercialOffers } from "./CommercialOfferSelection.js";
+import { createCheckoutPaymentDialog } from "./CheckoutPaymentDialog.js";
+import {
+  checkoutIntentFromLocation,
+  clearPendingCheckoutIntent,
+  clearCheckoutIntentFromLocation,
+  readPendingCheckoutIntent,
+} from "./pendingCheckout.js";
 
 const STYLE_URL = new URL("./CommercialStorefront.css", import.meta.url).pathname;
 const TERMINAL_ACTIVATIONS = new Set(["applied", "review_required", "reversed"]);
@@ -17,6 +24,7 @@ const state = {
   offers: [], creditPacks: [], quotaWarnings: [70, 90, 100],
   balance: null, orders: [], loading: false, polling: null, commercialReleaseId: "",
   group: "basic", periods: {},
+  checkoutSession: null,
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const money = (value) => formatCommercialMoney(value, "VND");
@@ -48,6 +56,21 @@ const showOptionalFeedback = (moment) => {
   if (panel && input) { input.value = moment; panel.hidden = false; panel.scrollIntoView({ block: "nearest" }); }
 };
 const status = (message, tone = "neutral") => { const node = document.getElementById("storefront-status"); if (node) { node.dataset.tone = tone; node.textContent = message; } };
+const clearPaymentAction = () => {
+  const node = document.getElementById("storefront-payment-action");
+  if (!node) return;
+  node.hidden = true;
+  node.replaceChildren();
+};
+const renderPaymentAction = (order) => {
+  const node = document.getElementById("storefront-payment-action");
+  if (!node) return;
+  const checkoutUrl = resumableCheckoutUrl(order);
+  if (!checkoutUrl) { clearPaymentAction(); return; }
+  node.hidden = false;
+  node.innerHTML = trustedHTML(`<div><strong>Đơn thanh toán đang chờ xử lý</strong><span>Mở mã QR để tiếp tục thanh toán giao dịch hiện tại.</span></div><button type="button" class="btn btn-primary" data-storefront-resume="${escapeHtml(order.publicId)}">Mở QR thanh toán</button>`);
+  node.querySelector("button")?.addEventListener("click", () => resumeCheckout(order));
+};
 
 function renderOffers(controller) {
   const root = document.getElementById("storefront-offers");
@@ -100,6 +123,7 @@ function renderOffers(controller) {
     sendCommercialEvent("pricing.offer_selected", { skuCode: button.dataset.sku });
     void startCheckout(button.dataset.sku, controller, button.dataset.operation, button);
   }));
+  if (state.checkoutSession) root.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = true; });
 }
 
 function renderBalance() {
@@ -146,57 +170,326 @@ function scheduledActivationDate(order) {
 function renderOrders() {
   const node = document.getElementById("storefront-orders");
   if (!node) return;
+  const resumableOrder = state.orders.find((order) => resumableCheckoutUrl(order));
+  if (resumableOrder) renderPaymentAction(resumableOrder);
+  else clearPaymentAction();
   node.innerHTML = trustedHTML(state.orders.length ? `<div class="commercial-storefront__orders">${state.orders.map((order) => {
     const checkoutUrl = resumableCheckoutUrl(order);
     const scheduledDate = scheduledActivationDate(order);
     const orderState = scheduledDate ? `Chờ đến kỳ kích hoạt · ${scheduledDate}` : `${order.paymentState} · ${order.activationState}`;
-    const resume = checkoutUrl ? `<a class="btn btn-outline" href="${escapeHtml(checkoutUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Mở lại thanh toán ${escapeHtml(order.publicId)}">Mở lại thanh toán</a>` : "";
+    const resume = checkoutUrl ? `<button type="button" class="btn btn-outline" data-storefront-resume="${escapeHtml(order.publicId)}" aria-label="Mở lại thanh toán ${escapeHtml(order.publicId)}">Mở lại thanh toán</button>` : "";
     return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(orderState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div></div>`;
   }).join("")}</div>` : '<div class="commercial-empty">Chưa có order.</div>');
-  node.querySelectorAll(".commercial-storefront__order-actions a").forEach((link) => {
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+  node.querySelectorAll("[data-storefront-resume]").forEach((button) => {
+    button.addEventListener("click", () => resumeCheckout(state.orders.find((order) => order.publicId === button.dataset.storefrontResume)));
   });
 }
 
-async function pollOrder(publicId, controller, attempt = 0) {
-  window.clearTimeout(state.polling);
+const PAID_PAYMENT_STATES = new Set(["verified_paid", "refund_pending", "partially_refunded", "refunded", "refund_failed"]);
+const CLOSED_CHECKOUT_STATES = new Set(["cancelled", "expired", "create_failed"]);
+
+function openCheckoutSession(controller, title, order = null) {
+  const actor = controller?.model?.state?.activeuser || {};
+  const session = { controller, order, cancelRequested: false, cancelling: false, creating: false, createStarted: false, createUncertain: false, dismissed: false, cancelPolling: null, paymentPolling: null, pollGeneration: 0, settled: false, checkoutKey: `storefront-${crypto.randomUUID()}`, quotePublicId: "", paymentSignature: "", packageTitle: "", activationRefresh: null,
+    actorId: String(actor.id || actor.user_id || ""), activeScope: String(actor.activeOrganizationId || actor.active_role_organization_id || ""), workspaceToken: controller?.model?.getWorkspaceToken?.() || "" };
+  state.checkoutSession = session;
+  document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = true; });
+  session.dialog = createCheckoutPaymentDialog({
+    title,
+    onCancel: () => cancelCheckoutSession(session),
+    onDismiss: () => {
+      session.dismissed = true;
+      window.clearTimeout(session.cancelPolling);
+      if (state.checkoutSession === session) {
+        state.checkoutSession = null;
+        document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = false; button.removeAttribute("aria-busy"); });
+      }
+    },
+  });
+  return session;
+}
+
+function checkoutContextIsCurrent(session) {
+  if (!session) return true;
+  const model = session.controller?.model;
+  const actor = model?.state?.activeuser || {};
+  return String(actor.id || actor.user_id || "") === session.actorId
+    && String(actor.activeOrganizationId || actor.active_role_organization_id || "") === session.activeScope
+    && (!session.workspaceToken || typeof model?.isWorkspaceCurrent !== "function" || model.isWorkspaceCurrent(session.workspaceToken));
+}
+
+function retireStaleCheckout(session) {
+  if (checkoutContextIsCurrent(session)) return false;
+  window.clearTimeout(session.paymentPolling);
+  window.clearTimeout(session.cancelPolling);
+  session.dialog.close();
+  return true;
+}
+
+async function verifyRefreshedAccess(controller) {
+  const payload = await request("/api/auth/check-session", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" }),
+  });
+  const actor = controller?.model?.state?.activeuser || {};
+  const user = payload.user || {};
+  const scope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
+  if (payload.valid !== true || String(user.id || "") !== String(actor.id || actor.user_id || "") || String(user.active_org_id || "") !== scope) return false;
+  const workspace = actor.organizations?.find((item) => String(item.id) === scope);
+  const expectedWorkspace = user.organizations?.find((item) => String(item.id) === scope);
+  const subscription = workspace?.subscription;
+  const expectedSubscription = expectedWorkspace?.subscription || user.subscription;
+  const expectedEntitlements = user.entitlements || expectedWorkspace?.entitlements || {};
+  return String(actor.package_id || "none") === String(user.package_id || "none")
+    && Number(subscription?.revision || 0) === Number(expectedSubscription?.revision || 0)
+    && Boolean(actor.wordExportEnabled) === Boolean(expectedEntitlements.word_export)
+    && Boolean(actor.excelExportEnabled) === Boolean(expectedEntitlements.excel_export)
+    && Boolean(actor.awardResultExcelExportEnabled) === Boolean(expectedEntitlements.award_result_excel_export);
+}
+
+async function refreshActivatedPurchase(controller, session) {
+  if (session && retireStaleCheckout(session)) return;
+  if (session?.activationRefresh) return session.activationRefresh;
+  const message = session?.packageTitle
+    ? `Thanh toán đã được máy chủ xác minh. Gói “${session.packageTitle}” đã được kích hoạt.`
+    : "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt.";
+  if (session) { session.settled = true; session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true }); }
+  status(message, "success");
+  const update = (async () => {
+    try {
+      // A pre-existing session request may have read the subscription before
+      // activation. Finish it, then request the current authoritative access
+      // context through the normal session checker and its identity guards.
+      if (controller?._sessionCheckInFlight) await controller._sessionCheckInFlight;
+      if (!checkoutContextIsCurrent(session)) return;
+      await controller?._checkSessionNow?.();
+      if (!checkoutContextIsCurrent(session)) return;
+      // The existing checker intentionally logs and swallows transport errors.
+      // Verify its applied package/export flags against a fresh session read;
+      // this check never assigns permissions from a checkout or changes roles.
+      const accessCurrent = await verifyRefreshedAccess(controller);
+      if (!checkoutContextIsCurrent(session)) return;
+      await refresh(controller);
+      if (!checkoutContextIsCurrent(session)) return;
+      if (!accessCurrent) throw new Error("Session refresh is pending");
+      status(message, "success");
+    } catch {
+      if (!checkoutContextIsCurrent(session)) return;
+      const warning = `${message} Phiên làm việc đang chờ cập nhật quyền lợi; vui lòng bấm Làm mới.`;
+      status(warning, "warning");
+      if (session && !session.dismissed) session.dialog.showState(warning, "warning", { canDismiss: true, hidePayment: true });
+    }
+  })();
+  if (session) session.activationRefresh = update;
+  return update;
+}
+
+async function cancellationResult(session, order) {
+  if (retireStaleCheckout(session)) return true;
+  if (!order?.publicId) return false;
+  session.order = order;
+  rememberOrder(order);
+  if (PAID_PAYMENT_STATES.has(order.paymentState)) {
+    session.settled = true;
+    session.cancelRequested = false;
+    if (order.activationState === "applied") { await refreshActivatedPurchase(session.controller, session); return true; }
+    const scheduledDate = scheduledActivationDate(order);
+    const message = scheduledDate
+      ? `Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}.`
+      : "Thanh toán đã được máy chủ xác minh. Đang kích hoạt quyền lợi…";
+    session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true });
+    status(message, "success");
+    if (order.activationState === "pending" && !scheduledDate) void pollOrder(order.publicId, session.controller, 0, session);
+    return true;
+  }
+  if (CLOSED_CHECKOUT_STATES.has(order.checkoutState)) {
+    session.settled = true;
+    status(order.checkoutState === "cancelled" ? "Đã hủy giao dịch thanh toán." : "Giao dịch đã hết hiệu lực.", "neutral");
+    session.dialog.close();
+    return true;
+  }
+  return false;
+}
+
+function cancellationFailure(session, error) {
+  if (retireStaleCheckout(session)) return;
+  session.cancelling = false;
+  session.dialog.showState(`Chưa hủy được giao dịch. ${error.message || "Vui lòng thử lại."}`, "danger", { hidePayment: true, cancelLabel: "Thử hủy lại" });
+  status("Chưa có xác nhận hủy giao dịch. Vui lòng thử hủy lại trong cửa sổ thanh toán.", "warning");
+}
+
+async function pollCancellation(session, attempt = 0) {
+  if (session.dismissed || !session.cancelRequested || retireStaleCheckout(session)) return;
+  try {
+    const payload = await request(`/api/billing/orders/${encodeURIComponent(session.order.publicId)}`);
+    if (await cancellationResult(session, payload.order)) { session.cancelling = false; return; }
+  } catch (error) {
+    if (retireStaleCheckout(session)) return;
+    if (attempt >= 39) { cancellationFailure(session, error); return; }
+  }
+  if (attempt >= 39) { cancellationFailure(session, new Error("Máy chủ đang tiếp tục đối soát yêu cầu hủy.")); return; }
+  session.cancelPolling = window.setTimeout(() => { void pollCancellation(session, attempt + 1); }, 3000);
+}
+
+async function cancelCheckoutSession(session) {
+  if (session.dismissed || session.cancelling || retireStaleCheckout(session)) return;
+  if (session.settled) { session.dialog.close(); return; }
+  session.cancelRequested = true;
+  session.pollGeneration += 1;
+  window.clearTimeout(session.paymentPolling);
+  if (!session.order) {
+    if (session.createUncertain && !session.creating) {
+      session.cancelling = true;
+      session.dialog.showState("Đang xác định giao dịch để hủy…", "neutral", { busy: true, hidePayment: true });
+      try {
+        await createCheckoutOrder(session);
+        session.cancelling = false;
+        await cancelCheckoutSession(session);
+      } catch (error) { cancellationFailure(session, error); }
+    } else if (!session.creating) {
+      status("Đã hủy lựa chọn gói. Chưa tạo giao dịch thanh toán.", "neutral");
+      session.dialog.close();
+    } else {
+      session.dialog.showState("Đang hủy giao dịch… Vui lòng chờ xác nhận từ máy chủ.", "neutral", { busy: true, hidePayment: true });
+    }
+    return;
+  }
+  session.cancelling = true;
+  session.dialog.showState("Đang hủy giao dịch… Vui lòng chờ xác nhận từ payOS.", "neutral", { busy: true, hidePayment: true });
+  try {
+    const payload = await request(`/api/billing/orders/${encodeURIComponent(session.order.publicId)}/cancel`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "Người dùng đóng hoặc hủy cửa sổ thanh toán" }),
+    });
+    if (retireStaleCheckout(session)) return;
+    if (await cancellationResult(session, payload.order)) { session.cancelling = false; return; }
+    session.dialog.showState("Đã gửi yêu cầu hủy, đang chờ payOS xác nhận…", "neutral", { busy: true, hidePayment: true });
+    session.cancelPolling = window.setTimeout(() => { void pollCancellation(session); }, 3000);
+  } catch (error) {
+    if (retireStaleCheckout(session)) return;
+    // A payment may finish while the cancellation request is in flight. Only
+    // the server's latest order can decide whether this is already settled.
+    try {
+      const payload = await request(`/api/billing/orders/${encodeURIComponent(session.order.publicId)}`);
+      if (retireStaleCheckout(session)) return;
+      if (await cancellationResult(session, payload.order)) { session.cancelling = false; return; }
+    } catch { /* Retain the cancellation intent for an explicit retry. */ }
+    cancellationFailure(session, error);
+  }
+}
+
+async function createCheckoutOrder(session) {
+  const wasUncertain = session.createUncertain;
+  session.creating = true;
+  session.createStarted = true;
+  try {
+    const payload = await request("/api/billing/checkouts", {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": session.checkoutKey }, body: JSON.stringify({ quotePublicId: session.quotePublicId }),
+    });
+    if (!payload.order?.publicId) throw new Error("Máy chủ chưa trả mã giao dịch thanh toán.");
+    session.order = payload.order;
+    session.createUncertain = false;
+    rememberOrder(payload.order);
+    return payload.order;
+  } catch (error) {
+    session.createUncertain = wasUncertain || !error.status || error.status >= 500;
+    throw error;
+  } finally { session.creating = false; }
+}
+
+function showSessionPayment(session, order) {
+  if (order.checkoutState !== "open" || PAID_PAYMENT_STATES.has(order.paymentState)) return;
+  const signature = `${order.checkoutState}:${order.paymentDetails?.qrCodeImage || ""}:${order.checkoutUrl || ""}`;
+  if (session.paymentSignature === signature) return;
+  session.paymentSignature = signature;
+  session.dialog.showPayment(order, resumableCheckoutUrl(order));
+}
+
+async function presentCreatedCheckout(session) {
+  if (session.cancelRequested) { await cancelCheckoutSession(session); return; }
+  if (session.order.checkoutState === "creating") {
+    session.dialog.showState("Đang chuẩn bị mã QR từ payOS…");
+  } else {
+    showSessionPayment(session, session.order);
+  }
+  status("Đang chờ máy chủ đối soát giao dịch thanh toán…", "neutral");
+  await pollOrder(session.order.publicId, session.controller, 0, session);
+}
+
+function resumeCheckout(order) {
+  if (state.checkoutSession) { state.checkoutSession.dialog.show(); return; }
+  const checkoutUrl = order && resumableCheckoutUrl(order);
+  if (!checkoutUrl) return;
+  const session = openCheckoutSession(state.controller, "Giao dịch đang chờ thanh toán", order);
+  showSessionPayment(session, order);
+  void pollOrder(order.publicId, state.controller, 0, session);
+}
+
+async function pollOrder(publicId, controller, attempt = 0, session = null) {
+  const generation = session?.pollGeneration;
+  const canContinue = () => !session?.cancelRequested
+    && (!session?.dismissed || session?.settled)
+    && generation === session?.pollGeneration
+    && checkoutContextIsCurrent(session);
+  const schedule = () => {
+    const timer = window.setTimeout(() => pollOrder(publicId, controller, attempt + 1, session).catch(() => {}), 3000);
+    if (session) session.paymentPolling = timer;
+    else state.polling = timer;
+  };
+  if (!canContinue()) return;
+  window.clearTimeout(session ? session.paymentPolling : state.polling);
   let payload;
   try {
     payload = await request(`/api/billing/orders/${encodeURIComponent(publicId)}`);
   } catch (error) {
+    if (!canContinue()) return;
     if (attempt >= 39) {
       status(`Không thể cập nhật trạng thái order (${error.code || "NETWORK_ERROR"}). Hãy bấm làm mới để tiếp tục theo dõi.`, "warning");
       return;
     }
     status("Đang tạm mất kết nối; sẽ tự thử lại trạng thái thanh toán…", "warning");
-    state.polling = window.setTimeout(() => pollOrder(publicId, controller, attempt + 1).catch(() => {}), 3000);
+    if (canContinue()) schedule();
     return;
   }
+  if (!canContinue()) return;
   const order = payload.order;
+  if (session) session.order = order;
   rememberOrder(order);
   const scheduledDate = scheduledActivationDate(order);
   if (scheduledDate) {
-    status(`Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}. Bạn có thể đóng trang và xem lại trong lịch sử mua.`, "success");
+    const message = `Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}. Bạn có thể đóng trang và xem lại trong lịch sử mua.`;
+    status(message, "success");
+    if (session) { session.settled = true; session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true }); }
     return;
   }
-  if (TERMINAL_ACTIVATIONS.has(order.activationState) || ["cancelled", "expired", "create_failed"].includes(order.checkoutState)) {
-    status(order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt." : `Order cần xử lý: ${order.activationState}.`, order.activationState === "applied" ? "success" : "warning");
+  const paid = PAID_PAYMENT_STATES.has(order.paymentState);
+  if (order.activationState === "applied") { await refreshActivatedPurchase(controller, session); return; }
+  if (TERMINAL_ACTIVATIONS.has(order.activationState) || (CLOSED_CHECKOUT_STATES.has(order.checkoutState) && !paid)) {
+    const message = order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt."
+      : order.checkoutState === "cancelled" ? "Giao dịch đã được hủy." : order.checkoutState === "expired" ? "Mã QR đã hết hạn. Vui lòng chọn lại gói để tạo giao dịch mới." : order.checkoutState === "create_failed" ? "Không thể tạo mã thanh toán. Vui lòng chọn lại gói." : `Giao dịch cần xử lý: ${order.activationState}.`;
+    const tone = order.activationState === "applied" ? "success" : "warning";
+    status(message, tone);
+    if (session) { session.settled = paid || CLOSED_CHECKOUT_STATES.has(order.checkoutState); session.dialog.showState(message, tone, { canDismiss: session.settled, hidePayment: true }); }
     await refresh(controller);
     return;
   }
-  if (attempt >= 39) { status("Order vẫn đang đối soát. Bạn có thể đóng trang và làm mới lịch sử sau.", "warning"); return; }
-  state.polling = window.setTimeout(() => pollOrder(publicId, controller, attempt + 1).catch(() => {}), 3000);
+  if (session && paid) {
+    session.settled = true;
+    session.dialog.showState("Đã xác minh thanh toán. Đang kích hoạt quyền lợi…", "success", { canDismiss: true, hidePayment: true });
+  } else if (session) showSessionPayment(session, order);
+  if (attempt >= 39) { status("Giao dịch vẫn đang đối soát. Bấm Làm mới để kiểm tra trạng thái.", "warning"); return; }
+  schedule();
 }
 
 async function startCheckout(skuCode, controller, operation = "purchase", button = null) {
+  if (state.checkoutSession) { state.checkoutSession.dialog.show(); return; }
   const errorNode = document.getElementById(`storefront-error-${skuCode}`);
   if (errorNode) errorNode.textContent = "";
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); }
-  // Reserve the popup synchronously from the user gesture; opening it after
-  // quote/checkout awaits is blocked by several browsers.
-  const checkoutWindow = window.open("about:blank", "_blank");
-  if (checkoutWindow) checkoutWindow.opener = null;
+  const offer = state.offers.find((item) => item.code === skuCode);
+  const presented = offer ? presentCommercialOffer(offer) : null;
+  const packageTitle = presented ? [presented.name, presented.variantLabel].filter(Boolean).join(" · ") : "Gói lượt tra cứu";
+  const session = openCheckoutSession(controller, packageTitle);
+  session.packageTitle = packageTitle;
   try {
     sendCommercialEvent("checkout.started", { skuCode });
     const actor = controller?.model?.state?.activeuser || {};
@@ -204,31 +497,27 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
     const ownerId = ownerKind === "organization" ? activeScope : actor.id || actor.user_id;
     const quote = await request("/api/billing/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerKind, ownerId, operation, skuCode }) });
-    const order = await request("/api/billing/checkouts", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `storefront-${crypto.randomUUID()}` }, body: JSON.stringify({ quotePublicId: quote.publicId }) });
-    rememberOrder(order.order);
-    let popupBlocked = false;
-    if (order.order?.checkoutUrl && checkoutWindow && !checkoutWindow.closed) {
-      checkoutWindow.location.href = order.order.checkoutUrl;
-    } else if (order.order?.checkoutUrl) {
-      popupBlocked = true;
-    } else if (checkoutWindow && !checkoutWindow.closed) {
-      checkoutWindow.close();
-    }
-    status(
-      popupBlocked
-        ? "Checkout đã tạo nhưng trình duyệt chặn cửa sổ thanh toán; hãy mở lại từ lịch sử order."
-        : "Checkout đã tạo. Đang chờ máy chủ đối soát thanh toán…",
-      popupBlocked ? "warning" : "neutral",
-    );
-    await pollOrder(order.order.publicId, controller);
+    if (session.cancelRequested) return;
+    session.quotePublicId = quote.publicId;
+    await createCheckoutOrder(session);
+    await presentCreatedCheckout(session);
   } catch (error) {
+    session.creating = false;
+    if (session.dismissed) return;
+    if (session.createUncertain) {
+      if (session.cancelRequested) { await cancelCheckoutSession(session); return; }
+      // Repeat with the same key when the response was lost after a commit.
+      // This resolves the original transaction instead of creating another.
+      try { await createCheckoutOrder(session); await presentCreatedCheckout(session); return; } catch { /* Keep an unresolved transaction available for cancellation. */ }
+    }
     sendCommercialEvent("checkout.cancelled", { skuCode });
     const message = `${error.code}: ${error.message}`;
-    if (checkoutWindow && !checkoutWindow.closed) checkoutWindow.close();
+    session.settled = !session.order && !session.createUncertain;
+    session.dialog.showState(session.createUncertain ? "Chưa xác định được giao dịch do mất kết nối. Bấm Hủy thanh toán để kiểm tra và hủy giao dịch hiện tại." : message, "danger", { canDismiss: session.settled, hidePayment: true });
     if (errorNode) errorNode.textContent = message;
     status(message, error.code === "BLOCKED_DECISION" ? "warning" : "danger");
     showOptionalFeedback("checkout_abandoned");
-  } finally { if (button) { button.disabled = false; button.removeAttribute("aria-busy"); } }
+  } finally { if (button) { button.disabled = Boolean(state.checkoutSession && !state.checkoutSession.settled); button.removeAttribute("aria-busy"); } }
 }
 
 async function refresh(controller) {
@@ -281,8 +570,19 @@ async function refresh(controller) {
 }
 
 export async function mountCommercialStorefront(controller) {
+  state.controller = controller;
   await loadStyleOnce(STYLE_URL);
-  document.getElementById("storefront-refresh")?.addEventListener("click", () => refresh(controller));
+  const locationIntent = checkoutIntentFromLocation();
+  if (locationIntent) controller._pendingCommercialCheckout = locationIntent;
+  document.getElementById("storefront-refresh")?.addEventListener("click", async () => {
+    try {
+      await controller?._checkSessionNow?.();
+      const accessCurrent = await verifyRefreshedAccess(controller);
+      await refresh(controller);
+      if (!accessCurrent) status("Phiên làm việc đang chờ cập nhật quyền lợi. Vui lòng thử làm mới lại.", "warning");
+    }
+    catch { status("Chưa tải được phiên làm việc và quyền lợi mới. Vui lòng thử làm mới lại.", "warning"); }
+  });
   document.getElementById("storefront-feedback-dismiss")?.addEventListener("click", () => { document.getElementById("storefront-feedback").hidden = true; });
   document.getElementById("storefront-feedback-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -294,4 +594,17 @@ export async function mountCommercialStorefront(controller) {
     document.getElementById("storefront-feedback").hidden = true;
   });
   await refresh(controller);
+  const pendingCheckout = controller?._pendingCommercialCheckout || readPendingCheckoutIntent();
+  if (pendingCheckout) {
+    controller._pendingCommercialCheckout = null;
+    clearPendingCheckoutIntent();
+    clearCheckoutIntentFromLocation();
+    const button = [...document.querySelectorAll('.storefront-buy[data-operation="purchase"]')]
+      .find((node) => node.dataset.sku === pendingCheckout.sku);
+    if (button) {
+      queueMicrotask(() => { void startCheckout(pendingCheckout.sku, controller, "purchase", button); });
+    } else {
+      status("Gói bạn vừa chọn không còn trong catalog đang bán. Vui lòng chọn lại gói hiện hành.", "warning");
+    }
+  }
 }

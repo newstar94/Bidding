@@ -22,7 +22,7 @@ from tests.test_postgres_migration_chain import (
 
 
 def test_fresh_schema_omits_retired_features_but_keeps_released_upgrade_ddl():
-    assert DB_SCHEMA_VERSION == 99
+    assert DB_SCHEMA_VERSION >= 99
     assert RETIRED_OPTIONAL_FEATURE_TABLES.isdisjoint(SCHEMA_DINH_NGHIA)
     assert RETIRED_OPTIONAL_FEATURE_TABLES <= HISTORICAL_SCHEMA_DINH_NGHIA.keys()
     for table_name, target_column, target_table in (
@@ -149,7 +149,7 @@ def test_v99_archives_every_row_and_detaches_only_live_outbound_foreign_keys():
         ).fetchall())
 
         cursor.execute("SAVEPOINT before_feature_retirement")
-        assert apply_database_upgrades(cursor, 98, context) == 99
+        assert apply_database_upgrades(cursor, 98, context) == DB_SCHEMA_VERSION
         archive_schema = retired_feature_archive_schema(schema_name)
         assert _feature_rows(cursor, archive_schema) == before
         archive_oids = dict(cursor.execute(
@@ -171,7 +171,7 @@ def test_v99_archives_every_row_and_detaches_only_live_outbound_foreign_keys():
             (archive_schema,),
         ).fetchall()
         assert archive_fks and all(tuple(row) == (archive_schema, archive_schema) for row in archive_fks)
-        assert apply_database_upgrades(cursor, 99, context) == 99
+        assert apply_database_upgrades(cursor, DB_SCHEMA_VERSION, context) == DB_SCHEMA_VERSION
         cursor.execute("ROLLBACK TO SAVEPOINT before_feature_retirement")
         assert _feature_rows(cursor, schema_name) == before
         assert cursor.execute("SELECT schema_version FROM database_metadata WHERE id=1").fetchone()[0] == 98

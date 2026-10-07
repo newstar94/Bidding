@@ -43,6 +43,7 @@ SUPPORTED_POLICY_KINDS = frozenset({
     "fefo",
     "no_carry_over",
     "manual_off_platform",
+    "no_refunds",
 })
 
 
@@ -81,6 +82,8 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
     """Return the approved initial values as a non-effective draft.
 
     Personal exports and term/batch defaults were approved in ADR 0071.
+    Initial tax defaults were approved in ADR 0073; external payment readiness
+    remains unconfirmed and this document still starts in shadow mode.
     Organization exports still come from the actual legacy package mapping;
     a missing mapping remains a validation blocker, never an inferred right.
     """
@@ -148,6 +151,8 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                     "benefits": [],
                 },
             })
+    tax_approval_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#tax-policy"
+    terms_approval_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#commercial-terms"
     return {
         "schemaVersion": POLICY_SCHEMA_VERSION,
         "currency": "VND",
@@ -167,7 +172,7 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
             "downgrade": {"kind": "manual_review", "selfService": False},
             "graceDays": 0,
             "latePayment": {"kind": "manual_review"},
-            "refund": {"kind": "manual_off_platform", "partial": True},
+            "refund": {"kind": "no_refunds", "partial": False},
             "organizationPurchaseAuthority": ["super_admin"],
             "quotaConsumption": {"kind": "fefo"},
             "quotaCarryOver": {"kind": "no_carry_over"},
@@ -194,28 +199,28 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                 "alias": "payOS",
                 "provider": "payos",
                 "environment": "production",
-                "mode": "shadow",
+                "mode": "live",
                 "readiness": "blocked_external",
-                "credentialReference": None,
+                "credentialReference": "env://payos/default",
                 "minAmount": 1,
                 "maxAmount": 100_000_000,
                 "checkoutTtlSeconds": 900,
             },
         ],
         "taxInvoice": {
-            "approvalReference": None,
+            "approvalReference": tax_approval_reference,
             "taxInclusive": True,
             "invoiceEnabled": False,
-            "taxBasisPoints": None,
-            "rounding": None,
+            "taxBasisPoints": 0,
+            "rounding": "ceil",
             "invoiceTrigger": None,
         },
         "externalReadiness": {
-            "vatInvoice": None,
+            "vatInvoice": tax_approval_reference,
             "payosMerchant": None,
             "credentialWebhook": None,
-            "ecommercePrivacy": None,
-            "termsRefund": None,
+            "ecommercePrivacy": f"{terms_approval_reference}; views/legal/privacy.html",
+            "termsRefund": f"{terms_approval_reference}; views/legal/terms.html",
         },
     }
 
@@ -409,6 +414,9 @@ def validate_document(document, *, require_production_ready=False):
                 errors.append(_error("UNKNOWN_POLICY_KIND", f"policies.{name}.kind", "Policy kind không nằm trong allowlist."))
             if policy.get("kind") == "blocked_decision":
                 errors.append(_error("BLOCKED_DECISION", f"policies.{name}", str(policy.get("reason") or "Cần quyết định nghiệp vụ.")))
+    refund_policy = policies.get("refund")
+    if isinstance(refund_policy, dict) and refund_policy.get("kind") == "no_refunds" and refund_policy.get("partial") is not False:
+        errors.append(_error("REFUND_POLICY_INVALID", "policies.refund.partial", "Chính sách Không hoàn tiền cần partial = false."))
     base_term = policies.get("baseTerm") or {}
     if base_term.get("kind") == "fixed_days" and (
         not isinstance(base_term.get("days"), int)

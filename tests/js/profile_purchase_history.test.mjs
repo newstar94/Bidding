@@ -76,15 +76,19 @@ test("account profile renders Vietnamese personal purchase history", async () =>
       const module = await import("/frontend/billing/ProfilePurchaseHistory.js");
       await module.mountProfilePurchaseHistory({ view: { createIconsScoped() {} } });
     });
+    assert.equal(orderRequests, 0, "profile forms should not wait for billing data");
+    await page.getByRole("tab", { name: "Lịch sử mua cá nhân" }).click();
+    await page.getByText("Đã tải 2 giao dịch gần nhất.", { exact: true }).waitFor();
 
     assert.equal(orderRequests, 1);
     assert.equal(activeOrganizationHeader, "organization-active");
-    assert.equal(await page.getByText("Mua thêm lượt tra cứu", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("Chờ thanh toán", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("Chưa sẵn sàng", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("99.000 ₫", { exact: true }).count(), 2);
-    assert.equal(await page.getByText("Chờ đến kỳ kích hoạt", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("Kích hoạt từ 15:00 ngày 15/01/2027", { exact: true }).count(), 1);
+    const historyPanel = page.locator("#profile-panel-history");
+    assert.equal(await historyPanel.getByText("Mua thêm lượt tra cứu", { exact: true }).count(), 1);
+    assert.equal(await historyPanel.getByText("Chờ thanh toán", { exact: true }).count(), 1);
+    assert.equal(await historyPanel.getByText("Chưa sẵn sàng", { exact: true }).count(), 1);
+    assert.equal(await historyPanel.getByText("99.000 ₫", { exact: true }).count(), 2);
+    assert.equal(await historyPanel.getByText("Chờ đến kỳ kích hoạt", { exact: true }).count(), 1);
+    assert.equal(await historyPanel.getByText("Kích hoạt từ 15:00 ngày 15/01/2027", { exact: true }).count(), 1);
     assert.equal(await page.getByText("Đã tải 2 giao dịch gần nhất.", { exact: true }).count(), 1);
   } finally {
     await browser?.close();

@@ -153,20 +153,6 @@ export function setupSidebar() {
       this.view.createIconsScoped(sidebar);
     });
   }
-  const brandIcon = sidebar?.querySelector(".brand-icon");
-  const expandCollapsedSidebar = () => {
-    if (compactMediaQuery.matches) return;
-    if (!appContainer.classList.contains("sidebar-collapsed")) return;
-    setDesktopSidebarCollapsed(appContainer, btnCollapse, false);
-    localStorage.setItem("bf_sidebar_collapsed", "false");
-    this.view.createIconsScoped(sidebar);
-  };
-  brandIcon?.addEventListener("click", expandCollapsedSidebar);
-  brandIcon?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    expandCollapsedSidebar();
-  });
   sidebarToggle.addEventListener("click", () => {
     const open = !sidebar.classList.contains("active");
     setMobileSidebarOpen(sidebar, sidebarToggle, open, { focus: open ? "sidebar" : "toggle" });
@@ -827,7 +813,6 @@ export function renderTabData(tabName, action = null, options = {}) {
       break;
     case "profile":
       this.view.renderProfileTab(this.model.state.activeuser);
-      if (isTrialFullAccess(document)) break;
       return import("../billing/ProfilePurchaseHistory.js")
         .then(({ mountProfilePurchaseHistory }) => mountProfilePurchaseHistory(this));
     case "mothau":

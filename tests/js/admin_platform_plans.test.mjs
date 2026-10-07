@@ -61,6 +61,25 @@ test("plan mutations stop cleanly when the shared dialog is cancelled", async ()
   assert.equal(await requestPlanActionInput("publish", { requestValue }), null);
 });
 
+test("publication dialog validates the trimmed reason against the server minimum", async () => {
+  let options;
+  const requestValue = async value => { options = value; return "  Mở bán  "; };
+  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Mở bán");
+  for (const value of ["", " ", "OK", "  OK  "]) {
+    assert.match(options.validateValue(value), /ít nhất 3 ký tự/u);
+  }
+  assert.equal(options.validateValue("  Mở bán  "), "");
+});
+
+test("publication stays disabled when the validation digest cannot satisfy the server contract", () => {
+  for (const validationDigest of ["a", "a".repeat(63), "a".repeat(65)]) {
+    const markup = draftEditorMarkup({ id: "draft", revision: 1, document: { offers: [] } }, {
+      errors: [], validationDigest, readinessExpiresAt: 9999999999,
+    });
+    assert.match(markup, /data-admin-plan-action="publish" disabled/u);
+  }
+});
+
 function field(value = "", checked = false) {
   return { value: String(value), checked, classList: { add() {}, remove() {} } };
 }
