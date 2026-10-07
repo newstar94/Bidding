@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import os
 import time
+
+from backend.billing.service import select_payment_provider_profile
 
 from .document import canonical_json, validate_document
 from .errors import (
@@ -15,6 +18,7 @@ from .errors import (
     VALIDATION_OBSOLETE,
 )
 from .repository import CommercialRepository
+from .tax import calculate_tax_price
 
 
 class CommercialPolicy:
@@ -22,10 +26,11 @@ class CommercialPolicy:
 
     VALIDATION_TTL_SECONDS = 15 * 60
 
-    def __init__(self, cursor, *, clock=None, include_shadow=False):
+    def __init__(self, cursor, *, clock=None, include_shadow=False, environment=None):
         self.clock = clock or time.time
         self.repository = CommercialRepository(cursor, clock=self.clock)
         self.include_shadow = bool(include_shadow)
+        self.environment = os.environ if environment is None else environment
 
     def resolve_offer(self, context=None, at=None):
         context = context or {}
@@ -61,7 +66,10 @@ class CommercialPolicy:
                 key=lambda item: (item[0], item[1]),
             )
         ]
-        packs = list(document.get("creditPacks") or [])
+        packs = []
+        for pack in document.get("creditPacks") or []:
+            price = calculate_tax_price(pack["price"], document.get("taxInvoice") or {})
+            packs.append({**pack, "price": price["total"], "priceDetails": price})
         return {
             "releaseId": release["id"],
             "releaseChecksum": release["checksum"],
@@ -134,13 +142,7 @@ class CommercialPolicy:
             }
             item_type = "base_plan"
         else:
-            price = {
-                "period": "one_time",
-                "currency": "VND",
-                "subtotal": pack["price"],
-                "tax": 0,
-                "total": pack["price"],
-            }
+            price = calculate_tax_price(pack["price"], document.get("taxInvoice") or {})
             benefits = {
                 "procurementCredits": pack["quantity"],
                 "expiryPolicy": (document.get("policies") or {}).get(
@@ -159,13 +161,11 @@ class CommercialPolicy:
             "price": price,
             "benefits": benefits,
             "expectedSubscriptionRevision": context.get("subscriptionRevision"),
-            "provider": next(
-                (
-                    profile for profile in document.get("providerProfiles") or []
-                    if profile.get("mode") in {"live", "shadow"}
-                    and profile.get("readiness") == "ready"
-                ),
-                None,
+            "provider": select_payment_provider_profile(
+                self.repository.cursor,
+                price["total"],
+                environment=self.environment,
+                release_profiles=document.get("providerProfiles") or [],
             ),
             "policySnapshot": document.get("policies") or {},
             "taxInvoiceSnapshot": document.get("taxInvoice") or {},

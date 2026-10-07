@@ -112,11 +112,22 @@ function aggregateInvitationHistory(preview, target) {
     history.push({ ...structuredClone(source), revisionNumber: version });
   }
   history.sort((left, right) => compareRevisionNumbers(left.revisionNumber, right.revisionNumber));
+  const quotaSkipped = (Array.isArray(preview.usageCredits?.skipped) ? preview.usageCredits.skipped : [])
+    .filter((item) => item.entityKind === "NOTICE" && item.sourceCode === target.noticeNo
+      && item.reasonCode === "QUOTA_EXHAUSTED")
+    .map((item) => revisionNumber(item.sourceRevision));
   const selected = history.find((source) => source.revisionNumber === target.revisionNumber);
   if (!selected) {
+    if (quotaSkipped.includes(target.revisionNumber)) {
+      const error = lookupError("QUOTA_EXHAUSTED", "Chưa lấy được phiên bản TBMT của gói thầu do không đủ lượt Mua Sắm Công.");
+      error.details = { usageCredits: structuredClone(preview.usageCredits) };
+      throw error;
+    }
     throw lookupError("PROCUREMENT_REVISION_INVALID", "Không tìm thấy đúng phiên bản thông báo mời thầu của gói thầu đang mở.");
   }
-  const missingRevisions = Object.keys(preview.rawBundle?.revisions || {})
+  const missingRevisions = [...new Set([
+    ...Object.keys(preview.rawBundle?.revisions || {}), ...quotaSkipped,
+  ])]
     .map(revisionNumber)
     .filter((version) => !seen.has(version));
   return { selected, history, missingRevisions };
@@ -192,6 +203,7 @@ export async function lookupPackageInvitationUpdates({
   assertCurrent();
   return {
     target, revision,
+    ...(preview.usageCredits ? { usageCredits: structuredClone(preview.usageCredits) } : {}),
     history: {
       missingRevisions,
       revisions: history.map((source) => ({

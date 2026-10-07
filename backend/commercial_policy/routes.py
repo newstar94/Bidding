@@ -20,7 +20,7 @@ from .config import commercial_runtime_config
 from .document import canonical_json
 from .errors import CommercialPolicyError, QUOTE_NOT_AVAILABLE
 from .repository import CommercialRepository, new_id
-from .admin_drafts import prepare_admin_draft
+from .admin_drafts import load_legacy_export_capabilities, prepare_admin_draft
 from .service import CommercialPolicy
 from .metrics import commercial_health_snapshot
 
@@ -227,7 +227,16 @@ def _create_commercial_draft_sync(request, body):
             initial = repository.get_draft("commercial-draft-initial-v1")
             current = repository.effective_release(include_shadow=True)
             source_document = current["snapshot"] if current else (initial["document"] if initial else None)
-            source_document = prepare_admin_draft(source_document, template_mode=body.get("templateMode"))
+            template_mode = body.get("templateMode")
+            capabilities = (
+                load_legacy_export_capabilities(cursor)
+                if template_mode == "complete_templates" else None
+            )
+            source_document = prepare_admin_draft(
+                source_document,
+                template_mode=template_mode,
+                legacy_capabilities_by_tier=capabilities,
+            )
             draft = repository.create_draft(
                 source_document,
                 actor.user_id,
@@ -725,11 +734,21 @@ def _create_billing_quote_sync(request, body, request_shape, request_hash):
             return JSONResponse({"error": tx_actor, "code": "FORBIDDEN"}, status_code=403)
         if owner_kind == "organization":
             authorize_organization_buyer(cursor, tx_actor, owner_id, lock_owner=False)
+        subscription = cursor.execute(
+            "SELECT revision FROM account_subscriptions WHERE user_id = ?"
+            if owner_kind == "account"
+            else "SELECT revision FROM organization_subscriptions WHERE organization_id = ?",
+            (owner_id,),
+        ).fetchone()
+        subscription_revision = int(subscription[0]) if subscription else None
+        requested_revision = body.get("subscriptionRevision")
+        if requested_revision is not None and requested_revision != subscription_revision:
+            raise CommercialPolicyError("SUBSCRIPTION_REVISION_MISMATCH", "Gói đang dùng đã thay đổi; vui lòng tải lại.", status_code=409)
         context = {
             "ownerKind": owner_kind,
             "ownerId": owner_id,
             "actorRole": tx_actor.platform_role if tx_actor.platform_role == "super_admin" else str(tx_actor),
-            "subscriptionRevision": body.get("subscriptionRevision"),
+            "subscriptionRevision": subscription_revision,
         }
         decision = CommercialPolicy(cursor).evaluate_commercial_command(request_shape, context)
         now = int(time.time())

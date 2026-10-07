@@ -84,6 +84,7 @@
 .commercial-storefront__price small { color: var(--storefront-muted); font-size: .8rem; font-weight: 500; }
 .commercial-storefront__card ul { flex: 1; margin: 0 0 20px; padding-left: 18px; color: var(--storefront-muted); line-height: 1.8; }
 .commercial-storefront__card .btn { min-height: 44px; }
+.commercial-storefront__card-actions { display: grid; gap: 8px; }
 .storefront-checkout-error { min-height: 1.25rem; margin: 0 0 8px; color: #b53c4b; font-size: .8rem; }
 .storefront-buy[aria-busy="true"] { cursor: wait; opacity: .7; }
 .commercial-storefront__packs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }

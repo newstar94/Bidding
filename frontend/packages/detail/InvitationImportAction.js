@@ -71,13 +71,22 @@ function lockInvitationButtons(container, button) {
   };
 }
 
+function quotaSkippedMessage(usageCredits) {
+  const skipped = (Array.isArray(usageCredits?.skipped) ? usageCredits.skipped : [])
+    .filter((item) => item.reasonCode === "QUOTA_EXHAUSTED");
+  if (!skipped.length) return "";
+  const identities = skipped.map((item) => `${item.sourceCode}-${item.sourceRevision}`);
+  return ` Không đủ lượt Mua Sắm Công; chưa xử lý: ${identities.join(", ")}.`;
+}
+
 function unavailableHistoryMessage(result) {
+  const quotaMessage = quotaSkippedMessage(result.usageCredits);
   if (!result.history) {
     const unavailable = [];
     if (result.revision.clarificationAvailable !== true) unavailable.push("làm rõ");
     if (result.revision.extensionAvailable !== true) unavailable.push("gia hạn");
-    return unavailable.length
-      ? ` Chưa lấy được dữ liệu ${unavailable.join(", ")} của phiên bản này; nội dung đang nhập được giữ nguyên.` : "";
+    return (unavailable.length
+      ? ` Chưa lấy được dữ liệu ${unavailable.join(", ")} của phiên bản này; nội dung đang nhập được giữ nguyên.` : "") + quotaMessage;
   }
   const parts = [];
   for (const [field, label] of [["clarificationAvailable", "làm rõ"], ["extensionAvailable", "gia hạn"]]) {
@@ -89,7 +98,7 @@ function unavailableHistoryMessage(result) {
   if (result.history.missingRevisions.length) {
     parts.push(`Chưa lấy được chi tiết phiên bản ${result.history.missingRevisions.join(", ")}.`);
   }
-  return parts.length ? ` ${parts.join(" ")} Nội dung đang nhập được giữ nguyên.` : "";
+  return (parts.length ? ` ${parts.join(" ")} Nội dung đang nhập được giữ nguyên.` : "") + quotaMessage;
 }
 
 export function bindInvitationImportAction(view, container, pkg, appController, {
@@ -182,6 +191,12 @@ export function bindInvitationImportAction(view, container, pkg, appController, 
           message += unavailableHistoryMessage(lookupResult);
         } else if (saved) {
           message = "Máy chủ đã xác nhận cập nhật nhưng chưa hiển thị lại được bảng. Mở lại gói thầu để xem dữ liệu đã lưu.";
+        } else if (error?.code === "QUOTA_EXHAUSTED") {
+          const usageCredits = error.data?.fields?.usageCredits || error.data?.details?.usageCredits
+            || error.fields?.usageCredits || error.details?.usageCredits;
+          message = quotaSkippedMessage(usageCredits).trim()
+            || "Không đủ lượt Mua Sắm Công để lấy dữ liệu làm rõ, gia hạn.";
+          message += " Nội dung đang nhập được giữ nguyên.";
         } else message = error?.code === "PROCUREMENT_REVISION_INVALID"
           ? "Chưa xác định được phiên bản TBMT của gói thầu. Kiểm tra mã và phiên bản trước khi lấy dữ liệu."
           : "Không thể lấy dữ liệu làm rõ, gia hạn. Kiểm tra mã TBMT, kết nối và thử lại.";

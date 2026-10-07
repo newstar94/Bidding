@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from threading import RLock
 
 from starlette.responses import JSONResponse
@@ -157,8 +158,39 @@ def _lookup_blocking(request, payload):
         raw_repository=raw_repository,
         service=service,
         cache_hit=isinstance(cached_raw_bundle, dict),
+        cached_raw_bundle=cached_raw_bundle,
     )
+    usage_credits = None
+    authoritative_raw_bundle = None
+    merged_result = None
     try:
+        if isinstance(reservations, dict):
+            availability = reservations
+            reservations = availability["reservations"]
+            usage_credits = availability["usageCredits"]
+            existing_revisions = availability["existingRevisions"]
+            if existing_revisions:
+                revision_mode = "SELECTED"
+                revision_numbers = list(existing_revisions)
+                authoritative_raw_bundle = (
+                    cached_raw_bundle
+                    if availability.get("cacheHit")
+                    else raw_loader()
+                )
+                if not isinstance(authoritative_raw_bundle, dict) or not authoritative_raw_bundle.get("complete"):
+                    raise CommercialPolicyError(
+                        "COMMERCIAL_SNAPSHOT_CACHE_INCONSISTENT",
+                        "Raw snapshot cache cần được đối soát trước khi gọi lại nguồn.",
+                        status_code=409,
+                    )
+            if availability["fetchRevisions"]:
+                revision_mode = "SELECTED"
+                revision_numbers = list(availability["fetchRevisions"])
+                # Keep the cached revisions for the combined response, while
+                # fetching only the revisions accepted by the reservation.
+                cached_raw_bundle = None
+            else:
+                cached_raw_bundle = authoritative_raw_bundle
         result = service.lookup(
             payload.get("code"),
             detail_level=payload.get("detailLevel") or "CANONICAL",
@@ -168,6 +200,12 @@ def _lookup_blocking(request, payload):
             cache_scope=str(organization_id),
             lookup_request_id=get_request_id(request),
         )
+        if usage_credits is not None and availability["fetchRevisions"] and isinstance(authoritative_raw_bundle, dict):
+            # Validate the response containing both cached and fetched revisions
+            # before the fetched snapshot and its usage debit are committed.
+            merged_result = _merge_authoritative_raw_bundle(
+                result, authoritative_raw_bundle, service, payload.get("code")
+            )
     except Exception:
         _finish_procurement_usage(reservations, consume=False, reason="lookup_failed")
         raise
@@ -195,6 +233,7 @@ def _lookup_blocking(request, payload):
             connection.commit()
         except Exception:
             connection.rollback()
+            _finish_procurement_usage(reservations, consume=False, reason="snapshot_save_failed")
             raise
         finally:
             connection.close()
@@ -205,6 +244,12 @@ def _lookup_blocking(request, payload):
         result,
         inserted=int((result.get("rawSnapshot") or {}).get("inserted") or 0),
     )
+    if usage_credits is not None:
+        if merged_result is not None:
+            if "rawSnapshot" in result:
+                merged_result["rawSnapshot"] = result["rawSnapshot"]
+            result = merged_result
+        result["usageCredits"] = usage_credits
     return result
 
 
@@ -259,9 +304,10 @@ def _reserve_procurement_usage(
     raw_repository,
     service,
     cache_hit,
+    cached_raw_bundle=None,
 ):
     config = commercial_runtime_config()
-    if cache_hit or not config.procurement_credit_enforcement_enabled:
+    if not config.procurement_credit_enforcement_enabled:
         return []
     if (payload.get("detailLevel") or "CANONICAL").upper() != "COMPLETE":
         raise CommercialPolicyError(
@@ -272,6 +318,17 @@ def _reserve_procurement_usage(
         )
     code = str(payload.get("code") or "").strip().upper()
     entity_kind = "PLAN" if code.startswith("PL") else "NOTICE"
+    if cache_hit and isinstance(cached_raw_bundle, dict) and cached_raw_bundle.get("complete"):
+        cached = [
+            SourceRevisionCandidate("muasamcong", entity_kind, code, number)
+            for number in cached_raw_bundle.get("revisions") or {}
+        ]
+        return {
+            "reservations": [], "fetchRevisions": [],
+            "existingRevisions": [candidate.source_revision for candidate in cached],
+            "cacheHit": True,
+            "usageCredits": _usage_credit_outcome(cached, {candidate.identity for candidate in cached}),
+        }
     metadata = service.list_revision_metadata(
         code, lookup_request_id=get_request_id(request)
     )
@@ -280,25 +337,34 @@ def _reserve_procurement_usage(
         payload.get("revisionMode") or "LATEST",
         payload.get("revisionNumbers"),
     )
-    candidates = [
+    requested = [
         SourceRevisionCandidate(
             "muasamcong", entity_kind, code, row["revisionNumber"]
         )
         for row in selected
-        if not _raw_revision_exists(
+    ]
+    cached_revisions = set(
+        (cached_raw_bundle.get("revisions") or {})
+        if isinstance(cached_raw_bundle, dict) and cached_raw_bundle.get("complete")
+        else ()
+    )
+    existing = {
+        candidate.identity for candidate in requested
+        if candidate.source_revision in cached_revisions or _raw_revision_exists(
             raw_repository,
             organization_id,
             code,
             entity_kind,
-            row["revisionNumber"],
+            candidate.source_revision,
         )
-    ]
+    }
+    candidates = [candidate for candidate in requested if candidate.identity not in existing]
     if not candidates:
-        raise CommercialPolicyError(
-            "COMMERCIAL_SNAPSHOT_CACHE_INCONSISTENT",
-            "Raw snapshot cache cần được đối soát trước khi gọi lại nguồn.",
-            status_code=409,
-        )
+        return {
+            "reservations": [], "fetchRevisions": [],
+            "existingRevisions": [candidate.source_revision for candidate in requested],
+            "usageCredits": _usage_credit_outcome(requested, existing),
+        }
     connection = database.get_connection()
     try:
         connection.execute("BEGIN")
@@ -313,13 +379,94 @@ def _reserve_procurement_usage(
             get_request_id(request),
             partial_batch_policy=partial_policy,
         )
+        accepted = existing | {
+            (row["provider"], row["entityKind"], row["sourceCode"], row["sourceRevision"])
+            for row in reservations
+        }
+        outcome = _usage_credit_outcome(requested, accepted)
+        if not outcome["processed"]:
+            outcome["status"] = "QUOTA_EXHAUSTED"
+            raise CommercialPolicyError(
+                "QUOTA_EXHAUSTED",
+                "Không còn đủ lượt lấy hồ sơ Mua Sắm Công; các phiên bản đã chọn chưa được xử lý.",
+                status_code=409,
+                details={"usageCredits": outcome},
+            )
         connection.commit()
-        return [row for row in reservations if row.get("state") == "reserved"]
+        return {
+            "reservations": [row for row in reservations if row.get("state") == "reserved"],
+            "fetchRevisions": [row["sourceRevision"] for row in reservations],
+            "existingRevisions": [candidate.source_revision for candidate in requested if candidate.identity in existing],
+            "usageCredits": outcome,
+        }
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
+
+
+def _usage_credit_outcome(requested, accepted):
+    processed = []
+    skipped = []
+    requested_items = []
+    for candidate in requested:
+        item = {
+            "provider": candidate.provider,
+            "entityKind": candidate.entity_kind,
+            "sourceCode": candidate.source_code,
+            "sourceRevision": candidate.source_revision,
+        }
+        requested_items.append(item)
+        if candidate.identity in accepted:
+            processed.append(dict(item))
+        else:
+            skipped.append({**item, "reasonCode": "QUOTA_EXHAUSTED"})
+    return {
+        "status": "PARTIAL" if skipped else "COMPLETE",
+        "requested": requested_items,
+        "processed": processed,
+        "skipped": skipped,
+    }
+
+
+def _merge_authoritative_raw_bundle(result, authoritative, service, code):
+    """Keep cached revisions visible when only the affordable suffix was fetched."""
+
+    fetched = result.get("rawBundle") if isinstance(result, dict) else None
+    if not isinstance(fetched, dict):
+        return result
+    merged = deepcopy(authoritative)
+    merged["revisions"] = {
+        **(authoritative.get("revisions") or {}),
+        **(fetched.get("revisions") or {}),
+    }
+    merged["sources"] = {
+        **(authoritative.get("sources") or {}),
+        **(fetched.get("sources") or {}),
+    }
+    merged["failures"] = [
+        *(authoritative.get("failures") or []),
+        *(fetched.get("failures") or []),
+    ]
+    merged["complete"] = bool(authoritative.get("complete")) and bool(fetched.get("complete"))
+    merged["status"] = "FOUND_COMPLETE" if merged["complete"] else "FOUND_PARTIAL"
+    merged["manifest"] = {
+        **(authoritative.get("manifest") or {}),
+        **(fetched.get("manifest") or {}),
+        "revisions": list(merged["revisions"]),
+    }
+    projector = getattr(getattr(service, "source", None), "lookup_from_raw_bundle", None)
+    if not callable(projector):
+        raise ProcurementLookupError("PROCUREMENT_ADAPTER_UNSUPPORTED")
+    projected = projector(
+        code,
+        merged,
+        revision_mode="ALL",
+        detail_level="COMPLETE",
+    )
+    projected["metrics"] = result.get("metrics") or projected.get("metrics") or {}
+    return projected
 
 
 def _observe_shadow_procurement_usage(request, result, *, inserted):
@@ -454,6 +601,7 @@ def _public_error(request, error):
             error.code,
             error.message,
             status_code=error.status_code,
+            fields=error.details if error.code == "QUOTA_EXHAUSTED" else None,
         )
     code = str(error)
     statuses = {

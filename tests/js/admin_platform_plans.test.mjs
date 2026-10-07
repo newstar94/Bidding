@@ -181,8 +181,8 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, /2026[.]08/u);
   assert.match(markup, /release-base/u);
   assert.match(markup, /bf-admin-workflow-guide/u);
-  assert.match(markup, /2[.] Phiên bản và xuất bản/u);
-  assert.match(markup, /3[.] Mô hình quyền lợi/u);
+  assert.match(markup, /Bản nháp & mở bán/u);
+  assert.match(markup, /Khả năng cấu hình gói hiện hành/u);
   assert.match(markup, /Giá theo tháng<\/th><td><span[^>]*>Được hỗ trợ<\/span>/u);
   assert.match(markup, /Hạn mức lưu trữ[\s\S]*N\/A/u);
   assert.doesNotMatch(markup, /do-not-render|hidden-document|never-render/u);
@@ -191,8 +191,23 @@ test("plans view renders real release versions, status and draft revisions", () 
 test("plans view does not invent releases or plans when commercial data is absent", () => {
   const markup = plansMarkup({ currentRelease: null, scheduledRelease: null, drafts: [] });
   assert.match(markup, /data-admin-state="empty"/u);
-  assert.match(markup, /Chưa có phiên bản/u);
+  assert.match(markup, /Chưa có bảng giá đang mở bán/u);
   assert.doesNotMatch(markup, /99[.,]000|Gói vàng|Gold/u);
+});
+
+test("first startup opens the seeded samples directly without requesting another draft", () => {
+  const markup = plansMarkup({ drafts: [{ id: "commercial-draft-initial-v1", status: "draft", revision: 1 }] });
+  assert.match(markup, /Bộ gói mẫu đã được khởi tạo/u);
+  assert.match(markup, /data-admin-draft-open="commercial-draft-initial-v1">Chỉnh sửa 8 gói mẫu/u);
+});
+
+test("complete sample action is available without an initial release and when a release has no public catalog", () => {
+  for (const currentRelease of [null, { id: "release-existing", nonSellable: false }]) {
+    const markup = plansMarkup({ currentRelease, scheduledRelease: null, drafts: [] });
+    assert.match(markup, /data-admin-plan-action="create-template"/u);
+    assert.match(markup, /bộ mẫu Cơ bản \/ Nâng cao có cấu hình/u);
+    assert.match(markup, /chỉnh sửa, kiểm tra rồi phát hành/u);
+  }
 });
 
 test("plans view exposes version actions without rendering the draft document in its listing", () => {
@@ -208,7 +223,7 @@ test("plans view exposes version actions without rendering the draft document in
   assert.doesNotMatch(markup, /not-in-list/u);
 });
 
-test("plans view exposes direct navigation between the four commercial work areas", () => {
+test("plans view exposes the three management tabs with associated panels", () => {
   const markup = plansMarkup({
     currentRelease: { id: "release-1", versionLabel: "v1", nonSellable: false },
     scheduledRelease: null,
@@ -216,14 +231,14 @@ test("plans view exposes direct navigation between the four commercial work area
     releaseHistory: [],
   });
   assert.match(markup, /bf-admin-plan-tabs/u);
-  assert.match(markup, /Danh mục hiện hành/u);
-  assert.match(markup, /Bản nháp và xuất bản/u);
-  assert.match(markup, /Mô hình quyền lợi/u);
+  assert.match(markup, /Danh sách gói/u);
+  assert.match(markup, /Bản nháp & mở bán/u);
+  assert.match(markup, /Khả năng cấu hình gói hiện hành/u);
   assert.match(markup, /Lịch sử/u);
-  assert.match(markup, /#admin-plan-catalog-title/u);
-  assert.match(markup, /#admin-plan-release-title/u);
-  assert.match(markup, /#admin-plan-model-title/u);
-  assert.match(markup, /#admin-plan-history-title/u);
+  for (const key of ["catalog", "releases", "history"]) {
+    assert.ok(markup.includes(`aria-controls="admin-plans-panel-${key}"`));
+    assert.ok(markup.includes(`aria-labelledby="admin-plans-tab-${key}"`));
+  }
 });
 
 test("draft editor escapes JSON and gates publish on successful validation", () => {
@@ -245,7 +260,7 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
   assert.match(blocked, /&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;/u);
   assert.match(blocked, /&lt;svg onload=x&gt;/u);
   assert.match(blocked, /Các gói đăng ký/u);
-  assert.match(blocked, /bf-admin-editor-group[\s\S]*Thông tin hiển thị[\s\S]*Giá và hạn mức[\s\S]*Quyền và tính năng/u);
+  assert.match(blocked, /bf-admin-editor-group[\s\S]*1[.] Thông tin gói[\s\S]*2[.] Giá &amp; kỳ hạn[\s\S]*3[.] Hạn mức &amp; tính năng[\s\S]*4[.] Trình bày/u);
   assert.match(blocked, /Cấu hình chính sách nâng cao/u);
   assert.doesNotMatch(blocked, /id="admin-plan-document"/u);
   assert.match(blocked, /data-admin-plan-action="publish" disabled/u);
@@ -371,6 +386,18 @@ test("structured draft serialization preserves unresolved capability mapping", (
     salesState: field("non_sellable"),
   }]), original);
   assert.equal(result.offers[0].exportCapabilities, null);
+});
+
+test("creator serialization retains existing offers and separately edited policy fields", () => {
+  const original = { offers: [{ code: "gold.internal.yearly", unknown: { keep: true }, exportCapabilities: null }] };
+  const root = draftRoot({ policies: { baseTerm: { kind: "fixed_days", days: 365 } }, extra: { keep: true } }, []);
+  const baseQuery = root.querySelector;
+  root.querySelector = selector => selector === "[data-admin-package-creator]" ? {} : baseQuery(selector);
+  const result = serializeDraftDocument(root, original);
+  assert.deepEqual(result.offers, original.offers);
+  assert.notEqual(result.offers, original.offers);
+  assert.deepEqual(result.extra, { keep: true });
+  assert.equal(result.policies.baseTerm.days, 365);
 });
 
 test("structured draft serialization rejects malformed advanced JSON and integers", () => {

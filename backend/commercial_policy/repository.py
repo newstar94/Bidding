@@ -9,6 +9,7 @@ import uuid
 
 from .document import canonical_json, checksum_document
 from .errors import CommercialPolicyError, POLICY_STALE
+from .tax import calculate_tax_price
 
 
 def new_id(prefix):
@@ -338,6 +339,7 @@ class CommercialRepository:
             plan_id = new_id("billing-plan")
             plan_ids[offer["code"]] = plan_id
             capabilities = offer["exportCapabilities"]
+            legacy_package_id = self._project_subscription_package(plan_id, offer)
             display_order = (offer.get("display") or {}).get("order")
             if (
                 not isinstance(display_order, int)
@@ -348,11 +350,11 @@ class CommercialRepository:
             self.cursor.execute(
                 """INSERT INTO billing_plan_versions
                        (id, release_id, logical_package_code, owner_kind, tier,
-                        variant, member_quota, included_procurement_quota,
+                        variant, legacy_package_id, member_quota, included_procurement_quota,
                         document_export_word, document_export_excel,
                         document_export_award_result_excel,
                         violation_check_enabled, sales_state, display_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     plan_id,
                     release_id,
@@ -360,6 +362,7 @@ class CommercialRepository:
                     offer["ownerKind"],
                     offer["tier"],
                     offer["variant"],
+                    legacy_package_id,
                     offer["memberQuota"],
                     offer["includedProcurementQuota"],
                     int(capabilities["document.export.word"]),
@@ -370,6 +373,7 @@ class CommercialRepository:
                     canonical_json(offer.get("display") or {}),
                 ),
             )
+
             sku_id = new_id("billing-sku")
             self.cursor.execute(
                 """INSERT INTO billing_skus
@@ -413,21 +417,53 @@ class CommercialRepository:
                            'sellable', ?)""",
                 (sku_id, release_id, pack["code"], pack["quantity"], order),
             )
+            price = calculate_tax_price(pack["price"], document.get("taxInvoice") or {})
             self.cursor.execute(
                 """INSERT INTO billing_prices
                        (id, release_id, sku_id, period, currency,
                         subtotal_amount, tax_amount, total_amount,
                         effective_at)
-                   VALUES (?, ?, ?, 'one_time', 'VND', ?, 0, ?, ?)""",
+                   VALUES (?, ?, ?, 'one_time', 'VND', ?, ?, ?, ?)""",
                 (
                     new_id("billing-price"),
                     release_id,
                     sku_id,
-                    pack["price"],
-                    pack["price"],
+                    price["subtotal"],
+                    price["tax"],
+                    price["total"],
                     effective_at,
                 ),
             )
+
+    def _project_subscription_package(self, plan_id, offer):
+        """Give the legacy subscription reader an exact, version-specific adapter.
+
+        Never update a prior package: legacy subscriptions and older published
+        plans retain their committed limits and export capabilities. Sales
+        state belongs to the SKU and must not deactivate existing subscribers.
+        """
+
+        package_id = f"commercial-package-{plan_id}"
+        display = offer.get("display") or {}
+        capabilities = offer["exportCapabilities"]
+        self.cursor.execute(
+            """INSERT INTO goi_dich_vu
+                   (id, ten_goi, gia_ca, han_muc_nhan_su,
+                    document_export_word, document_export_excel,
+                    document_export_award_result_excel, trang_thai, mo_ta)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)""",
+            (
+                package_id,
+                display.get("name") or offer["code"],
+                offer["price"]["total"],
+                offer["memberQuota"],
+                int(capabilities["document.export.word"]),
+                int(capabilities["document.export.excel"]),
+                int(capabilities["document.export.award_result_excel"]),
+                display.get("description") or "",
+            ),
+        )
+        return package_id
 
     def clone_release(self, release_id, actor_user_id):
         release = self.get_release(release_id)

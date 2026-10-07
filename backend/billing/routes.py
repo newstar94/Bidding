@@ -395,9 +395,11 @@ def _list_personal_orders_sync(request):
         # even while that user is operating in an organization workspace. This
         # query deliberately cannot return organization-owned billing history.
         rows = connection.execute(
-            """SELECT * FROM billing_orders
-                WHERE owner_kind = 'account' AND account_user_id = ?
-                ORDER BY created_at DESC, id DESC LIMIT 100""",
+            """SELECT orders.*, activation.after_json AS activation_schedule_json
+                 FROM billing_orders AS orders
+                 LEFT JOIN billing_subscription_activations AS activation ON activation.order_id = orders.id
+                WHERE orders.owner_kind = 'account' AND orders.account_user_id = ?
+                ORDER BY orders.created_at DESC, orders.id DESC LIMIT 100""",
             (actor.user_id,),
         ).fetchall()
         return JSONResponse({"orders": [public_order_payload(dict(row)) for row in rows]})
@@ -458,9 +460,11 @@ def _get_personal_order_sync(request):
     connection = database.get_connection()
     try:
         row = connection.execute(
-            """SELECT * FROM billing_orders
-                WHERE public_id = ? AND owner_kind = 'account'
-                  AND account_user_id = ?""",
+            """SELECT orders.*, activation.after_json AS activation_schedule_json
+                 FROM billing_orders AS orders
+                 LEFT JOIN billing_subscription_activations AS activation ON activation.order_id = orders.id
+                WHERE orders.public_id = ? AND orders.owner_kind = 'account'
+                  AND orders.account_user_id = ?""",
             (request.path_params["public_id"], actor.user_id),
         ).fetchone()
         if not row:

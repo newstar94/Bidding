@@ -35,18 +35,28 @@ def test_initial_draft_has_exact_approved_offers_packs_and_dynamic_savings():
     ]
 
 
-def test_initial_draft_preserves_unknown_personal_export_mapping_as_blocker():
-    result = validate_document(build_initial_draft_document(LEGACY_EXPORTS))
+def test_initial_draft_uses_approved_defaults_and_passes_shadow_validation():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    assert validate_document(document)["errors"] == []
+    assert document["policies"]["baseTerm"] == {"kind": "fixed_days", "days": 365}
+    assert document["policies"]["renewalAnchor"] == {"kind": "end_of_term"}
+    assert document["policies"]["partialBatch"] == {"kind": "process_affordable_in_stable_order"}
+    for offer in document["offers"][:2]:
+        assert offer["exportCapabilities"] == {
+            capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES
+        }
+    assert all(offer["price"]["period"] == "yearly" for offer in document["offers"])
+    assert document["taxInvoice"]["taxInclusive"] is True
+    assert document["taxInvoice"]["invoiceEnabled"] is False
+    assert document["taxInvoice"]["taxBasisPoints"] is None
 
-    blocked_paths = {
+
+def test_initial_draft_does_not_guess_missing_organization_exports():
+    result = validate_document(build_initial_draft_document())
+    assert {
         error["path"] for error in result["errors"]
         if error["code"] == "BLOCKED_DECISION"
-    }
-    assert "offers[0].exportCapabilities" in blocked_paths
-    assert "offers[1].exportCapabilities" in blocked_paths
-    assert "policies.baseTerm" in blocked_paths
-    assert "policies.renewalAnchor" in blocked_paths
-    assert "policies.partialBatch" in blocked_paths
+    } == {f"offers[{index}].exportCapabilities" for index in range(2, 8)}
 
 
 def test_commercial_document_cannot_define_record_read_or_masking_capabilities():
@@ -87,6 +97,78 @@ def test_production_release_requires_external_tax_and_live_provider_readiness():
     codes = {error["code"] for error in result["errors"]}
     assert "BLOCKED_EXTERNAL" in codes
     assert "NO_HEALTHY_PROVIDER" in codes
+
+
+def test_live_readiness_cannot_be_bypassed_by_omitting_all_references():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["rollout"]["mode"] = "production"
+    document["externalReadiness"] = {}
+    assert any(error["path"] == "externalReadiness" for error in validate_document(document)["errors"])
+
+
+def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["rollout"]["mode"] = "production"
+    errors = {error["path"]: error for error in validate_document(document)["errors"]}
+
+    assert errors["taxInvoice"]["code"] == "BLOCKED_EXTERNAL"
+    for label in ("Tham chiếu quyết định thuế", "Thuế suất (%)", "Quy tắc làm tròn"):
+        assert label in errors["taxInvoice"]["message"]
+    assert "Thời điểm yêu cầu khi bật xuất hóa đơn" not in errors["taxInvoice"]["message"]
+    for label in (
+        "Chính sách thuế (đang chọn Không xuất hóa đơn)", "Tài khoản payOS",
+        "Bộ khóa và webhook", "Thương mại điện tử và quyền riêng tư", "Điều khoản và hoàn tiền",
+    ):
+        assert label in errors["externalReadiness"]["message"]
+    for raw_key in document["externalReadiness"]:
+        assert raw_key not in errors["externalReadiness"]["message"]
+    assert errors["providerProfiles"]["code"] == "NO_HEALTHY_PROVIDER"
+    assert "Thanh toán thực tế" in errors["providerProfiles"]["message"]
+    assert "Tham chiếu bộ khóa" in errors["providerProfiles"]["message"]
+
+
+@pytest.mark.parametrize("invoice_enabled", [False, True])
+def test_live_tax_gate_only_requires_invoice_timing_when_invoicing_is_enabled(invoice_enabled):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["rollout"]["mode"] = "production"
+    document["taxInvoice"] = {
+        "approvalReference": "test-tax-policy", "taxInclusive": True,
+        "taxBasisPoints": 0, "rounding": "half_up", "invoiceEnabled": invoice_enabled,
+    }
+    errors = validate_document(document)["errors"]
+    tax_errors = [error for error in errors if error["path"] == "taxInvoice"]
+    if invoice_enabled:
+        assert len(tax_errors) == 1
+        assert "Thời điểm yêu cầu khi bật xuất hóa đơn" in tax_errors[0]["message"]
+        assert "Thuế suất (%)" not in tax_errors[0]["message"]
+    else:
+        assert tax_errors == []
+    assert {"externalReadiness", "providerProfiles"} <= {error["path"] for error in errors}
+
+
+def test_live_payos_profile_requires_a_nonblank_credential_reference():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["rollout"]["mode"] = "production"
+    payos = next(profile for profile in document["providerProfiles"] if profile["provider"] == "payos")
+    payos.update(mode="live", readiness="ready", credentialReference="   ")
+    assert any(error["code"] == "NO_HEALTHY_PROVIDER" for error in validate_document(document)["errors"])
+
+
+def test_configured_tax_requires_valid_types_and_matching_offer_amounts():
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["taxInvoice"] = {"taxInclusive": False, "taxBasisPoints": 800, "rounding": "half_up", "invoiceTrigger": "manual"}
+    assert any(error["code"] == "TAX_PRICE_MISMATCH" for error in validate_document(document)["errors"])
+    document["taxInvoice"]["taxBasisPoints"] = True
+    assert any(error["code"] == "TAX_POLICY_INVALID" for error in validate_document(document)["errors"])
+
+
+@pytest.mark.parametrize("profiles", [[None], {}, "wrong-shape", [{"provider": "bogus", "mode": "live", "readiness": "ready", "credentialReference": "configured"}]])
+def test_live_provider_validation_rejects_malformed_or_unsupported_profiles(profiles):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["rollout"]["mode"] = "production"
+    document["providerProfiles"] = profiles
+    result = validate_document(document)
+    assert any(error["code"] == "NO_HEALTHY_PROVIDER" for error in result["errors"])
 
 
 @pytest.mark.parametrize(

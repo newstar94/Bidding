@@ -195,6 +195,71 @@ test("partial history fills older rows while reporting the unavailable 02 group 
   } finally { invalidateServerCapabilities(); }
 });
 
+test("partial quota results fill accepted rows and show every skipped notice revision with its reason", async () => {
+  const f = editorFixture();
+  try {
+    bindInvitationImportAction(f.view, f.container, f.pkg, f.controller, {
+      beginLoading: f.beginLoading,
+      lookup: async () => ({
+        ...sourceUpdate(),
+        usageCredits: {
+          status: "PARTIAL",
+          requested: ["00", "01", "02"].map((sourceRevision) => ({
+            provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision,
+          })),
+          processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision: "00" }],
+          skipped: ["01", "02"].map((sourceRevision) => ({
+            provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision, reasonCode: "QUOTA_EXHAUSTED",
+          })),
+        },
+      }),
+    });
+    await f.button.onclick();
+    assert.deepEqual(f.loads.map(([kind]) => kind), ["request", "response", "extension"]);
+    assert.match(f.status.textContent, /Đã thêm 1 yêu cầu, 1 trả lời làm rõ và 1 lần gia hạn/);
+    assert.match(f.status.textContent, /không đủ lượt/i);
+    assert.match(f.status.textContent, /IB2600271825-01/);
+    assert.match(f.status.textContent, /IB2600271825-02/);
+    assert.match(f.status.textContent, /bấm Lưu/);
+    assert.equal(f.pkg.giaHanList, undefined);
+    assert.equal(packageWorkspaceFor(f.view).isDirty(), true);
+  } finally { invalidateServerCapabilities(); }
+});
+
+test("quota failures show skipped identities from HTTP fields or compatibility details without changing editor rows", async () => {
+  const usageCredits = {
+    status: "QUOTA_EXHAUSTED",
+    requested: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00" }],
+    processed: [],
+    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00", reasonCode: "QUOTA_EXHAUSTED" }],
+  };
+  for (const payload of [
+    { data: { fields: { usageCredits } } },
+    { data: { details: { usageCredits } } },
+    { fields: { usageCredits } },
+    { details: { usageCredits } },
+  ]) {
+    const f = editorFixture();
+    const before = structuredClone(f.pkg);
+    try {
+      bindInvitationImportAction(f.view, f.container, f.pkg, f.controller, {
+        beginLoading: f.beginLoading,
+        lookup: async () => { throw Object.assign(new Error("Quota exhausted"), { code: "QUOTA_EXHAUSTED", ...payload }); },
+      });
+      await f.button.onclick();
+      assert.match(f.status.textContent, /không đủ lượt/i);
+      assert.match(f.status.textContent, /IB2600271825-00/);
+      assert.match(f.status.textContent, /giữ nguyên/);
+      assert.doesNotMatch(f.status.textContent, /Kiểm tra mã|Chưa xác định được phiên bản/);
+      assert.deepEqual(f.loads, []);
+      assert.deepEqual(f.pkg, before);
+      assert.equal(packageWorkspaceFor(f.view).isDirty(), false);
+      assert.equal(f.button.disabled, false);
+      assert.equal(f.closed(), 1);
+    } finally { invalidateServerCapabilities(); }
+  }
+});
+
 test("ordering-only extension updates reload the table and require explicit save", async () => {
   const f = editorFixture();
   const existing = [

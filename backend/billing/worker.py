@@ -292,10 +292,20 @@ class BillingWorkProcessor:
         connection = self.database.get_connection()
         try:
             row = connection.execute(
-                """SELECT id FROM billing_orders
-                    WHERE payment_state = 'verified_paid'
-                      AND activation_state IN ('pending', 'retry')
-                    ORDER BY updated_at, id LIMIT 1"""
+                """SELECT orders.id FROM billing_orders AS orders
+                     LEFT JOIN billing_subscription_activations AS activation
+                       ON activation.order_id = orders.id
+                    WHERE orders.payment_state = 'verified_paid'
+                      AND orders.activation_state IN ('pending', 'retry')
+                      AND NOT EXISTS (SELECT 1 FROM billing_refund_intents AS refund
+                            WHERE refund.order_id = orders.id AND refund.state = 'pending')
+                      AND CASE WHEN activation.after_json::jsonb ->> 'scheduled' = 'true'
+                            THEN (activation.after_json::jsonb ->> 'startsAt')::bigint
+                            ELSE 0 END <= ?
+                    ORDER BY CASE WHEN activation.after_json::jsonb ->> 'scheduled' = 'true'
+                            THEN (activation.after_json::jsonb ->> 'startsAt')::bigint
+                            ELSE 0 END, orders.updated_at, orders.id LIMIT 1""",
+                (int(self.clock()),),
             ).fetchone()
             return str(row[0]) if row else None
         finally:

@@ -6,6 +6,13 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 
+from .tax import (
+    SUPPORTED_INVOICE_TRIGGERS,
+    SUPPORTED_TAX_ROUNDING,
+    calculate_tax_price,
+    tax_arithmetic_configured,
+)
+
 
 POLICY_SCHEMA_VERSION = 1
 MAX_DOCUMENT_BYTES = 262_144
@@ -73,12 +80,15 @@ def _export_capabilities(mapping):
 def build_initial_draft_document(legacy_capabilities_by_tier=None):
     """Return the approved initial values as a non-effective draft.
 
-    Personal export entitlements remain an explicit decision when no legacy
-    one-to-one mapping exists.  This prevents a seed/test from inventing new
-    export behaviour while still allowing the whole document to be previewed.
+    Personal exports and term/batch defaults were approved in ADR 0071.
+    Organization exports still come from the actual legacy package mapping;
+    a missing mapping remains a validation blocker, never an inferred right.
     """
 
-    legacy_capabilities_by_tier = legacy_capabilities_by_tier or {}
+    legacy_capabilities_by_tier = {
+        "personal": {capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES},
+        **(legacy_capabilities_by_tier or {}),
+    }
     prices = {
         "personal": {"internal": 2_490_000, "connected": 3_990_000},
         "silver": {"internal": 12_000_000, "connected": 15_000_000},
@@ -125,6 +135,17 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                         "diamond": "Kim Cương",
                     }[tier],
                     "recommended": variant == "connected",
+                    "description": (
+                        "Quản lý công việc và dữ liệu nội bộ."
+                        if variant == "internal"
+                        else "Quản lý công việc và kết nối dữ liệu Mua Sắm Công."
+                    ),
+                    "badge": "Đề xuất" if variant == "connected" else "",
+                    "variantLabel": "Cơ bản" if variant == "internal" else "Nâng cao",
+                    "periodLabel": "Hàng năm",
+                    "order": SUPPORTED_TIERS.index(tier),
+                    "visibility": "public",
+                    "benefits": [],
                 },
             })
     return {
@@ -140,14 +161,8 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
             {"code": "procurement.2000", "quantity": 2_000, "price": 4_490_000},
         ],
         "policies": {
-            "baseTerm": {
-                "kind": "blocked_decision",
-                "reason": "Chưa chốt kỳ năm theo 365 ngày hay mốc kỷ niệm lịch.",
-            },
-            "renewalAnchor": {
-                "kind": "blocked_decision",
-                "reason": "Chưa chốt renewal anchor và thời điểm cấp quota kỳ mới.",
-            },
+            "baseTerm": {"kind": "fixed_days", "days": 365},
+            "renewalAnchor": {"kind": "end_of_term"},
             "upgrade": {"kind": "start_new_term", "activeTerm": "manual_review"},
             "downgrade": {"kind": "manual_review", "selfService": False},
             "graceDays": 0,
@@ -158,8 +173,7 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
             "quotaCarryOver": {"kind": "no_carry_over"},
             "creditPackExpiry": {"kind": "fixed_days", "days": 365},
             "partialBatch": {
-                "kind": "blocked_decision",
-                "reason": "Chưa chốt hành vi khi quota chỉ đủ một phần batch.",
+                "kind": "process_affordable_in_stable_order",
             },
             "connectedAdvantageBasisPoints": 2_000,
             "quotaWarningPercentages": [70, 90, 100],
@@ -190,7 +204,8 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
         ],
         "taxInvoice": {
             "approvalReference": None,
-            "taxInclusive": None,
+            "taxInclusive": True,
+            "invoiceEnabled": False,
             "taxBasisPoints": None,
             "rounding": None,
             "invoiceTrigger": None,
@@ -220,7 +235,10 @@ def _minimum_pack_cost(target, packs):
 
 
 def connected_savings(document):
-    packs = list(document.get("creditPacks") or [])
+    packs = [
+        {**pack, "price": calculate_tax_price(pack["price"], document.get("taxInvoice") or {})["total"]}
+        for pack in document.get("creditPacks") or []
+    ]
     by_tier_variant = {
         (offer.get("tier"), offer.get("variant"), offer.get("price", {}).get("period")): offer
         for offer in document.get("offers") or []
@@ -446,23 +464,115 @@ def validate_document(document, *, require_production_ready=False):
     rollout_mode = (document.get("rollout") or {}).get("mode")
     if rollout_mode not in {"shadow", "pilot", "production"}:
         errors.append(_error("ROLLOUT_MODE_INVALID", "rollout.mode", "Chế độ rollout không hợp lệ."))
+    profiles = document.get("providerProfiles")
+    if not isinstance(profiles, list) or not profiles or len(profiles) > 32:
+        errors.append(_error("PROVIDER_PROFILE_INVALID", "providerProfiles", "Danh sách nhà cung cấp thanh toán không hợp lệ."))
+        profiles = []
+    valid_profiles = []
+    for index, profile in enumerate(profiles):
+        path = f"providerProfiles[{index}]"
+        if not isinstance(profile, dict):
+            errors.append(_error("PROVIDER_PROFILE_INVALID", path, "Cấu hình nhà cung cấp phải là một object."))
+            continue
+        supported = (
+            profile.get("provider") in ("fake", "payos")
+            and profile.get("environment") in ("test", "staging", "production")
+            and profile.get("mode") in ("off", "shadow", "live")
+            and profile.get("readiness") in ("ready", "blocked_external", "disabled")
+            and isinstance(profile.get("alias"), str) and bool(profile["alias"].strip())
+            and (profile.get("credentialReference") is None or isinstance(profile["credentialReference"], str))
+            and type(profile.get("minAmount")) is int
+            and type(profile.get("maxAmount")) is int
+            and 0 <= profile["minAmount"] <= profile["maxAmount"] <= 2_147_483_647
+            and type(profile.get("checkoutTtlSeconds")) is int
+            and 60 <= profile["checkoutTtlSeconds"] <= 86_400
+        )
+        if not supported:
+            errors.append(_error("PROVIDER_PROFILE_INVALID", path, "Provider, tham chiếu, hạn mức hoặc thời hạn thanh toán chưa hợp lệ."))
+        else:
+            valid_profiles.append(profile)
+    tax = document.get("taxInvoice") or {}
+    if not isinstance(tax, dict):
+        errors.append(_error("TAX_POLICY_INVALID", "taxInvoice", "Chính sách thuế phải là một object."))
+        tax = {}
+    for key in ("approvalReference", "taxInclusive", "invoiceEnabled", "taxBasisPoints", "rounding", "invoiceTrigger"):
+        value = tax.get(key)
+        if value is None:
+            continue
+        valid = (
+            isinstance(value, str) and bool(value.strip()) if key == "approvalReference"
+            else type(value) is bool if key in {"taxInclusive", "invoiceEnabled"}
+            else type(value) is int and 0 <= value <= 10_000 if key == "taxBasisPoints"
+            else value in SUPPORTED_TAX_ROUNDING if key == "rounding" and isinstance(value, str)
+            else value in SUPPORTED_INVOICE_TRIGGERS if key == "invoiceTrigger" and isinstance(value, str)
+            else False
+        )
+        if not valid:
+            errors.append(_error("TAX_POLICY_INVALID", f"taxInvoice.{key}", "Giá trị chính sách thuế/hóa đơn không được hỗ trợ."))
+    seller = tax.get("sellerProfile")
+    if seller is not None and (
+        not isinstance(seller, dict)
+        or any(value is not None and (not isinstance(value, str) or len(value) > 1000) for value in seller.values())
+    ):
+        errors.append(_error("TAX_POLICY_INVALID", "taxInvoice.sellerProfile", "Thông tin bên bán phải là các trường văn bản."))
+    if tax_arithmetic_configured(tax):
+        for index, offer in enumerate(offers):
+            if not isinstance(offer, dict) or not isinstance(offer.get("price"), dict):
+                continue
+            price = offer.get("price") or {}
+            if all(type(price.get(key)) is int and price[key] >= 0 for key in ("subtotal", "tax", "total")):
+                basis = price["total"] if tax["taxInclusive"] else price["subtotal"]
+                computed = calculate_tax_price(basis, tax, period=price.get("period"))
+                if any(price[key] != computed[key] for key in ("subtotal", "tax", "total")):
+                    errors.append(_error("TAX_PRICE_MISMATCH", f"offers[{index}].price", "Thuế của gói không khớp thuế suất và cách làm tròn đã cấu hình."))
     if rollout_mode in {"pilot", "production"} or require_production_ready:
         readiness = document.get("externalReadiness") or {}
-        missing = [key for key, value in readiness.items() if not value]
+        if not isinstance(readiness, dict):
+            readiness = {}
+        missing = [key for key in ("vatInvoice", "payosMerchant", "credentialWebhook", "ecommercePrivacy", "termsRefund") if not isinstance(readiness.get(key), str) or not readiness[key].strip()]
         if missing:
-            errors.append(_error("BLOCKED_EXTERNAL", "externalReadiness", "Thiếu phê duyệt/reference: " + ", ".join(sorted(missing))))
-        tax = document.get("taxInvoice") or {}
-        if any(tax.get(key) is None for key in ("approvalReference", "taxInclusive", "taxBasisPoints", "rounding", "invoiceTrigger")):
-            errors.append(_error("BLOCKED_EXTERNAL", "taxInvoice", "Chưa đủ quyết định thuế và hóa đơn."))
+            readiness_labels = {
+                "vatInvoice": "Chính sách thuế (đang chọn Không xuất hóa đơn)" if tax.get("invoiceEnabled") is False else "Chính sách thuế và hóa đơn",
+                "payosMerchant": "Tài khoản payOS",
+                "credentialWebhook": "Bộ khóa và webhook",
+                "ecommercePrivacy": "Thương mại điện tử và quyền riêng tư",
+                "termsRefund": "Điều khoản và hoàn tiền",
+            }
+            message = "Thiếu tham chiếu xác nhận: " + "; ".join(readiness_labels[key] for key in missing) + "."
+            if "vatInvoice" in missing:
+                message += " Điền xác nhận chính sách thuế trong phần Thuế & hóa đơn."
+            if any(key != "vatInvoice" for key in missing):
+                message += " Điền các xác nhận còn lại trong phần payOS & điều kiện mở bán."
+            errors.append(_error("BLOCKED_EXTERNAL", "externalReadiness", message))
+        tax_required = ["approvalReference", "taxInclusive", "taxBasisPoints", "rounding"]
+        if tax.get("invoiceEnabled") is not False:
+            tax_required.append("invoiceTrigger")
+        tax_missing = [key for key in tax_required if tax.get(key) is None]
+        if tax_missing:
+            tax_labels = {
+                "approvalReference": "Tham chiếu quyết định thuế",
+                "taxInclusive": "Giá niêm yết đã/chưa gồm VAT",
+                "taxBasisPoints": "Thuế suất (%)",
+                "rounding": "Quy tắc làm tròn",
+                "invoiceTrigger": "Thời điểm yêu cầu khi bật xuất hóa đơn",
+            }
+            message = "Thiếu cấu hình: " + "; ".join(tax_labels[key] for key in tax_missing) + ". Mở phần cấu hình thuế để bổ sung."
+            if tax.get("invoiceEnabled") is False:
+                message += " Đang chọn Không xuất hóa đơn; không cần thời điểm yêu cầu hoặc thông tin bên bán."
+            errors.append(_error("BLOCKED_EXTERNAL", "taxInvoice", message))
+        if tax.get("invoiceEnabled") is True and tax.get("invoiceTrigger") == "disabled":
+            errors.append(_error("TAX_POLICY_INVALID", "taxInvoice.invoiceTrigger", "Đã bật hóa đơn nhưng thời điểm yêu cầu đang tắt."))
         healthy = [
-            profile for profile in document.get("providerProfiles") or []
-            if profile.get("provider") != "fake"
+            profile for profile in valid_profiles
+            if profile.get("provider") == "payos"
+            and profile.get("environment") == "production"
             and profile.get("mode") == "live"
             and profile.get("readiness") == "ready"
-            and profile.get("credentialReference")
+            and isinstance(profile.get("credentialReference"), str)
+            and bool(profile["credentialReference"].strip())
         ]
         if not healthy:
-            errors.append(_error("NO_HEALTHY_PROVIDER", "providerProfiles", "Chưa có provider live sẵn sàng."))
+            errors.append(_error("NO_HEALTHY_PROVIDER", "providerProfiles", "Chưa có cấu hình payOS sẵn sàng cho mở bán. Trong phần payOS & điều kiện mở bán, dùng cấu hình production, chọn Chế độ = Thanh toán thực tế, Trạng thái trong bản nháp = Đã chuẩn bị cấu hình và điền Tham chiếu bộ khóa. Chỉ xác nhận sẵn sàng sau khi kiểm tra tài khoản, bộ khóa và webhook thực tế."))
     else:
         warnings.append(_error("SHADOW_ONLY", "rollout.mode", "Cấu hình chỉ sẵn sàng cho fake/local/shadow."))
 

@@ -1,6 +1,7 @@
 import { apiFetch } from "../shared/apiClient.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { formatDateWithTime } from "../shared/formatters.js";
 import {
   classifyPublicCommercialResponse,
   formatCommercialMoney,
@@ -66,7 +67,7 @@ function renderOffers(controller) {
     const cardId = selectedCard ? `storefront-offer-${encodeURIComponent(selectedCard.key)}` : "";
     const periods = selectedCard ? `<div class="commercial-storefront__card-periods" role="group" aria-label="Chu kỳ thanh toán ${escapeHtml(presented.name)}">${[["monthly", "Hàng tháng"], ["yearly", "Hàng năm"]].map(([period, label]) => `<button type="button" data-storefront-period="${period}" data-storefront-card-key="${escapeHtml(selectedCard.key)}" aria-controls="${cardId}" aria-pressed="${period === selectedCard.period}"${selectedCard.periods.includes(period) ? "" : ' disabled aria-disabled="true"'}>${label}</button>`).join("")}</div>` : "";
     const note = selectedCard && !selectedCard.periods.includes("monthly") ? '<small class="commercial-storefront__period-note">Giá hàng tháng chưa được công bố.</small>' : "";
-    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"${selectedCard ? ` id="${cardId}" data-pricing-card="${escapeHtml(selectedCard.key)}"` : ""}><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${periods}${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button>${note}</article>`;
+    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"${selectedCard ? ` id="${cardId}" data-pricing-card="${escapeHtml(selectedCard.key)}"` : ""}><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${periods}${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><div class="commercial-storefront__card-actions"><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button><button type="button" class="btn btn-outline storefront-buy" data-operation="renew" data-sku="${escapeHtml(presented.code)}">Gia hạn gói này</button></div>${note}</article>`;
   };
   const groupControls = selection.grouped
     ? `<div class="commercial-storefront__pricing-controls"><div role="group" aria-label="Nhóm gói dịch vụ">${Object.entries(COMMERCIAL_GROUPS).map(([group, item]) => `<button type="button" data-storefront-group="${group}" aria-controls="storefront-price-list" aria-pressed="${group === state.group}">${item.label}</button>`).join("")}</div></div>`
@@ -135,13 +136,22 @@ function rememberOrder(order) {
   renderOrders();
 }
 
+function scheduledActivationDate(order) {
+  const startsAt = Number(order?.activationStartsAt);
+  const date = new Date(startsAt * 1000);
+  if (order?.activationScheduled !== true || startsAt <= 0 || !Number.isFinite(date.getTime())) return "";
+  return formatDateWithTime(date);
+}
+
 function renderOrders() {
   const node = document.getElementById("storefront-orders");
   if (!node) return;
   node.innerHTML = trustedHTML(state.orders.length ? `<div class="commercial-storefront__orders">${state.orders.map((order) => {
     const checkoutUrl = resumableCheckoutUrl(order);
+    const scheduledDate = scheduledActivationDate(order);
+    const orderState = scheduledDate ? `Chờ đến kỳ kích hoạt · ${scheduledDate}` : `${order.paymentState} · ${order.activationState}`;
     const resume = checkoutUrl ? `<a class="btn btn-outline" href="${escapeHtml(checkoutUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Mở lại thanh toán ${escapeHtml(order.publicId)}">Mở lại thanh toán</a>` : "";
-    return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(order.paymentState)} · ${escapeHtml(order.activationState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div></div>`;
+    return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(orderState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div></div>`;
   }).join("")}</div>` : '<div class="commercial-empty">Chưa có order.</div>');
   node.querySelectorAll(".commercial-storefront__order-actions a").forEach((link) => {
     link.target = "_blank";
@@ -165,6 +175,11 @@ async function pollOrder(publicId, controller, attempt = 0) {
   }
   const order = payload.order;
   rememberOrder(order);
+  const scheduledDate = scheduledActivationDate(order);
+  if (scheduledDate) {
+    status(`Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}. Bạn có thể đóng trang và xem lại trong lịch sử mua.`, "success");
+    return;
+  }
   if (TERMINAL_ACTIVATIONS.has(order.activationState) || ["cancelled", "expired", "create_failed"].includes(order.checkoutState)) {
     status(order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt." : `Order cần xử lý: ${order.activationState}.`, order.activationState === "applied" ? "success" : "warning");
     await refresh(controller);

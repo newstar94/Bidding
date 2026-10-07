@@ -84,7 +84,7 @@ def _insert_base_plan_order(
                      account.created_at, account.id
             LIMIT 1"""
     ).fetchone()
-    if not actor:
+    if not actor and not actor_user_id:
         pytest.skip("Test database has no active account without a subscription")
     user_id = actor_user_id or actor[0]
     organization_id = None
@@ -405,6 +405,161 @@ def test_monthly_plan_missing_term_never_falls_back_to_annual_duration(billing_c
     result = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
     assert result["status"] == "review_required"
     assert billing_cursor.execute("SELECT COUNT(*) FROM account_subscriptions WHERE source_order_id = ?", (order["order_id"],)).fetchone()[0] == 0
+
+
+def _prepare_renewal(cursor, order, *, remaining_days=10):
+    item = cursor.execute(
+        "SELECT plan_version_id, snapshot_json FROM billing_order_items WHERE order_id = ?",
+        (order["order_id"],),
+    ).fetchone()
+    snapshot = json.loads(item[1])
+    snapshot["policySnapshot"]["baseTerm"] = {"kind": "fixed_days", "days": 365}
+    snapshot["policySnapshot"]["renewalAnchor"] = {"kind": "end_of_term"}
+    encoded = json.dumps(snapshot)
+    cursor.execute("UPDATE billing_order_items SET snapshot_json = ? WHERE order_id = ?", (encoded, order["order_id"]))
+    cursor.execute("UPDATE billing_orders SET operation = 'renew', decision_json = ?, expected_subscription_revision = 7 WHERE id = ?", (encoded, order["order_id"]))
+    start = order["now"] - 100 * 86400
+    end = order["now"] + remaining_days * 86400
+    if order["owner_kind"] == "account":
+        cursor.execute(
+            """INSERT INTO account_subscriptions (user_id, package_id, plan_version_id, status, starts_at, expires_at, revision)
+               VALUES (?, 'diamond', ?, 'active', ?, ?, 7)""",
+            (order["user_id"], item[0], start, end),
+        )
+    else:
+        cursor.execute(
+            """INSERT INTO organization_subscriptions (organization_id, package_id, plan_version_id, status, starts_at, expires_at, member_quota, revision)
+               VALUES (?, 'diamond', ?, 'active', ?, ?, 50, 7)""",
+            (order["organization_id"], item[0], start, end),
+        )
+    return start, end
+
+
+@pytest.mark.parametrize("owner_kind", ["account", "organization"])
+def test_early_renewal_preserves_current_term_then_activates_exactly_once(billing_cursor, owner_kind):
+    order = _insert_base_plan_order(billing_cursor, owner_kind=owner_kind)
+    start, end = _prepare_renewal(billing_cursor, order)
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    first = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    replay = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    assert first["status"] == replay["status"] == "scheduled"
+    assert first["startsAt"] == end
+    assert first["expiresAt"] == end + 365 * 86400
+    owner_column = "user_id" if owner_kind == "account" else "organization_id"
+    table = "account_subscriptions" if owner_kind == "account" else "organization_subscriptions"
+    owner_id = order["user_id"] if owner_kind == "account" else order["organization_id"]
+    current = billing_cursor.execute(f"SELECT starts_at, expires_at, revision FROM {table} WHERE {owner_column} = ?", (owner_id,)).fetchone()
+    assert tuple(current) == (start, end, 7)
+    assert billing_cursor.execute("SELECT COUNT(*) FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()[0] == 0
+    worker = BillingWorkProcessor(_TransactionDatabase(billing_cursor), clock=lambda: end - 1)
+    assert worker._next_paid_not_applied_order_id() != order["order_id"]
+    worker.clock = lambda: end + 60
+    assert worker._next_paid_not_applied_order_id() == order["order_id"]
+    worker._retry_activation(order["order_id"])
+    applied = BillingActivationService(billing_cursor, clock=lambda: end + 60).activate_order(order["order_id"])
+    assert applied["status"] == "applied"
+    current = billing_cursor.execute(f"SELECT starts_at, expires_at, revision FROM {table} WHERE {owner_column} = ?", (owner_id,)).fetchone()
+    assert tuple(current) == (end, end + 365 * 86400, 8)
+    grant = billing_cursor.execute("SELECT issued_at, expires_at FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchall()
+    assert [tuple(row) for row in grant] == [(end, end + 365 * 86400)]
+
+
+@pytest.mark.parametrize("trigger, early_count, due_count", [("verified_payment", 1, 1), ("activation_applied", 0, 1), ("manual", 0, 0), ("disabled", 0, 0)])
+def test_renewal_invoice_request_obeys_pinned_trigger(billing_cursor, trigger, early_count, due_count):
+    order = _insert_base_plan_order(billing_cursor)
+    _, end = _prepare_renewal(billing_cursor, order)
+    decision = json.loads(billing_cursor.execute("SELECT decision_json FROM billing_orders WHERE id = ?", (order["order_id"],)).fetchone()[0])
+    decision["taxInvoiceSnapshot"] = {"invoiceTrigger": trigger}
+    billing_cursor.execute("UPDATE billing_orders SET decision_json = ? WHERE id = ?", (json.dumps(decision), order["order_id"]))
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    assert service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["status"] == "scheduled"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_invoice_requests WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == early_count
+    due = BillingActivationService(billing_cursor, clock=lambda: end)
+    assert due.activate_order(order["order_id"])["status"] == "applied"
+    assert due.activate_order(order["order_id"])["status"] == "applied"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_invoice_requests WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == due_count
+    assert billing_cursor.execute("SELECT COUNT(*) FROM commercial_outbox WHERE aggregate_id = ? AND event_type = 'billing.invoice_requested'", (order["order_id"],)).fetchone()[0] == due_count
+
+
+@pytest.mark.parametrize("intervening_change", [False, True])
+def test_multiple_paid_renewals_queue_in_order_and_bind_the_preceding_term(billing_cursor, intervening_change):
+    first = _insert_base_plan_order(billing_cursor)
+    _, end = _prepare_renewal(billing_cursor, first)
+    service = BillingActivationService(billing_cursor, clock=lambda: first["now"])
+    assert service.apply_order_result(first["order_id"], _paid_result(first), provider_profile_id="provider-fake-v1")["status"] == "scheduled"
+    second = _insert_base_plan_order(billing_cursor, actor_user_id=first["user_id"])
+    item = billing_cursor.execute("SELECT plan_version_id, snapshot_json FROM billing_order_items WHERE order_id = ?", (first["order_id"],)).fetchone()
+    billing_cursor.execute("UPDATE billing_order_items SET plan_version_id = ?, snapshot_json = ? WHERE order_id = ?", (item[0], item[1], second["order_id"]))
+    billing_cursor.execute("UPDATE billing_orders SET operation = 'renew', decision_json = ?, expected_subscription_revision = 7 WHERE id = ?", (item[1], second["order_id"]))
+    outcome = service.apply_order_result(second["order_id"], _paid_result(second), provider_profile_id="provider-fake-v1")
+    assert outcome["status"] == "scheduled"
+    assert outcome["startsAt"] == end + 365 * 86400
+    assert outcome["expiresAt"] == end + 730 * 86400
+    if intervening_change:
+        billing_cursor.execute("UPDATE account_subscriptions SET revision = 8, source = 'admin' WHERE user_id = ?", (first["user_id"],))
+        assert BillingActivationService(billing_cursor, clock=lambda: end).activate_order(first["order_id"])["reason"] == "SUBSCRIPTION_REVISION_MISMATCH"
+        rejected = BillingActivationService(billing_cursor, clock=lambda: end + 365 * 86400).activate_order(second["order_id"])
+        assert rejected["reason"] == "RENEWAL_PREDECESSOR_MISMATCH"
+    else:
+        assert BillingActivationService(billing_cursor, clock=lambda: end).activate_order(first["order_id"])["status"] == "applied"
+        assert BillingActivationService(billing_cursor, clock=lambda: end + 365 * 86400).activate_order(second["order_id"])["status"] == "applied"
+        assert billing_cursor.execute("SELECT expires_at, revision FROM account_subscriptions WHERE user_id = ?", (first["user_id"],)).fetchone()[0] == end + 730 * 86400
+
+
+def test_pending_refund_intent_prevents_scheduled_term_activation_and_payment_replay(billing_cursor):
+    order = _insert_base_plan_order(billing_cursor)
+    _, end = _prepare_renewal(billing_cursor, order)
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    assert service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["status"] == "scheduled"
+    public_id = f"order-public-{order['order_id'].removeprefix('order-test-')}"
+    intent, _ = BillingService(billing_cursor).create_manual_refund_intent(public_id, order["user_id"], 100000, "Hoàn kỳ chưa bắt đầu", "refund-renewal-123")
+    worker = BillingWorkProcessor(_TransactionDatabase(billing_cursor), clock=lambda: end)
+    assert worker._next_paid_not_applied_order_id() != order["order_id"]
+    due = BillingActivationService(billing_cursor, clock=lambda: end)
+    assert due.activate_order(order["order_id"])["reason"] == "PAYMENT_REFUND_REVIEW_REQUIRED"
+    billing_cursor.execute("UPDATE billing_refund_intents SET state = 'succeeded' WHERE id = ?", (intent["id"],))
+    billing_cursor.execute("UPDATE billing_orders SET payment_state = 'refunded', activation_state = 'reversed' WHERE id = ?", (order["order_id"],))
+    assert due.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["status"] == "reversed"
+    assert tuple(billing_cursor.execute("SELECT payment_state, activation_state FROM billing_orders WHERE id = ?", (order["order_id"],)).fetchone()) == ("refunded", "reversed")
+    assert billing_cursor.execute("SELECT COUNT(*) FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()[0] == 0
+
+
+def test_activation_retry_requests_invoice_after_owner_is_restored(billing_cursor):
+    order = _insert_base_plan_order(billing_cursor, owner_kind="organization")
+    decision = json.loads(billing_cursor.execute("SELECT decision_json FROM billing_orders WHERE id = ?", (order["order_id"],)).fetchone()[0])
+    decision["taxInvoiceSnapshot"] = {"invoiceTrigger": "activation_applied"}
+    billing_cursor.execute("UPDATE billing_orders SET decision_json = ? WHERE id = ?", (json.dumps(decision), order["order_id"]))
+    billing_cursor.execute("UPDATE to_chuc SET trang_thai = 'suspended' WHERE id = ?", (order["organization_id"],))
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    assert service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["reason"] == "OWNER_INACTIVE"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_invoice_requests WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == 0
+    billing_cursor.execute("UPDATE to_chuc SET trang_thai = 'active' WHERE id = ?", (order["organization_id"],))
+    assert service.activate_order(order["order_id"])["status"] == "applied"
+    assert service.activate_order(order["order_id"])["status"] == "applied"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_invoice_requests WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("stored_status", ["active", "expired"])
+def test_renewal_after_expiry_starts_at_verified_payment_not_delayed_processing(billing_cursor, stored_status):
+    order = _insert_base_plan_order(billing_cursor)
+    _prepare_renewal(billing_cursor, order, remaining_days=-5)
+    billing_cursor.execute("UPDATE account_subscriptions SET status = ? WHERE user_id = ?", (stored_status, order["user_id"]))
+    result = BillingActivationService(billing_cursor, clock=lambda: order["now"] + 2 * 86400).apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
+    assert result["status"] == "applied"
+    assert tuple(billing_cursor.execute("SELECT starts_at, expires_at FROM account_subscriptions WHERE user_id = ?", (order["user_id"],)).fetchone()) == (order["now"], order["now"] + 365 * 86400)
+
+
+@pytest.mark.parametrize("enabled, count", [(False, 0), (True, 1)])
+def test_invoice_enable_switch_controls_requests_without_changing_paid_benefits(billing_cursor, enabled, count):
+    order = _insert_base_plan_order(billing_cursor)
+    decision = json.loads(billing_cursor.execute("SELECT decision_json FROM billing_orders WHERE id = ?", (order["order_id"],)).fetchone()[0])
+    decision["taxInvoiceSnapshot"] = {"taxInclusive": True, "invoiceEnabled": enabled, "invoiceTrigger": "verified_payment"}
+    billing_cursor.execute("UPDATE billing_orders SET decision_json = ? WHERE id = ?", (json.dumps(decision), order["order_id"]))
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    assert service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["status"] == "applied"
+    assert service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")["status"] == "applied"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM billing_invoice_requests WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == count
+    assert billing_cursor.execute("SELECT COUNT(*) FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()[0] == 1
 
 
 def test_provider_transaction_cannot_activate_two_orders(billing_cursor):
@@ -931,7 +1086,7 @@ def test_activation_serializes_owner_before_order_across_connections(owner_kind)
             "billing_quotes", "billing_orders", "billing_order_items",
             "billing_subscription_activations", "account_subscriptions",
             "organization_subscriptions", "usage_credit_grants", "usage_ledger",
-            "payment_transactions", "billing_invoice_requests", "commercial_outbox",
+            "payment_transactions", "billing_refund_intents", "billing_invoice_requests", "commercial_outbox",
             "audit_log", "audit_chain_heads",
         ):
             seed.execute(sql.SQL(

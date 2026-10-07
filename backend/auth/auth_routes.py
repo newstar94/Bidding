@@ -2194,6 +2194,28 @@ def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quo
                 {"error": current_actor if not authority_valid else "Phiên quản trị đã thay đổi."},
                 status_code=403,
             )
+        package = cursor.execute(
+            "SELECT id FROM goi_dich_vu WHERE id = ? FOR UPDATE", (pkg_id,)
+        ).fetchone()
+        if not package:
+            conn.rollback()
+            return JSONResponse({"error": "Gói dịch vụ không tồn tại."}, status_code=404)
+        published_adapter = cursor.execute(
+            """SELECT 1 FROM billing_plan_versions AS plan
+                 JOIN commercial_releases AS release ON release.id = plan.release_id
+                WHERE plan.legacy_package_id = ? AND release.mode <> 'legacy'
+                LIMIT 1""",
+            (pkg_id,),
+        ).fetchone()
+        if published_adapter:
+            conn.rollback()
+            return JSONResponse(
+                {
+                    "error": "Gói đã thuộc bản phát hành thương mại; hãy tạo bản nháp và phát hành phiên bản mới.",
+                    "code": "COMMERCIAL_PACKAGE_IMMUTABLE",
+                },
+                status_code=409,
+            )
         cursor.execute("""
             UPDATE goi_dich_vu
             SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?, trang_thai = ?

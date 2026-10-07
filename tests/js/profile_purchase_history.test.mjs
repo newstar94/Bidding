@@ -47,6 +47,11 @@ test("account profile renders Vietnamese personal purchase history", async () =>
             paymentState: "unverified",
             activationState: "not_ready",
             createdAt: "2026-08-27 09:30:00",
+          }, {
+            publicId: "order-scheduled-renewal", ownerKind: "account", operation: "renew", totalAmount: 99000,
+            paymentState: "verified_paid", activationState: "pending", activationScheduled: true,
+            activationStartsAt: Date.UTC(2027, 0, 15, 8, 0, 0) / 1000,
+            createdAt: "2026-10-07 09:30:00",
           }],
         }));
         return;
@@ -64,7 +69,7 @@ test("account profile renders Vietnamese personal purchase history", async () =>
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: "Asia/Ho_Chi_Minh" });
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async () => {
       sessionStorage.setItem("bf_active_org", "organization-active");
@@ -77,8 +82,10 @@ test("account profile renders Vietnamese personal purchase history", async () =>
     assert.equal(await page.getByText("Mua thêm lượt tra cứu", { exact: true }).count(), 1);
     assert.equal(await page.getByText("Chờ thanh toán", { exact: true }).count(), 1);
     assert.equal(await page.getByText("Chưa sẵn sàng", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("99.000 ₫", { exact: true }).count(), 1);
-    assert.equal(await page.getByText("Đã tải 1 giao dịch gần nhất.", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("99.000 ₫", { exact: true }).count(), 2);
+    assert.equal(await page.getByText("Chờ đến kỳ kích hoạt", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("Kích hoạt từ 15:00 ngày 15/01/2027", { exact: true }).count(), 1);
+    assert.equal(await page.getByText("Đã tải 2 giao dịch gần nhất.", { exact: true }).count(), 1);
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

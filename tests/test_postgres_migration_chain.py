@@ -8,6 +8,8 @@ import psycopg
 import pytest
 from psycopg import sql
 
+from backend.commercial_policy.repository import CommercialRepository
+from backend.commercial_policy.service import CommercialPolicy
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.db.postgres_schema import (
     _create_extensions,
@@ -26,6 +28,7 @@ from backend.db.upgrades import (
     DatabaseUpgradeContext,
     apply_database_upgrades,
     retired_feature_archive_schema,
+    seed_commercial_v79,
 )
 from scripts.audit_fk_indexes import find_missing_foreign_key_indexes
 
@@ -520,6 +523,36 @@ def test_fresh_catalog_keeps_only_constraint_backed_audit_successor_index(
             ).fetchall()
         }
         assert names == {"audit_log_chain_id_previous_hash_key"}
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_fresh_catalog_samples_validate_and_publish_through_existing_gates(monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "Test-only!CommercialSamplePassword")
+    connection, cursor, schema_name = _open_fixture_connection(fresh_catalog=True)
+    try:
+        now = 1_800_000_000
+        repository = CommercialRepository(cursor, clock=lambda: now)
+        draft = repository.get_draft("commercial-draft-initial-v1")
+        assert draft["status"] == "draft"
+        assert len(draft["document"]["offers"]) == 8
+        policy = CommercialPolicy(cursor, clock=lambda: now)
+        result = policy.validate_draft(draft["id"], draft["revision"])
+        assert result["errors"] == []
+        release = policy.publish_draft(
+            draft["id"], draft["revision"], result["validationDigest"],
+            now, "Kiểm tra bộ gói mẫu trong schema cô lập", draft["created_by"],
+        )
+        assert release["mode"] == "shadow"
+        assert cursor.execute(
+            "SELECT COUNT(*) FROM billing_plan_versions WHERE release_id = ?",
+            (release["id"],),
+        ).fetchone()[0] == 8
+        before = repository.get_draft(draft["id"])
+        assert before["status"] == "archived"
+        seed_commercial_v79(cursor)
+        assert repository.get_draft(draft["id"]) == before
+        assert repository.get_release(release["id"]) == release
     finally:
         _close_fixture_connection(connection, cursor, schema_name)
 

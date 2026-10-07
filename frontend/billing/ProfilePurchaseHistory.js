@@ -64,6 +64,15 @@ function badgeClass(value, kind) {
   return "badge-neutral";
 }
 
+function activationMarkup(order) {
+  const startsAt = Number(order.activationStartsAt);
+  const date = new Date(startsAt * 1000);
+  if (order.activationScheduled === true && startsAt > 0 && Number.isFinite(date.getTime())) {
+    return `<span class="badge badge-info">Chờ đến kỳ kích hoạt</span><div class="text-secondary small">Kích hoạt từ ${escapeHtml(formatDateWithTime(date))}</div>`;
+  }
+  return `<span class="badge ${badgeClass(order.activationState, "activation")}">${escapeHtml(label(order.activationState, ACTIVATION_LABELS))}</span>`;
+}
+
 function renderOrders(orders) {
   const table = document.getElementById("profile-purchase-history-table");
   const body = document.getElementById("profile-purchase-history-body");
@@ -84,7 +93,7 @@ function renderOrders(orders) {
       <td data-label="Ngày tạo">${escapeHtml(formatDateWithTime(order.createdAt))}</td>
       <td data-label="Loại giao dịch">${escapeHtml(label(order.operation, OPERATION_LABELS))}</td>
       <td data-label="Thanh toán"><span class="badge ${badgeClass(order.paymentState, "payment")}">${escapeHtml(paymentLabel(order))}</span></td>
-      <td data-label="Kích hoạt"><span class="badge ${badgeClass(order.activationState, "activation")}">${escapeHtml(label(order.activationState, ACTIVATION_LABELS))}</span></td>
+      <td data-label="Kích hoạt">${activationMarkup(order)}</td>
       <td data-label="Số tiền" class="text-right profile-purchase-history__amount">${escapeHtml(formatCurrency(order.totalAmount))}</td>
     </tr>
   `).join(""));

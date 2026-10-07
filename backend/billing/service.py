@@ -19,6 +19,7 @@ from backend.commercial_policy.repository import CommercialRepository, new_id
 
 from .providers.base import PaymentProviderError
 from .authorization import authorize_organization_buyer
+from .renewal import validate_renewal_checkout
 from .runtime import payment_provider_registry
 
 
@@ -34,7 +35,87 @@ def _row_dict(row):
     return dict(row) if row is not None else None
 
 
+def _release_provider_matches(profile, configuration):
+    if not isinstance(configuration, dict):
+        return False
+    reference = configuration.get("credentialReference")
+    database_reference = profile.get("credential_reference")
+    if any(value is not None and not isinstance(value, str) for value in (reference, database_reference)):
+        return False
+    return (
+        configuration.get("provider") == profile["provider"]
+        and configuration.get("environment") == profile["environment"]
+        and configuration.get("mode") == profile["mode"]
+        and (reference or "").strip() == (database_reference or "").strip()
+    )
+
+
+def _release_provider_ttl(configuration, total_amount):
+    minimum, maximum, ttl = (
+        configuration.get("minAmount"), configuration.get("maxAmount"),
+        configuration.get("checkoutTtlSeconds"),
+    )
+    if not (
+        type(minimum) is int and type(maximum) is int
+        and 0 <= minimum <= int(total_amount) <= maximum
+        and type(ttl) is int and 60 <= ttl <= 86400
+        and configuration.get("mode") in {"shadow", "live"}
+        and configuration.get("readiness") == "ready"
+    ):
+        raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Cấu hình payment provider của bản phát hành chưa phù hợp.", status_code=503)
+    return ttl
+
+
+def select_payment_provider_profile(cursor, total_amount, *, environment=None, profile_id=None, release_profiles=None):
+    """Resolve routing once, then honor a quote's immutable profile binding."""
+    environment = os.environ if environment is None else environment
+    columns = """SELECT id, provider, environment, credential_reference, min_amount, max_amount,
+                        checkout_ttl_seconds, timeout_ms, max_attempts, mode
+                   FROM payment_provider_profiles"""
+    if profile_id is not None:
+        statement = columns + """
+                  WHERE id = ? AND readiness_status = 'ready'
+                    AND mode IN ('shadow', 'live')
+                    AND min_amount <= ? AND max_amount >= ?"""
+        parameters = (str(profile_id), int(total_amount), int(total_amount))
+    else:
+        provider_name = str(environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")).strip().casefold()
+        app_environment = str(environment.get("APP_ENV", "development")).strip().casefold()
+        provider_environment = str(environment.get(
+            "PAYMENT_PROVIDER_ENVIRONMENT",
+            "production" if app_environment in {"prod", "production"} else "test",
+        )).strip().casefold()
+        statement = columns + """
+                  WHERE provider = ? AND environment = ? AND readiness_status = 'ready'
+                    AND mode IN ('shadow', 'live')
+                    AND min_amount <= ? AND max_amount >= ?
+                  ORDER BY CASE mode WHEN 'live' THEN 0 ELSE 1 END,
+                           routing_priority, version DESC LIMIT 1"""
+        parameters = (provider_name, provider_environment, int(total_amount), int(total_amount))
+    profile = _row_dict(cursor.execute(statement, parameters).fetchone())
+    if not profile:
+        raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Không có payment provider sẵn sàng.", status_code=503)
+    if release_profiles is not None:
+        configuration = next((item for item in release_profiles if _release_provider_matches(profile, item)
+                              and item.get("mode") in {"shadow", "live"} and item.get("readiness") == "ready"), None)
+        if configuration is None:
+            raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Payment provider chưa sẵn sàng trong bản phát hành đã chọn.", status_code=503)
+        _release_provider_ttl(configuration, total_amount)
+        return {**profile, **configuration, "id": profile["id"]}
+    return profile
+
+
 def public_order_payload(order):
+    schedule = order.get("activation_schedule_json")
+    if isinstance(schedule, str):
+        try:
+            schedule = json.loads(schedule)
+        except (TypeError, ValueError):
+            schedule = None
+    scheduled = (
+        order["activation_state"] == "pending"
+        and isinstance(schedule, dict) and schedule.get("scheduled") is True
+    )
     return {
         "publicId": order["public_id"],
         "ownerKind": order["owner_kind"],
@@ -46,6 +127,9 @@ def public_order_payload(order):
         "checkoutState": order["checkout_state"],
         "paymentState": order["payment_state"],
         "activationState": order["activation_state"],
+        "activationScheduled": scheduled,
+        "activationStartsAt": schedule.get("startsAt") if scheduled else None,
+        "activationExpiresAt": schedule.get("expiresAt") if scheduled else None,
         "checkoutUrl": order.get("checkout_url"),
         "checkoutExpiresAt": order.get("checkout_expires_at"),
         "createdAt": order.get("created_at"),
@@ -140,13 +224,25 @@ class BillingService:
                 "Operation không phù hợp với loại sản phẩm thương mại.",
                 status_code=409,
             )
-        provider = self._select_provider(int(quote["total_amount"]))
+        if operation == "renew":
+            if ((decision.get("policySnapshot") or {}).get("renewalAnchor") or {}).get("kind") != "end_of_term":
+                raise CommercialPolicyError("RENEWAL_ANCHOR_DECISION_REQUIRED", "Chính sách gia hạn chưa hỗ trợ kỳ đã chọn.", status_code=409)
+            validate_renewal_checkout(self.cursor, quote, projection)
+        quoted_provider = decision.get("provider")
+        profile_id = quoted_provider.get("id") if isinstance(quoted_provider, dict) else None
+        # Older quote snapshots had no DB profile ID. Keep their existing
+        # configured routing behavior; never reroute a newly pinned quote.
+        provider = self._select_provider(int(quote["total_amount"]), profile_id=profile_id)
+        if profile_id is not None:
+            if not _release_provider_matches(provider, quoted_provider):
+                raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Payment provider không khớp báo giá đã chọn.", status_code=503)
+            checkout_ttl = _release_provider_ttl(quoted_provider, quote["total_amount"])
+        else:
+            checkout_ttl = max(60, int(provider.get("checkout_ttl_seconds") or 900))
         order_id = new_id("billing-order")
         public_id = new_id("order")
         provider_reference = f"bf-{public_id}"
-        checkout_expires_at = now + max(
-            60, int(provider.get("checkout_ttl_seconds") or 900)
-        )
+        checkout_expires_at = now + checkout_ttl
         provider_order_code = None
         for collision_attempt in range(8):
             candidate_code = _stable_order_code(order_id, collision_attempt)
@@ -221,10 +317,12 @@ class BillingService:
         return self.get_order(public_id, lock=True), command_id, False
 
     def get_order(self, public_id, *, lock=False):
-        statement = (
-            "SELECT * FROM billing_orders WHERE public_id = ? FOR UPDATE"
-            if lock else "SELECT * FROM billing_orders WHERE public_id = ?"
-        )
+        statement = """SELECT orders.*,
+                   (SELECT activation.after_json FROM billing_subscription_activations AS activation
+                     WHERE activation.order_id = orders.id) AS activation_schedule_json
+                 FROM billing_orders AS orders WHERE orders.public_id = ?"""
+        if lock:
+            statement += " FOR UPDATE OF orders"
         return _row_dict(self.cursor.execute(statement, (str(public_id),)).fetchone())
 
     def request_cancel(self, public_id, actor_user_id, reason):
@@ -385,29 +483,10 @@ class BillingService:
             statement, (actor_user_id, owner_id, quote["operation"], key),
         ).fetchone())
 
-    def _select_provider(self, total_amount):
-        provider_name = str(self.environment.get("COMMERCIAL_PAYMENT_PROVIDER", "fake")).strip().casefold()
-        app_environment = str(self.environment.get("APP_ENV", "development")).strip().casefold()
-        provider_environment = str(
-            self.environment.get(
-                "PAYMENT_PROVIDER_ENVIRONMENT",
-                "production" if app_environment in {"prod", "production"} else "test",
-            )
-        ).strip().casefold()
-        row = self.cursor.execute(
-            """SELECT id, provider, environment, min_amount, max_amount,
-                      checkout_ttl_seconds, timeout_ms, max_attempts, mode
-                 FROM payment_provider_profiles
-                WHERE provider = ? AND environment = ? AND readiness_status = 'ready'
-                  AND mode IN ('shadow', 'live')
-                  AND min_amount <= ? AND max_amount >= ?
-                ORDER BY CASE mode WHEN 'live' THEN 0 ELSE 1 END,
-                         routing_priority, version DESC LIMIT 1""",
-            (provider_name, provider_environment, int(total_amount), int(total_amount)),
-        ).fetchone()
-        if not row:
-            raise CommercialPolicyError(NO_HEALTHY_PROVIDER, "Không có payment provider sẵn sàng.", status_code=503)
-        return dict(row)
+    def _select_provider(self, total_amount, *, profile_id=None):
+        return select_payment_provider_profile(
+            self.cursor, total_amount, environment=self.environment, profile_id=profile_id,
+        )
 
 
 class ProviderCommandExecutor:

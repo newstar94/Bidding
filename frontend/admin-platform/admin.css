@@ -48,6 +48,58 @@
   --tblr-focus-ring-color: rgba(49, 87, 232, 0.2);
 }
 
+/* The admin shell follows the host application's dark palette when the
+   application or the OS selects dark mode. The component layout remains the
+   same; only semantic colors change. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-bs-theme="light"]) {
+    --bf-admin-canvas: #151b29;
+    --bf-admin-surface: #20283a;
+    --bf-admin-surface-subtle: #303754;
+    --bf-admin-ink: #edf1f9;
+    --bf-admin-muted: #aebad0;
+    --bf-admin-line: #39445c;
+    --bf-admin-line-strong: #505d79;
+    --bf-admin-brand: #a4abff;
+    --bf-admin-brand-strong: #bbc0ff;
+    --bf-admin-brand-soft: #303754;
+    --bf-admin-brand-line: #59638a;
+    --bf-admin-sidebar-accent: #a4abff;
+    --bf-admin-sidebar: #151a29;
+    --bf-admin-success: #8bddb2;
+    --bf-admin-warning: #f2bd7b;
+    --bf-admin-danger: #ffadb4;
+    --tblr-body-color-rgb: 237, 241, 249;
+    --tblr-body-bg-rgb: 21, 27, 41;
+    --tblr-primary-rgb: 164, 171, 255;
+    --tblr-secondary-color-rgb: 174, 186, 208;
+    --tblr-focus-ring-color: rgba(164, 171, 255, 0.26);
+  }
+}
+html[data-bs-theme="dark"], body[data-bs-theme="dark"], #admin-app[data-bs-theme="dark"] {
+  --bf-admin-canvas: #151b29;
+  --bf-admin-surface: #20283a;
+  --bf-admin-surface-subtle: #303754;
+  --bf-admin-ink: #edf1f9;
+  --bf-admin-muted: #aebad0;
+  --bf-admin-line: #39445c;
+  --bf-admin-line-strong: #505d79;
+  --bf-admin-brand: #a4abff;
+  --bf-admin-brand-strong: #bbc0ff;
+  --bf-admin-brand-soft: #303754;
+  --bf-admin-brand-line: #59638a;
+  --bf-admin-sidebar-accent: #a4abff;
+  --bf-admin-sidebar: #151a29;
+  --bf-admin-success: #8bddb2;
+  --bf-admin-warning: #f2bd7b;
+  --bf-admin-danger: #ffadb4;
+  --tblr-body-color-rgb: 237, 241, 249;
+  --tblr-body-bg-rgb: 21, 27, 41;
+  --tblr-primary-rgb: 164, 171, 255;
+  --tblr-secondary-color-rgb: 174, 186, 208;
+  --tblr-focus-ring-color: rgba(164, 171, 255, 0.26);
+}
+
 @font-face {
   font-family: "Plus Jakarta Sans";
   font-style: normal;
@@ -213,18 +265,18 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-page-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--bf-admin-line); }
 .bf-admin-page-section { margin-top: 2rem; }
 .bf-admin-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: .85rem; }
-.bf-admin-workflow-guide { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: .75rem; padding: .85rem 1rem; margin-bottom: 1.75rem; border: 1px solid var(--bf-admin-brand-line); border-radius: .75rem; background: var(--bf-admin-brand-soft); }
-.bf-admin-workflow-step { display: flex; align-items: flex-start; gap: .65rem; min-width: 0; color: var(--bf-admin-muted); }
-.bf-admin-workflow-step > span { display: grid; flex: 0 0 1.65rem; place-items: center; width: 1.65rem; height: 1.65rem; border-radius: 50%; background: var(--bf-admin-surface); color: var(--bf-admin-brand); font-weight: 700; }
-.bf-admin-workflow-step.is-active { color: var(--bf-admin-ink); }
-.bf-admin-workflow-step.is-active > span { background: var(--bf-admin-brand); color: var(--bf-admin-surface); }
+.bf-admin-workflow-guide { margin-bottom: 1.5rem; background: var(--bf-admin-surface); }
+.bf-admin-workflow-guide > .card-body { padding: 1.5rem; }
+.bf-admin-workflow-guide ol { margin-bottom: 1.5rem; padding-left: 1.3rem; }
+.bf-admin-workflow-step { min-width: 0; padding-left: .1rem; color: var(--bf-admin-ink); }
+.bf-admin-workflow-step + .bf-admin-workflow-step { margin-top: 1rem; }
 .bf-admin-workflow-step strong, .bf-admin-workflow-step small { display: block; }
-.bf-admin-workflow-step strong { font-size: .85rem; }
-.bf-admin-workflow-step small { margin-top: .15rem; color: inherit; font-size: .72rem; line-height: 1.35; }
-.bf-admin-workflow-line { height: 1px; min-width: 1.25rem; background: var(--bf-admin-brand-line); }
-.bf-admin-workflow-step.is-complete { color: var(--bf-admin-success); }
-.bf-admin-plan-tabs { position: sticky; top: .5rem; z-index: 20; gap: .25rem; margin: 0 0 1rem; padding: .35rem; border: 1px solid var(--bf-admin-line); border-radius: .6rem; background: color-mix(in srgb, var(--bf-admin-surface) 94%, transparent); box-shadow: 0 .25rem .8rem color-mix(in srgb, var(--bf-admin-ink) 8%, transparent); }
-.bf-admin-plan-tabs .nav-link { border-radius: .4rem; color: var(--bf-admin-muted); font-size: .82rem; font-weight: 650; }
+.bf-admin-workflow-step strong { font-size: .95rem; }
+.bf-admin-workflow-step small { margin-top: .25rem; color: var(--bf-admin-muted); font-size: .85rem; line-height: 1.5; }
+.bf-admin-workflow-step.is-complete::marker { color: var(--bf-admin-success); }
+.bf-admin-plan-tabs { position: static; gap: 1.25rem; margin: 0 0 1.5rem; padding: 0; border: 0; border-bottom: 1px solid var(--bf-admin-line); border-radius: 0; background: transparent; box-shadow: none; }
+.bf-admin-plan-tabs .nav-link { padding: .8rem 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--bf-admin-muted); font-size: .95rem; font-weight: 500; background: transparent; }
+.bf-admin-plan-tabs .nav-link.active { border-bottom-color: var(--bf-admin-brand); color: var(--bf-admin-brand); background: transparent; }
 .bf-admin-plan-tabs .nav-link:hover, .bf-admin-plan-tabs .nav-link:focus-visible { color: var(--bf-admin-brand-strong); background: var(--bf-admin-brand-soft); }
 .bf-admin-date-filter > span { display: block; margin-bottom: .25rem; color: var(--bf-admin-muted); font-size: .75rem; font-weight: 650; }
 .bf-admin-editor-shell .card-footer { position: sticky; bottom: 0; z-index: 10; box-shadow: 0 -.25rem .8rem color-mix(in srgb, var(--bf-admin-ink) 7%, transparent); }
@@ -271,7 +323,6 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-package-editor-grid > * { min-width: 0; }
 .bf-admin-editor-shell, .bf-admin-page-section { scroll-margin-top: 5rem; }
 .bf-admin-package-editor-grid .bf-admin-editor-group { margin-top: 0; padding-top: 0; border-top: 0; }
-.bf-admin-package-editor-grid > aside { padding: 1rem; background: var(--bf-admin-surface-subtle); border-radius: .5rem; }
 .bf-admin-package-editor-grid .bf-admin-plan-price { overflow-wrap: anywhere; }
 .bf-admin-package-policies { padding: 1rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
 .bf-admin-package-policies > summary { font-weight: 600; cursor: pointer; }
@@ -283,8 +334,6 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-package-manager .btn-group[aria-label="Cách xem gói"] { margin-left: auto; }
 .bf-admin-package-manager .table th, .bf-admin-package-manager .table td { vertical-align: middle; }
 .bf-admin-package-manager .table th:nth-child(2), .bf-admin-package-manager .table th:nth-child(3), .bf-admin-package-manager .table td:nth-child(2), .bf-admin-package-manager .table td:nth-child(3) { text-align: right; white-space: nowrap; }
-.bf-admin-editor-shell .card-body { padding-block: 1.15rem; }
-.bf-admin-editor-shell .bf-admin-offer-editor .card-body { padding: 1rem; }
 @media (max-width: 1199.98px) {
   .bf-admin-package-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -296,8 +345,6 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
   .bf-admin-draft-id { max-width: 14rem; }
   .bf-admin-package-manager .btn-group[aria-label="Cách xem gói"] { margin-left: 0; }
   .bf-admin-page-intro, .bf-admin-section-heading, .bf-admin-editor-intro, .bf-admin-editor-actions { align-items: stretch; flex-direction: column; }
-  .bf-admin-workflow-guide { grid-template-columns: 1fr; gap: .6rem; }
-  .bf-admin-workflow-line { display: none; }
   .bf-admin-release-facts { grid-template-columns: 1fr; gap: .75rem; }
   .bf-admin-header { flex-wrap: wrap; padding-block: .5rem; }
   .bf-admin-global-search { order: 2; width: 100%; }
@@ -312,6 +359,75 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 }
 @media (min-width: 768px) and (max-width: 1199.98px) {
   .bf-admin-analytics-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Commercial package workspace: the list and composer share the same compact
+   control-center language as the approved desktop reference. */
+.bf-admin-package-manager { min-width: 0; }
+.bf-admin-package-toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.bf-admin-package-segment { display: inline-flex; padding: .2rem; gap: .15rem; border: 1px solid var(--bf-admin-line); border-radius: .55rem; background: var(--bf-admin-surface); }
+.admin-plans-page .bf-admin-package-segment.btn-group > .btn { border: 0; border-radius: .4rem; }
+.bf-admin-package-count { margin-left: 0; order: 3; }
+.bf-admin-package-layout-toggle { margin-left: auto; order: 2; }
+.bf-admin-package-toolbar:has(.bf-admin-package-layout-toggle[hidden]) .bf-admin-package-count { margin-left: auto; }
+.bf-admin-package-segment .btn-primary { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); font-weight: 600; }
+.bf-admin-package-table-panel { border-radius: .65rem; background: var(--bf-admin-surface); }
+.bf-admin-package-table-panel .table { margin-bottom: 0; }
+.bf-admin-package-table-panel .table thead th { padding: .8rem 1rem; background: var(--bf-admin-canvas); font-size: .85rem; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.bf-admin-package-table-panel .table th:nth-child(2), .bf-admin-package-table-panel .table th:nth-child(3), .bf-admin-package-table-panel .table td:nth-child(2), .bf-admin-package-table-panel .table td:nth-child(3) { text-align: left; }
+.bf-admin-package-table-panel .table tbody td { padding: 1rem; border-top-color: var(--bf-admin-line); }
+.bf-admin-package-table-panel .table tbody tr:hover { --tblr-table-hover-bg: var(--bf-admin-surface-subtle); }
+.bf-admin-package-name { display: block; font-size: .95rem; }
+.bf-admin-package-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bf-admin-package-status { display: inline-flex; align-items: center; gap: .45rem; color: var(--bf-admin-muted); white-space: nowrap; }
+.bf-admin-package-status > span { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
+
+.bf-admin-editor-shell { overflow: hidden; border-top: 0; background: var(--bf-admin-surface); box-shadow: 0 1px 2px color-mix(in srgb, var(--bf-admin-ink) 5%, transparent); }
+.bf-admin-editor-shell > .card-body { padding: 0; }
+.bf-admin-composer-header { justify-content: space-between; align-items: center; padding: 1rem 1.25rem; background: var(--bf-admin-surface); }
+.bf-admin-composer-header .card-title { font-size: 1.15rem; letter-spacing: -.02em; }
+.bf-admin-package-editor-toolbar { display: flex; align-items: center; gap: 1rem; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bf-admin-line); background: var(--bf-admin-surface); }
+.bf-admin-package-steps { display: flex; flex-wrap: wrap; gap: .35rem; }
+.bf-admin-package-steps .btn { padding: .6rem .75rem; border-color: transparent; background: transparent; color: var(--bf-admin-ink); box-shadow: none; }
+.bf-admin-package-steps .btn:hover, .bf-admin-package-steps .btn:focus-visible { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); }
+.bf-admin-package-steps .btn-primary { background: var(--bf-admin-brand-soft); border-color: transparent; color: var(--bf-admin-brand-strong); }
+.bf-admin-package-editor-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, 1fr); align-items: stretch; gap: 0; }
+.bf-admin-package-editor-grid > * { min-width: 0; }
+.bf-admin-package-form-column { min-width: 0; padding: 1.25rem; background: var(--bf-admin-surface); }
+.bf-admin-package-form-column .bf-admin-offer-editor { margin: 0 !important; border: 0; box-shadow: none; }
+.bf-admin-package-form-column .bf-admin-offer-editor > .card-header { display: none; }
+.bf-admin-package-form-column .bf-admin-offer-editor > .card-body { padding: 0; }
+.bf-admin-package-form-column .bf-admin-editor-group { min-height: 18rem; margin: 0; padding: 0; border: 0; }
+.bf-admin-package-form-column .bf-admin-editor-group + .bf-admin-editor-group { margin-top: 0; padding-top: 0; border-top: 0; }
+.bf-admin-editor-group > p { margin-bottom: 1rem; }
+.bf-admin-editor-hint { margin-top: .65rem; color: var(--bf-admin-muted); font-size: .78rem; }
+.bf-admin-package-form-column .form-label { font-size: .78rem; font-weight: 650; }
+.bf-admin-package-form-column .form-control, .bf-admin-package-form-column .form-select { min-height: 2.55rem; background: var(--bf-admin-surface); border-color: var(--bf-admin-line); }
+.bf-admin-package-form-column .form-control[readonly] { background: var(--bf-admin-surface-subtle); color: var(--bf-admin-muted); }
+.bf-admin-package-preview-panel { border-radius: 0; min-width: 0; padding: 1.25rem; border-left: 1px solid var(--bf-admin-line); background: var(--bf-admin-canvas); }
+.bf-admin-preview-eyebrow { margin-bottom: .25rem; color: var(--bf-admin-muted); font-size: .7rem; letter-spacing: .12em; }
+.bf-admin-preview-title { margin: 0 0 1rem; font-size: 1.08rem; letter-spacing: -.015em; }
+.bf-admin-package-preview { border-color: var(--bf-admin-line); background: var(--bf-admin-surface); box-shadow: none; }
+.bf-admin-package-preview .card-body { padding: 1.1rem; }
+.bf-admin-package-preview h4 { font-size: 1.35rem; letter-spacing: -.025em; }
+.bf-admin-package-preview .bf-admin-plan-price { min-height: 2rem; font-size: 1.45rem; }
+.bf-admin-package-preview .bf-admin-plan-benefits { margin-top: 1rem; padding-left: 1.15rem; }
+.bf-admin-package-preview .bf-admin-plan-benefits li + li { margin-top: .45rem; }
+.bf-admin-package-period { display: flex; width: fit-content; justify-content: center; align-items: center; gap: .15rem; margin: 1rem auto .8rem; padding: .2rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
+.bf-admin-package-period .btn { padding: .38rem .65rem; border: 0; border-radius: .35rem; background: transparent; color: var(--bf-admin-ink); box-shadow: none; }
+.bf-admin-package-period .btn-primary { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); }
+.bf-admin-period-input { padding: .8rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
+.bf-admin-preview-summary { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--bf-admin-line); }
+.bf-admin-preview-summary h4 { margin: 0 0 .7rem; font-size: 1rem; }
+.bf-admin-preview-summary-row { display: flex; justify-content: space-between; gap: 1rem; margin: .45rem 0; font-size: .8rem; }
+.bf-admin-preview-summary-row strong { font-variant-numeric: tabular-nums; }
+.bf-admin-editor-shell .card-footer { padding: .85rem 1.25rem; background: var(--bf-admin-surface); }
+
+@media (max-width: 767.98px) {
+  .bf-admin-package-count, .bf-admin-package-layout-toggle { margin-left: 0; }
+  .bf-admin-package-editor-toolbar { align-items: stretch; flex-direction: column; }
+  .bf-admin-package-editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .bf-admin-package-preview-panel { border-top: 1px solid var(--bf-admin-line); border-left: 0; }
 }
 @media (max-width: 991.98px) {
   .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; }
@@ -495,3 +611,32 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 @media (prefers-reduced-motion: reduce) {
   .navbar-expand-lg.navbar-vertical, .navbar-vertical .nav-link, .btn { transition: none; }
 }
+
+.bf-admin-catalog-notice { margin-bottom: 1.5rem; padding: 1rem 1.25rem; }
+.bf-admin-first-package { min-height: 17rem; padding: 4rem 1.5rem; border: 1px dashed var(--bf-admin-line-strong); border-radius: .65rem; background: var(--bf-admin-surface); text-align: center; }
+.bf-admin-first-package h3 { font-size: 1.25rem; margin-bottom: .6rem; }
+.bf-admin-first-package p { margin-bottom: 1.5rem; }
+.bf-admin-supported-model { padding: 1rem; border: 1px solid var(--bf-admin-line); border-radius: .65rem; background: var(--bf-admin-surface); }
+.bf-admin-supported-model > summary, .bf-admin-package-settings > summary { color: var(--bf-admin-muted); font-weight: 600; cursor: pointer; }
+.bf-admin-supported-model > .card { box-shadow: none; border: 0; }
+.bf-admin-package-settings { border-top: 1px solid var(--bf-admin-line); padding: .85rem 1.25rem; }
+.bf-admin-package-settings-body { padding-top: 1rem; }
+.bf-admin-package-form-column .bf-admin-editor-group { min-height: 27rem; }
+.bf-admin-package-form-column .bf-admin-editor-group h5 { margin-bottom: 1.1rem; font-size: 1.05rem; }
+.bf-admin-package-editor-toolbar > [data-admin-package-back] { margin-left: auto; order: 2; font-size: .78rem; }
+.bf-admin-editor-shell .card-footer { position: static; box-shadow: none; }
+.bf-admin-editor-actions > div { margin-left: auto; }
+
+.bf-admin-package-empty:has(.bf-admin-first-package) { display: block; padding: 0; min-height: 0; }
+.bf-admin-first-package { width: 100%; }
+.bf-admin-catalog-notice { flex-direction: column; align-items: flex-start; gap: 0; }
+.bf-admin-package-form-column .bf-admin-check-grid { padding: 0; border: 0; background: transparent; }
+.bf-admin-feature-choices { display: grid; gap: .65rem; margin-top: 1rem; }
+#admin-app .bf-admin-package-form-column .form-control:disabled, #admin-app .bf-admin-package-form-column .form-control[readonly], #admin-app .bf-admin-package-form-column .bf-combobox-input:disabled { background: var(--bf-admin-canvas); }
+.bf-admin-package-customer-benefits { margin: 1.5rem 0 1rem; padding: 0; list-style: none; display: grid; gap: .85rem; }
+.bf-admin-package-customer-benefits > li { display: flex; align-items: flex-start; gap: .7rem; }
+.bf-admin-package-benefit-icon, .bf-admin-package-benefit-check { flex: 0 0 1.15rem; width: 1.15rem; color: var(--bf-admin-muted); }
+.bf-admin-package-rights-details { color: var(--bf-admin-muted); font-size: .75rem; }
+.bf-admin-package-rights-details > summary { cursor: pointer; }
+.bf-admin-package-rights-details ul { margin-top: .6rem; padding-left: 1.1rem; }
+.bf-admin-package-rights-details li + li { margin-top: .3rem; }

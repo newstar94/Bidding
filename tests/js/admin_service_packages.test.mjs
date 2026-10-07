@@ -44,6 +44,37 @@ test("package duplication keeps source fields and rights intact and resets the t
   assert.equal(result.offers[1].price.total, null);
 });
 
+test("explicit creator values survive both periods while preserving unknown policy metadata", () => {
+  const source = { offers: [], unknown: { keep: true }, policies: {
+    baseTerm: { kind: "fixed_days", days: 365 },
+    monthlyBaseTerm: { kind: "blocked_decision", reason: "Pending", boundary: "preserved" },
+  } };
+  const result = addAdminServicePackage(source, {
+    tier: "gold", variant: "connected", name: "Nhóm hồ sơ", periods: ["yearly", "monthly"],
+    prices: { yearly: { subtotal: 1200000, tax: 120000, total: 1320000 }, monthly: { subtotal: 150000, tax: 15000, total: 165000 } },
+    monthlyTermDays: 30, memberQuota: 12, includedProcurementQuota: 200,
+    description: "Do Admin cấu hình", benefits: ["Lợi ích 1"], displayOrder: 4,
+    visibility: "hidden", recommended: true, violationCheckEnabled: true,
+    exportCapabilities: { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false },
+  });
+  assert.equal(source.offers.length, 0);
+  assert.equal(source.policies.monthlyBaseTerm.kind, "blocked_decision");
+  assert.equal(result.offers[0].price.total, 1320000);
+  assert.equal(result.offers[1].price.total, 165000);
+  for (const offer of result.offers) {
+    assert.equal(offer.memberQuota, 12);
+    assert.equal(offer.includedProcurementQuota, 200);
+    assert.equal(offer.exportCapabilities["document.export.word"], true);
+    assert.equal(offer.display.description, "Do Admin cấu hình");
+    assert.equal(offer.display.visibility, "hidden");
+    assert.equal(offer.display.recommended, true);
+    assert.equal(offer.salesState, "non_sellable");
+  }
+  assert.deepEqual(result.policies.monthlyBaseTerm, { kind: "fixed_days", days: 30, boundary: "preserved" });
+  assert.deepEqual(result.policies.baseTerm, source.policies.baseTerm);
+  assert.deepEqual(result.unknown, { keep: true });
+});
+
 test("explicit export configuration is limited to existing export capabilities", () => {
   const source = addAdminServicePackage({ offers: [] }, { tier: "gold", variant: "connected", name: "Gói" });
   const result = configureAdminExportMapping(source, 0);

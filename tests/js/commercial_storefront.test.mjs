@@ -95,6 +95,7 @@ async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect, o
   let page;
   try {
     page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    page.setDefaultTimeout(5000);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -142,7 +143,7 @@ test("popup-blocked checkout immediately offers recovery without creating anothe
       return route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: pendingOrder }) });
     });
     await page.route("**/api/billing/orders/order-recovery", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: pendingOrder }) }));
-    await page.locator(".storefront-buy").click();
+    await page.locator('[data-operation="purchase"]').click();
     await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("chặn cửa sổ"));
     const recovery = page.locator('[data-order="order-recovery"] a');
     assert.equal(await recovery.count(), 1);
@@ -206,7 +207,7 @@ test("storefront group and period switches keep the workspace owner and selected
       const cards = page.locator("[data-commercial-offer-code]");
       assert.equal(await cards.count(), 1);
       assert.equal(await cards.first().getAttribute("data-commercial-offer-code"), "organization.connected.monthly");
-      assert.equal(await cards.locator("button.storefront-buy").getAttribute("data-sku"), "organization.connected.monthly");
+      assert.equal(await cards.locator('button[data-operation="purchase"]').getAttribute("data-sku"), "organization.connected.monthly");
       assert.match(await cards.textContent(), /123\.456/u);
       assert.doesNotMatch(await cards.textContent(), /987\.654/u);
       assert.equal(await page.locator('[data-operation="credit_pack"]').count(), 1);
@@ -220,10 +221,65 @@ test("storefront group and period switches keep the workspace owner and selected
       await page.route("**/api/billing/checkouts", async (route) => {
         await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ code: "FIXTURE_STOP", error: "Stop before payment" }) });
       });
-      await cards.locator("button.storefront-buy").click();
+      await cards.locator('button[data-operation="purchase"]').click();
       await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("FIXTURE_STOP"));
       assert.deepEqual(quoteRequest, { ownerKind: "organization", ownerId: "org-1", operation: "purchase", skuCode: "organization.connected.monthly" });
     });
   assert.deepEqual(result.cardCodes, ["organization.connected.monthly"]);
+  assert.deepEqual(result.errors, []);
+});
+
+test("renewal sends the selected SKU and owner and shows authoritative rejection without checkout", async () => {
+  let quoteRequest;
+  let checkoutRequests = 0;
+  const result = await renderScenario({ ...recoveryCatalog, offers: [offer("organization.yearly", "organization", "Tổ chức")] },
+    { id: "user-1", activeOrganizationId: "org-1" }, async page => {
+      await page.evaluate(() => { document.cookie = "csrf_token=storefront-test-token; path=/"; window.open = () => null; });
+      await page.route("**/api/billing/quotes", route => {
+        quoteRequest = route.request().postDataJSON();
+        return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ code: "RENEWAL_PLAN_TRANSITION_REVIEW_REQUIRED", error: "Gia hạn cần chọn đúng gói đang dùng." }) });
+      });
+      await page.route("**/api/billing/checkouts", route => { checkoutRequests += 1; return route.fulfill({ status: 500, body: "{}" }); });
+      assert.equal(await page.getByRole("button", { name: "Chọn gói", exact: true }).count(), 1);
+      const renew = page.getByRole("button", { name: "Gia hạn gói này", exact: true });
+      await renew.click();
+      await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("RENEWAL_PLAN_TRANSITION_REVIEW_REQUIRED"));
+      assert.deepEqual(quoteRequest, { ownerKind: "organization", ownerId: "org-1", operation: "renew", skuCode: "organization.yearly" });
+      assert.equal(checkoutRequests, 0);
+      assert.match(await page.locator(".storefront-checkout-error").textContent(), /Gia hạn cần chọn đúng gói đang dùng/u);
+      assert.equal(await renew.isEnabled(), true);
+    });
+  assert.deepEqual(result.errors, []);
+});
+
+test("a paid scheduled renewal shows its activation date and stops payment polling", async () => {
+  let orderRequests = 0;
+  let quoteOperation;
+  const scheduled = { ...pendingOrder, operation: "renew", paymentState: "verified_paid", activationState: "pending", activationScheduled: true, activationStartsAt: 1800000000, activationExpiresAt: 1831536000 };
+  const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async page => {
+    await page.evaluate(() => {
+      document.cookie = "csrf_token=storefront-test-token; path=/";
+      window.open = () => null;
+      window.paymentPollingDelays = [];
+      const originalSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) => {
+        if (delay === 3000) window.paymentPollingDelays.push(delay);
+        return originalSetTimeout(callback, delay, ...args);
+      };
+    });
+    await page.route("**/api/billing/quotes", route => {
+      quoteOperation = route.request().postDataJSON().operation;
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "quote-scheduled" }) });
+    });
+    await page.route("**/api/billing/checkouts", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: pendingOrder }) }));
+    await page.route("**/api/billing/orders/order-recovery", route => { orderRequests += 1; return route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: scheduled }) }); });
+    await page.locator('[data-operation="renew"]').click();
+    await page.waitForFunction(() => document.getElementById("storefront-status").textContent.includes("quyền lợi sẽ kích hoạt từ"));
+    assert.equal(orderRequests, 1);
+    assert.equal(quoteOperation, "renew");
+    assert.deepEqual(await page.evaluate(() => window.paymentPollingDelays), []);
+    assert.match(await page.locator('[data-order="order-recovery"]').textContent(), /Chờ đến kỳ kích hoạt/u);
+    assert.equal(await page.locator('[data-order="order-recovery"] a').count(), 0);
+  });
   assert.deepEqual(result.errors, []);
 });

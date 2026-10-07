@@ -129,8 +129,8 @@ class BillingActivationService:
         payment_was_inserted = payment["inserted"]
         self.cursor.execute(
             """UPDATE billing_orders
-                  SET payment_state = 'verified_paid', activation_state =
-                      CASE WHEN activation_state = 'applied' THEN activation_state ELSE 'pending' END,
+                  SET payment_state = CASE WHEN payment_state IN ('refund_pending', 'partially_refunded', 'refunded', 'refund_failed') THEN payment_state ELSE 'verified_paid' END,
+                      activation_state = CASE WHEN activation_state IN ('applied', 'reversed') THEN activation_state ELSE 'pending' END,
                       revision = revision + 1, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?""",
             (order["id"],),
@@ -199,9 +199,9 @@ class BillingActivationService:
         payment_was_inserted = payment["inserted"]
         self.cursor.execute(
             """UPDATE billing_orders
-                  SET payment_state = 'verified_paid',
+                  SET payment_state = CASE WHEN payment_state IN ('refund_pending', 'partially_refunded', 'refunded', 'refund_failed') THEN payment_state ELSE 'verified_paid' END,
                       activation_state = CASE
-                        WHEN activation_state = 'applied' THEN activation_state
+                        WHEN activation_state IN ('applied', 'reversed') THEN activation_state
                         ELSE 'pending'
                       END,
                       revision = revision + 1, updated_at = CURRENT_TIMESTAMP
@@ -334,7 +334,49 @@ class BillingActivationService:
         exactly-once seam for invoice, audit and notification outbox rows.
         """
 
+        self._request_invoice_if_due(order, payment_transaction_id, outcome["status"])
+        activation_event = (
+            "billing.activation_applied"
+            if outcome["status"] == "applied"
+            else "billing.activation_scheduled"
+            if outcome["status"] == "scheduled"
+            else "billing.activation_review_required"
+        )
+        repository = CommercialRepository(self.cursor, clock=self.clock)
+        repository.insert_outbox(
+            "billing.payment_verified", "billing_order", order["id"],
+            {"publicId": order["public_id"], "paymentTransactionId": payment_transaction_id, "timing": timing},
+        )
+        repository.insert_outbox(
+            activation_event, "billing_order", order["id"],
+            {"publicId": order["public_id"], "status": outcome["status"], "reason": outcome.get("reason")},
+        )
+        organization_id = order.get("organization_id") if order["owner_kind"] == "organization" else None
+        log_audit(
+            "billing.payment_verified", actor_user_id=order["actor_user_id"],
+            organization_id=organization_id, target_type="billing_order", target_id=order["id"],
+            metadata={"publicId": order["public_id"], "paymentTransactionId": payment_transaction_id,
+                      "timing": timing, "totalAmount": int(order["total_amount"]), "currency": order["currency"]},
+            cursor=self.cursor, required=True,
+        )
+        log_audit(
+            activation_event, actor_user_id=order["actor_user_id"], organization_id=organization_id,
+            target_type="billing_order", target_id=order["id"],
+            metadata={"publicId": order["public_id"], "status": outcome["status"], "reason": outcome.get("reason")},
+            cursor=self.cursor, required=True,
+        )
+
+    def _request_invoice_if_due(self, order, payment_transaction_id, activation_status):
         decision = json.loads(order["decision_json"])
+        invoice_policy = decision.get("taxInvoiceSnapshot") or {}
+        if invoice_policy.get("invoiceEnabled") is False:
+            return
+        trigger = invoice_policy.get("invoiceTrigger")
+        # Null is compatibility behavior for already pinned legacy orders.
+        if trigger in {"manual", "disabled"} or (trigger == "activation_applied" and activation_status != "applied"):
+            return
+        if trigger not in {None, "verified_payment", "activation_applied"}:
+            return
         tax_snapshot = {
             "currency": order["currency"],
             "subtotalAmount": int(order["subtotal_amount"]),
@@ -366,35 +408,8 @@ class BillingActivationService:
                 f"invoice:{order['id']}",
             ),
         )
-        invoice_was_inserted = invoice_insert.rowcount == 1
-        activation_event = (
-            "billing.activation_applied"
-            if outcome["status"] == "applied"
-            else "billing.activation_review_required"
-        )
-        repository = CommercialRepository(self.cursor, clock=self.clock)
-        repository.insert_outbox(
-            "billing.payment_verified",
-            "billing_order",
-            order["id"],
-            {
-                "publicId": order["public_id"],
-                "paymentTransactionId": payment_transaction_id,
-                "timing": timing,
-            },
-        )
-        repository.insert_outbox(
-            activation_event,
-            "billing_order",
-            order["id"],
-            {
-                "publicId": order["public_id"],
-                "status": outcome["status"],
-                "reason": outcome.get("reason"),
-            },
-        )
-        if invoice_was_inserted:
-            repository.insert_outbox(
+        if invoice_insert.rowcount == 1:
+            CommercialRepository(self.cursor, clock=self.clock).insert_outbox(
                 "billing.invoice_requested",
                 "billing_order",
                 order["id"],
@@ -403,43 +418,14 @@ class BillingActivationService:
                     "invoiceRequestId": invoice_request_id,
                 },
             )
-        organization_id = (
-            order.get("organization_id")
-            if order["owner_kind"] == "organization"
-            else None
-        )
-        log_audit(
-            "billing.payment_verified",
-            actor_user_id=order["actor_user_id"],
-            organization_id=organization_id,
-            target_type="billing_order",
-            target_id=order["id"],
-            metadata={
-                "publicId": order["public_id"],
-                "paymentTransactionId": payment_transaction_id,
-                "timing": timing,
-                "totalAmount": int(order["total_amount"]),
-                "currency": order["currency"],
-            },
-            cursor=self.cursor,
-            required=True,
-        )
-        log_audit(
-            activation_event,
-            actor_user_id=order["actor_user_id"],
-            organization_id=organization_id,
-            target_type="billing_order",
-            target_id=order["id"],
-            metadata={
-                "publicId": order["public_id"],
-                "status": outcome["status"],
-                "reason": outcome.get("reason"),
-            },
-            cursor=self.cursor,
-            required=True,
-        )
 
     def _activate_order(self, order):
+        if order["activation_state"] == "reversed":
+            return {"status": "reversed"}
+        if order["payment_state"] in {"refund_pending", "partially_refunded", "refunded", "refund_failed"}:
+            return {"status": "review_required", "reason": "PAYMENT_REFUND_REVIEW_REQUIRED"}
+        if self.cursor.execute("SELECT 1 FROM billing_refund_intents WHERE order_id = ? AND state = 'pending' LIMIT 1", (order["id"],)).fetchone():
+            return {"status": "review_required", "reason": "PAYMENT_REFUND_REVIEW_REQUIRED"}
         existing = _dict(self.cursor.execute(
             "SELECT * FROM billing_subscription_activations WHERE order_id = ? FOR UPDATE",
             (order["id"],),
@@ -461,9 +447,16 @@ class BillingActivationService:
             return self._mark_review(order, "ORDER_ITEM_MISSING")
         snapshot = json.loads(item["snapshot_json"])
         benefits = snapshot.get("benefits") or decision.get("benefits") or {}
-        if order.get("expected_subscription_revision") is not None:
-            current = self._current_subscription(order)
-            if current and int(current["revision"]) != int(order["expected_subscription_revision"]):
+        current = self._current_subscription(order)
+        scheduled = json.loads(existing["after_json"]) if existing else {}
+        is_scheduled = existing and existing["state"] == "pending" and scheduled.get("scheduled") is True
+        expected_revision = existing["expected_revision"] if is_scheduled else order.get("expected_subscription_revision")
+        if expected_revision is not None:
+            if not current or int(current["revision"]) != int(expected_revision):
+                # A queued renewal expects the preceding paid term to activate
+                # first. Do not reject it while that earlier term is pending.
+                if is_scheduled and int(self.clock()) < int(scheduled["startsAt"]):
+                    return {"status": "scheduled", **scheduled}
                 return self._mark_review(order, "SUBSCRIPTION_REVISION_MISMATCH")
         if snapshot.get("itemType") == "procurement_credit_pack":
             return self._apply_credit_pack(order, item, benefits)
@@ -480,12 +473,44 @@ class BillingActivationService:
             days = int(term_policy.get("days") or 0)
             if days <= 0:
                 return self._mark_review(order, "BASE_TERM_INVALID")
-            expires = now + days * 86400
+            starts = now
+            expires = starts + days * 86400
         else:
             return self._mark_review(order, "BASE_TERM_UNSUPPORTED")
         owner = self._owner(order)
-        current = self._current_subscription(order)
-        if current and current["status"] == "active" and order["operation"] in {"purchase", "renew"}:
+        if is_scheduled:
+            starts = int(scheduled["startsAt"])
+            expires = int(scheduled["expiresAt"])
+            if now < starts:
+                return {"status": "scheduled", **scheduled}
+            if (not current or current["status"] != "active"
+                    or current.get("plan_version_id") != scheduled.get("expectedPlanVersionId")
+                    or current.get("source_order_id") != scheduled.get("expectedSourceOrderId")):
+                return self._mark_review(order, "RENEWAL_PREDECESSOR_MISMATCH")
+        elif order["operation"] == "renew":
+            if (policy.get("renewalAnchor") or {}).get("kind") != "end_of_term":
+                return self._mark_review(order, "RENEWAL_ANCHOR_DECISION_REQUIRED")
+            if not current or current["status"] not in {"active", "expired"} or not current.get("expires_at"):
+                return self._mark_review(order, "RENEWAL_BASE_SUBSCRIPTION_REQUIRED")
+            if not self._same_renewal_plan(current, item):
+                return self._mark_review(order, "RENEWAL_PLAN_TRANSITION_REVIEW_REQUIRED")
+            payment = self.cursor.execute(
+                "SELECT provider_occurred_at FROM payment_transactions WHERE order_id = ? AND transaction_type = 'payment' AND status = 'verified'",
+                (order["id"],),
+            ).fetchone()
+            if not payment or not payment[0]:
+                return self._mark_review(order, "RENEWAL_PAYMENT_TIME_REQUIRED")
+            starts = max(int(payment[0]), int(current["expires_at"]))
+            next_revision = int(current["revision"])
+            predecessor = None
+            for queued in self._queued_renewals(order):
+                starts = max(starts, int(queued["after"]["expiresAt"]))
+                next_revision = max(next_revision, int(queued["expected_revision"]) + 1)
+                predecessor = queued
+            expires = starts + days * 86400
+            if starts > now:
+                return self._schedule_renewal(order, current, item, starts, expires, next_revision, predecessor)
+        elif current and current["status"] == "active" and (not current.get("expires_at") or int(current["expires_at"]) > now) and order["operation"] == "purchase":
             return self._mark_review(order, "ACTIVE_TERM_REQUIRES_TRANSITION_REVIEW")
         before = dict(current) if current else {}
         if owner.kind == "account":
@@ -500,7 +525,7 @@ class BillingActivationService:
                      starts_at = excluded.starts_at, expires_at = excluded.expires_at,
                      revision = account_subscriptions.revision + 1,
                      updated_at = CURRENT_TIMESTAMP""",
-                (owner.identifier, item["legacy_package_id"], item.get("plan_version_id"), order["id"], now, expires),
+                (owner.identifier, item["legacy_package_id"], item.get("plan_version_id"), order["id"], starts, expires),
             )
         else:
             self.cursor.execute(
@@ -516,17 +541,82 @@ class BillingActivationService:
                      member_quota = excluded.member_quota,
                      revision = organization_subscriptions.revision + 1,
                      updated_at = CURRENT_TIMESTAMP""",
-                (owner.identifier, item["legacy_package_id"], item.get("plan_version_id"), order["id"], now, expires, int(item.get("member_quota") or benefits.get("memberQuota") or 1)),
+                (owner.identifier, item["legacy_package_id"], item.get("plan_version_id"), order["id"], starts, expires, int(item.get("member_quota") or benefits.get("memberQuota") or 1)),
             )
         if int(item.get("included_procurement_quota") or benefits.get("includedProcurementQuota") or 0) > 0:
             UsageCreditService(self.cursor, clock=self.clock).grant(
                 owner,
                 int(item.get("included_procurement_quota") or benefits.get("includedProcurementQuota")),
                 source="plan", release_id=order["release_id"],
-                policy_checksum=str(snapshot.get("releaseChecksum") or decision.get("releaseChecksum")), issued_at=now,
+                policy_checksum=str(snapshot.get("releaseChecksum") or decision.get("releaseChecksum")), issued_at=starts,
                 expires_at=expires, order_item_id=item["id"],
             )
-        return self._mark_applied(order, before, {"startsAt": now, "expiresAt": expires, "planVersionId": item.get("plan_version_id")})
+        outcome = self._mark_applied(order, before, {"startsAt": starts, "expiresAt": expires, "planVersionId": item.get("plan_version_id")})
+        if is_scheduled:
+            CommercialRepository(self.cursor, clock=self.clock).insert_outbox(
+                "billing.activation_applied", "billing_order", order["id"],
+                {"publicId": order["public_id"], "startsAt": starts, "expiresAt": expires},
+            )
+            log_audit(
+                "billing.activation_applied", actor_user_id=order["actor_user_id"],
+                organization_id=order.get("organization_id"), target_type="billing_order",
+                target_id=order["id"], metadata={"startsAt": starts, "expiresAt": expires},
+                cursor=self.cursor, required=True,
+            )
+        return outcome
+
+    def _same_renewal_plan(self, current, item):
+        """New releases may renew a logical plan, never silently switch plans."""
+        if not current.get("plan_version_id"):
+            return False
+        row = self.cursor.execute(
+            """SELECT 1 FROM billing_plan_versions AS current_plan
+                 JOIN billing_plan_versions AS next_plan
+                   ON next_plan.logical_package_code = current_plan.logical_package_code
+                  AND next_plan.owner_kind = current_plan.owner_kind
+                  AND next_plan.tier = current_plan.tier
+                  AND next_plan.variant = current_plan.variant
+                WHERE current_plan.id = ? AND next_plan.id = ?""",
+            (current["plan_version_id"], item.get("plan_version_id")),
+        ).fetchone()
+        return bool(row)
+
+    def _queued_renewals(self, order):
+        owner_column = "account_user_id" if order["owner_kind"] == "account" else "organization_id"
+        rows = self.cursor.execute(
+            f"""SELECT activation.after_json, activation.expected_revision, queued.id
+                  FROM billing_subscription_activations AS activation
+                  JOIN billing_orders AS queued ON queued.id = activation.order_id
+                 WHERE queued.owner_kind = ? AND queued.{owner_column} = ?
+                   AND queued.id != ? AND queued.operation = 'renew'
+                   AND queued.payment_state = 'verified_paid'
+                   AND queued.activation_state = 'pending' AND activation.state = 'pending'
+                 ORDER BY (activation.after_json::jsonb ->> 'expiresAt')::bigint, queued.id""",  # noqa: S608 - fixed owner column
+            (order["owner_kind"], order[owner_column], order["id"]),
+        ).fetchall()
+        queued = []
+        for row in rows:
+            after = json.loads(row["after_json"])
+            if after.get("scheduled") is True:
+                queued.append({"after": after, "expected_revision": row["expected_revision"], "order_id": row["id"]})
+        return queued
+
+    def _schedule_renewal(self, order, current, item, starts, expires, expected_revision, predecessor):
+        after = {"scheduled": True, "startsAt": starts, "expiresAt": expires, "planVersionId": item.get("plan_version_id"),
+                 "expectedPlanVersionId": predecessor["after"]["planVersionId"] if predecessor else current.get("plan_version_id"),
+                 "expectedSourceOrderId": predecessor["order_id"] if predecessor else current.get("source_order_id")}
+        self.cursor.execute(
+            """INSERT INTO billing_subscription_activations
+                   (id, order_id, state, before_json, after_json, expected_revision, reason_code)
+               VALUES (?, ?, 'pending', ?, ?, ?, 'RENEWAL_SCHEDULED')
+               ON CONFLICT(order_id) DO UPDATE SET state = 'pending',
+                 before_json = excluded.before_json, after_json = excluded.after_json,
+                 expected_revision = excluded.expected_revision, reason_code = 'RENEWAL_SCHEDULED',
+                 updated_at = CURRENT_TIMESTAMP""",
+            (new_id("subscription-activation"), order["id"], canonical_json(current), canonical_json(after), expected_revision),
+        )
+        self.cursor.execute("UPDATE billing_orders SET activation_state = 'pending', revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order["id"],))
+        return {"status": "scheduled", **after}
 
     def _apply_credit_pack(self, order, item, benefits):
         owner = self._owner(order)
@@ -589,6 +679,9 @@ class BillingActivationService:
             (activation_id, order["id"], canonical_json(before), canonical_json(after), order.get("expected_subscription_revision"), int(order["revision"]) + 1),
         )
         self.cursor.execute("UPDATE billing_orders SET activation_state = 'applied', revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order["id"],))
+        payment = self.cursor.execute("SELECT id FROM payment_transactions WHERE order_id = ? AND transaction_type = 'payment' AND status = 'verified'", (order["id"],)).fetchone()
+        if payment:
+            self._request_invoice_if_due(order, payment[0], "applied")
         return {"status": "applied"}
 
     def _mark_review(self, order, reason, *, evidence=None):

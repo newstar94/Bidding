@@ -180,6 +180,51 @@ test("lookup returns explicit unavailable status so caller can preserve current 
   assert.equal(result.revision.clarificationStatus, "SOURCE_UNAVAILABLE");
 });
 
+test("partial quota lookup preserves fetched history and reports revisions never fetched", async () => {
+  const { pkg, model, preview } = fixture();
+  const before = structuredClone(pkg);
+  preview.usageCredits = {
+    status: "PARTIAL",
+    requested: ["00", "01"].map((sourceRevision) => ({
+      provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
+    })),
+    processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
+    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
+  };
+  preview.rawBundle = { revisions: { "00": {} } };
+  const result = await lookupPackageInvitationUpdates({
+    pkg, model, client: { lookup: async () => preview },
+  });
+  assert.deepEqual(result.usageCredits, preview.usageCredits);
+  assert.deepEqual(result.history.missingRevisions, ["01"]);
+  assert.equal(result.revision.clarificationRequests[0].content, "Tiêu chí\nCâu hỏi làm rõ");
+  assert.equal(result.revision.clarificationStatus, "AVAILABLE");
+  assert.equal(result.revision.extensionStatus, "SOURCE_UNAVAILABLE");
+  assert.deepEqual(pkg, before);
+});
+
+test("a target revision skipped for quota reports quota exhaustion and keeps the package unchanged", async () => {
+  const { pkg, model, preview } = fixture(packageRecord({ phienBan: "01" }));
+  const before = structuredClone(pkg);
+  preview.canonical.revisions[0].revisionNumber = "00";
+  preview.usageCredits = {
+    status: "PARTIAL",
+    requested: ["00", "01"].map((sourceRevision) => ({
+      provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
+    })),
+    processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
+    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
+  };
+  await assert.rejects(lookupPackageInvitationUpdates({
+    pkg, model, client: { lookup: async () => preview },
+  }), (error) => {
+    assert.equal(error.code, "QUOTA_EXHAUSTED");
+    assert.deepEqual(error.details.usageCredits, preview.usageCredits);
+    return true;
+  });
+  assert.deepEqual(pkg, before);
+});
+
 test("lookup rejects stale workspace, storage, removed record, root and row version changes", async () => {
   const changes = [
     ({ model }) => { model.getWorkspaceToken = () => "user-1:org-2@3"; },
