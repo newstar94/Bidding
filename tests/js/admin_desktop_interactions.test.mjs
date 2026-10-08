@@ -174,15 +174,18 @@ test("editing the monthly base shows and saves ten times the annual price while 
   });
 });
 
-test("publishing keeps a short reason in the dialog until it satisfies the server contract", async () => {
+test("publishing needs only confirmation and records an automatic audit reason", async () => {
   const digest = "a".repeat(64);
+  const source = draft("draft-a");
+  source.document.rollout = { mode: "shadow" };
   interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path.endsWith("/validate")) return { payload: { errors: [], validationDigest: digest, readinessExpiresAt: 9999999999 } };
     if (entry.path.endsWith("/publish")) {
       if (entry.body.validationDigest.length !== 64 || entry.body.reason.trim().length < 3) {
         return { status: 400, payload: { code: "COMMERCIAL_POLICY_INVALID", error: "Thiếu digest hoặc lý do xuất bản hợp lệ." } };
       }
-      return { payload: { id: "release-test" } };
+      return { payload: { id: "release-test", mode: "shadow", effectiveFrom: 1 } };
     }
     return null;
   };
@@ -192,21 +195,379 @@ test("publishing keeps a short reason in the dialog until it satisfies the serve
     await page.locator('[data-admin-plan-action="publish"]:enabled').waitFor();
     await page.locator('[data-admin-plan-action="publish"]').click();
     const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
-    const reason = dialog.locator('input[name="value"]');
-    await reason.fill("OK");
-    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
-    await page.waitForTimeout(100);
-    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0, "a short reason must not cause the reported server error");
-    assert.equal(await dialog.isVisible(), true);
-    assert.match(await reason.evaluate(input => input.validationMessage), /ít nhất 3 ký tự/u);
-    await reason.fill("  Mở bán gói thử nghiệm  ");
+    await dialog.waitFor();
+    assert.equal(await dialog.locator("input, textarea").count(), 0);
+    assert.doesNotMatch(await dialog.textContent(), /Lý do xuất bản|ít nhất 3 ký tự/u);
+    assert.match(await dialog.textContent(), /Original/u);
+    assert.match(await dialog.textContent(), /Chế độ phát hành: Thử nội bộ/u);
+    await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
+    await dialog.waitFor({ state: "hidden" });
+    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0);
+    await page.locator('[data-admin-plan-action="publish"]').click();
+    await dialog.waitFor();
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0);
+    await page.locator('[data-admin-plan-action="publish"]').click();
     await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
     await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
+    assert.match(await page.locator('#admin-plan-status').textContent(), /Thử nội bộ[\s\S]*chọn Công khai/u);
     const publication = requests.filter(entry => entry.path.endsWith("/publish"));
     assert.equal(publication.length, 1);
-    assert.equal(publication[0].body.reason, "Mở bán gói thử nghiệm");
+    assert.equal(publication[0].body.reason, "Xuất bản gói dịch vụ");
     assert.equal(publication[0].body.validationDigest, digest);
     assert.equal(publication[0].body.expectedRevision, 1);
+  });
+});
+
+function currentPublishedPackages() {
+  const annual = (variant, name, total) => ({
+    ...structuredClone(offer), code: `gold.${variant}.yearly`, variant,
+    price: { period: "yearly", currency: "VND", subtotal: total, tax: 0, total },
+    display: { name, benefits: ["Quyền lợi bản hiện hành"], visibility: "hidden" }, salesState: "stopped",
+  });
+  const base = annual("internal", "Gói hiện hành Cơ bản", 20000);
+  const connected = annual("connected", "Gói hiện hành Nâng cao", 45000);
+  return {
+    releaseId: "release-current-shadow", releaseChecksum: "current-checksum", currency: "VND",
+    creditPacks: [], quotaWarnings: [70, 90, 100],
+    offers: [
+      base,
+      { ...structuredClone(base), code: "gold.internal.monthly", price: { period: "monthly", currency: "VND", subtotal: 2000, tax: 0, total: 2000 } },
+      connected,
+      { ...structuredClone(connected), code: "gold.connected.monthly", price: { period: "monthly", currency: "VND", subtotal: 4500, tax: 0, total: 4500 } },
+    ],
+  };
+}
+
+function preparePublicTransitionFixture({ validationErrors = [] } = {}) {
+  const sourceReleaseId = "release-shadow-to-public";
+  const source = {
+    id: "draft-public-transition", revision: 4,
+    document: {
+      schemaVersion: 1, currency: "VND",
+      offers: ["individual", "silver", "gold", "diamond"].flatMap((tier, tierIndex) =>
+        ["internal", "connected"].map((variant, variantIndex) => {
+          const total = (tierIndex + 1) * 20000 + variantIndex * 10000;
+          return {
+            ...structuredClone(offer), code: `${tier}.${variant}.yearly`, tier, variant,
+            ownerKind: tier === "individual" ? "individual" : "organization",
+            memberQuota: tier === "individual" ? 1 : (tierIndex + 1) * 5,
+            includedProcurementQuota: variant === "connected" ? (tierIndex + 1) * 100 : 0,
+            price: { period: "yearly", currency: "VND", subtotal: total, tax: 0, total, monthlyBaseAmount: total / 10, unknownPriceKey: "preserve price metadata" },
+            exportCapabilities: { "document.export.word": true, "document.export.excel": tierIndex > 0, "document.export.award_result_excel": tierIndex > 1 },
+            display: { name: `${tier} ${variant}`, benefits: ["Quyền lợi đã cấu hình", `${tierIndex + 1} thành viên`], visibility: "public", recommended: tier === "gold" },
+            unknownOfferKey: { preserve: tierIndex },
+          };
+        })),
+      policies: {
+        baseTerm: { kind: "fixed_days", days: 365 }, monthlyBaseTerm: { kind: "fixed_days", days: 30 },
+        renewal: { early: "append_current_end", expired: "payment_date", unknown: "preserve renewal" },
+      },
+      taxInvoice: { taxInclusive: true, invoiceEnabled: false, taxBasisPoints: 0, rounding: "ceil", approvalReference: "existing-tax-approval" },
+      providerProfiles: [
+        { provider: "fake", environment: "test", mode: "shadow", readiness: "ready", opaque: "preserve other provider" },
+        { provider: "payos", alias: "payOS", environment: "production", mode: "production", readiness: "ready", credentialReference: "env://existing-reference", minAmount: 1, maxAmount: 100000000, checkoutTtlSeconds: 900, opaque: "preserve payOS metadata" },
+      ],
+      externalReadiness: { vatInvoice: "approved-tax", payosMerchant: "approved-merchant", credentialWebhook: "approved-webhook", ecommercePrivacy: "approved-privacy", termsRefund: "approved-terms" },
+      rollout: { mode: "shadow", cohorts: ["existing-cohort"], unknownRolloutKey: "preserve rollout metadata" },
+      creditPacks: [{ code: "procurement.20", quantity: 20, price: 10000, unknown: "preserve pack" }],
+      quotaWarnings: [70, 90, 100], unknownTopLevel: { preserve: true },
+    },
+  };
+  const originalDocument = structuredClone(source.document);
+  const digest = "b".repeat(64);
+  let prepared = structuredClone(source);
+  let published = false;
+  const currentCatalog = (releaseId) => ({
+    releaseId, releaseChecksum: "current-checksum", currency: "VND",
+    offers: originalDocument.offers, creditPacks: originalDocument.creditPacks, quotaWarnings: originalDocument.quotaWarnings,
+  });
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/admin/overview") return { payload: {
+      currentRelease: { id: published ? "release-public-transition" : sourceReleaseId, mode: published ? "production" : "shadow", nonSellable: false },
+      currentCatalog: currentCatalog(published ? "release-public-transition" : sourceReleaseId),
+      drafts: [{ id: source.id, revision: prepared.revision }], releaseHistory: [],
+    } };
+    if (entry.path === "/api/public/commercial/offers") return { payload: published
+      ? currentCatalog("release-public-transition")
+      : { availability: "off", offers: [], creditPacks: [], quotaWarnings: [] } };
+    if (entry.path === `/api/commercial/releases/${sourceReleaseId}/clone`) return { payload: source };
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "PATCH") {
+      prepared = { id: source.id, revision: 5, document: entry.body.document };
+      return { payload: prepared };
+    }
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: prepared };
+    if (entry.path === `/api/commercial/drafts/${source.id}/validate`) return { payload: {
+      errors: validationErrors, validationDigest: digest, readinessExpiresAt: 9999999999,
+    } };
+    if (entry.path === `/api/commercial/drafts/${source.id}/publish`) {
+      published = true;
+      return { payload: { id: "release-public-transition", mode: "production", effectiveFrom: 1 } };
+    }
+    return null;
+  };
+  return { sourceReleaseId, source, originalDocument, digest, validationErrors };
+}
+
+async function startPublicTransition(page) {
+  await page.locator('[data-admin-plans-tab="releases"]').click();
+  await page.locator('[data-admin-plan-action="make-public"]').first().click();
+}
+
+function assertPreparedPublicTransition(fixture) {
+  const mutations = requests.filter(entry => entry.method !== "GET");
+  assert.deepEqual(mutations.map(entry => `${entry.method} ${entry.path}`), [
+    `POST /api/commercial/releases/${fixture.sourceReleaseId}/clone`,
+    `PATCH /api/commercial/drafts/${fixture.source.id}`,
+    `POST /api/commercial/drafts/${fixture.source.id}/validate`,
+  ]);
+  assert.equal(mutations[1].body.expectedRevision, 4);
+  assert.deepEqual(mutations[1].body.document, {
+    ...fixture.originalDocument, rollout: { ...fixture.originalDocument.rollout, mode: "production" },
+  });
+  assert.equal(mutations[2].body.expectedRevision, 5);
+  assert.deepEqual(fixture.source.document, fixture.originalDocument);
+}
+
+test("direct public transition preserves all eight packages and configuration before a single publication confirmation", async () => {
+  const fixture = preparePublicTransitionFixture();
+  await withPage("/admin/plans", async page => {
+    await startPublicTransition(page);
+    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
+    await dialog.waitFor();
+    assertPreparedPublicTransition(fixture);
+    assert.equal(await page.getByRole("dialog").count(), 1);
+    assert.equal(await dialog.locator("input, textarea").count(), 0);
+    assert.match(await dialog.textContent(), /Chế độ phát hành: Công khai · Mở bán chính thức/u);
+    for (const configured of fixture.originalDocument.offers) {
+      assert.ok((await dialog.textContent()).includes(configured.display.name));
+    }
+    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).count(), 1);
+    assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
+    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
+    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Bảng giá đã hiển thị trên trang chủ/u);
+    const publication = requests.filter(entry => entry.path.endsWith("/publish"));
+    assert.equal(publication.length, 1);
+    assert.equal(publication[0].path, `/api/commercial/drafts/${fixture.source.id}/publish`);
+    assert.equal(publication[0].body.expectedRevision, 5);
+    assert.equal(publication[0].body.validationDigest, fixture.digest);
+    assert.equal(publication[0].body.reason, "Xuất bản gói dịch vụ");
+    assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
+  });
+});
+
+test("direct public transition cancellation keeps its validated public draft usable without cloning again", async () => {
+  const fixture = preparePublicTransitionFixture();
+  await withPage("/admin/plans", async page => {
+    await startPublicTransition(page);
+    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
+    await dialog.waitFor({ state: "hidden" });
+    assertPreparedPublicTransition(fixture);
+    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).isVisible(), true);
+    assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
+    for (const action of ["save", "validate", "publish"]) {
+      assert.equal(await page.locator(`[data-admin-plan-action="${action}"]`).isEnabled(), true);
+    }
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), true);
+    await page.locator('[data-admin-plan-action="publish"]').click();
+    await dialog.waitFor();
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    assertPreparedPublicTransition(fixture);
+    await page.locator('[data-admin-package-edit="0"]').first().click();
+    await page.locator('[data-admin-offer-field="display.name"][data-offer-index="0"]').fill("Chỉnh bản nháp sau khi hủy");
+    assert.equal(await page.locator('[data-admin-plan-action="save"]').isEnabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+  });
+});
+
+test("direct public transition validation errors retain the complete public draft without publishing or adjusting readiness", async () => {
+  const fixture = preparePublicTransitionFixture({ validationErrors: [
+    { path: "providerProfiles", code: "NO_HEALTHY_PROVIDER", message: "payOS cần được xác nhận trước khi mở bán." },
+  ] });
+  fixture.source.document.providerProfiles[1].readiness = "blocked_external";
+  fixture.originalDocument.providerProfiles[1].readiness = "blocked_external";
+  fixture.source.document.offers[0].salesState = "stopped";
+  fixture.originalDocument.offers[0].salesState = "stopped";
+  fixture.source.document.offers[0].display.visibility = "hidden";
+  fixture.originalDocument.offers[0].display.visibility = "hidden";
+  await withPage("/admin/plans", async page => {
+    await startPublicTransition(page);
+    await page.waitForFunction(() => document.querySelector("#admin-plan-validation")?.textContent.includes("payOS cần được xác nhận"));
+    assertPreparedPublicTransition(fixture);
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).isVisible(), true);
+    assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    for (const action of ["save", "validate"]) {
+      assert.equal(await page.locator(`[data-admin-plan-action="${action}"]`).isEnabled(), true);
+    }
+    assert.match(await page.locator("#admin-plan-status").textContent(), /lỗi/u);
+    await page.locator('[data-admin-validation-target="payment"]').click();
+    assert.equal(await page.locator('[data-admin-commercial-config="providerProfiles.1.readiness"]').inputValue(), "blocked_external");
+    fixture.validationErrors.splice(0);
+    await page.locator('[data-admin-plan-action="validate"]').click();
+    await page.locator('[data-admin-plan-action="publish"]:enabled').waitFor();
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
+    assert.equal(requests.filter(entry => entry.path.endsWith("/validate")).length, 2);
+    assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
+  });
+});
+
+test("direct public transition late validation reauthentication retries only validation and ignores duplicate starts", async () => {
+  const fixture = preparePublicTransitionFixture();
+  const fixtureApi = interceptApi;
+  let validationAttempts = 0;
+  interceptApi = async entry => {
+    if (entry.path === `/api/commercial/drafts/${fixture.source.id}/validate`) {
+      validationAttempts += 1;
+      if (validationAttempts === 1) return {
+        status: 403, payload: { error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." },
+      };
+    }
+    if (entry.path === "/api/auth/privileged-reauth") return { payload: { success: true } };
+    return fixtureApi(entry);
+  };
+  await withPage("/admin/plans", async page => {
+    await page.locator('[data-admin-plans-tab="releases"]').click();
+    await page.locator('[data-admin-plan-action="make-public"]').first().evaluate(button => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const reauthentication = page.getByRole("dialog", { name: "Xác thực thao tác quản trị" });
+    await reauthentication.waitFor();
+    assertPreparedPublicTransition(fixture);
+    assert.equal(await page.locator('[data-admin-plan-action="make-public"]').first().isDisabled(), true);
+    assert.equal(await page.getByRole("dialog").count(), 1);
+    await reauthentication.locator('input[type="password"]').fill("fixture-admin-password");
+    await reauthentication.getByRole("button", { name: "Xác thực", exact: true }).click();
+    const publicationDialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
+    await publicationDialog.waitFor();
+    const mutations = requests.filter(entry => entry.method !== "GET");
+    assert.deepEqual(mutations.map(entry => `${entry.method} ${entry.path}`), [
+      `POST /api/commercial/releases/${fixture.sourceReleaseId}/clone`,
+      `PATCH /api/commercial/drafts/${fixture.source.id}`,
+      `POST /api/commercial/drafts/${fixture.source.id}/validate`,
+      "POST /api/auth/privileged-reauth",
+      `POST /api/commercial/drafts/${fixture.source.id}/validate`,
+    ]);
+    assert.deepEqual(mutations[4].body, mutations[2].body);
+    assert.equal(mutations[4].body.expectedRevision, 5);
+    assert.equal(await publicationDialog.locator("input, textarea").count(), 0);
+    assert.match(await publicationDialog.textContent(), /Chế độ phát hành: Công khai · Mở bán chính thức/u);
+    await publicationDialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
+    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
+    const publications = requests.filter(entry => entry.path.endsWith("/publish"));
+    assert.equal(publications.length, 1);
+    assert.equal(publications[0].body.expectedRevision, 5);
+    assert.equal(publications[0].body.validationDigest, fixture.digest);
+    assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 1);
+    assert.deepEqual(fixture.source.document, fixture.originalDocument);
+  });
+});
+
+for (const publicState of ["off", "unavailable", "stale"]) {
+  test(`current Admin packages remain visible and editable when public catalog is ${publicState}`, async () => {
+    const currentCatalog = currentPublishedPackages();
+    const cloned = draft("draft-current-clone");
+    cloned.document.offers = structuredClone(currentCatalog.offers);
+    cloned.document.rollout = { mode: "shadow" };
+    interceptApi = async entry => {
+      if (entry.path === "/api/commercial/admin/overview") return { payload: {
+        currentRelease: { id: currentCatalog.releaseId, versionLabel: "current", mode: "shadow", scopeKey: "global", nonSellable: false },
+        currentCatalog, drafts: [], releaseHistory: [],
+      } };
+      if (entry.path === "/api/public/commercial/offers") {
+        if (publicState === "unavailable") return { status: 503, payload: { code: "COMMERCIAL_POLICY_DECISION_REQUIRED", error: "Chưa có bản công khai." } };
+        if (publicState === "off") return { payload: { availability: "off", offers: [], creditPacks: [], quotaWarnings: [] } };
+        return { payload: {
+          ...currentCatalog, releaseId: "release-public-old",
+          offers: [{ ...offer, display: { name: "Bảng giá công khai cũ" } }],
+        } };
+      }
+      if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: cloned };
+      return null;
+    };
+    await withPage("/admin/plans", async page => {
+      const manager = page.locator('[data-admin-package-manager="published"]');
+      await manager.waitFor();
+      assert.match(await manager.textContent(), /Gói hiện hành Cơ bản/u);
+      assert.doesNotMatch(await manager.textContent(), /Bảng giá công khai cũ/u);
+      assert.equal(await manager.locator('[data-admin-package-empty]').isVisible(), false);
+      await manager.locator('[data-admin-package-group="connected"]').click();
+      assert.match(await manager.locator('[data-admin-package-count]').textContent(), /^1 gói/u);
+      assert.equal(await manager.locator('tr[data-admin-package-variant="connected"]').isVisible(), true);
+      await manager.locator('[data-admin-package-layout="cards"]').click();
+      const tile = manager.locator('[data-admin-package-card="2"]');
+      await tile.waitFor();
+      assert.match(await tile.textContent(), /Gói hiện hành Nâng cao/u);
+      assert.match(await tile.locator('.bf-admin-plan-price').textContent(), /45[.]000/u);
+      assert.match(await tile.textContent(), /Đã dừng bán · Không hiện trên bảng giá/u);
+      await tile.locator('[data-admin-package-period="3"]').click();
+      assert.match(await tile.locator('.bf-admin-plan-price').textContent(), /4[.]500/u);
+      await tile.locator('[data-admin-package-edit-code="gold.connected.yearly"]').click();
+      await page.locator('[data-draft-id="draft-current-clone"]').waitFor();
+      const cloneRequests = requests.filter(entry => entry.path === "/api/commercial/drafts" && entry.method === "POST");
+      assert.equal(cloneRequests.length, 1);
+      assert.equal(cloneRequests[0].body.baseReleaseId, currentCatalog.releaseId);
+      const editor = page.locator('[data-admin-offer-editor][data-offer-index="2"]');
+      assert.equal(await editor.locator('[data-admin-offer-field="display.name"]').inputValue(), "Gói hiện hành Nâng cao");
+    });
+  });
+}
+
+test("prominent publication mode switches from internal trial to public and requires validation again", async () => {
+  const source = draft("draft-a");
+  source.document.rollout = { mode: "shadow", cohorts: ["keep-cohort"], unknownRolloutKey: "keep" };
+  source.validation = { errors: [], warnings: [{ code: "SHADOW_ONLY" }] };
+  source.validationDigest = "a".repeat(64);
+  source.readinessExpiresAt = 9999999999;
+  let saved;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      saved = entry.body.document;
+      return { payload: { id: "draft-a", revision: 2, document: saved } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isEnabled(), true);
+    const mode = page.locator('[data-admin-commercial-config="rollout.mode"]');
+    assert.equal(await mode.count(), 1);
+    const id = await mode.getAttribute("id");
+    const combobox = page.locator(`#${id}-combobox`);
+    assert.equal(await combobox.isVisible(), true, "publication mode must be reachable without opening advanced settings");
+    assert.equal(await mode.evaluate(select => Boolean(select.closest("details"))), false);
+    assert.equal(await mode.inputValue(), "shadow");
+    assert.match(await combobox.inputValue(), /Thử nội bộ/u);
+    const warning = page.locator('[data-admin-rollout-warning]');
+    assert.equal(await warning.isVisible(), true);
+    assert.match(await warning.textContent(), /Kiểm tra đạt cho Thử nội bộ[\s\S]*chọn Công khai/u);
+    await warning.locator('[data-admin-validation-target="rollout"]').click();
+    assert.equal(await combobox.evaluate(input => input === document.activeElement), true);
+    await combobox.click();
+    await page.locator(`#${id}-listbox [data-value="production"]`).click();
+    assert.equal(await mode.inputValue(), "production");
+    assert.match(await combobox.inputValue(), /Công khai · Mở bán chính thức/u);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.match(await page.locator('#admin-plan-validation').textContent(), /Cấu hình đã thay đổi/u);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.rollout.mode, "production");
+    assert.deepEqual(saved.rollout.cohorts, ["keep-cohort"]);
+    assert.equal(saved.rollout.unknownRolloutKey, "keep");
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
   });
 });
 

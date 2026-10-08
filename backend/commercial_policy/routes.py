@@ -23,6 +23,7 @@ from .repository import CommercialRepository, new_id
 from .admin_drafts import load_legacy_export_capabilities, prepare_admin_draft
 from .service import CommercialPolicy
 from .metrics import commercial_health_snapshot
+from .tax import calculate_tax_price
 
 
 def _error_response(error):
@@ -121,6 +122,27 @@ def _release_payload(release):
     }
 
 
+def _admin_catalog_payload(release):
+    """Show every offer from the selected release to an authorized Super Admin."""
+    if not release:
+        return None
+    document = release["snapshot"]
+    packs = []
+    for pack in document.get("creditPacks") or []:
+        price = calculate_tax_price(pack["price"], document.get("taxInvoice") or {})
+        packs.append({**pack, "price": price["total"], "priceDetails": price})
+    return {
+        "releaseId": release["id"],
+        "releaseChecksum": release["checksum"],
+        "effectiveFrom": release["effective_from"],
+        "currency": document["currency"],
+        "timezone": document["timezone"],
+        "offers": document.get("offers") or [],
+        "creditPacks": packs,
+        "quotaWarnings": (document.get("policies") or {}).get("quotaWarningPercentages", []),
+    }
+
+
 def _commercial_admin_overview_sync(request):
     valid, role_or_error = verify_session(request, required_role="super_admin")
     if not valid:
@@ -172,6 +194,7 @@ def _commercial_admin_overview_sync(request):
             config_payload = None
         return JSONResponse({
             "currentRelease": _release_payload(current),
+            "currentCatalog": _admin_catalog_payload(current),
             "scheduledRelease": _release_payload(dict(scheduled) if scheduled else None),
             "releaseHistory": [
                 _release_payload(release)

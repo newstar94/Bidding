@@ -23,9 +23,24 @@ Trong Admin, mở **Gói dịch vụ**. Khi cài mới, hệ thống có sẵn b
 1. Tạo hoặc chọn bản nháp.
 2. Sửa giá/quota/sales state. Các giá trị tiền và quota dùng số nguyên.
 3. Lưu bằng đúng revision. Nếu có xung đột, tải lại bản mới trước khi tiếp tục.
-4. Chạy **Kiểm tra** để xem lỗi, cảnh báo, impact và tỷ lệ tiết kiệm tính từ draft.
-5. Chỉ khi không còn lỗi, chọn thời điểm hiệu lực, bấm **Xuất bản**, xác thực lại
-   mật khẩu và nhập lý do.
+4. Chọn **Chế độ phát hành** ở đầu bản nháp: **Thử nội bộ** để kiểm tra nội bộ,
+   **Công khai · Mở bán chính thức** để mở bán trên trang chủ, hoặc **Thí điểm**.
+   Lưu lại rồi chạy **Kiểm tra** để xem lỗi, cảnh báo và các điều kiện mở bán.
+5. Chỉ khi không còn lỗi, chọn thời điểm hiệu lực, bấm **Rà soát mở bán**, xem
+   thông tin các gói rồi xác nhận **Xuất bản**. Không cần nhập lý do; hệ thống
+   tự ghi nội dung xuất bản vào nhật ký quản trị. Xác thực lại mật khẩu nếu
+   được yêu cầu.
+
+Để công khai bản đang hiệu lực ở chế độ Thử nội bộ, bấm **Chuyển sang Công khai**
+trong thông báo danh mục hoặc thẻ **Bản đang hiệu lực** ở **Bản nháp & mở bán**.
+Hệ thống tự tạo bản nháp riêng, chuyển chế độ, lưu và kiểm tra; bạn xem thông
+tin các gói trong hộp xác nhận rồi chọn **Xuất bản**. Nếu hủy hoặc kiểm tra
+còn lỗi, bản nháp Công khai được giữ lại để tiếp tục. Hoàn tất cấu hình payOS
+nếu kiểm tra báo thiếu; hệ thống không tự xác nhận các điều kiện bên ngoài.
+Với bản nháp đang có, có thể chọn chế độ Công khai trực tiếp rồi lưu, kiểm tra
+và xuất bản. Cấu hình được lưu trong bản phát hành; không cần chỉnh `.env`.
+Danh sách gói trong Admin luôn lấy bản phát hành hiện hành, còn thông báo
+bảng giá công khai cho biết bản nào đang hiển thị trên trang chủ.
 
 Release đã publish là bất biến. Muốn quay lui, clone release cũ, kiểm tra rồi
 publish một release mới. **Stop sales** chỉ dừng checkout mới; nó không thu hồi

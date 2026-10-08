@@ -6,6 +6,7 @@ import {
   catalogMarkup,
   draftEditorMarkup,
   plansMarkup,
+  publicationStatusMessage,
   requestPlanActionInput,
   serializeDraftDocument,
 } from "../../frontend/admin-platform/AdminPlans.js";
@@ -38,7 +39,7 @@ test("Admin adds a monthly candidate without inventing prices or mutating annual
   assert.throws(() => addMonthlyOffer(result, 0), /đã có cấu hình/u);
 });
 
-test("plan mutations use the shared accessible dialog and preserve required reasons", async () => {
+test("plan mutations use the shared accessible dialog and record publication automatically", async () => {
   const requests = [];
   const requestValue = async (options) => {
     requests.push(options);
@@ -47,11 +48,11 @@ test("plan mutations use the shared accessible dialog and preserve required reas
 
   assert.equal(await requestPlanActionInput("clone", { requestValue }), true);
   assert.equal(await requestPlanActionInput("stop-sales", { requestValue }), "Lý do đã duyệt");
-  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Lý do đã duyệt");
+  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Xuất bản gói dịch vụ");
   assert.equal(requests.length, 3);
   assert.equal(requests[0].label, null);
   assert.match(requests[1].message, /Quyền lợi đã áp dụng không thay đổi/u);
-  assert.equal(requests[2].label, "Lý do xuất bản (bắt buộc)");
+  assert.equal(requests[2].label, null);
 });
 
 test("adding a monthly term uses an explicitly configured monthly base without changing annual rights or quotas", () => {
@@ -77,14 +78,15 @@ test("plan mutations stop cleanly when the shared dialog is cancelled", async ()
   assert.equal(await requestPlanActionInput("publish", { requestValue }), null);
 });
 
-test("publication dialog validates the trimmed reason against the server minimum", async () => {
+test("publication confirmation keeps the offer summary without requiring manual input", async () => {
   let options;
-  const requestValue = async value => { options = value; return "  Mở bán  "; };
-  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Mở bán");
-  for (const value of ["", " ", "OK", "  OK  "]) {
-    assert.match(options.validateValue(value), /ít nhất 3 ký tự/u);
-  }
-  assert.equal(options.validateValue("  Mở bán  "), "");
+  const requestValue = async value => { options = value; return ""; };
+  assert.equal(await requestPlanActionInput("publish", { requestValue, summary: "Cá nhân · Cơ bản · năm: 20.000 đ." }), "Xuất bản gói dịch vụ");
+  assert.equal(options.label, null);
+  assert.equal(options.validateValue, undefined);
+  assert.equal(options.confirmLabel, "Xuất bản");
+  assert.match(options.message, /Cá nhân · Cơ bản · năm: 20\.000 đ\./u);
+  assert.doesNotMatch(options.message, /Lý do|ít nhất 3 ký tự/u);
 });
 
 test("publication stays disabled when the validation digest cannot satisfy the server contract", () => {
@@ -185,6 +187,108 @@ test("plans catalog keeps off and malformed authoritative states explicit", () =
   assert.match(catalogMarkup({ offers: [] }), /data-admin-state="error"/u);
 });
 
+function currentAdminCatalog(name = "Bản mới trong Admin") {
+  return {
+    releaseId: "release-current-shadow", releaseChecksum: "current-checksum",
+    currency: "VND", creditPacks: [], quotaWarnings: [70, 90, 100],
+    offers: [{
+      code: "gold.internal.yearly", tier: "gold", variant: "internal", ownerKind: "organization",
+      memberQuota: 10, includedProcurementQuota: 0,
+      price: { period: "yearly", currency: "VND", subtotal: 20000, tax: 0, total: 20000 },
+      exportCapabilities: { "document.export.word": true }, violationCheckEnabled: false,
+      salesState: "stopped", display: { name, visibility: "hidden", benefits: ["Quyền lợi của bản mới"] },
+    }],
+  };
+}
+
+test("Admin shows all current published offers independently of unavailable off or stale public pricing", () => {
+  const currentCatalog = currentAdminCatalog();
+  const staleCatalog = currentAdminCatalog("Bảng giá công khai cũ");
+  staleCatalog.releaseId = "release-public-old";
+  staleCatalog.offers[0].price.total = 999999;
+  for (const options of [
+    { catalog: { availability: "off", offers: [], creditPacks: [], quotaWarnings: [] } },
+    { catalog: staleCatalog },
+    { catalogError: { status: 503, code: "COMMERCIAL_POLICY_DECISION_REQUIRED", message: "Chưa có release công khai." } },
+  ]) {
+    const markup = plansMarkup({
+      currentRelease: { id: currentCatalog.releaseId, mode: "shadow", scopeKey: "global", nonSellable: false },
+      currentCatalog, drafts: [],
+    }, options);
+    assert.match(markup, /Bản mới trong Admin/u);
+    assert.match(markup, /20[.]000/u);
+    assert.match(markup, /Quyền lợi của bản mới/u);
+    assert.match(markup, /Đã dừng bán/u);
+    assert.match(markup, /Không hiện trên bảng giá/u);
+    assert.match(markup, /data-admin-package-edit-code="gold[.]internal[.]yearly"/u);
+    assert.doesNotMatch(markup, /Bảng giá công khai cũ|999[.]999/u);
+  }
+});
+
+test("Admin uses public pricing only for older overview responses without currentCatalog", () => {
+  const catalog = currentAdminCatalog("Danh mục từ máy chủ cũ");
+  assert.match(plansMarkup({ drafts: [] }, { catalog }), /Danh mục từ máy chủ cũ/u);
+  const explicitAbsent = plansMarkup({ currentRelease: null, currentCatalog: null, drafts: [] }, { catalog });
+  assert.doesNotMatch(explicitAbsent, /Danh mục từ máy chủ cũ/u);
+  assert.match(explicitAbsent, /data-admin-state="empty"/u);
+});
+
+test("direct public transition is offered only for the current internal release and keeps its source id", () => {
+  const currentCatalog = currentAdminCatalog();
+  const shadowRelease = { id: "release-current-shadow", mode: "shadow", nonSellable: false };
+  const markup = plansMarkup({ currentRelease: shadowRelease, currentCatalog, drafts: [] });
+  const buttons = markup.match(/<button\b[^>]*data-admin-plan-action="make-public"[^>]*>[\s\S]*?<\/button>/gu);
+  assert.ok(buttons?.length, "the current internal release needs a direct public action");
+  for (const button of buttons) {
+    assert.match(button, /Chuyển sang Công khai/u);
+    assert.match(button, /data-release-id="release-current-shadow"/u);
+  }
+  for (const currentRelease of [null, { ...shadowRelease, mode: "production" }, { ...shadowRelease, mode: "pilot" }, { ...shadowRelease, nonSellable: true }]) {
+    const otherMode = plansMarkup({
+      currentRelease, currentCatalog, drafts: [],
+      scheduledRelease: { id: "scheduled-shadow", mode: "shadow", nonSellable: false },
+      releaseHistory: [shadowRelease],
+    });
+    assert.doesNotMatch(otherMode, /data-admin-plan-action="make-public"/u);
+  }
+});
+
+test("publication status distinguishes internal scheduled and verified public releases", () => {
+  const publicCatalog = currentAdminCatalog("Gói đang công khai");
+  publicCatalog.releaseId = "public-current";
+  publicCatalog.offers[0].salesState = "sellable";
+  publicCatalog.offers[0].display.visibility = "public";
+  const shadow = publicationStatusMessage({ id: "new-shadow", mode: "shadow", effectiveFrom: 1 });
+  assert.match(shadow, /^Đã xuất bản bản nháp\./u);
+  assert.match(shadow, /Thử nội bộ[\s\S]*chọn Công khai/u);
+  assert.doesNotMatch(shadow, /Bảng giá đã hiển thị/u);
+  for (const mode of ["pilot", "production"]) {
+    const unconfirmed = publicationStatusMessage({ id: "new-release", mode, effectiveFrom: 1 }, {
+      catalog: { ...publicCatalog, releaseId: "stale-public-release" },
+    });
+    assert.match(unconfirmed, /Chưa xác nhận bảng giá mới trên trang chủ/u);
+    assert.doesNotMatch(unconfirmed, /Bảng giá đã hiển thị/u);
+  }
+  const visible = publicationStatusMessage({ id: "public-current", mode: "production", effectiveFrom: 1 }, {
+    catalog: publicCatalog,
+  });
+  assert.match(visible, /Bảng giá đã hiển thị trên trang chủ/u);
+  const visibleShadow = publicationStatusMessage({ id: "public-current", mode: "shadow", effectiveFrom: 1 }, {
+    catalog: publicCatalog,
+  });
+  assert.match(visibleShadow, /Bảng giá đã hiển thị trên trang chủ/u);
+  const emptyPublic = publicationStatusMessage({ id: "public-current", mode: "production", effectiveFrom: 1 }, {
+    catalog: { ...publicCatalog, offers: [] },
+  });
+  assert.match(emptyPublic, /Chưa xác nhận bảng giá mới trên trang chủ/u);
+  assert.doesNotMatch(emptyPublic, /Bảng giá đã hiển thị/u);
+  const scheduled = publicationStatusMessage({ id: "public-future", mode: "production", effectiveFrom: Math.floor(Date.now() / 1000) + 3600 }, {
+    catalog: { ...publicCatalog, releaseId: "public-future" },
+  });
+  assert.match(scheduled, /được lên lịch/u);
+  assert.doesNotMatch(scheduled, /Bảng giá đã hiển thị/u);
+});
+
 test("plans view renders real release versions, status and draft revisions", () => {
   const markup = plansMarkup({
     currentRelease: {
@@ -210,7 +314,7 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, /2026[.]10/u);
   assert.match(markup, /validated/u);
   assert.match(markup, />7</u);
-  assert.match(markup, /Có thể bán/u);
+  assert.match(markup, /Chưa dừng bán/u);
   assert.match(markup, /Không bán/u);
   assert.match(markup, /Lịch sử phát hành thương mại/u);
   assert.match(markup, /2026[.]08/u);
@@ -311,6 +415,33 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
     errors: [], validationDigest: "a".repeat(64), readinessExpiresAt: 1,
   });
   assert.match(expired, /data-admin-plan-action="publish" disabled/u);
+});
+
+test("draft publication mode is prominent and a public choice preserves the rest of rollout policy", () => {
+  const document = {
+    offers: [], rollout: { mode: "shadow", cohorts: ["existing-cohort"], unknownRolloutKey: "keep" },
+  };
+  const markup = draftEditorMarkup({ id: "draft-mode", revision: 3, document }, {
+    errors: [], warnings: [{ code: "SHADOW_ONLY" }], validationDigest: "a".repeat(64), readinessExpiresAt: 9999999999,
+  });
+  assert.match(markup, /Chế độ phát hành/u);
+  assert.match(markup, /Thử nội bộ/u);
+  assert.match(markup, /Công khai · Mở bán chính thức/u);
+  assert.match(markup, /data-admin-rollout-warning[\s\S]*Kiểm tra đạt cho Thử nội bộ/u);
+  assert.match(markup, /data-admin-validation-target="rollout"/u);
+  assert.equal((markup.match(/data-admin-commercial-config="rollout[.]mode"/gu) || []).length, 1);
+  assert.ok(markup.indexOf('data-admin-commercial-config="rollout.mode"') < markup.indexOf('data-admin-package-list'));
+  const mode = { ...field("production"), dataset: {
+    adminCommercialConfig: "rollout.mode", adminConfigKind: "text", adminConfigOriginal: "shadow",
+  } };
+  const root = draftRoot(document, []);
+  const baseQueryAll = root.querySelectorAll;
+  root.querySelectorAll = selector => selector === "[data-admin-commercial-config]" ? [mode] : baseQueryAll(selector);
+  const serialized = serializeDraftDocument(root, document);
+  assert.equal(serialized.rollout.mode, "production");
+  assert.deepEqual(serialized.rollout.cohorts, ["existing-cohort"]);
+  assert.equal(serialized.rollout.unknownRolloutKey, "keep");
+  assert.equal(document.rollout.mode, "shadow");
 });
 
 test("structured draft serialization updates modeled fields and preserves unknown fields", () => {

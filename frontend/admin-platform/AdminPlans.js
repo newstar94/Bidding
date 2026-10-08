@@ -53,7 +53,7 @@ function releaseCard(title, release, actions = "") {
   if (!release) {
     return `<section class="card h-100 bf-admin-release-card is-empty" aria-label="${escapeHtml(title)}"><div class="card-body"><div class="bf-admin-release-heading"><span class="bf-admin-release-dot" aria-hidden="true"></span><div><h3 class="card-title mb-1">${escapeHtml(title)}</h3><p class="text-secondary small mb-0">Chưa có bản phát hành</p></div></div>${adminStateMarkup("empty", { message: "Chưa có bản phát hành ở trạng thái này." })}</div></section>`;
   }
-  const sellable = release.nonSellable === true ? "Không bán" : (release.nonSellable === false ? "Có thể bán" : "N/A");
+  const sellable = release.nonSellable === true ? "Không bán" : (release.nonSellable === false ? "Chưa dừng bán" : "N/A");
   const statusClass = release.nonSellable === true ? "is-stopped" : (release.nonSellable === false ? "is-live" : "is-unknown");
   return `<section class="card h-100 bf-admin-release-card ${statusClass}" aria-label="${escapeHtml(title)}"><div class="card-header"><div class="bf-admin-release-heading"><span class="bf-admin-release-dot" aria-hidden="true"></span><div><h3 class="card-title mb-1">${escapeHtml(title)}</h3><p class="text-secondary small mb-0">${text(release.mode)} · ${text(release.scopeKey)}</p></div></div>${actions ? `<div class="card-actions">${actions}</div>` : ""}</div><div class="card-body"><div class="bf-admin-release-version"><span class="text-secondary small">Phiên bản</span><strong>${text(release.versionLabel)}</strong></div><dl class="bf-admin-release-facts"><div><dt>Tình trạng bán</dt><dd><span class="badge ${release.nonSellable === true ? "bg-secondary-lt" : "bg-success-lt"}">${sellable}</span></dd></div><div><dt>Hiệu lực</dt><dd>${formatDate(release.effectiveFrom)}</dd></div></dl></div></section>`;
 }
@@ -113,7 +113,21 @@ function creditPackMarkup(packs, currency) {
   return `<section class="card mt-3" aria-labelledby="admin-credit-packs-title"><div class="card-header"><h3 class="card-title" id="admin-credit-packs-title">Gói lượt Mua Sắm Công</h3></div><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Mã gói lượt</th><th class="text-end">Số lượt</th><th class="text-end">Giá</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
-export function catalogMarkup(catalogPayload) {
+function managedPlanCatalog(payload, publicCatalog) {
+  return Object.hasOwn(payload || {}, "currentCatalog") ? payload.currentCatalog : publicCatalog;
+}
+
+export function publicationStatusMessage(release, { catalog = null } = {}) {
+  const prefix = "Đã xuất bản bản nháp.";
+  if (Number(release?.effectiveFrom) > Date.now() / 1_000) {
+    return `${prefix} Bản phát hành được lên lịch từ ${new Date(release.effectiveFrom * 1_000).toLocaleString("vi-VN")}.`;
+  }
+  if (release?.id && catalog?.releaseId === release.id && classifyPublicCommercialResponse(catalog).state === "available") return `${prefix} Bảng giá đã hiển thị trên trang chủ.`;
+  if (release?.mode === "shadow") return `${prefix} Chế độ Thử nội bộ; chưa chọn mở bán chính thức. Muốn mở bán, chọn Công khai trong bản nháp, lưu, kiểm tra rồi xuất bản.`;
+  return `${prefix} Chưa xác nhận bảng giá mới trên trang chủ. Kiểm tra thông báo trạng thái bảng giá bên dưới.`;
+}
+
+export function catalogMarkup(catalogPayload, { adminRelease = false } = {}) {
   const classification = classifyPublicCommercialResponse(catalogPayload);
   if (classification.state === "unavailable") {
     return adminStateMarkup("error", { title: "Không thể đọc danh mục gói", message: "Dữ liệu danh mục hiện hành không đúng định dạng." });
@@ -128,7 +142,7 @@ export function catalogMarkup(catalogPayload) {
   const offerContent = offers.length
     ? `${packageManagerMarkup({ offers }, { published: true, id: "published" })}${otherPeriods.length ? `<div class="row row-cards mt-3">${otherPeriods.map(offerCard).join("")}</div>` : ""}`
     : adminStateMarkup("empty", { message: "Release hiện hành chưa công bố gói dịch vụ." });
-  return `<section aria-labelledby="admin-plan-catalog-title"><div class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-2 mb-3"><div><h3 class="h2 mb-1" id="admin-plan-catalog-title">Danh mục gói đang công bố</h3><p class="text-secondary mb-0">Release <strong>${text(catalog?.releaseId)}</strong> · ${text(catalog?.currency)}</p></div><span class="badge bg-success-lt align-self-start">Dữ liệu hiện hành</span></div>${offerContent}${creditPackMarkup(packs, catalog?.currency)}</section>`;
+  return `<section aria-labelledby="admin-plan-catalog-title"><div class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-2 mb-3"><div><h3 class="h2 mb-1" id="admin-plan-catalog-title">${adminRelease ? "Gói của bản phát hành hiện hành" : "Danh mục gói đang công bố"}</h3><p class="text-secondary mb-0">Release <strong>${text(catalog?.releaseId)}</strong> · ${text(catalog?.currency)}</p></div><span class="badge bg-success-lt align-self-start">Dữ liệu hiện hành</span></div>${offerContent}${creditPackMarkup(packs, catalog?.currency)}</section>`;
 }
 
 function validationMarkup(validation) {
@@ -136,7 +150,11 @@ function validationMarkup(validation) {
   const errors = Array.isArray(validation.errors) ? validation.errors : [];
   const expired = validation.readinessExpiresAt && validation.readinessExpiresAt < Date.now() / 1_000;
   if (!errors.length && expired) return '<div class="alert alert-warning" role="status">Kết quả kiểm tra đã hết hạn. Hãy kiểm tra lại trước khi xuất bản.</div>';
-  if (!errors.length) return '<div class="alert alert-success" role="status">Kiểm tra đạt. Bản nháp sẵn sàng để xuất bản trong thời hạn cho phép.</div>';
+  if (!errors.length) {
+    const warnings = Array.isArray(validation.warnings) ? validation.warnings : [];
+    if (warnings.some(warning => warning.code === "SHADOW_ONLY")) return '<div class="alert alert-warning" role="status" data-admin-rollout-warning>Kiểm tra đạt cho Thử nội bộ. Muốn mở bán chính thức, chọn Công khai trong Chế độ phát hành, lưu rồi kiểm tra lại. <button type="button" class="btn btn-sm btn-outline-primary ms-2" data-admin-validation-target="rollout">Chọn chế độ phát hành</button></div>';
+    return `<div class="alert alert-success" role="status">Kiểm tra đạt. Bản nháp sẵn sàng để xuất bản trong thời hạn cho phép.${warnings.length ? `<ul class="mb-0 mt-2">${warnings.map(warning => `<li>${text(warning.message || warning.code)}</li>`).join("")}</ul>` : ""}</div>`;
+  }
   const sections = {
     externalReadiness: { label: "Điều kiện mở bán", target: "payment" },
     taxInvoice: { label: "Cấu hình thuế", target: "tax" },
@@ -338,7 +356,6 @@ function commercialSetupMarkup(documentValue) {
     field("externalReadiness", "credentialWebhook", "Tham chiếu xác nhận bộ khóa và webhook"),
     field("externalReadiness", "ecommercePrivacy", "Tham chiếu thương mại điện tử và quyền riêng tư"),
     field("externalReadiness", "termsRefund", "Tham chiếu điều khoản và hoàn tiền"),
-    field("rollout", "mode", "Phạm vi phát hành", { options: [["shadow", "Thử nội bộ"], ["pilot", "Thí điểm"], ["production", "Mở bán chính thức"]] }),
   ].join("");
   // These fields describe the candidate document. They do not assert that a
   // real merchant, webhook, credential resolver or invoice issuer is ready.
@@ -497,6 +514,7 @@ export function draftEditorMarkup(draft, validation = null, { selectedIndex = 0,
   const offers = Array.isArray(documentValue.offers) ? documentValue.offers : [];
   const advanced = cloneJson(documentValue) || {};
   delete advanced.offers;
+  const publicationSettings = `<div class="bf-admin-editor-group mb-3" data-admin-rollout-settings><div class="row g-3">${commercialConfigField("rollout", "mode", documentValue.rollout?.mode, "Chế độ phát hành", { options: [["shadow", "Thử nội bộ"], ["pilot", "Thí điểm"], ["production", "Công khai · Mở bán chính thức"]], hint: "Công khai dành cho mở bán trên trang chủ. Lưu, kiểm tra và xuất bản để áp dụng lựa chọn này." })}</div></div>`;
   const policies = documentValue.policies || {};
   const policyChoice = (key, label, options) => `<div class="col-md-6"><label class="form-label" for="admin-policy-${key}">${label}</label><select class="form-select" id="admin-policy-${key}" data-admin-policy-choice="${key}"><option value="">Giữ chính sách hiện có${policies[key]?.kind === "blocked_decision" ? " · Chưa chốt" : ""}</option>${options.map(([value, caption]) => `<option value="${value}"${policies[key]?.kind === value ? " selected" : ""}>${caption}</option>`).join("")}</select></div>`;
   const terms = `<details class="bf-admin-package-policies mb-3"><summary>Chính sách chung & kỳ hạn</summary><div class="row g-3 mt-1">${["fixed_days", "blocked_decision", undefined].includes(policies.baseTerm?.kind) ? `<div class="col-md-6"><label class="form-label" for="admin-annual-term-days">Số ngày hiệu lực một kỳ năm</label><input class="form-control" id="admin-annual-term-days" type="number" min="1" max="3660" value="${text(policies.baseTerm?.kind === "fixed_days" ? policies.baseTerm.days : "", "")}"></div>` : '<div class="col-12 text-secondary">Kỳ năm giữ chính sách hiện có; xem cấu hình nâng cao để rà soát.</div>'}${policyChoice("renewalAnchor", "Khi gia hạn", [["start_new_term", "Bắt đầu kỳ mới"], ["end_of_term", "Từ cuối kỳ hiện tại"]])}${policyChoice("partialBatch", "Khi lượt không đủ cho toàn bộ danh sách", [["reject_all", "Từ chối toàn bộ"], ["process_affordable_in_stable_order", "Xử lý phần đủ lượt theo thứ tự ổn định"]])}${policyChoice("refund", "Chính sách hoàn tiền", [["no_refunds", "Không hoàn tiền"], ["manual_off_platform", "Xét duyệt thủ công theo chính sách đã cấu hình"]])}</div>${monthlyConfigurationMarkup(documentValue)}</details>`;
@@ -513,26 +531,31 @@ export function draftEditorMarkup(draft, validation = null, { selectedIndex = 0,
   const preview = active ? packagePreviewMarkup(previewDocument, previewIndex, { compact: true }) : "";
   const stepLabels = ["Thông tin gói", "Giá & kỳ hạn", "Hạn mức & tính năng", "Trình bày"];
   const steps = stepLabels.map((label, step) => `<button type="button" class="btn btn-sm ${packageStep === step ? "btn-primary" : "btn-outline-primary"}" data-admin-package-step="${step}" aria-pressed="${packageStep === step}">${step + 1}. ${label}</button>`).join("");
-  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" aria-label="Các gói đăng ký" data-draft-id="${text(draft.id)}" data-admin-allow-incomplete><div class="card-header bf-admin-composer-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại · Lần sửa ${text(draft.revision)}</div><h3 class="card-title mb-1">${editorTitle}</h3><p class="text-secondary small mb-0">Thông tin, giá và tính năng trong một màn hình</p></div><button class="btn btn-ghost-primary" type="button" data-admin-plan-action="close">Đóng</button></div><div class="card-body"><div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div data-admin-package-list${active ? " hidden" : ""}>${packageManagerMarkup(documentValue)}<p class="text-secondary small mt-2">Khung năm hiện hành gồm 8 gói: Cá nhân/Bạc/Vàng/Kim cương × Cơ bản/Nâng cao. Giá tháng tùy chọn.</p></div><div data-admin-package-editor-zone${active ? "" : " hidden"}><div class="bf-admin-package-editor-toolbar"><button class="btn btn-ghost-primary" type="button" data-admin-package-back>← Danh sách gói</button><nav class="bf-admin-package-steps" aria-label="Các phần cấu hình gói">${steps}</nav></div><div class="bf-admin-package-editor-grid"><div class="bf-admin-package-form-column">${panes}</div><aside class="bf-admin-package-preview-panel"><div class="bf-admin-preview-eyebrow">KHÁCH HÀNG SẼ THẤY</div><h4 class="bf-admin-preview-title">Thẻ gói cập nhật trực tiếp</h4><div data-admin-package-live-preview${creator ? " data-admin-package-creator-preview" : ""}>${preview}</div><div class="bf-admin-preview-summary"><h4>Giá thanh toán</h4><div class="bf-admin-preview-summary-row"><span>Giá chưa VAT</span><strong data-admin-preview-net>—</strong></div><div class="bf-admin-preview-summary-row"><span>VAT</span><strong data-admin-preview-tax>—</strong></div><div class="bf-admin-preview-summary-row"><span>Tổng thanh toán</span><strong data-admin-preview-total>—</strong></div><p class="text-secondary small mb-0">Kỳ tháng / năm nằm ngay trong thẻ và được căn giữa.</p></div></aside></div></div><details class="bf-admin-package-settings"><summary>Chính sách, thuế, payOS &amp; thời điểm hiệu lực</summary><div class="bf-admin-package-settings-body">${terms}${commercialSetupMarkup(documentValue)}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Các cấu hình khác được giữ nguyên khi chỉnh từng gói.</p><label class="form-label" for="admin-plan-advanced-document">Cấu hình chính sách nâng cao (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống để áp dụng ngay sau khi xuất bản. Gói đã mua giữ điều kiện cũ.</small></div></div></details></div><div class="card-footer bf-admin-editor-actions"><span class="text-secondary small" data-admin-package-save-state>${creator ? "Gói mới chưa lưu" : `Bản nháp · Lần sửa ${text(draft.revision)}`}</span><div><button class="btn btn-outline-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-secondary" type="button" data-admin-plan-action="validate"${creator ? " disabled" : ""}>Kiểm tra</button><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) && !creator ? "" : " disabled"}>Rà soát mở bán</button></div></div></section>`;
+  return `<section class="card bf-admin-editor-shell" id="admin-commercial-editor" aria-label="Các gói đăng ký" data-draft-id="${text(draft.id)}" data-admin-allow-incomplete><div class="card-header bf-admin-composer-header"><div><div class="text-secondary small mb-1">Bản nháp thương mại · Lần sửa ${text(draft.revision)}</div><h3 class="card-title mb-1">${editorTitle}</h3><p class="text-secondary small mb-0">Thông tin, giá và tính năng trong một màn hình</p></div><button class="btn btn-ghost-primary" type="button" data-admin-plan-action="close">Đóng</button></div><div class="card-body">${publicationSettings}<div id="admin-plan-validation" class="bf-admin-validation-panel">${validationMarkup(validation)}</div><div data-admin-package-list${active ? " hidden" : ""}>${packageManagerMarkup(documentValue)}<p class="text-secondary small mt-2">Khung năm hiện hành gồm 8 gói: Cá nhân/Bạc/Vàng/Kim cương × Cơ bản/Nâng cao. Giá tháng tùy chọn.</p></div><div data-admin-package-editor-zone${active ? "" : " hidden"}><div class="bf-admin-package-editor-toolbar"><button class="btn btn-ghost-primary" type="button" data-admin-package-back>← Danh sách gói</button><nav class="bf-admin-package-steps" aria-label="Các phần cấu hình gói">${steps}</nav></div><div class="bf-admin-package-editor-grid"><div class="bf-admin-package-form-column">${panes}</div><aside class="bf-admin-package-preview-panel"><div class="bf-admin-preview-eyebrow">KHÁCH HÀNG SẼ THẤY</div><h4 class="bf-admin-preview-title">Thẻ gói cập nhật trực tiếp</h4><div data-admin-package-live-preview${creator ? " data-admin-package-creator-preview" : ""}>${preview}</div><div class="bf-admin-preview-summary"><h4>Giá thanh toán</h4><div class="bf-admin-preview-summary-row"><span>Giá chưa VAT</span><strong data-admin-preview-net>—</strong></div><div class="bf-admin-preview-summary-row"><span>VAT</span><strong data-admin-preview-tax>—</strong></div><div class="bf-admin-preview-summary-row"><span>Tổng thanh toán</span><strong data-admin-preview-total>—</strong></div><p class="text-secondary small mb-0">Kỳ tháng / năm nằm ngay trong thẻ và được căn giữa.</p></div></aside></div></div><details class="bf-admin-package-settings"><summary>Chính sách, thuế, payOS &amp; thời điểm hiệu lực</summary><div class="bf-admin-package-settings-body">${terms}${commercialSetupMarkup(documentValue)}<details class="bf-admin-advanced mt-4"><summary><span><strong>Cấu hình chính sách nâng cao</strong><small>Chỉ mở khi cần chỉnh phần chưa có biểu mẫu</small></span><span aria-hidden="true">⌄</span></summary><p class="text-secondary small mt-2">Các cấu hình khác được giữ nguyên khi chỉnh từng gói.</p><label class="form-label" for="admin-plan-advanced-document">Cấu hình chính sách nâng cao (JSON)</label><textarea class="form-control font-monospace" id="admin-plan-advanced-document" rows="14" spellcheck="false">${escapeHtml(JSON.stringify(advanced, null, 2))}</textarea><div class="invalid-feedback" id="admin-plan-json-error">JSON không hợp lệ.</div></details><div class="bf-admin-effective-date"><label class="form-label" for="admin-plan-effective">Thời điểm hiệu lực</label><input class="form-control" id="admin-plan-effective" type="datetime-local"><small class="text-secondary">Để trống để áp dụng ngay sau khi xuất bản. Gói đã mua giữ điều kiện cũ.</small></div></div></details></div><div class="card-footer bf-admin-editor-actions"><span class="text-secondary small" data-admin-package-save-state>${creator ? "Gói mới chưa lưu" : `Bản nháp · Lần sửa ${text(draft.revision)}`}</span><div><button class="btn btn-outline-primary" type="button" data-admin-plan-action="save">Lưu bản nháp</button><button class="btn btn-outline-secondary" type="button" data-admin-plan-action="validate"${creator ? " disabled" : ""}>Kiểm tra</button><button class="btn btn-primary" type="button" data-admin-plan-action="publish"${validationReady(validation) && !creator ? "" : " disabled"}>Rà soát mở bán</button></div></div></section>`;
 }
 
 export function plansMarkup(payload, { editor = "", catalog = null, catalogError = null, dirty = false, validated = false, composerActive = false, activeTab = "catalog" } = {}) {
   const current = payload?.currentRelease || null;
+  const currentCatalog = managedPlanCatalog(payload, catalog);
   const scheduled = payload?.scheduledRelease || null;
   const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
   const releaseHistory = Array.isArray(payload?.releaseHistory) ? payload.releaseHistory : [];
   const initial = !current && !scheduled;
   const seededDraft = initial ? drafts.find(item => item?.id === "commercial-draft-initial-v1" && item.status !== "archived") : null;
+  const publicAction = current?.mode === "shadow" && !current.nonSellable
+    ? `<button class="btn btn-sm btn-primary" type="button" data-admin-plan-action="make-public" data-release-id="${text(current.id)}">Chuyển sang Công khai</button>` : "";
   const currentActions = current
-    ? `<button class="btn btn-sm btn-outline-primary" type="button" data-admin-plan-action="clone" data-release-id="${text(current.id)}">Nhân bản</button> <button class="btn btn-sm btn-outline-danger" type="button" data-admin-plan-action="stop-sales" data-release-id="${text(current.id)}"${current.nonSellable ? " disabled" : ""}>Dừng bán</button>`
+    ? `${publicAction} <button class="btn btn-sm btn-outline-primary" type="button" data-admin-plan-action="clone" data-release-id="${text(current.id)}">Nhân bản</button> <button class="btn btn-sm btn-outline-danger" type="button" data-admin-plan-action="stop-sales" data-release-id="${text(current.id)}"${current.nonSellable ? " disabled" : ""}>Dừng bán</button>`
     : "";
   const releaseCards = current || scheduled ? `<div class="col-lg-6">${releaseCard("Bản đang hiệu lực", current, currentActions)}</div><div class="col-lg-6">${releaseCard("Bản đã lên lịch", scheduled)}</div>` : "";
   const draftList = drafts.length ? `<div class="col-12"><section class="card" aria-labelledby="commercial-drafts-title"><div class="card-header"><div><h3 class="card-title" id="commercial-drafts-title">Bản nháp thương mại</h3><p class="text-secondary small mb-0">Mở bản nháp để quản lý gói theo nhóm và kỳ thanh toán.</p></div></div>${draftTable(drafts)}</section></div>` : "";
   const releaseManagement = releaseCards || draftList ? `<div class="row row-cards">${releaseCards}${draftList}</div>` : "";
   const history = `<section class="card" aria-labelledby="commercial-release-history-title"><div class="card-header"><div><h3 class="card-title" id="commercial-release-history-title">Lịch sử phát hành thương mại</h3><p class="text-secondary small mb-0">Tối đa 20 bản gần nhất từ kho phát hành bất biến.</p></div></div>${releaseHistoryMarkup(releaseHistory)}</section>`;
-  const hasCatalog = catalog && classifyPublicCommercialResponse(catalog).state !== "off";
+  const hasCatalog = currentCatalog && ["available", "empty"].includes(classifyPublicCommercialResponse(currentCatalog).state);
   const catalogNotice = catalogError && catalogError.code !== "COMMERCIAL_POLICY_DECISION_REQUIRED"
     ? adminStateMarkup("error", { title: "Chưa tải được bảng giá công khai", message: catalogError.message })
+    : hasCatalog && current && catalog?.releaseId !== current.id
+      ? `<div class="alert alert-warning bf-admin-catalog-notice" role="status"><strong>${current.mode === "shadow" ? "Bản phát hành đang ở chế độ Thử nội bộ" : "Bản hiện hành chưa được xác nhận trên trang chủ"}</strong><div class="mt-1">${current.mode === "shadow" ? "Chọn Chuyển sang Công khai để tự chuẩn bị bản mở bán, kiểm tra cấu hình và xác nhận xuất bản." : "Danh sách bên dưới lấy từ bản phát hành hiện hành trong Admin. Bảng giá trang chủ đang dùng nguồn công khai khác hoặc chưa sẵn sàng."}</div>${publicAction ? `<div class="mt-2">${publicAction}</div>` : ""}</div>`
     : !hasCatalog ? `<div class="alert alert-primary bf-admin-catalog-notice" role="status"><strong>Chưa có bảng giá đang mở bán</strong><div class="mt-1">Bạn vẫn có thể tạo và lưu gói nháp để chuẩn bị phát hành.</div></div>` : "";
   const templateAction = '<button class="btn btn-outline-primary" type="button" data-admin-plan-action="create-template">Tạo bộ 8 gói mẫu</button>';
   const openSeedAction = seededDraft ? `<button class="btn btn-primary" type="button" data-admin-draft-open="${text(seededDraft.id)}">Chỉnh sửa 8 gói mẫu</button>` : "";
@@ -547,7 +570,7 @@ export function plansMarkup(payload, { editor = "", catalog = null, catalogError
       <nav class="nav nav-tabs bf-admin-plan-tabs" role="tablist" aria-label="Quản lý gói dịch vụ">${tabs}</nav>
       ${catalogNotice}
       <section id="admin-plans-panel-catalog" role="tabpanel" aria-labelledby="admin-plans-tab-catalog" data-admin-plans-panel="catalog"${activeTab === "catalog" ? "" : " hidden"}>
-        ${editor && !composerActive ? editor : hasCatalog ? catalogMarkup(catalog) : emptyCatalog}
+        ${editor && !composerActive ? editor : hasCatalog ? catalogMarkup(currentCatalog, { adminRelease: Object.hasOwn(payload || {}, "currentCatalog") }) : emptyCatalog}
       </section>
       <section id="admin-plans-panel-releases" role="tabpanel" aria-labelledby="admin-plans-tab-releases" data-admin-plans-panel="releases"${activeTab === "releases" ? "" : " hidden"}>
         ${workflowGuideMarkup({ draftOpen: Boolean(editor), dirty, validated })}
@@ -584,14 +607,13 @@ export async function requestPlanActionInput(action, { requestValue = requestAdm
     return reason === null ? null : String(reason).trim() || null;
   }
   if (action === "publish") {
-    const reason = await requestValue({
+    const confirmed = await requestValue({
       title: "Xuất bản gói dịch vụ",
-      message: `Xuất bản toàn bộ bản nháp này?${summary ? ` ${summary}` : ""} Lý do xuất bản phải có ít nhất 3 ký tự và được lưu vào nhật ký quản trị.`,
-      label: "Lý do xuất bản (bắt buộc)",
+      message: `Xuất bản toàn bộ bản nháp này?${summary ? ` ${summary}` : ""}`,
+      label: null,
       confirmLabel: "Xuất bản",
-      validateValue: value => Array.from(String(value).trim()).length < 3 ? "Lý do xuất bản phải có ít nhất 3 ký tự." : "",
     });
-    return reason === null ? null : String(reason).trim() || null;
+    return confirmed === null ? null : "Xuất bản gói dịch vụ";
   }
   return null;
 }
@@ -684,6 +706,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       getAdminJson("/api/commercial/admin/overview", { fetchImpl, signal }),
       getAdminJson("/api/public/commercial/offers", { fetchImpl, signal }),
     ]);
+    if (signal?.aborted) return;
     if (results[0].status === "rejected") throw results[0].reason;
     overview = results[0].value;
     if (results[1].status === "rejected") {
@@ -709,18 +732,109 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
        }
       try {
         await refresh({ keepDraft: keepDraft || Boolean(result?.document) });
-        setStatus(container, success);
+        if (signal?.aborted) return;
+        setStatus(container, typeof success === "function" ? success(result) : success);
       } catch (refreshError) {
+        if (signal?.aborted) return;
         render();
-        setStatus(container, `${success} Chưa tải lại được tổng quan: ${refreshError?.message || "lỗi kết nối"}.`, "danger");
+        setStatus(container, `${typeof success === "function" ? success(result) : success} Chưa tải lại được tổng quan: ${refreshError?.message || "lỗi kết nối"}.`, "danger");
       }
     } catch (error) {
-      if (!signal?.aborted) setStatus(container, error?.message || "Không thể hoàn tất thao tác.", "danger");
+      if (signal?.aborted) return;
       render();
       setStatus(container, error?.message || "Không thể hoàn tất thao tác.", "danger");
     } finally {
       busy = false;
     }
+  };
+  const publishDraft = async () => {
+    if (busy || signal?.aborted) return;
+    if (dirty || creatorDirty) {
+      setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi xuất bản.", "danger");
+      return;
+    }
+    if (!draft || !validationReady(validation)) return;
+    draftOpenController?.abort();
+    draftOpenSequence += 1;
+    const draftId = draft.id;
+    const revision = draft.revision;
+    const digest = validation.validationDigest;
+    const rows = workingDocument.offers.map(offer => `${offer.display?.name || offer.code} · ${offer.variant === "internal" ? "Cơ bản" : "Nâng cao"} · ${offer.price.period === "monthly" ? "tháng" : "năm"}: ${formatCommercialMoney(offer.price.total, offer.price.currency)} (${({ sellable: "đang bán", stopped: "dừng bán", non_sellable: "chưa mở bán" })[offer.salesState] || offer.salesState}).`);
+    const publicationMode = ({ shadow: "Thử nội bộ", pilot: "Thí điểm", production: "Công khai · Mở bán chính thức" })[workingDocument.rollout?.mode] || "Chưa cấu hình";
+    const localEffectiveAt = container.querySelector?.("#admin-plan-effective")?.value || "";
+    let reason = null;
+    let effectiveAt = null;
+    let proceed = false;
+    let message = "";
+    let messageTone = "success";
+    busy = true;
+    container.querySelectorAll?.("button, textarea, input, select").forEach(node => { node.disabled = true; });
+    try {
+      reason = await requestPlanActionInput("publish", { summary: `Chế độ phát hành: ${publicationMode}. ${rows.join(" ")} Gói đã mua giữ điều kiện cũ.` });
+      if (signal?.aborted) return;
+      if (!reason) { message = "Chưa xuất bản. Bản nháp đã được giữ lại để tiếp tục."; return; }
+      if (dirty || creatorDirty || !validationReady(validation) || draft?.id !== draftId || draft?.revision !== revision || validation.validationDigest !== digest) return;
+      effectiveAt = localEffectiveAt ? Math.floor(new Date(localEffectiveAt).getTime() / 1000) : null;
+      if (effectiveAt !== null && !Number.isFinite(effectiveAt)) { message = "Thời điểm hiệu lực không hợp lệ."; messageTone = "danger"; return; }
+      proceed = true;
+    } catch (error) {
+      message = error?.message || "Không thể xác nhận xuất bản.";
+      messageTone = "danger";
+    } finally {
+      busy = false;
+      if (!proceed && !signal?.aborted) {
+        render();
+        const effectiveInput = container.querySelector?.("#admin-plan-effective");
+        if (effectiveInput) effectiveInput.value = localEffectiveAt;
+        if (message) setStatus(container, message, messageTone);
+      }
+    }
+    if (!proceed || signal?.aborted) return;
+    const key = mutationKey("publish");
+    await execute("publish", () => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}/publish`, { body: { expectedRevision: revision, validationDigest: digest, effectiveAt: effectiveAt ?? Math.floor(Date.now() / 1000), reason }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), release => publicationStatusMessage(release, { catalog }));
+  };
+  const preparePublicDraft = async (releaseId) => {
+    if (busy || signal?.aborted || overview?.currentRelease?.id !== releaseId || overview.currentRelease.mode !== "shadow" || overview.currentRelease.nonSellable) return;
+    if ((dirty || creatorDirty) && globalThis.confirm?.("Thay đổi chưa lưu sẽ bị bỏ. Chuyển bản đang hiệu lực sang Công khai?") === false) return;
+    draftOpenController?.abort();
+    draftOpenSequence += 1;
+    busy = true;
+    container.querySelectorAll?.("button, textarea, input, select").forEach(node => { node.disabled = true; });
+    let prepared = false;
+    try {
+      const cloneKey = mutationKey("make-public-clone");
+      const cloned = await runWithStepUp(() => postAdminJson(`/api/commercial/releases/${encodeURIComponent(releaseId)}/clone`, { body: {}, idempotencyKey: cloneKey, fetchImpl, signal, retries: 0 }), { fetchImpl, signal });
+      if (signal?.aborted) return;
+      draft = cloned;
+      workingDocument = cloneJson(cloned.document);
+      workingDocument.rollout = { ...workingDocument.rollout, mode: "production" };
+      validation = null;
+      dirty = true;
+      creatorOpen = false; creatorDirty = false; creationSource = null; selectedIndex = null; packageStep = 0; activeTab = "catalog";
+      const draftId = draft.id;
+      const revision = draft.revision;
+      const saveKey = mutationKey("make-public-save");
+      const saved = await runWithStepUp(() => patchAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}`, { body: { expectedRevision: revision, document: workingDocument }, expectedRevision: revision, idempotencyKey: saveKey, fetchImpl, signal }), { fetchImpl, signal });
+      if (signal?.aborted) return;
+      draft = saved;
+      workingDocument = cloneJson(saved.document);
+      dirty = false;
+      const validationKey = mutationKey("make-public-validate");
+      const checked = await runWithStepUp(() => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draftId)}/validate`, { body: { expectedRevision: saved.revision }, idempotencyKey: validationKey, fetchImpl, signal, retries: 0 }), { fetchImpl, signal });
+      if (signal?.aborted) return;
+      validation = checked;
+      await refresh({ keepDraft: true });
+      if (signal?.aborted) return;
+      prepared = validationReady(validation);
+      if (!prepared) setStatus(container, validation.errors?.length ? "Bản nháp Công khai đã được lưu. Kiểm tra còn lỗi cần xử lý trước khi xuất bản." : "Bản nháp Công khai đã được lưu. Kết quả kiểm tra chưa đủ điều kiện hoặc đã hết hạn; hãy kiểm tra lại.", "danger");
+    } catch (error) {
+      if (signal?.aborted) return;
+      render();
+      setStatus(container, error?.message || "Chưa thể chuẩn bị bản Công khai. Bản nháp đã tạo được giữ lại.", "danger");
+    } finally {
+      busy = false;
+    }
+    if (prepared && !signal?.aborted) await publishDraft();
   };
   const readDocument = () => {
     try {
@@ -734,6 +848,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     }
   };
   const bind = () => {
+    const currentCatalog = managedPlanCatalog(overview, catalog);
     const tabButtons = [...(container.querySelectorAll?.("[data-admin-plans-tab]") || [])];
     const selectPlansTab = (key, { focus = false } = {}) => {
       activeTab = key;
@@ -758,16 +873,18 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     });
     container.querySelector?.("[data-admin-plans-return]")?.addEventListener("click", () => selectPlansTab("catalog"));
     container.querySelectorAll?.("[data-admin-validation-target]").forEach(button => button.addEventListener("click", () => {
-      const selectors = { tax: "[data-admin-tax-settings]", payment: "[data-admin-payment-settings]" };
+      const selectors = { tax: "[data-admin-tax-settings]", payment: "[data-admin-payment-settings]", rollout: "[data-admin-rollout-settings]" };
       const selector = Object.hasOwn(selectors, button.dataset.adminValidationTarget) ? selectors[button.dataset.adminValidationTarget] : null;
       const settings = selector ? container.querySelector?.(selector) : null;
       if (!settings) return;
       for (let node = settings; node && node !== container; node = node.parentElement) {
         if (node.tagName === "DETAILS") node.open = true;
       }
-      const summary = settings.querySelector("summary");
-      summary?.focus({ preventScroll: true });
-      summary?.scrollIntoView({ block: "center", behavior: "auto" });
+      const focusTarget = button.dataset.adminValidationTarget === "rollout"
+        ? settings.querySelector('[role="combobox"]') || settings.querySelector("select")
+        : settings.querySelector("summary");
+      focusTarget?.focus({ preventScroll: true });
+      focusTarget?.scrollIntoView({ block: "center", behavior: "auto" });
     }));
     container.querySelectorAll?.("[data-admin-offer-editor]").forEach(editor => {
       const index = Number(editor.dataset.offerIndex);
@@ -810,7 +927,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
     });
     container.querySelectorAll?.("[data-admin-package-manager]").forEach(manager => {
       const id = manager.dataset.adminPackageManager;
-      const documentValue = id === "published" ? catalog || { offers: [] } : workingDocument;
+      const documentValue = id === "published" ? currentCatalog || { offers: [] } : workingDocument;
       if (documentValue) bindPackageManager(manager, documentValue, { ...managerStates[id], onState: state => { managerStates[id] = state; } });
     });
     const creatorField = selector => container.querySelector(selector);
@@ -993,7 +1110,8 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       if (busy || ((dirty || creatorDirty) && globalThis.confirm?.(discardMessage) === false)) return;
       const code = button.dataset.adminPackageEditCode;
       creatorOpen = false; creatorDirty = false; creationSource = null;
-      await execute("edit-package", () => postAdminJson("/api/commercial/drafts", { body: { baseReleaseId: catalog.releaseId }, idempotencyKey: mutationKey("edit-package"), fetchImpl, signal, retries: 0 }), "Gói đã được sao chép vào bản nháp để chỉnh sửa.", { keepDraft: true });
+      if (!currentCatalog?.releaseId) return;
+      await execute("edit-package", () => postAdminJson("/api/commercial/drafts", { body: { baseReleaseId: currentCatalog.releaseId }, idempotencyKey: mutationKey("edit-package"), fetchImpl, signal, retries: 0 }), "Gói đã được sao chép vào bản nháp để chỉnh sửa.", { keepDraft: true });
       if (workingDocument) { selectedIndex = workingDocument.offers.findIndex(offer => offer.code === code); render(); }
     }));
     if (draft) showPackage(creatorOpen ? null : selectedIndex);
@@ -1126,6 +1244,10 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           await execute(action, () => postAdminJson(`/api/commercial/releases/${encodeURIComponent(button.dataset.releaseId)}/clone`, { body: {}, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã tạo bản nháp từ bản đang hiệu lực.", { keepDraft: true });
           return;
         }
+        if (action === "make-public") {
+          await preparePublicDraft(button.dataset.releaseId);
+          return;
+        }
         if (action === "stop-sales") {
           const reason = await requestPlanActionInput(action);
           if (!reason) return;
@@ -1189,23 +1311,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           return;
         }
         if (action === "publish") {
-          if (dirty || creatorDirty) {
-            setStatus(container, "Bản nháp có thay đổi chưa lưu. Hãy lưu trước khi xuất bản.", "danger");
-            return;
-          }
-          if (!validationReady(validation)) return;
-          const publishedDraftId = draft.id;
-          const publishedRevision = draft.revision;
-          const publishedDigest = validation.validationDigest;
-          const rows = workingDocument.offers.map(offer => `${offer.display?.name || offer.code} · ${offer.variant === "internal" ? "Cơ bản" : "Nâng cao"} · ${offer.price.period === "monthly" ? "tháng" : "năm"}: ${formatCommercialMoney(offer.price.total, offer.price.currency)} (${({ sellable: "đang bán", stopped: "dừng bán", non_sellable: "chưa mở bán" })[offer.salesState] || offer.salesState}).`);
-          const reason = await requestPlanActionInput(action, { summary: `${rows.join(" ")} Gói đã mua giữ điều kiện cũ.` });
-          if (!reason) return;
-          if (dirty || creatorDirty || !validationReady(validation) || draft?.id !== publishedDraftId || draft?.revision !== publishedRevision || validation.validationDigest !== publishedDigest) return;
-          const local = container.querySelector?.("#admin-plan-effective")?.value || "";
-          const effectiveAt = local ? Math.floor(new Date(local).getTime() / 1000) : Math.floor(Date.now() / 1000);
-          if (!Number.isFinite(effectiveAt)) { setStatus(container, "Thời điểm hiệu lực không hợp lệ.", "danger"); return; }
-          const key = mutationKey(action);
-          await execute(action, () => postAdminJson(`/api/commercial/drafts/${encodeURIComponent(draft.id)}/publish`, { body: { expectedRevision: draft.revision, validationDigest: validation.validationDigest, effectiveAt, reason }, idempotencyKey: key, fetchImpl, signal, retries: 0 }), "Đã xuất bản bản nháp.");
+          await publishDraft();
         }
       });
     });
