@@ -25,7 +25,7 @@ def test_publish_reports_the_invalid_field_before_a_database_write(monkeypatch, 
 
     monkeypatch.setattr(routes, "run_database_write", unexpected_write)
     response = asyncio.run(routes.publish_commercial_draft_api(SimpleNamespace(json=request_json, headers={})))
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert json.loads(response.body)["error"] == message
     assert json.loads(response.body)["code"] == "COMMERCIAL_POLICY_INVALID"
 

@@ -4281,8 +4281,14 @@ html[data-bf-shell="landing"] body {
 }
 
 .landing-pricing-controls { justify-content: center; }
-.landing-commercial-tier-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; }
+.landing-commercial-tier-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; padding: 1.1rem 1.1rem 0; border-bottom: 0; }
+.landing-commercial-tier-head h3 { font-size: 1.5rem; }
+.landing-commercial-subtitle { margin: 0; color: var(--landing-muted); font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+.landing-commercial-tier-head > b { justify-self: start; border-radius: .35rem; font-size: .8rem; letter-spacing: 0; }
 .landing-commercial-tier-head .landing-pricing-periods { grid-column: 1 / -1; justify-self: center; max-width: 100%; }
+.landing-commercial-tier-head .landing-pricing-periods { margin: .25rem 0 .8rem; border-radius: .5rem; }
+.landing-pricing-periods button { border-radius: .35rem; }
+.landing-pricing-periods button.is-active { background: var(--landing-cobalt-100); color: var(--landing-blue); }
 .landing-commercial-tier-head .landing-pricing-periods button { padding-inline: 0.7rem; font-size: 0.73rem; white-space: nowrap; }
 
 .landing-commercial-groups { display: grid; gap: 2rem; margin-top: 2rem; }
@@ -4295,8 +4301,17 @@ html[data-bf-shell="landing"] body {
 }
 .landing-commercial-empty { margin: 0; color: var(--landing-muted); }
 .landing-commercial-groups .landing-commercial-option {
-  min-height: 19rem;
+  min-height: 0;
 }
+.landing-commercial-option { min-height: 0; padding: 0 1.1rem 1.1rem; }
+.landing-commercial-option.is-connected { background: var(--landing-literal-white); }
+.landing-commercial-price { margin-top: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.landing-commercial-price strong { font-size: 1.55rem; font-weight: 700; }
+.landing-commercial-price small { font-size: .8rem; }
+.landing-commercial-option .landing-price-description { min-height: 0; margin: 1rem 0 0; font-size: .92rem; line-height: 1.6; }
+.landing-commercial-option ul { display: block; margin: 1rem 0 1.4rem; padding-left: 1.15rem; list-style: disc; }
+.landing-commercial-option li { display: list-item; font-size: .92rem; line-height: 1.6; }
+.landing-commercial-option li + li { margin-top: .45rem; }
 
 .landing-commercial-groups .landing-commercial-option-label {
   text-transform: none;

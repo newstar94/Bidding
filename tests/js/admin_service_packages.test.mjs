@@ -1,9 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { presentCommercialOffer } from "../../frontend/commercial-policy/PublicCommercialCatalog.js";
 import {
   addAdminServicePackage, calculateAdminVat, configureAdminExportMapping,
   groupAdminPackages, packagePreviewMarkup,
 } from "../../frontend/admin-platform/AdminServicePackages.js";
+
+test("Admin full preview uses the same configured rights as the public cards", () => {
+  const offer = {
+    code: "personal.connected.yearly", variant: "connected", tier: "personal", ownerKind: "account",
+    memberQuota: 1, includedProcurementQuota: 1000, violationCheckEnabled: false,
+    exportCapabilities: { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": true },
+    display: { name: "Cá nhân", benefits: ["Thông tin từ Admin"] }, price: { period: "yearly", currency: "VND", total: 2000 },
+  };
+  const preview = packagePreviewMarkup({ offers: [offer] }, 0);
+  for (const detail of presentCommercialOffer(offer).details) {
+    assert.ok(preview.includes(detail.value === undefined ? `<li>${detail.label}</li>` : `<li>${detail.label}: <strong>${detail.value}</strong></li>`));
+  }
+});
 
 test("new packages use blank independent monthly and annual prices and cannot overwrite existing offers", () => {
   const source = { offers: [], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, unknown: { preserved: true } };

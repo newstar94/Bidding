@@ -54,6 +54,22 @@ test("plan mutations use the shared accessible dialog and preserve required reas
   assert.equal(requests[2].label, "Lý do xuất bản (bắt buộc)");
 });
 
+test("adding a monthly term uses an explicitly configured monthly base without changing annual rights or quotas", () => {
+  const source = { taxInvoice: { taxInclusive: true, taxBasisPoints: 0, rounding: "ceil" }, offers: [{
+    code: "gold.connected.yearly", tier: "gold", variant: "connected", ownerKind: "organization",
+    price: { period: "yearly", currency: "VND", subtotal: 20000, tax: 0, total: 20000, monthlyBaseAmount: 2000 },
+    includedProcurementQuota: 1000, memberQuota: 15, exportCapabilities: { "document.export.word": true }, display: {},
+  }] };
+  const before = structuredClone(source);
+  const next = addMonthlyOffer(source, 0);
+  assert.deepEqual(source, before);
+  assert.deepEqual(next.offers[0], before.offers[0]);
+  assert.equal(next.offers[1].price.total, 2000);
+  assert.equal(next.offers[1].price.monthlyBaseAmount, 2000);
+  assert.equal(next.offers[1].includedProcurementQuota, null);
+  assert.equal(next.offers[1].salesState, "non_sellable");
+});
+
 test("plan mutations stop cleanly when the shared dialog is cancelled", async () => {
   const requestValue = async () => null;
   assert.equal(await requestPlanActionInput("clone", { requestValue }), false);

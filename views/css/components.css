@@ -35,7 +35,7 @@
   transition: background-color var(--transition-fast);
 }
 .sidebar-brand-home:hover {
-  background-color: var(--primary-soft);
+  background-color: transparent;
 }
 .sidebar-brand-home:focus-visible {
   outline: 2px solid var(--primary);

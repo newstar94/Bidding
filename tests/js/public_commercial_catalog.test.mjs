@@ -59,6 +59,23 @@ test("presents opaque offer metadata without tier or variant inference", () => {
   assert.doesNotMatch(JSON.stringify(presented), /opaque-tier|Nội bộ|Kết nối/u);
 });
 
+test("public details preserve every Admin right alongside custom marketing benefits", () => {
+  const source = offer({ variant: "connected", exportCapabilities: {
+    "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": true,
+  } });
+  assert.deepEqual(presentCommercialOffer(source).details, [
+    { label: "Hạn mức thành viên", value: "12" },
+    { label: "Lượt Mua Sắm Công kèm theo", value: "34" },
+    { label: "Kiểm tra vi phạm nhà thầu", value: "Không" },
+    { label: "Xuất Word", value: "Có" },
+    { label: "Xuất Excel", value: "Không" },
+    { label: "Xuất kết quả lựa chọn nhà thầu", value: "Có" },
+    { label: "Lợi ích từ release" },
+  ]);
+  assert.deepEqual(presentCommercialOffer(offer({ exportCapabilities: null })).details[3], { label: "Xuất Word", value: "Chưa cấu hình" });
+  assert.deepEqual(presentCommercialOffer(offer()).details[1], { label: "Không lấy dữ liệu Mua Sắm Công" });
+});
+
 test("owner filtering preserves authoritative response order and rejects hidden or stopped offers", () => {
   const offers = [
     offer({ code: "second", display: { ...offer().display, name: "Thứ hai", order: 99 } }),

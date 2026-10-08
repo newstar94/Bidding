@@ -2,6 +2,7 @@
 
 - Trạng thái: Chấp nhận theo yêu cầu chủ sản phẩm ngày 2026-10-06.
 - Phạm vi: tạo, cấu hình và xem trước gói trong admin; xử lý khởi tạo khi chưa có release.
+- Cập nhật ngày 2026-10-08: quy tắc nhập giá tháng/năm độc lập được thay thế trong trình cấu hình bởi ADR 0076 — giá tháng làm gốc, giá năm bằng giá tháng × 10; snapshot lịch sử giữ nguyên.
 
 ## Business contract
 
@@ -30,3 +31,15 @@ Không migration DB. Lưu/revision/validate/publish dùng API hiện hành. Back
 - Lưu nháp thiếu giá/quota/mapping; validator chặn phát hành; policy chưa chốt và unknown fields giữ nguyên.
 - VAT nguyên VND, preview không giá 0 giả, input không đáng tin được escape.
 - Dirty guard, save failure, mở draft đua nhau, đổi thẻ/kỳ không làm mất nội dung; revision/digest và snapshot đã mua không đổi.
+
+## Khắc phục xác nhận xuất bản — 2026-10-08
+
+Hộp xác nhận từng chấp nhận lý do 1–2 ký tự trong khi API hiện hành yêu cầu ít nhất 3 ký tự sau khi bỏ khoảng trắng đầu/cuối. Giao diện nay kiểm tra ngay trong hộp xác nhận, giữ nội dung khi không hợp lệ và chỉ gửi yêu cầu khi đạt điều kiện. Nút xuất bản yêu cầu mã kiểm tra dài 64 ký tự như API. Máy chủ thông báo riêng lỗi lý do và lỗi mã kiểm tra.
+
+Không thay đổi quy tắc xuất bản, mã lỗi/status HTTP, quyền quản trị, revision, thời hạn kiểm tra, tái xác thực, audit hoặc release đã mua; không migration dữ liệu. Regression nằm trong `admin_desktop_interactions.test.mjs`, `admin_platform_plans.test.mjs` và `test_commercial_admin_drafts.py`, gồm lý do ngắn/có khoảng trắng, sửa rồi xuất bản một lần, mã kiểm tra sai độ dài và giữ tham số cho writer hiện hữu.
+
+## Đồng bộ thẻ gói công khai với Admin — 2026-10-08
+
+Theo yêu cầu chủ sản phẩm, landing và cửa hàng trình bày cùng thứ tự với thẻ xem trước Admin: tên, nhóm/mã gói, nhãn đề xuất, kỳ tháng/năm căn giữa, giá sau VAT căn giữa, mô tả và đầy đủ quyền lợi. Nội dung giới thiệu thêm không thay thế hạn mức hoặc quyền xuất tài liệu. Mô hình `commercialOfferDetails` dùng chung cho thẻ xem trước đầy đủ và thẻ công khai, hiển thị cả trạng thái Có/Không của các quyền xuất hiện hữu; Cơ bản giữ thông tin không lấy dữ liệu Mua Sắm Công.
+
+Đây là thay đổi trình bày đã được yêu cầu, không cấp/thu hồi quyền hoặc đổi quota, giá, SKU, lựa chọn kỳ, checkout, snapshot đã mua hay bộ lọc các offer công khai. Trang công khai tiếp tục đọc release đã phát hành; chỉnh bản nháp chưa phát hành không làm đổi bảng giá. Không migration dữ liệu. Regression kiểm tra quyền lợi đầy đủ khi có nội dung giới thiệu, thứ tự/căn giữa trên desktop và luồng chọn kỳ/mua gói tại `public_commercial_catalog.test.mjs`, `landing_dynamic_packages.test.mjs`, `commercial_storefront.test.mjs` và `admin_service_packages.test.mjs`.

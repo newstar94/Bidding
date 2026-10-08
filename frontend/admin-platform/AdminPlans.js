@@ -14,6 +14,7 @@ import {
 import { escapeHtml } from "../shared/view_helpers.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { requestAdminValue } from "./AdminBilling.js";
+import { applyPackageMonthlyBase, calculateMonthlyPackagePrices, packageMonthlyBase } from "./MonthlyPackagePricing.js";
 import {
   classifyPublicCommercialResponse,
   formatCommercialMoney,
@@ -151,7 +152,7 @@ function validationMarkup(validation) {
 
 function validationReady(validation) {
   return Boolean(
-    validation?.validationDigest
+    typeof validation?.validationDigest === "string" && validation.validationDigest.length === 64
     && !(validation?.errors || []).length
     && (!validation.readinessExpiresAt || validation.readinessExpiresAt >= Date.now() / 1_000),
   );
@@ -175,7 +176,7 @@ function offerCheckbox(index, name, checked, label) {
   return `<label class="form-check" for="${offerFieldId(index, name)}"><input id="${offerFieldId(index, name)}" class="form-check-input" type="checkbox" data-admin-offer-field="${escapeHtml(name)}" data-offer-index="${index}"${checked ? " checked" : ""}><span class="form-check-label">${escapeHtml(label)}</span></label>`;
 }
 
-function offerEditorMarkup(offer, index) {
+function offerEditorMarkup(offer, index, documentValue) {
   const display = offer?.display && typeof offer.display === "object" ? offer.display : {};
   const price = offer?.price && typeof offer.price === "object" ? offer.price : {};
   const capabilities = offer?.exportCapabilities;
@@ -184,7 +185,7 @@ function offerEditorMarkup(offer, index) {
     : Object.entries(CAPABILITY_LABELS).map(([key, label]) => offerCheckbox(index, `capability:${key}`, capabilities?.[key] === true, label)).join("");
   const group = (name, title, description, body) => `<section class="bf-admin-editor-group" data-admin-package-section="${name}" aria-labelledby="admin-offer-${name}-${index}"><h5 id="admin-offer-${name}-${index}">${title}</h5><p class="text-secondary small">${description}</p>${body}</section>`;
   const identity = group("identity", "1. Thông tin gói", "Tên, nhóm và đối tượng xuất hiện trong danh mục công khai.", `<div class="row g-3"><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.name")}">Tên hiển thị <span class="text-danger" aria-hidden="true">*</span></label>${offerField(index, "display.name", display.name, { ariaLabel: "Tên hiển thị" })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "variant")}">Nhóm gói <span class="text-danger" aria-hidden="true">*</span></label>${offerField(index, "variant", offer?.variant, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "tier")}">Mức gói</label>${offerField(index, "tier", offer?.tier, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "ownerKind")}">Đối tượng <span class="text-danger" aria-hidden="true">*</span></label>${offerField(index, "ownerKind", offer?.ownerKind, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.period")}">Kỳ thanh toán</label>${offerField(index, "price.period", price.period, { readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "code")}">Mã gói</label>${offerField(index, "code", offer?.code, { readonly: true })}</div><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.description")}">Mô tả ngắn</label><textarea id="${offerFieldId(index, "display.description")}" class="form-control" rows="2" data-admin-offer-field="display.description" data-offer-index="${index}" placeholder="Ví dụ: Dành cho nhóm triển khai hồ sơ">${escapeHtml(display.description ?? "")}</textarea></div></div>`);
-  const pricing = group("commercial", "2. Giá &amp; kỳ hạn", "Giá tháng và giá năm được nhập độc lập; các giá trị sẽ được kiểm tra khi lưu.", `<div class="row g-3"><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.subtotal")}">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.tax")}">Thuế VAT</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.total")}">Tổng thanh toán</label>${offerField(index, "price.total", price.total, { type: "number", min: 0 })}</div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "price.currency")}">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div></div>`);
+  const pricing = group("commercial", "2. Giá &amp; kỳ hạn", "Nhập giá gốc tháng; giá năm tự tính bằng giá tháng × 10 theo chính sách VAT của bản nháp.", `<div class="row g-3"><div class="col-12"><label class="form-label" for="admin-monthly-base-${index}">Giá gốc tháng (VND) ${documentValue?.taxInvoice?.taxInclusive === false ? "· chưa VAT" : "· đã gồm VAT"}</label><input class="form-control" id="admin-monthly-base-${index}" type="number" min="0" step="1" data-admin-monthly-base="${index}" value="${text(packageMonthlyBase(documentValue, index), "")}" placeholder="Nhập giá tháng để tính giá năm"><small class="text-secondary">Giá năm = giá tháng × 10. Cập nhật giá sẽ áp dụng cho cả hai kỳ đang có trong bản nháp.</small></div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.subtotal")}">Giá trước thuế</label>${offerField(index, "price.subtotal", price.subtotal, { type: "number", min: 0, readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.tax")}">Thuế VAT</label>${offerField(index, "price.tax", price.tax, { type: "number", min: 0, readonly: true })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "price.total")}">Tổng thanh toán</label>${offerField(index, "price.total", price.total, { type: "number", min: 0, readonly: true })}</div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "price.currency")}">Tiền tệ</label>${offerField(index, "price.currency", price.currency, { readonly: true })}</div></div>`);
   const limits = group("entitlements", "3. Hạn mức &amp; tính năng", "Hạn mức, quyền xuất và các tính năng đi kèm gói.", `<div class="row g-3"><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "memberQuota")}">Số thành viên tối đa <span class="text-danger" aria-hidden="true">*</span></label>${offerField(index, "memberQuota", offer?.memberQuota, { type: "number", min: 1 })}</div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "includedProcurementQuota")}">Lượt Mua Sắm Công trong kỳ</label>${offerField(index, "includedProcurementQuota", offer?.includedProcurementQuota, { type: "number", min: 0, readonly: offer?.variant === "internal" })}</div></div><p class="bf-admin-editor-hint">${offer?.variant === "internal" ? "Cơ bản: không lấy dữ liệu từ Mua Sắm Công." : "Nâng cao: hạn mức đi theo kỳ đã mua."}</p><div class="bf-admin-feature-choices"><div class="bf-admin-check-grid">${capabilityFields}</div><div class="bf-admin-check-grid">${offerCheckbox(index, "violationCheckEnabled", offer?.violationCheckEnabled === true, "Kiểm tra vi phạm nhà thầu")}</div></div><p class="text-secondary small mt-2 mb-0">Quyền xuất chỉ áp dụng cho thao tác xuất tài liệu.</p>`);
   const presentation = group("presentation", "4. Trình bày", "Nội dung hiển thị và trạng thái bán của thẻ gói.", `<div class="row g-3"><div class="col-12"><label class="form-label" for="${offerFieldId(index, "display.benefits")}">Lợi ích hiển thị · mỗi dòng một mục</label><textarea id="${offerFieldId(index, "display.benefits")}" class="form-control" rows="3" data-admin-offer-field="display.benefits" data-offer-index="${index}" placeholder="Nhập nội dung giới thiệu gói">${escapeHtml(Array.isArray(display.benefits) ? display.benefits.join("\n") : "")}</textarea></div><div class="col-md-6"><label class="form-label" for="${offerFieldId(index, "display.order")}">Thứ tự hiển thị</label>${offerField(index, "display.order", display.order, { type: "number", min: 0 })}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "salesState")}">Trạng thái bán</label>${offerSelect(index, "salesState", offer?.salesState, [["sellable", "Đang bán"], ["stopped", "Đã dừng bán"], ["non_sellable", "Chưa mở bán"]])}</div><div class="col-md-4"><label class="form-label" for="${offerFieldId(index, "display.visibility")}">Hiển thị trên bảng giá</label>${offerSelect(index, "display.visibility", display.visibility ?? "", [["", "Theo cấu hình hiện có"], ["public", "Công khai"], ["hidden", "Ẩn"]])}</div><div class="col-md-4"><label class="form-label d-block">Đánh dấu</label><div class="bf-admin-check-grid">${offerCheckbox(index, "display.recommended", display.recommended === true, "Gói được đề xuất")}</div></div></div>`);
   return `<article class="card mb-3 bf-admin-offer-editor" data-admin-offer-editor data-offer-index="${index}"><div class="card-header"><div><div class="text-secondary small mb-1">Gói ${index + 1}</div><h4 class="card-title mb-1">${text(display.name, offer?.code)}</h4><div class="text-secondary small">${text(offer?.code)}</div></div><span class="badge bg-secondary-lt">${text(offer?.salesState, "N/A")}</span></div><div class="card-body">${identity}${pricing}${limits}${presentation}</div></article>`;
@@ -213,6 +214,7 @@ function creatorPreviewDocument(source = null) {
     price: {
       period,
       currency: "VND",
+      ...(prices[period]?.monthlyBaseAmount !== undefined ? { monthlyBaseAmount: prices[period].monthlyBaseAmount } : {}),
       subtotal: asInteger(prices[period]?.subtotal),
       tax: asInteger(prices[period]?.tax),
       total: asInteger(prices[period]?.total),
@@ -245,6 +247,9 @@ export function addMonthlyOffer(documentValue, sourceIndex) {
   monthly.code = `${source.tier}.${source.variant}.monthly`;
   if (next.offers.some((offer) => offer.code === monthly.code)) throw new TypeError("Mã gói tháng đã tồn tại.");
   monthly.price = { ...monthly.price, period: "monthly", subtotal: null, tax: null, total: null };
+  if (Number.isSafeInteger(source.price.monthlyBaseAmount)) {
+    monthly.price = { ...monthly.price, ...calculateMonthlyPackagePrices(source.price.monthlyBaseAmount, next.taxInvoice).monthly };
+  } else delete monthly.price.monthlyBaseAmount;
   monthly.includedProcurementQuota = source.variant === "internal" ? 0 : null;
   monthly.salesState = "non_sellable";
   monthly.display = { ...monthly.display, benefits: [] };
@@ -477,7 +482,13 @@ export function serializeDraftDocument(root, originalDocument) {
     }
     return offer;
   });
-  return { ...advanced, offers };
+  let documentValue = { ...advanced, offers };
+  for (const input of root.querySelectorAll?.("[data-admin-monthly-base]") || []) {
+    if (input.dataset.adminMonthlyPriceDirty !== "true") continue;
+    try { documentValue = applyPackageMonthlyBase(documentValue, Number(input.dataset.adminMonthlyBase), input.value); }
+    catch (error) { error.field = input; throw error; }
+  }
+  return documentValue;
 }
 
 export function draftEditorMarkup(draft, validation = null, { selectedIndex = 0, creator = false, sourceIndex = null, creatorPeriod = "yearly", packageStep = 0 } = {}) {
@@ -492,8 +503,8 @@ export function draftEditorMarkup(draft, validation = null, { selectedIndex = 0,
   const source = sourceIndex === null ? null : offers[sourceIndex];
   const active = creator || (selectedIndex !== null && Boolean(offers[selectedIndex]));
   const panes = creator
-    ? `<div data-admin-package-pane="creator">${packageCreatorMarkup(source)}</div>`
-    : offers.map((offer, index) => `<div data-admin-package-pane="${index}"${selectedIndex === index ? "" : " hidden"}>${offerEditorMarkup(offer, index)}</div>`).join("");
+    ? `<div data-admin-package-pane="creator">${packageCreatorMarkup(source, documentValue.taxInvoice)}</div>`
+    : offers.map((offer, index) => `<div data-admin-package-pane="${index}"${selectedIndex === index ? "" : " hidden"}>${offerEditorMarkup(offer, index, documentValue)}</div>`).join("");
   const previewDocument = creator ? creatorPreviewDocument(source) : documentValue;
   const previewIndex = creator
     ? Math.max(0, previewDocument.offers.findIndex(offer => offer.price?.period === creatorPeriod))
@@ -575,9 +586,10 @@ export async function requestPlanActionInput(action, { requestValue = requestAdm
   if (action === "publish") {
     const reason = await requestValue({
       title: "Xuất bản gói dịch vụ",
-      message: `Xuất bản toàn bộ bản nháp này?${summary ? ` ${summary}` : ""}`,
+      message: `Xuất bản toàn bộ bản nháp này?${summary ? ` ${summary}` : ""} Lý do xuất bản phải có ít nhất 3 ký tự và được lưu vào nhật ký quản trị.`,
       label: "Lý do xuất bản (bắt buộc)",
       confirmLabel: "Xuất bản",
+      validateValue: value => Array.from(String(value).trim()).length < 3 ? "Lý do xuất bản phải có ít nhất 3 ký tự." : "",
     });
     return reason === null ? null : String(reason).trim() || null;
   }
@@ -768,21 +780,32 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
           const input = editor.querySelector(`[data-admin-offer-field="${name}"]`); if (input) input.value = value;
         }
       }
-      const priceGroup = editor.querySelectorAll(".bf-admin-editor-group")[1];
-      if (!priceGroup) return;
-      const calculator = globalThis.document?.createElement?.("div");
-      if (!calculator) return;
-      calculator.className = "row g-2 align-items-end mt-3";
-      calculator.innerHTML = trustedHTML(`<div class="col-md-5"><label class="form-label" for="admin-offer-vat-${index}">Tính thuế VAT (%)</label><input class="form-control" id="admin-offer-vat-${index}" type="text" inputmode="decimal" placeholder="Nhập tỷ lệ để tính thuế"></div><div class="col-md-7"><button type="button" class="btn btn-outline-primary" data-admin-vat-calculate="${index}">Tính thuế và tổng tiền</button></div>`);
-      priceGroup.append(calculator);
-      calculator.querySelector("button").addEventListener("click", () => {
+      const baseInput = editor.querySelector("[data-admin-monthly-base]");
+      baseInput?.addEventListener("input", () => {
         if (busy) return;
+        baseInput.dataset.adminMonthlyPriceDirty = "true";
+        dirty = true; validation = null;
+        container.querySelectorAll?.('[data-admin-plan-action="publish"], [data-admin-plan-action="validate"]').forEach(button => { button.disabled = true; });
+        const saveState = container.querySelector("[data-admin-package-save-state]");
+        if (saveState) saveState.textContent = "Bản nháp chưa lưu";
+        container.querySelector("#admin-plan-validation").innerHTML = trustedHTML('<div class="alert alert-warning" role="status">Giá đã thay đổi. Lưu bản nháp và kiểm tra lại trước khi mở bán.</div>');
         try {
-          const amounts = calculateAdminVat(editor.querySelector('[data-admin-offer-field="price.subtotal"]').value, calculator.querySelector("input").value.trim());
-          for (const key of ["tax", "total"]) {
-            const input = editor.querySelector(`[data-admin-offer-field="price.${key}"]`); input.value = amounts[key]; input.dispatchEvent(new Event("input", { bubbles: true }));
+          const next = applyPackageMonthlyBase(workingDocument, index, baseInput.value);
+          const source = next.offers[index];
+          workingDocument = next;
+          container.querySelectorAll("[data-admin-offer-editor]").forEach(pane => {
+            const offer = next.offers[Number(pane.dataset.offerIndex)];
+            if (offer.tier !== source.tier || offer.variant !== source.variant || offer.ownerKind !== source.ownerKind) return;
+            for (const key of ["subtotal", "tax", "total"]) pane.querySelector(`[data-admin-offer-field="price.${key}"]`).value = offer.price[key];
+            pane.querySelector("[data-admin-monthly-base]").value = source.price.monthlyBaseAmount;
+          });
+          baseInput.setCustomValidity("");
+          container.querySelector("#admin-plan-status")?.replaceChildren();
+          if (selectedIndex !== null) {
+            container.querySelector("[data-admin-package-live-preview]").innerHTML = trustedHTML(packagePreviewMarkup(next, selectedIndex, { compact: true }));
+            updatePreviewSummary(next, selectedIndex);
           }
-        } catch (error) { setStatus(container, error.message, "danger"); }
+        } catch (error) { baseInput.setCustomValidity(error.message); setStatus(container, error.message, "danger"); }
       });
     });
     container.querySelectorAll?.("[data-admin-package-manager]").forEach(manager => {
@@ -801,18 +824,19 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       return Object.fromEntries([...(container.querySelectorAll?.("[data-admin-creator-field^='capability:']") || [])]
         .map(field => [field.dataset.adminCreatorField.slice("capability:".length), Boolean(field.checked)]));
     };
-    const creatorPreviewSource = () => {
+    const creatorPricing = () => {
+      const raw = String(creatorField("#admin-new-package-month-price")?.value ?? "").trim();
+      if (raw === "") return {};
       const vat = String(creatorField("#admin-new-package-vat")?.value ?? "").trim();
-      const prices = {};
-      for (const period of ["monthly", "yearly"]) {
-        const subtotal = creatorInteger(`#admin-new-package-${period === "monthly" ? "month" : "year"}-price`);
-        let tax = null;
-        let total = null;
-        if (subtotal !== null && vat !== "") {
-          try { ({ tax, total } = calculateAdminVat(String(subtotal), vat)); } catch { /* keep the live preview unpriced until valid */ }
-        }
-        prices[period] = { subtotal, tax, total };
-      }
+      if (vat === "") throw new TypeError("Nhập VAT để tính thuế và tổng tiền cho giá đã nhập.");
+      const basisPoints = calculateAdminVat("10000", vat).tax;
+      return calculateMonthlyPackagePrices(raw, { taxInclusive: workingDocument?.taxInvoice?.taxInclusive ?? false, taxBasisPoints: basisPoints, rounding: workingDocument?.taxInvoice?.rounding || "half_up" });
+    };
+    const creatorPreviewSource = () => {
+      let prices = {};
+      try { prices = creatorPricing(); } catch { /* incomplete pricing remains unpriced */ }
+      const yearInput = creatorField("#admin-new-package-year-price");
+      if (yearInput) yearInput.value = prices.yearly ? prices.yearly.monthlyBaseAmount * 10 : "";
       const periods = [
         creatorField("#admin-new-package-month")?.checked ? "monthly" : null,
         creatorField("#admin-new-package-year")?.checked ? "yearly" : null,
@@ -912,7 +936,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
       }
       const hint = creatorField("[data-admin-creator-procurement-hint]");
       if (hint) hint.textContent = variant === "internal" ? "Cơ bản: không lấy dữ liệu từ Mua Sắm Công." : "Nâng cao: hạn mức đi theo kỳ đã mua.";
-      creatorField("#admin-new-package-month-price").disabled = !creatorField("#admin-new-package-month").checked;
+      creatorField("#admin-new-package-month-price").disabled = false;
       creatorField("#admin-new-package-year-price").disabled = !creatorField("#admin-new-package-year").checked;
       creatorField("#admin-new-package-month-days").disabled = !creatorField("#admin-new-package-month").checked;
       renderCreatorPreview();
@@ -1039,16 +1063,7 @@ export async function renderAdminPlans(container, { fetchImpl, signal } = {}) {
         const documentValue = readDocument(); if (!documentValue) return;
         try {
           const periods = [creatorField("#admin-new-package-year")?.checked ? "yearly" : null, creatorField("#admin-new-package-month")?.checked ? "monthly" : null].filter(Boolean);
-          const vat = String(creatorField("#admin-new-package-vat")?.value ?? "").trim();
-          const prices = {};
-          for (const period of periods) {
-            const priceSelector = `#admin-new-package-${period === "monthly" ? "month" : "year"}-price`;
-            const rawSubtotal = String(creatorField(priceSelector)?.value ?? "").trim();
-            if (rawSubtotal === "") continue;
-            if (vat === "") throw new TypeError("Nhập VAT để tính thuế và tổng tiền cho giá đã nhập.");
-            const amounts = calculateAdminVat(rawSubtotal, vat);
-            prices[period] = { subtotal: Number(rawSubtotal), tax: amounts.tax, total: amounts.total };
-          }
+          const prices = creatorPricing();
           const exportCapabilities = creatorCapabilities();
           const benefits = String(creatorField("#admin-new-package-benefits")?.value ?? "")
             .split(/\r?\n/u).map(item => item.trim()).filter(Boolean);

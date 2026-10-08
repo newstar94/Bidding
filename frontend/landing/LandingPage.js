@@ -8,6 +8,7 @@ const pricingState = {
   group: "basic",
   periods: {},
   sessionValid: false,
+  session: null,
 };
 
 function pricingGroupLabel(group, offer) {
@@ -17,6 +18,7 @@ function pricingGroupLabel(group, offer) {
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
   pricingState.sessionValid = signedIn;
+  pricingState.session = session;
   const trialAvailable = document.documentElement.dataset.trialFullAccess === "true";
   const destination = signedIn ? WORKSPACE_PATH : LOGIN_PATH;
   const appLabel = signedIn
@@ -123,43 +125,59 @@ function createLandingIcon(name) {
   return createLandingSvgIcon(name);
 }
 
-function appendCommercialBenefit(list, label) {
-  const item = document.createElement("li");
-  item.append(createLandingIcon("check"), document.createTextNode(label));
-  list.append(item);
-}
-
 function createCommercialOption(offer, group, selectionCard = null) {
   const presented = presentCommercialOffer(offer);
   const option = document.createElement("div");
   option.className = `landing-commercial-option${group === "advanced" ? " is-connected" : ""}`;
   option.dataset.commercialVariant = offer?.variant || "";
 
-  const label = document.createElement("span");
-  label.className = "landing-commercial-option-label";
-  label.append(createLandingIcon("layers-3"));
-  label.append(document.createTextNode(pricingGroupLabel(group, offer)));
-
   const price = document.createElement("div");
   price.className = "landing-commercial-price";
   const amount = document.createElement("strong");
   amount.textContent = presented.priceLabel;
   const period = document.createElement("small");
-  period.textContent = presented.periodLabel;
+  period.textContent = `Giá bán sau VAT ${presented.periodLabel}`;
   price.append(amount, period);
 
   const benefits = document.createElement("ul");
-  presented.benefits.forEach((benefit) => appendCommercialBenefit(benefits, benefit));
+  presented.details.forEach(detail => {
+    const item = document.createElement("li");
+    item.append(document.createTextNode(detail.label));
+    if (detail.value !== undefined) {
+      const value = document.createElement("strong");
+      value.textContent = detail.value;
+      item.append(document.createTextNode(": "), value);
+    }
+    benefits.append(item);
+  });
+
+  const description = document.createElement("p");
+  description.className = "landing-price-description";
+  description.textContent = presented.description;
 
   const action = document.createElement("a");
   action.className = `landing-button ${presented.recommended ? "landing-button-primary" : "landing-button-secondary"}`;
   const destination = pricingState.sessionValid ? "/goi-va-thanh-toan" : LOGIN_PATH;
   const periodValue = selectionCard?.period || offer?.price?.period || "yearly";
   action.href = `${destination}?checkout=${encodeURIComponent(presented.code)}&period=${encodeURIComponent(periodValue)}`;
-  action.textContent = "Bắt đầu với gói này";
+  action.textContent = "Bắt đầu";
   action.append(createLandingIcon("arrow-right"));
+  action.addEventListener("click", (event) => {
+    if (!pricingState.sessionValid) return;
+    event.preventDefault();
+    action.setAttribute("aria-busy", "true");
+    void import("../commercial-policy/CommercialStorefront.js")
+      .then(({ startCommercialCheckoutFromLanding }) => startCommercialCheckoutFromLanding({
+        offer,
+        session: pricingState.session,
+        onReturnToOverview: () => window.location.assign(WORKSPACE_PATH),
+      }))
+      .catch(() => { action.removeAttribute("aria-busy"); });
+  });
 
-  option.append(label, price, benefits, action);
+  option.append(price);
+  if (presented.description) option.append(description);
+  option.append(benefits, action);
   return option;
 }
 
@@ -217,15 +235,16 @@ function renderCommercialOffers(offers = []) {
       const header = document.createElement("div");
       header.className = "landing-commercial-tier-head";
       const title = document.createElement("span");
-      const audience = document.createElement("small");
-      audience.textContent = offer?.ownerKind === "organization" ? "Tổ chức" : "Cá nhân";
       const heading = document.createElement("h3");
       heading.textContent = presented.name;
-      title.append(audience, heading);
+      const subtitle = document.createElement("p");
+      subtitle.className = "landing-commercial-subtitle";
+      subtitle.textContent = `${pricingGroupLabel(commercialGroupForOffer(offer), offer)} · ${presented.code}`;
+      title.append(heading, subtitle);
       header.append(title);
-      if (presented.badge) {
+      if (presented.badge || presented.recommended) {
         const badge = document.createElement("b");
-        badge.textContent = presented.badge;
+        badge.textContent = presented.badge || "Gói đề xuất";
         header.append(badge);
       }
       if (selectionCard) {
@@ -249,15 +268,10 @@ function renderCommercialOffers(offers = []) {
         header.append(periods);
       }
 
-      const description = document.createElement("p");
-      description.className = "landing-price-description";
-      description.textContent = presented.description;
-
       const options = document.createElement("div");
       options.className = "landing-commercial-options";
       options.append(createCommercialOption(offer, commercialGroupForOffer(offer), selectionCard));
       card.append(header);
-      if (presented.description) card.append(description);
       card.append(options);
       if (selectionCard && !selectionCard.periods.includes("monthly")) {
         const note = document.createElement("small");

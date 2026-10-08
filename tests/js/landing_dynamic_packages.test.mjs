@@ -72,7 +72,7 @@ function commercialOffer(code, name, overrides = {}) {
   };
 }
 
-async function renderScenario({ commercial, legacy = { status: 200, payload: { packages: [compatibilityPackage] } }, inspect }) {
+async function renderScenario({ commercial, legacy = { status: 200, payload: { packages: [compatibilityPackage] } }, inspect, session = { valid: false } }) {
   const requests = { commercial: 0, legacy: 0 };
   const server = createServer(async (request, response) => {
     try {
@@ -127,10 +127,10 @@ async function renderScenario({ commercial, legacy = { status: 200, payload: { p
       });
     }
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.evaluate(async () => {
+    await page.evaluate(async (initialSession) => {
       const module = await import("/frontend/landing/LandingPage.js");
-      await module.bootstrapLandingPage({ valid: false });
-    });
+      await module.bootstrapLandingPage(initialSession);
+    }, session);
     await page.waitForFunction(() => {
       const pricingGrid = document.getElementById("landing-pricing-grid");
       return pricingGrid && !pricingGrid.hasAttribute("aria-busy");
@@ -304,6 +304,68 @@ const pricingCatalog = (offers) => ({ status: 200, payload: {
   releaseId: "matrix", releaseChecksum: "matrix-checksum", offers, creditPacks: [], quotaWarnings: [],
 } });
 
+test("public cards match the Admin preview layout and show every configured right", async () => {
+  const offers = pricingMatrix(["yearly"]);
+  for (const item of offers) {
+    item.display.description = "Quản lý công việc và dữ liệu đã cấu hình.";
+    item.display.benefits = ["Nội dung bổ sung từ Admin"];
+    item.exportCapabilities = { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": true };
+    item.violationCheckEnabled = item.variant === "connected";
+  }
+  await renderScenario({ commercial: pricingCatalog(offers), inspect: async page => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addStyleTag({ url: "/views/css/landing.css" });
+    await page.locator('[data-pricing-group="advanced"]').click();
+    const card = page.locator('[data-commercial-offer-code="personal.connected.yearly"]');
+    for (const label of ["Hạn mức thành viên: 1", "Lượt Mua Sắm Công kèm theo: 20", "Kiểm tra vi phạm nhà thầu: Có", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Nội dung bổ sung từ Admin"]) {
+      assert.ok((await card.textContent()).includes(label), label);
+    }
+    const layout = await card.evaluate(node => {
+      const box = selector => node.querySelector(selector).getBoundingClientRect();
+      const periods = box(".landing-pricing-periods"), price = box(".landing-commercial-price"), description = box(".landing-price-description"), features = box("ul");
+      const bounds = node.getBoundingClientRect();
+      return { ordered: periods.bottom <= price.top && price.bottom <= description.top && description.bottom <= features.top, centered: Math.abs((price.left + price.right - bounds.left - bounds.right) / 2) < 2, priceAlign: getComputedStyle(node.querySelector(".landing-commercial-price")).textAlign };
+    });
+    assert.equal(layout.ordered, true);
+    assert.equal(layout.centered, true);
+    assert.equal(layout.priceAlign, "center");
+    await card.screenshot({ path: "artifacts/public-package-admin-parity-desktop.png" });
+    await page.locator('[data-pricing-group="basic"]').click();
+    assert.ok((await page.locator('[data-commercial-offer-code="personal.internal.yearly"]').textContent()).includes("Không lấy dữ liệu Mua Sắm Công"));
+  } });
+});
+
+test("signed-in landing starts the QR popup directly from the Bắt đầu button", async () => {
+  const checkoutOrder = {
+    publicId: "landing-order",
+    checkoutUrl: "https://example.test/payment",
+    checkoutState: "open",
+    paymentState: "unverified",
+    activationState: "pending",
+    totalAmount: 2000,
+    paymentDetails: { qrCodeImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==" },
+  };
+  await renderScenario({
+    commercial: pricingCatalog([commercialOffer("personal.internal.yearly", "Cá nhân", { tier: "personal", variant: "internal", ownerKind: "account", price: { period: "yearly", currency: "VND", subtotal: 2000, tax: 0, total: 2000 } })]),
+    session: { valid: true, user: { id: "user-1", active_org_id: "personal:user-1", package_id: "free", entitlements: {} } },
+    inspect: async page => {
+      await page.evaluate(() => { document.cookie = "csrf_token=landing-test-token; path=/"; });
+      await page.route("**/api/billing/quotes", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "landing-quote" }) }));
+      await page.route("**/api/billing/checkouts", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: checkoutOrder }) }));
+      await page.route("**/api/billing/orders/landing-order", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: checkoutOrder }) }));
+      const button = page.getByRole("link", { name: "Bắt đầu" });
+      assert.equal(await button.count(), 1);
+      assert.equal(await button.getAttribute("href"), "/goi-va-thanh-toan?checkout=personal.internal.yearly&period=yearly");
+      await button.click();
+      const dialog = page.getByRole("dialog", { name: "Thanh toán gói dịch vụ" });
+      await dialog.getByRole("img", { name: "Mã QR thanh toán" }).waitFor();
+      assert.equal(new URL(page.url()).pathname, "/");
+      assert.match(await dialog.textContent(), /2\.000/u);
+      assert.doesNotMatch(await page.locator("body").textContent(), /Bắt đầu với gói này/u);
+    },
+  });
+});
+
 test("each pricing card selects its own period without changing other cards", async () => {
   const result = await renderScenario({
     commercial: pricingCatalog(pricingMatrix()),
@@ -318,7 +380,7 @@ test("each pricing card selects its own period without changing other cards", as
       await page.locator('[data-pricing-group="advanced"]').focus();
       await page.keyboard.press("Enter");
       assert.deepEqual(await codes(), ["personal", "silver", "gold", "diamond"].map((tier) => `${tier}.connected.yearly`));
-      assert.match(await page.locator("#landing-pricing-grid").textContent(), /20 lượt lấy hồ sơ Mua Sắm Công/u);
+      assert.match(await page.locator("#landing-pricing-grid").textContent(), /Lượt Mua Sắm Công kèm theo: 20/u);
       await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
       assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.yearly", "gold.connected.yearly", "diamond.connected.yearly"]);
       const personal = page.locator('[data-pricing-audience="account"] article');

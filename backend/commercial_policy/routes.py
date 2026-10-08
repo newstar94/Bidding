@@ -518,8 +518,10 @@ async def publish_commercial_draft_api(request):
         digest = str(body.get("validationDigest") or "").strip()
         reason = str(body.get("reason") or "").strip()
         effective_at = body.get("effectiveAt") or int(time.time())
-        if len(digest) != 64 or len(reason) < 3:
-            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu digest hoặc lý do xuất bản hợp lệ.")
+        if len(digest) != 64:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Kết quả kiểm tra bản nháp không hợp lệ. Hãy bấm Kiểm tra lại trước khi xuất bản.")
+        if len(reason) < 3:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Lý do xuất bản phải có ít nhất 3 ký tự.")
         return await run_database_write(
             _publish_commercial_draft_sync,
             request, body, revision, digest, reason, effective_at,

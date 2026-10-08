@@ -101,13 +101,13 @@
 .commercial-storefront__offers { margin: 28px 0; }
 .commercial-storefront__pricing-controls { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .commercial-storefront__pricing-controls > div,
-.commercial-storefront__card-periods { display: inline-flex; padding: 4px; border: 1px solid var(--storefront-border); border-radius: 999px; background: var(--storefront-surface); }
+.commercial-storefront__card-periods { display: inline-flex; padding: 4px; border: 1px solid var(--storefront-border); border-radius: .5rem; background: var(--storefront-surface); }
 .commercial-storefront__card-periods { align-self: center; max-width: 100%; margin: 12px 0; }
 .commercial-storefront__pricing-controls button,
-.commercial-storefront__card-periods button { min-height: 44px; padding: 8px 18px; border: 0; border-radius: 999px; background: transparent; color: var(--storefront-ink); font: inherit; font-weight: 600; cursor: pointer; }
+.commercial-storefront__card-periods button { min-height: 40px; padding: 8px 18px; border: 0; border-radius: .35rem; background: transparent; color: var(--storefront-ink); font: inherit; font-weight: 600; cursor: pointer; }
 .commercial-storefront__card-periods button { padding-inline: 12px; font-size: .8rem; white-space: nowrap; }
 .commercial-storefront__pricing-controls button[aria-pressed="true"],
-.commercial-storefront__card-periods button[aria-pressed="true"] { background: var(--storefront-accent); color: var(--text-on-primary, #fff); }
+.commercial-storefront__card-periods button[aria-pressed="true"] { background: color-mix(in srgb, var(--storefront-accent) 10%, var(--storefront-surface)); color: var(--storefront-accent); }
 .commercial-storefront__card-periods button:disabled { background: transparent; color: var(--storefront-muted); cursor: not-allowed; }
 .commercial-storefront__pricing-controls button:focus-visible,
 .commercial-storefront__card-periods button:focus-visible { outline: 3px solid var(--storefront-accent); outline-offset: 2px; }
@@ -120,7 +120,7 @@
 .commercial-storefront__card {
   display: flex;
   flex-direction: column;
-  min-height: 360px;
+  min-height: 0;
   padding: 22px;
   border: 1px solid var(--storefront-border);
   border-radius: 14px;
@@ -128,10 +128,13 @@
 }
 .commercial-storefront__card.is-featured { border-color: var(--storefront-accent); box-shadow: 0 12px 30px rgb(24 65 130 / 10%); }
 .commercial-storefront__card-top { display: flex; align-items: center; justify-content: space-between; color: var(--storefront-muted); font-size: .82rem; }
-.commercial-storefront__card h3 { margin: 18px 0 4px; color: var(--storefront-ink); }
-.commercial-storefront__price { margin: 0 0 16px; color: var(--storefront-ink); font-size: 1.55rem; font-weight: 800; }
+.commercial-storefront__card h3 { margin: 0 0 4px; color: var(--storefront-ink); font-size: 1.5rem; }
+.commercial-storefront__price { display: grid; gap: 4px; margin: 0 0 16px; color: var(--storefront-ink); font-size: 1.55rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.commercial-storefront__card > .commercial-badge { align-self: flex-start; margin-top: 12px; }
+.commercial-storefront__description { margin: 0 0 16px; color: var(--storefront-muted); line-height: 1.6; }
 .commercial-storefront__price small { color: var(--storefront-muted); font-size: .8rem; font-weight: 500; }
-.commercial-storefront__card ul { flex: 1; margin: 0 0 20px; padding-left: 18px; color: var(--storefront-muted); line-height: 1.8; }
+.commercial-storefront__card ul { flex: 1; margin: 0 0 20px; padding-left: 18px; color: var(--storefront-ink); line-height: 1.6; }
+.commercial-storefront__card li + li { margin-top: .45rem; }
 .commercial-storefront__card .btn { min-height: 44px; }
 .commercial-storefront__card-actions { display: grid; gap: 8px; }
 .storefront-checkout-error { min-height: 1.25rem; margin: 0 0 8px; color: #b53c4b; font-size: .8rem; }

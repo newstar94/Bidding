@@ -81,16 +81,17 @@ function renderOffers(controller) {
   const selection = selectCommercialOffers(state.offers, state);
   const card = (offer, selectedCard = null) => {
     const presented = presentCommercialOffer(offer);
-    const badge = presented.badge
-      ? `<span class="commercial-badge" data-tone="${presented.recommended ? "success" : "neutral"}">${escapeHtml(presented.badge)}</span>`
+    const badge = presented.badge || presented.recommended
+      ? `<span class="commercial-badge" data-tone="${presented.recommended ? "success" : "neutral"}">${escapeHtml(presented.badge || "Gói đề xuất")}</span>`
       : "";
-    const variantLabel = presented.variantLabel ? `<span>${escapeHtml(presented.variantLabel)}</span>` : "";
-    const description = presented.description ? `<p>${escapeHtml(presented.description)}</p>` : "";
-    const benefits = presented.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("");
+    const variant = presented.variantLabel || ({ internal: "Cơ bản", connected: "Nâng cao" })[offer.variant] || "";
+    const variantLabel = `<span>${escapeHtml(variant)}${variant ? " · " : ""}${escapeHtml(presented.code)}</span>`;
+    const description = presented.description ? `<p class="commercial-storefront__description">${escapeHtml(presented.description)}</p>` : "";
+    const benefits = presented.details.map(detail => `<li>${escapeHtml(detail.label)}${detail.value === undefined ? "" : `: <strong>${escapeHtml(detail.value)}</strong>`}</li>`).join("");
     const cardId = selectedCard ? `storefront-offer-${encodeURIComponent(selectedCard.key)}` : "";
     const periods = selectedCard ? `<div class="commercial-storefront__card-periods" role="group" aria-label="Chu kỳ thanh toán ${escapeHtml(presented.name)}">${[["monthly", "Hàng tháng"], ["yearly", "Hàng năm"]].map(([period, label]) => `<button type="button" data-storefront-period="${period}" data-storefront-card-key="${escapeHtml(selectedCard.key)}" aria-controls="${cardId}" aria-pressed="${period === selectedCard.period}"${selectedCard.periods.includes(period) ? "" : ' disabled aria-disabled="true"'}>${label}</button>`).join("")}</div>` : "";
     const note = selectedCard && !selectedCard.periods.includes("monthly") ? '<small class="commercial-storefront__period-note">Giá hàng tháng chưa được công bố.</small>' : "";
-    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"${selectedCard ? ` id="${cardId}" data-pricing-card="${escapeHtml(selectedCard.key)}"` : ""}><div class="commercial-storefront__card-top">${badge}${variantLabel}</div><h3>${escapeHtml(presented.name)}</h3>${periods}${description}<p class="commercial-storefront__price">${escapeHtml(presented.priceLabel)}${presented.periodLabel ? ` <small>${escapeHtml(presented.periodLabel)}</small>` : ""}</p>${benefits ? `<ul>${benefits}</ul>` : ""}<p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><div class="commercial-storefront__card-actions"><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button><button type="button" class="btn btn-outline storefront-buy" data-operation="renew" data-sku="${escapeHtml(presented.code)}">Gia hạn gói này</button></div>${note}</article>`;
+    return `<article class="commercial-storefront__card${presented.recommended ? " is-featured" : ""}" data-commercial-offer-code="${escapeHtml(presented.code)}"${selectedCard ? ` id="${cardId}" data-pricing-card="${escapeHtml(selectedCard.key)}"` : ""}><h3>${escapeHtml(presented.name)}</h3><div class="commercial-storefront__card-top">${variantLabel}</div>${badge}${periods}<p class="commercial-storefront__price"><strong>${escapeHtml(presented.priceLabel)}</strong><small>Giá bán sau VAT ${escapeHtml(presented.periodLabel)}</small></p>${description}<ul>${benefits}</ul><p class="storefront-checkout-error" id="storefront-error-${escapeHtml(presented.code)}" role="alert"></p><div class="commercial-storefront__card-actions"><button type="button" class="btn btn-primary storefront-buy" data-operation="purchase" data-sku="${escapeHtml(presented.code)}">Chọn gói</button><button type="button" class="btn btn-outline storefront-buy" data-operation="renew" data-sku="${escapeHtml(presented.code)}">Gia hạn gói này</button></div>${note}</article>`;
   };
   const groupControls = selection.grouped
     ? `<div class="commercial-storefront__pricing-controls"><div role="group" aria-label="Nhóm gói dịch vụ">${Object.entries(COMMERCIAL_GROUPS).map(([group, item]) => `<button type="button" data-storefront-group="${group}" aria-controls="storefront-price-list" aria-pressed="${group === state.group}">${item.label}</button>`).join("")}</div></div>`
@@ -190,7 +191,7 @@ const CLOSED_CHECKOUT_STATES = new Set(["cancelled", "expired", "create_failed"]
 
 function openCheckoutSession(controller, title, order = null) {
   const actor = controller?.model?.state?.activeuser || {};
-  const session = { controller, order, cancelRequested: false, cancelling: false, creating: false, createStarted: false, createUncertain: false, dismissed: false, cancelPolling: null, paymentPolling: null, pollGeneration: 0, settled: false, checkoutKey: `storefront-${crypto.randomUUID()}`, quotePublicId: "", paymentSignature: "", packageTitle: "", activationRefresh: null,
+  const session = { controller, order, cancelRequested: false, cancelling: false, creating: false, createStarted: false, createUncertain: false, dismissed: false, cancelPolling: null, paymentPolling: null, successReturnTimer: null, returnToOverviewOnDismiss: false, pollGeneration: 0, settled: false, checkoutKey: `storefront-${crypto.randomUUID()}`, quotePublicId: "", paymentSignature: "", packageTitle: "", activationRefresh: null,
     actorId: String(actor.id || actor.user_id || ""), activeScope: String(actor.activeOrganizationId || actor.active_role_organization_id || ""), workspaceToken: controller?.model?.getWorkspaceToken?.() || "" };
   state.checkoutSession = session;
   document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = true; });
@@ -200,13 +201,29 @@ function openCheckoutSession(controller, title, order = null) {
     onDismiss: () => {
       session.dismissed = true;
       window.clearTimeout(session.cancelPolling);
+      window.clearTimeout(session.successReturnTimer);
       if (state.checkoutSession === session) {
         state.checkoutSession = null;
         document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = false; button.removeAttribute("aria-busy"); });
       }
+      if (session.returnToOverviewOnDismiss) {
+        const switchTab = session.controller?.switchTab;
+        if (typeof switchTab === "function") void switchTab.call(session.controller, "dashboard");
+      }
     },
   });
   return session;
+}
+
+function showSuccessfulCheckoutState(session, message) {
+  if (!session || session.dismissed) return;
+  session.settled = true;
+  session.returnToOverviewOnDismiss = true;
+  session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true });
+  window.clearTimeout(session.successReturnTimer);
+  session.successReturnTimer = window.setTimeout(() => {
+    if (!session.dismissed) session.dialog.close();
+  }, 5000);
 }
 
 function checkoutContextIsCurrent(session) {
@@ -222,6 +239,7 @@ function retireStaleCheckout(session) {
   if (checkoutContextIsCurrent(session)) return false;
   window.clearTimeout(session.paymentPolling);
   window.clearTimeout(session.cancelPolling);
+  window.clearTimeout(session.successReturnTimer);
   session.dialog.close();
   return true;
 }
@@ -253,7 +271,7 @@ async function refreshActivatedPurchase(controller, session) {
   const message = session?.packageTitle
     ? `Thanh toán đã được máy chủ xác minh. Gói “${session.packageTitle}” đã được kích hoạt.`
     : "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt.";
-  if (session) { session.settled = true; session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true }); }
+  if (session) showSuccessfulCheckoutState(session, message);
   status(message, "success");
   const update = (async () => {
     try {
@@ -297,7 +315,7 @@ async function cancellationResult(session, order) {
     const message = scheduledDate
       ? `Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}.`
       : "Thanh toán đã được máy chủ xác minh. Đang kích hoạt quyền lợi…";
-    session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true });
+    showSuccessfulCheckoutState(session, message);
     status(message, "success");
     if (order.activationState === "pending" && !scheduledDate) void pollOrder(order.publicId, session.controller, 0, session);
     return true;
@@ -458,7 +476,7 @@ async function pollOrder(publicId, controller, attempt = 0, session = null) {
   if (scheduledDate) {
     const message = `Thanh toán đã được máy chủ xác minh; quyền lợi sẽ kích hoạt từ ${scheduledDate}. Bạn có thể đóng trang và xem lại trong lịch sử mua.`;
     status(message, "success");
-    if (session) { session.settled = true; session.dialog.showState(message, "success", { canDismiss: true, hidePayment: true }); }
+    if (session) showSuccessfulCheckoutState(session, message);
     return;
   }
   const paid = PAID_PAYMENT_STATES.has(order.paymentState);
@@ -607,4 +625,29 @@ export async function mountCommercialStorefront(controller) {
       status("Gói bạn vừa chọn không còn trong catalog đang bán. Vui lòng chọn lại gói hiện hành.", "warning");
     }
   }
+}
+
+export async function startCommercialCheckoutFromLanding({ offer, session, onReturnToOverview } = {}) {
+  if (session?.valid !== true || !offer?.code) return false;
+  const activeuser = { ...(session.user || {}) };
+  const controller = {
+    model: { state: { activeuser } },
+    switchTab(tab) {
+      if (tab === "dashboard") onReturnToOverview?.();
+    },
+    async _checkSessionNow() {
+      const payload = await request("/api/auth/check-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" }),
+      });
+      if (payload.user && typeof payload.user === "object") Object.assign(activeuser, payload.user);
+      return payload;
+    },
+  };
+  state.controller = controller;
+  state.offers = [offer];
+  await loadStyleOnce(STYLE_URL);
+  await startCheckout(offer.code, controller, "purchase");
+  return true;
 }

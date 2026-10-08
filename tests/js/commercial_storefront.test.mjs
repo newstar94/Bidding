@@ -55,6 +55,31 @@ function offer(code, ownerKind, name) {
   };
 }
 
+test("storefront matches the Admin card order and keeps configured rights visible with custom benefits", async () => {
+  const source = offer("personal.connected.yearly", "account", "Cá nhân");
+  source.tier = "personal";
+  source.variant = "connected";
+  source.memberQuota = 1;
+  source.includedProcurementQuota = 1000;
+  source.exportCapabilities = { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": true };
+  source.display.recommended = true;
+  const catalog = { releaseId: "parity", releaseChecksum: "parity-checksum", offers: [source], creditPacks: [], quotaWarnings: [] };
+  await renderScenario(catalog, { id: "user-1" }, async page => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('[data-storefront-group="advanced"]').click();
+    const card = page.locator('[data-commercial-offer-code="personal.connected.yearly"]');
+    for (const label of ["Hạn mức thành viên: 1", "Lượt Mua Sắm Công kèm theo: 1.000", "Kiểm tra vi phạm nhà thầu: Không", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Lợi ích tùy chỉnh"]) assert.ok((await card.textContent()).includes(label), label);
+    const layout = await card.evaluate(node => {
+      const box = selector => node.querySelector(selector).getBoundingClientRect();
+      const periods = box(".commercial-storefront__card-periods"), price = box(".commercial-storefront__price"), description = box(".commercial-storefront__description"), features = box("ul");
+      return { ordered: periods.bottom <= price.top && price.bottom <= description.top && description.bottom <= features.top, priceAlign: getComputedStyle(node.querySelector(".commercial-storefront__price")).textAlign };
+    });
+    assert.equal(layout.ordered, true);
+    assert.equal(layout.priceAlign, "center");
+    await card.screenshot({ path: "artifacts/storefront-package-admin-parity-desktop.png" });
+  });
+});
+
 async function renderScenario(catalog, activeuser = { id: "user-1" }, inspect, orders = []) {
   let billingRequests = 0;
   const billingPaths = [];
@@ -469,6 +494,8 @@ test("an activated payment refreshes the authoritative session and shows the sel
   const result = await renderScenario(recoveryCatalog, { id: "user-1", package_id: "free", wordExportEnabled: false }, async (page) => {
     await page.evaluate(() => {
       window.subscriptionRefreshes = 0;
+      window.returnedTabs = [];
+      window.storefrontController.switchTab = tab => window.returnedTabs.push(tab);
       window.storefrontController._checkSessionNow = async () => {
         window.subscriptionRefreshes += 1;
         window.storefrontController.model.state.activeuser.package_id = "account.year";
@@ -484,6 +511,28 @@ test("an activated payment refreshes the authoritative session and shows the sel
     assert.match(await dialog.textContent(), /Phương án tùy chỉnh/u);
     assert.equal(await dialog.getByRole("img").count(), 0);
     assert.deepEqual(await page.evaluate(() => ({ packageId: window.storefrontController.model.state.activeuser.package_id, wordExport: window.storefrontController.model.state.activeuser.wordExportEnabled })), { packageId: "account.year", wordExport: true });
+    await dialog.getByRole("button", { name: "Đóng", exact: true }).click();
+    await dialog.waitFor({ state: "hidden" });
+    assert.deepEqual(await page.evaluate(() => window.returnedTabs), ["dashboard"]);
+  });
+  assert.deepEqual(result.errors, []);
+});
+
+test("successful activation closes after five seconds and returns to the overview", async () => {
+  const activated = { ...pendingOrder, paymentState: "verified_paid", activationState: "applied" };
+  const result = await renderScenario(recoveryCatalog, { id: "user-1", package_id: "free" }, async (page) => {
+    await page.evaluate(() => {
+      window.returnedTabs = [];
+      window.storefrontController.switchTab = tab => window.returnedTabs.push(tab);
+      const nativeSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) => nativeSetTimeout(callback, delay === 5000 ? 40 : delay, ...args);
+    });
+    await checkoutRoutes(page, { order: activated, sessionUser: { id: "user-1", active_org_id: null, package_id: "account.year", entitlements: {} } });
+    await page.locator('[data-operation="purchase"]').click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Đóng", exact: true }).waitFor();
+    await dialog.waitFor({ state: "hidden" });
+    assert.deepEqual(await page.evaluate(() => window.returnedTabs), ["dashboard"]);
   });
   assert.deepEqual(result.errors, []);
 });

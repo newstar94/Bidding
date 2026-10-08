@@ -352,6 +352,24 @@ def validate_document(document, *, require_production_ready=False):
             errors.append(_error("MONEY_INTEGER_REQUIRED", f"{path}.price", "Tiền VND phải là số nguyên không âm."))
         elif price.get("total") != price.get("subtotal") + price.get("tax"):
             errors.append(_error("PRICE_TOTAL_MISMATCH", f"{path}.price", "Tổng tiền không khớp thành tiền và thuế."))
+        if "monthlyBaseAmount" in price:
+            monthly_base = price["monthlyBaseAmount"]
+            if type(monthly_base) is not int or monthly_base < 0:
+                errors.append(_error("MONTHLY_BASE_PRICE_INVALID", f"{path}.price.monthlyBaseAmount", "Giá gốc tháng phải là số nguyên VND không âm."))
+            else:
+                price_tax_policy = document.get("taxInvoice")
+                basis_key = "subtotal" if isinstance(price_tax_policy, dict) and price_tax_policy.get("taxInclusive") is False else "total"
+                multiplier = 10 if price.get("period") == "yearly" else 1
+                if price.get(basis_key) != monthly_base * multiplier:
+                    errors.append(_error("MONTHLY_ANNUAL_PRICE_MISMATCH", f"{path}.price", "Giá năm phải bằng giá gốc tháng × 10; giá tháng phải khớp giá gốc tháng."))
+                for other in offers:
+                    if not isinstance(other, dict) or other is offer:
+                        continue
+                    other_price = other.get("price")
+                    if (isinstance(other_price, dict) and other_price.get("period") == "monthly"
+                            and all(other.get(key) == offer.get(key) for key in ("tier", "variant", "ownerKind"))
+                            and other_price.get(basis_key) != monthly_base):
+                        errors.append(_error("MONTHLY_ANNUAL_PRICE_MISMATCH", f"{path}.price", "Giá tháng và giá gốc tháng của cùng gói không khớp."))
         capabilities = offer.get("exportCapabilities")
         if capabilities is None:
             errors.append(_error("BLOCKED_DECISION", f"{path}.exportCapabilities", "Chưa có mapping entitlement xuất đã được phê duyệt."))

@@ -218,7 +218,7 @@ export function adminValueDialogMarkup({
 
 export function requestAdminValue({
   title, message, label, type = "text", inputMode = "text", autocomplete = null,
-  confirmLabel = "Tiếp tục",
+  confirmLabel = "Tiếp tục", validateValue = null,
 }) {
   if (!globalThis.document?.body) return Promise.resolve(null);
   const opener = document.activeElement;
@@ -235,6 +235,7 @@ export function requestAdminValue({
   }));
   document.body.append(modal);
   const input = modal.querySelector("input[name='value']");
+  input?.addEventListener?.("input", () => input.setCustomValidity?.(""));
   return new Promise((resolve) => {
     let settled = false;
     let releaseFocusTrap = () => {};
@@ -248,6 +249,7 @@ export function requestAdminValue({
     };
     modal.querySelector("form")?.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (input && validateValue) input.setCustomValidity(validateValue(String(input.value || "")) || "");
       if (!event.currentTarget.reportValidity()) return;
       finish(input ? String(input.value || "") : "");
     });

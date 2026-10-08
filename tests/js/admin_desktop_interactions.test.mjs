@@ -17,7 +17,7 @@ const offer = {
 };
 const draft = (id) => ({
   id, revision: 1,
-  document: { offers: [{ ...offer }], policies: { baseTerm: { kind: "fixed_days", days: 365 } } },
+  document: { offers: [{ ...offer }], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, taxInvoice: { taxInclusive: false, taxBasisPoints: 0, rounding: "half_up" } },
 });
 const job = { id: JOB_ID, operation: "render", recordType: "goi_thau", organizationId: "fixture", status: "failed", attemptCount: 1, retryAllowed: true };
 let browser;
@@ -100,13 +100,60 @@ async function openDraft(page, id = "draft-a") {
 }
 function nextDialog(page, accept) { page.once("dialog", (dialog) => accept ? dialog.accept() : dialog.dismiss()); }
 
+test("editing the monthly base shows and saves ten times the annual price while preserving term quotas", async () => {
+  const source = draft("draft-a");
+  const capabilities = { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false };
+  source.document.taxInvoice = { taxInclusive: true, taxBasisPoints: 0, rounding: "ceil" };
+  source.document.offers = [
+    { ...offer, exportCapabilities: capabilities, price: { ...offer.price, total: 2000, subtotal: 2000 }, includedProcurementQuota: 0 },
+    { ...offer, exportCapabilities: capabilities, code: "gold.internal.monthly", price: { ...offer.price, period: "monthly", total: 200, subtotal: 200 }, includedProcurementQuota: 0 },
+  ];
+  let saved;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      saved = entry.body.document;
+      return { payload: { id: "draft-a", revision: 2, document: saved } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-package-edit="0"]').first().click();
+    await page.locator('[data-admin-package-step="1"]').click();
+    const year = page.locator('[data-admin-offer-index="0"], [data-admin-offer-editor][data-offer-index="0"]').first();
+    assert.equal(await year.locator('[data-admin-monthly-base]').inputValue(), "200");
+    await year.locator('[data-admin-monthly-base]').fill("2000");
+    assert.equal(await year.locator('[data-admin-offer-field="price.total"]').inputValue(), "20000");
+    assert.equal(await year.locator('[data-admin-offer-field="price.total"]').getAttribute("readonly"), "");
+    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /20[.]000/u);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers[0].price.total, 20000);
+    assert.equal(saved.offers[1].price.total, 2000);
+    assert.equal(saved.offers[0].price.monthlyBaseAmount, 2000);
+    assert.deepEqual(saved.offers[0].exportCapabilities, source.document.offers[0].exportCapabilities);
+    assert.equal(saved.offers[0].includedProcurementQuota, source.document.offers[0].includedProcurementQuota);
+    await page.locator('[data-admin-package-step="1"]').click();
+    await page.locator('[data-admin-monthly-base="0"]').fill("1234");
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
+    assert.equal(await page.locator('[data-admin-monthly-base="1"]').inputValue(), "1234");
+    await page.locator('[data-admin-monthly-base="1"]').fill("1500");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers[0].price.total, 15000);
+    assert.equal(saved.offers[1].price.total, 1500);
+  });
+});
+
 test("publishing keeps a short reason in the dialog until it satisfies the server contract", async () => {
   const digest = "a".repeat(64);
   interceptApi = async entry => {
     if (entry.path.endsWith("/validate")) return { payload: { errors: [], validationDigest: digest, readinessExpiresAt: 9999999999 } };
     if (entry.path.endsWith("/publish")) {
       if (entry.body.validationDigest.length !== 64 || entry.body.reason.trim().length < 3) {
-        return { status: 422, payload: { code: "COMMERCIAL_POLICY_INVALID", error: "Thiếu digest hoặc lý do xuất bản hợp lệ." } };
+        return { status: 400, payload: { code: "COMMERCIAL_POLICY_INVALID", error: "Thiếu digest hoặc lý do xuất bản hợp lệ." } };
       }
       return { payload: { id: "release-test" } };
     }
@@ -152,7 +199,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
   interceptApi = async (entry) => {
     if (entry.path === "/api/commercial/admin/overview") return { payload: { currentRelease: null, scheduledRelease: null, drafts: saved ? [{ id: "first", revision: 2 }] : [], releaseHistory: [] } };
     if (entry.path === "/api/public/commercial/offers") return { status: 503, payload: { code: "COMMERCIAL_POLICY_DECISION_REQUIRED", error: "Chưa có bản phát hành thương mại hợp lệ cho giao dịch mới." } };
-    if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: { id: "first", revision: 1, document: { schemaVersion: 1, currency: "VND", offers: [], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, unknown: { keep: true } } } };
+    if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: { id: "first", revision: 1, document: { schemaVersion: 1, currency: "VND", offers: [], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, taxInvoice: { taxInclusive: false, taxBasisPoints: 1000, rounding: "half_up" }, unknown: { keep: true } } } };
     if (entry.path === "/api/commercial/drafts/first" && entry.method === "PATCH") {
       saved = entry.body.document;
       return { payload: { id: "first", revision: 2, document: saved } };
@@ -192,12 +239,12 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     await page.locator('[data-admin-package-step="1"]').click();
     await page.locator("#admin-new-package-month").check();
     await page.locator("#admin-new-package-month-price").fill("150000");
-    await page.locator("#admin-new-package-year-price").fill("1200000");
+    assert.equal(await page.locator("#admin-new-package-year-price").getAttribute("readonly"), "");
     await page.locator("#admin-new-package-vat").fill("10");
     await page.locator("#admin-new-package-month-days").fill("30");
     await capturePackages(page, "creator-2-pricing");
-    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /1[.]320[.]000/u);
-    assert.match(await page.locator("[data-admin-preview-total]").textContent(), /1[.]320[.]000/u);
+    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /1[.]650[.]000/u);
+    assert.match(await page.locator("[data-admin-preview-total]").textContent(), /1[.]650[.]000/u);
     await page.locator('[data-admin-package-live-preview] [data-admin-package-period="0"]').click();
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /165[.]000/u);
     const periodBox = await page.locator('[data-admin-package-live-preview] .bf-admin-package-period').boundingBox();
@@ -213,7 +260,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     await capturePackages(page, "creator-4-presentation");
     await page.locator('[data-admin-plan-action="save"]').click();
     await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
-    assert.equal(saved.offers[0].price.total, 1320000);
+    assert.equal(saved.offers[0].price.total, 1650000);
     assert.equal(saved.offers[1].price.total, 165000);
     assert.equal(saved.offers[0].display.description, "Mô tả gói đã nhập");
     assert.equal(saved.offers[0].display.order, 4);
@@ -223,15 +270,11 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     assert.equal(saved.offers[1].exportCapabilities, null);
     await page.locator('[data-admin-package-step="1"]').click();
     const annual = page.locator('[data-admin-offer-editor][data-offer-index="0"]');
-    await annual.locator('[data-admin-offer-field="price.subtotal"]').fill("1200000");
-    await page.locator("#admin-offer-vat-0").fill("10");
-    await page.locator('[data-admin-vat-calculate="0"]').click();
+    await annual.locator('[data-admin-monthly-base]').fill("120000");
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /1[.]320[.]000/u);
     await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
     const monthly = page.locator('[data-admin-offer-editor][data-offer-index="1"]');
-    await monthly.locator('[data-admin-offer-field="price.subtotal"]').fill("150000");
-    await page.locator("#admin-offer-vat-1").fill("0");
-    await page.locator('[data-admin-vat-calculate="1"]').click();
+    await monthly.locator('[data-admin-monthly-base]').fill("150000");
     await page.locator(".bf-admin-package-settings > summary").click();
     const policies = page.locator(".bf-admin-package-policies").first();
     await policies.locator("summary").click();
@@ -239,8 +282,8 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     await page.locator('[data-admin-plan-action="save"]').click();
     await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
     assert.equal(saved.offers.length, 2);
-    assert.equal(saved.offers[0].price.total, 1320000);
-    assert.equal(saved.offers[1].price.total, 150000);
+    assert.equal(saved.offers[0].price.total, 1650000);
+    assert.equal(saved.offers[1].price.total, 165000);
     assert.equal(saved.offers[0].exportCapabilities, null);
     assert.equal(saved.offers[1].exportCapabilities, null);
     assert.deepEqual(saved.unknown, { keep: true });
@@ -265,7 +308,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
     await page.locator('[data-admin-package-step="2"]').click();
     assert.equal(await monthly.locator('[data-admin-offer-field="capability:document.export.word"]').isChecked(), true);
-    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /150[.]000/u);
+    assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /165[.]000/u);
     await capturePackages(page, "editor-limits");
   });
 });
@@ -386,11 +429,12 @@ test("creator saves explicit organization limits and features without changing s
     await page.locator("#admin-new-package-owner").selectOption("organization", { force: true });
     await page.locator("#admin-new-package-tier").selectOption("gold", { force: true });
     await page.locator('[data-admin-package-step="1"]').click();
-    await page.locator("#admin-new-package-year-price").fill("1000000");
+    await page.locator("#admin-new-package-month-price").fill("100000");
+    await page.locator("#admin-new-package-vat").fill("");
     await page.locator('[data-admin-plan-action="save"]').click();
     await page.getByText("Nhập VAT để tính thuế và tổng tiền cho giá đã nhập.", { exact: true }).waitFor();
     assert.equal(requests.some(entry => entry.method === "PATCH"), false);
-    assert.equal(await page.locator("#admin-new-package-year-price").inputValue(), "1000000");
+    assert.equal(await page.locator("#admin-new-package-month-price").inputValue(), "100000");
     await page.locator("#admin-new-package-vat").fill("8");
     await page.locator('[data-admin-package-step="2"]').click();
     await page.locator("#admin-new-package-member-quota").fill("12");

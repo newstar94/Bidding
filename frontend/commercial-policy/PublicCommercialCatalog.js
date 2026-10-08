@@ -6,6 +6,23 @@ const PERIOD_LABELS = Object.freeze({
   monthly: "/ tháng",
   one_time: "Thanh toán một lần",
 });
+const EXPORT_LABELS = Object.freeze({
+  "document.export.word": "Xuất Word",
+  "document.export.excel": "Xuất Excel",
+  "document.export.award_result_excel": "Xuất kết quả lựa chọn nhà thầu",
+});
+
+export function commercialOfferDetails(offer) {
+  const integer = value => Number.isSafeInteger(value) ? value.toLocaleString("vi-VN") : "Chưa cấu hình";
+  return [
+    { label: "Hạn mức thành viên", value: integer(offer?.memberQuota) },
+    offer?.variant === "internal" ? { label: "Không lấy dữ liệu Mua Sắm Công" }
+      : { label: "Lượt Mua Sắm Công kèm theo", value: integer(offer?.includedProcurementQuota) },
+    { label: "Kiểm tra vi phạm nhà thầu", value: offer?.violationCheckEnabled === true ? "Có" : "Không" },
+    ...Object.entries(EXPORT_LABELS).map(([key, label]) => ({ label, value: offer?.exportCapabilities === null ? "Chưa cấu hình" : offer?.exportCapabilities?.[key] === true ? "Có" : "Không" })),
+    ...safeDisplay(offer?.display).benefits.map(label => ({ label })),
+  ];
+}
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -96,6 +113,7 @@ export function presentCommercialOffer(offer) {
     variantLabel: display.variantLabel,
     periodLabel: display.periodLabel || PERIOD_LABELS[price.period] || "",
     benefits: display.benefits.length ? display.benefits : canonicalBenefits,
+    details: commercialOfferDetails(source),
     priceLabel: formatCommercialMoney(price.total, price.currency),
   };
 }
