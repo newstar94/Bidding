@@ -244,21 +244,14 @@ async function searchPackageRow(page, packageCode) {
   return row;
 }
 
-function waitForPlanSearchResponse(page, planCode, { expectedVersion = null } = {}) {
+function waitForPlanSearchResponse(page, planCode) {
   const normalizedCode = String(planCode).toLowerCase();
-  return page.waitForResponse(async (response) => {
+  return page.waitForResponse((response) => {
     if (response.request().method() !== "GET") return false;
     const url = new URL(response.url());
-    const matchesQuery = url.pathname === "/api/paginate"
+    return url.pathname === "/api/paginate"
       && url.searchParams.get("table") === "kehoach"
       && String(url.searchParams.get("search") || "").toLowerCase() === normalizedCode;
-    if (!matchesQuery || expectedVersion === null) return matchesQuery;
-    if (!response.ok()) return true;
-    const body = await response.json().catch(() => null);
-    return (body?.items || []).some((row) => (
-      String(row.maKeHoach || "").toLowerCase() === normalizedCode
-      && Number(row.phienBan) === Number(expectedVersion)
-    ));
   });
 }
 
@@ -468,7 +461,11 @@ async function createPlan01(page, { planCode }) {
   await expect(editPlan).toBeEnabled();
   await editPlan.click();
   await expect(page.locator("#modal-kehoach.active")).toBeVisible();
-  await page.locator("#kh-thoigiandang").fill(clock.dateTime(-30, "08:00"));
+  const publicationInput = page.locator("#kh-thoigiandang");
+  const nextPublicationTime = clock.dateTime(-30, "08:00");
+  await publicationInput.fill(nextPublicationTime);
+  await publicationInput.blur();
+  await expect(publicationInput).toHaveValue(nextPublicationTime);
   await page.locator("#form-kehoach button[type='submit']").click();
   await expect(page.locator("#modal-plan-breakdown.active")).toBeVisible();
   // Version creation starts after the editor finishes loading the package
@@ -478,17 +475,40 @@ async function createPlan01(page, { planCode }) {
     response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/versioning/aggregate"
   ), { timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS });
-  const latestPlanResponse = waitForPlanSearchResponse(page, planCode, {
-    expectedVersion: 1,
-  });
-  await savePlanBreakdown(page);
-  const versionResponse = await versionResponsePromise;
-  expect(versionResponse.ok(), await versionResponse.text().catch(() => "")).toBe(true);
-  const versionCommand = versionResponse.request().postDataJSON();
-  expect(versionCommand.kind).toBe("plan");
-  expect(String(versionCommand.sourceId)).toBe(String(historicalPlanId));
-  const latestListResponse = await latestPlanResponse;
-  expect(latestListResponse.ok(), await latestListResponse.text().catch(() => "")).toBe(true);
+  // Keep a missed response from becoming an unhandled rejection while the
+  // semantic save assertion is still reporting the actual UI failure.
+  void versionResponsePromise.catch(() => {});
+  let latestListReceipt = null;
+  const planSearchUrl = (url) => url.pathname === "/api/paginate"
+    && url.searchParams.get("table") === "kehoach"
+    && String(url.searchParams.get("search") || "").toLowerCase() === planCode.toLowerCase();
+  const captureLatestPlan = async (route) => {
+    // Read the real server body before forwarding it to the browser. Saving a
+    // version can replace the document and retire a Playwright Response body.
+    const response = await route.fetch();
+    const body = await response.json();
+    if (!response.ok() || (body.items || []).some((row) => (
+      String(row.maKeHoach || "").toLowerCase() === planCode.toLowerCase()
+      && Number(row.phienBan) === 1
+    ))) latestListReceipt = { ok: response.ok(), body };
+    await route.fulfill({ response });
+  };
+  await page.route(planSearchUrl, captureLatestPlan);
+  try {
+    await savePlanBreakdown(page);
+    const versionResponse = await versionResponsePromise;
+    expect(versionResponse.ok(), await versionResponse.text().catch(() => "")).toBe(true);
+    const versionCommand = versionResponse.request().postDataJSON();
+    expect(versionCommand.kind).toBe("plan");
+    expect(String(versionCommand.sourceId)).toBe(String(historicalPlanId));
+    await expect.poll(() => latestListReceipt, {
+      timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS,
+      message: "the visible plan list must receive the authoritative version 01",
+    }).not.toBeNull();
+    expect(latestListReceipt.ok, JSON.stringify(latestListReceipt.body)).toBe(true);
+  } finally {
+    await page.unroute(planSearchUrl, captureLatestPlan);
+  }
 
   await gotoReady(page, "/ke-hoach");
   const latestRow = await searchPlanRow(page, planCode);
@@ -1027,17 +1047,30 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect(draftPackage.id).toBe(planSnapshot.latestPackageId);
     expect(Number.parseInt(draftPackage.version, 10)).toBe(0);
 
-    const planCommitPromise = pageA.waitForResponse((response) => (
-      response.request().method() === "POST"
-        && new URL(response.url()).pathname === "/api/sync"
-    )).then(async (response) => ({
-      // Capture the receipt as soon as headers arrive. Completing the save can
-      // navigate the page before click() resolves and retire Chromium's body.
-      ok: response.ok(),
-      body: await response.json(),
-    }));
-    await pageA.locator("#btn-save-plan-breakdown").click();
-    const planCommitResponse = await planCommitPromise;
+    let planCommitResponse = null;
+    const capturePlanCommit = async (route) => {
+      const request = route.request();
+      const payload = request.method() === "POST" ? request.postDataJSON() : null;
+      if (!(payload?.kehoach || []).some((row) => String(row.id) === String(latestPlanId))) {
+        return route.continue();
+      }
+      // Capture the authoritative receipt before the application can navigate,
+      // using the same transport as the conflict receipt below.
+      const response = await route.fetch();
+      const responseBody = await response.body();
+      planCommitResponse = { ok: response.ok(), body: JSON.parse(responseBody.toString("utf8")) };
+      await route.fulfill({ response, body: responseBody });
+    };
+    await pageA.route("**/api/sync", capturePlanCommit);
+    try {
+      await pageA.locator("#btn-save-plan-breakdown").click();
+      await expect.poll(() => planCommitResponse, {
+        timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS,
+        message: "the plan breakdown must receive its authoritative commit receipt",
+      }).not.toBeNull();
+    } finally {
+      await pageA.unroute("**/api/sync", capturePlanCommit);
+    }
     expect(planCommitResponse.ok, JSON.stringify(planCommitResponse.body)).toBe(true);
     await expect(pageA.locator("#modal-plan-breakdown.active")).toBeHidden({ timeout: 30_000 });
     captureBreakdownSync = false;
@@ -1164,17 +1197,30 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     await clientARequestCaptured;
 
     await pageB.locator("#gt-ten").fill(packageNameB);
-    const clientBResponsePromise = pageB.waitForResponse((response) => (
-      response.request().method() === "POST"
-        && new URL(response.url()).pathname === "/api/sync"
-        && (response.request().postDataJSON()?.goithau || []).some((row) => (
-          String(row.id) === String(latestPackage.id) && row.tenGoiThau === packageNameB
-        ))
-    ));
-    await pageB.locator("#form-goithau button[type='submit']").click();
-    const clientBResponse = await clientBResponsePromise;
-    const clientBBody = await clientBResponse.json();
-    expect(clientBResponse.ok(), JSON.stringify(clientBBody)).toBe(true);
+    let clientBReceipt = null;
+    const captureClientB = async (route) => {
+      const request = route.request();
+      const payload = request.method() === "POST" ? request.postDataJSON() : null;
+      if (!(payload?.goithau || []).some((row) => (
+        String(row.id) === String(latestPackage.id) && row.tenGoiThau === packageNameB
+      ))) return route.continue();
+      const response = await route.fetch();
+      const responseBody = await response.body();
+      clientBReceipt = { ok: response.ok(), body: JSON.parse(responseBody.toString("utf8")) };
+      await route.fulfill({ response, body: responseBody });
+    };
+    await pageB.route("**/api/sync", captureClientB);
+    try {
+      await pageB.locator("#form-goithau button[type='submit']").click();
+      await expect.poll(() => clientBReceipt, {
+        timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS,
+        message: "client B must receive its authoritative commit before releasing client A",
+      }).not.toBeNull();
+    } finally {
+      await pageB.unroute("**/api/sync", captureClientB);
+    }
+    const clientBBody = clientBReceipt.body;
+    expect(clientBReceipt.ok, JSON.stringify(clientBBody)).toBe(true);
     expect((clientBBody.rowVersions || []).some((entry) => (
       entry.table === "goithau" && String(entry.id) === String(latestPackage.id)
     ))).toBe(true);

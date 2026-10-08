@@ -59,6 +59,10 @@ async function login(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
+  // The login document can hide its overlay before its scheduled redirect.
+  // Finish that navigation before opening the package list in another goto.
+  await page.waitForURL("/tong-quan", { waitUntil: "domcontentloaded" });
+  await waitForApp(page);
   await expect(page.locator("#auth-overlay")).toBeHidden();
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
