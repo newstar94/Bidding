@@ -478,10 +478,13 @@ def test_early_renewal_preserves_current_term_then_activates_exactly_once(billin
     assert first["status"] == replay["status"] == "scheduled"
     assert first["startsAt"] == end
     assert first["expiresAt"] == end + 365 * 86400
-    owner_column = "user_id" if owner_kind == "account" else "organization_id"
-    table = "account_subscriptions" if owner_kind == "account" else "organization_subscriptions"
+    subscription_query = (
+        "SELECT starts_at, expires_at, revision FROM account_subscriptions WHERE user_id = ?"
+        if owner_kind == "account" else
+        "SELECT starts_at, expires_at, revision FROM organization_subscriptions WHERE organization_id = ?"
+    )
     owner_id = order["user_id"] if owner_kind == "account" else order["organization_id"]
-    current = billing_cursor.execute(f"SELECT starts_at, expires_at, revision FROM {table} WHERE {owner_column} = ?", (owner_id,)).fetchone()
+    current = billing_cursor.execute(subscription_query, (owner_id,)).fetchone()
     assert tuple(current) == (start, end, 7)
     assert billing_cursor.execute("SELECT COUNT(*) FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()[0] == 0
     worker = BillingWorkProcessor(_TransactionDatabase(billing_cursor), clock=lambda: end - 1)
@@ -491,7 +494,7 @@ def test_early_renewal_preserves_current_term_then_activates_exactly_once(billin
     worker._retry_activation(order["order_id"])
     applied = BillingActivationService(billing_cursor, clock=lambda: end + 60).activate_order(order["order_id"])
     assert applied["status"] == "applied"
-    current = billing_cursor.execute(f"SELECT starts_at, expires_at, revision FROM {table} WHERE {owner_column} = ?", (owner_id,)).fetchone()
+    current = billing_cursor.execute(subscription_query, (owner_id,)).fetchone()
     assert tuple(current) == (end, end + 365 * 86400, 8)
     grant = billing_cursor.execute("SELECT issued_at, expires_at FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchall()
     assert [tuple(row) for row in grant] == [(end, end + 365 * 86400)]

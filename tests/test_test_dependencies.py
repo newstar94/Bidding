@@ -275,6 +275,26 @@ def test_python_ci_installs_hashed_locks_before_the_project_without_resolution()
     )
 
 
+def test_all_declared_runtime_dependencies_are_in_both_hashed_locks():
+    project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = project["project"]["dependencies"]
+    for lock_name in ("requirements.txt", "requirements-test.txt"):
+        lock = (PROJECT_ROOT / lock_name).read_text(encoding="utf-8")
+        for dependency in requirements:
+            pinned = re.sub(r"\[[^]]+\]", "", dependency)
+            assert re.search(rf"^{re.escape(pinned)}\s+\\", lock, re.MULTILINE), (
+                f"{lock_name} is missing {dependency}"
+            )
+
+
+def test_codeql_can_read_workflow_run_metadata():
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+    )
+    assert workflow["permissions"]["actions"] == "read"
+    assert workflow["permissions"]["security-events"] == "write"
+
+
 def test_full_ci_keeps_runtime_and_integration_databases_isolated():
     workflow = _ci_workflow()
     workflow_source = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text(

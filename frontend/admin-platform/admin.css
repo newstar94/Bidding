@@ -1,4 +1,23 @@
 :root {
+  --bf-admin-dark-canvas: #151b29;
+  --bf-admin-dark-surface: #20283a;
+  --bf-admin-dark-surface-subtle: #303754;
+  --bf-admin-dark-ink: #edf1f9;
+  --bf-admin-dark-muted: #aebad0;
+  --bf-admin-dark-line: #39445c;
+  --bf-admin-dark-line-strong: #505d79;
+  --bf-admin-dark-brand: #a4abff;
+  --bf-admin-dark-brand-strong: #bbc0ff;
+  --bf-admin-dark-brand-line: #59638a;
+  --bf-admin-dark-sidebar: #151a29;
+  --bf-admin-dark-success: #8bddb2;
+  --bf-admin-dark-warning: #f2bd7b;
+  --bf-admin-dark-danger: #ffadb4;
+  --bf-admin-dark-focus-ring: rgba(164, 171, 255, 0.26);
+  --bf-admin-selected-surface: #e8f0ff;
+}
+
+:root {
   /* Keep the platform console on the same semantic palette as BiddingFlow. */
   --bf-admin-canvas: #f5f8fc;
   --bf-admin-surface: #ffffff;
@@ -53,51 +72,51 @@
    same; only semantic colors change. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-bs-theme="light"]) {
-    --bf-admin-canvas: #151b29;
-    --bf-admin-surface: #20283a;
-    --bf-admin-surface-subtle: #303754;
-    --bf-admin-ink: #edf1f9;
-    --bf-admin-muted: #aebad0;
-    --bf-admin-line: #39445c;
-    --bf-admin-line-strong: #505d79;
-    --bf-admin-brand: #a4abff;
-    --bf-admin-brand-strong: #bbc0ff;
-    --bf-admin-brand-soft: #303754;
-    --bf-admin-brand-line: #59638a;
-    --bf-admin-sidebar-accent: #a4abff;
-    --bf-admin-sidebar: #151a29;
-    --bf-admin-success: #8bddb2;
-    --bf-admin-warning: #f2bd7b;
-    --bf-admin-danger: #ffadb4;
+    --bf-admin-canvas: var(--bf-admin-dark-canvas);
+    --bf-admin-surface: var(--bf-admin-dark-surface);
+    --bf-admin-surface-subtle: var(--bf-admin-dark-surface-subtle);
+    --bf-admin-ink: var(--bf-admin-dark-ink);
+    --bf-admin-muted: var(--bf-admin-dark-muted);
+    --bf-admin-line: var(--bf-admin-dark-line);
+    --bf-admin-line-strong: var(--bf-admin-dark-line-strong);
+    --bf-admin-brand: var(--bf-admin-dark-brand);
+    --bf-admin-brand-strong: var(--bf-admin-dark-brand-strong);
+    --bf-admin-brand-soft: var(--bf-admin-dark-surface-subtle);
+    --bf-admin-brand-line: var(--bf-admin-dark-brand-line);
+    --bf-admin-sidebar-accent: var(--bf-admin-dark-brand);
+    --bf-admin-sidebar: var(--bf-admin-dark-sidebar);
+    --bf-admin-success: var(--bf-admin-dark-success);
+    --bf-admin-warning: var(--bf-admin-dark-warning);
+    --bf-admin-danger: var(--bf-admin-dark-danger);
     --tblr-body-color-rgb: 237, 241, 249;
     --tblr-body-bg-rgb: 21, 27, 41;
     --tblr-primary-rgb: 164, 171, 255;
     --tblr-secondary-color-rgb: 174, 186, 208;
-    --tblr-focus-ring-color: rgba(164, 171, 255, 0.26);
+    --tblr-focus-ring-color: var(--bf-admin-dark-focus-ring);
   }
 }
 html[data-bs-theme="dark"], body[data-bs-theme="dark"], #admin-app[data-bs-theme="dark"] {
-  --bf-admin-canvas: #151b29;
-  --bf-admin-surface: #20283a;
-  --bf-admin-surface-subtle: #303754;
-  --bf-admin-ink: #edf1f9;
-  --bf-admin-muted: #aebad0;
-  --bf-admin-line: #39445c;
-  --bf-admin-line-strong: #505d79;
-  --bf-admin-brand: #a4abff;
-  --bf-admin-brand-strong: #bbc0ff;
-  --bf-admin-brand-soft: #303754;
-  --bf-admin-brand-line: #59638a;
-  --bf-admin-sidebar-accent: #a4abff;
-  --bf-admin-sidebar: #151a29;
-  --bf-admin-success: #8bddb2;
-  --bf-admin-warning: #f2bd7b;
-  --bf-admin-danger: #ffadb4;
+  --bf-admin-canvas: var(--bf-admin-dark-canvas);
+  --bf-admin-surface: var(--bf-admin-dark-surface);
+  --bf-admin-surface-subtle: var(--bf-admin-dark-surface-subtle);
+  --bf-admin-ink: var(--bf-admin-dark-ink);
+  --bf-admin-muted: var(--bf-admin-dark-muted);
+  --bf-admin-line: var(--bf-admin-dark-line);
+  --bf-admin-line-strong: var(--bf-admin-dark-line-strong);
+  --bf-admin-brand: var(--bf-admin-dark-brand);
+  --bf-admin-brand-strong: var(--bf-admin-dark-brand-strong);
+  --bf-admin-brand-soft: var(--bf-admin-dark-surface-subtle);
+  --bf-admin-brand-line: var(--bf-admin-dark-brand-line);
+  --bf-admin-sidebar-accent: var(--bf-admin-dark-brand);
+  --bf-admin-sidebar: var(--bf-admin-dark-sidebar);
+  --bf-admin-success: var(--bf-admin-dark-success);
+  --bf-admin-warning: var(--bf-admin-dark-warning);
+  --bf-admin-danger: var(--bf-admin-dark-danger);
   --tblr-body-color-rgb: 237, 241, 249;
   --tblr-body-bg-rgb: 21, 27, 41;
   --tblr-primary-rgb: 164, 171, 255;
   --tblr-secondary-color-rgb: 174, 186, 208;
-  --tblr-focus-ring-color: rgba(164, 171, 255, 0.26);
+  --tblr-focus-ring-color: var(--bf-admin-dark-focus-ring);
 }
 
 @font-face {
@@ -473,7 +492,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-stat-card { display: flex; flex-direction: row; align-items: center; gap: .9rem; min-height: 7.5rem; padding: 1rem 1.05rem; border: 1px solid var(--bf-admin-line); border-radius: .6rem; text-align: left; box-shadow: 0 3px 12px color-mix(in srgb, var(--bf-admin-ink) 5%, transparent); }
 .bf-admin-stat-icon { display: grid; flex: 0 0 3.45rem; place-items: center; width: 3.45rem; height: 3.45rem; border-radius: .78rem; }
 .bf-admin-stat-icon svg { width: 1.7rem; height: 1.7rem; stroke-width: 1.7; }
-.bf-admin-stat-blue .bf-admin-stat-icon { background: #e8f0ff; color: #2167db; }
+.bf-admin-stat-blue .bf-admin-stat-icon { background: var(--bf-admin-selected-surface); color: #2167db; }
 .bf-admin-stat-green .bf-admin-stat-icon { background: #e8f7ef; color: #15945b; }
 .bf-admin-stat-orange .bf-admin-stat-icon { background: #fff2de; color: #e68700; }
 .bf-admin-stat-purple .bf-admin-stat-icon { background: #f1eaff; color: #7342df; }
@@ -529,7 +548,7 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-recent-organizations thead th { padding: .55rem 1.1rem; background: var(--bf-admin-surface-subtle); font-size: .68rem; text-transform: none; letter-spacing: 0; }
 .bf-admin-recent-organizations tbody th, .bf-admin-recent-organizations tbody td { padding: .62rem 1.1rem; font-size: .77rem; }
 .bf-admin-organization-cell { display: flex; align-items: center; gap: .62rem; min-width: 14rem; color: var(--bf-admin-ink); }
-.bf-admin-organization-avatar { display: inline-grid; flex: 0 0 1.9rem; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: .48rem; background: #e8f0ff; color: var(--bf-admin-brand); font-size: .67rem; font-weight: 800; }
+.bf-admin-organization-avatar { display: inline-grid; flex: 0 0 1.9rem; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: .48rem; background: var(--bf-admin-selected-surface); color: var(--bf-admin-brand); font-size: .67rem; font-weight: 800; }
 .bf-admin-recent-organizations .bf-admin-status { font-size: .72rem; }
 .bf-admin-recent-organizations .bf-admin-status + .bf-admin-status { margin-left: 0; }
 .bf-admin-recent-organizations .small .bf-admin-status { margin-top: .18rem; }

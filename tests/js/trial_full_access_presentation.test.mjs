@@ -79,6 +79,9 @@ test("application templates mark every primary paid surface for trial hiding", (
   assert.match(landing, /href="#bang-gia" data-commercial-only/);
   assert.match(landing, /id="bang-gia"[^>]*data-commercial-only/);
   assert.doesNotMatch(sidebar, /data-tab="(?:commercial-admin|superadmin(?:-dashboard)?)"/u);
-  assert.match(profile, /profile-purchase-history" data-commercial-only/);
+  for (const id of ["profile-tab-billing", "profile-tab-history", "profile-panel-billing", "profile-panel-history"]) {
+    assert.match(profile, new RegExp(`id="${id}"[^>]*data-commercial-only`));
+  }
+  assert.match(profile, /id="profile-panel-history"[^>]*>[\s]*<section class="dashboard-card profile-purchase-history"/);
   assert.match(manager, /bf-s-6acd22af4f" data-commercial-only/);
 });

@@ -268,7 +268,7 @@ def test_complete_bundle_and_lookup_data_expose_independent_extension_copies():
     preview = MuaSamCongProcurementSource(runtime=object()).lookup_from_raw_bundle(
         NOTICE_NO, bundle, detail_level="COMPLETE", revision_mode="SELECTED",
     )
-    assert preview["source"]["parserVersion"] == "2026.10.03.5"
+    assert preview["source"]["parserVersion"] == MuaSamCongProcurementSource.parser_version
     assert preview["data"]["extensions"] == revision["extensions"]
     preview["data"]["extensions"][0]["reason"] = "Edited preview"
     assert preview["canonical"]["revisions"][0]["extensions"][0]["reason"] != "Edited preview"

@@ -69,6 +69,11 @@ def projection_cursor(monkeypatch):
     except psycopg.Error as error:
         pytest.skip(f"PostgreSQL test database unavailable: {type(error).__name__}")
     monkeypatch.setenv("ADMIN_PASSWORD", "Test-only!CommercialProjectionPassword")
+    # Collection of backend.app can load the developer's live payOS settings.
+    # These rollback-only tests deliberately bind both quote and checkout to
+    # the local fake provider declared by their published release fixture.
+    monkeypatch.setenv("COMMERCIAL_PAYMENT_PROVIDER", "fake")
+    monkeypatch.setenv("PAYMENT_PROVIDER_ENVIRONMENT", "test")
     cursor = PostgresCursor(connection.cursor())
     try:
         schema = f"bf_plan_bridge_{uuid.uuid4().hex}"

@@ -152,7 +152,7 @@ def test_provider_query_does_not_erase_original_qr(checkout_db):
 
 def test_cancel_waits_for_create_command_to_finish(checkout_db):
     database, connection = checkout_db
-    connection.execute("INSERT INTO billing_provider_commands VALUES ('cancel','order-id','cancel_checkout','bf-order','{" + '"identifier":123' + "}','pending',0,1800000000,NULL,NULL,NULL,NULL)")
+    connection.execute("INSERT INTO billing_provider_commands VALUES ('cancel','order-id','cancel_checkout','bf-order',?,'pending',0,1800000000,NULL,NULL,NULL,NULL)", (json.dumps({"identifier": 123}),))
     connection.commit()
     executor = ProviderCommandExecutor(database, clock=lambda: NOW, environment={})
     assert executor._claim("cancel") is None

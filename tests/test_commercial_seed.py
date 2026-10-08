@@ -103,7 +103,16 @@ def _draft(connection):
 
 
 def _rows(connection, table):
-    return [dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY 1")]
+    queries = {
+        "commercial_releases": "SELECT * FROM commercial_releases ORDER BY 1",
+        "commercial_drafts": "SELECT * FROM commercial_drafts ORDER BY 1",
+        "billing_plan_versions": "SELECT * FROM billing_plan_versions ORDER BY 1",
+        "payment_provider_profiles": "SELECT * FROM payment_provider_profiles ORDER BY 1",
+        "goi_dich_vu": "SELECT * FROM goi_dich_vu ORDER BY 1",
+        "organization_subscriptions": "SELECT * FROM organization_subscriptions ORDER BY 1",
+        "account_subscriptions": "SELECT * FROM account_subscriptions ORDER BY 1",
+    }
+    return [dict(row) for row in connection.execute(queries[table])]
 
 
 def test_first_install_seeds_eight_editable_annual_offers_without_publishing(seed_connection):
