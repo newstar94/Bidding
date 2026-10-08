@@ -70,16 +70,20 @@ async function login(page) {
 }
 
 
-async function openOpening(page) {
+async function openOpening(page, { reload = false } = {}) {
   const packageId = page.__violationFixture.package.id;
-  await page.goto("/goi-thau", {
-    waitUntil: "domcontentloaded",
-  });
+  if (reload) await page.reload({ waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"
   ));
-  await page.locator(
+  // Use the application's navigation while post-login modules are warming.
+  // A hard goto can abort those imports and race WebKit's recovery reload.
+  // The second opening still reloads the document to verify persisted data.
+  await page.locator("#btn-tab-goithau").click();
+  await expect(page).toHaveURL("/goi-thau");
+  await expect(page.locator("#tab-goithau.active")).toBeVisible();
+  await page.locator("#tab-goithau").locator(
     `[data-bf-action="show-package"][data-id="${packageId}"]`,
   ).first().click();
   await expect(page.locator("#tab-goithau-detail.active")).toBeVisible();
@@ -226,7 +230,7 @@ test("confirmed contractor and exact joint-venture members stay red after reload
   );
   await expect(page.locator("#danhgiahsdt-so-baocao")).toBeVisible();
 
-  await openOpening(page);
+  await openOpening(page, { reload: true });
   const reloadedRows = page.locator("#mothau-table-tbody tr");
   const reloadedIndependent = reloadedRows.filter({ hasText: "vn000000001" });
   const reloadedVenture = reloadedRows.filter({ hasText: "vn000000002" });

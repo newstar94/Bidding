@@ -21,12 +21,60 @@ test("multi-assignee polling revocation gives both editors one full polling cycl
 
 test("held conflict request response wait starts after the competing commit and before release", () => {
   const source = fs.readFileSync("e2e/specs/row-conflict-reload.spec.mjs", "utf8");
-  const competingCommit = source.indexOf("const clientBResponse = await clientBResponsePromise;");
+  const receiptCapture = source.match(
+    /const captureClientB = async \(route\) => \{[\s\S]*?\n    \};/u,
+  )?.[0] || "";
+  assert.ok(receiptCapture, "client B must retain its real server commit receipt");
+  assert.match(
+    receiptCapture,
+    /request\.method\(\) === "POST"[\s\S]*payload\?\.goithau[\s\S]*String\(row\.id\) === String\(latestPackage\.id\) && row\.tenGoiThau === packageNameB[\s\S]*return route\.continue\(\);/u,
+  );
+  assert.match(
+    receiptCapture,
+    /const response = await route\.fetch\(\);\s*const responseBody = await response\.body\(\);\s*clientBReceipt = \{ ok: response\.ok\(\), body: JSON\.parse\(responseBody\.toString\("utf8"\)\) \};\s*await route\.fulfill\(\{ response, body: responseBody \}\);/u,
+  );
+  const routeRegistered = source.indexOf('await pageB.route("**/api/sync", captureClientB);');
+  const competingSubmit = source.indexOf('await pageB.locator("#form-goithau button[type=\'submit\']").click();', routeRegistered);
+  const receiptWait = source.indexOf("await expect.poll(() => clientBReceipt,", competingSubmit);
+  const routeRemoved = source.indexOf('await pageB.unroute("**/api/sync", captureClientB);', receiptWait);
+  const competingCommit = source.indexOf("expect(clientBReceipt.ok, JSON.stringify(clientBBody)).toBe(true);", routeRemoved);
   const responseWait = source.indexOf("const conflictResponsePromise = pageA.waitForResponse");
   const release = source.indexOf("releaseClientARequest();", responseWait);
   const response = source.indexOf("const conflictResponse = await conflictResponsePromise;", release);
+  assert.ok(routeRegistered >= 0 && competingSubmit > routeRegistered && receiptWait > competingSubmit);
+  assert.ok(routeRemoved > receiptWait && competingCommit > routeRemoved);
+  assert.match(
+    source.slice(receiptWait, routeRemoved),
+    /await expect\.poll\(\(\) => clientBReceipt, \{\s*timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS,[\s\S]*\}\)\.not\.toBeNull\(\);/u,
+  );
+  assert.match(
+    source.slice(competingCommit, responseWait),
+    /clientBBody\.rowVersions[\s\S]*entry\.table === "goithau" && String\(entry\.id\) === String\(latestPackage\.id\)[\s\S]*\)\)\.toBe\(true\);/u,
+  );
   assert.ok(competingCommit >= 0 && responseWait > competingCommit);
   assert.ok(release > responseWait && response > release);
+});
+
+test("row-conflict version list waits for its authoritative receipt before navigation", () => {
+  const source = fs.readFileSync("e2e/specs/row-conflict-reload.spec.mjs", "utf8");
+  const syntax = parse(source, { ecmaVersion: "latest", sourceType: "module", range: true });
+  const createPlan = syntax.body.find((node) => (
+    node.type === "FunctionDeclaration" && node.id?.name === "createPlan01"
+  ));
+  assert.ok(createPlan, "version 01 creation must remain covered");
+  const creation = source.slice(...createPlan.range);
+  assert.match(
+    creation,
+    /const planSearchUrl = \(url\) => url\.pathname === "\/api\/paginate"[\s\S]*url\.searchParams\.get\("table"\) === "kehoach"[\s\S]*String\(url\.searchParams\.get\("search"\) \|\| ""\)\.toLowerCase\(\) === planCode\.toLowerCase\(\);/u,
+  );
+  assert.match(
+    creation,
+    /const response = await route\.fetch\(\);\s*const body = await response\.json\(\);\s*if \(!response\.ok\(\) \|\| \(body\.items \|\| \[\]\)\.some\(\(row\) => \(\s*String\(row\.maKeHoach \|\| ""\)\.toLowerCase\(\) === planCode\.toLowerCase\(\)\s*&& Number\(row\.phienBan\) === 1\s*\)\)\) latestListReceipt = \{ ok: response\.ok\(\), body \};\s*await route\.fulfill\(\{ response \}\);/u,
+  );
+  assert.match(
+    creation,
+    /await page\.route\(planSearchUrl, captureLatestPlan\);\s*try \{\s*await savePlanBreakdown\(page\);[\s\S]*expect\(versionCommand\.kind\)\.toBe\("plan"\);\s*expect\(String\(versionCommand\.sourceId\)\)\.toBe\(String\(historicalPlanId\)\);[\s\S]*await expect\.poll\(\(\) => latestListReceipt, \{\s*timeout: PLAN_BREAKDOWN_SAVE_TIMEOUT_MS,[\s\S]*\}\)\.not\.toBeNull\(\);\s*expect\(latestListReceipt\.ok, JSON\.stringify\(latestListReceipt\.body\)\)\.toBe\(true\);\s*\} finally \{\s*await page\.unroute\(planSearchUrl, captureLatestPlan\);\s*\}\s*await gotoReady\(page, "\/ke-hoach"\);\s*const latestRow = await searchPlanRow\(page, planCode\);/u,
+  );
 });
 const canonicalE2eScripts = fs.readdirSync(scriptsRoot)
   .filter((name) => (
@@ -726,10 +774,6 @@ test("row-conflict browser isolation preserves cache and cleanup bypasses confli
   assert.match(
     source,
     /function waitForPlanSearchResponse[\s\S]*waitForResponse[\s\S]*url\.searchParams\.get\("table"\) === "kehoach"[\s\S]*async function searchPlanRow[\s\S]*await input\.fill\(planCode\)[\s\S]*expect\(response\.ok\(\)/u,
-  );
-  assert.match(
-    source,
-    /const latestPlanResponse = waitForPlanSearchResponse\(page, planCode, \{\s*expectedVersion: 1,[\s\S]*?await savePlanBreakdown\(page\);[\s\S]*?const latestListResponse = await latestPlanResponse;[\s\S]*?await gotoReady\(page, "\/ke-hoach"\);\s*const latestRow = await searchPlanRow\(page, planCode\);/u,
   );
   assert.match(
     source,
