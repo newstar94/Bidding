@@ -55,9 +55,7 @@ async function login(page) {
   await page.locator("#login-username").fill(username);
   await page.locator("#login-password").fill(password);
   await page.locator("#form-auth-login button[type='submit']").click();
-  // The auth overlay can disappear before the post-login route transition has
-  // settled.  Waiting for the workspace route prevents the next page.goto()
-  // from racing the dashboard navigation in Firefox.
+  // Wait for the authenticated workspace before using its navigation.
   await page.waitForURL("**/tong-quan", { waitUntil: "domcontentloaded" });
   await waitForApp(page);
   await page.waitForFunction(() => (
@@ -80,10 +78,13 @@ async function serverHasPlan(page, code) {
 
 test("fixture KHLCNT stays draft-only until the final inline-import confirmation", async ({ page }) => {
   await login(page);
-  await page.goto("/ke-hoach/tao-moi", { waitUntil: "domcontentloaded" });
-  await waitForApp(page);
-  // The create route opens its editor after reconciliation; a second create
-  // click would target the list underneath the already active editor.
+  // Stay in the loaded workspace while background modules are warming; a
+  // hard goto can abort those imports and race WebKit's recovery reload.
+  await page.locator("#btn-tab-kehoach").click();
+  await expect(page).toHaveURL("/ke-hoach");
+  await expect(page.locator("#tab-kehoach.active")).toBeVisible();
+  await page.locator("#btn-add-kehoach").click();
+  await expect(page).toHaveURL("/ke-hoach/tao-moi");
   await expect(page.locator("#modal-kehoach.active")).toBeVisible();
   await page.locator("#kh-ma").fill(planCode);
   // Modal paint precedes option hydration; assert the exact seeded choice.
