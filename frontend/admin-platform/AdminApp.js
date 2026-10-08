@@ -106,6 +106,25 @@ async function selectWorkspaceRole(event) {
 let routeController = null;
 let sessionExpiryHandled = false;
 let renderedAdminLocation = "";
+let plansStylesReady = null;
+function loadAdminPlans() {
+  if (!plansStylesReady) {
+    plansStylesReady = new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.dataset.adminPlansStyles = "";
+      link.href = new URL("./admin-plans.css", import.meta.url).href;
+      link.onload = resolve;
+      link.onerror = () => {
+        link.remove();
+        plansStylesReady = null;
+        reject(new Error("Không thể tải giao diện gói dịch vụ. Vui lòng thử lại."));
+      };
+      document.head.append(link);
+    });
+  }
+  return Promise.all([import("./AdminPlans.js"), plansStylesReady]).then(([module]) => module);
+}
 function handleSessionExpiry() {
   if (sessionExpiryHandled) return;
   sessionExpiryHandled = true;
@@ -140,7 +159,7 @@ function renderRoute() {
   else if (route.path === "/admin/users") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminUsers", content, { signal: routeController.signal });
   else if (route.path === "/admin/organizations") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminOrganizations", content, { signal: routeController.signal });
   else if (route.path === "/admin/plans") {
-    loadAdminModule(() => import("./AdminPlans.js"), "renderAdminPlans", content, { signal: routeController.signal });
+    loadAdminModule(loadAdminPlans, "renderAdminPlans", content, { signal: routeController.signal });
   }
   else if (route.path === "/admin/subscriptions") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminSubscriptions", content, { signal: routeController.signal });
   else if (route.path === "/admin/payments") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminPayments", content, { signal: routeController.signal });

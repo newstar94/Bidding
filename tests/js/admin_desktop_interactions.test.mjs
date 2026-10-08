@@ -100,6 +100,33 @@ async function openDraft(page, id = "draft-a") {
 }
 function nextDialog(page, accept) { page.once("dialog", (dialog) => accept ? dialog.accept() : dialog.dismiss()); }
 
+test("package styles load only on demand and finish before the package screen renders", async () => {
+  await withPage("/admin/security", async page => {
+    let cssRequests = 0;
+    let releaseStyles;
+    const stylesGate = new Promise(resolve => { releaseStyles = resolve; });
+    await page.route("**/admin-plans.css", async route => {
+      cssRequests += 1;
+      await stylesGate;
+      await route.continue();
+    });
+    assert.equal(await page.locator('link[data-admin-plans-styles]').count(), 0);
+    const stylesRequest = page.waitForRequest("**/admin-plans.css", { timeout: 2000 });
+    await page.locator('[data-admin-link="/admin/plans"]').click();
+    try {
+      await stylesRequest;
+      assert.equal(await page.locator(".admin-plans-page").count(), 0);
+    } finally { releaseStyles(); }
+    await page.locator(".admin-plans-page").waitFor();
+    assert.equal(await page.locator(".bf-admin-package-toolbar").first().evaluate(element => getComputedStyle(element).display), "flex");
+    await page.locator('[data-admin-link="/admin/security"]').click();
+    await page.locator('[data-admin-link="/admin/plans"]').click();
+    await page.locator(".admin-plans-page").waitFor();
+    assert.equal(cssRequests, 1);
+    assert.equal(await page.locator('link[data-admin-plans-styles]').count(), 1);
+  });
+});
+
 test("editing the monthly base shows and saves ten times the annual price while preserving term quotas", async () => {
   const source = draft("draft-a");
   const capabilities = { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false };

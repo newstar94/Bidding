@@ -380,74 +380,6 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
   .bf-admin-analytics-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* Commercial package workspace: the list and composer share the same compact
-   control-center language as the approved desktop reference. */
-.bf-admin-package-manager { min-width: 0; }
-.bf-admin-package-toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.bf-admin-package-segment { display: inline-flex; padding: .2rem; gap: .15rem; border: 1px solid var(--bf-admin-line); border-radius: .55rem; background: var(--bf-admin-surface); }
-.admin-plans-page .bf-admin-package-segment.btn-group > .btn { border: 0; border-radius: .4rem; }
-.bf-admin-package-count { margin-left: 0; order: 3; }
-.bf-admin-package-layout-toggle { margin-left: auto; order: 2; }
-.bf-admin-package-toolbar:has(.bf-admin-package-layout-toggle[hidden]) .bf-admin-package-count { margin-left: auto; }
-.bf-admin-package-segment .btn-primary { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); font-weight: 600; }
-.bf-admin-package-table-panel { border-radius: .65rem; background: var(--bf-admin-surface); }
-.bf-admin-package-table-panel .table { margin-bottom: 0; }
-.bf-admin-package-table-panel .table thead th { padding: .8rem 1rem; background: var(--bf-admin-canvas); font-size: .85rem; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.bf-admin-package-table-panel .table th:nth-child(2), .bf-admin-package-table-panel .table th:nth-child(3), .bf-admin-package-table-panel .table td:nth-child(2), .bf-admin-package-table-panel .table td:nth-child(3) { text-align: left; }
-.bf-admin-package-table-panel .table tbody td { padding: 1rem; border-top-color: var(--bf-admin-line); }
-.bf-admin-package-table-panel .table tbody tr:hover { --tblr-table-hover-bg: var(--bf-admin-surface-subtle); }
-.bf-admin-package-name { display: block; font-size: .95rem; }
-.bf-admin-package-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.bf-admin-package-status { display: inline-flex; align-items: center; gap: .45rem; color: var(--bf-admin-muted); white-space: nowrap; }
-.bf-admin-package-status > span { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
-
-.bf-admin-editor-shell { overflow: hidden; border-top: 0; background: var(--bf-admin-surface); box-shadow: 0 1px 2px color-mix(in srgb, var(--bf-admin-ink) 5%, transparent); }
-.bf-admin-editor-shell > .card-body { padding: 0; }
-.bf-admin-composer-header { justify-content: space-between; align-items: center; padding: 1rem 1.25rem; background: var(--bf-admin-surface); }
-.bf-admin-composer-header .card-title { font-size: 1.15rem; letter-spacing: -.02em; }
-.bf-admin-package-editor-toolbar { display: flex; align-items: center; gap: 1rem; padding: .75rem 1.25rem; border-bottom: 1px solid var(--bf-admin-line); background: var(--bf-admin-surface); }
-.bf-admin-package-steps { display: flex; flex-wrap: wrap; gap: .35rem; }
-.bf-admin-package-steps .btn { padding: .6rem .75rem; border-color: transparent; background: transparent; color: var(--bf-admin-ink); box-shadow: none; }
-.bf-admin-package-steps .btn:hover, .bf-admin-package-steps .btn:focus-visible { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); }
-.bf-admin-package-steps .btn-primary { background: var(--bf-admin-brand-soft); border-color: transparent; color: var(--bf-admin-brand-strong); }
-.bf-admin-package-editor-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, 1fr); align-items: stretch; gap: 0; }
-.bf-admin-package-editor-grid > * { min-width: 0; }
-.bf-admin-package-form-column { min-width: 0; padding: 1.25rem; background: var(--bf-admin-surface); }
-.bf-admin-package-form-column .bf-admin-offer-editor { margin: 0 !important; border: 0; box-shadow: none; }
-.bf-admin-package-form-column .bf-admin-offer-editor > .card-header { display: none; }
-.bf-admin-package-form-column .bf-admin-offer-editor > .card-body { padding: 0; }
-.bf-admin-package-form-column .bf-admin-editor-group { min-height: 18rem; margin: 0; padding: 0; border: 0; }
-.bf-admin-package-form-column .bf-admin-editor-group + .bf-admin-editor-group { margin-top: 0; padding-top: 0; border-top: 0; }
-.bf-admin-editor-group > p { margin-bottom: 1rem; }
-.bf-admin-editor-hint { margin-top: .65rem; color: var(--bf-admin-muted); font-size: .78rem; }
-.bf-admin-package-form-column .form-label { font-size: .78rem; font-weight: 650; }
-.bf-admin-package-form-column .form-control, .bf-admin-package-form-column .form-select { min-height: 2.55rem; background: var(--bf-admin-surface); border-color: var(--bf-admin-line); }
-.bf-admin-package-form-column .form-control[readonly] { background: var(--bf-admin-surface-subtle); color: var(--bf-admin-muted); }
-.bf-admin-package-preview-panel { border-radius: 0; min-width: 0; padding: 1.25rem; border-left: 1px solid var(--bf-admin-line); background: var(--bf-admin-canvas); }
-.bf-admin-preview-eyebrow { margin-bottom: .25rem; color: var(--bf-admin-muted); font-size: .7rem; letter-spacing: .12em; }
-.bf-admin-preview-title { margin: 0 0 1rem; font-size: 1.08rem; letter-spacing: -.015em; }
-.bf-admin-package-preview { border-color: var(--bf-admin-line); background: var(--bf-admin-surface); box-shadow: none; }
-.bf-admin-package-preview .card-body { padding: 1.1rem; }
-.bf-admin-package-preview h4 { font-size: 1.35rem; letter-spacing: -.025em; }
-.bf-admin-package-preview .bf-admin-plan-price { min-height: 2rem; font-size: 1.45rem; }
-.bf-admin-package-preview .bf-admin-plan-benefits { margin-top: 1rem; padding-left: 1.15rem; }
-.bf-admin-package-preview .bf-admin-plan-benefits li + li { margin-top: .45rem; }
-.bf-admin-package-period { display: flex; width: fit-content; justify-content: center; align-items: center; gap: .15rem; margin: 1rem auto .8rem; padding: .2rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
-.bf-admin-package-period .btn { padding: .38rem .65rem; border: 0; border-radius: .35rem; background: transparent; color: var(--bf-admin-ink); box-shadow: none; }
-.bf-admin-package-period .btn-primary { background: var(--bf-admin-brand-soft); color: var(--bf-admin-brand-strong); }
-.bf-admin-period-input { padding: .8rem; border: 1px solid var(--bf-admin-line); border-radius: .5rem; }
-.bf-admin-preview-summary { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--bf-admin-line); }
-.bf-admin-preview-summary h4 { margin: 0 0 .7rem; font-size: 1rem; }
-.bf-admin-preview-summary-row { display: flex; justify-content: space-between; gap: 1rem; margin: .45rem 0; font-size: .8rem; }
-.bf-admin-preview-summary-row strong { font-variant-numeric: tabular-nums; }
-.bf-admin-editor-shell .card-footer { padding: .85rem 1.25rem; background: var(--bf-admin-surface); }
-
-@media (max-width: 767.98px) {
-  .bf-admin-package-count, .bf-admin-package-layout-toggle { margin-left: 0; }
-  .bf-admin-package-editor-toolbar { align-items: stretch; flex-direction: column; }
-  .bf-admin-package-editor-grid { grid-template-columns: minmax(0, 1fr); }
-  .bf-admin-package-preview-panel { border-top: 1px solid var(--bf-admin-line); border-left: 0; }
-}
 @media (max-width: 991.98px) {
   .navbar-vertical .navbar-collapse { max-height: calc(100vh - 4rem); overflow-y: auto; }
 }
@@ -630,32 +562,3 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 @media (prefers-reduced-motion: reduce) {
   .navbar-expand-lg.navbar-vertical, .navbar-vertical .nav-link, .btn { transition: none; }
 }
-
-.bf-admin-catalog-notice { margin-bottom: 1.5rem; padding: 1rem 1.25rem; }
-.bf-admin-first-package { min-height: 17rem; padding: 4rem 1.5rem; border: 1px dashed var(--bf-admin-line-strong); border-radius: .65rem; background: var(--bf-admin-surface); text-align: center; }
-.bf-admin-first-package h3 { font-size: 1.25rem; margin-bottom: .6rem; }
-.bf-admin-first-package p { margin-bottom: 1.5rem; }
-.bf-admin-supported-model { padding: 1rem; border: 1px solid var(--bf-admin-line); border-radius: .65rem; background: var(--bf-admin-surface); }
-.bf-admin-supported-model > summary, .bf-admin-package-settings > summary { color: var(--bf-admin-muted); font-weight: 600; cursor: pointer; }
-.bf-admin-supported-model > .card { box-shadow: none; border: 0; }
-.bf-admin-package-settings { border-top: 1px solid var(--bf-admin-line); padding: .85rem 1.25rem; }
-.bf-admin-package-settings-body { padding-top: 1rem; }
-.bf-admin-package-form-column .bf-admin-editor-group { min-height: 27rem; }
-.bf-admin-package-form-column .bf-admin-editor-group h5 { margin-bottom: 1.1rem; font-size: 1.05rem; }
-.bf-admin-package-editor-toolbar > [data-admin-package-back] { margin-left: auto; order: 2; font-size: .78rem; }
-.bf-admin-editor-shell .card-footer { position: static; box-shadow: none; }
-.bf-admin-editor-actions > div { margin-left: auto; }
-
-.bf-admin-package-empty:has(.bf-admin-first-package) { display: block; padding: 0; min-height: 0; }
-.bf-admin-first-package { width: 100%; }
-.bf-admin-catalog-notice { flex-direction: column; align-items: flex-start; gap: 0; }
-.bf-admin-package-form-column .bf-admin-check-grid { padding: 0; border: 0; background: transparent; }
-.bf-admin-feature-choices { display: grid; gap: .65rem; margin-top: 1rem; }
-#admin-app .bf-admin-package-form-column .form-control:disabled, #admin-app .bf-admin-package-form-column .form-control[readonly], #admin-app .bf-admin-package-form-column .bf-combobox-input:disabled { background: var(--bf-admin-canvas); }
-.bf-admin-package-customer-benefits { margin: 1.5rem 0 1rem; padding: 0; list-style: none; display: grid; gap: .85rem; }
-.bf-admin-package-customer-benefits > li { display: flex; align-items: flex-start; gap: .7rem; }
-.bf-admin-package-benefit-icon, .bf-admin-package-benefit-check { flex: 0 0 1.15rem; width: 1.15rem; color: var(--bf-admin-muted); }
-.bf-admin-package-rights-details { color: var(--bf-admin-muted); font-size: .75rem; }
-.bf-admin-package-rights-details > summary { cursor: pointer; }
-.bf-admin-package-rights-details ul { margin-top: .6rem; padding-left: 1.1rem; }
-.bf-admin-package-rights-details li + li { margin-top: .3rem; }

@@ -1030,10 +1030,15 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     const planCommitPromise = pageA.waitForResponse((response) => (
       response.request().method() === "POST"
         && new URL(response.url()).pathname === "/api/sync"
-    ));
+    )).then(async (response) => ({
+      // Capture the receipt as soon as headers arrive. Completing the save can
+      // navigate the page before click() resolves and retire Chromium's body.
+      ok: response.ok(),
+      body: await response.json(),
+    }));
     await pageA.locator("#btn-save-plan-breakdown").click();
     const planCommitResponse = await planCommitPromise;
-    expect(planCommitResponse.ok(), await planCommitResponse.text().catch(() => "")).toBe(true);
+    expect(planCommitResponse.ok, JSON.stringify(planCommitResponse.body)).toBe(true);
     await expect(pageA.locator("#modal-plan-breakdown.active")).toBeHidden({ timeout: 30_000 });
     captureBreakdownSync = false;
     expect(breakdownSyncRequests, "plan breakdown must emit one logical /api/sync commit").toHaveLength(1);
@@ -1054,7 +1059,7 @@ test("plan 01 breakdown is one commit, historical stays view-only, and real pack
     expect((planCommitPayload.assignments || []).filter((row) => (
       row.type === "goithau" && String(row.targetId) === String(draftPackage.id)
     ))).toHaveLength(0);
-    const planCommitBody = await planCommitResponse.json();
+    const planCommitBody = planCommitResponse.body;
     const committedPackageVersion = (planCommitBody.rowVersions || []).find((entry) => (
       entry.table === "goithau" && String(entry.id) === String(draftPackage.id)
     ))?.rowVersion;
