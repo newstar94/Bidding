@@ -659,6 +659,14 @@ for (const source of ["cancel response", "cancel poll"]) {
 test("activation refresh continues after closing a verified paid popup", async () => {
   let orderReads = 0;
   const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async (page) => {
+    let releaseCatalog;
+    const catalogGate = new Promise((resolve) => { releaseCatalog = resolve; });
+    // Hold the post-activation refresh so the assertion cannot consume the
+    // initial success message before refresh() replaces it with loading text.
+    await page.route("**/api/public/commercial/offers", async (route) => {
+      await catalogGate;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(recoveryCatalog) });
+    });
     await page.evaluate(() => {
       window.subscriptionRefreshes = 0;
       window.storefrontController._checkSessionNow = async () => { window.subscriptionRefreshes += 1; };
@@ -675,6 +683,9 @@ test("activation refresh continues after closing a verified paid popup", async (
     await dialog.waitFor({ state: "hidden" });
     await page.waitForFunction(() => window.subscriptionRefreshes === 1);
     assert.equal(orderReads, 2);
+    try {
+      await page.waitForFunction(() => document.getElementById("storefront-status")?.textContent === "Đang đồng bộ bảng giá và số dư…");
+    } finally { releaseCatalog(); }
     await page.waitForFunction(() => document.getElementById("storefront-status")?.textContent.includes("đã được kích hoạt"));
     assert.match(await page.locator("#storefront-status").textContent(), /đã được kích hoạt/u);
   });

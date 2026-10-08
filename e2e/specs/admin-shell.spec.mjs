@@ -87,6 +87,9 @@ async function installAuthorizedShell(context) {
     headers: {
       "cache-control": "private, no-store",
       "x-robots-tag": "noindex, nofollow",
+      // The intercepted authorized shell must bootstrap CSRF like the real
+      // server, without falling through to an unrelated anonymous session.
+      "set-cookie": "csrf_token=admin-e2e-csrf; Path=/; SameSite=Lax",
     },
     body: shell,
   }));
@@ -99,7 +102,7 @@ async function fulfillJson(route, payload, status = 200) {
 async function expectAdminReady(page, title) {
   await expect(page.locator("#admin-app")).toHaveAttribute("aria-busy", "false");
   if (title === "Tổng quan") await expect(page.getByRole("heading", { level: 1, name: "Tổng quan nền tảng" })).toBeVisible();
-  else await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
+  else await expect(page.locator("#admin-main .page-header").getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
   await expect(page.locator("#admin-main")).toBeFocused();
 }
 
@@ -361,9 +364,12 @@ test("commercial plans and payments send versioned and audited mutations", async
     scheduledRelease: null,
     drafts: [],
   };
-  const draft = { id: "draft-e2e", revision: 1, status: "DRAFT", document: { plans: [] } };
+  const draft = { id: "draft-e2e", revision: 1, status: "DRAFT", document: { offers: [] } };
   const requests = [];
   await context.route("**/api/commercial/admin/overview", (route) => fulfillJson(route, commercialOverview));
+  await context.route("**/api/public/commercial/offers", (route) => fulfillJson(route, {
+    releaseId: "release-v1", releaseChecksum: "e2e-release", offers: [], creditPacks: [], quotaWarnings: [],
+  }));
   await context.route("**/api/commercial/drafts", async (route) => {
     requests.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
     await fulfillJson(route, draft);
@@ -381,7 +387,7 @@ test("commercial plans and payments send versioned and audited mutations", async
 
   await page.goto("/admin/plans", { waitUntil: "commit" });
   await expectAdminReady(page, "Gói dịch vụ");
-  await page.getByRole("button", { name: "Tạo bản nháp" }).click();
+  await page.getByRole("button", { name: "+ Tạo gói", exact: true }).click();
   await expect(page.locator("#admin-commercial-editor")).toHaveAttribute("data-draft-id", "draft-e2e");
   expect(requests[0]).toEqual({ path: "/api/commercial/drafts", body: {} });
 
