@@ -20,7 +20,10 @@ test("same-origin document-only interception preserves native warm asset cache a
     }],
     ["/dist/assets/fixture-abcdefgh.js", {
       type: "text/javascript",
-      body: 'setTimeout(()=>{performance.mark("controlled-start");const end=performance.now()+125;while(performance.now()<end){}performance.mark("controlled-end");document.body.classList.add("landing-ready")},0);',
+      // Give the warm document a rendering opportunity before the synthetic
+      // positive control. Its immediate timer can run during early navigation
+      // and leave no task entry even though the later collector is working.
+      body: 'requestAnimationFrame(()=>setTimeout(()=>{performance.mark("controlled-start");const end=performance.now()+125;while(performance.now()<end){}performance.mark("controlled-end");document.body.classList.add("landing-ready")},0));',
     }],
     ["/dist/assets/fixture-abcdefgh.woff2", {
       type: "font/woff2",
@@ -88,7 +91,9 @@ test("same-origin document-only interception preserves native warm asset cache a
       assert.ok(end - start >= 120);
       assert.equal(snapshot.longTasks.filter((entry) => entry.duration > 100
         && entry.startTime <= start + 2
-        && entry.startTime + entry.duration >= end - 2).length, 1);
+        && entry.startTime + entry.duration >= end - 2).length, 1, JSON.stringify({
+        start, end, snapshot,
+      }));
       return state.resources;
     };
     await withRouteFixtureNavigation(page, { url, html, headers }, measure);
