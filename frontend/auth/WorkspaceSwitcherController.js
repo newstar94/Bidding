@@ -97,13 +97,16 @@ export function renderWorkspaceSwitcher() {
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
       try {
-        await this.switchWorkspaceContext(selectedWorkspaceId);
+        const result = await this.switchWorkspaceContext(selectedWorkspaceId);
+        if (result?.changed !== true || result?.cancelled || getActiveOrganizationId() !== selectedWorkspaceId) return;
         if (typeof this.reloadEmployeesFromDatabase === "function") {
           // This request carries a workspace lease and can safely finish after
           // navigation has already responded to the user. Sequence it after
           // the authoritative pull to avoid competing DB reads.
           const reconciliation = this._startupReconciliationPromise || Promise.resolve();
-          void Promise.resolve(reconciliation).finally(() => this.reloadEmployeesFromDatabase());
+          void Promise.resolve(reconciliation).then(() => {
+            if (getActiveOrganizationId() === selectedWorkspaceId) return this.reloadEmployeesFromDatabase();
+          }).catch(() => {});
         }
         const selectedName = workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name
           || selectedWorkspaceId;
@@ -153,9 +156,12 @@ export function renderWorkspaceSwitcher() {
           organization,
         ].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index);
         this.view.closeModal?.("modal-create-organization");
-        await this.switchWorkspaceContext(organization.id);
+        const result = await this.switchWorkspaceContext(organization.id);
         this.renderWorkspaceSwitcher?.();
-        this.view.showToast?.("Đã tạo tổ chức", `Đang làm việc tại “${organization.name}”.`, "success");
+        const switched = result?.changed === true && !result?.cancelled && getActiveOrganizationId() === organization.id;
+        this.view.showToast?.("Đã tạo tổ chức", switched
+          ? `Đang làm việc tại “${organization.name}”.`
+          : `Tổ chức “${organization.name}” đã được tạo. Không gian làm việc hiện tại được giữ nguyên.`, "success");
       } catch (error) {
         await this.view.customAlert("Không thể tạo tổ chức", error.message || "Vui lòng thử lại.", "alert-triangle");
       } finally {

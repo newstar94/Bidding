@@ -11,7 +11,10 @@ from scripts import backup
 def _create_snapshot(monkeypatch, tmp_path, *, missing_templates=False, asset_payload=None):
     uploads = tmp_path / "source-uploads"
     templates = tmp_path / "source-templates"
+    catalog = tmp_path / "source-catalog"
     uploads.mkdir()
+    catalog.mkdir()
+    monkeypatch.setenv("BIDDING_WORD_TEMPLATE_CATALOG_DIR", str(catalog))
     if not missing_templates:
         templates.mkdir()
     if asset_payload is not None:
@@ -36,12 +39,14 @@ def _create_snapshot(monkeypatch, tmp_path, *, missing_templates=False, asset_pa
 def _restore_destinations(monkeypatch, tmp_path):
     uploads = tmp_path / "live-uploads"
     templates = tmp_path / "live-templates"
-    for directory in (uploads, templates):
+    catalog = tmp_path / "live-catalog"
+    for directory in (uploads, templates, catalog):
         directory.mkdir()
         (directory / "newer.txt").write_bytes(b"keep until restore commits")
     monkeypatch.setenv("DATABASE_URL", "postgresql://restore:test@localhost/test")
     monkeypatch.setenv("BIDDING_UPLOAD_DIR", str(uploads))
     monkeypatch.setenv("BIDDING_WORD_TEMPLATE_DIR", str(templates))
+    monkeypatch.setenv("BIDDING_WORD_TEMPLATE_CATALOG_DIR", str(catalog))
     return uploads, templates
 
 
@@ -97,7 +102,9 @@ def test_restore_rolls_back_assets_and_reraises_interrupt(monkeypatch, tmp_path)
 def test_backup_manifest_and_verification_report_missing_asset_tree(monkeypatch, tmp_path, capsys):
     snapshot = _create_snapshot(monkeypatch, tmp_path, missing_templates=True)
     manifest = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["assetDirectories"] == {"uploads": True, "word-templates": False}
+    assert manifest["assetDirectories"] == {
+        "uploads": True, "word-templates": False, "word-catalog": True,
+    }
     capsys.readouterr()
 
     assert backup.cmd_verify(SimpleNamespace(snapshot=str(snapshot))) == 0

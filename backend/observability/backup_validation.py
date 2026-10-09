@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import pathlib
 
 
 MANIFEST_FILENAME = "manifest.json"
 MAX_MANIFEST_FILES = 500_000
-ASSET_DIRECTORIES = ("uploads", "word-templates")
+ASSET_DIRECTORIES = ("uploads", "word-templates", "word-catalog")
+LEGACY_ASSET_DIRECTORIES = ASSET_DIRECTORIES[:2]
 
 
 def manifest_relative_path(value):
@@ -46,24 +48,31 @@ def snapshot_asset_directories(snapshot_dir: pathlib.Path, manifest: dict) -> di
     declared = manifest.get("assetDirectories")
     if "assetDirectories" in manifest and (
         not isinstance(declared, dict)
-        or set(declared) != set(ASSET_DIRECTORIES)
+        or set(declared) not in (set(ASSET_DIRECTORIES), set(LEGACY_ASSET_DIRECTORIES))
         or any(type(value) is not bool for value in declared.values())
     ):
         raise RuntimeError("invalid backup asset directory metadata")
+    catalog_required = manifest.get("wordTemplateCatalogRequired", False)
+    if type(catalog_required) is not bool:
+        raise RuntimeError("invalid backup catalog requirement metadata")
+    catalog_required = catalog_required or (
+        str(os.environ.get("WORD_TEMPLATE_CATALOG_ENABLED", "false")).strip().casefold() == "true"
+    )
     present = {}
     for name in ASSET_DIRECTORIES:
         directory = snapshot_dir / name
         if directory.is_symlink():
             raise RuntimeError("unsafe backup asset directory")
         exists = directory.is_dir()
-        if declared is not None and declared[name] != exists:
+        if declared is not None and name in declared and declared[name] != exists:
             raise RuntimeError(f"backup asset directory presence mismatch: {name}")
         if not exists and any(
             str(entry.get("relativePath") or "").startswith(f"{name}/")
             for entry in manifest.get("files", [])
         ):
             raise RuntimeError(f"backup asset directory is missing: {name}")
-        present[name] = exists
+        if name != "word-catalog" or catalog_required or exists:
+            present[name] = exists
     return present
 
 

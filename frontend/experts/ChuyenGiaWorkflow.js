@@ -3,6 +3,9 @@ import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspace
 import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import {
+  awaitCanonicalSyncResult,
+  CANONICAL_SAVE_STATUS,
+  classifyCanonicalSyncResult,
   persistAndSync,
   refreshRecordBeforeDelete,
   showCanonicalSaveCommitted,
@@ -34,8 +37,85 @@ const CHUYEN_GIA_FORM_FIELDS = {
   ngayCapChungChi: "cg-ngaycapchungchi"
 };
 
+function expertEditorContext(controller) {
+  return {
+    generation: controller._expertEditorGeneration,
+    model: controller.model,
+    lease: captureWorkspaceLease(controller.model),
+    form: document.getElementById("form-chuyengia"),
+  };
+}
+
+function expertEditorContextIsCurrent(controller, context) {
+  return controller._expertEditorGeneration === context.generation
+    && controller.model === context.model
+    && isWorkspaceLeaseCurrent(context.model, context.lease)
+    && document.getElementById("form-chuyengia") === context.form;
+}
+
+function expertFormSnapshot(controller) {
+  return JSON.stringify([
+    collectFormValues(document, CHUYEN_GIA_FORM_FIELDS, "chuyengia"),
+    controller.tempChuyenGiaImageBase64,
+    controller.tempChuyenGiaSignatureBase64,
+  ]);
+}
+
+function settleExpertSubmission(controller, submission, result) {
+  submission.settled = true;
+  submission.canonicalStatus = classifyCanonicalSyncResult(result);
+  if (!expertEditorContextIsCurrent(controller, submission)) return;
+  if ([CANONICAL_SAVE_STATUS.REMOTE_PENDING, CANONICAL_SAVE_STATUS.OFFLINE_PENDING]
+    .includes(submission.canonicalStatus)) return;
+  if (controller._expertEditorPendingSubmission === submission) {
+    controller._expertEditorPendingSubmission = null;
+  }
+  if (submission.canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+    // Reconciliation owns rejected local records/outbox receipts. Keep only
+    // the entered draft and its original edit/create identity for explicit retry.
+    document.getElementById("form-chuyengia-id").value = submission.originalId;
+  }
+}
+
+async function completeExpertSubmission(controller, submission) {
+  const unchanged = expertFormSnapshot(controller) === submission.snapshot;
+  if (unchanged) await controller.closeModal("modal-chuyengia");
+  if (!expertEditorContextIsCurrent(controller, submission)) return;
+  await controller.view.renderChuyenGiaTable();
+  if (!expertEditorContextIsCurrent(controller, submission)) return;
+  if (unchanged) {
+    showCanonicalSaveCommitted(controller.view, "Chuyên gia");
+  } else {
+    controller.view.showToast("Bản lưu trước đã được xác nhận",
+      "Nội dung vừa chỉnh vẫn chưa lưu. Bấm Lưu để gửi thay đổi mới.", "warning");
+  }
+}
+
+async function retryPendingExpertSubmission(controller, submission) {
+  if (!submission.settled) {
+    showLocalSavePending(controller.view, "Chuyên gia");
+    return;
+  }
+  let result;
+  try {
+    result = await awaitCanonicalSyncResult(await controller.autoSync());
+  } catch (error) {
+    result = { ok: false, transport: true, error };
+  }
+  settleExpertSubmission(controller, submission, result);
+  if (!expertEditorContextIsCurrent(controller, submission)) return result;
+  if (submission.canonicalStatus === CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+    await completeExpertSubmission(controller, submission);
+  } else if ([CANONICAL_SAVE_STATUS.REMOTE_PENDING, CANONICAL_SAVE_STATUS.OFFLINE_PENDING]
+    .includes(submission.canonicalStatus)) {
+    showLocalSavePending(controller.view, "Chuyên gia");
+  }
+  return result;
+}
+
 export async function persistExpertFormChanges(controller, changedExperts, {
   draft = isPlanBreakdownEditSessionActive(controller),
+  submission = null,
 } = {}) {
   if (draft) {
     await markPlanVersionDraftRecordsDirty(controller, "chuyengia", changedExperts);
@@ -43,17 +123,28 @@ export async function persistExpertFormChanges(controller, changedExperts, {
     controller.view.renderChuyenGiaTable();
     return { ok: true, draft: true };
   }
+  const editorGeneration = controller._expertEditorGeneration;
   stageLocalRecords(controller.model, "chuyengia", changedExperts);
   return persistAndSync(controller, "chuyengia", {
     backgroundSync: true,
     changes: { upserts: { chuyengia: changedExperts } },
     afterLocalDurable: () => {
+      if (submission) {
+        if (!expertEditorContextIsCurrent(controller, submission)) return;
+        document.getElementById("form-chuyengia-id").value = submission.recordId;
+      }
       const render = controller.view.renderChuyenGiaTable();
-      const close = controller.closeModal("modal-chuyengia");
       showLocalSavePending(controller.view, "Chuyên gia");
-      return Promise.all([render, close]);
+      return render;
     },
     afterCanonicalSync: async () => {
+      if (submission) {
+        if (!expertEditorContextIsCurrent(controller, submission)) return;
+        return await completeExpertSubmission(controller, submission);
+      }
+      if (controller._expertEditorGeneration === editorGeneration) {
+        await controller.closeModal("modal-chuyengia");
+      }
       await controller.view.renderChuyenGiaTable();
       showCanonicalSaveCommitted(controller.view, "Chuyên gia");
     },
@@ -122,6 +213,8 @@ export async function deleteChuyenGia(id) {
   });
 }
 export function editChuyenGia(id) {
+  this._expertEditorGeneration = (this._expertEditorGeneration || 0) + 1;
+  this._expertEditorPendingSubmission = null;
   if (!document.getElementById("modal-chuyengia")) {
     this.ensureLazyModal?.("modal-chuyengia").then(() => this.editChuyenGia(id));
     return;
@@ -222,6 +315,15 @@ export function editChuyenGia(id) {
 }
 export async function handleChuyenGiaSubmit(e) {
   e.preventDefault();
+  const context = expertEditorContext(this);
+  if (this._expertEditorSubmitting
+    && expertEditorContextIsCurrent(this, this._expertEditorSubmitting)) return;
+  this._expertEditorSubmitting = context;
+  try {
+  const pending = this._expertEditorPendingSubmission;
+  if (pending && expertEditorContextIsCurrent(this, pending)) {
+    return await retryPendingExpertSubmission(this, pending);
+  }
   const form = document.getElementById("form-chuyengia");
   const formValues = collectFormValues(document, CHUYEN_GIA_FORM_FIELDS, "chuyengia");
   const cccdVal = formValues.soCCCD.trim();
@@ -333,6 +435,7 @@ export async function handleChuyenGiaSubmit(e) {
       `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${getVersionLabel(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${getVersionLabel(currentCg.phienBan)})`,
       "save"
     );
+    if (!expertEditorContextIsCurrent(this, context)) return;
     if (isNewVersion) {
       const timestamp = this.model.getCurrentDateTimeString();
       data = createNextVersion(this.model.state.chuyengia, currentCg, data, {
@@ -362,6 +465,34 @@ export async function handleChuyenGiaSubmit(e) {
   }
   rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
   const changedExperts = getVersionFamily(this.model.state.chuyengia, data);
-  await persistExpertFormChanges(this, changedExperts);
+  const draft = isPlanBreakdownEditSessionActive(this);
+  const submission = draft ? null : {
+    ...context,
+    originalId: id,
+    recordId: data.id,
+    snapshot: expertFormSnapshot(this),
+    settled: false,
+  };
+  this._expertEditorPendingSubmission = submission;
+  let result;
+  try {
+    result = await persistExpertFormChanges(this, changedExperts, { draft, submission });
+  } catch (error) {
+    if (submission && expertEditorContextIsCurrent(this, submission)) {
+      this._expertEditorPendingSubmission = null;
+      document.getElementById("form-chuyengia-id").value = id;
+    }
+    throw error;
+  }
+  if (submission && result?.syncPromise) {
+    void result.syncPromise.then(
+      syncResult => settleExpertSubmission(this, submission, syncResult),
+      error => settleExpertSubmission(this, submission, { ok: false, transport: true, error }),
+    );
+  }
+  return result;
+  } finally {
+    if (this._expertEditorSubmitting === context) this._expertEditorSubmitting = null;
+  }
 }
 import { generateRecordId } from "../shared/idUtils.js";

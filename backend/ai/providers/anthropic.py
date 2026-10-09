@@ -12,6 +12,7 @@ from backend.ai.providers.base import (
     endpoint,
     iter_sse,
     json_request,
+    merge_reported_counters,
     require_api_key,
     require_model,
     stream_http,
@@ -85,7 +86,8 @@ def normalize_anthropic_stream(raw_events: Iterable[dict]) -> Iterable[dict]:
     text_parts: list[str] = []
     calls: dict[int, dict] = {}
     finished_calls: set[int] = set()
-    usage = {"input_tokens": 0, "output_tokens": 0}
+    usage: dict[str, int] = {}
+    native_totals: dict[str, int] = {}
     completed = False
 
     def finish_call(index: int) -> Iterable[dict]:
@@ -105,14 +107,22 @@ def normalize_anthropic_stream(raw_events: Iterable[dict]) -> Iterable[dict]:
 
     for event in raw_events:
         event_type = str(event.get("type") or event.get("_event") or "")
+        message = event.get("message") if isinstance(event.get("message"), dict) else {}
+        native_usage = message.get("usage") if event_type == "message_start" else event.get("usage")
+        if isinstance(native_usage, dict) and merge_reported_counters(
+            native_totals, native_usage,
+            ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"),
+        ):
+            usage = {
+                "input_tokens": _anthropic_input_tokens(native_totals),
+                "output_tokens": native_totals.get("output_tokens", 0),
+            }
+            yield {"type": "response.usage", "usage": dict(usage)}
         if event_type == "error" or event.get("error"):
-            yield {"type": "error", "error": event.get("error") or event}
+            yield {"type": "error", "error": event.get("error") or event,
+                   **({"usage": dict(usage)} if usage else {})}
             return
         if event_type == "message_start":
-            message = event.get("message") if isinstance(event.get("message"), dict) else {}
-            native_usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
-            usage["input_tokens"] = _anthropic_input_tokens(native_usage)
-            usage["output_tokens"] = max(0, int(native_usage.get("output_tokens") or 0))
             yield {"type": "response.created", "response": {"id": str(message.get("id") or "")}}
         elif event_type == "content_block_start":
             index = int(event.get("index") or 0)
@@ -164,14 +174,6 @@ def normalize_anthropic_stream(raw_events: Iterable[dict]) -> Iterable[dict]:
                     }
         elif event_type == "content_block_stop":
             yield from finish_call(int(event.get("index") or 0))
-        elif event_type == "message_delta":
-            native_usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
-            if native_usage:
-                if any(name in native_usage for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")):
-                    usage["input_tokens"] = _anthropic_input_tokens(native_usage)
-                usage["output_tokens"] = max(
-                    usage["output_tokens"], int(native_usage.get("output_tokens") or 0)
-                )
         elif event_type == "message_stop":
             for index in sorted(calls):
                 yield from finish_call(index)

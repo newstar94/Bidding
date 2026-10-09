@@ -14,6 +14,7 @@ const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package"
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
 import { buildExpertImportIndex, findIndexedExpert } from "./excelImportIndexes.js";
+import { assertWorkspaceLeaseCurrent, captureWorkspaceLease, isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 
 function assertImportRecords(type, records, allowedTransforms = []) {
   records.forEach((record) => assertOutboundRecordFields(record, type, {
@@ -63,22 +64,29 @@ function uniqueRecords(records) {
     (records || []).filter((record) => record?.id != null).map((record) => [String(record.id), record]),
   ).values()];
 }
-async function persistExplicitUpserts(model, upsertsByTable) {
+async function persistExplicitUpserts(model, upsertsByTable, operation) {
   const entries = Object.entries(upsertsByTable)
     .map(([table, records]) => [table, uniqueRecords(records)])
     .filter(([, records]) => records.length > 0);
   if (entries.length === 0) return;
   const atomicUpserts = Object.fromEntries(entries);
-  if (entries.length > 1 && typeof model.db?.applySyncChanges === "function") {
+  const mutation = operation.mutation;
+  if (mutation) model.assertWorkspaceMutation(mutation);
+  else assertWorkspaceLeaseCurrent(model, operation.lease);
+  if (entries.length > 1 && typeof operation.lease.db?.applySyncChanges === "function") {
     // BrowserDB applies all listed stores in one IndexedDB transaction.
-    await model.db.applySyncChanges({ upserts: atomicUpserts });
+    await operation.lease.db.applySyncChanges({ upserts: atomicUpserts });
+    entries.forEach(([table]) => operation.persistedTables.add(table));
   } else {
     for (const [table, records] of entries) {
-      await model.persistChanges(table, { upserts: records }, { throwOnError: true });
+      if (!mutation) assertWorkspaceLeaseCurrent(model, operation.lease);
+      await model.persistChanges(table, { upserts: records }, { throwOnError: true, workspaceMutation: mutation });
+      operation.persistedTables.add(table);
     }
   }
   for (const [table, records] of entries) {
-    model.commitLocalMutation(table, { records });
+    if (mutation) model.commitWorkspaceMutation(mutation, table, { records });
+    else { assertWorkspaceLeaseCurrent(model, operation.lease); model.commitLocalMutation(table, { records }); }
   }
 }
 export function isBasicExcelImportType(type) {
@@ -87,7 +95,7 @@ export function isBasicExcelImportType(type) {
 export function isBusinessExcelImportType(type) {
   return BUSINESS_IMPORT_TYPES.has(type);
 }
-async function saveBasicExcelImportInternal(controller, type, validRows) {
+async function saveBasicExcelImportInternal(controller, type, validRows, operation) {
   if (!isBasicExcelImportType(type)) return null;
   if (type === "plan" || type === "kehoach") {
     const mappedData = validRows.map((row) => {
@@ -116,7 +124,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     });
     assertImportRecords("kehoach", mappedData);
     upsertById(controller.model.state.kehoach, mappedData);
-    await persistExplicitUpserts(controller.model, { kehoach: mappedData });
+    await persistExplicitUpserts(controller.model, { kehoach: mappedData }, operation);
     return mappedData.length;
   }
   if (type === "package" || type === "goithau") {
@@ -170,7 +178,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     await persistExplicitUpserts(controller.model, {
       goithau: mappedData,
       kehoach: affectedPlans,
-    });
+    }, operation);
     return mappedData.length;
   }
   if (type === "chudautu") {
@@ -204,7 +212,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     });
     assertImportRecords("chudautu", mappedData);
     upsertById(controller.model.state.chudautu, mappedData);
-    await persistExplicitUpserts(controller.model, { chudautu: mappedData });
+    await persistExplicitUpserts(controller.model, { chudautu: mappedData }, operation);
     return mappedData.length;
   }
   if (type === "nhathau") {
@@ -241,7 +249,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     });
     assertImportRecords("nhathau", mappedData);
     upsertById(controller.model.state.nhathau, mappedData);
-    await persistExplicitUpserts(controller.model, { nhathau: mappedData });
+    await persistExplicitUpserts(controller.model, { nhathau: mappedData }, operation);
     return mappedData.length;
   }
   if (type === "chuyengia") {
@@ -272,7 +280,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     });
     assertImportRecords("chuyengia", mappedData);
     upsertById(controller.model.state.chuyengia, mappedData);
-    await persistExplicitUpserts(controller.model, { chuyengia: mappedData });
+    await persistExplicitUpserts(controller.model, { chuyengia: mappedData }, operation);
     return mappedData.length;
   }
   if (type === "hopdong") {
@@ -317,7 +325,7 @@ async function saveBasicExcelImportInternal(controller, type, validRows) {
     });
     assertImportRecords("hopdong", mappedData);
     upsertById(controller.model.state.hopdong, mappedData);
-    await persistExplicitUpserts(controller.model, { hopdong: mappedData });
+    await persistExplicitUpserts(controller.model, { hopdong: mappedData }, operation);
     return mappedData.length;
   }
   return null;
@@ -363,7 +371,7 @@ function ensureContractorForOpeningImport(controller, row) {
   }
   return foundNt;
 }
-async function saveOpeningImport(controller, validRows, context = {}) {
+async function saveOpeningImport(controller, validRows, context = {}, operation) {
   const select = context.packageId ? null : document.getElementById("mothau-goithau-select");
   const gtId = context.packageId || (select ? select.value : "");
   if (!gtId) return 0;
@@ -402,7 +410,8 @@ async function saveOpeningImport(controller, validRows, context = {}) {
   await persistExplicitUpserts(controller.model, {
     nhathau: importedContractors,
     thongtinmothau: importedBids,
-  });
+  }, operation);
+  if (!isWorkspaceLeaseCurrent(controller.model, operation.lease)) return validRows.length;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (goiThau) {
     const tbody = document.getElementById("mothau-table-tbody");
@@ -418,7 +427,7 @@ async function saveOpeningImport(controller, validRows, context = {}) {
   }
   return validRows.length;
 }
-async function saveEvaluationImport(controller, validRows, context = {}) {
+async function saveEvaluationImport(controller, validRows, context = {}, operation) {
   const select = context.packageId ? null : document.getElementById("danhgiahsdt-goithau-select");
   const gtId = context.packageId || (select ? select.value : "");
   if (!gtId) return 0;
@@ -491,11 +500,12 @@ async function saveEvaluationImport(controller, validRows, context = {}) {
     bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === "Không đạt" ? row.nguyenNhanKhongDatKyThuat || "" : "";
     changedBids.push(bid);
   });
-  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids });
+  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids }, operation);
+  if (!isWorkspaceLeaseCurrent(controller.model, operation.lease)) return validRows.length;
   controller.renderDanhGiaHsdtPanel();
   return validRows.length;
 }
-async function saveAwardResultImport(controller, validRows, context = {}) {
+async function saveAwardResultImport(controller, validRows, context = {}, operation) {
   const gtId = context.packageId || controller._currentResultPackageId;
   if (!gtId) return 0;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
@@ -555,11 +565,12 @@ async function saveAwardResultImport(controller, validRows, context = {}) {
   await persistExplicitUpserts(controller.model, {
     goithau: [goiThau],
     thongtinmothau: changedBids,
-  });
+  }, operation);
+  if (!isWorkspaceLeaseCurrent(controller.model, operation.lease)) return validRows.length;
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-async function saveOpeningFinancialImport(controller, validRows, context = {}) {
+async function saveOpeningFinancialImport(controller, validRows, context = {}, operation) {
   const select = context.packageId
     ? null
     : document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
@@ -578,17 +589,18 @@ async function saveOpeningFinancialImport(controller, validRows, context = {}) {
     bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || defaultDuration || "";
     changedBids.push(bid);
   });
-  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids });
+  await persistExplicitUpserts(controller.model, { thongtinmothau: changedBids }, operation);
+  if (!isWorkspaceLeaseCurrent(controller.model, operation.lease)) return validRows.length;
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-async function saveBusinessExcelImportInternal(controller, type, validRows, context = {}) {
+async function saveBusinessExcelImportInternal(controller, type, validRows, context = {}, operation) {
   if (!isBusinessExcelImportType(type)) return null;
   assertImportRecords("thongtinmothau", validRows, type === "ketquaqd" ? ["trangThai"] : []);
-  if (type === "mothau") return await saveOpeningImport(controller, validRows, context);
-  if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows, context);
-  if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows, context);
-  if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows, context);
+  if (type === "mothau") return await saveOpeningImport(controller, validRows, context, operation);
+  if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows, context, operation);
+  if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows, context, operation);
+  if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows, context, operation);
   return null;
 }
 
@@ -598,33 +610,55 @@ const EXCEL_MUTATION_TABLES = [
 ];
 
 async function runRecoverableExcelMutation(controller, callback) {
+  const model = controller.model;
+  const lease = captureWorkspaceLease(model);
   const snapshots = Object.fromEntries(
     EXCEL_MUTATION_TABLES
-      .filter((table) => Array.isArray(controller.model.state[table]))
-      .map((table) => [table, structuredClone(controller.model.state[table])]),
+      .filter((table) => Array.isArray(lease.state[table]))
+      .map((table) => [table, structuredClone(lease.state[table])]),
   );
+  const mutation = model.beginWorkspaceMutation?.() || null;
+  const operation = { lease, mutation, persistedTables: new Set() };
+  const checkpoint = mutation?.outbox?.checkpoint?.() || null;
   try {
-    return await callback();
+    const count = await callback(operation);
+    await mutation?.outbox?.flush?.();
+    return count;
   } catch (error) {
     Object.entries(snapshots).forEach(([table, records]) => {
-      controller.model.state[table] = records;
-      controller.model.entityIndexes?.invalidate?.(table);
+      lease.state[table] = records;
+      if (isWorkspaceLeaseCurrent(model, lease)) model.entityIndexes?.invalidate?.(table);
     });
+    const rollbackErrors = [];
+    if (checkpoint) mutation.outbox.restore(checkpoint);
+    if (operation.persistedTables.size && typeof lease.db?.applySyncChanges === "function") {
+      try {
+        await lease.db.applySyncChanges({ replacements: Object.fromEntries(
+          [...operation.persistedTables].map(table => [table, snapshots[table] || []]),
+        ) });
+      } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+    }
+    try { await mutation?.outbox?.flush?.(); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+    if (rollbackErrors.length) error.rollbackErrors = rollbackErrors;
     throw error;
+  } finally {
+    if (mutation) model.finishWorkspaceMutation(mutation);
   }
 }
 
 export async function saveBasicExcelImport(controller, type, validRows) {
+  if (!isBasicExcelImportType(type)) return null;
   return runRecoverableExcelMutation(
     controller,
-    () => saveBasicExcelImportInternal(controller, type, validRows),
+    (operation) => saveBasicExcelImportInternal(controller, type, validRows, operation),
   );
 }
 
 export async function saveBusinessExcelImport(controller, type, validRows, context = {}) {
+  if (!isBusinessExcelImportType(type)) return null;
   return runRecoverableExcelMutation(
     controller,
-    () => saveBusinessExcelImportInternal(controller, type, validRows, context),
+    (operation) => saveBusinessExcelImportInternal(controller, type, validRows, context, operation),
   );
 }
 import { generateRecordId, generateUUID } from "../shared/idUtils.js";

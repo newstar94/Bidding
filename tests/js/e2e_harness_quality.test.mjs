@@ -695,6 +695,21 @@ test("production E2E harnesses do not import development source modules", () => 
   }
 });
 
+test("offline expert E2E verifies retained pending editor before intentional close and outbox retry", () => {
+  const source = fs.readFileSync(path.join(scriptsRoot, "verify_offline_sync_e2e.mjs"), "utf8");
+  assert.match(source, /async function assertPendingExpertEditor/u);
+  assert.match(source, /modalOpen:[\s\S]*classList\.contains\("active"\)/u);
+  assert.match(source, /Object\.entries\(expectedValues\)\.every/u);
+  assert.match(source, /pendingFeedback\.length === 0[\s\S]*finalFeedback\.length > 0/u);
+  assert.match(source, /new MutationObserver[\s\S]*toast-success[\s\S]*finalFeedback\.push/u);
+  assert.match(source, /assertPendingExpertEditor\(page, offlineValues, "offline"\)[\s\S]*data-close='modal-chuyengia'[\s\S]*context\.setOffline\(false\)/u);
+  assert.match(source, /assertPendingExpertEditor\(page, interruptedValues, "transport-error"\)[\s\S]*data-close='modal-chuyengia'[\s\S]*interruptedReplayFailed/u);
+  assert.match(source, /pendingAfterReload[\s\S]*#btn-force-sync"\)\.click\(\)[\s\S]*await interruptedCommit/u);
+  assert.match(source, /serverMatches\.length !== 1/u);
+  assert.match(source, /interruptedRowCount !== 1/u);
+  assert.doesNotMatch(source, /Interrupted save did not close after becoming locally durable/u);
+});
+
 test("startup rejection E2E waits for the intercepted canonical request", () => {
   const source = fs.readFileSync(
     path.resolve("e2e", "specs", "startup-sync.spec.mjs"),

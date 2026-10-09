@@ -525,6 +525,7 @@ class AssistantController {
 
   async changeMode(mode) {
     if (!MODES.some(([value]) => value === mode)) return;
+    this.stop();
     this.conversationRequestId += 1;
     this.mode = mode;
     this.conversationId = "";
@@ -551,10 +552,19 @@ class AssistantController {
     this.input.focus();
   }
 
-  async ensureConversation() {
+  async ensureConversation(operation = null) {
+    const requestId = this.conversationRequestId;
+    const workspaceId = this.workspaceId;
+    const mode = this.mode;
+    const current = () => requestId === this.conversationRequestId
+      && workspaceId === this.workspaceId && workspaceId === getActiveOrganizationId()
+      && mode === this.mode && (!operation || (!operation.signal.aborted && this.abortController === operation));
+    const assertCurrent = () => { if (!current()) throw new DOMException("Conversation context changed", "AbortError"); };
     await this.historyReady;
+    assertCurrent();
     if (this.conversationId) return this.conversationId;
-    const result = await assistantApi.createConversation(this.mode);
+    const result = await assistantApi.createConversation(mode);
+    assertCurrent();
     this.conversationId = result.id;
     this.conversations = [
       { ...result, mode: result.mode || this.mode },
@@ -681,7 +691,8 @@ class AssistantController {
       this.activeUserMessage = this.addBubble("user", content);
       const assistant = this.addBubble("assistant", "");
       this.activeMessage = assistant;
-      const id = await this.ensureConversation();
+      const id = await this.ensureConversation(operation);
+      if (operation.signal.aborted || this.abortController !== operation) return;
       this.rememberConversationTitle(id, content);
       const response = await assistantApi.sendMessage(
         id,
@@ -690,9 +701,12 @@ class AssistantController {
         globalThis.location?.pathname || "/",
         clientRequestId,
       );
-      await consumeAssistantStream(response, (event) => this.onEvent(event), operation.signal);
+      if (operation.signal.aborted || this.abortController !== operation) return;
+      await consumeAssistantStream(response, (event) => {
+        if (!operation.signal.aborted && this.abortController === operation) this.onEvent(event);
+      }, operation.signal);
     } catch (error) {
-      if (error?.name !== "AbortError") this.showFailure(error?.message || "Không thể nhận câu trả lời.");
+      if (error?.name !== "AbortError" && !operation.signal.aborted && this.abortController === operation) this.showFailure(error?.message || "Không thể nhận câu trả lời.");
     } finally {
       if (this.abortController === operation) {
         this.abortController = null;

@@ -10,6 +10,13 @@ import { bindAdminSelects } from "./AdminSelect.js";
 import { bindAdminDates } from "./AdminDate.js";
 
 window.performance?.mark?.("bf:app-module-start");
+if (!window.__BIDDINGFLOW_RELEASE__) {
+  Object.defineProperty(window, "__BIDDINGFLOW_RELEASE__", {
+    value: typeof __BIDDINGFLOW_RELEASE_ID__ === "string" ? __BIDDINGFLOW_RELEASE_ID__ : "development",
+    writable: false,
+    configurable: false,
+  });
+}
 
 let startupReadyMarked = false;
 function markStartupReady() {
@@ -132,17 +139,19 @@ function handleSessionExpiry() {
   const next = `${window.location.pathname}${window.location.search}`;
   window.location.assign(`/dang-nhap?next=${encodeURIComponent(next)}`);
 }
-function loadAdminModule(loader, exportName, content, options = {}) {
+async function loadAdminModule(loader, exportName, content, options = {}) {
   const controller = routeController;
   const moduleOptions = { ...options, signal: controller?.signal || options.signal };
-  void loader().then((module) => {
-    if (!controller?.signal.aborted) module[exportName](content, moduleOptions);
-  }).catch((error) => {
+  try {
+    const module = await loader();
+    if (!controller?.signal.aborted) await module[exportName](content, moduleOptions);
+  } catch (error) {
     if (!controller?.signal.aborted) content.innerHTML = trustedHTML(adminStateMarkup("error", { message: error?.message || "Không thể tải trang quản trị." }));
-  });
+  }
 }
-function renderRoute() {
+async function renderRoute() {
   routeController?.abort(); routeController = new AbortController();
+  const controller = routeController;
   const route = getAdminRoute(window.location.pathname); const view = document.getElementById("admin-view");
   document.querySelectorAll("[data-admin-link]").forEach((link) => { const active = link.dataset.adminLink === route?.path; link.classList.toggle("active", active); if (active) link.setAttribute("aria-current", "page"); else link.removeAttribute("aria-current"); });
   if (!route) { view.innerHTML = trustedHTML(`<div class="empty"><p class="empty-title">Không tìm thấy trang quản trị</p><div class="empty-action"><a class="btn btn-primary" href="/admin" data-admin-link="/admin">Về tổng quan</a></div></div>`); document.title = "Không tìm thấy | BiddingFlow Admin"; renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`; return; }
@@ -154,17 +163,19 @@ function renderRoute() {
     : `<div class="page-header"><div class="row align-items-center"><div class="col"><div class="page-pretitle">Quản trị nền tảng</div><h2 class="page-title">${escapeText(route.title)}</h2></div></div></div>`;
   view.innerHTML = trustedHTML(`${pageHeader}<div id="admin-route-content" class="${route.path === "/admin" ? "" : "mt-3"}"></div>`);
   const content = document.getElementById("admin-route-content");
-  if (route.path === "/admin") void renderAdminOverview(content, { signal: routeController.signal });
-  else if (route.path === "/admin/analytics") loadAdminModule(() => import("./AdminAnalytics.js"), "renderAdminAnalytics", content, { signal: routeController.signal });
-  else if (route.path === "/admin/users") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminUsers", content, { signal: routeController.signal });
-  else if (route.path === "/admin/organizations") loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminOrganizations", content, { signal: routeController.signal });
+  renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  document.getElementById("admin-main")?.focus({ preventScroll: true });
+  if (route.path === "/admin") await renderAdminOverview(content, { signal: controller.signal });
+  else if (route.path === "/admin/analytics") await loadAdminModule(() => import("./AdminAnalytics.js"), "renderAdminAnalytics", content, { signal: controller.signal });
+  else if (route.path === "/admin/users") await loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminUsers", content, { signal: controller.signal });
+  else if (route.path === "/admin/organizations") await loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminOrganizations", content, { signal: controller.signal });
   else if (route.path === "/admin/plans") {
-    loadAdminModule(loadAdminPlans, "renderAdminPlans", content, { signal: routeController.signal });
+    await loadAdminModule(loadAdminPlans, "renderAdminPlans", content, { signal: controller.signal });
   }
-  else if (route.path === "/admin/subscriptions") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminSubscriptions", content, { signal: routeController.signal });
-  else if (route.path === "/admin/payments") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminPayments", content, { signal: routeController.signal });
-  else if (route.path === "/admin/invoices") loadAdminModule(() => import("./AdminBilling.js"), "renderAdminInvoicesUnavailable", content, {
-    signal: routeController.signal,
+  else if (route.path === "/admin/subscriptions") await loadAdminModule(() => import("./AdminBilling.js"), "renderAdminSubscriptions", content, { signal: controller.signal });
+  else if (route.path === "/admin/payments") await loadAdminModule(() => import("./AdminBilling.js"), "renderAdminPayments", content, { signal: controller.signal });
+  else if (route.path === "/admin/invoices") await loadAdminModule(() => import("./AdminBilling.js"), "renderAdminInvoicesUnavailable", content, {
+    signal: controller.signal,
     initialDetailId: route.detailId || "",
     setDetail(detailId, { push = false } = {}) {
       const path = detailId
@@ -173,17 +184,18 @@ function renderRoute() {
       history[push ? "pushState" : "replaceState"]({ adminPath: "/admin/invoices" }, "", path);
     },
   });
-  else if (route.path === "/admin/audit") loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminAudit", content, { signal: routeController.signal });
-  else if (route.path === "/admin/security") loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminSecurity", content, { signal: routeController.signal });
-  else if (route.path === "/admin/health") loadAdminModule(() => import("./AdminOperations.js"), "renderAdminHealth", content, { signal: routeController.signal });
-  else if (route.path === "/admin/settings") loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSettings", content, { signal: routeController.signal });
-  else if (route.path === "/admin/environment") loadAdminModule(() => import("./AdminOperations.js"), "renderAdminEnvironment", content, { signal: routeController.signal });
-  else if (route.path === "/admin/system/version") loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSystemVersion", content, { signal: routeController.signal });
-  else if (route.path === "/admin/system/jobs") loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemJobs", content, { signal: routeController.signal });
-  else if (route.path === "/admin/system/sync") loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemSync", content, { signal: routeController.signal });
+  else if (route.path === "/admin/audit") await loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminAudit", content, { signal: controller.signal });
+  else if (route.path === "/admin/security") await loadAdminModule(() => import("./AdminSecurity.js"), "renderAdminSecurity", content, { signal: controller.signal });
+  else if (route.path === "/admin/health") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminHealth", content, { signal: controller.signal });
+  else if (route.path === "/admin/settings") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSettings", content, { signal: controller.signal });
+  else if (route.path === "/admin/environment") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminEnvironment", content, { signal: controller.signal });
+  else if (route.path === "/admin/system/version") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSystemVersion", content, { signal: controller.signal });
+  else if (route.path === "/admin/system/jobs") await loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemJobs", content, { signal: controller.signal });
+  else if (route.path === "/admin/system/sync") await loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemSync", content, { signal: controller.signal });
   else content.innerHTML = trustedHTML(adminStateMarkup("empty", { message: "Chức năng này chưa có nguồn dữ liệu quản trị được xác thực." }));
-  renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  document.getElementById("admin-main")?.focus({ preventScroll: true });
+  if (controller.signal.aborted) return;
+  window.performance?.mark?.("bf:admin-route:ready");
+  markStartupReady();
 }
 function handleAdminPopState() {
   const guard = new CustomEvent("admin:before-navigate", {
@@ -201,6 +213,7 @@ if (!session.valid || session.user?.platform_role !== "super_admin") app.innerHT
 else {
   window.performance?.mark?.("bf:init:start");
   app.innerHTML = trustedHTML(shellMarkup(session)); app.setAttribute("aria-busy", "false");
+  window.performance?.mark?.("bf:admin-shell:ready");
   bindNavigationToggle();
   bindAdminSearch(document);
   bindAdminSelects(app);
@@ -214,5 +227,5 @@ else {
     navigateAdmin(link.dataset.adminLink);
   });
   renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  window.addEventListener("popstate", handleAdminPopState); window.addEventListener("admin:navigate", renderRoute); renderRoute(); markStartupReady();
+  window.addEventListener("popstate", handleAdminPopState); window.addEventListener("admin:navigate", renderRoute); void renderRoute();
 }

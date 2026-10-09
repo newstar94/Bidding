@@ -1866,7 +1866,8 @@ async def update_user_role_api(request):
                 return JSONResponse({"error": "Không thể hạ quyền quản lý tối cao."}, status_code=409)
 
             hierarchy = {"employee": 0, "manager": 1}
-            if not actor_platform_admin:
+            actor_is_owner = bool(owner_user_id and str(role_or_err.user_id) == owner_user_id)
+            if not actor_platform_admin and not actor_is_owner:
                 actor_rank = hierarchy[actor_role]
                 if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
                     conn.rollback()

@@ -35,7 +35,7 @@ from backend.documents.routes_docx import _content_disposition
 from backend.documents.upload_spooling import spooled_upload
 from backend.shared.access_policy import can_read_record
 from backend.shared.async_io import run_blocking_io
-from backend.shared.database_io import run_database_read
+from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.helpers import (
     OrgPermissionError,
     OrgScopeRequiredError,
@@ -214,7 +214,8 @@ async def export_winning_goods_excel_api(request):
             char if char.isalnum() or char in {"-", "_"} else "_"
             for char in package_code
         )[:120] or "goi_thau"
-        log_audit(
+        await run_database_write(
+            log_audit,
             "winning_goods.excel_exported",
             actor_user_id=role.user_id,
             organization_id=organization_id,
@@ -392,7 +393,8 @@ async def validate_award_result_excel_api(request):
             public_result.update(
                 {"validationToken": token, "expiresAt": metadata["expiresAt"]}
             )
-        log_audit(
+        await run_database_write(
+            log_audit,
             "award_result.excel_validated",
             actor_user_id=role.user_id,
             organization_id=organization_id,
@@ -491,7 +493,8 @@ async def export_award_result_excel_api(request):
         if not isinstance(output, (bytes, bytearray)):
             raise DocumentWorkerError("Kết quả xuất workbook không hợp lệ.")
         filename = output_filename(metadata.get("originalFilename"))
-        log_audit(
+        await run_database_write(
+            log_audit,
             "award_result.excel_exported",
             actor_user_id=role.user_id,
             organization_id=organization_id,
@@ -675,7 +678,8 @@ async def award_result_excel_reconciliation_api(request):
         if not isinstance(report, (bytes, bytearray)):
             raise DocumentWorkerError("Báo cáo đối chiếu không hợp lệ.")
         filename = reconciliation_filename(metadata.get("originalFilename"))
-        log_audit(
+        await run_database_write(
+            log_audit,
             "award_result.excel_reconciliation_exported",
             actor_user_id=role.user_id,
             organization_id=organization_id,

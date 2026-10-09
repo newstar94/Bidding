@@ -1453,7 +1453,8 @@ async def export_plan_api(request):
         if snapshot_error is not None:
             return snapshot_error
 
-        _commit_word_export_audit(
+        await run_database_write(
+            _commit_word_export_audit,
             request=request,
             actor_user_id=user_id,
             organization_id=org_name,
@@ -1568,7 +1569,8 @@ async def export_report_api(request):
         if snapshot_error is not None:
             return snapshot_error
 
-        _commit_word_export_audit(
+        await run_database_write(
+            _commit_word_export_audit,
             request=request,
             actor_user_id=user_id,
             organization_id=org_name,

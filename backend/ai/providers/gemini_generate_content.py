@@ -14,6 +14,7 @@ from backend.ai.providers.base import (
     endpoint,
     iter_sse,
     json_request,
+    merge_reported_counters,
     require_api_key,
     require_model,
     stream_http,
@@ -90,17 +91,23 @@ def normalize_gemini_generate_content_stream(raw_events: Iterable[dict]) -> Iter
     calls: list[dict] = []
     seen_calls: set[str] = set()
     usage: dict[str, int] = {}
+    native_totals: dict[str, int] = {}
     yielded_created = False
     for event in raw_events:
+        native_usage = event.get("usageMetadata")
+        if isinstance(native_usage, dict) and merge_reported_counters(
+            native_totals, native_usage,
+            ("promptTokenCount", "toolUsePromptTokenCount", "candidatesTokenCount", "thoughtsTokenCount"),
+        ):
+            usage = _legacy_usage(native_totals)
+            yield {"type": "response.usage", "usage": dict(usage)}
         if event.get("error"):
-            yield {"type": "error", "error": event["error"]}
+            yield {"type": "error", "error": event["error"],
+                   **({"usage": dict(usage)} if usage else {})}
             return
         if not yielded_created:
             yield {"type": "response.created", "response": {"id": "gemini_generate_content"}}
             yielded_created = True
-        native_usage = event.get("usageMetadata")
-        if isinstance(native_usage, dict):
-            usage = _legacy_usage(native_usage)
         candidates = event.get("candidates")
         if not isinstance(candidates, list):
             continue

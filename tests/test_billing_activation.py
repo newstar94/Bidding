@@ -1314,6 +1314,66 @@ def test_ambiguous_cancel_queries_before_repeating_the_mutation(billing_cursor):
     assert provider.get_calls == 1
 
 
+@pytest.mark.parametrize("requester", ["creator", "owner"])
+def test_organization_cancel_paid_race_preserves_payment_and_activates_once(billing_cursor, requester):
+    pending = _insert_base_plan_order(billing_cursor, owner_kind="organization")
+    creator_id = pending["user_id"]
+    owner_id = f"owner-{uuid.uuid4().hex}"
+    billing_cursor.execute(
+        """INSERT INTO tai_khoan (id, ten_dang_nhap, email, email_norm, mat_khau, vai_tro, trang_thai)
+           VALUES (?, ?, ?, ?, 'unused-test-password', 'user', 'active')""",
+        (owner_id, owner_id, f"{owner_id}@example.test", f"{owner_id}@example.test"),
+    )
+    billing_cursor.execute(
+        "UPDATE to_chuc SET owner_user_id = ? WHERE id = ?", (owner_id, pending["organization_id"]),
+    )
+    for user_id in (creator_id, owner_id):
+        billing_cursor.execute(
+            """INSERT INTO thanh_vien_to_chuc
+               (user_id, organization_id, vai_tro_trong_to_chuc)
+               VALUES (?, ?, 'manager')""", (user_id, pending["organization_id"]),
+        )
+    actor = SessionRole(
+        "manager", creator_id if requester == "creator" else owner_id,
+        platform_role="user", active_role="manager",
+        active_role_organization_id=pending["organization_id"],
+    )
+    public_id = billing_cursor.execute(
+        "SELECT public_id FROM billing_orders WHERE id = ?", (pending["order_id"],),
+    ).fetchone()[0]
+    service = BillingService(billing_cursor, clock=lambda: pending["now"])
+    _order, command_id, replayed = service.request_cancel(public_id, actor, "Popup closed")
+    assert command_id and not replayed
+
+    class PaidDuringCancellation:
+        def cancel_payment(self, identifier, _reason):
+            assert identifier == pending["order_code"]
+            return _paid_result(pending)
+
+    executor = ProviderCommandExecutor(
+        _TransactionDatabase(billing_cursor), providers={"provider-fake-v1": PaidDuringCancellation()},
+        clock=lambda: pending["now"], environment={"PAYMENT_ACTIVATION_ENABLED": "true"},
+    )
+    paid = executor.execute(command_id)
+    assert (paid["payment_state"], paid["activation_state"]) == ("verified_paid", "applied")
+    assert paid["checkout_state"] != "cancelled"
+    assert executor.execute(command_id) is None
+    with pytest.raises(CommercialPolicyError) as error:
+        service.request_cancel(public_id, actor, "Esc pressed")
+    assert error.value.code == "TRANSITION_NOT_ALLOWED"
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ? AND transaction_type = 'payment'",
+        (pending["order_id"],),
+    ).fetchone()[0] == 1
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM billing_subscription_activations WHERE order_id = ?", (pending["order_id"],),
+    ).fetchone()[0] == 1
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM billing_provider_commands WHERE order_id = ? AND command_type = 'cancel_checkout'",
+        (pending["order_id"],),
+    ).fetchone()[0] == 1
+
+
 def test_paid_provider_result_stays_retryable_when_activation_transaction_fails(
     billing_cursor,
     monkeypatch,

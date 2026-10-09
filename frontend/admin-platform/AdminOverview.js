@@ -309,7 +309,7 @@ export async function renderAdminOverview(container, { fetchImpl, signal } = {})
         });
       } else renderAdminMarkup(healthHost, operationalStatusMarkup(healthPayload));
     };
-    void healthPromise.then(showHealth);
+    showHealth(await healthPromise);
   } catch (error) {
     if (!isCurrent()) return;
     renderAdminFailure(container, error, () => renderAdminOverview(container, { fetchImpl, signal }));

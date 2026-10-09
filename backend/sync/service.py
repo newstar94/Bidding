@@ -794,7 +794,7 @@ def execute_sync_mutation(
                 return error_response(
                     request,
                     "VERSION_SOURCE_WRITE_DENIED",
-                    access.reason or "Không có quyền tạo phiên bản cho bản ghi này.",
+                    access.message or "Không có quyền tạo phiên bản cho bản ghi này.",
                     status_code=403,
                 )
             data = build_aggregate_version_payload(

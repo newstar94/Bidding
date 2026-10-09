@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -113,6 +114,61 @@ def test_cancellation_safe_cleanup_finishes_before_propagating(monkeypatch):
         assert completed.is_set()
 
     asyncio.run(scenario())
+
+
+@pytest.fixture
+def accounting_database(monkeypatch):
+    storage = sqlite3.connect(":memory:", isolation_level=None)
+    storage.executescript("""
+        CREATE TABLE ai_usage_daily (
+            usage_date TEXT, organization_id TEXT, user_id TEXT,
+            request_count INTEGER DEFAULT 0, reserved_tokens INTEGER DEFAULT 0,
+            input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
+            tool_call_count INTEGER DEFAULT 0, updated_at TEXT,
+            UNIQUE (usage_date, organization_id, user_id)
+        );
+        CREATE TABLE ai_token_reservations (
+            id TEXT PRIMARY KEY, usage_date TEXT, organization_id TEXT, user_id TEXT,
+            reserved_tokens INTEGER, status TEXT, actual_input_tokens INTEGER,
+            actual_output_tokens INTEGER, settled_at TEXT
+        );
+    """)
+
+    class Connection:
+        def execute(self, sql, parameters=()):
+            return storage.execute(sql.replace(" FOR UPDATE", ""), parameters)
+
+        def commit(self):
+            storage.commit()
+
+        def rollback(self):
+            storage.rollback()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(quota_service.database, "get_connection", Connection)
+    monkeypatch.setattr(quota_service, "_usage_date", lambda: "2026-10-09")
+    yield storage
+    storage.close()
+
+
+def test_actual_overage_is_accounted_once_and_blocks_new_reservation(accounting_database):
+    reservation = quota_service.reserve_tokens(_context(), 80, config=_config(100))
+    assert quota_service.settle_token_reservation(reservation, 70, 70, config=_config(100))
+    assert not quota_service.settle_token_reservation(reservation, 70, 70, config=_config(100))
+    assert not quota_service.release_token_reservation(reservation)
+    assert accounting_database.execute("SELECT input_tokens, output_tokens, reserved_tokens FROM ai_usage_daily").fetchone() == (70, 70, 0)
+    assert accounting_database.execute("SELECT status, actual_input_tokens, actual_output_tokens FROM ai_token_reservations").fetchone() == ("settled", 70, 70)
+    with pytest.raises(Exception) as caught:
+        quota_service.reserve_tokens(_context(), 1, config=_config(100))
+    assert caught.value.code == "AI_QUOTA_EXCEEDED"
+
+
+def test_known_usage_recording_never_drops_overage_or_tool_count(accounting_database):
+    quota_service.record_tokens(_context(), 70, 70, 2, config=_config(100))
+    quota_service.record_tokens(_context(), 0, 0, 1, config=_config(100))
+    assert accounting_database.execute("SELECT input_tokens, output_tokens, tool_call_count FROM ai_usage_daily").fetchone() == (70, 70, 3)
 
 
 class _AuthCursor:

@@ -15,6 +15,7 @@ import {
 import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport } from "./excelSaveAdapters.js";
 import { renderExcelPreview } from "../packages/GoiThauModals.js";
 import { buildExpertImportIndex } from "./excelImportIndexes.js";
+import { awaitCanonicalSyncResult, CANONICAL_SAVE_STATUS, classifyCanonicalSyncResult, showLocalSavePending } from "../shared/MutationService.js";
 import {
   getActiveEvaluationLotScope,
 } from "../packages/lotEvaluationScope.js";
@@ -528,12 +529,15 @@ export async function handleExcelUpload(file, context = null) {
   }
 }
 export async function saveExcelImport() {
+  if (this._excelImportSaving) return false;
   if (!this._excelImportData || this._excelImportData.length === 0) return;
   const type = this._excelImportType;
   const importContext = this._excelImportContext;
   if (!excelImportContextIsCurrent(this, importContext)) {
     return await rejectStaleExcelImport(this);
   }
+  this._excelImportSaving = true;
+  try {
   let count = 0;
   const validRows = this._excelImportData.filter((r) => r._valid);
   if (validRows.length === 0 && isBasicExcelImportType(type)) {
@@ -552,8 +556,13 @@ export async function saveExcelImport() {
   if (!excelImportContextIsCurrent(this, importContext)) {
     return await rejectStaleExcelImport(this);
   }
-  const basicImportCount = await saveBasicExcelImport(this, type, validRows);
+  const previousSave = this._excelImportApplied;
+  const alreadyApplied = previousSave?.context === importContext && previousSave?.data === this._excelImportData;
+  const basicImportCount = alreadyApplied
+    ? (previousSave.isBasicImport ? previousSave.count : null)
+    : await saveBasicExcelImport(this, type, validRows);
   const isBasicImport = basicImportCount !== null;
+  if (!excelImportContextIsCurrent(this, importContext)) return false;
   if (basicImportCount !== null) {
     count = basicImportCount;
     const stateKey = IMPORT_STATE_KEY[type];
@@ -561,7 +570,7 @@ export async function saveExcelImport() {
       this.model.currentPage[stateKey] = 1;
     }
   } else {
-    const businessImportCount = await saveBusinessExcelImport(
+    const businessImportCount = alreadyApplied ? previousSave.count : await saveBusinessExcelImport(
       this,
       type,
       validRows,
@@ -571,24 +580,48 @@ export async function saveExcelImport() {
       count = businessImportCount;
     }
   }
-  const syncResult = await this.autoSync();
+  if (!excelImportContextIsCurrent(this, importContext)) return false;
+  this._excelImportApplied = { context: importContext, data: this._excelImportData, count, isBasicImport };
+  const syncResult = await awaitCanonicalSyncResult(await this.autoSync());
+  if (!excelImportContextIsCurrent(this, importContext)) return false;
+  const canonicalStatus = classifyCanonicalSyncResult(syncResult);
   if (isBasicImport) {
-    await renderBasicImportResult(this, type, { useLocalSnapshot: !syncResult?.ok });
+    await renderBasicImportResult(this, type, { useLocalSnapshot: canonicalStatus === CANONICAL_SAVE_STATUS.REMOTE_PENDING || canonicalStatus === CANONICAL_SAVE_STATUS.OFFLINE_PENDING });
+  }
+  if (!excelImportContextIsCurrent(this, importContext)) return false;
+  if (canonicalStatus !== CANONICAL_SAVE_STATUS.CANONICAL_COMMITTED) {
+    if (canonicalStatus === CANONICAL_SAVE_STATUS.REMOTE_PENDING || canonicalStatus === CANONICAL_SAVE_STATUS.OFFLINE_PENDING) {
+      showLocalSavePending(this.view, "Dữ liệu nhập Excel");
+    } else {
+      // Keep only the entered preview. The sync layer owns canonical reload and
+      // rejected receipt removal; this UI never restores or replays that receipt.
+      this._excelImportApplied = null;
+      this.view.showToast("Chưa hoàn tất nhập Excel", canonicalStatus === CANONICAL_SAVE_STATUS.CONFLICT
+        ? "Máy chủ từ chối thay đổi do xung đột. Dữ liệu máy chủ đã được đối soát; nội dung nhập vẫn còn để bạn kiểm tra và thử lại chủ động."
+        : "Máy chủ chưa xác nhận dữ liệu nhập. Vui lòng kiểm tra nội dung và thử lại.", "warning");
+    }
+    return false;
   }
   const updatedCount = validRows.filter((row) => row._operation === "update").length;
   const createdCount = count - updatedCount;
   await this.closeModal("modal-excel-preview", { restoreRoute: false });
+  // closeModal clears the import type as part of its normal lifecycle. A newer
+  // preview or workspace must still prevent this completion from clearing it.
+  if (this._excelImportContext !== importContext
+      || (importContext.workspaceToken && this.model?.isWorkspaceCurrent?.(importContext.workspaceToken) === false)) return false;
   this._excelImportData = null;
   this._excelImportContext = null;
+  this._excelImportApplied = null;
   const summary = `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`;
-  if (syncResult?.ok) {
-    this.view.showToast("Thành công", summary, "success");
-  } else if (syncResult?.error && !syncResult?.status && !syncResult?.validation && !syncResult?.conflict) {
-    this.view.showToast(
-      "Thất bại",
-      "Không thể hoàn tất nhập dữ liệu. Vui lòng kiểm tra kết nối và thử lại.",
-      "error"
-    );
+  this.view.showToast("Thành công", summary, "success");
+  return true;
+  } catch (error) {
+    if (excelImportContextIsCurrent(this, importContext)) {
+      this.view.showToast("Không thể nhập Excel", error?.message || "Vui lòng kiểm tra kết nối và thử lại.", "error");
+    }
+    return false;
+  } finally {
+    this._excelImportSaving = false;
   }
 }
 export function buildPhanLoExportPayload(rows) {

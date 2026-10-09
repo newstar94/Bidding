@@ -32,6 +32,7 @@ from backend.shared.logging_utils import (
     log_structured_event,
 )
 from backend.shared.request_validation import read_json_object
+from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.commercial_policy.config import commercial_runtime_config
 from backend.commercial_policy.repository import CommercialRepository
 from backend.commercial_policy.errors import CommercialPolicyError
@@ -133,8 +134,21 @@ def _lookup_blocking(request, payload):
         request, payload.get("workspaceLease")
     )
     _enforce_rate_limit(request, session.user_id, organization_id)
+    return fetch_procurement_snapshot(request, session, organization_id, payload)
+
+
+def fetch_procurement_snapshot(
+    request, session, organization_id, payload, *, raw_repository=None,
+    service=None, fetch=None, revision_metadata=None, persist_partial_snapshot=True,
+):
+    """Reserve, fetch and atomically persist one lookup/import source snapshot.
+
+    Callers supply their already-authorized workspace context. ``fetch`` is an
+    optional specialized projection fetch (opening), with the same code/revision
+    identity and authoritative snapshot commit as ordinary lookup.
+    """
     settings = ProcurementLookupSettings.from_environ()
-    raw_repository = ProcurementRawSnapshotRepository(database=database)
+    raw_repository = raw_repository or ProcurementRawSnapshotRepository(database=database)
     revision_mode = payload.get("revisionMode") or "LATEST"
     revision_numbers = payload.get("revisionNumbers")
     raw_loader = lambda: (
@@ -148,8 +162,8 @@ def _lookup_blocking(request, payload):
         revision_numbers=revision_numbers,
         max_age_seconds=settings.raw_cache_ttl_seconds,
     )
-    cached_raw_bundle = raw_loader() if (payload.get("detailLevel") or "CANONICAL").upper() == "COMPLETE" else None
-    service = build_lookup_service()
+    cached_raw_bundle = raw_loader() if fetch is None and (payload.get("detailLevel") or "CANONICAL").upper() == "COMPLETE" else None
+    service = service or build_lookup_service()
     reservations = _reserve_procurement_usage(
         request,
         session,
@@ -159,6 +173,7 @@ def _lookup_blocking(request, payload):
         service=service,
         cache_hit=isinstance(cached_raw_bundle, dict),
         cached_raw_bundle=cached_raw_bundle,
+        revision_metadata=revision_metadata,
     )
     usage_credits = None
     authoritative_raw_bundle = None
@@ -191,16 +206,21 @@ def _lookup_blocking(request, payload):
                 cached_raw_bundle = None
             else:
                 cached_raw_bundle = authoritative_raw_bundle
-        result = service.lookup(
-            payload.get("code"),
-            detail_level=payload.get("detailLevel") or "CANONICAL",
-            revision_mode=revision_mode,
-            revision_numbers=revision_numbers,
-            raw_bundle_loader=lambda: cached_raw_bundle,
-            cache_scope=str(organization_id),
-            lookup_request_id=get_request_id(request),
-        )
-        if usage_credits is not None and availability["fetchRevisions"] and isinstance(authoritative_raw_bundle, dict):
+        if fetch is not None:
+            result = fetch()
+        else:
+            result = service.lookup(
+                payload.get("code"),
+                detail_level=payload.get("detailLevel") or "CANONICAL",
+                revision_mode=revision_mode,
+                revision_numbers=revision_numbers,
+                raw_bundle_loader=lambda: cached_raw_bundle,
+                cache_scope=str(organization_id),
+                lookup_request_id=get_request_id(request),
+            )
+        if reservations and not isinstance(result.get("rawBundle"), dict):
+            raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+        if fetch is None and usage_credits is not None and availability["fetchRevisions"] and isinstance(authoritative_raw_bundle, dict):
             # Validate the response containing both cached and fetched revisions
             # before the fetched snapshot and its usage debit are committed.
             merged_result = _merge_authoritative_raw_bundle(
@@ -213,7 +233,11 @@ def _lookup_blocking(request, payload):
     cache_layer = ((result.get("metrics") or {}).get("cache") or {}).get(
         "layer"
     ) if isinstance(result, dict) else None
-    if isinstance(raw_bundle, dict) and cache_layer != "RAW_SNAPSHOT":
+    persist_snapshot = (
+        isinstance(raw_bundle, dict)
+        and (persist_partial_snapshot or bool(raw_bundle.get("complete")))
+    )
+    if persist_snapshot and cache_layer != "RAW_SNAPSHOT":
         connection = database.get_connection()
         try:
             connection.execute("BEGIN")
@@ -238,7 +262,10 @@ def _lookup_blocking(request, payload):
         finally:
             connection.close()
     else:
-        _finish_procurement_usage(reservations, consume=False, reason="cache_hit")
+        _finish_procurement_usage(
+            reservations, consume=False,
+            reason="incomplete_snapshot" if isinstance(raw_bundle, dict) and not raw_bundle.get("complete") else "cache_hit",
+        )
     _observe_shadow_procurement_usage(
         request,
         result,
@@ -255,7 +282,7 @@ def _lookup_blocking(request, payload):
 
 def _usage_owner(request, session, organization_id):
     context = getattr(getattr(request, "state", None), "organization_context", None)
-    if getattr(context, "scope_type", None) == "personal":
+    if getattr(context, "scope_type", None) == "personal" or is_personal_scope_for_user(organization_id, session.user_id):
         return UsageOwner("account", session.user_id)
     return UsageOwner("organization", organization_id)
 
@@ -305,6 +332,7 @@ def _reserve_procurement_usage(
     service,
     cache_hit,
     cached_raw_bundle=None,
+    revision_metadata=None,
 ):
     config = commercial_runtime_config()
     if not config.procurement_credit_enforcement_enabled:
@@ -329,7 +357,7 @@ def _reserve_procurement_usage(
             "cacheHit": True,
             "usageCredits": _usage_credit_outcome(cached, {candidate.identity for candidate in cached}),
         }
-    metadata = service.list_revision_metadata(
+    metadata = revision_metadata if revision_metadata is not None else service.list_revision_metadata(
         code, lookup_request_id=get_request_id(request)
     )
     selected = _select_revision_metadata(

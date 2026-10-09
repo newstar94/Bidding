@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -44,7 +45,10 @@ from backend.documents.package_document_service import (
 from backend.documents.upload_spooling import spooled_upload
 from backend.auth.auth_helper import verify_session_in_transaction
 from backend.shared.access_policy import authorize_record_write, can_read_record
-from backend.shared.async_io import run_blocking_io
+from backend.shared.async_io import (
+    BlockingIOBusyError, BlockingIOTimeoutError, finish_submitted_task, run_blocking_io,
+)
+from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.domain_enums import enum_label
 from backend.shared.helpers import (
     OrgPermissionError,
@@ -299,6 +303,20 @@ def _validate_mutation_scope(
 
 async def list_package_documents_api(request):
     try:
+        return await run_database_read(_list_package_documents, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError) as exc:
+        return log_and_error(
+            request,
+            exc,
+            "list_package_documents_api",
+            "PACKAGE_DOCUMENT_LIST_FAILED",
+            "Không thể tải danh sách tài liệu.",
+            status_code=503,
+        )
+
+
+def _list_package_documents(request):
+    try:
         valid, session = verify_session(request)
         if not valid:
             return _document_error(str(session), "SESSION_REQUIRED", 403)
@@ -375,119 +393,76 @@ async def list_package_documents_api(request):
         )
 
 
-async def upload_package_document_api(request):
-    new_storage_key = None
-    old_storage_key = None
-    connection = None
-    try:
-        valid, session = verify_session(request)
-        if not valid:
-            return _document_error(str(session), "SESSION_REQUIRED", 403)
-        package_id = str(request.path_params.get("package_id") or "").strip()
-        document_type = str(
-            request.path_params.get("document_type") or ""
-        ).strip()
-        evaluation_batch_id = _request_evaluation_batch_id(request)
-        idempotency_key, idempotency_error = _document_idempotency_key(request)
-        if idempotency_error:
-            return idempotency_error
-        if document_type_definition(document_type) is None:
-            return _document_error(
-                "Loại tài liệu không hợp lệ.",
-                "PACKAGE_DOCUMENT_TYPE_INVALID",
-                400,
-            )
-        organization_id = get_active_org(request, session.user_id)
-        operation = _document_operation(
+def _prepare_package_document_upload(request):
+    valid, session = verify_session(request)
+    if not valid:
+        return _document_error(str(session), "SESSION_REQUIRED", 403)
+    package_id = str(request.path_params.get("package_id") or "").strip()
+    document_type = str(
+        request.path_params.get("document_type") or ""
+    ).strip()
+    evaluation_batch_id = _request_evaluation_batch_id(request)
+    idempotency_key, idempotency_error = _document_idempotency_key(request)
+    if idempotency_error:
+        return idempotency_error
+    if document_type_definition(document_type) is None:
+        return _document_error(
+            "Loại tài liệu không hợp lệ.",
+            "PACKAGE_DOCUMENT_TYPE_INVALID",
+            400,
+        )
+    organization_id = get_active_org(request, session.user_id)
+    operation = _document_operation(
+        organization_id,
+        package_id,
+        document_type,
+        evaluation_batch_id,
+        "upload",
+    )
+
+    with database.get_connection() as read_connection:
+        cursor = read_connection.cursor()
+        package = load_package(cursor, organization_id, package_id)
+        decision = _package_write_decision(
+            cursor,
+            session,
             organization_id,
             package_id,
+        )
+        if not decision.allowed:
+            return _document_error(
+                decision.message or "Không có quyền sửa gói thầu.",
+                "PACKAGE_DOCUMENT_ACCESS_DENIED",
+                403,
+            )
+        if document_type not in allowed_upload_types(package):
+            return _document_error(
+                "Loại tài liệu này không được tải lên ở bước hiện tại.",
+                "PACKAGE_DOCUMENT_STEP_LOCKED",
+                409,
+            )
+        _validate_mutation_scope(
+            cursor,
+            organization_id,
+            package,
             document_type,
             evaluation_batch_id,
-            "upload",
         )
 
-        with database.get_connection() as read_connection:
-            cursor = read_connection.cursor()
-            package = load_package(cursor, organization_id, package_id)
-            decision = _package_write_decision(
-                cursor,
-                session,
-                organization_id,
-                package_id,
-            )
-            if not decision.allowed:
-                return _document_error(
-                    decision.message or "Không có quyền sửa gói thầu.",
-                    "PACKAGE_DOCUMENT_ACCESS_DENIED",
-                    403,
-                )
-            if document_type not in allowed_upload_types(package):
-                return _document_error(
-                    "Loại tài liệu này không được tải lên ở bước hiện tại.",
-                    "PACKAGE_DOCUMENT_STEP_LOCKED",
-                    409,
-                )
-            _validate_mutation_scope(
-                cursor,
-                organization_id,
-                package,
-                document_type,
-                evaluation_batch_id,
-            )
+    return (session, package_id, document_type, evaluation_batch_id,
+            idempotency_key, organization_id, operation)
 
-        form = await request.form()
-        upload = form.get("file")
-        if upload is None or not getattr(upload, "filename", None):
-            return _document_error(
-                "Vui lòng chọn tệp cần tải lên.",
-                "PACKAGE_DOCUMENT_FILE_REQUIRED",
-                400,
-            )
-        original_filename = clean_original_filename(upload.filename)
-        extension, archive_kind, content_type = media_for_filename(
-            original_filename
-        )
-        async with spooled_upload(
-            upload,
-            max_bytes=MAX_PACKAGE_DOCUMENT_BYTES,
-            suffix=extension,
-        ) as (upload_path, upload_size, head):
-            if upload_size <= 0:
-                raise PackageDocumentError("Tệp tải lên đang trống.")
-            if archive_kind == "pdf":
-                if not head.startswith(b"%PDF-"):
-                    raise PackageDocumentError("Cấu trúc tệp PDF không hợp lệ.")
-                await run_blocking_io(
-                    validate_pdf_path,
-                    upload_path,
-                    timeout_seconds=10,
-                )
-            else:
-                if not head.startswith(b"PK"):
-                    raise PackageDocumentError(
-                        "Cấu trúc tệp Office không hợp lệ."
-                    )
-                await run_document_job_async(
-                    "validate_ooxml",
-                    {
-                        "content_path": str(upload_path),
-                        "kind": archive_kind,
-                    },
-                    timeout_seconds=20,
-                )
 
-            new_storage_key = create_storage_key(
-                organization_id,
-                package_id,
-                extension,
-            )
-            stored_size, checksum = await run_blocking_io(
-                persist_upload_path,
-                upload_path,
-                new_storage_key,
-                timeout_seconds=15,
-            )
-
+def _commit_package_document_upload(
+    request, session, package_id, document_type, evaluation_batch_id,
+    idempotency_key, organization_id, operation, new_storage_key,
+    original_filename, content_type, stored_size, checksum,
+):
+    # This worker owns the transaction and newly staged file until commit.
+    # Caller cancellation cannot delete a file whose transaction may commit.
+    connection = None
+    accepted = False
+    try:
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
@@ -529,15 +504,6 @@ async def upload_package_document_api(request):
             connection.commit()
             connection.close()
             connection = None
-            if new_storage_key:
-                try:
-                    await run_blocking_io(
-                        remove_storage_key,
-                        new_storage_key,
-                        timeout_seconds=5,
-                    )
-                finally:
-                    new_storage_key = None
             replay_payload, replay_status = replay
             return JSONResponse(replay_payload, status_code=replay_status)
         if document_type not in allowed_upload_types(package):
@@ -631,37 +597,165 @@ async def upload_package_document_api(request):
         connection.commit()
         connection.close()
         connection = None
-        new_storage_key = None
+        accepted = True
         if old_storage_key and old_storage_key != new_storage_key:
             try:
-                await run_blocking_io(
-                    remove_storage_key,
-                    old_storage_key,
-                    timeout_seconds=5,
-                )
+                remove_storage_key(old_storage_key)
             except Exception as cleanup_error:
                 log_error(cleanup_error, "package_document_old_file_cleanup")
         return JSONResponse(response_payload, status_code=response_status)
-    except (PackageDocumentError, DocumentWorkerInputError) as exc:
+    except BaseException:
         if connection:
             connection.rollback()
-        if new_storage_key:
+        raise
+    finally:
+        if connection:
+            connection.close()
+        if not accepted:
             try:
+                remove_storage_key(new_storage_key)
+            except OSError as cleanup_error:
+                log_error(cleanup_error, "package_document_failed_upload_cleanup")
+
+
+async def _remove_staged_package_document_upload(storage_key):
+    while True:
+        try:
+            await run_blocking_io(
+                remove_storage_key, storage_key, timeout_seconds=None,
+                lane="package_document_cleanup",
+            )
+            return
+        except BlockingIOBusyError:
+            # Cleanup retains ownership while the bounded lane is saturated.
+            await asyncio.sleep(0.01)
+        except OSError as cleanup_error:
+            log_error(cleanup_error, "package_document_staging_cleanup")
+            return
+
+
+async def _stage_package_document_upload(upload_path, storage_key, *, timeout_seconds=15):
+    worker_started = False
+
+    def persist():
+        nonlocal worker_started
+        worker_started = True
+        return persist_upload_path(upload_path, storage_key)
+
+    staging = asyncio.create_task(run_blocking_io(persist, timeout_seconds=None))
+    try:
+        return await asyncio.wait_for(asyncio.shield(staging), timeout=timeout_seconds)
+    except BaseException:
+        async def finish_and_remove():
+            # The copy may still own the source and rename its destination.
+            # Keep the spool alive, then remove only after that worker finishes.
+            await asyncio.gather(staging, return_exceptions=True)
+            if worker_started:
+                await _remove_staged_package_document_upload(storage_key)
+
+        cleanup = asyncio.create_task(finish_and_remove())
+        try:
+            await finish_submitted_task(cleanup)
+        except asyncio.CancelledError:
+            pass  # Cleanup finished; preserve the original cancellation/deadline.
+        raise
+
+
+async def _submit_staged_package_document_upload(storage_key, *args):
+    worker_started = False
+
+    def commit():
+        nonlocal worker_started
+        worker_started = True
+        return _commit_package_document_upload(*args)
+
+    try:
+        return await run_database_write(commit)
+    except Exception:
+        if not worker_started:
+            # Admission/submission failed before a worker could own the file.
+            await _remove_staged_package_document_upload(storage_key)
+        raise
+
+
+async def upload_package_document_api(request):
+    new_storage_key = None
+    handed_to_commit = False
+    try:
+        prepared = await run_database_read(_prepare_package_document_upload, request)
+        if isinstance(prepared, JSONResponse):
+            return prepared
+        (session, package_id, document_type, evaluation_batch_id,
+         idempotency_key, organization_id, operation) = prepared
+
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None or not getattr(upload, "filename", None):
+            return _document_error(
+                "Vui lòng chọn tệp cần tải lên.",
+                "PACKAGE_DOCUMENT_FILE_REQUIRED",
+                400,
+            )
+        original_filename = clean_original_filename(upload.filename)
+        extension, archive_kind, content_type = media_for_filename(
+            original_filename
+        )
+        async with spooled_upload(
+            upload,
+            max_bytes=MAX_PACKAGE_DOCUMENT_BYTES,
+            suffix=extension,
+        ) as (upload_path, upload_size, head):
+            if upload_size <= 0:
+                raise PackageDocumentError("Tệp tải lên đang trống.")
+            if archive_kind == "pdf":
+                if not head.startswith(b"%PDF-"):
+                    raise PackageDocumentError("Cấu trúc tệp PDF không hợp lệ.")
                 await run_blocking_io(
-                    remove_storage_key,
-                    new_storage_key,
-                    timeout_seconds=5,
+                    validate_pdf_path,
+                    upload_path,
+                    timeout_seconds=10,
                 )
-            except Exception as cleanup_error:  # noqa: BLE001 - best-effort rollback cleanup
-                log_error(cleanup_error, "package_document_invalid_upload_cleanup")
+            else:
+                if not head.startswith(b"PK"):
+                    raise PackageDocumentError(
+                        "Cấu trúc tệp Office không hợp lệ."
+                    )
+                await run_document_job_async(
+                    "validate_ooxml",
+                    {
+                        "content_path": str(upload_path),
+                        "kind": archive_kind,
+                    },
+                    timeout_seconds=20,
+                )
+
+            staging_key = create_storage_key(
+                organization_id,
+                package_id,
+                extension,
+            )
+            stored_size, checksum = await _stage_package_document_upload(
+                upload_path, staging_key,
+            )
+            new_storage_key = staging_key
+
+        commit = asyncio.create_task(_submit_staged_package_document_upload(
+            new_storage_key,
+            request, session, package_id, document_type, evaluation_batch_id,
+            idempotency_key, organization_id, operation, new_storage_key,
+            original_filename, content_type, stored_size, checksum,
+        ))
+        handed_to_commit = True
+        # Retrieve failures even when the client stops waiting for its mutation.
+        commit.add_done_callback(lambda task: None if task.cancelled() else task.exception())
+        return await asyncio.shield(commit)
+    except (PackageDocumentError, DocumentWorkerInputError) as exc:
         return _document_error(
             str(exc),
             getattr(exc, "code", "PACKAGE_DOCUMENT_FILE_INVALID"),
             int(getattr(exc, "status_code", 400)),
         )
     except DocumentWorkerError as exc:
-        if connection:
-            connection.rollback()
         return log_and_error(
             request,
             exc,
@@ -671,25 +765,18 @@ async def upload_package_document_api(request):
             status_code=503,
         )
     except OrgPermissionError as scope_error:
-        if connection:
-            connection.rollback()
         return _document_error(
             "Không có quyền truy cập tổ chức.",
             scope_error.code,
             scope_error.status_code,
         )
+    except (BlockingIOBusyError, TimeoutError) as exc:
+        return log_and_error(
+            request, exc, "upload_package_document_api",
+            "PACKAGE_DOCUMENT_UPLOAD_FAILED",
+            "Dịch vụ tài liệu tạm thời không khả dụng.", status_code=503,
+        )
     except Exception as exc:
-        if connection:
-            connection.rollback()
-        if new_storage_key:
-            try:
-                await run_blocking_io(
-                    remove_storage_key,
-                    new_storage_key,
-                    timeout_seconds=5,
-                )
-            except Exception as cleanup_error:  # noqa: BLE001 - best-effort rollback cleanup
-                log_error(cleanup_error, "package_document_failed_upload_cleanup")
         return log_and_error(
             request,
             exc,
@@ -698,8 +785,10 @@ async def upload_package_document_api(request):
             "Không thể tải tài liệu lên.",
         )
     finally:
-        if connection:
-            connection.close()
+        if new_storage_key and not handed_to_commit:
+            await finish_submitted_task(asyncio.create_task(
+                _remove_staged_package_document_upload(new_storage_key),
+            ))
 
 
 def package_document_routes(Route):
@@ -728,6 +817,17 @@ def package_document_routes(Route):
 
 
 async def download_package_document_api(request):
+    try:
+        return await run_database_write(_download_package_document, request)
+    except BlockingIOBusyError as exc:
+        return log_and_error(
+            request, exc, "download_package_document_api",
+            "PACKAGE_DOCUMENT_DOWNLOAD_FAILED",
+            "Dịch vụ tài liệu tạm thời không khả dụng.", status_code=503,
+        )
+
+
+def _download_package_document(request):
     connection = None
     try:
         valid, session = verify_session(request)
@@ -827,6 +927,17 @@ async def download_package_document_api(request):
 
 
 async def delete_package_document_api(request):
+    try:
+        return await run_database_write(_delete_package_document, request)
+    except BlockingIOBusyError as exc:
+        return log_and_error(
+            request, exc, "delete_package_document_api",
+            "PACKAGE_DOCUMENT_DELETE_FAILED",
+            "Dịch vụ tài liệu tạm thời không khả dụng.", status_code=503,
+        )
+
+
+def _delete_package_document(request):
     connection = None
     deleted = None
     try:
@@ -964,11 +1075,7 @@ async def delete_package_document_api(request):
         connection.close()
         connection = None
         try:
-            await run_blocking_io(
-                remove_storage_key,
-                deleted["storage_key"],
-                timeout_seconds=5,
-            )
+            remove_storage_key(deleted["storage_key"])
         except Exception as cleanup_error:
             log_error(cleanup_error, "package_document_deleted_file_cleanup")
         return JSONResponse(response_payload)

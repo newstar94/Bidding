@@ -12,6 +12,7 @@ from backend.ai.providers.base import (
     endpoint,
     iter_ndjson,
     json_request,
+    merge_reported_counters,
     require_model,
     stream_http,
 )
@@ -72,10 +73,18 @@ def normalize_ollama_stream(raw_events: Iterable[dict], *, request_sequence: int
     text_parts: list[str] = []
     calls: dict[int, dict] = {}
     usage: dict[str, int] = {}
+    native_totals: dict[str, int] = {}
     yielded_created = False
     for event in raw_events:
+        if merge_reported_counters(native_totals, event, ("prompt_eval_count", "eval_count")):
+            usage = {
+                "input_tokens": native_totals.get("prompt_eval_count", 0),
+                "output_tokens": native_totals.get("eval_count", 0),
+            }
+            yield {"type": "response.usage", "usage": dict(usage)}
         if event.get("error"):
-            yield {"type": "error", "error": event["error"]}
+            yield {"type": "error", "error": event["error"],
+                   **({"usage": dict(usage)} if usage else {})}
             return
         if not yielded_created:
             yield {
@@ -132,11 +141,6 @@ def normalize_ollama_stream(raw_events: Iterable[dict], *, request_sequence: int
                         "output_index": index,
                         "delta": arguments,
                     }
-        if event.get("done"):
-            usage = {
-                "input_tokens": int(event.get("prompt_eval_count") or 0),
-                "output_tokens": int(event.get("eval_count") or 0),
-            }
     completed_calls: list[dict] = []
     for index in sorted(calls):
         state = calls[index]

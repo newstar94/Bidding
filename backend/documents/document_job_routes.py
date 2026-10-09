@@ -625,7 +625,8 @@ async def download_document_export_job_api(request):
     if not isinstance(result, (bytes, bytearray)):
         return _error("DOCUMENT_JOB_RESULT_INVALID", 500)
     record_scope = document_job_record_scope(job)
-    log_audit(
+    await run_database_write(
+        log_audit,
         "document.export_job_downloaded",
         actor_user_id=role.user_id,
         organization_id=organization_id,

@@ -106,6 +106,7 @@ function syncUxPatchForPhase(phase, error = null) {
 }
 
 function publishReconciliationPhase(controller, phase) {
+  controller?.markStartup?.(`workspace-reconciliation:${phase}`);
   controller?.publishStartupReconciliationPhase?.(phase);
 }
 

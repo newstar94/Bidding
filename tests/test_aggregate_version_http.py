@@ -9,6 +9,7 @@ from backend.versioning import service
 from backend.sync import service as sync_service
 from backend.sync.command import SyncActorContext, SyncTransactionContext
 from backend.versioning.command import AggregateVersionConflict
+from backend.shared.access_policy import AccessDecision
 
 
 def test_http_adapter_dispatches_version_commands_to_the_sync_write_lane(monkeypatch):
@@ -140,6 +141,34 @@ def test_generated_aggregate_write_lane_does_not_use_per_record_savepoints():
     atomic_branch = source.index("if atomic_command:", source.index("for payload_key"))
     savepoint = source.index('cursor.execute("SAVEPOINT sync_item")', atomic_branch)
     assert source.index("continue", atomic_branch, savepoint) < savepoint
+
+
+def test_denied_version_command_returns_authorization_error_without_writes(monkeypatch):
+    request = SimpleNamespace(state=SimpleNamespace(), headers={})
+    connection = FakeConnection()
+    actor = SyncActorContext(request=request, role="Employee", user_id="user-1",
+                             organization_id="org-1", owner_type="organization",
+                             can_upload_workspace_assets=False)
+    monkeypatch.setattr(sync_service, "_resolve_sync_actor_context", lambda *_: (actor, None))
+    monkeypatch.setattr(sync_service, "_prepare_sync_transaction", lambda *_: (
+        SyncTransactionContext(connection=connection, cursor=connection.cursor_instance,
+                               actor=actor, owner_type="organization", current_time="now"), None))
+    monkeypatch.setattr(sync_service.database, "get_connection", lambda: connection)
+    monkeypatch.setattr(sync_service, "authorize_record_write",
+                        lambda *_: AccessDecision(False, "Không được sửa nguồn."))
+    def forbidden_build(*_args, **_kwargs):
+        raise AssertionError("Denied command must not build or write a version")
+    monkeypatch.setattr(sync_service, "build_aggregate_version_payload", forbidden_build)
+    response = sync_service.execute_sync_mutation(request, {
+        "kind": "package", "sourceId": "package-1", "expectedRowVersion": 5,
+        "changes": {}, "clientMutationId": "denied-version-1",
+    }, aggregate_version_command=True)
+    body = json.loads(response.body)
+    assert response.status_code == 403
+    assert body["code"] == "VERSION_SOURCE_WRITE_DENIED"
+    assert "Không được sửa nguồn." in str(body)
+    assert connection.rollback_count == 1
+    assert connection.closed
 
 
 def test_sync_settles_staged_latest_flags_before_deletion_mutability_checks():

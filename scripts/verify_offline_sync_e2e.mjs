@@ -16,6 +16,7 @@ const account = {
 };
 const expertName = `Chuyên gia offline ${runId}`;
 const interruptedExpertName = `Chuyên gia gián đoạn ${runId}`;
+const expertFormIds = ["cg-hoten", "cg-socccd", "cg-ngaycapcccd", "cg-noicapcccd", "cg-sochungchi", "cg-ngaycapchungchi", "cg-donvicapchungchi"];
 const fixturePayload = {
   runId,
   organizationId,
@@ -51,6 +52,58 @@ async function fillExpertForm(page, name, suffix) {
   await page.locator("#cg-sochungchi").fill(`${runId}-CC-${suffix}`);
   await page.locator("#cg-ngaycapchungchi").fill(testClock.date(-3_600));
   await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
+  return Object.fromEntries(await Promise.all(expertFormIds.map(async (id) => [id, await page.locator(`#${id}`).inputValue()])));
+}
+
+async function armExpertSaveFeedback(page) {
+  await page.evaluate(() => {
+    window.offlineExpertSaveFeedback?.observer.disconnect();
+    const feedback = { pendingFeedback: [], finalFeedback: [] };
+    const seen = new WeakSet();
+    feedback.observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          const toasts = node.matches(".bf-toast") ? [node] : [...node.querySelectorAll(".bf-toast")];
+          for (const toast of toasts) {
+            if (seen.has(toast)) continue;
+            seen.add(toast);
+            const text = toast.textContent || "";
+            if (toast.classList.contains("toast-warning") && /Chuyên gia đang chờ máy chủ xác nhận/u.test(text)) feedback.pendingFeedback.push(text);
+            if (toast.classList.contains("toast-success") && /Đã lưu chuyên gia|Chuyên gia đã được máy chủ xác nhận/u.test(text)) feedback.finalFeedback.push(text);
+          }
+        }
+      }
+    });
+    feedback.observer.observe(document.body, { childList: true, subtree: true });
+    window.offlineExpertSaveFeedback = feedback;
+  });
+}
+
+async function assertPendingExpertEditor(page, expectedValues, syncState) {
+  await page.waitForFunction(({ expectedValues, syncState }) => (
+    document.getElementById("btn-force-sync")?.dataset?.syncState === syncState
+      && document.getElementById("modal-chuyengia")?.classList.contains("active")
+      && Object.entries(expectedValues).every(([id, value]) => document.getElementById(id)?.value === value)
+      && window.offlineExpertSaveFeedback?.pendingFeedback.length > 0
+  ), { expectedValues, syncState }, { timeout: 15_000 });
+  const pending = await page.evaluate((ids) => {
+    const feedback = window.offlineExpertSaveFeedback;
+    feedback?.observer.disconnect();
+    return {
+      modalOpen: document.getElementById("modal-chuyengia")?.classList.contains("active") === true,
+      values: Object.fromEntries(ids.map((id) => [id, document.getElementById(id)?.value])),
+      pendingFeedback: feedback?.pendingFeedback || [],
+      finalFeedback: feedback?.finalFeedback || [],
+    };
+  }, expertFormIds);
+  if (!pending.modalOpen
+    || !Object.entries(expectedValues).every(([id, value]) => pending.values[id] === value)
+    || pending.pendingFeedback.length === 0
+    || pending.finalFeedback.length > 0) {
+    throw new Error(`Pending expert save lost its editor/content or reported final success: ${JSON.stringify(pending)}`);
+  }
+  return pending;
 }
 
 let browser;
@@ -89,9 +142,13 @@ try {
   await page.locator("#modal-chuyengia.active").waitFor({ state: "visible" });
   await context.setOffline(true);
   await page.locator("#offline-indicator-banner.visible").waitFor({ state: "visible", timeout: 10_000 });
-  await fillExpertForm(page, expertName, "1");
+  const offlineValues = await fillExpertForm(page, expertName, "1");
+  await armExpertSaveFeedback(page);
   await page.locator("#form-chuyengia button[type='submit']").click();
-  await page.waitForFunction(() => document.getElementById("btn-force-sync")?.dataset?.syncState === "offline", null, { timeout: 15_000 });
+  const offlinePendingEditor = await assertPendingExpertEditor(page, offlineValues, "offline");
+  // The editor remains pending. Deliberately dismiss it after verifying the
+  // entered draft; reconnect then retries the durable outbox, not the form.
+  await page.locator("#modal-chuyengia button.modal-close[data-close='modal-chuyengia']").click();
   await page.locator("#modal-chuyengia.active").waitFor({ state: "hidden", timeout: 15_000 });
 
   const committed = page.waitForResponse((response) => (
@@ -133,7 +190,8 @@ try {
 
   await page.locator("#btn-add-chuyengia").click();
   await page.locator("#modal-chuyengia.active").waitFor({ state: "visible" });
-  await fillExpertForm(page, interruptedExpertName, "2");
+  const interruptedValues = await fillExpertForm(page, interruptedExpertName, "2");
+  await armExpertSaveFeedback(page);
   let abortedSyncCount = 0;
   let allowInterruptedSync = false;
   await page.route("**/api/sync", async (route) => {
@@ -153,17 +211,16 @@ try {
   });
   await page.locator("#form-chuyengia button[type='submit']").click();
   await interruptedRequestFailed;
-  await page.waitForFunction(() => (
-    document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
-      && !document.getElementById("modal-chuyengia")?.classList.contains("active")
-  ), null, { timeout: 15_000 });
+  const interruptedPendingEditor = await assertPendingExpertEditor(page, interruptedValues, "transport-error");
   const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
   if (interruptedSyncState !== "transport-error") {
     throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
   }
-  if (abortedSyncCount < 1 || await page.locator("#modal-chuyengia.active").isVisible()) {
-    throw new Error("Interrupted save did not close after becoming locally durable and remain pending for retry");
+  if (abortedSyncCount < 1 || !await page.locator("#modal-chuyengia.active").isVisible()) {
+    throw new Error("Interrupted save did not retain its pending editor for explicit retry");
   }
+  await page.locator("#modal-chuyengia button.modal-close[data-close='modal-chuyengia']").click();
+  await page.locator("#modal-chuyengia.active").waitFor({ state: "hidden", timeout: 15_000 });
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset?.syncState === "transport-error"
   ), null, { timeout: 10_000 });
@@ -213,8 +270,8 @@ try {
   process.stdout.write(`${JSON.stringify({
     runId,
     syncAttempts: syncRequests.length,
-    reconnectRetry: { rowCount, serverCount: serverMatches.length },
-    interruptedRetry: { pendingAfterReload, rowCount: interruptedRowCount },
+    reconnectRetry: { pendingEditorRetained: offlinePendingEditor.modalOpen, finalSuccessBeforeCommit: offlinePendingEditor.finalFeedback.length, rowCount, serverCount: serverMatches.length },
+    interruptedRetry: { pendingEditorRetained: interruptedPendingEditor.modalOpen, finalSuccessBeforeCommit: interruptedPendingEditor.finalFeedback.length, pendingAfterReload, rowCount: interruptedRowCount },
   }, null, 2)}\n`);
 } finally {
   if (browser) await browser.close();

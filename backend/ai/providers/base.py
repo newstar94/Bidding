@@ -225,6 +225,16 @@ def message_item(text: str) -> dict:
     }
 
 
+def merge_reported_counters(current: dict[str, int], reported: dict, names: tuple[str, ...]) -> bool:
+    """Retain cumulative native counters without inventing unreported usage."""
+    observed = False
+    for name in names:
+        if name in reported:
+            current[name] = max(current.get(name, 0), int(reported[name] or 0), 0)
+            observed = True
+    return observed
+
+
 def completed_event(text: str, calls: list[dict], usage: dict | None = None) -> dict:
     output = []
     if text:

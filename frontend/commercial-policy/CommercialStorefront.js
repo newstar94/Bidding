@@ -28,6 +28,12 @@ const state = {
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const money = (value) => formatCommercialMoney(value, "VND");
+const activeCommercialScope = (actor) => String(actor?.activeOrganizationId || actor?.active_role_organization_id || actor?.active_org_id || "");
+function commercialContext(controller) {
+  const model = controller?.model;
+  const actor = model?.state?.activeuser || {};
+  return { controller, actorId: String(actor.id || actor.user_id || ""), activeScope: activeCommercialScope(actor), workspaceToken: model?.getWorkspaceToken?.() || "" };
+}
 const request = async (path, options = {}) => {
   const response = await apiFetch(path, { handleHttpErrors: false, retries: 0, ...options });
   let payload = {}; try { payload = await response.json(); } catch { /* closed empty response */ }
@@ -192,7 +198,7 @@ const CLOSED_CHECKOUT_STATES = new Set(["cancelled", "expired", "create_failed"]
 function openCheckoutSession(controller, title, order = null) {
   const actor = controller?.model?.state?.activeuser || {};
   const session = { controller, order, cancelRequested: false, cancelling: false, creating: false, createStarted: false, createUncertain: false, dismissed: false, cancelPolling: null, paymentPolling: null, successReturnTimer: null, returnToOverviewOnDismiss: false, pollGeneration: 0, settled: false, checkoutKey: `storefront-${crypto.randomUUID()}`, quotePublicId: "", paymentSignature: "", packageTitle: "", activationRefresh: null,
-    actorId: String(actor.id || actor.user_id || ""), activeScope: String(actor.activeOrganizationId || actor.active_role_organization_id || ""), workspaceToken: controller?.model?.getWorkspaceToken?.() || "" };
+    actorId: String(actor.id || actor.user_id || ""), activeScope: activeCommercialScope(actor), workspaceToken: controller?.model?.getWorkspaceToken?.() || "" };
   state.checkoutSession = session;
   document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = true; });
   session.dialog = createCheckoutPaymentDialog({
@@ -231,7 +237,7 @@ function checkoutContextIsCurrent(session) {
   const model = session.controller?.model;
   const actor = model?.state?.activeuser || {};
   return String(actor.id || actor.user_id || "") === session.actorId
-    && String(actor.activeOrganizationId || actor.active_role_organization_id || "") === session.activeScope
+    && activeCommercialScope(actor) === session.activeScope
     && (!session.workspaceToken || typeof model?.isWorkspaceCurrent !== "function" || model.isWorkspaceCurrent(session.workspaceToken));
 }
 
@@ -251,7 +257,7 @@ async function verifyRefreshedAccess(controller) {
   });
   const actor = controller?.model?.state?.activeuser || {};
   const user = payload.user || {};
-  const scope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
+  const scope = activeCommercialScope(actor);
   if (payload.valid !== true || String(user.id || "") !== String(actor.id || actor.user_id || "") || String(user.active_org_id || "") !== scope) return false;
   const workspace = actor.organizations?.find((item) => String(item.id) === scope);
   const expectedWorkspace = user.organizations?.find((item) => String(item.id) === scope);
@@ -511,7 +517,7 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
   try {
     sendCommercialEvent("checkout.started", { skuCode });
     const actor = controller?.model?.state?.activeuser || {};
-    const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
+    const activeScope = activeCommercialScope(actor);
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
     const ownerId = ownerKind === "organization" ? activeScope : actor.id || actor.user_id;
     const quote = await request("/api/billing/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerKind, ownerId, operation, skuCode }) });
@@ -539,10 +545,25 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
 }
 
 async function refresh(controller) {
-  if (state.loading) return;
+  const context = commercialContext(controller);
+  const existing = state.refreshRequest;
+  if (existing && existing.context.controller === controller
+      && existing.context.actorId === context.actorId && existing.context.activeScope === context.activeScope
+      && existing.context.workspaceToken === context.workspaceToken && checkoutContextIsCurrent(existing.context)) {
+    return existing.promise;
+  }
+  const refreshRequest = { context, promise: null };
+  state.refreshRequest = refreshRequest;
+  const isCurrent = () => state.refreshRequest === refreshRequest && checkoutContextIsCurrent(context);
   state.loading = true; status("Đang đồng bộ bảng giá và số dư…");
+  state.balance = null;
+  state.orders = [];
+  renderBalance();
+  renderOrders();
+  refreshRequest.promise = (async () => {
   try {
     const catalog = await request("/api/public/commercial/offers");
+    if (!isCurrent()) return;
     const classification = classifyPublicCommercialResponse(catalog);
     state.availability = classification.state;
     if (classification.state === "unavailable") {
@@ -554,7 +575,7 @@ async function refresh(controller) {
     const effectiveCatalog = classification.catalog;
     state.commercialReleaseId = String(effectiveCatalog.releaseId || "");
     const actor = controller?.model?.state?.activeuser || {};
-    const activeScope = String(actor.activeOrganizationId || actor.active_role_organization_id || "");
+    const activeScope = activeCommercialScope(actor);
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
     state.offers = visibleOffersForOwner(effectiveCatalog.offers, ownerKind);
     state.creditPacks = effectiveCatalog.creditPacks || [];
@@ -570,21 +591,24 @@ async function refresh(controller) {
       return;
     }
     let balanceFailed = false;
-    try { state.balance = await request("/api/billing/usage"); } catch (error) {
+    try { const balance = await request("/api/billing/usage"); if (!isCurrent()) return; state.balance = balance; } catch (error) {
+      if (!isCurrent()) return;
       balanceFailed = true;
       state.balance = null;
       if (error.code === "BLOCKED_DECISION") status("Usage tổ chức đang chờ quyết định quyền đọc.", "warning");
     }
     renderBalance();
     let ordersFailed = false;
-    try { const orders = await request("/api/billing/orders"); state.orders = orders.orders || []; } catch { ordersFailed = true; state.orders = []; }
+    try { const orders = await request("/api/billing/orders"); if (!isCurrent()) return; state.orders = orders.orders || []; } catch { if (!isCurrent()) return; ordersFailed = true; state.orders = []; }
     renderOrders();
     if (balanceFailed || ordersFailed) {
       status("Bảng giá đã đồng bộ nhưng chưa tải đủ số dư/lịch sử order. Hãy thử làm mới lại.", "warning");
     } else {
       status("Đã đồng bộ theo release hiện hành.", "success");
     }
-  } catch (error) { status(`${error.code}: ${error.message}`, "danger"); renderOffers(controller); } finally { state.loading = false; }
+  } catch (error) { if (isCurrent()) { status(`${error.code}: ${error.message}`, "danger"); renderOffers(controller); } } finally { if (state.refreshRequest === refreshRequest) { state.loading = false; state.refreshRequest = null; } }
+  })();
+  return refreshRequest.promise;
 }
 
 export async function mountCommercialStorefront(controller) {

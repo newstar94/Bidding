@@ -43,6 +43,75 @@ _PROVIDER_EVENT_QUEUE_SIZE = 64
 _PROVIDER_QUEUE_TIMEOUT_SECONDS = 0.1
 _PROVIDER_THREAD_LIMIT = 32
 _PROVIDER_THREAD_SLOTS = threading.BoundedSemaphore(_PROVIDER_THREAD_LIMIT)
+_PROVIDER_STOP_TIMEOUT_SECONDS = 0.25
+
+
+def _reported_provider_usage(event):
+    response = event.get("response")
+    response = response if isinstance(response, dict) else {}
+    usage = response.get("usage") or event.get("usage")
+    return usage if isinstance(usage, dict) else {}
+
+
+class _ProviderObservedUsage:
+    """One round's counters, shared with its producer until cleanup freezes them."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._tokens = {}
+        self._frozen = False
+
+    def observe(self, event):
+        usage = _reported_provider_usage(event)
+        with self._lock:
+            if self._frozen:
+                return
+            for name in ("input_tokens", "output_tokens"):
+                if name in usage:
+                    self._tokens[name] = max(self._tokens.get(name, 0), int(usage[name] or 0), 0)
+
+    def snapshot(self):
+        with self._lock:
+            return dict(self._tokens)
+
+    def freeze(self):
+        with self._lock:
+            self._frozen = True
+
+
+class _ProviderEventStreamHandle:
+    def __init__(self, iterator, usage, stop, worker_thread):
+        self._iterator = iterator
+        self._usage = usage
+        self._stop = stop
+        self._worker_thread = worker_thread
+        self._closing = None
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        return await anext(self._iterator)
+
+    def observed_usage(self):
+        return self._usage.snapshot()
+
+    async def _close(self):
+        try:
+            await self._iterator.aclose()
+        finally:
+            self._stop()
+            try:
+                await asyncio.to_thread(self._worker_thread.join, _PROVIDER_STOP_TIMEOUT_SECONDS)
+            finally:
+                # A provider blocked in network I/O may stop later. It cannot
+                # change counters after the owner settles this frozen snapshot.
+                self._usage.freeze()
+
+    async def aclose(self):
+        if self._closing is None:
+            self._closing = asyncio.create_task(self._close())
+        await finish_submitted_task(self._closing)
 
 
 def validate_message(content: object, config=None) -> str:
@@ -65,6 +134,7 @@ def _provider_event_stream(provider: ResponsesProvider, input_items: list[dict],
         )
     event_queue: queue.Queue = queue.Queue(maxsize=_PROVIDER_EVENT_QUEUE_SIZE)
     cancel_event = threading.Event()
+    observed_usage = _ProviderObservedUsage()
 
     def enqueue(kind, payload):
         while not cancel_event.is_set():
@@ -88,11 +158,18 @@ def _provider_event_stream(provider: ResponsesProvider, input_items: list[dict],
                         pass
                     break
 
+    def stop_worker():
+        if cancel_event.is_set():
+            return
+        cancel_event.set()
+        cancel_provider()
+
     def worker():
         provider_stream = None
         try:
             provider_stream = provider.stream_response(input_items=input_items, instructions=instructions, tools=tools)
             for event in provider_stream:
+                observed_usage.observe(event)
                 if cancel_event.is_set() or not enqueue("event", event):
                     break
         except Exception as error:  # noqa: BLE001 - provider adapters are an isolation boundary
@@ -139,10 +216,9 @@ def _provider_event_stream(provider: ResponsesProvider, input_items: list[dict],
         except asyncio.CancelledError:
             raise
         finally:
-            cancel_event.set()
-            cancel_provider()
+            stop_worker()
 
-    return consume()
+    return _ProviderEventStreamHandle(consume(), observed_usage, stop_worker, worker_thread)
 
 
 def _input_items(messages: list[dict]) -> list[dict]:
@@ -312,6 +388,9 @@ async def stream_message(
     )
     reservation = await _reserve_stream_tokens(context, estimated_tokens, config)
     settled = False
+    usage_known = False
+    round_input_tokens = 0
+    round_output_tokens = 0
     all_sources = _merge_sources(
         knowledge.sources if knowledge else (),
         web_search.sources if web_search else (),
@@ -320,16 +399,54 @@ async def stream_message(
     total_tool_calls = 0
     input_tokens = 0
     output_tokens = 0
+    provider_stream = None
+
+    def retain_round_usage(usage):
+        nonlocal input_tokens, output_tokens, round_input_tokens, round_output_tokens, usage_known
+        if isinstance(usage, dict) and ("input_tokens" in usage or "output_tokens" in usage):
+            known_input = max(round_input_tokens, int(usage.get("input_tokens") or 0))
+            known_output = max(round_output_tokens, int(usage.get("output_tokens") or 0))
+            input_tokens += known_input - round_input_tokens
+            output_tokens += known_output - round_output_tokens
+            round_input_tokens, round_output_tokens = known_input, known_output
+            usage_known = True
+
+    async def close_provider_stream():
+        nonlocal provider_stream
+        current_stream, provider_stream = provider_stream, None
+        if current_stream is None:
+            return
+        try:
+            close = getattr(current_stream, "aclose", None)
+            if callable(close):
+                await close()
+        finally:
+            snapshot = getattr(current_stream, "observed_usage", None)
+            if callable(snapshot):
+                retain_round_usage(snapshot())
 
     try:
         yield {"type": "message.started", "messageId": user_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "mode": mode}
         for source in all_sources:
             yield {"type": "source.added", "source": source}
         for _attempt in range(3):
+            if _attempt:
+                estimated_tokens = estimate_request_token_budget(
+                    input_items=input_items, instructions=instructions, tools=tools,
+                    max_output_tokens=config.max_output_tokens,
+                )
+                reservation = await _reserve_stream_tokens(context, estimated_tokens, config)
+                settled = False
+                usage_known = False
+                round_input_tokens = 0
+                round_output_tokens = 0
             function_calls: dict[int, dict] = {}
             response_output: list[dict] = []
-            async for event in _provider_event_stream(provider, input_items, instructions, tools):
+            provider_stream = _provider_event_stream(provider, input_items, instructions, tools)
+            async for event in provider_stream:
                 event_type = str(event.get("type") or "")
+                response = event.get("response") or {}
+                retain_round_usage(_reported_provider_usage(event))
                 if event_type == "response.output_text.delta":
                     delta = str(event.get("delta") or "")
                     if delta:
@@ -354,14 +471,19 @@ async def stream_message(
                         index = int(event.get("output_index") or 0)
                         function_calls[index] = {**function_calls.get(index, {}), **item}
                 elif event_type == "response.completed":
-                    response = event.get("response") or {}
                     response_output = [item for item in response.get("output", []) if isinstance(item, dict)]
-                    usage = response.get("usage") or {}
-                    input_tokens += max(0, int(usage.get("input_tokens") or 0))
-                    output_tokens += max(0, int(usage.get("output_tokens") or 0))
-                elif event_type == "error":
+                elif event_type in {"error", "response.failed", "response.incomplete"}:
                     raise ai_error("AI_PROVIDER_UNAVAILABLE", "AI provider trả về lỗi.")
 
+            await close_provider_stream()
+            if usage_known:
+                await _cancellation_safe_write(
+                    settle_token_reservation, reservation, round_input_tokens, round_output_tokens,
+                    config=config,
+                )
+            else:
+                await _cancellation_safe_write(release_token_reservation, reservation)
+            settled = True
             calls = [function_calls[index] for index in sorted(function_calls)]
             if not calls:
                 break
@@ -448,14 +570,6 @@ async def stream_message(
             total_tool_calls,
             config=config,
         )
-        await run_database_write(
-            settle_token_reservation,
-            reservation,
-            input_tokens,
-            output_tokens,
-            config=config,
-        )
-        settled = True
         increment("ai_input_tokens_total", input_tokens)
         increment("ai_output_tokens_total", output_tokens)
         audit_chat(
@@ -471,10 +585,20 @@ async def stream_message(
         )
         yield {"type": "message.completed", "messageId": assistant_message_id, "workspace": {"id": context.organization_id, "name": context.organization_name}, "generatedAt": datetime.now().astimezone().isoformat(), "sources": all_sources}
     except AiError as exc:
+        await close_provider_stream()
         if exc.code.startswith("AI_PROVIDER_"):
             increment("ai_provider_errors_total")
         audit_chat(request, context, conversation_id, mode=mode, status="failed", model=config.model, input_tokens=input_tokens, output_tokens=output_tokens, tool_call_count=total_tool_calls, error_code=exc.code)
         yield {"type": "message.failed", "code": exc.code, "message": exc.message}
     finally:
-        if not settled:
-            await _cancellation_safe_write(release_token_reservation, reservation)
+        try:
+            await close_provider_stream()
+        finally:
+            if not settled:
+                if usage_known:
+                    await _cancellation_safe_write(
+                        settle_token_reservation, reservation, round_input_tokens, round_output_tokens,
+                        config=config,
+                    )
+                else:
+                    await _cancellation_safe_write(release_token_reservation, reservation)

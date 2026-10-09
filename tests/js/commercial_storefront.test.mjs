@@ -212,18 +212,28 @@ test("the QR popup stays centered with the application reset stylesheet", async 
   assert.deepEqual(result.errors, []);
 });
 
-for (const action of ["cancel", "close", "escape", "backdrop"]) {
-  test(`${action} cancels the server transaction before dismissing QR`, async () => {
+const checkoutDismissalCases = ["account", "organization"].flatMap((ownerKind) =>
+  ["cancel", "close", "escape", "backdrop"].map((action) => ({ ownerKind, action })));
+for (const { ownerKind, action } of checkoutDismissalCases) {
+  test(`${ownerKind} ${action} cancels the server transaction before dismissing QR`, async () => {
     let cancelRequests = 0;
     let releaseCancel;
     const cancelGate = new Promise((resolve) => { releaseCancel = resolve; });
-    const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async (page) => {
-      await checkoutRoutes(page, { cancel: async (route) => {
+    const organization = ownerKind === "organization" ? "org-1" : "";
+    const catalog = { ...recoveryCatalog, offers: [offer(`${ownerKind}.year`, ownerKind, "Gói thử nghiệm")] };
+    const actor = { id: "user-1", activeOrganizationId: organization };
+    const order = { ...pendingOrder, ownerKind };
+    const result = await renderScenario(catalog, actor, async (page) => {
+      await page.evaluate((scope) => sessionStorage.setItem("bf_active_org", scope), organization);
+      await checkoutRoutes(page, {
+        checkout: (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order }) }),
+        order, cancel: async (route) => {
         cancelRequests += 1;
         assert.equal(route.request().method(), "POST");
+        assert.equal(route.request().headers()["x-active-org"] || "", organization);
         assert.match(route.request().postDataJSON().reason, /đóng hoặc hủy/u);
         await cancelGate;
-        await route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: cancelledOrder }) });
+        await route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: { ...cancelledOrder, ownerKind } }) });
       } });
       await page.locator('[data-operation="purchase"]').click();
       const dialog = page.getByRole("dialog");

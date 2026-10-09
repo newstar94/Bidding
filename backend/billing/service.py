@@ -21,6 +21,7 @@ from .providers.base import PaymentProviderError
 from .authorization import authorize_organization_buyer
 from .checkout_payment import checkout_payment_snapshot, public_checkout_payment_details
 from .renewal import validate_renewal_checkout
+from backend.commercial_policy.transitions import current_subscription, require_self_service_transition
 from .runtime import payment_provider_registry
 
 
@@ -226,6 +227,17 @@ class BillingService:
                 "Operation không phù hợp với loại sản phẩm thương mại.",
                 status_code=409,
             )
+        current = (current_subscription(
+            self.cursor, quote["owner_kind"],
+            quote.get("account_user_id") if quote["owner_kind"] == "account" else quote.get("organization_id"),
+            lock=True) if item_type == "base_plan" else None)
+        expected = quote.get("expected_subscription_revision")
+        if operation in {"upgrade", "downgrade"} and expected is not None and (
+            not current or int(current["revision"]) != int(expected)
+        ):
+            raise CommercialPolicyError("SUBSCRIPTION_REVISION_MISMATCH",
+                                        "Gói đang dùng đã thay đổi; vui lòng lấy báo giá mới.", status_code=409)
+        require_self_service_transition(operation, item_type, decision.get("policySnapshot") or {}, current, now)
         if operation == "renew":
             if ((decision.get("policySnapshot") or {}).get("renewalAnchor") or {}).get("kind") != "end_of_term":
                 raise CommercialPolicyError("RENEWAL_ANCHOR_DECISION_REQUIRED", "Chính sách gia hạn chưa hỗ trợ kỳ đã chọn.", status_code=409)
@@ -327,18 +339,85 @@ class BillingService:
             statement += " FOR UPDATE OF orders"
         return _row_dict(self.cursor.execute(statement, (str(public_id),)).fetchone())
 
-    def request_cancel(self, public_id, actor_user_id, reason):
+    @staticmethod
+    def order_actor_scope(actor):
+        """Resolve only the session-selected workspace; a role is not a grant."""
+        user_id = str(getattr(actor, "user_id", actor) or "")
+        organization_id = str(getattr(actor, "active_role_organization_id", "") or "")
+        if organization_id:
+            if getattr(actor, "active_role", None) not in {"employee", "manager", "super_admin"}:
+                return None
+            return "organization", organization_id
+        return "account", user_id
+
+    def lock_order_owner(self, actor):
+        """Take the stable owner before account/session, order and command locks."""
+        scope = self.order_actor_scope(actor)
+        if scope is None:
+            return False
+        owner_kind, owner_id = scope
+        if owner_kind == "organization":
+            row = self.cursor.execute(
+                "SELECT id FROM to_chuc WHERE id = ? FOR UPDATE", (owner_id,)
+            ).fetchone()
+        else:
+            row = self.cursor.execute(
+                "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE", (owner_id,)
+            ).fetchone()
+        return row is not None
+
+    def get_order_for_actor(self, public_id, actor, *, lock=False):
+        """Read one order under the approved creator/organization-owner contract.
+
+        This grants neither organization history nor purchasing authority. The
+        SQL resolves current membership, organization status and owner in the
+        same snapshot as the order, including for a previously selected role.
+        """
+        scope = self.order_actor_scope(actor)
+        if scope is None:
+            return None
+        owner_kind, owner_id = scope
+        user_id = str(getattr(actor, "user_id", actor) or "")
+        statement = """SELECT orders.*,
+                   (SELECT activation.after_json FROM billing_subscription_activations AS activation
+                     WHERE activation.order_id = orders.id) AS activation_schedule_json
+                 FROM billing_orders AS orders WHERE orders.public_id = ?"""
+        parameters = [str(public_id)]
+        if owner_kind == "organization":
+            statement += """ AND orders.owner_kind = 'organization'
+                AND orders.organization_id = ? AND orders.account_user_id IS NULL
+                AND EXISTS (
+                    SELECT 1 FROM to_chuc AS organization
+                     WHERE organization.id = orders.organization_id
+                       AND organization.trang_thai = 'active'
+                       AND (? = 1 OR (
+                           (orders.actor_user_id = ? OR organization.owner_user_id = ?)
+                           AND EXISTS (
+                               SELECT 1 FROM thanh_vien_to_chuc AS membership
+                                WHERE membership.organization_id = organization.id
+                                  AND membership.user_id = ?
+                                  AND COALESCE(membership.trang_thai_thanh_vien, 'active') = 'active'
+                           )
+                       ))
+                )"""
+            parameters.extend([
+                owner_id,
+                int(getattr(actor, "platform_role", None) == "super_admin"),
+                user_id, user_id, user_id,
+            ])
+        else:
+            statement += """ AND orders.owner_kind = 'account'
+                AND orders.account_user_id = ? AND orders.organization_id IS NULL"""
+            parameters.append(owner_id)
+        if lock:
+            statement += " FOR UPDATE OF orders"
+        return _row_dict(self.cursor.execute(statement, tuple(parameters)).fetchone())
+
+    def request_cancel(self, public_id, actor, reason):
         # Use the same owner -> order -> command lock order as the executor.
-        self.cursor.execute(
-            "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
-            (actor_user_id,),
-        ).fetchone()
-        order = _row_dict(self.cursor.execute(
-            """SELECT * FROM billing_orders
-                WHERE public_id = ? AND owner_kind = 'account'
-                  AND account_user_id = ? FOR UPDATE""",
-            (str(public_id), str(actor_user_id)),
-        ).fetchone())
+        if not self.lock_order_owner(actor):
+            return None, None, False
+        order = self.get_order_for_actor(public_id, actor, lock=True)
         if not order:
             return None, None, False
         if order["payment_state"] != "unverified":

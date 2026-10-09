@@ -11,6 +11,7 @@ from backend.ai.providers.base import (
     endpoint,
     iter_sse,
     json_request,
+    merge_reported_counters,
     require_api_key,
     require_model,
     stream_http,
@@ -80,18 +81,23 @@ def normalize_chat_stream(raw_events: Iterable[dict]) -> Iterable[dict]:
     text_parts: list[str] = []
     calls: dict[int, dict] = {}
     usage: dict[str, int] = {}
+    native_totals: dict[str, int] = {}
     response_id = "chat"
     for event in raw_events:
+        native_usage = event.get("usage")
+        if isinstance(native_usage, dict) and merge_reported_counters(
+            native_totals, native_usage, ("prompt_tokens", "completion_tokens"),
+        ):
+            usage = {
+                "input_tokens": native_totals.get("prompt_tokens", 0),
+                "output_tokens": native_totals.get("completion_tokens", 0),
+            }
+            yield {"type": "response.usage", "usage": dict(usage)}
         if event.get("error") or event.get("type") == "error":
-            yield {"type": "error", "error": event.get("error") or event}
+            yield {"type": "error", "error": event.get("error") or event,
+                   **({"usage": dict(usage)} if usage else {})}
             return
         response_id = str(event.get("id") or response_id)
-        native_usage = event.get("usage")
-        if isinstance(native_usage, dict):
-            usage = {
-                "input_tokens": int(native_usage.get("prompt_tokens") or 0),
-                "output_tokens": int(native_usage.get("completion_tokens") or 0),
-            }
         choices = event.get("choices")
         if not isinstance(choices, list) or not choices:
             continue

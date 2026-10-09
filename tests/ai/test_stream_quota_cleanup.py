@@ -20,10 +20,11 @@ def stream_context(monkeypatch):
         enabled=True, max_message_chars=1000, max_history_messages=10,
         knowledge_enabled=False, web_search_enabled=False, max_output_tokens=100,
         max_tool_calls_per_message=3, model="fake-local",
+        tool_timeout_seconds=5,
     )
     reservation = TokenReservation("reservation-1", "2026-10-06", "org-1", "user-1", 100)
     state = SimpleNamespace(context=context, config=config, reservation=reservation,
-                            released=[], settled=[], provider_calls=[])
+                            released=[], settled=[], settled_usage=[], estimates=[], provider_calls=[])
 
     async def read(function, *_args, **_kwargs):
         if function is service.get_conversation:
@@ -34,12 +35,14 @@ def stream_context(monkeypatch):
 
     async def write(function, *args, **_kwargs):
         if function is service.reserve_tokens:
+            state.estimates.append(args[1])
             return reservation
         if function is service.release_token_reservation:
             state.released.append(args[0])
             return True
         if function is service.settle_token_reservation:
             state.settled.append(args[0])
+            state.settled_usage.append(args[1:])
             return True
         if function is service.add_message:
             return "message-1"
@@ -121,6 +124,190 @@ def test_completed_stream_settles_without_releasing(stream_context):
         )]
         assert events[-1]["type"] == "message.completed"
         assert stream_context.settled == [stream_context.reservation]
+        assert stream_context.released == []
+
+    asyncio.run(scenario())
+
+
+def test_partial_or_duplicate_usage_events_do_not_erase_observed_tokens(monkeypatch, stream_context):
+    async def provider(*_args):
+        yield {"type": "response.completed", "response": {
+            "output": [], "usage": {"input_tokens": 10, "output_tokens": 5}}}
+        yield {"type": "error", "usage": {"output_tokens": 2}}
+    monkeypatch.setattr(service, "_provider_event_stream", provider)
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True)]
+        assert events[-1]["type"] == "message.failed"
+        assert stream_context.settled_usage == [(10, 5)]
+        assert stream_context.released == []
+    asyncio.run(scenario())
+
+
+def test_tool_argument_failure_preserves_completed_provider_usage(monkeypatch, stream_context):
+    async def provider_events(*args):
+        yield {"type": "response.output_item.added", "item": {
+            "type": "function_call", "name": "query", "arguments": "invalid JSON", "call_id": "call-1",
+        }}
+        yield {"type": "response.completed", "response": {
+            "output": [], "usage": {"input_tokens": 70, "output_tokens": 30},
+        }}
+
+    monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True,
+        )]
+        assert events[-1]["code"] == "AI_TOOL_INVALID_ARGUMENTS"
+        assert stream_context.settled_usage == [(70, 30)]
+        assert stream_context.released == []
+
+    asyncio.run(scenario())
+
+
+def test_cancel_after_known_provider_usage_settles_actual_tokens(monkeypatch, stream_context):
+    async def scenario():
+        usage_seen = asyncio.Event()
+
+        async def provider_events(*args):
+            yield {"type": "response.completed", "response": {
+                "output": [], "usage": {"input_tokens": 11, "output_tokens": 7},
+            }}
+            usage_seen.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+        stream = service.stream_message(SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True)
+        assert (await anext(stream))["type"] == "message.started"
+        task = asyncio.create_task(anext(stream))
+        await usage_seen.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await stream.aclose()
+        assert stream_context.settled_usage == [(11, 7)]
+        assert stream_context.released == []
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("terminal", ["error", "response.failed", "response.incomplete"])
+def test_provider_failure_with_reported_usage_preserves_actual_tokens(monkeypatch, stream_context, terminal):
+    async def provider_events(*args):
+        yield {"type": terminal, "response": {"usage": {"input_tokens": 9, "output_tokens": 4}}}
+
+    monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True,
+        )]
+        assert events[-1]["code"] == "AI_PROVIDER_UNAVAILABLE"
+        assert stream_context.settled_usage == [(9, 4)]
+        assert stream_context.released == []
+
+    asyncio.run(scenario())
+
+
+def test_provider_without_reported_usage_releases_estimate_without_charging_it(monkeypatch, stream_context):
+    async def provider_events(*args):
+        yield {"type": "error"}
+
+    monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True,
+        )]
+        assert events[-1]["code"] == "AI_PROVIDER_UNAVAILABLE"
+        assert stream_context.settled_usage == []
+        assert stream_context.released == [stream_context.reservation]
+
+    asyncio.run(scenario())
+
+
+def _install_tool_round(monkeypatch, state):
+    class ToolResult:
+        summary = {"source": "x" * 2000}
+        source_links = []
+        record_count = 1
+
+        def as_dict(self):
+            return {"summary": self.summary}
+
+    original_read, original_write = service.run_database_read, service.run_database_write
+
+    async def read(function, *args, **kwargs):
+        if function is service.execute_tool:
+            return ToolResult(), {"duration_ms": 1, "arguments_redacted": {}}
+        return await original_read(function, *args, **kwargs)
+
+    async def write(function, *args, **kwargs):
+        if function is service.add_tool_execution:
+            return "execution-1"
+        return await original_write(function, *args, **kwargs)
+
+    async def provider_events(*args):
+        state.provider_calls.append(len(state.provider_calls) + 1)
+        output = []
+        if len(state.provider_calls) == 1:
+            call = {"type": "function_call", "name": "query", "arguments": "{}", "call_id": "call-1"}
+            yield {"type": "response.output_item.added", "item": call}
+            output = [call]
+        else:
+            yield {"type": "response.output_text.delta", "delta": "Final answer"}
+        yield {"type": "response.completed", "response": {
+            "output": output, "usage": {"input_tokens": 7, "output_tokens": 3},
+        }}
+
+    monkeypatch.setattr(service, "run_database_read", read)
+    monkeypatch.setattr(service, "run_database_write", write)
+    monkeypatch.setattr(service, "_provider_event_stream", provider_events)
+    monkeypatch.setattr(service, "format_tool_result", lambda result: "x" * 2000)
+    monkeypatch.setattr(service, "audit_tool_execution", lambda *args, **kwargs: None)
+
+
+def test_next_provider_round_reserves_updated_tool_history_before_fetch(monkeypatch, stream_context):
+    _install_tool_round(monkeypatch, stream_context)
+
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True,
+        )]
+        assert events[-1]["type"] == "message.completed"
+        assert stream_context.provider_calls == [1, 2]
+        assert len(stream_context.estimates) == 2
+        assert stream_context.estimates[1] > stream_context.estimates[0]
+        assert stream_context.settled_usage == [(7, 3), (7, 3)]
+        assert stream_context.released == []
+
+    asyncio.run(scenario())
+
+
+def test_next_round_quota_rejection_stops_provider_and_keeps_prior_usage(monkeypatch, stream_context):
+    _install_tool_round(monkeypatch, stream_context)
+    original_write = service.run_database_write
+    attempts = []
+
+    async def write(function, *args, **kwargs):
+        if function is service.reserve_tokens:
+            attempts.append(args[1])
+            if len(attempts) == 2:
+                raise service.ai_error("AI_QUOTA_EXCEEDED", "No quota for the next provider round")
+        return await original_write(function, *args, **kwargs)
+
+    monkeypatch.setattr(service, "run_database_write", write)
+
+    async def scenario():
+        events = [event async for event in service.stream_message(
+            SimpleNamespace(), stream_context.context, "conversation-1", "Hello", quota_consumed=True,
+        )]
+        assert events[-1]["code"] == "AI_QUOTA_EXCEEDED"
+        assert stream_context.provider_calls == [1]
+        assert len(attempts) == 2
+        assert attempts[1] > attempts[0]
+        assert stream_context.settled_usage == [(7, 3)]
         assert stream_context.released == []
 
     asyncio.run(scenario())

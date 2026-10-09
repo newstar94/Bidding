@@ -742,7 +742,8 @@ async def preview_catalog_version_api(request):
             },
             timeout_seconds=60,
         )
-        log_audit(
+        await run_database_write(
+            log_audit,
             "document.word_template_previewed",
             actor_user_id=prepared["role"].user_id,
             organization_id=prepared["organizationId"],
@@ -875,7 +876,8 @@ async def preview_standardized_version_api(request):
             True,
             timeout_seconds=20,
         )
-        log_audit(
+        await run_database_write(
+            log_audit,
             "document.word_template_standardization_previewed",
             actor_user_id=prepared["role"].user_id,
             organization_id=prepared["organizationId"],

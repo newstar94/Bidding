@@ -1368,7 +1368,7 @@ test("saving an expert inside an edit breakdown session remains memory-only", as
   assert.deepEqual(calls, ["closeModal", "render"]);
 });
 
-test("saving an expert closes and paints local data before remote synchronization succeeds", async () => {
+test("saving an expert retains its editor until remote synchronization succeeds", async () => {
   const calls = [];
   let finishSync;
   const remoteSync = new Promise((resolve) => { finishSync = resolve; });
@@ -1397,13 +1397,47 @@ test("saving an expert closes and paints local data before remote synchronizatio
   }], { draft: false });
 
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start",
+    "persist", "flush", "render", "toast", "finish", "sync-start",
   ]);
   finishSync({ ok: true });
   await result.syncPromise;
   assert.deepEqual(calls, [
-    "persist", "flush", "render", "closeModal", "toast", "finish", "sync-start", "render", "toast",
+    "persist", "flush", "render", "toast", "finish", "sync-start", "closeModal", "render", "toast",
   ]);
+});
+
+for (const syncResult of [{ ok: false, status: 409, conflict: true },
+  { ok: false, status: 400 }, { ok: true, localMutationsPending: true }]) {
+  test(`expert editor remains available for canonical result ${JSON.stringify(syncResult)}`, async () => {
+    let closes = 0;
+    const controller = {
+      model: { state: { chuyengia: [] }, persistChanges: async () => {}, flushMutationOutbox: async () => {} },
+      autoSync: async () => syncResult,
+      closeModal: async () => { closes++; },
+      view: { renderChuyenGiaTable() {}, showToast() {} },
+    };
+    const result = await persistExpertFormChanges(controller, [{ id: "expert", isLatest: 1 }], { draft: false });
+    await result.syncPromise;
+    assert.equal(closes, 0);
+  });
+}
+
+test("late expert save confirmation does not close a newly opened editor", async () => {
+  let finishSync;
+  let closes = 0;
+  const remote = new Promise(resolve => { finishSync = resolve; });
+  const controller = {
+    _expertEditorGeneration: 1,
+    model: { state: { chuyengia: [] }, persistChanges: async () => {}, flushMutationOutbox: async () => {} },
+    autoSync: () => remote,
+    closeModal: async () => { closes++; },
+    view: { renderChuyenGiaTable() {}, showToast() {} },
+  };
+  const result = await persistExpertFormChanges(controller, [{ id: "expert", isLatest: 1 }], { draft: false });
+  controller._expertEditorGeneration = 2;
+  finishSync({ ok: true });
+  await result.syncPromise;
+  assert.equal(closes, 0);
 });
 
 test("saving a contract closes and paints local data before remote synchronization succeeds", async () => {

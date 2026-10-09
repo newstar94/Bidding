@@ -1599,12 +1599,14 @@ async def run_document_job_async(
         raise DocumentWorkerBusyError(_BUSY_MESSAGE)
 
     try:
-        job_id = _enqueue_durable_document_job(operation, payload)
-        concurrent_future = runtime.executor.submit(
-            _consume_durable_document_result,
-            job_id,
-            timeout_seconds=timeout_seconds,
-        )
+        def enqueue_and_consume():
+            job_id = _enqueue_durable_document_job(operation, payload)
+            return _consume_durable_document_result(
+                job_id,
+                timeout_seconds=timeout_seconds,
+            )
+
+        concurrent_future = runtime.executor.submit(enqueue_and_consume)
     except BaseException:
         runtime.admission.release()
         raise

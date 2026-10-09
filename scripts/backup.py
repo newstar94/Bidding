@@ -2,7 +2,7 @@
 
 Usage
 -----
-  # Create a backup (database + uploads + word-templates)
+  # Create a backup (database + uploads + word-templates + immutable word-catalog)
   python scripts/backup.py create
 
   # Restore from a backup directory
@@ -17,6 +17,7 @@ Environment variables
   BIDDING_BACKUP_DIR    Where backups are stored (default: data/backups)
   BIDDING_UPLOAD_DIR    Upload directory to include in backup
   BIDDING_WORD_TEMPLATE_DIR  Word-template directory to include in backup
+  BIDDING_WORD_TEMPLATE_CATALOG_DIR  Immutable Word catalog directory to include
 """
 
 import argparse
@@ -42,6 +43,7 @@ sys.path.insert(0, str(ROOT))
 
 from backend.shared.paths import resolve_runtime_path
 from backend.observability.backup_validation import (
+    ASSET_DIRECTORIES,
     snapshot_asset_directories as _shared_snapshot_asset_directories,
     verify_snapshot as _shared_verify_snapshot,
 )
@@ -51,7 +53,7 @@ from scripts.env_utils import load_env
 _SNAPSHOT_PREFIX = "biddingflow-backup"
 _MANIFEST_FILENAME = "manifest.json"
 _MAX_MANIFEST_FILES = 500_000
-_ASSET_DIRECTORIES = ("uploads", "word-templates")
+_ASSET_DIRECTORIES = ASSET_DIRECTORIES
 _SNAPSHOT_NAME_PATTERN = re.compile(
     rf"^{re.escape(_SNAPSHOT_PREFIX)}-(\d{{8}}T\d{{6}}Z)$"
 )
@@ -388,7 +390,7 @@ def _finalize_asset_swaps(
             shutil.rmtree(previous)
 
 
-def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: list[dict], timestamp: datetime) -> None:
+def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: list[dict], timestamp: datetime, *, catalog_required=False) -> None:
     all_files = [database_entry] + file_entries
     manifest = {
         "format": "biddingflow-pg-backup",
@@ -407,6 +409,7 @@ def _write_manifest(staging: pathlib.Path, database_entry: dict, file_entries: l
         "assetDirectories": {
             name: (staging / name).is_dir() for name in _ASSET_DIRECTORIES
         },
+        "wordTemplateCatalogRequired": catalog_required,
     }
     manifest_path = staging / _MANIFEST_FILENAME
     manifest_path.write_text(
@@ -470,6 +473,12 @@ def cmd_create(args) -> int:
     word_template_dir = pathlib.Path(
         args.word_templates or os.environ.get("BIDDING_WORD_TEMPLATE_DIR") or str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR"))
     ).resolve()
+    word_catalog_dir = pathlib.Path(
+        getattr(args, "word_catalog", None) or str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_CATALOG_DIR"))
+    ).resolve()
+    catalog_required = word_catalog_dir.is_dir() or (
+        str(os.environ.get("WORD_TEMPLATE_CATALOG_ENABLED", "false")).strip().casefold() == "true"
+    )
 
     timestamp = datetime.now(timezone.utc)
     snapshot_name = f"{_SNAPSHOT_PREFIX}-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
@@ -490,16 +499,20 @@ def cmd_create(args) -> int:
         file_entries += _copy_directory(upload_dir, "uploads", staging_path)
         print(f"  Copying word-templates from {word_template_dir} ...")
         file_entries += _copy_directory(word_template_dir, "word-templates", staging_path)
+        print(f"  Copying word-catalog from {word_catalog_dir} ...")
+        file_entries += _copy_directory(word_catalog_dir, "word-catalog", staging_path)
         db_entry = _backup_database(database_url, staging_path)
         if not _directory_matches_snapshot(
             upload_dir, "uploads", file_entries
         ) or not _directory_matches_snapshot(
             word_template_dir, "word-templates", file_entries
+        ) or not _directory_matches_snapshot(
+            word_catalog_dir, "word-catalog", file_entries
         ):
             raise RuntimeError(
                 "Assets changed while pg_dump was running; retry the backup."
             )
-        _write_manifest(staging_path, db_entry, file_entries, timestamp)
+        _write_manifest(staging_path, db_entry, file_entries, timestamp, catalog_required=catalog_required)
         staging_path.rename(final_path)
         removed_snapshots = _prune_local_snapshots(backup_dir)
         total_size = sum(e["sizeBytes"] for e in [db_entry] + file_entries)
@@ -509,9 +522,9 @@ def cmd_create(args) -> int:
             "fileCount": len(file_entries) + 1,
             "totalSizeBytes": total_size,
             "retentionRemoved": removed_snapshots,
-            "assetsComplete": all(
-                (final_path / name).is_dir() for name in _ASSET_DIRECTORIES
-            ),
+            "assetsComplete": all(_snapshot_asset_directories(
+                final_path, _verify_snapshot(final_path)
+            ).values()),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -547,17 +560,21 @@ def cmd_restore(args) -> int:
         os.environ.get("BIDDING_WORD_TEMPLATE_DIR")
         or str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR"))
     ).resolve()
+    word_catalog_dir = resolve_runtime_path("BIDDING_WORD_TEMPLATE_CATALOG_DIR")
     staged_assets = {}
     activated_assets = []
 
     try:
+        destinations = {
+            "uploads": upload_dir,
+            "word-templates": word_template_dir,
+        }
+        if "word-catalog" in _snapshot_asset_directories(snapshot_dir, manifest):
+            destinations["word-catalog"] = word_catalog_dir
         staged_assets = _stage_restore_assets(
             snapshot_dir,
             manifest,
-            {
-                "uploads": upload_dir,
-                "word-templates": word_template_dir,
-            },
+            destinations,
         )
         activated_assets = _activate_staged_assets(staged_assets)
         print(f"Restoring database from {dump_file} ...")
@@ -815,13 +832,14 @@ def _build_parser():
     create_p.add_argument("--backup-dir", default=None)
     create_p.add_argument("--uploads", default=None)
     create_p.add_argument("--word-templates", default=None)
+    create_p.add_argument("--word-catalog", default=None)
 
     restore_p = sub.add_parser("restore", help="Restore from a backup directory")
     restore_p.add_argument("--snapshot", required=True, help="Path to the snapshot directory")
 
     verify_p = sub.add_parser("verify", help="Verify manifest, size and checksums")
     verify_p.add_argument("--snapshot", required=True)
-    verify_p.add_argument("--require-complete", action="store_true", help="Require both asset trees for full restore")
+    verify_p.add_argument("--require-complete", action="store_true", help="Require all applicable asset trees for full restore")
 
     drill_p = sub.add_parser("drill", help="Restore and verify in an isolated drill database")
     drill_p.add_argument("--snapshot", required=True)

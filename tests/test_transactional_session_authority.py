@@ -1,7 +1,10 @@
 import asyncio
 import time
 from contextlib import asynccontextmanager
+from threading import get_ident
 from types import SimpleNamespace
+
+import pytest
 
 from backend.auth import admin_user_routes, auth_helper, auth_routes
 from backend.documents import package_document_routes
@@ -215,10 +218,14 @@ def test_platform_role_mutation_stops_when_authority_changes_in_write_lane(
     assert not any("UPDATE tai_khoan" in statement for statement, _ in cursor.statements)
 
 
-def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp_path):
+@pytest.mark.parametrize("authority", [
+    (False, "revoked during upload"),
+    (True, SimpleNamespace(user_id="actor-replaced")),
+])
+def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp_path, authority):
     read_connection = _Connection(_Cursor())
-    read_connection.__class__.__enter__ = lambda self: self
-    read_connection.__class__.__exit__ = lambda self, *_args: self.close()
+    monkeypatch.setattr(_Connection, "__enter__", lambda self: self, raising=False)
+    monkeypatch.setattr(_Connection, "__exit__", lambda self, *_args: self.close(), raising=False)
     write_connection = _Connection(_Cursor())
     connections = iter((read_connection, write_connection))
     session = SimpleNamespace(user_id="actor-1")
@@ -235,10 +242,20 @@ def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp
     async def fake_spooled_upload(*_args, **_kwargs):
         yield tmp_path / "source.pdf", 12, b"%PDF-1.7"
 
-    async def fake_blocking_io(function, *_args, **_kwargs):
-        if function is package_document_routes.persist_upload_path:
-            return 12, "checksum"
-        return None
+    upload_events = []
+    loop_thread = get_ident()
+
+    def persist_staged_file(_path, storage_key):
+        assert get_ident() != loop_thread
+        upload_events.append(("persisted", storage_key))
+        return 12, "checksum"
+
+    def recheck_authority(cursor, _request):
+        assert get_ident() != loop_thread
+        assert cursor is write_connection._cursor
+        assert [event for event, _value in upload_events] == ["persisted"]
+        upload_events.append(("session-rechecked", None))
+        return authority
 
     monkeypatch.setattr(
         package_document_routes.database,
@@ -266,11 +283,18 @@ def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp
         package_document_routes, "_validate_mutation_scope", lambda *_args, **_kwargs: None
     )
     monkeypatch.setattr(package_document_routes, "spooled_upload", fake_spooled_upload)
-    monkeypatch.setattr(package_document_routes, "run_blocking_io", fake_blocking_io)
+    # Mock storage primitives, retaining the real executor closures that own
+    # the staged file and transaction until a submitted worker has finished.
+    monkeypatch.setattr(package_document_routes, "validate_pdf_path", lambda *_args: None)
+    monkeypatch.setattr(package_document_routes, "persist_upload_path", persist_staged_file)
+    monkeypatch.setattr(
+        package_document_routes, "remove_storage_key",
+        lambda storage_key: upload_events.append(("staged-removed", storage_key)),
+    )
     monkeypatch.setattr(
         package_document_routes,
         "verify_session_in_transaction",
-        lambda *_args, **_kwargs: (False, "revoked during upload"),
+        recheck_authority,
     )
     metadata_write_called = []
     monkeypatch.setattr(
@@ -283,4 +307,7 @@ def test_long_upload_rechecks_revocation_before_metadata_commit(monkeypatch, tmp
 
     assert response.status_code == 401
     assert ("rollback",) in write_connection.events
+    assert ("close",) in write_connection.events
     assert metadata_write_called == []
+    assert [event for event, _value in upload_events] == ["persisted", "session-rechecked", "staged-removed"]
+    assert upload_events[0][1] == upload_events[2][1]

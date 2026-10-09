@@ -198,17 +198,27 @@ class ProcurementImportPreparer:
         *,
         raw_snapshot_repository=None,
         raw_cache_ttl_seconds=900,
+        source_lookup=None,
     ):
         self.source = source
         self.preview_store = preview_store
         self.raw_snapshot_repository = raw_snapshot_repository
+        self.source_lookup = source_lookup
         self.raw_cache_ttl_seconds = max(
             1.0, min(float(raw_cache_ttl_seconds), 86_400.0)
         )
 
     def _lookup_complete_bundle(
         self, code, kind, organization_id, *, detail_level="COMPLETE",
+        revision_mode="ALL", revision_numbers=None,
+        revision_metadata=None,
     ):
+        if callable(self.source_lookup):
+            return self.source_lookup(
+                code, kind, detail_level=detail_level,
+                revision_mode=revision_mode, revision_numbers=revision_numbers or [],
+                revision_metadata=revision_metadata,
+            )
         raw_bundle = None
         loader_name = (
             "load_fresh_plan_bundle" if kind == "PLAN"
@@ -389,6 +399,11 @@ class ProcurementImportPreparer:
         if not notices:
             return {}, []
         workers = max(1, min(int(max_workers or 1), len(notices), 8))
+        if callable(self.source_lookup):
+            # Allocate affordable source revisions in normalized notice order.
+            # Parallel child submission must not decide which package gets a
+            # scarce workspace credit first.
+            workers = 1
         child_timeout = max(1.0, float(timeout_seconds or 45.0))
 
         # A source can own a single serialized browser/JSON-lines worker.  In
@@ -427,6 +442,7 @@ class ProcurementImportPreparer:
                     self.preview_store,
                     raw_snapshot_repository=self.raw_snapshot_repository,
                     raw_cache_ttl_seconds=self.raw_cache_ttl_seconds,
+                    source_lookup=self.source_lookup,
                 )
                 child_revisions = deepcopy(revisions)
                 child_history = {}
@@ -454,7 +470,13 @@ class ProcurementImportPreparer:
                     try:
                         completed[notice_no] = future.result(timeout=child_timeout)
                     except Exception as error:  # noqa: BLE001 - reported per notice.
-                        failures.append({"noticeNo": notice_no, "error": str(error)[:160]})
+                        failure = {"noticeNo": notice_no, "error": str(error)[:160]}
+                        if getattr(error, "code", None):
+                            failure["errorCode"] = error.code
+                        usage = (getattr(error, "details", {}) or {}).get("usageCredits")
+                        if usage:
+                            failure["usageCredits"] = deepcopy(usage)
+                        failures.append(failure)
                     if progress_callback:
                         progress_callback(notice_no, len(completed) + len(failures), len(notices))
             except FutureTimeoutError:
@@ -638,9 +660,22 @@ class ProcurementImportPreparer:
         mode = str(revision_mode or "LATEST").upper()
         complete_lookup = getattr(self.source, "lookup_with_options", None)
         source_started = time.perf_counter()
-        if mode == "ALL" and callable(complete_lookup):
+        guarded_lookup = callable(self.source_lookup)
+        if guarded_lookup or (mode == "ALL" and callable(complete_lookup)):
+            selected_number = selected_revision or normalized.requested_revision
+            available_metadata = None
+            if guarded_lookup and mode != "ALL":
+                available_metadata = self.source.list_plan_revisions(normalized.base_code)
+                selected_metadata = self._select_revisions(
+                    available_metadata, mode, normalized.requested_revision, selected_revision,
+                )
             complete = self._lookup_complete_bundle(
-                normalized.base_code, "PLAN", organization_id
+                normalized.base_code, "PLAN", organization_id,
+                revision_mode="SELECTED" if available_metadata is not None or (selected_number and mode != "ALL") else mode,
+                revision_numbers=([str(row["revisionNumber"]) for row in selected_metadata]
+                                  if available_metadata is not None else
+                                  [selected_number] if selected_number and mode != "ALL" else []),
+                revision_metadata=available_metadata,
             )
             canonical = complete.get("canonical") or {}
             revisions = deepcopy(canonical.get("revisions") or [])
@@ -652,6 +687,11 @@ class ProcurementImportPreparer:
                 for row in revisions
             ]
             selected = available
+            if available_metadata is not None:
+                available = available_metadata
+            elif guarded_lookup and complete.get("usageCredits"):
+                available = [{"revisionNumber": row["sourceRevision"]}
+                             for row in complete["usageCredits"].get("requested") or []]
             if not revisions:
                 raise LookupError("PROCUREMENT_REVISION_INVALID")
         else:
@@ -669,7 +709,7 @@ class ProcurementImportPreparer:
                 for row in selected
             ]
         if include_linked_notices:
-            if int(enrichment_workers or 1) > 1:
+            if int(enrichment_workers or 1) > 1 or guarded_lookup:
                 linked_notice_revisions, enrichment_failures = self._enrich_linked_notices_bounded(
                     revisions,
                     organization_id=organization_id,
@@ -905,6 +945,8 @@ class ProcurementImportPreparer:
             "blockingIssues": blocking_issues,
             "warnings": warnings,
         }
+        if guarded_lookup:
+            bundle["usageCredits"] = deepcopy(complete.get("usageCredits") or {})
         stored = self.preview_store.put(
             bundle,
             organization_id=organization_id,
@@ -952,9 +994,22 @@ class ProcurementImportPreparer:
         mode = str(revision_mode or "LATEST").upper()
         source_started = time.perf_counter()
         complete_lookup = getattr(self.source, "lookup_with_options", None)
-        if mode == "ALL" and callable(complete_lookup):
+        guarded_lookup = callable(self.source_lookup)
+        if guarded_lookup or (mode == "ALL" and callable(complete_lookup)):
+            selected_number = selected_revision or normalized.requested_revision
+            available_metadata = None
+            if guarded_lookup and mode != "ALL":
+                available_metadata = self.source.list_notice_revisions(normalized.base_code)
+                selected_metadata = self._select_revisions(
+                    available_metadata, mode, normalized.requested_revision, selected_revision,
+                )
             complete = self._lookup_complete_bundle(
-                normalized.base_code, "PACKAGE", organization_id
+                normalized.base_code, "PACKAGE", organization_id,
+                revision_mode="SELECTED" if available_metadata is not None or (selected_number and mode != "ALL") else mode,
+                revision_numbers=([str(row["revisionNumber"]) for row in selected_metadata]
+                                  if available_metadata is not None else
+                                  [selected_number] if selected_number and mode != "ALL" else []),
+                revision_metadata=available_metadata,
             )
             revisions = sorted(
                 deepcopy((complete.get("canonical") or {}).get("revisions") or []),
@@ -969,6 +1024,11 @@ class ProcurementImportPreparer:
                 }
                 for row in revisions
             ]
+            if available_metadata is not None:
+                available = available_metadata
+            elif guarded_lookup and complete.get("usageCredits"):
+                available = [{"revisionNumber": row["sourceRevision"]}
+                             for row in complete["usageCredits"].get("requested") or []]
             relationships = [
                 {
                     "planNo": revision.get("planNo"),
@@ -1096,6 +1156,8 @@ class ProcurementImportPreparer:
             "blockingIssues": blocking_issues,
             "warnings": [],
         }
+        if guarded_lookup:
+            bundle["usageCredits"] = deepcopy(complete.get("usageCredits") or {})
         stored = self.preview_store.put(
             bundle,
             organization_id=organization_id,

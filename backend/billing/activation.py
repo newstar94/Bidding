@@ -13,6 +13,7 @@ import time
 
 from backend.commercial_policy.document import canonical_json
 from backend.commercial_policy.repository import CommercialRepository, new_id
+from backend.commercial_policy.transitions import transition_review_reason
 from backend.shared.logging_utils import log_audit
 from backend.usage_credits import UsageCreditService, UsageOwner
 from .provider_timestamp import parse_provider_transaction_time
@@ -460,7 +461,11 @@ class BillingActivationService:
                 return self._mark_review(order, "SUBSCRIPTION_REVISION_MISMATCH")
         if snapshot.get("itemType") == "procurement_credit_pack":
             return self._apply_credit_pack(order, item, benefits)
-        policy = snapshot.get("policySnapshot") or {}
+        policy = snapshot.get("policySnapshot") or decision.get("policySnapshot") or {}
+        transition_reason = transition_review_reason(
+            order["operation"], "base_plan", policy, current, self.clock())
+        if transition_reason:
+            return self._mark_review(order, transition_reason)
         period = (snapshot.get("price") or decision.get("price") or {}).get("period", "yearly")
         term_policy = policy.get("monthlyBaseTerm" if period == "monthly" else "baseTerm") or {}
         term = term_policy.get("kind")

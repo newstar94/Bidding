@@ -214,6 +214,7 @@ test("stale-window mutation is pulled before its first push", async () => {
 test("startup reconciliation exposes an operation-backed state contract", async () => {
   const pull = deferred();
   const publishedPhases = [];
+  const startupMarks = [];
   const model = {
     workspaceScope: { key: "user:org-a" },
     getWorkspaceToken: () => "user:org-a@1",
@@ -221,7 +222,7 @@ test("startup reconciliation exposes an operation-backed state contract", async 
   };
   const controller = {
     model,
-    markStartup() {},
+    markStartup(label) { startupMarks.push(label); },
     publishStartupReconciliationPhase(phase) { publishedPhases.push(phase); },
     async autoSync() { return { ok: true, skipped: true }; },
     async forceSyncData() { return pull.promise; },
@@ -239,6 +240,7 @@ test("startup reconciliation exposes an operation-backed state contract", async 
       getStartupReconciliationState(controller).phase,
       STARTUP_RECONCILIATION_PHASE.RECONCILING,
     );
+    assert.equal(startupMarks.includes("workspace-reconciliation:RECONCILED"), false);
     pull.resolve({ ok: true, localMutationsPending: false });
     assert.equal(await reconciliation, true);
     assert.equal(
@@ -249,6 +251,11 @@ test("startup reconciliation exposes an operation-backed state contract", async 
       STARTUP_RECONCILIATION_PHASE.LOCAL_READY,
       STARTUP_RECONCILIATION_PHASE.RECONCILING,
       STARTUP_RECONCILIATION_PHASE.RECONCILED,
+    ]);
+    assert.deepEqual(startupMarks.filter((name) => name.startsWith("workspace-reconciliation:")), [
+      "workspace-reconciliation:LOCAL_READY",
+      "workspace-reconciliation:RECONCILING",
+      "workspace-reconciliation:RECONCILED",
     ]);
   });
 });
@@ -325,6 +332,7 @@ test("startup state machine rejects impossible success without reconciliation", 
 
 test("workspace_a_reconciliation_cannot_mutate_workspace_b_startup_state", async () => {
   const push = deferred();
+  const startupMarks = [];
   let token = "user:org-a@1";
   const model = {
     workspaceScope: { key: "user:org-a" },
@@ -333,7 +341,7 @@ test("workspace_a_reconciliation_cannot_mutate_workspace_b_startup_state", async
   };
   const controller = {
     model,
-    markStartup() {},
+    markStartup(label) { startupMarks.push(label); },
     async autoSync() { return push.promise; },
     async forceSyncData() {
       throw new Error("workspace A must stop before pulling into workspace B");
@@ -352,6 +360,7 @@ test("workspace_a_reconciliation_cannot_mutate_workspace_b_startup_state", async
     const stateB = getStartupReconciliationState(controller);
     assert.equal(stateB.workspaceToken, "user:org-b@2");
     assert.equal(stateB.phase, STARTUP_RECONCILIATION_PHASE.LOCAL_READY);
+    assert.equal(startupMarks.includes("workspace-reconciliation:RECONCILED"), false);
   });
 });
 

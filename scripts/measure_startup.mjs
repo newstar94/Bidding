@@ -3,11 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import {
+  hasAuthoritativeWorkspaceReadiness,
+  hasRequestedRouteReadiness,
+  readWorkspaceStartupReadiness,
+} from "./startup_readiness_metrics.mjs";
 
 const argumentsSet = new Set(process.argv.slice(2));
 const shouldAssert = argumentsSet.has("--assert");
 const baseURL = String(process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const route = process.env.STARTUP_ROUTE || "/admin";
+const requestedPathname = new URL(`${baseURL}${route}`).pathname;
 const username = process.env.E2E_USERNAME || process.env.ADMIN_USERNAME || "admin";
 const password = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD;
 // With only 10 samples, nearest-rank p95 equals the maximum and makes the gate
@@ -36,6 +42,12 @@ const blockedURLPatterns = process.env.STARTUP_BLOCKED_URLS === ""
     .map((value) => value.trim())
     .filter(Boolean);
 const outputPath = path.resolve(process.env.STARTUP_METRICS_OUTPUT || "data/logs/startup-performance.json");
+const expectedReleaseId = String(process.env.STARTUP_EXPECTED_RELEASE_ID || (
+  JSON.parse(await fs.readFile(new URL("../dist/secure-build.json", import.meta.url), "utf8")).releaseId
+) || "").trim();
+if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(expectedReleaseId)) {
+  throw new Error("Startup measurement requires the immutable artifact release ID.");
+}
 
 if (!password) {
   throw new Error("E2E_PASSWORD or ADMIN_PASSWORD must be configured.");
@@ -51,6 +63,9 @@ function summarize(samples) {
   const durations = samples.map((sample) => sample.loaderHiddenMs);
   const apiRequestCounts = samples.map((sample) => sample.startupApiRequestCount);
   const apiTransferBytes = samples.map((sample) => sample.startupApiTransferBytes);
+  const readinessP95 = (name) => percentile(
+    samples.map((sample) => sample[name]).filter(Number.isFinite), 0.95,
+  );
   return {
     count: samples.length,
     minMs: Math.min(...durations),
@@ -62,6 +77,16 @@ function summarize(samples) {
     startupApiRequestP95: percentile(apiRequestCounts, 0.95),
     startupApiTransferBytesMedian: percentile(apiTransferBytes, 0.5),
     startupApiTransferBytesP95: percentile(apiTransferBytes, 0.95),
+    adminShellReadyP95Ms: readinessP95("adminShellReadyMs"),
+    adminRouteReadyP95Ms: readinessP95("adminRouteReadyMs"),
+    workspaceSynchronizedP95Ms: readinessP95("workspaceSynchronizedMs"),
+    workspaceReconciliationP95Ms: readinessP95("workspaceReconciliationMs"),
+    workspaceReconciliationApplicableCount: samples.filter(
+      (sample) => sample.workspaceReconciliationApplicable,
+    ).length,
+    workspaceSynchronizedCount: samples.filter(
+      (sample) => Number.isFinite(sample.workspaceSynchronizedMs),
+    ).length,
     samples,
   };
 }
@@ -174,6 +199,8 @@ async function measureNavigation(page, mode, run) {
       workspaceImportStart: mark("workspace-import-start"),
       workspaceImportEnd: mark("workspace-import-end"),
       initStart: mark("init:start"),
+      adminShellReady: mark("admin-shell:ready"),
+      adminRouteReady: mark("admin-route:ready"),
       loaderHidden: mark("loader:hidden"),
     };
     const startupPhase = (startTime) => {
@@ -197,6 +224,8 @@ async function measureNavigation(page, mode, run) {
       run: sampleRun,
       releaseId: String(globalThis.__BIDDINGFLOW_RELEASE__ || "unknown"),
       loaderHiddenMs,
+      adminShellReadyMs: marks.adminShellReady,
+      adminRouteReadyMs: marks.adminRouteReady,
       appModuleStartMs: Math.round(mark("app-module-start") ?? 0),
       workspaceImportMs: Math.round((mark("workspace-import-end") ?? 0) - (mark("workspace-import-start") ?? 0)),
       initToLoaderMs: Math.round((mark("loader:hidden") ?? 0) - (mark("init:start") ?? 0)),
@@ -244,9 +273,20 @@ async function measureNavigation(page, mode, run) {
       serverTiming,
     };
     }, { mode, run });
+    const cpuBusyPercent = hostCpuBusyPercent(cpuBefore, hostCpuSnapshot());
+    // The loader budget remains a shell/route budget. Measure authoritative
+    // workspace readiness separately after deferred reconciliation settles.
+    // Admin has no workspace reconciler and reports these metrics as N/A.
+    const workspaceReadiness = await page.waitForFunction(
+      readWorkspaceStartupReadiness, { waitForTerminal: true },
+    );
+    const workspaceMetrics = await workspaceReadiness.jsonValue();
+    await workspaceReadiness.dispose();
     return {
       ...browserMetrics,
-      hostCpuBusyPercent: hostCpuBusyPercent(cpuBefore, hostCpuSnapshot()),
+      ...workspaceMetrics,
+      pathname: new URL(page.url()).pathname,
+      hostCpuBusyPercent: cpuBusyPercent,
       runtimeFailures,
     };
   } finally {
@@ -320,8 +360,10 @@ const result = {
   generatedAt: new Date().toISOString(),
   baseURL,
   route,
+  requestedPathname,
   releaseId: releaseIds.length === 1 ? releaseIds[0] : null,
   releaseIds,
+  expectedReleaseId,
   browserVersion,
   runtime: {
     node: process.version,
@@ -340,6 +382,11 @@ result.passed = result.cold.p95Ms <= coldP95LimitMs
   && result.cold.longestTaskMs <= longTaskLimitMs
   && result.warm.longestTaskMs <= longTaskLimitMs
   && releaseIds.length === 1
+  && releaseIds[0] === expectedReleaseId
+  && [...coldSamples, ...warmSamples].every(
+    (sample) => hasRequestedRouteReadiness(sample, requestedPathname),
+  )
+  && [...coldSamples, ...warmSamples].every(hasAuthoritativeWorkspaceReadiness)
   && [...coldSamples, ...warmSamples].every((sample) => sample.runtimeFailures.length === 0);
 
 await fs.mkdir(path.dirname(outputPath), { recursive: true });

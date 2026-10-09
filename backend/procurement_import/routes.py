@@ -12,6 +12,7 @@ import os
 import re
 import threading
 import time
+from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
 from starlette.responses import JSONResponse
@@ -49,6 +50,14 @@ from backend.procurement_import.service import (
 )
 from backend.procurement_import.session import ProcurementImportSessionService
 from backend.procurement_raw import ProcurementRawSnapshotRepository
+from backend.procurement_lookup.routes import (
+    fetch_procurement_snapshot,
+    _public_error as _lookup_public_error,
+)
+from backend.procurement_lookup.domain import ProcurementLookupError
+from backend.procurement_lookup.service import ProcurementLookupService
+from backend.commercial_policy.config import commercial_runtime_config
+from backend.commercial_policy.errors import CommercialPolicyError
 from backend.procurement_import.source import ProcurementSourceError
 from backend.procurement_import.runtime import (
     ProcurementRouteError,
@@ -179,6 +188,31 @@ def _build_import_preparer(source):
     )
 
 
+def _configure_import_fetch(preparer, *, organization_id, user_id, request=None):
+    """Use the existing code/revision credit contract for production imports."""
+    if not commercial_runtime_config().procurement_credit_enforcement_enabled:
+        return preparer
+    lookup_service = ProcurementLookupService(preparer.source)
+    # Recovery workers retain the durable session owner, not a mutable browser
+    # workspace. The shared guard resolves account ownership from personal:ID.
+    request = request or SimpleNamespace(state=SimpleNamespace())
+    session = SimpleNamespace(user_id=user_id)
+
+    def complete_lookup(code, kind, *, revision_mode, revision_numbers, **options):
+        return fetch_procurement_snapshot(
+            request, session, organization_id,
+            {"code": code, "detailLevel": "COMPLETE", "revisionMode": revision_mode,
+             "revisionNumbers": revision_numbers},
+            raw_repository=preparer.raw_snapshot_repository,
+            service=lookup_service,
+            revision_metadata=options.get("revision_metadata"),
+            persist_partial_snapshot=False,
+        )
+
+    preparer.source_lookup = complete_lookup
+    return preparer
+
+
 def _interactive_source_context(source):
     context = getattr(source, "interactive_retry_context", None)
     return context() if callable(context) else nullcontext()
@@ -255,7 +289,10 @@ def _prepare_blocking(request, payload):
         and str(source.name).upper() == "MUASAMCONG"
     )
     with _interactive_source_context(source):
-        preview = _build_import_preparer(source).prepare_plan(
+        preview = _configure_import_fetch(
+            _build_import_preparer(source), organization_id=organization_id,
+            user_id=session.user_id, request=request,
+        ).prepare_plan(
             code=payload.get("code"),
             revision_mode=payload.get("revisionMode") or "LATEST",
             selected_revision=payload.get("selectedRevision"),
@@ -539,7 +576,10 @@ def _run_plan_enrichment(context, operation_id):
             )
             return
         source = build_procurement_source()
-        preparer = _build_import_preparer(source)
+        preparer = _configure_import_fetch(
+            _build_import_preparer(source), organization_id=context["organizationId"],
+            user_id=context["userId"],
+        )
         code = context["familyNo"]
         local_connection = database.get_connection()
         try:
@@ -973,7 +1013,10 @@ def _prepare_notice_blocking(request, payload):
             connection.close()
 
     with _interactive_source_context(source):
-        preview = _build_import_preparer(source).prepare_notice(
+        preview = _configure_import_fetch(
+            _build_import_preparer(source), organization_id=organization_id,
+            user_id=session.user_id, request=request,
+        ).prepare_notice(
             code=payload.get("code"),
             revision_mode=payload.get("revisionMode") or "LATEST",
             selected_revision=payload.get("selectedRevision"),
@@ -1297,13 +1340,36 @@ def _prepare_opening_blocking(request, payload):
         require_financial=opening_phase == "FINANCIAL",
     )
     if opening is None:
-        opening = source.get_opening_bundle(
-            notice_no, selected["revisionId"],
-            **({"opening_phase": opening_phase} if opening_phase else {}),
-        )
-        captured_bundle = opening.pop("rawBundle", None)
-        if isinstance(captured_bundle, dict):
-            raw_repository.save_bundle(organization_id, captured_bundle)
+        def fetch_opening():
+            fetched = source.get_opening_bundle(
+                notice_no, selected["revisionId"],
+                **({"opening_phase": opening_phase} if opening_phase else {}),
+            )
+            captured = fetched.pop("rawBundle", None)
+            if (
+                commercial_runtime_config().procurement_credit_enforcement_enabled
+                and fetched.get("partial") is not True
+                and (not isinstance(captured, dict) or captured.get("complete") is not True)
+            ):
+                raise ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
+            return {"opening": fetched, "rawBundle": captured}
+
+        if commercial_runtime_config().procurement_credit_enforcement_enabled:
+            result = fetch_procurement_snapshot(
+                request, session, organization_id,
+                {"code": notice_no, "detailLevel": "COMPLETE", "revisionMode": "SELECTED",
+                 "revisionNumbers": [str(selected.get("revisionNumber"))]},
+                raw_repository=raw_repository,
+                service=ProcurementLookupService(source), fetch=fetch_opening,
+                revision_metadata=available,
+                persist_partial_snapshot=False,
+            )
+            opening = result["opening"]
+        else:
+            result = fetch_opening()
+            opening = result["opening"]
+            if isinstance(result["rawBundle"], dict):
+                raw_repository.save_bundle(organization_id, result["rawBundle"])
     canonical = {
         "schemaVersion": "biddingflow-opening-import-preview-v1",
         "importKind": "OPENING",
@@ -2883,6 +2949,13 @@ def _resume_blocking(request, operation_id):
 
 
 def _public_error(request, error):
+    if isinstance(error, ProcurementLookupError):
+        return _lookup_public_error(request, error)
+    if isinstance(error, CommercialPolicyError):
+        return error_response(
+            request, error.code, error.message, status_code=error.status_code,
+            fields=error.details if error.code == "QUOTA_EXHAUSTED" else None,
+        )
     if getattr(error, "sqlstate", None) in {"40001", "40P01"}:
         return error_response(
             request,

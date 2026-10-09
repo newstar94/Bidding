@@ -1,5 +1,6 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { captureWorkspaceLease, isWorkspaceLeaseCurrent } from "./workspaceLease.js";
 
 export function setupInlineExcelControls(controller) {
   bindInlineExcelPair({
@@ -45,14 +46,36 @@ function handleInlineExcelUpload(controller, file, type) {
   fd.append("type", type);
   const tbody = document.getElementById(`${type}-tbody`);
   if (!tbody) return;
+  const workspace = captureWorkspaceLease(controller.model);
+  const packageField = document.getElementById("form-goithau-id");
+  const packageId = String(packageField?.value || "");
+  const modal = tbody.closest(".modal-overlay");
+  let closed = false;
+  const lifetime = modal ? new MutationObserver((changes) => {
+    if (changes.some((change) => !String(change.oldValue || "").split(/\s+/u).includes("active"))
+        || !modal.classList.contains("active")) closed = true;
+  }) : null;
+  lifetime?.observe(modal, { attributes: true, attributeFilter: ["class"], attributeOldValue: true });
+  controller._inlineExcelRequests ||= new Map();
+  const request = {};
+  controller._inlineExcelRequests.set(type, request);
   const originalHTML = tbody.innerHTML;
   tbody.innerHTML = trustedHTML(`<tr><td colspan="${type === "phanlo" ? 5 : 6}" class="bf-s-d6ce8fac83">
         Đang tải dữ liệu và phân tích file Excel...
     </td></tr>`);
-  apiFetch("/api/import-excel", {
+  const pendingHTML = tbody.innerHTML;
+  const isCurrent = () => !closed && controller._inlineExcelRequests.get(type) === request
+    && isWorkspaceLeaseCurrent(controller.model, workspace)
+    && document.getElementById(`${type}-tbody`) === tbody && tbody.isConnected
+    && document.getElementById("form-goithau-id") === packageField
+    && String(packageField?.value || "") === packageId
+    && (!modal || (modal.isConnected && modal.classList.contains("active")))
+    && tbody.innerHTML === pendingHTML;
+  return apiFetch("/api/import-excel", {
     method: "POST",
     body: fd
   }).then((res) => res.json()).then((data) => {
+    if (!isCurrent()) return;
     if (data.success) {
       tbody.innerHTML = trustedHTML("");
       const validRows = data.rows.filter((r) => r._valid);
@@ -76,7 +99,11 @@ function handleInlineExcelUpload(controller, file, type) {
       tbody.innerHTML = trustedHTML(originalHTML);
     }
   }).catch((err) => {
+    if (!isCurrent()) return;
     controller.view.customAlert("Lỗi kết nối", "Lỗi kết nối: " + err.message, "x-circle");
     tbody.innerHTML = trustedHTML(originalHTML);
+  }).finally(() => {
+    lifetime?.disconnect();
+    if (controller._inlineExcelRequests.get(type) === request) controller._inlineExcelRequests.delete(type);
   });
 }

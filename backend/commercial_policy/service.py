@@ -19,6 +19,7 @@ from .errors import (
 )
 from .repository import CommercialRepository
 from .tax import calculate_tax_price
+from .transitions import current_subscription, require_self_service_transition
 
 
 class CommercialPolicy:
@@ -150,6 +151,10 @@ class CommercialPolicy:
                 ),
             }
             item_type = "procurement_credit_pack"
+        current = (current_subscription(self.repository.cursor, owner_kind, context.get("ownerId"))
+                   if item_type == "base_plan" else None)
+        require_self_service_transition(operation, item_type, document.get("policies") or {},
+                                        current, self.clock() if at is None else at)
         snapshot = {
             "releaseId": release["id"],
             "releaseChecksum": release["checksum"],

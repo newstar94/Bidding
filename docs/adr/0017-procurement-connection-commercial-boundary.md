@@ -42,3 +42,10 @@
 - hạ gói không xóa/che dữ liệu hoặc trạng thái vi phạm;
 - role/module/assignment/record scope vẫn được kiểm tra giống trước cutover;
 - preview/import cùng snapshot, retry, cache hit và lỗi nguồn ngoài không tạo usage debit hoặc tự gán trạng thái vi phạm.
+
+## Kiểm chứng triển khai ngày 2026-10-09
+
+- Prepare PLAN/NOTICE (`LATEST`, `SELECTED`, `ALL`), bổ sung TBMT nền và nhập Mở thầu dùng chung cơ chế giữ lượt và commit snapshot/debit với lookup khi bật enforcement. Mã + revision giữ nguyên là đơn vị kế toán; header, invitation và opening không tạo đơn vị thu riêng.
+- Nhập từ snapshot đã có không trừ lại. Dữ liệu mở thầu bổ sung cùng mã + revision đã lấy giữ nguyên identity; lỗi nguồn, raw snapshot không hoàn chỉnh hoặc không lưu được giải phóng reservation. Snapshot import chưa hoàn chỉnh không được đưa vào cache dùng chung như dữ liệu đã lấy thành công.
+- Danh sách bổ sung TBMT phân bổ lượt theo thứ tự ổn định của danh sách chuẩn hóa; phần không đủ lượt báo `QUOTA_EXHAUSTED` từng mã/revision và không tải payload.
+- Không migration dữ liệu, grant, ledger, entitlement hoặc scope. Contract dữ liệu đọc, tenant/module/assignment và lease hiện hành giữ nguyên. Kiểm thử hồi quy tại HTTP prepare, service bổ sung nền và ledger cô lập; chưa thay bằng chứng connector hoặc PostgreSQL production.

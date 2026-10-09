@@ -16,6 +16,8 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 import backend.procurement_lookup.routes as routes
+import backend.procurement_import.routes as import_routes
+from backend.procurement_import.service import PreviewStore
 from backend.procurement_lookup.service import ProcurementLookupService
 from backend.usage_credits import UsageCreditService, UsageOwner
 
@@ -49,6 +51,16 @@ def affordable_lookup(monkeypatch):
             id TEXT, grant_id TEXT, reservation_id TEXT, entry_type TEXT,
             quantity INTEGER, balance_after INTEGER, metadata_json TEXT
         );
+        CREATE TABLE goi_thau (
+            id TEXT, id_goc TEXT, row_version INTEGER, ma_goi_thau TEXT,
+            ten_goi_thau TEXT, organization_id TEXT, is_latest INTEGER, archived_at TEXT
+        );
+        CREATE TABLE procurement_source_binding (
+            organization_id TEXT, local_snapshot_id TEXT, local_root_id TEXT,
+            notify_no TEXT, created_at TEXT
+        );
+        INSERT INTO goi_thau VALUES ('package-1', 'root-1', 1, 'IB2600000001', 'Gói được phép xem', 'org-1', 1, NULL);
+        INSERT INTO procurement_source_binding VALUES ('org-1', 'package-1', 'root-1', 'IB2600000001', 'test');
     """)
     storage.execute(
         "INSERT INTO commercial_releases VALUES (?, ?, 1, ?, ?, 'production', 'global', 1, 0, NULL, 'admin', 'test', 'test')",
@@ -60,6 +72,8 @@ def affordable_lookup(monkeypatch):
             return self
 
         def execute(self, statement, parameters=()):
+            if statement == "BEGIN ISOLATION LEVEL SERIALIZABLE":
+                statement = "BEGIN"
             return storage.execute(statement.replace(" FOR UPDATE", ""), parameters)
 
         def commit(self):
@@ -74,6 +88,9 @@ def affordable_lookup(monkeypatch):
     connection = Connection()
     database = SimpleNamespace(get_connection=lambda: connection)
     state = SimpleNamespace(fetches=[], saved=[], authoritative={}, fail_fetch=False, metadata_calls=0, fail_metadata=False, fail_projection=False, cache_reload_failure=None, fail_save=False)
+    state.opening_fetches = []
+    state.opening_cache = None
+    state.opening_partial = False
 
     class Source:
         name = "MUASAMCONG"
@@ -85,16 +102,52 @@ def affordable_lookup(monkeypatch):
                 raise RuntimeError("fixture metadata unavailable")
             return [{"revisionId": f"revision-{number:02}", "revisionNumber": f"{number:02}"} for number in range(10)]
 
+        def list_plan_revisions(self, code):
+            return self.list_revision_metadata(code, "PLAN")
+
+        def list_notice_revisions(self, code):
+            return self.list_revision_metadata(code, "PACKAGE")
+
+        def get_plan_revision(self, code, revision_id):
+            number = revision_id.rsplit("-", 1)[-1]
+            return self.lookup_with_options(code, "PLAN", revision_mode="SELECTED", revision_numbers=[number])["canonical"]["revisions"][0]
+
+        def get_notice_revision(self, code, revision_id):
+            number = revision_id.rsplit("-", 1)[-1]
+            return self.lookup_with_options(code, "PACKAGE", revision_mode="SELECTED", revision_numbers=[number])["canonical"]["revisions"][0]
+
+        def resolve_notice_package(self, code, revision_id):
+            return {}
+
+        def get_opening_bundle(self, code, revision_id, **options):
+            state.opening_fetches.append((code, revision_id, options.get("opening_phase")))
+            if state.fail_fetch:
+                raise RuntimeError("fixture opening source failure")
+            number = revision_id.rsplit("-", 1)[-1]
+            raw = self.result(code, [number])["rawBundle"]
+            raw["complete"] = not state.opening_partial
+            raw["revisions"][number]["openingPartial"] = state.opening_partial
+            raw["opening"] = True
+            return {"bidders": [{"contractorName": "Authorized bidder", "bankAccount": "authorized-full-field"}],
+                    "partial": state.opening_partial, "rawBundle": raw}
+
         @staticmethod
         def result(code, numbers):
             return {
                 "schemaVersion": "biddingflow-procurement-preview-v1",
                 "kind": "PACKAGE", "canonicalCode": code, "found": True,
                 "data": {"noticeNo": code, "bankAccount": "authorized-full-field"},
+                "canonical": {"revisions": [{
+                    "revisionId": f"revision-{number}", "revisionNumber": number,
+                    "planNo": code if code.startswith("PL") else None,
+                    "noticeNo": code if code.startswith("IB") else None,
+                    "name": "Authorized complete source", "packages": [],
+                    "bankAccount": "authorized-full-field",
+                } for number in numbers]},
                 "rawBundle": {
                     "entity": {"kind": "NOTICE", "noticeNo": code},
                     "complete": True,
-                    "revisions": {number: {"revisionNumber": number, "bankAccount": "authorized-full-field"} for number in numbers},
+                    "revisions": {number: {"revisionNumber": number, "sourceCode": code, "bankAccount": "authorized-full-field"} for number in numbers},
                 },
             }
 
@@ -142,9 +195,13 @@ def affordable_lookup(monkeypatch):
                 raise routes.ProcurementLookupError("PROCUREMENT_SCHEMA_CHANGED")
             numbers = list(bundle["revisions"])
             state.saved.append(numbers)
-            inserted = sum(number not in state.authoritative for number in numbers)
+            inserted = sum(state.authoritative.get(number) != bundle["revisions"][number] for number in numbers)
             state.authoritative.update(deepcopy(bundle["revisions"]))
+            if bundle.get("opening") and bundle.get("complete"):
+                state.opening_cache = {"bidders": [{"contractorName": "Authorized bidder", "bankAccount": "authorized-full-field"}], "partial": False}
             return {"inserted": inserted, "duplicates": len(numbers) - inserted}
+
+        load_fresh_plan_bundle = load_fresh_notice_bundle
 
     for key, value in {
         "TRIAL_FULL_ACCESS_ENABLED": "false", "COMMERCIAL_POLICY_ENABLED": "true",
@@ -167,11 +224,253 @@ def affordable_lookup(monkeypatch):
 
     state.set_balance = set_balance
     state.balance = lambda: UsageCreditService(connection).get_balance(UsageOwner("organization", "org-1"))
+    state.source = source
+    state.database = database
+    state.raw_repository_type = RawRepository
     app = Starlette(routes=routes.procurement_lookup_routes(Route))
     with TestClient(app) as client:
         state.client = client
         yield state
     storage.close()
+
+
+@pytest.fixture
+def affordable_import(affordable_lookup, monkeypatch):
+    state = affordable_lookup
+    state.unexpected_errors = []
+    original_log_and_error = import_routes.log_and_error
+
+    def capture_error(request, error, *args, **kwargs):
+        state.unexpected_errors.append(repr(error))
+        return original_log_and_error(request, error, *args, **kwargs)
+
+    class Repository:
+        def __init__(self, cursor):
+            pass
+
+        def load_family(self, *args):
+            return {"latestPlan": None}
+
+        def resolve_notice_target(self, *args, **kwargs):
+            return None
+
+    class SessionService:
+        def __init__(self, repository, **kwargs):
+            pass
+
+        def create_from_bundle(self, bundle, **kwargs):
+            return {"sessionId": "import-test", "canonicalBundle": deepcopy(bundle)}
+
+    monkeypatch.setattr(import_routes, "database", state.database)
+    monkeypatch.setattr(import_routes, "ProcurementRawSnapshotRepository", state.raw_repository_type)
+    monkeypatch.setattr(import_routes, "build_procurement_source", lambda: state.source)
+    monkeypatch.setattr(import_routes, "_request_context", lambda *args: (SimpleNamespace(user_id="user-1"), "org-1", "org-1"))
+    monkeypatch.setattr(import_routes, "_enforce_rate_limit", lambda *args: None)
+    monkeypatch.setattr(import_routes, "has_module_permission", lambda *args: True)
+    monkeypatch.setattr(import_routes, "ProcurementImportRepository", Repository)
+    monkeypatch.setattr(import_routes, "ProcurementImportSessionRepository", Repository)
+    monkeypatch.setattr(import_routes, "ProcurementImportSessionService", SessionService)
+    monkeypatch.setattr(import_routes, "PREVIEW_STORE", PreviewStore())
+    monkeypatch.setattr(import_routes, "log_and_error", capture_error)
+    monkeypatch.setattr(import_routes, "_load_opening_from_raw_snapshot", lambda *args, **kwargs: deepcopy(state.opening_cache))
+    with TestClient(Starlette(routes=import_routes.procurement_import_routes(Route))) as client:
+        state.import_client = client
+        yield state
+
+
+@pytest.mark.parametrize("kind,code,mode", [
+    ("plan", "PL2600000001", "ALL"),
+    ("plan", "PL2600000001", "LATEST"),
+    ("notice", "IB2600000001", "ALL"),
+    ("notice", "IB2600000001", "LATEST"),
+])
+def test_import_zero_credits_never_fetches_payload_or_saves_snapshot(affordable_import, kind, code, mode):
+    state = affordable_import
+    state.set_balance(0)
+    response = state.import_client.post(f"/api/procurement/imports/{kind}/prepare", json={
+        "code": code, "revisionMode": mode, "workspaceLease": "org-1",
+        **({"includeLinkedNotices": False} if kind == "plan" else {}),
+    })
+
+    assert state.fetches == []
+    assert response.status_code == 409, response.json()
+    assert response.json()["code"] == "QUOTA_EXHAUSTED"
+    assert state.saved == []
+    assert state.balance()["reserved"] == 0
+
+
+@pytest.mark.parametrize("kind,code", [("plan", "PL2600000001"), ("notice", "IB2600000001")])
+def test_import_affordable_six_of_ten_reports_four_without_fetching_them(affordable_import, kind, code):
+    state = affordable_import
+    state.set_balance(6)
+    response = state.import_client.post(f"/api/procurement/imports/{kind}/prepare", json={
+        "code": code, "revisionMode": "ALL", "workspaceLease": "org-1",
+        **({"includeLinkedNotices": False} if kind == "plan" else {}),
+    })
+    assert response.status_code == 200, (response.json(), state.unexpected_errors)
+    assert state.fetches == [["00", "01", "02", "03", "04", "05"]]
+    assert response.json()["usageCredits"]["status"] == "PARTIAL"
+    assert response.json()[kind]["availableRevisions"] == [f"{number:02}" for number in range(10)]
+    assert [row["sourceRevision"] for row in response.json()["usageCredits"]["skipped"]] == ["06", "07", "08", "09"]
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+@pytest.mark.parametrize("kind,code", [("plan", "PL2600000001"), ("notice", "IB2600000001")])
+def test_import_latest_cache_and_retry_debit_only_once(affordable_import, kind, code):
+    state = affordable_import
+    state.set_balance(1)
+    payload = {"code": code, "revisionMode": "LATEST", "workspaceLease": "org-1",
+               **({"includeLinkedNotices": False} if kind == "plan" else {})}
+    first = state.import_client.post(f"/api/procurement/imports/{kind}/prepare", json=payload)
+    assert first.status_code == 200, (first.json(), state.unexpected_errors)
+    second = state.import_client.post(f"/api/procurement/imports/{kind}/prepare", json=payload)
+    assert second.status_code == 200, second.json()
+    assert first.json()[kind]["availableRevisions"] == [f"{number:02}" for number in range(10)]
+    assert state.fetches == [["09"]]
+    assert state.saved == [["09"]]
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+@pytest.mark.parametrize("failure", ["fail_fetch", "fail_save"])
+def test_import_failed_fetch_or_save_releases_credits_for_retry(affordable_import, failure):
+    state = affordable_import
+    state.set_balance(1)
+    setattr(state, failure, True)
+    payload = {"code": "IB2600000001", "revisionMode": "LATEST", "workspaceLease": "org-1"}
+    first = state.import_client.post("/api/procurement/imports/notice/prepare", json=payload)
+    assert first.status_code == 502
+    assert state.balance()["remaining"] == 1
+    assert state.balance()["reserved"] == 0
+    setattr(state, failure, False)
+    retry = state.import_client.post("/api/procurement/imports/notice/prepare", json=payload)
+    assert retry.status_code == 200, retry.json()
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+def test_opening_import_zero_credits_never_fetches_payload(affordable_import):
+    state = affordable_import
+    state.set_balance(0)
+    response = state.import_client.post("/api/procurement/imports/opening/prepare", json={
+        "packageId": "package-1", "workspaceLease": "org-1",
+    })
+    assert state.opening_fetches == []
+    assert response.status_code == 409, response.json()
+    assert response.json()["code"] == "QUOTA_EXHAUSTED"
+    assert state.saved == []
+
+
+def test_opening_import_cache_and_same_notice_identity_do_not_debit_twice(affordable_import):
+    state = affordable_import
+    state.set_balance(1)
+    first = state.import_client.post("/api/procurement/imports/notice/prepare", json={
+        "code": "IB2600000001", "workspaceLease": "org-1", "revisionMode": "LATEST",
+    })
+    assert first.status_code == 200, first.json()
+    payload = {"packageId": "package-1", "workspaceLease": "org-1"}
+    opening = state.import_client.post("/api/procurement/imports/opening/prepare", json=payload)
+    assert opening.status_code == 200, (opening.json(), state.unexpected_errors)
+    assert opening.json()["opening"]["bidders"][0]["bankAccount"] == "authorized-full-field"
+    retry = state.import_client.post("/api/procurement/imports/opening/prepare", json=payload)
+    assert retry.status_code == 200
+    assert state.opening_fetches == [("IB2600000001", "revision-09", None)]
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_opening_import_failure_or_partial_releases_credit_until_complete_retry(affordable_import, partial):
+    state = affordable_import
+    state.set_balance(1)
+    state.fail_fetch = not partial
+    state.opening_partial = partial
+    payload = {"packageId": "package-1", "workspaceLease": "org-1"}
+    first = state.import_client.post("/api/procurement/imports/opening/prepare", json=payload)
+    assert first.status_code == (200 if partial else 502), first.json()
+    if partial:
+        assert first.json()["opening"]["partial"] is True
+        assert first.json()["warnings"] == [{"code": "PROCUREMENT_PARTIAL_DATA"}]
+    assert state.saved == []
+    assert state.balance()["remaining"] == 1
+    assert state.balance()["reserved"] == 0
+    state.fail_fetch = False
+    state.opening_partial = False
+    retry = state.import_client.post("/api/procurement/imports/opening/prepare", json=payload)
+    assert retry.status_code == 200, (retry.json(), state.unexpected_errors)
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+def test_background_linked_package_enrichment_fetches_affordable_six_in_stable_order(affordable_import, monkeypatch):
+    state = affordable_import
+    state.set_balance(6)
+    calls = []
+    lookup = state.source.lookup_with_options
+
+    def fetch(code, kind, **options):
+        calls.append(code)
+        return lookup(code, kind, **options)
+
+    monkeypatch.setattr(state.source, "lookup_with_options", fetch)
+    monkeypatch.setattr(state.source, "list_revision_metadata", lambda *args: [{"revisionId": "revision-00", "revisionNumber": "00"}])
+    monkeypatch.setattr(state.raw_repository_type, "load_fresh_notice_bundle", lambda *args, **kwargs: None)
+    preparer = import_routes._configure_import_fetch(
+        import_routes._build_import_preparer(state.source),
+        organization_id="org-1", user_id="user-1",
+    )
+    revisions = [{"revisionId": "plan-00", "revisionNumber": "00", "packages": [
+        {"planDetailRevisionId": f"detail-{number}", "noticeLink": {
+            "state": "LINKED", "noticeNo": f"IB26000000{number:02}", "noticeVersion": "00",
+        }} for number in range(10)
+    ]}]
+    history, failures = preparer._enrich_linked_notices_bounded(
+        revisions, organization_id="org-1", max_workers=8,
+        source_factory=lambda: SimpleNamespace(name="MUASAMCONG"),
+    )
+    assert calls == [f"IB26000000{number:02}" for number in range(6)]
+    assert len(history) == 6
+    assert [item["noticeNo"] for item in failures] == [f"IB26000000{number:02}" for number in range(6, 10)]
+    assert [item["errorCode"] for item in failures] == ["QUOTA_EXHAUSTED"] * 4
+    assert all(item["usageCredits"]["skipped"] for item in failures)
+    assert state.balance()["remaining"] == 0
+    assert state.balance()["reserved"] == 0
+
+
+def test_background_import_resolves_personal_usage_owner_from_durable_scope():
+    owner = routes._usage_owner(
+        SimpleNamespace(state=SimpleNamespace()), SimpleNamespace(user_id="user-1"), "personal:user-1",
+    )
+    assert owner == UsageOwner("account", "user-1")
+    assert routes._usage_owner(SimpleNamespace(), SimpleNamespace(user_id="user-1"), "org-1") == UsageOwner("organization", "org-1")
+
+
+def test_opening_adapter_without_raw_snapshot_releases_credit_and_fails(affordable_import, monkeypatch):
+    state = affordable_import
+    state.set_balance(1)
+    monkeypatch.setattr(state.source, "get_opening_bundle", lambda *args, **kwargs: {"bidders": [], "partial": False})
+    response = state.import_client.post("/api/procurement/imports/opening/prepare", json={"packageId": "package-1", "workspaceLease": "org-1"})
+    assert response.status_code == 502
+    assert response.json()["code"] == "PROCUREMENT_SCHEMA_CHANGED"
+    assert state.balance()["remaining"] == 1
+    assert state.balance()["reserved"] == 0
+    assert state.saved == []
+
+
+def test_opening_complete_payload_without_complete_snapshot_cannot_be_repeated_for_free(affordable_import, monkeypatch):
+    state = affordable_import
+    state.set_balance(1)
+    monkeypatch.setattr(state.source, "get_opening_bundle", lambda *args, **kwargs: {
+        "bidders": [{"contractorName": "Authorized bidder"}], "partial": False,
+        "rawBundle": {"complete": False, "revisions": {"09": {"revisionNumber": "09"}}},
+    })
+    response = state.import_client.post("/api/procurement/imports/opening/prepare", json={"packageId": "package-1", "workspaceLease": "org-1"})
+    assert response.status_code == 502
+    assert response.json()["code"] == "PROCUREMENT_SCHEMA_CHANGED"
+    assert state.balance()["remaining"] == 1
+    assert state.balance()["reserved"] == 0
+    assert state.saved == []
 
 
 def test_affordable_six_of_ten_fetches_six_and_reports_four_unprocessed(affordable_lookup):

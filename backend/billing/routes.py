@@ -518,25 +518,19 @@ def _get_personal_order_sync(request):
     valid, actor = verify_session(request)
     if not valid:
         return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
-    if actor.active_role_organization_id:
-        return JSONResponse(
-            {"error": "Chưa chốt quyền đọc lịch sử thanh toán của tổ chức.", "code": "BLOCKED_DECISION"},
-            status_code=409,
-        )
     connection = database.get_connection()
     try:
-        row = connection.execute(
-            """SELECT orders.*, activation.after_json AS activation_schedule_json
-                 FROM billing_orders AS orders
-                 LEFT JOIN billing_subscription_activations AS activation ON activation.order_id = orders.id
-                WHERE orders.public_id = ? AND orders.owner_kind = 'account'
-                  AND orders.account_user_id = ?""",
-            (request.path_params["public_id"], actor.user_id),
-        ).fetchone()
-        if not row:
+        connection.execute("BEGIN")
+        cursor = connection.cursor()
+        valid, actor = verify_session_in_transaction(cursor, request)
+        if not valid:
+            return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
+        order = BillingService(cursor).get_order_for_actor(request.path_params["public_id"], actor)
+        if not order:
             return JSONResponse({"error": "Không tìm thấy order.", "code": "NOT_FOUND"}, status_code=404)
-        return JSONResponse({"order": public_order_payload(dict(row))})
+        return JSONResponse({"order": public_order_payload(order)})
     finally:
+        connection.rollback()
         connection.close()
 
 
@@ -554,24 +548,33 @@ async def get_personal_order_api(request):
 def _cancel_personal_order_sync(request, body):
     connection = None
     try:
+        valid, initial_actor = verify_session(request)
+        if not valid:
+            return JSONResponse({"error": initial_actor, "code": "FORBIDDEN"}, status_code=403)
         connection = database.get_connection()
         connection.execute("BEGIN")
         cursor = connection.cursor()
+        service = BillingService(cursor)
+        # Membership administration locks organization before account. Take
+        # that owner first, then reload session authority on this transaction.
+        if not service.lock_order_owner(initial_actor):
+            connection.rollback()
+            return JSONResponse({"error": "Không tìm thấy order.", "code": "NOT_FOUND"}, status_code=404)
         valid, actor = verify_session_in_transaction(cursor, request)
         if not valid:
             connection.rollback()
             return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
-        if actor.active_role_organization_id:
+        if (
+            str(initial_actor.user_id) != str(actor.user_id)
+            or service.order_actor_scope(initial_actor) != service.order_actor_scope(actor)
+        ):
             connection.rollback()
             return JSONResponse(
-                {
-                    "error": "Chưa chốt quyền đọc/thao tác lịch sử thanh toán của tổ chức.",
-                    "code": "BLOCKED_DECISION",
-                },
-                status_code=409,
+                {"error": "Không có quyền thao tác đơn trong workspace này.", "code": "BUYER_NOT_AUTHORIZED"},
+                status_code=403,
             )
-        order, command_id, replayed = BillingService(cursor).request_cancel(
-            request.path_params["public_id"], actor.user_id, body.get("reason")
+        order, command_id, replayed = service.request_cancel(
+            request.path_params["public_id"], actor, body.get("reason")
         )
         if not order:
             connection.rollback()
@@ -583,6 +586,7 @@ def _cancel_personal_order_sync(request, body):
             log_audit(
                 "billing.checkout_cancel_requested",
                 actor_user_id=actor.user_id,
+                organization_id=order.get("organization_id"),
                 target_type="billing_order",
                 target_id=order["id"],
                 request=request,

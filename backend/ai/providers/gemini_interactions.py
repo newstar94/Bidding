@@ -13,6 +13,7 @@ from backend.ai.providers.base import (
     add_query,
     iter_sse,
     json_request,
+    merge_reported_counters,
     require_api_key,
     require_model,
     stream_http,
@@ -103,6 +104,7 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
     native_steps: dict[int, dict] = {}
     finished_calls: set[int] = set()
     usage: dict[str, int] = {}
+    native_totals: dict[str, int] = {}
     completed = False
 
     def finish_call(index: int) -> Iterable[dict]:
@@ -146,11 +148,28 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
 
     for event in raw_events:
         event_type = str(event.get("event_type") or event.get("type") or event.get("_event") or "")
+        interaction = event.get("interaction") if isinstance(event.get("interaction"), dict) else {}
+        native_usage = interaction.get("usage") or event.get("usage")
+        if isinstance(native_usage, dict) and merge_reported_counters(
+            native_totals, native_usage,
+            ("total_input_tokens", "prompt_tokens", "input_tokens", "total_output_tokens",
+             "completion_tokens", "output_tokens", "total_thought_tokens", "total_tool_use_tokens"),
+        ):
+            # Gateways can switch between the supported aliases in successive
+            # chunks. Preserve the greatest total reported through any alias.
+            for total_name, aliases in (
+                ("total_input_tokens", ("total_input_tokens", "prompt_tokens", "input_tokens")),
+                ("total_output_tokens", ("total_output_tokens", "completion_tokens", "output_tokens")),
+            ):
+                reported_total = next((int(native_usage[name]) for name in aliases if native_usage.get(name)), 0)
+                native_totals[total_name] = max(native_totals.get(total_name, 0), reported_total)
+            usage = _interaction_usage(native_totals)
+            yield {"type": "response.usage", "usage": dict(usage)}
         if event_type in {"error", "interaction.failed", "interaction.cancelled"} or event.get("error"):
-            yield {"type": "error", "error": event.get("error") or event}
+            yield {"type": "error", "error": event.get("error") or event,
+                   **({"usage": dict(usage)} if usage else {})}
             return
         if event_type == "interaction.created":
-            interaction = event.get("interaction") if isinstance(event.get("interaction"), dict) else {}
             yield {
                 "type": "response.created",
                 "response": {"id": str(interaction.get("id") or "")},
@@ -219,9 +238,6 @@ def normalize_gemini_interactions_stream(raw_events: Iterable[dict]) -> Iterable
         elif event_type == "step.stop":
             yield from finish_call(int(event.get("index") or 0))
         elif event_type == "interaction.completed":
-            interaction = event.get("interaction") if isinstance(event.get("interaction"), dict) else {}
-            native_usage = interaction.get("usage") if isinstance(interaction.get("usage"), dict) else {}
-            usage = _interaction_usage(native_usage)
             for index in sorted(calls):
                 yield from finish_call(index)
             completed_calls = completed_calls_with_history()
