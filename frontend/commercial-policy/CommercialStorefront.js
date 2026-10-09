@@ -25,6 +25,7 @@ const state = {
   balance: null, orders: [], loading: false, polling: null, commercialReleaseId: "",
   group: "basic", periods: {},
   checkoutSession: null,
+  contextGeneration: 0,
 };
 const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const money = (value) => formatCommercialMoney(value, "VND");
@@ -32,7 +33,8 @@ const activeCommercialScope = (actor) => String(actor?.activeOrganizationId || a
 function commercialContext(controller) {
   const model = controller?.model;
   const actor = model?.state?.activeuser || {};
-  return { controller, actorId: String(actor.id || actor.user_id || ""), activeScope: activeCommercialScope(actor), workspaceToken: model?.getWorkspaceToken?.() || "" };
+  return { controller, model, contextGeneration: state.contextGeneration,
+    actorId: String(actor.id || actor.user_id || ""), activeScope: activeCommercialScope(actor), workspaceToken: model?.getWorkspaceToken?.() || "" };
 }
 const request = async (path, options = {}) => {
   const response = await apiFetch(path, { handleHttpErrors: false, retries: 0, ...options });
@@ -196,9 +198,8 @@ const PAID_PAYMENT_STATES = new Set(["verified_paid", "refund_pending", "partial
 const CLOSED_CHECKOUT_STATES = new Set(["cancelled", "expired", "create_failed"]);
 
 function openCheckoutSession(controller, title, order = null) {
-  const actor = controller?.model?.state?.activeuser || {};
   const session = { controller, order, cancelRequested: false, cancelling: false, creating: false, createStarted: false, createUncertain: false, dismissed: false, cancelPolling: null, paymentPolling: null, successReturnTimer: null, returnToOverviewOnDismiss: false, pollGeneration: 0, settled: false, checkoutKey: `storefront-${crypto.randomUUID()}`, quotePublicId: "", paymentSignature: "", packageTitle: "", activationRefresh: null,
-    actorId: String(actor.id || actor.user_id || ""), activeScope: activeCommercialScope(actor), workspaceToken: controller?.model?.getWorkspaceToken?.() || "" };
+    ...commercialContext(controller) };
   state.checkoutSession = session;
   document.querySelectorAll(".storefront-buy").forEach((button) => { button.disabled = true; });
   session.dialog = createCheckoutPaymentDialog({
@@ -236,7 +237,10 @@ function checkoutContextIsCurrent(session) {
   if (!session) return true;
   const model = session.controller?.model;
   const actor = model?.state?.activeuser || {};
-  return String(actor.id || actor.user_id || "") === session.actorId
+  return state.controller === session.controller
+    && model === session.model
+    && state.contextGeneration === session.contextGeneration
+    && String(actor.id || actor.user_id || "") === session.actorId
     && activeCommercialScope(actor) === session.activeScope
     && (!session.workspaceToken || typeof model?.isWorkspaceCurrent !== "function" || model.isWorkspaceCurrent(session.workspaceToken));
 }
@@ -246,6 +250,7 @@ function retireStaleCheckout(session) {
   window.clearTimeout(session.paymentPolling);
   window.clearTimeout(session.cancelPolling);
   window.clearTimeout(session.successReturnTimer);
+  session.returnToOverviewOnDismiss = false;
   session.dialog.close();
   return true;
 }
@@ -402,6 +407,7 @@ async function cancelCheckoutSession(session) {
 }
 
 async function createCheckoutOrder(session) {
+  if (retireStaleCheckout(session)) return null;
   const wasUncertain = session.createUncertain;
   session.creating = true;
   session.createStarted = true;
@@ -409,12 +415,14 @@ async function createCheckoutOrder(session) {
     const payload = await request("/api/billing/checkouts", {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": session.checkoutKey }, body: JSON.stringify({ quotePublicId: session.quotePublicId }),
     });
+    if (retireStaleCheckout(session)) return null;
     if (!payload.order?.publicId) throw new Error("Máy chủ chưa trả mã giao dịch thanh toán.");
     session.order = payload.order;
     session.createUncertain = false;
     rememberOrder(payload.order);
     return payload.order;
   } catch (error) {
+    if (retireStaleCheckout(session)) return null;
     session.createUncertain = wasUncertain || !error.status || error.status >= 500;
     throw error;
   } finally { session.creating = false; }
@@ -429,6 +437,7 @@ function showSessionPayment(session, order) {
 }
 
 async function presentCreatedCheckout(session) {
+  if (retireStaleCheckout(session) || session.dismissed || !session.order) return;
   if (session.cancelRequested) { await cancelCheckoutSession(session); return; }
   if (session.order.checkoutState === "creating") {
     session.dialog.showState("Đang chuẩn bị mã QR từ payOS…");
@@ -521,13 +530,14 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
     const ownerKind = activeScope && !activeScope.startsWith("personal:") ? "organization" : "account";
     const ownerId = ownerKind === "organization" ? activeScope : actor.id || actor.user_id;
     const quote = await request("/api/billing/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerKind, ownerId, operation, skuCode }) });
+    if (retireStaleCheckout(session)) return;
     if (session.cancelRequested) return;
     session.quotePublicId = quote.publicId;
     await createCheckoutOrder(session);
     await presentCreatedCheckout(session);
   } catch (error) {
     session.creating = false;
-    if (session.dismissed) return;
+    if (retireStaleCheckout(session) || session.dismissed) return;
     if (session.createUncertain) {
       if (session.cancelRequested) { await cancelCheckoutSession(session); return; }
       // Repeat with the same key when the response was lost after a commit.
@@ -613,6 +623,8 @@ async function refresh(controller) {
 
 export async function mountCommercialStorefront(controller) {
   state.controller = controller;
+  state.contextGeneration++;
+  if (state.checkoutSession) retireStaleCheckout(state.checkoutSession);
   await loadStyleOnce(STYLE_URL);
   const locationIntent = checkoutIntentFromLocation();
   if (locationIntent) controller._pendingCommercialCheckout = locationIntent;
@@ -670,6 +682,8 @@ export async function startCommercialCheckoutFromLanding({ offer, session, onRet
     },
   };
   state.controller = controller;
+  state.contextGeneration++;
+  if (state.checkoutSession) retireStaleCheckout(state.checkoutSession);
   state.offers = [offer];
   await loadStyleOnce(STYLE_URL);
   await startCheckout(offer.code, controller, "purchase");

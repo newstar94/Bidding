@@ -54,8 +54,13 @@ function expertEditorContextIsCurrent(controller, context) {
 }
 
 function expertFormSnapshot(controller) {
+  const values = collectFormValues(document, CHUYEN_GIA_FORM_FIELDS, "chuyengia");
+  // Deferred date-picker initialization can change formatting while saving.
+  // Compare the same date values that the submission actually persists.
+  values.ngayCapCCCD = controller.model.convertDMYToYMD(values.ngayCapCCCD);
+  values.ngayCapChungChi = controller.model.convertDMYToYMD(values.ngayCapChungChi);
   return JSON.stringify([
-    collectFormValues(document, CHUYEN_GIA_FORM_FIELDS, "chuyengia"),
+    values,
     controller.tempChuyenGiaImageBase64,
     controller.tempChuyenGiaSignatureBase64,
   ]);

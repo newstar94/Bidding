@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { handleChuyenGiaSubmit } from "../../frontend/experts/ChuyenGiaWorkflow.js";
+import { convertDMYToYMD } from "../../frontend/shared/formatters.js";
 
 function deferred() {
   let resolve;
@@ -28,7 +29,7 @@ async function withExpertForm(run, { identifiers = false } = {}) {
     tempChuyenGiaImageBase64: "", tempChuyenGiaSignatureBase64: "",
     model: {
       state: { chuyengia: [], activeuser: {} },
-      convertDMYToYMD: value => value,
+      convertDMYToYMD,
       getFileExtensionFromBase64: () => "",
       getCurrentDateTimeString: () => "2026-10-09",
       async persistChanges(table, changes) { calls.persists.push({ table, changes }); },
@@ -103,6 +104,26 @@ test("prior expert confirmation keeps newer entered values and explicit Save per
     assert.equal(calls.closes, 1);
   });
 });
+
+for (const changedDate of [false, true]) {
+  test(`expert receipt compares date values after deferred picker formatting: changed=${changedDate}`, async () => {
+    await withExpertForm(async ({ controller, calls, controls, submit }) => {
+      const remote = deferred();
+      controller.autoSync = () => remote.promise;
+      controls.get("cg-ngaycapcccd").value = "2026-10-09";
+      controls.get("cg-ngaycapchungchi").value = "2026-09-01";
+      const first = await submit();
+      // Deferred Flatpickr formats both controls while the receipt is in flight.
+      controls.get("cg-ngaycapcccd").value = changedDate ? "10/10/2026" : "09/10/2026";
+      controls.get("cg-ngaycapchungchi").value = "01/09/2026";
+      remote.resolve({ ok: true });
+      await first.syncPromise;
+      assert.equal(calls.closes, changedDate ? 0 : 1);
+      assert.equal(controller.model.state.chuyengia[0].ngayCapCCCD, "2026-10-09");
+      assert.equal(controls.get("cg-ngaycapcccd").value, changedDate ? "10/10/2026" : "09/10/2026");
+    });
+  });
+}
 
 test("pending expert retry confirms only the earlier receipt and retains changed draft", async () => {
   await withExpertForm(async ({ controller, calls, controls, submit }) => {

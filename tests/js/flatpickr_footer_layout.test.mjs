@@ -28,7 +28,10 @@ test("date selection applies immediately without a confirmation footer", async (
           <link rel="stylesheet" href="/views/css/base.css">
           <link rel="stylesheet" href="/views/css/components.css">
           <link rel="stylesheet" href="/views/css/runtime-styles.css" data-runtime-styles>
-        </head><body><input id="meeting-date" class="flatpickr-date"></body></html>`);
+        </head><body><input id="meeting-date" class="flatpickr-date">
+          <input id="deferred-date" class="flatpickr-date" value="2020-01-01">
+          <input id="iso-storage" class="flatpickr-date" data-flatpickr-storage-format="Y-m-d"
+            data-flatpickr-display-format="d/m/Y" value="2020-02-01"></body></html>`);
         return;
       }
       const filePath = join(projectRoot, pathname.replace(/^\//, ""));
@@ -56,6 +59,14 @@ test("date selection applies immediately without a confirmation footer", async (
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
+    assert.equal(await page.locator("#deferred-date").inputValue(), "01/01/2020");
+    assert.equal(await page.locator("#iso-storage").inputValue(), "2020-02-01");
+    await page.locator("#deferred-date").fill("2020-02-01");
+    await page.locator("#deferred-date").press("Tab");
+    assert.equal(await page.locator("#deferred-date").inputValue(), "01/02/2020");
+    await page.locator("#deferred-date").fill("09/10/2026");
+    await page.locator("#deferred-date").press("Tab");
+    assert.equal(await page.locator("#deferred-date").inputValue(), "09/10/2026");
     await page.locator("#meeting-date").click();
     const calendar = page.locator(".flatpickr-calendar.open");
     assert.equal(await calendar.locator(".flatpickr-footer").count(), 0);

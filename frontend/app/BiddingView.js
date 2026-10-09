@@ -694,6 +694,10 @@ export class BiddingView {
           .join(" ");
         flatpickr(el, {
           dateFormat: storageFormat,
+          // Native date inputs and deferred picker loading can leave an ISO
+          // value in the control. Preserve its date instead of parsing as DMY.
+          parseDate: (value, format) => flatpickr.parseDate(value,
+            /^\d{4}-\d{2}-\d{2}$/.test(String(value).trim()) ? "Y-m-d" : format),
           altInput: displayFormat !== storageFormat,
           altFormat: displayFormat,
           altInputClass,

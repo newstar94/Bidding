@@ -97,8 +97,9 @@ test("F08 a remount replaces pending storefront requests and excludes the previo
   assert.doesNotMatch(await page.locator("#storefront-orders").textContent(), /organization-A/u);
 }));
 
-for (const delayedStage of ["quote", "checkout", "checkout-error"]) {
+for (const delayedStage of ["quote", "checkout", "checkout-error", "quote-roundtrip", "checkout-replacement"]) {
   test(`F08 ${delayedStage} continuation cannot create or display payment in a replacement workspace`, async () => withPage(async page => {
+    const waitingForQuote = delayedStage.startsWith("quote");
     const started = deferred(), release = deferred();
     const checkoutRequests = [];
     let orderPolls = 0;
@@ -112,12 +113,12 @@ for (const delayedStage of ["quote", "checkout", "checkout-error"]) {
       return route.fulfill({ json: { order: { publicId: "ORDER-A", checkoutState: "open", paymentState: "unverified", activationState: "not_ready" } } });
     });
     await page.route("**/api/billing/quotes", async route => {
-      if (delayedStage === "quote") { started.resolve(); await release.promise; }
+      if (waitingForQuote) { started.resolve(); await release.promise; }
       await route.fulfill({ json: { publicId: "quote-A" } });
     });
     await page.route("**/api/billing/checkouts", async route => {
       checkoutRequests.push({ scope: route.request().headers()["x-active-org"], body: route.request().postDataJSON() });
-      if (delayedStage !== "quote") { started.resolve(); await release.promise; }
+      if (!waitingForQuote) { started.resolve(); await release.promise; }
       if (delayedStage === "checkout-error") {
         await route.fulfill({ status: 409, json: { code: "OLD_WORKSPACE_ERROR", error: "Old workspace failure" } });
       } else {
@@ -135,19 +136,28 @@ for (const delayedStage of ["quote", "checkout", "checkout-error"]) {
     });
     await page.locator('.storefront-buy[data-operation="purchase"]').click();
     await started.promise;
-    await page.evaluate(async () => {
+    await page.evaluate(async delayedStage => {
       sessionStorage.setItem("bf_active_org", "organization-B");
       window.storefront.model.state.activeuser.activeOrganizationId = "organization-B";
       const module = await import("/frontend/commercial-policy/CommercialStorefront.js");
       await module.mountCommercialStorefront(window.storefront);
+      if (delayedStage === "quote-roundtrip" || delayedStage === "checkout-replacement") {
+        sessionStorage.setItem("bf_active_org", "organization-A");
+        if (delayedStage === "checkout-replacement") {
+          window.storefront.model = { state: { activeuser: { id: "manager", activeOrganizationId: "organization-A" } } };
+        } else {
+          window.storefront.model.state.activeuser.activeOrganizationId = "organization-A";
+        }
+        await module.mountCommercialStorefront(window.storefront);
+      }
       document.getElementById("storefront-status").textContent = "Current B status";
       document.getElementById("storefront-orders").textContent = "Current B history";
-    });
-    const lateResponse = page.waitForResponse(delayedStage === "quote" ? "**/api/billing/quotes" : "**/api/billing/checkouts");
+    }, delayedStage);
+    const lateResponse = page.waitForResponse(waitingForQuote ? "**/api/billing/quotes" : "**/api/billing/checkouts");
     release.resolve();
     await lateResponse;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.deepEqual(checkoutRequests, delayedStage === "quote" ? [] : [{ scope: "organization-A", body: { quotePublicId: "quote-A" } }]);
+    assert.deepEqual(checkoutRequests, waitingForQuote ? [] : [{ scope: "organization-A", body: { quotePublicId: "quote-A" } }]);
     assert.equal(orderPolls, 0);
     assert.equal(await page.locator("#storefront-orders").textContent(), "Current B history");
     assert.equal(await page.locator("#storefront-status").textContent(), "Current B status");

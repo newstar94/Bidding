@@ -24,8 +24,10 @@ test.beforeEach(async ({ browserName, context, page }) => {
   if (browserName === "firefox") {
     await context.route("http://local.adguard.org/**", (route) => route.abort("blockedbyclient"));
   }
-  const browserReady = await page.goto("/health/live", { waitUntil: "commit" });
-  expect(browserReady?.ok()).toBe(true);
+  // Liveness is an HTTP check. Open the actual landing document below rather
+  // than navigating WebKit to a JSON document before every UI scenario.
+  const serverReady = await context.request.get("/health/live");
+  expect(serverReady.ok()).toBe(true);
 });
 
 async function openLanding(page) {

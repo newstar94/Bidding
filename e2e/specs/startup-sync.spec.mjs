@@ -168,6 +168,18 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
 
   await setupServerReadGate(page);
   let syncPosts = 0;
+  let postRejectionReads = 0;
+  // ADR0057 reloads authoritative data after rejecting a receipt. This case
+  // checks an unresolved conflict, so make that recovery read unavailable.
+  await page.route("**/api/get-all-data**", async (route) => {
+    if (syncPosts === 0) return route.continue();
+    postRejectionReads += 1;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "E2E unavailable conflict reload" }),
+    });
+  });
   await page.route("**/api/sync", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
@@ -208,6 +220,7 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
   expect(new URL(page.url()).pathname).toBe(formRoute);
 
   await page.__releaseStartupSyncReads();
+  await expect.poll(() => postRejectionReads).toBeGreaterThan(0);
   await expect.poll(async () => ({
     syncPosts,
     syncState: await page.locator("#btn-force-sync").getAttribute("data-sync-state"),
@@ -215,6 +228,7 @@ test("startup_does_not_commit_a_stale_record_before_authoritative_reconciliation
   expect(syncPosts).toBe(1);
   expect(new URL(page.url()).pathname).toBe(formRoute);
   await expect(page.locator("#modal-chuyengia.active")).toBeVisible();
+  await expect(page.locator("#cg-hoten")).toHaveValue(`Chuyên gia startup ${suffix}`);
 });
 
 test("local durable save never shows final success before server rejection", async ({ page }) => {
