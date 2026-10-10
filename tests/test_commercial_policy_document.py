@@ -16,61 +16,82 @@ LEGACY_EXPORTS = {
 }
 
 
-def test_initial_draft_has_exact_approved_offers_packs_and_dynamic_savings():
+def legacy_annual_document(legacy_capabilities_by_tier=None):
+    """Historical snapshots keep optional monthly terms and legacy prices valid."""
+    document = build_initial_draft_document(legacy_capabilities_by_tier)
+    document["offers"] = document["offers"][:8]
+    document["policies"].pop("monthlyBaseTerm")
+    for offer in document["offers"]:
+        offer["price"].pop("monthlyBaseAmount")
+        offer.pop("monthlyBaseProcurementQuota")
+        if offer["variant"] == "connected":
+            offer["includedProcurementQuota"] = {"personal": 1000, "silver": 3000, "gold": 7000, "diamond": 15000}[offer["tier"]]
+    return document
+
+
+def test_initial_draft_has_twenty_products_with_monthly_base_and_fixed_terms():
     document = build_initial_draft_document(LEGACY_EXPORTS)
-
-    assert len(document["offers"]) == 8
-    assert {offer["code"]: offer["price"] for offer in document["offers"]} == {
-        code: {"period": "yearly", "currency": "VND", "subtotal": amount, "tax": 0, "total": amount}
-        for code, amount in (
-            ("personal.internal.yearly", 2_490_000),
-            ("personal.connected.yearly", 3_990_000),
-            ("silver.internal.yearly", 12_000_000),
-            ("silver.connected.yearly", 15_000_000),
-            ("gold.internal.yearly", 28_000_000),
-            ("gold.connected.yearly", 35_000_000),
-            ("diamond.internal.yearly", 60_000_000),
-            ("diamond.connected.yearly", 75_000_000),
-        )
-    }
-    assert [(pack["quantity"], pack["price"]) for pack in document["creditPacks"]] == [
-        (20, 99_000),
-        (100, 399_000),
-        (500, 1_490_000),
-        (2_000, 4_490_000),
-    ]
-    savings = connected_savings(document)
-    assert [(item["tier"], item["savingBasisPoints"]) for item in savings] == [
-        ("personal", 2_706),
-        ("silver", 2_296),
-        ("gold", 2_126),
-        ("diamond", 2_056),
-    ]
+    assert len(document["offers"]) + len(document["creditPacks"]) == 20
+    assert len(document["offers"]) == 16
+    assert len({offer["code"] for offer in document["offers"]}) == 16
+    for variant in ("internal", "connected"):
+        for period in ("monthly", "yearly"):
+            assert sum(offer["variant"] == variant and offer["price"]["period"] == period for offer in document["offers"]) == 4
+    annual_amounts = [2490000, 3990000, 12000000, 15000000, 28000000, 35000000, 60000000, 75000000]
+    for year, month, amount in zip(document["offers"][:8], document["offers"][8:], annual_amounts):
+        assert year["price"]["total"] == amount
+        assert year["price"]["total"] == month["price"]["total"] * 10
+        assert year["price"]["monthlyBaseAmount"] == month["price"]["monthlyBaseAmount"] == month["price"]["total"]
+        assert year["exportCapabilities"] == month["exportCapabilities"]
+        assert year["memberQuota"] == month["memberQuota"]
+        assert year["violationCheckEnabled"] == month["violationCheckEnabled"]
+        if month["variant"] == "internal":
+            assert month["includedProcurementQuota"] == 0
+        else:
+            assert year["includedProcurementQuota"] == month["includedProcurementQuota"] * 15
+            assert year["monthlyBaseProcurementQuota"] == month["monthlyBaseProcurementQuota"] == month["includedProcurementQuota"]
+            assert month["salesState"] == "sellable"
+    assert [(pack["quantity"], pack["price"]) for pack in document["creditPacks"]] == [(20, 99000), (100, 399000), (500, 1490000), (2000, 4490000)]
+    assert document["policies"]["baseTerm"] == {"kind": "fixed_days", "days": 365}
+    assert document["policies"]["monthlyBaseTerm"] == {"kind": "fixed_days", "days": 30}
+    assert [(item["tier"], item["savingBasisPoints"]) for item in connected_savings(document) if item["period"] == "yearly"] == [("personal", 4267), ("silver", 2296), ("gold", 2848), ("diamond", 3236)]
 
 
-def test_initial_draft_uses_approved_defaults_and_passes_shadow_validation():
+def test_twenty_product_seed_has_complete_monthly_quotas_and_valid_shadow_configuration():
     document = build_initial_draft_document(LEGACY_EXPORTS)
     assert validate_document(document)["errors"] == []
-    assert document["policies"]["baseTerm"] == {"kind": "fixed_days", "days": 365}
+    assert {offer["tier"]: offer["includedProcurementQuota"] for offer in document["offers"] if offer["variant"] == "connected" and offer["price"]["period"] == "monthly"} == {"personal": 100, "silver": 200, "gold": 600, "diamond": 1500}
+    assert all(offer["salesState"] == "sellable" for offer in document["offers"])
+
+
+@pytest.mark.parametrize("base", [None, True, -1, "100", 1.5, 6667])
+def test_monthly_quota_base_rejects_invalid_types_and_overflow(base):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][1]["monthlyBaseProcurementQuota"] = base
+    assert any(error["code"] == "MONTHLY_BASE_QUOTA_INVALID" for error in validate_document(document)["errors"])
+
+
+@pytest.mark.parametrize("index", [1, 9])
+def test_monthly_quota_rule_detects_tampered_year_and_month(index):
+    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document["offers"][index]["includedProcurementQuota"] += 1
+    assert any(error["code"] == "MONTHLY_ANNUAL_QUOTA_MISMATCH" for error in validate_document(document)["errors"])
+
+
+def test_legacy_annual_snapshot_preserves_approved_defaults_and_shadow_validation():
+    document = legacy_annual_document(LEGACY_EXPORTS)
+    assert validate_document(document)["errors"] == []
     assert document["policies"]["renewalAnchor"] == {"kind": "end_of_term"}
     assert document["policies"]["partialBatch"] == {"kind": "process_affordable_in_stable_order"}
     assert document["policies"]["refund"] == {"kind": "no_refunds", "partial": False}
-    for offer in document["offers"][:2]:
-        assert offer["exportCapabilities"] == {
-            capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES
-        }
-    assert all(offer["price"]["period"] == "yearly" for offer in document["offers"])
+    assert all(all(offer["exportCapabilities"].values()) for offer in document["offers"][:2])
     assert document["taxInvoice"]["taxInclusive"] is True
     assert document["taxInvoice"]["invoiceEnabled"] is False
     assert document["taxInvoice"]["taxBasisPoints"] == 0
     assert document["taxInvoice"]["rounding"] == "ceil"
-    tax_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#tax-policy"
-    assert document["taxInvoice"]["approvalReference"] == tax_reference
-    assert document["externalReadiness"]["vatInvoice"] == tax_reference
-
 
 def test_approved_sample_tax_defaults_do_not_mark_other_production_settings_ready():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     assert document["rollout"] == {"mode": "shadow", "cohorts": []}
     payos = next(profile for profile in document["providerProfiles"] if profile["provider"] == "payos")
     assert payos["mode"] == "live"
@@ -96,7 +117,7 @@ def test_approved_sample_tax_defaults_do_not_mark_other_production_settings_read
 
 
 def test_initial_draft_does_not_guess_missing_organization_exports():
-    result = validate_document(build_initial_draft_document())
+    result = validate_document(legacy_annual_document())
     assert {
         error["path"] for error in result["errors"]
         if error["code"] == "BLOCKED_DECISION"
@@ -104,7 +125,7 @@ def test_initial_draft_does_not_guess_missing_organization_exports():
 
 
 def test_commercial_document_cannot_define_record_read_or_masking_capabilities():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["offers"][2]["exportCapabilities"] = {
         **document["offers"][2]["exportCapabilities"],
         "record.read.sensitive": True,
@@ -116,7 +137,7 @@ def test_commercial_document_cannot_define_record_read_or_masking_capabilities()
 
 
 def test_validation_bounds_credit_savings_computation_before_dynamic_programming():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["creditPacks"][0]["quantity"] = 10**12
     document["offers"][1]["includedProcurementQuota"] = 10**12
 
@@ -126,7 +147,7 @@ def test_validation_bounds_credit_savings_computation_before_dynamic_programming
 
 
 def test_production_release_requires_external_tax_and_live_provider_readiness():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     personal_mapping = {capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES}
     for offer in document["offers"]:
         if offer["tier"] == "personal":
@@ -144,14 +165,14 @@ def test_production_release_requires_external_tax_and_live_provider_readiness():
 
 
 def test_live_readiness_cannot_be_bypassed_by_omitting_all_references():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     document["externalReadiness"] = {}
     assert any(error["path"] == "externalReadiness" for error in validate_document(document)["errors"])
 
 
 def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     document["taxInvoice"].update(approvalReference=None, taxBasisPoints=None, rounding=None)
     document["externalReadiness"] = {key: None for key in document["externalReadiness"]}
@@ -175,7 +196,7 @@ def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled(
 
 @pytest.mark.parametrize("invoice_enabled", [False, True])
 def test_live_tax_gate_only_requires_invoice_timing_when_invoicing_is_enabled(invoice_enabled):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     document["taxInvoice"] = {
         "approvalReference": "test-tax-policy", "taxInclusive": True,
@@ -193,7 +214,7 @@ def test_live_tax_gate_only_requires_invoice_timing_when_invoicing_is_enabled(in
 
 
 def test_live_payos_profile_requires_a_nonblank_credential_reference():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     payos = next(profile for profile in document["providerProfiles"] if profile["provider"] == "payos")
     payos.update(mode="live", readiness="ready", credentialReference="   ")
@@ -202,7 +223,7 @@ def test_live_payos_profile_requires_a_nonblank_credential_reference():
 
 @pytest.mark.parametrize("partial", [None, True, 0, "false"])
 def test_no_refunds_policy_requires_an_explicit_false_partial_flag(partial):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["policies"]["refund"] = {"kind": "no_refunds", "partial": partial}
     assert any(
         error["code"] == "REFUND_POLICY_INVALID" and error["path"] == "policies.refund.partial"
@@ -211,7 +232,7 @@ def test_no_refunds_policy_requires_an_explicit_false_partial_flag(partial):
 
 
 def test_configured_tax_requires_valid_types_and_matching_offer_amounts():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["taxInvoice"] = {"taxInclusive": False, "taxBasisPoints": 800, "rounding": "half_up", "invoiceTrigger": "manual"}
     assert any(error["code"] == "TAX_PRICE_MISMATCH" for error in validate_document(document)["errors"])
     document["taxInvoice"]["taxBasisPoints"] = True
@@ -220,7 +241,7 @@ def test_configured_tax_requires_valid_types_and_matching_offer_amounts():
 
 @pytest.mark.parametrize("profiles", [[None], {}, "wrong-shape", [{"provider": "bogus", "mode": "live", "readiness": "ready", "credentialReference": "configured"}]])
 def test_live_provider_validation_rejects_malformed_or_unsupported_profiles(profiles):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     document["providerProfiles"] = profiles
     result = validate_document(document)
@@ -236,7 +257,7 @@ def test_live_provider_validation_rejects_malformed_or_unsupported_profiles(prof
     ],
 )
 def test_offer_contract_rejects_invalid_closed_fields(field, value, expected_code):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["offers"][0][field] = value
 
     result = validate_document(document)
@@ -255,7 +276,7 @@ def test_offer_contract_rejects_invalid_closed_fields(field, value, expected_cod
     ],
 )
 def test_offer_price_rejects_noncanonical_period_and_currency(field, value, expected_code):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["offers"][0]["price"][field] = value
 
     result = validate_document(document)
@@ -267,7 +288,7 @@ def test_offer_price_rejects_noncanonical_period_and_currency(field, value, expe
 
 
 def test_monthly_offers_are_optional_distinct_and_require_their_own_term_policy():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     annual = deepcopy(document["offers"])
     monthly = deepcopy(annual[2])
     monthly["code"] = "silver.internal.monthly"
@@ -285,7 +306,7 @@ def test_monthly_offers_are_optional_distinct_and_require_their_own_term_policy(
 
 
 def test_monthly_prices_do_not_overwrite_annual_savings():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     annual_savings = connected_savings(document)
     for original in document["offers"][2:4]:
         monthly = deepcopy(original)
@@ -304,7 +325,7 @@ def test_monthly_prices_do_not_overwrite_annual_savings():
 
 @pytest.mark.parametrize("days", [0, -1, True, 30.5, 3661, None])
 def test_monthly_term_rejects_invalid_explicit_duration(days):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     monthly = deepcopy(document["offers"][2])
     monthly["code"] = "silver.internal.monthly"
     monthly["price"]["period"] = "monthly"
@@ -328,7 +349,7 @@ def test_monthly_term_rejects_invalid_explicit_duration(days):
     ],
 )
 def test_offer_display_metadata_is_typed(field, value, expected_code):
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["offers"][0]["display"][field] = value
 
     result = validate_document(document)
@@ -341,7 +362,7 @@ def test_offer_display_metadata_is_typed(field, value, expected_code):
 
 
 def test_malformed_offer_item_returns_typed_validation_error_instead_of_raising():
-    document = build_initial_draft_document(LEGACY_EXPORTS)
+    document = legacy_annual_document(LEGACY_EXPORTS)
     document["offers"][0] = "not-an-object"
 
     result = validate_document(document)

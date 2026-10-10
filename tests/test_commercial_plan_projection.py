@@ -117,7 +117,10 @@ def _account(cursor, user_id):
 
 
 def _document(cursor):
-    return build_initial_draft_document(load_legacy_export_capabilities(cursor))
+    document = build_initial_draft_document(load_legacy_export_capabilities(cursor))
+    # Exercise purchases made against the existing annual release contract.
+    document["offers"] = document["offers"][:8]
+    return document
 
 
 def _publish(cursor, document, *, at=NOW):
@@ -279,6 +282,29 @@ def test_new_release_and_stopped_sales_preserve_older_adapter_and_subscription(p
     assert dict(cursor.execute(
         "SELECT * FROM goi_dich_vu WHERE id = ?", (old_subscription["package_id"],)
     ).fetchone()) == old_package
+    assert _legacy_facts(cursor) == before
+
+
+@pytest.mark.parametrize("tier", ["personal", "gold"])
+def test_month_and_year_activate_fifteen_times_the_monthly_credits_from_the_published_snapshot(projection_cursor, tier):
+    cursor = projection_cursor
+    before = _legacy_facts(cursor)
+    document = build_initial_draft_document(load_legacy_export_capabilities(cursor))
+    _publish(cursor, document)
+    grants = {}
+    for period, days in (("monthly", 30), ("yearly", 365)):
+        offer = next(row for row in document["offers"] if row["tier"] == tier and row["variant"] == "connected" and row["price"]["period"] == period)
+        order, owner_id = _checkout(cursor, offer)
+        assert _paid(cursor, order)["status"] == "applied"
+        subscription = get_account_subscription(cursor, owner_id) if tier == "personal" else get_organization_subscription(cursor, owner_id)
+        assert subscription["expires_at"] - subscription["starts_at"] == days * 86400
+        grants[period] = cursor.execute(
+            "SELECT SUM(total) FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)",
+            (order["id"],),
+        ).fetchone()[0]
+        assert grants[period] == offer["includedProcurementQuota"]
+        assert _paid(cursor, order)["status"] == "applied"
+    assert grants["yearly"] == grants["monthly"] * 15
     assert _legacy_facts(cursor) == before
 
 

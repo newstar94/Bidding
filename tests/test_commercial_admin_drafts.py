@@ -55,14 +55,14 @@ LEGACY_EXPORTS = {
 }
 
 
-def test_complete_templates_are_valid_without_a_seed_and_do_not_generate_monthly_prices():
+def test_complete_templates_create_twenty_products_with_approved_monthly_quota_formula():
     document = prepare_admin_draft(
         template_mode="complete_templates", legacy_capabilities_by_tier=LEGACY_EXPORTS
     )
     assert validate_document(document)["errors"] == []
-    assert len(document["offers"]) == 8
+    assert len(document["offers"]) == 16
     for offer in document["offers"]:
-        assert offer["price"]["period"] == "yearly"
+        assert offer["price"]["period"] in {"yearly", "monthly"}
         assert offer["price"]["total"] > 0
         if offer["tier"] != "personal":
             assert offer["exportCapabilities"] == LEGACY_EXPORTS[offer["tier"]]
@@ -103,6 +103,29 @@ def test_complete_templates_keep_unmapped_organization_exports_as_a_validation_b
     assert document["offers"][2]["exportCapabilities"] is None
 
 
+def test_complete_templates_preserve_separately_configured_monthly_rights_and_quota():
+    source = build_initial_draft_document(LEGACY_EXPORTS)
+    monthly = next(offer for offer in source["offers"] if offer["code"] == "gold.connected.monthly")
+    monthly["exportCapabilities"] = {
+        capability: False for capability in SUPPORTED_EXPORT_CAPABILITIES
+    }
+    monthly["includedProcurementQuota"] = 321
+    monthly["salesState"] = "stopped"
+    before = deepcopy(source)
+
+    document = prepare_admin_draft(source, template_mode="complete_templates", legacy_capabilities_by_tier=LEGACY_EXPORTS)
+    result = next(offer for offer in document["offers"] if offer["code"] == monthly["code"])
+
+    assert source == before
+    assert result["exportCapabilities"] == monthly["exportCapabilities"]
+    assert result["includedProcurementQuota"] == 321
+    assert result["salesState"] == "stopped"
+    annual = next(offer for offer in document["offers"] if offer["code"] == "gold.connected.yearly")
+    assert annual["includedProcurementQuota"] == 321 * 15
+    assert annual["monthlyBaseProcurementQuota"] == 321
+    assert document["offers"][5]["exportCapabilities"] == before["offers"][5]["exportCapabilities"]
+
+
 def test_legacy_capability_loader_preserves_actual_db_values():
     import sqlite3
 
@@ -130,7 +153,7 @@ def test_templates_have_no_prices_or_guessed_entitlements_and_preserve_common_co
     assert source == before
     for key in ("policies", "providerProfiles", "creditPacks", "taxInvoice", "externalReadiness", "extra"):
         assert document[key] == source[key]
-    assert len(document["offers"]) == 8
+    assert len(document["offers"]) == 16
     for offer in document["offers"]:
         assert offer["price"]["total"] is None
         assert offer["price"]["tax"] is None
@@ -145,7 +168,7 @@ def test_empty_draft_preserves_source_and_cannot_pass_existing_release_matrix():
     source = build_initial_draft_document()
     document = prepare_admin_draft(source, template_mode="empty")
     assert document["offers"] == []
-    assert len(source["offers"]) == 8
+    assert len(source["offers"]) == 16
     assert document["policies"] == source["policies"]
     assert any(error["code"] == "OFFER_MATRIX_INCOMPLETE" for error in validate_document(document)["errors"])
     assert prepare_admin_draft(source) == source
@@ -213,13 +236,13 @@ def test_create_first_package_draft_succeeds_without_seed_or_effective_release(m
     assert len(seen["outbox"]) == 1
 
 
-def test_create_complete_package_samples_without_seed_commits_valid_annual_document(monkeypatch):
+def test_create_complete_package_samples_without_seed_commits_twenty_product_draft(monkeypatch):
     seen = _route_fixture(monkeypatch)
     monkeypatch.setattr(routes, "load_legacy_export_capabilities", lambda cursor: LEGACY_EXPORTS)
     response = routes._create_commercial_draft_sync(SimpleNamespace(), {"templateMode": "complete_templates"})
     assert response.status_code == 201
     assert validate_document(seen["document"])["errors"] == []
-    assert len(seen["document"]["offers"]) == 8
+    assert len(seen["document"]["offers"]) == 16
     assert seen["base"] is None
     assert seen["commit"] and not seen["rollback"]
     assert seen["audit"][0]["required"] is True

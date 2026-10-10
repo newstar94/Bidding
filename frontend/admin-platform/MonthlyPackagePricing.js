@@ -1,6 +1,64 @@
 export const ANNUAL_PRICE_MULTIPLIER = 10;
 export const MONTHLY_TERM_DAYS = 30;
 export const ANNUAL_TERM_DAYS = 365;
+export const ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER = 15;
+export const MAX_MONTHLY_PROCUREMENT_QUOTA = Math.floor(100000 / ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER);
+
+export function calculateMonthlyPackageQuotas(value) {
+  const raw = String(value ?? "").trim();
+  if (!/^(0|[1-9]\d*)$/u.test(raw)) throw new TypeError("Lượt tháng phải là số nguyên không âm.");
+  const monthly = Number(raw);
+  if (!Number.isSafeInteger(monthly) || monthly > MAX_MONTHLY_PROCUREMENT_QUOTA) throw new TypeError(`Lượt tháng tối đa ${MAX_MONTHLY_PROCUREMENT_QUOTA} để lượt năm không vượt 100.000.`);
+  return { monthly, yearly: monthly * ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER };
+}
+
+export function packageMonthlyQuota(documentValue, index) {
+  const source = documentValue?.offers?.[index];
+  if (!source) return null;
+  if (source.variant === "internal") return 0;
+  if (Number.isSafeInteger(source.monthlyBaseProcurementQuota)) return source.monthlyBaseProcurementQuota;
+  const month = documentValue.offers.find(offer => offer.tier === source.tier && offer.variant === source.variant
+    && offer.ownerKind === source.ownerKind && offer.price?.period === "monthly");
+  if (Number.isSafeInteger(month?.includedProcurementQuota)) return month.includedProcurementQuota;
+  // A divisible legacy annual value can be offered in the input. It does not
+  // change existing grants or draft quotas until Admin explicitly configures it.
+  const annual = source.price?.period === "yearly" ? source.includedProcurementQuota : null;
+  return Number.isSafeInteger(annual) && annual % ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER === 0
+    ? annual / ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER : null;
+}
+
+export function applyPackageMonthlyQuota(documentValue, index, value) {
+  const source = documentValue?.offers?.[index];
+  if (!source || !["monthly", "yearly"].includes(source.price?.period)) throw new TypeError("Chọn gói tháng hoặc năm để cấu hình lượt.");
+  const quotas = calculateMonthlyPackageQuotas(value);
+  if (source.variant === "internal" && quotas.monthly !== 0) throw new TypeError("Gói Cơ bản không có lượt lấy dữ liệu tự động.");
+  const next = configurePackageBillingTerms(documentValue);
+  const samePackage = offer => offer.tier === source.tier && offer.variant === source.variant && offer.ownerKind === source.ownerKind;
+  for (const period of ["monthly", "yearly"]) {
+    const matches = next.offers.filter(offer => samePackage(offer) && offer.price?.period === period);
+    if (matches.length > 1) throw new TypeError("Gói có kỳ thanh toán trùng nhau. Kiểm tra lại cấu hình.");
+    if (matches.length) continue;
+    const code = `${source.tier}.${source.variant}.${period}`;
+    if (next.offers.length >= 16 || next.offers.some(offer => offer.code === code)) throw new TypeError("Không thể bổ sung kỳ còn thiếu: danh mục đã đầy hoặc mã đã tồn tại.");
+    const paired = JSON.parse(JSON.stringify(source));
+    paired.code = code;
+    paired.price = { ...paired.price, period, subtotal: null, tax: null, total: null };
+    if (Number.isSafeInteger(source.price.monthlyBaseAmount)) {
+      paired.price = { ...paired.price, ...calculateMonthlyPackagePrices(source.price.monthlyBaseAmount, next.taxInvoice)[period] };
+    } else delete paired.price.monthlyBaseAmount;
+    paired.display ||= {};
+    delete paired.display.periodLabel;
+    paired.salesState = "non_sellable";
+    next.offers.push(paired);
+  }
+  for (const offer of next.offers) {
+    if (samePackage(offer) && Object.hasOwn(quotas, offer.price?.period)) {
+      offer.monthlyBaseProcurementQuota = quotas.monthly;
+      offer.includedProcurementQuota = quotas[offer.price.period];
+    }
+  }
+  return next;
+}
 
 export function configurePackageBillingTerms(documentValue) {
   const next = JSON.parse(JSON.stringify(documentValue));
@@ -61,8 +119,12 @@ export function applyPackageMonthlyBase(documentValue, index, value) {
     paired.price = { ...paired.price, ...prices[period] };
     paired.display ||= {};
     delete paired.display.periodLabel;
-    // Retain the existing contract: connected quotas require explicit configuration.
-    paired.includedProcurementQuota = source.variant === "internal" ? 0 : null;
+    // Only an explicit monthly quota can configure a newly created term.
+    const configuredQuota = source.monthlyBaseProcurementQuota
+      ?? next.offers.find(offer => samePackage(offer) && offer.price?.period === "monthly")?.includedProcurementQuota;
+    const quotas = Number.isSafeInteger(configuredQuota) ? calculateMonthlyPackageQuotas(configuredQuota) : null;
+    paired.includedProcurementQuota = source.variant === "internal" ? 0 : quotas?.[period] ?? null;
+    if (quotas) paired.monthlyBaseProcurementQuota = quotas.monthly;
     if (source.variant !== "internal") paired.salesState = "non_sellable";
     next.offers.push(paired);
   }

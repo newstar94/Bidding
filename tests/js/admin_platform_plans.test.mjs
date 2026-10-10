@@ -338,7 +338,7 @@ test("plans view does not invent releases or plans when commercial data is absen
 test("first startup opens the seeded samples directly without requesting another draft", () => {
   const markup = plansMarkup({ drafts: [{ id: "commercial-draft-initial-v1", status: "draft", revision: 1 }] });
   assert.match(markup, /Bộ gói mẫu đã được khởi tạo/u);
-  assert.match(markup, /data-admin-draft-open="commercial-draft-initial-v1">Chỉnh sửa 8 gói mẫu/u);
+  assert.match(markup, /data-admin-draft-open="commercial-draft-initial-v1">Chỉnh sửa gói mẫu/u);
 });
 
 test("complete sample action is available without an initial release and when a release has no public catalog", () => {

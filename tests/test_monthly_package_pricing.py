@@ -8,6 +8,8 @@ from backend.commercial_policy.tax import calculate_tax_price
 
 def document_with_monthly_base(*, tax_basis_points=0):
     document = build_initial_draft_document()
+    # Recreate an annual-only historical source for counterpart compatibility.
+    document["offers"] = document["offers"][:8]
     document["taxInvoice"]["taxBasisPoints"] = tax_basis_points
     for offer in document["offers"]:
         offer["price"] = calculate_tax_price(offer["price"]["total"], document["taxInvoice"], period="yearly")

@@ -77,7 +77,8 @@ test("explicit creator values survive both periods while preserving unknown poli
   assert.equal(result.offers[1].price.total, 165000);
   for (const offer of result.offers) {
     assert.equal(offer.memberQuota, 12);
-    assert.equal(offer.includedProcurementQuota, 200);
+    assert.equal(offer.includedProcurementQuota, offer.price.period === "yearly" ? 3000 : 200);
+    assert.equal(offer.monthlyBaseProcurementQuota, 200);
     assert.equal(offer.exportCapabilities["document.export.word"], true);
     assert.equal(offer.display.description, "Do Admin cấu hình");
     assert.equal(offer.display.visibility, "hidden");

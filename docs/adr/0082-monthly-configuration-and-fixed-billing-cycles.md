@@ -1,6 +1,6 @@
 # ADR 0082: Cấu hình giá tháng và tự tạo hai kỳ thanh toán
 
-- Trạng thái: Giá và chu kỳ đã được chủ sản phẩm chấp thuận; quy đổi hạn mức Nâng cao đang chờ xác nhận.
+- Trạng thái: Giá và chu kỳ đã được chủ sản phẩm chấp thuận; phần quy đổi hạn mức Nâng cao đã được thay thế bằng ADR 0084: lượt năm = lượt tháng ×15.
 - Ngày: 2026-10-10
 - Thay thế phần yêu cầu tạo kỳ tháng riêng tại ADR 0076.
 

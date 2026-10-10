@@ -98,6 +98,161 @@ async function openDraft(page, id = "draft-a") {
   await page.locator(`[data-admin-draft-open="${id}"]`).click();
   await page.locator(`[data-draft-id="${id}"]`).waitFor();
 }
+
+async function chooseManagedOption(page, selector, value) {
+  const id = await page.locator(selector).getAttribute("id");
+  await page.locator(`#${id}-combobox`).click();
+  await page.locator(`#${id}-listbox [data-value="${value}"]`).click();
+}
+
+function listConfigurationFixture({ failSave = false, failCreate = false } = {}) {
+  const document = {
+    ...draft("list-draft").document,
+    rollout: { mode: "shadow", cohorts: ["keep"], extra: "unchanged" },
+    creditPacks: [{ code: "procurement.sample", quantity: 20, price: 99000, extra: "keep" }],
+    offers: [structuredClone(offer), { ...structuredClone(offer), code: "gold.internal.monthly", price: { ...offer.price, period: "monthly", total: 10, subtotal: 10 }, salesState: "non_sellable" }],
+  };
+  document.offers.forEach(candidate => {
+    candidate.violationCheckEnabled = false;
+    candidate.exportCapabilities = { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false };
+  });
+  let saved = { id: "list-draft", revision: 4, document: structuredClone(document) };
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/admin/overview") return { payload: {
+      currentRelease: { id: "list-release", mode: "shadow", nonSellable: false },
+      currentCatalog: { releaseId: "list-release", releaseChecksum: "source-checksum", currency: "VND", quotaWarnings: [], ...document }, drafts: [], releaseHistory: [],
+    } };
+    if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return failCreate
+      ? { status: 409, payload: { error: "Không thể tạo bản nháp", code: "CONFLICT" } }
+      : { payload: structuredClone(saved) };
+    if (entry.path === "/api/commercial/drafts/list-draft" && entry.method === "PATCH") {
+      if (failSave) return { status: 409, payload: { error: "Lần sửa đã thay đổi", code: "CONFLICT" } };
+      saved = { ...saved, revision: saved.revision + 1, document: entry.body.document };
+      return { payload: saved };
+    }
+    return null;
+  };
+  return document;
+}
+
+test("publication mode can be changed from the published list while retaining all source configuration", async () => {
+  const original = listConfigurationFixture();
+  await withPage("/admin/plans", async page => {
+    await chooseManagedOption(page, "[data-admin-published-rollout]", "production");
+    await page.locator('[data-draft-id="list-draft"]').waitFor();
+    assert.equal(await page.locator('[data-admin-package-list]').isVisible(), true);
+    assert.equal(await page.locator('[data-admin-package-editor-zone]').isVisible(), false);
+    assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.getByText("Đã lưu bản nháp.", { exact: true }).waitFor();
+    const mutations = requests.filter(entry => entry.method !== "GET");
+    assert.deepEqual(mutations.map(entry => entry.method), ["POST", "PATCH"]);
+    assert.deepEqual(mutations[0].body, { baseReleaseId: "list-release" });
+    assert.equal(mutations[1].body.expectedRevision, 4);
+    assert.deepEqual(mutations[1].body.document, { ...original, policies: { ...original.policies, monthlyBaseTerm: { kind: "fixed_days", days: 30 } }, rollout: { ...original.rollout, mode: "production" } });
+  });
+});
+
+test("monthly sales state and credit pack values are editable in the list and preserved on rejected saves", async () => {
+  const original = listConfigurationFixture({ failSave: true });
+  await withPage("/admin/plans", async page => {
+    await chooseManagedOption(page, '[data-admin-published-sales="gold.internal.monthly"]', "sellable");
+    await page.locator('[data-draft-id="list-draft"]').waitFor();
+    assert.equal(await page.locator('[data-admin-list-sales="gold.internal.monthly"]').inputValue(), "sellable");
+    await chooseManagedOption(page, '[data-admin-list-sales="gold.internal.yearly"]', "stopped");
+    await page.locator('[data-admin-package-layout="cards"]').click();
+    assert.match(await page.locator('[data-admin-package-cards]:visible').textContent(), /Đã dừng bán/u);
+    await page.locator('[data-admin-package-cards] [data-admin-package-period="1"]').click();
+    assert.match(await page.locator('[data-admin-package-cards]:visible').textContent(), /Đang bán/u);
+    await page.locator('[data-admin-package-layout="table"]').click();
+    await page.locator('[data-admin-credit-field="quantity"]').fill("100");
+    await page.locator('[data-admin-credit-field="price"]').fill("25000");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.getByText("Lần sửa đã thay đổi", { exact: true }).waitFor();
+    const update = requests.find(entry => entry.method === "PATCH").body.document;
+    assert.equal(update.offers[0].salesState, "stopped");
+    assert.equal(update.offers[1].salesState, "sellable");
+    assert.deepEqual(update.creditPacks, [{ ...original.creditPacks[0], quantity: 100, price: 25000 }]);
+    assert.deepEqual(update.rollout, original.rollout);
+    assert.equal(await page.locator('[data-admin-credit-field="price"]').inputValue(), "25000");
+    assert.equal(await page.locator('[data-admin-credit-field="quantity"]').inputValue(), "100");
+    assert.equal(await page.locator('[data-admin-list-sales="gold.internal.yearly"]').inputValue(), "stopped");
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
+  });
+});
+
+test("failed list draft creation restores the authoritative published mode", async () => {
+  listConfigurationFixture({ failCreate: true });
+  await withPage("/admin/plans", async page => {
+    await chooseManagedOption(page, "[data-admin-published-rollout]", "production");
+    await page.getByText("Không thể tạo bản nháp", { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-admin-published-rollout]').inputValue(), "shadow");
+    assert.equal(await page.locator('[data-draft-id]').count(), 0);
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 0);
+  });
+});
+
+test("monthly quota edits update both periods preview and saved data and survive a rejected save", async () => {
+  const source = draft("quota-draft");
+  source.document.offers = ["yearly", "monthly"].map(period => ({
+    ...structuredClone(offer), variant: "connected", code: `gold.connected.${period}`,
+    includedProcurementQuota: period === "yearly" ? 7000 : 500,
+    price: { ...offer.price, period, total: period === "yearly" ? 2000 : 200, subtotal: period === "yearly" ? 2000 : 200 },
+    violationCheckEnabled: true,
+    exportCapabilities: { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false },
+  }));
+  source.validation = { errors: [] }; source.validationDigest = "a".repeat(64); source.readinessExpiresAt = 9999999999;
+  let saved = source;
+  let reject = false;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/admin/overview") return { payload: { currentRelease: null, drafts: [{ id: source.id, revision: saved.revision }], releaseHistory: [] } };
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: saved };
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "PATCH") {
+      if (reject) return { status: 409, payload: { error: "Xung đột hạn mức", code: "CONFLICT" } };
+      saved = { id: source.id, revision: saved.revision + 1, document: entry.body.document };
+      return { payload: saved };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page, source.id);
+    await page.locator('[data-admin-package-group="connected"]').click();
+    await page.locator('[data-admin-package-table] [data-admin-package-edit="0"]').click();
+    await page.locator('[data-admin-package-step="2"]').click();
+    const year = page.locator('[data-admin-offer-editor][data-offer-index="0"]');
+    assert.equal(await year.locator('[data-admin-monthly-quota]').inputValue(), "500");
+    assert.equal(await year.locator('[data-admin-offer-field="includedProcurementQuota"]').getAttribute("readonly"), "");
+    await year.locator('[data-admin-monthly-quota]').fill("120");
+    assert.equal(await year.locator('[data-admin-offer-field="includedProcurementQuota"]').inputValue(), "1800");
+    assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /1\.800/u);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.getByText("Đã lưu bản nháp.", { exact: true }).waitFor();
+    assert.equal(saved.document.offers[0].includedProcurementQuota, 1800);
+    assert.equal(saved.document.offers[1].includedProcurementQuota, 120);
+    for (const index of [0, 1]) {
+      assert.equal(saved.document.offers[index].monthlyBaseProcurementQuota, 120);
+      assert.deepEqual(saved.document.offers[index].price, source.document.offers[index].price);
+      assert.deepEqual(saved.document.offers[index].exportCapabilities, source.document.offers[index].exportCapabilities);
+      assert.equal(saved.document.offers[index].salesState, source.document.offers[index].salesState);
+    }
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
+    const month = page.locator('[data-admin-offer-editor][data-offer-index="1"]');
+    assert.equal(await month.locator('[data-admin-monthly-quota]').inputValue(), "120");
+    await month.locator('[data-admin-monthly-quota]').fill("150");
+    reject = true;
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.getByText("Xung đột hạn mức", { exact: true }).waitFor();
+    assert.equal(await month.locator('[data-admin-monthly-quota]').inputValue(), "150");
+    assert.equal(await year.locator('[data-admin-offer-field="includedProcurementQuota"]').inputValue(), "2250");
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
+  });
+});
 function nextDialog(page, accept) { page.once("dialog", (dialog) => accept ? dialog.accept() : dialog.dismiss()); }
 
 test("package styles load only on demand and finish before the package screen renders", async () => {
@@ -703,7 +858,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
   });
 });
 
-test("complete sample click creates eight configured annual draft offers without an initial seed or publishing", async () => {
+test("complete sample click creates twenty editable products with monthly base without publishing", async () => {
   const names = { personal: "Cá nhân", silver: "Bạc", gold: "Vàng", diamond: "Kim cương" };
   const annualPrices = { personal: [2490000, 3990000], silver: [12000000, 15000000], gold: [28000000, 35000000], diamond: [60000000, 75000000] };
   const completedOffers = Object.keys(names).flatMap((tier, tierIndex) => ["internal", "connected"].map(variant => ({
@@ -711,7 +866,8 @@ test("complete sample click creates eight configured annual draft offers without
     code: `${tier}.${variant}.yearly`, tier, variant,
     ownerKind: tier === "personal" ? "account" : "organization",
     memberQuota: [1, 5, 15, 50][tierIndex],
-    includedProcurementQuota: variant === "internal" ? 0 : [1000, 3000, 7000, 15000][tierIndex],
+    includedProcurementQuota: variant === "internal" ? 0 : [1500, 3000, 9000, 22500][tierIndex],
+    monthlyBaseProcurementQuota: variant === "internal" ? 0 : [100, 200, 600, 1500][tierIndex],
     price: { period: "yearly", currency: "VND", subtotal: annualPrices[tier][variant === "internal" ? 0 : 1], tax: 0, total: annualPrices[tier][variant === "internal" ? 0 : 1] },
     exportCapabilities: {
       "document.export.word": true,
@@ -720,8 +876,17 @@ test("complete sample click creates eight configured annual draft offers without
     },
     display: { name: names[tier], benefits: [], description: `Mẫu ${variant}`, visibility: "public" },
   })));
+  completedOffers.forEach(candidate => { candidate.price.monthlyBaseAmount = candidate.price.total / 10; });
+  for (const annual of [...completedOffers]) {
+    const month = structuredClone(annual);
+    month.code = month.code.replace("yearly", "monthly");
+    month.price = { ...month.price, period: "monthly", total: month.price.monthlyBaseAmount, subtotal: month.price.monthlyBaseAmount };
+    month.includedProcurementQuota = month.monthlyBaseProcurementQuota;
+    completedOffers.push(month);
+  }
   const completedDocument = {
     schemaVersion: 1, currency: "VND", offers: completedOffers,
+    creditPacks: Array.from({ length: 4 }, (_, index) => ({ code: `sample.${index + 1}`, quantity: (index + 1) * 20, price: (index + 1) * 99000 })),
     policies: {
       baseTerm: { kind: "fixed_days", days: 365 },
       renewalAnchor: { kind: "end_of_term" },
@@ -735,7 +900,7 @@ test("complete sample click creates eight configured annual draft offers without
     return null;
   };
   await withPage("/admin/plans", async page => {
-    await page.getByRole("button", { name: "Tạo bộ 8 gói mẫu", exact: true }).click();
+    await page.getByRole("button", { name: "Tạo bộ 20 gói mẫu", exact: true }).click();
     await page.locator('[data-draft-id="completed"]').waitFor();
     const mutations = requests.filter(entry => entry.method !== "GET");
     assert.equal(mutations.length, 1);
@@ -744,6 +909,10 @@ test("complete sample click creates eight configured annual draft offers without
     assert.equal(await page.locator("[data-admin-package-creator]").count(), 0);
     const manager = page.locator('[data-admin-package-manager="draft"]');
     assert.equal(await manager.locator('[data-admin-package-table] tbody tr').count(), 8);
+    assert.equal(await page.locator('[data-admin-credit-field="quantity"]').count(), 4);
+    assert.equal(await page.locator('[data-admin-credit-field="price"]').count(), 4);
+    assert.equal(await page.locator('[data-admin-offer-editor]').count(), 16);
+    assert.equal(await page.locator('[data-admin-list-sales]').count(), 16);
     for (const group of ["internal", "connected"]) {
       await manager.locator(`[data-admin-package-group="${group}"]`).click();
       assert.equal(await manager.locator('[data-admin-package-table] tbody tr:visible').count(), 4);
@@ -841,7 +1010,8 @@ test("creator saves explicit organization limits and features without changing s
     assert.equal(created.tier, "gold");
     assert.equal(created.variant, "connected");
     assert.equal(created.memberQuota, 12);
-    assert.equal(created.includedProcurementQuota, 200);
+    assert.equal(created.includedProcurementQuota, 3000);
+    assert.equal(created.monthlyBaseProcurementQuota, 200);
     assert.equal(created.violationCheckEnabled, true);
     assert.deepEqual(created.exportCapabilities, { "document.export.word": true, "document.export.excel": false, "document.export.award_result_excel": false });
     assert.equal(created.price.total, 1080000);

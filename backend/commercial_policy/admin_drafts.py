@@ -2,7 +2,11 @@
 
 from copy import deepcopy
 
-from .document import build_initial_draft_document
+from .document import (
+    ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER,
+    MAX_MONTHLY_PROCUREMENT_QUOTA,
+    build_initial_draft_document,
+)
 from .errors import CommercialPolicyError
 
 
@@ -42,12 +46,34 @@ def prepare_admin_draft(
             for offer in document.get("offers") or []
         }
         for offer in defaults["offers"]:
-            source = source_offers.get((offer["tier"], offer["variant"], "yearly"))
+            source = source_offers.get((offer["tier"], offer["variant"], offer["price"]["period"]))
+            if source is None:
+                source = source_offers.get((offer["tier"], offer["variant"], "yearly"))
             if source and source.get("exportCapabilities") is not None:
                 offer["exportCapabilities"] = deepcopy(source["exportCapabilities"])
+            monthly_source = source_offers.get((offer["tier"], offer["variant"], "monthly"))
+            if offer["price"]["period"] == "monthly" and monthly_source is not None:
+                offer["includedProcurementQuota"] = monthly_source.get("includedProcurementQuota")
+                offer["salesState"] = monthly_source.get("salesState", "non_sellable")
+                if "monthlyBaseProcurementQuota" not in monthly_source:
+                    offer.pop("monthlyBaseProcurementQuota", None)
+                else:
+                    offer["monthlyBaseProcurementQuota"] = monthly_source["monthlyBaseProcurementQuota"]
+
+        for offer in defaults["offers"]:
+            monthly_source = source_offers.get((offer["tier"], offer["variant"], "monthly"))
+            if monthly_source and offer["variant"] == "connected":
+                quota = monthly_source.get("includedProcurementQuota")
+                if type(quota) is int and 0 <= quota <= MAX_MONTHLY_PROCUREMENT_QUOTA:
+                    offer["monthlyBaseProcurementQuota"] = quota
+                    offer["includedProcurementQuota"] = quota * (ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER if offer["price"]["period"] == "yearly" else 1)
+                else:
+                    offer.pop("monthlyBaseProcurementQuota", None)
+                    if offer["price"]["period"] == "monthly":
+                        offer["includedProcurementQuota"] = quota
         document["offers"] = defaults["offers"]
         policies = {**defaults["policies"], **(document.get("policies") or {})}
-        for name in ("baseTerm", "renewalAnchor", "partialBatch"):
+        for name in ("baseTerm", "monthlyBaseTerm", "renewalAnchor", "partialBatch"):
             policy = policies.get(name)
             if not policy or policy.get("kind") == "blocked_decision":
                 policies[name] = deepcopy(defaults["policies"][name])
@@ -64,6 +90,8 @@ def prepare_admin_draft(
     templates = build_initial_draft_document()["offers"]
     for offer in templates:
         offer["price"].update(subtotal=None, tax=None, total=None)
+        offer["price"].pop("monthlyBaseAmount", None)
+        offer.pop("monthlyBaseProcurementQuota", None)
         offer["memberQuota"] = 1 if offer["tier"] == "personal" else None
         offer["includedProcurementQuota"] = 0 if offer["variant"] == "internal" else None
         offer["exportCapabilities"] = None

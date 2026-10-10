@@ -1,7 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyPackageMonthlyBase, calculateMonthlyPackagePrices, packageMonthlyBase } from "../../frontend/admin-platform/MonthlyPackagePricing.js";
+import { applyPackageMonthlyBase, applyPackageMonthlyQuota, calculateMonthlyPackagePrices, calculateMonthlyPackageQuotas, packageMonthlyBase, packageMonthlyQuota } from "../../frontend/admin-platform/MonthlyPackagePricing.js";
 const policy = { taxInclusive: true, taxBasisPoints: 0, rounding: "ceil" };
+
+test("monthly quotas derive annual quotas by fifteen and reject fractional negative or excessive values", () => {
+  assert.deepEqual(calculateMonthlyPackageQuotas("120"), { monthly: 120, yearly: 1800 });
+  assert.deepEqual(calculateMonthlyPackageQuotas("6666"), { monthly: 6666, yearly: 99990 });
+  for (const value of [null, "", "1.5", "-1", true, "6667", Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => calculateMonthlyPackageQuotas(value), TypeError);
+  }
+});
+
+test("quota updates affect only the configured family and preserve prices rights states and metadata", () => {
+  const source = { offers: ["yearly", "monthly"].map(period => ({
+    code: `gold.connected.${period}`, tier: "gold", variant: "connected", ownerKind: "organization",
+    includedProcurementQuota: period === "yearly" ? 7000 : 500, memberQuota: 15,
+    price: { period, total: period === "yearly" ? 35000000 : 3500000, extra: "keep price" },
+    exportCapabilities: { "document.export.word": true }, salesState: "stopped", display: { name: "Gold" }, extra: "keep",
+  })) };
+  source.offers.push({ ...structuredClone(source.offers[0]), code: "silver.connected.yearly", tier: "silver" });
+  const before = structuredClone(source);
+  assert.equal(packageMonthlyQuota(source, 0), 500);
+  const next = applyPackageMonthlyQuota(source, 0, "120");
+  assert.deepEqual(source, before);
+  assert.equal(next.offers[0].includedProcurementQuota, 1800);
+  assert.equal(next.offers[1].includedProcurementQuota, 120);
+  for (const index of [0, 1]) {
+    assert.deepEqual(next.offers[index], { ...before.offers[index], monthlyBaseProcurementQuota: 120, includedProcurementQuota: index === 0 ? 1800 : 120 });
+  }
+  assert.deepEqual(next.offers[2], before.offers[2]);
+});
+
+test("setting a monthly quota completes the missing period without inferring a legacy price", () => {
+  const source = { offers: [{ code: "personal.connected.yearly", tier: "personal", variant: "connected", ownerKind: "account",
+    includedProcurementQuota: 1000, price: { period: "yearly", total: 3990000 }, salesState: "sellable", display: { periodLabel: "Hàng năm" },
+  }] };
+  assert.equal(packageMonthlyQuota(source, 0), null);
+  const next = applyPackageMonthlyQuota(source, 0, "100");
+  assert.equal(next.offers.length, 2);
+  assert.equal(next.offers[0].includedProcurementQuota, 1500);
+  assert.equal(next.offers[1].includedProcurementQuota, 100);
+  assert.equal(next.offers[1].price.period, "monthly");
+  assert.equal(next.offers[1].price.total, null);
+  assert.equal(next.offers[1].salesState, "non_sellable");
+  assert.equal(next.offers[1].display.periodLabel, undefined);
+});
+
+test("new annual counterparts use an explicit monthly quota when configuring price", () => {
+  const source = { taxInvoice: policy, offers: [{ code: "personal.connected.monthly", tier: "personal", variant: "connected", ownerKind: "account",
+    price: { period: "monthly", total: 2000 }, includedProcurementQuota: 100, salesState: "sellable",
+  }] };
+  const next = applyPackageMonthlyBase(source, 0, "2000");
+  assert.equal(next.offers[1].includedProcurementQuota, 1500);
+  assert.equal(next.offers[1].monthlyBaseProcurementQuota, 100);
+  assert.equal(next.offers[0].includedProcurementQuota, 100);
+});
 
 test("the monthly listed price is the base and the annual listed price is ten times it", () => {
   const prices = calculateMonthlyPackagePrices("2000", policy);

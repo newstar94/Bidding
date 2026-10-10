@@ -25,6 +25,8 @@ SUPPORTED_VARIANTS = ("internal", "connected")
 SUPPORTED_OWNER_KINDS = ("account", "organization")
 SUPPORTED_SALES_STATES = ("sellable", "stopped", "non_sellable")
 SUPPORTED_PRICE_PERIODS = ("yearly", "monthly")
+ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER = 15
+MAX_MONTHLY_PROCUREMENT_QUOTA = MAX_CREDIT_UNITS // ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER
 SUPPORTED_PUBLIC_VISIBILITY = ("public", "hidden")
 SUPPORTED_EXPORT_CAPABILITIES = (
     "document.export.word",
@@ -86,24 +88,27 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
     remains unconfirmed and this document still starts in shadow mode.
     Organization exports still come from the actual legacy package mapping;
     a missing mapping remains a validation blocker, never an inferred right.
+    The twenty-product seed uses monthly prices and fixed 30/365-day terms.
+    Monthly sample quotas are explicit and annual quotas use the approved
+    factor of fifteen. The four credit-pack sample values remain editable.
     """
 
     legacy_capabilities_by_tier = {
         "personal": {capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES},
         **(legacy_capabilities_by_tier or {}),
     }
-    prices = {
-        "personal": {"internal": 2_490_000, "connected": 3_990_000},
-        "silver": {"internal": 12_000_000, "connected": 15_000_000},
-        "gold": {"internal": 28_000_000, "connected": 35_000_000},
-        "diamond": {"internal": 60_000_000, "connected": 75_000_000},
+    monthly_prices = {
+        "personal": {"internal": 249_000, "connected": 399_000},
+        "silver": {"internal": 1_200_000, "connected": 1_500_000},
+        "gold": {"internal": 2_800_000, "connected": 3_500_000},
+        "diamond": {"internal": 6_000_000, "connected": 7_500_000},
     }
     members = {"personal": 1, "silver": 5, "gold": 15, "diamond": 50}
-    connected_quota = {
-        "personal": 1_000,
-        "silver": 3_000,
-        "gold": 7_000,
-        "diamond": 15_000,
+    connected_monthly_quota = {
+        "personal": 100,
+        "silver": 200,
+        "gold": 600,
+        "diamond": 1_500,
     }
     offers = []
     for tier in SUPPORTED_TIERS:
@@ -118,14 +123,16 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                 "ownerKind": "account" if tier == "personal" else "organization",
                 "memberQuota": members[tier],
                 "includedProcurementQuota": (
-                    connected_quota[tier] if variant == "connected" else 0
+                    connected_monthly_quota[tier] * ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER if variant == "connected" else 0
                 ),
+                "monthlyBaseProcurementQuota": connected_monthly_quota[tier] if variant == "connected" else 0,
                 "price": {
                     "period": "yearly",
                     "currency": "VND",
-                    "subtotal": prices[tier][variant],
+                    "subtotal": monthly_prices[tier][variant] * 10,
                     "tax": 0,
-                    "total": prices[tier][variant],
+                    "total": monthly_prices[tier][variant] * 10,
+                    "monthlyBaseAmount": monthly_prices[tier][variant],
                 },
                 "exportCapabilities": deepcopy(mapped_exports),
                 "violationCheckEnabled": variant == "connected",
@@ -141,7 +148,7 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                     "description": (
                         "Quản lý công việc và dữ liệu nội bộ."
                         if variant == "internal"
-                        else "Quản lý công việc và kết nối dữ liệu Mua Sắm Công."
+                        else "Quản lý công việc và lấy dữ liệu tự động."
                     ),
                     "badge": "Đề xuất" if variant == "connected" else "",
                     "variantLabel": "Cơ bản" if variant == "internal" else "Nâng cao",
@@ -151,6 +158,16 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
                     "benefits": [],
                 },
             })
+    # Keep annual ordering stable. Both price and quota configuration start
+    # from explicit monthly sample values under the approved multipliers.
+    for annual in list(offers):
+        monthly = deepcopy(annual)
+        monthly["code"] = f"{annual['tier']}.{annual['variant']}.monthly"
+        amount = annual["price"]["monthlyBaseAmount"]
+        monthly["price"].update(period="monthly", subtotal=amount, total=amount)
+        monthly["display"]["periodLabel"] = "Hàng tháng"
+        monthly["includedProcurementQuota"] = annual["monthlyBaseProcurementQuota"]
+        offers.append(monthly)
     tax_approval_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#tax-policy"
     terms_approval_reference = "docs/adr/0073-production-commercial-tax-and-readiness-configuration.md#commercial-terms"
     return {
@@ -167,6 +184,7 @@ def build_initial_draft_document(legacy_capabilities_by_tier=None):
         ],
         "policies": {
             "baseTerm": {"kind": "fixed_days", "days": 365},
+            "monthlyBaseTerm": {"kind": "fixed_days", "days": 30},
             "renewalAnchor": {"kind": "end_of_term"},
             "upgrade": {"kind": "start_new_term", "activeTerm": "manual_review"},
             "downgrade": {"kind": "manual_review", "selfService": False},
@@ -370,6 +388,23 @@ def validate_document(document, *, require_production_ready=False):
                             and all(other.get(key) == offer.get(key) for key in ("tier", "variant", "ownerKind"))
                             and other_price.get(basis_key) != monthly_base):
                         errors.append(_error("MONTHLY_ANNUAL_PRICE_MISMATCH", f"{path}.price", "Giá tháng và giá gốc tháng của cùng gói không khớp."))
+        if "monthlyBaseProcurementQuota" in offer:
+            monthly_quota = offer["monthlyBaseProcurementQuota"]
+            if type(monthly_quota) is not int or not 0 <= monthly_quota <= MAX_MONTHLY_PROCUREMENT_QUOTA:
+                errors.append(_error("MONTHLY_BASE_QUOTA_INVALID", f"{path}.monthlyBaseProcurementQuota", "Lượt tháng phải là số nguyên từ 0 đến 6.666."))
+            else:
+                multiplier = ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER if price.get("period") == "yearly" else 1
+                if offer.get("includedProcurementQuota") != monthly_quota * multiplier:
+                    errors.append(_error("MONTHLY_ANNUAL_QUOTA_MISMATCH", f"{path}.includedProcurementQuota", "Lượt năm phải bằng lượt tháng × 15; lượt tháng phải khớp lượt gốc tháng."))
+                for other in offers:
+                    if not isinstance(other, dict) or other is offer:
+                        continue
+                    other_price = other.get("price")
+                    if (isinstance(other_price, dict) and other_price.get("period") in SUPPORTED_PRICE_PERIODS
+                            and all(other.get(key) == offer.get(key) for key in ("tier", "variant", "ownerKind"))):
+                        other_multiplier = ANNUAL_PROCUREMENT_QUOTA_MULTIPLIER if other_price["period"] == "yearly" else 1
+                        if other.get("includedProcurementQuota") != monthly_quota * other_multiplier:
+                            errors.append(_error("MONTHLY_ANNUAL_QUOTA_MISMATCH", f"{path}.includedProcurementQuota", "Hạn mức tháng và năm của cùng gói không khớp công thức × 15."))
         capabilities = offer.get("exportCapabilities")
         if capabilities is None:
             errors.append(_error("BLOCKED_DECISION", f"{path}.exportCapabilities", "Chưa có mapping entitlement xuất đã được phê duyệt."))
