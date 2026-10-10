@@ -115,7 +115,7 @@ def _rows(connection, table):
     return [dict(row) for row in connection.execute(queries[table])]
 
 
-def test_first_install_seeds_eight_editable_annual_offers_without_publishing(seed_connection):
+def test_first_install_seeds_twenty_editable_products_without_publishing(seed_connection):
     _add_admin(seed_connection)
 
     seed_commercial_v79(seed_connection.cursor())
@@ -128,16 +128,32 @@ def test_first_install_seeds_eight_editable_annual_offers_without_publishing(see
     assert draft["created_by"] == draft["updated_by"] == "seed-admin"
     assert draft["base_release_id"] == LEGACY_RELEASE_ID
     assert draft["checksum"] == checksum_document(document)
-    assert len(document["offers"]) == 8
+    # ADR 0083/0084: 16 term-specific offers plus four configurable credit packs.
+    assert len(document["offers"]) == 16
+    assert len(document["creditPacks"]) == 4
+    assert len({pack["code"] for pack in document["creditPacks"]}) == 4
     assert {
         (offer["tier"], offer["variant"], offer["price"]["period"])
         for offer in document["offers"]
     } == {
-        (tier, variant, "yearly")
+        (tier, variant, period)
         for tier in ("personal", "silver", "gold", "diamond")
         for variant in ("internal", "connected")
+        for period in ("monthly", "yearly")
     }
-    assert len({offer["code"] for offer in document["offers"]}) == 8
+    assert len({offer["code"] for offer in document["offers"]}) == 16
+    assert document["policies"]["monthlyBaseTerm"] == {"kind": "fixed_days", "days": 30}
+    assert document["policies"]["baseTerm"] == {"kind": "fixed_days", "days": 365}
+    for monthly in document["offers"]:
+        if monthly["price"]["period"] != "monthly":
+            continue
+        annual = next(offer for offer in document["offers"] if (
+            offer["tier"] == monthly["tier"]
+            and offer["variant"] == monthly["variant"]
+            and offer["price"]["period"] == "yearly"
+        ))
+        assert annual["price"]["total"] == monthly["price"]["total"] * 10
+        assert annual["includedProcurementQuota"] == monthly["includedProcurementQuota"] * 15
     assert all(
         offer["includedProcurementQuota"] == 0
         for offer in document["offers"] if offer["variant"] == "internal"

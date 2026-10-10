@@ -18,10 +18,18 @@ function configField(path, original, value = original, kind = "text") {
   return { value, dataset: { adminCommercialConfig: path, adminConfigOriginal: original, adminConfigKind: kind } };
 }
 
-test("Admin can select no refunds without changing other policies or rewriting a legacy draft", () => {
+test("Admin can select no refunds while applying approved billing terms and preserving other policies", () => {
   const source = { offers: [], policies: { refund: { kind: "manual_off_platform", partial: true, note: "keep" }, renewalAnchor: { kind: "end_of_term" } } };
+  const before = structuredClone(source);
   const unchanged = serializeDraftDocument(candidateRoot(source), source);
-  assert.deepEqual(unchanged.policies, source.policies);
+  // ADR 0082 fixes new draft billing cycles at 30/365 days. Other policies
+  // and the original document must still survive serialization unchanged.
+  assert.deepEqual(unchanged.policies, {
+    ...source.policies,
+    monthlyBaseTerm: { kind: "fixed_days", days: 30 },
+    baseTerm: { kind: "fixed_days", days: 365 },
+  });
+  assert.deepEqual(source, before);
   const root = candidateRoot(source);
   const originalQuery = root.querySelectorAll;
   root.querySelectorAll = selector => selector === "[data-admin-policy-choice]"
@@ -103,7 +111,13 @@ test("unmodified controls preserve missing null unknown and explicitly edited ad
     configField("taxInvoice.sellerProfile.taxCode", ""),
   ]);
   const result = serializeDraftDocument(root, source);
-  assert.deepEqual(result, advanced);
+  assert.deepEqual(result, {
+    ...advanced,
+    policies: {
+      monthlyBaseTerm: { kind: "fixed_days", days: 30 },
+      baseTerm: { kind: "fixed_days", days: 365 },
+    },
+  });
   assert.equal(Object.hasOwn(result.taxInvoice, "approvalReference"), false);
   assert.equal(Object.hasOwn(result.taxInvoice.sellerProfile, "taxCode"), false);
   assert.equal(source.taxInvoice.rounding, "existing_rule");

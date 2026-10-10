@@ -285,7 +285,10 @@ export default defineConfig(({ mode }) => {
           codeSplitting: {
             groups: [{
               name: 'ProcurementWorkflows',
-              test: /[\\/]frontend[\\/]procurement[\\/]/,
+              // The pure label formatter is also used by Admin/storefront.
+              // Grouping it with workflow modules executes their workspace
+              // dependencies and can bootstrap app.js in the Admin document.
+              test: /[\\/]frontend[\\/]procurement[\\/](?!sourcePresentation\.js(?:$|\?))/,
               includeDependenciesRecursively: false
             }]
           },

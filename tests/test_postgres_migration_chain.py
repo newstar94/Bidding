@@ -535,7 +535,8 @@ def test_fresh_catalog_samples_validate_and_publish_through_existing_gates(monke
         repository = CommercialRepository(cursor, clock=lambda: now)
         draft = repository.get_draft("commercial-draft-initial-v1")
         assert draft["status"] == "draft"
-        assert len(draft["document"]["offers"]) == 8
+        assert len(draft["document"]["offers"]) == 16
+        assert len(draft["document"]["creditPacks"]) == 4
         policy = CommercialPolicy(cursor, clock=lambda: now)
         result = policy.validate_draft(draft["id"], draft["revision"])
         assert result["errors"] == []
@@ -547,7 +548,7 @@ def test_fresh_catalog_samples_validate_and_publish_through_existing_gates(monke
         assert cursor.execute(
             "SELECT COUNT(*) FROM billing_plan_versions WHERE release_id = ?",
             (release["id"],),
-        ).fetchone()[0] == 8
+        ).fetchone()[0] == 16
         before = repository.get_draft(draft["id"])
         assert before["status"] == "archived"
         seed_commercial_v79(cursor)

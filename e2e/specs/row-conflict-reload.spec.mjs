@@ -862,6 +862,10 @@ test("package create editor opens after authoritative route reconciliation", asy
   // cold so this isolates the first package-editor action after app startup.
   await page.goto("/tong-quan", { waitUntil: "commit" });
   await waitForApp(page);
+  // The loader can hide before the initial response body is consumed. Wait
+  // for canonical reconciliation before Firefox commits its reset document;
+  // otherwise this harness aborts the old pull and records a stream error.
+  await waitForInitialReconciliation(page);
   await gotoReady(page, "/goi-thau");
   await page.locator("#btn-add-goithau").click();
 

@@ -358,6 +358,13 @@ test("user and organization details keep keyboard focus and execute authoritativ
 });
 
 test("commercial plans and payments send versioned and audited mutations", async ({ context, page }) => {
+  const workspaceBootstrapRequests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/dist\/assets\/app-[^/]+\.js$/u.test(path) || path === "/service-worker.js") {
+      workspaceBootstrapRequests.push(path);
+    }
+  });
   await installAuthorizedShell(context);
   const commercialOverview = {
     currentRelease: { id: "release-v1", versionLabel: "PRO v1", mode: "ACTIVE", scopeKey: "global", nonSellable: false },
@@ -393,6 +400,7 @@ test("commercial plans and payments send versioned and audited mutations", async
 
   await page.locator('[data-admin-link="/admin/payments"]').click();
   await expectAdminReady(page, "Thanh toán");
+  expect(workspaceBootstrapRequests, "Admin plans must not bootstrap the workspace application or its worker").toEqual([]);
   await page.getByRole("button", { name: "Kiểm tra" }).click();
   const reasonDialog = page.getByRole("dialog");
   await reasonDialog.getByLabel("Lý do").fill("Đối soát thủ công E2E");
@@ -403,6 +411,7 @@ test("commercial plans and payments send versioned and audited mutations", async
     path: "/api/billing/admin/orders/ORDER-E2E/review",
     body: { reason: "Đối soát thủ công E2E" },
   });
+  expect(workspaceBootstrapRequests).toEqual([]);
 });
 
 test("analytics renders bounded chart fallbacks and preserves filter query state", async ({ context, page }, testInfo) => {
