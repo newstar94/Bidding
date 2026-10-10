@@ -65,7 +65,7 @@ test("public details preserve every Admin right alongside custom marketing benef
   } });
   assert.deepEqual(presentCommercialOffer(source).details, [
     { label: "Hạn mức thành viên", value: "12" },
-    { label: "Lượt Mua Sắm Công kèm theo", value: "34" },
+    { label: "Lượt lấy dữ liệu tự động kèm theo", value: "34" },
     { label: "Kiểm tra vi phạm nhà thầu", value: "Không" },
     { label: "Xuất Word", value: "Có" },
     { label: "Xuất Excel", value: "Không" },
@@ -73,7 +73,7 @@ test("public details preserve every Admin right alongside custom marketing benef
     { label: "Lợi ích từ release" },
   ]);
   assert.deepEqual(presentCommercialOffer(offer({ exportCapabilities: null })).details[3], { label: "Xuất Word", value: "Chưa cấu hình" });
-  assert.deepEqual(presentCommercialOffer(offer()).details[1], { label: "Không lấy dữ liệu Mua Sắm Công" });
+  assert.deepEqual(presentCommercialOffer(offer()).details[1], { label: "Không lấy dữ liệu tự động" });
 });
 
 test("owner filtering preserves authoritative response order and rejects hidden or stopped offers", () => {
@@ -91,4 +91,19 @@ test("owner filtering preserves authoritative response order and rejects hidden 
 test("formats VND without inferring a billing period", () => {
   assert.equal(formatCommercialMoney(1234567, "VND"), "1.234.567\u00a0₫");
   assert.equal(formatCommercialMoney(0, "VND"), "0\u00a0₫");
+});
+
+
+test("legacy catalog copy uses automatic-data labels without mutating the release", () => {
+  const source = offer({ variant: "connected", display: {
+    name: "Nâng cao", description: "Bổ sung lấy dữ liệu Mua Sắm Công",
+    variantLabel: "Lấy dữ liệu tự động", benefits: ["100 lượt lấy hồ sơ Mua Sắm Công", "Xuất Word"],
+  } });
+  const original = structuredClone(source);
+  const presented = presentCommercialOffer(source);
+  assert.equal(presented.description, "Bổ sung lấy dữ liệu tự động");
+  assert.deepEqual(presented.benefits, ["100 lượt lấy dữ liệu tự động", "Xuất Word"]);
+  assert.ok(presented.details.some(item => item.label === "100 lượt lấy dữ liệu tự động"));
+  assert.doesNotMatch(JSON.stringify(presented), /Mua Sắm Công/iu);
+  assert.deepEqual(source, original);
 });

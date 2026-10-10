@@ -317,7 +317,7 @@ test("public cards match the Admin preview layout and show every configured righ
     await page.addStyleTag({ url: "/views/css/landing.css" });
     await page.locator('[data-pricing-group="advanced"]').click();
     const card = page.locator('[data-commercial-offer-code="personal.connected.yearly"]');
-    for (const label of ["Hạn mức thành viên: 1", "Lượt Mua Sắm Công kèm theo: 20", "Kiểm tra vi phạm nhà thầu: Có", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Nội dung bổ sung từ Admin"]) {
+    for (const label of ["Hạn mức thành viên: 1", "Lượt lấy dữ liệu tự động kèm theo: 20", "Kiểm tra vi phạm nhà thầu: Có", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Nội dung bổ sung từ Admin"]) {
       assert.ok((await card.textContent()).includes(label), label);
     }
     const layout = await card.evaluate(node => {
@@ -331,7 +331,7 @@ test("public cards match the Admin preview layout and show every configured righ
     assert.equal(layout.priceAlign, "center");
     await card.screenshot({ path: "artifacts/public-package-admin-parity-desktop.png" });
     await page.locator('[data-pricing-group="basic"]').click();
-    assert.ok((await page.locator('[data-commercial-offer-code="personal.internal.yearly"]').textContent()).includes("Không lấy dữ liệu Mua Sắm Công"));
+    assert.ok((await page.locator('[data-commercial-offer-code="personal.internal.yearly"]').textContent()).includes("Không lấy dữ liệu tự động"));
   } });
 });
 
@@ -376,11 +376,11 @@ test("each pricing card selects its own period without changing other cards", as
       assert.equal(await page.locator('[data-pricing-audience="organization"] article').count(), 3);
       assert.equal(await page.locator('.landing-pricing-controls [data-pricing-period]').count(), 0);
       assert.equal(await page.locator('article [data-pricing-period="monthly"]').count(), 4);
-      assert.doesNotMatch(await page.locator("#landing-pricing-grid").textContent(), /lượt lấy hồ sơ Mua Sắm Công/u);
+      assert.doesNotMatch(await page.locator("#landing-pricing-grid").textContent(), /lượt lấy dữ liệu tự động/u);
       await page.locator('[data-pricing-group="advanced"]').focus();
       await page.keyboard.press("Enter");
       assert.deepEqual(await codes(), ["personal", "silver", "gold", "diamond"].map((tier) => `${tier}.connected.yearly`));
-      assert.match(await page.locator("#landing-pricing-grid").textContent(), /Lượt Mua Sắm Công kèm theo: 20/u);
+      assert.match(await page.locator("#landing-pricing-grid").textContent(), /Lượt lấy dữ liệu tự động kèm theo: 20/u);
       await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
       assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.yearly", "gold.connected.yearly", "diamond.connected.yearly"]);
       const personal = page.locator('[data-pricing-audience="account"] article');

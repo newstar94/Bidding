@@ -1,4 +1,16 @@
 export const ANNUAL_PRICE_MULTIPLIER = 10;
+export const MONTHLY_TERM_DAYS = 30;
+export const ANNUAL_TERM_DAYS = 365;
+
+export function configurePackageBillingTerms(documentValue) {
+  const next = JSON.parse(JSON.stringify(documentValue));
+  next.policies ||= {};
+  for (const [key, days] of [["monthlyBaseTerm", MONTHLY_TERM_DAYS], ["baseTerm", ANNUAL_TERM_DAYS]]) {
+    next.policies[key] = { ...next.policies[key], kind: "fixed_days", days };
+    delete next.policies[key].reason;
+  }
+  return next;
+}
 
 export function calculateMonthlyPackagePrices(value, policy) {
   const raw = String(value ?? "").trim();
@@ -33,10 +45,29 @@ export function packageMonthlyBase(documentValue, index) {
 export function applyPackageMonthlyBase(documentValue, index, value) {
   const source = documentValue?.offers?.[index];
   if (!source) throw new TypeError("Không tìm thấy gói để cập nhật giá tháng.");
+  if (!["monthly", "yearly"].includes(source.price?.period)) throw new TypeError("Chọn gói tháng hoặc năm để cấu hình giá.");
   const prices = calculateMonthlyPackagePrices(value, documentValue.taxInvoice);
-  const next = JSON.parse(JSON.stringify(documentValue));
+  const next = configurePackageBillingTerms(documentValue);
+  const samePackage = offer => offer.tier === source.tier && offer.variant === source.variant && offer.ownerKind === source.ownerKind;
+  for (const period of ["monthly", "yearly"]) {
+    const matches = next.offers.filter(offer => samePackage(offer) && offer.price?.period === period);
+    if (matches.length > 1) throw new TypeError("Gói có kỳ thanh toán trùng nhau. Kiểm tra lại cấu hình.");
+    if (matches.length) continue;
+    if (next.offers.length >= 16) throw new TypeError("Danh mục hỗ trợ tối đa 16 giá theo kỳ.");
+    const code = `${source.tier}.${source.variant}.${period}`;
+    if (next.offers.some(offer => offer.code === code)) throw new TypeError("Mã của kỳ thanh toán đã tồn tại.");
+    const paired = JSON.parse(JSON.stringify(source));
+    paired.code = code;
+    paired.price = { ...paired.price, ...prices[period] };
+    paired.display ||= {};
+    delete paired.display.periodLabel;
+    // Retain the existing contract: connected quotas require explicit configuration.
+    paired.includedProcurementQuota = source.variant === "internal" ? 0 : null;
+    if (source.variant !== "internal") paired.salesState = "non_sellable";
+    next.offers.push(paired);
+  }
   for (const offer of next.offers) {
-    if (offer.tier === source.tier && offer.variant === source.variant && offer.ownerKind === source.ownerKind && prices[offer.price?.period]) {
+    if (samePackage(offer) && prices[offer.price?.period]) {
       offer.price = { ...offer.price, ...prices[offer.price.period] };
     }
   }

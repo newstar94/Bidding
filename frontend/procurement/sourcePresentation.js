@@ -7,3 +7,11 @@ export function presentAutomaticDataMessage(message, fallback = "") {
     .replace(SOURCE_HOST_PATTERN, "dịch vụ lấy dữ liệu tự động")
     .replace(SOURCE_NAME_PATTERN, "dịch vụ lấy dữ liệu tự động");
 }
+
+// Catalog copy only; stored records and source URLs retain their original values.
+export function presentAutomaticDataLabel(value) {
+  return String(value ?? "")
+    .replace(/lấy\s+(?:dữ liệu|hồ sơ)(?:\s+từ)?\s+Mua\s*Sắm\s*Công/giu, "lấy dữ liệu tự động")
+    .replace(/dữ liệu\s+Mua\s*Sắm\s*Công/giu, "dữ liệu tự động")
+    .replace(/Mua\s*Sắm\s*Công/giu, "lấy dữ liệu tự động");
+}

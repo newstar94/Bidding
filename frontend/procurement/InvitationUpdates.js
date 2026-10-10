@@ -119,7 +119,7 @@ function aggregateInvitationHistory(preview, target) {
   const selected = history.find((source) => source.revisionNumber === target.revisionNumber);
   if (!selected) {
     if (quotaSkipped.includes(target.revisionNumber)) {
-      const error = lookupError("QUOTA_EXHAUSTED", "Chưa lấy được phiên bản TBMT của gói thầu do không đủ lượt Mua Sắm Công.");
+      const error = lookupError("QUOTA_EXHAUSTED", "Chưa lấy được phiên bản TBMT của gói thầu do không đủ lượt lấy dữ liệu tự động.");
       error.details = { usageCredits: structuredClone(preview.usageCredits) };
       throw error;
     }

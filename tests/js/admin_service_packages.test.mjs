@@ -26,7 +26,7 @@ test("new packages use blank independent monthly and annual prices and cannot ov
   assert.deepEqual(source, before);
   assert.deepEqual(result.unknown, before.unknown);
   assert.deepEqual(result.policies.baseTerm, source.policies.baseTerm);
-  assert.equal(result.policies.monthlyBaseTerm.kind, "blocked_decision");
+  assert.deepEqual(result.policies.monthlyBaseTerm, { kind: "fixed_days", days: 30 });
   assert.equal(groupAdminPackages(result.offers).length, 1);
   for (const offer of result.offers) {
     assert.equal(offer.salesState, "non_sellable");

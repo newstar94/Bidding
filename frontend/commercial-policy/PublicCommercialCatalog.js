@@ -1,3 +1,5 @@
+import { presentAutomaticDataLabel } from "../procurement/sourcePresentation.js";
+
 const PUBLIC_OWNER_KINDS = new Set(["account", "organization"]);
 const PUBLIC_SALES_STATES = new Set(["sellable"]);
 const PUBLIC_VISIBILITY = new Set(["public", "hidden"]);
@@ -16,8 +18,8 @@ export function commercialOfferDetails(offer) {
   const integer = value => Number.isSafeInteger(value) ? value.toLocaleString("vi-VN") : "Chưa cấu hình";
   return [
     { label: "Hạn mức thành viên", value: integer(offer?.memberQuota) },
-    offer?.variant === "internal" ? { label: "Không lấy dữ liệu Mua Sắm Công" }
-      : { label: "Lượt Mua Sắm Công kèm theo", value: integer(offer?.includedProcurementQuota) },
+    offer?.variant === "internal" ? { label: "Không lấy dữ liệu tự động" }
+      : { label: "Lượt lấy dữ liệu tự động kèm theo", value: integer(offer?.includedProcurementQuota) },
     { label: "Kiểm tra vi phạm nhà thầu", value: offer?.violationCheckEnabled === true ? "Có" : "Không" },
     ...Object.entries(EXPORT_LABELS).map(([key, label]) => ({ label, value: offer?.exportCapabilities === null ? "Chưa cấu hình" : offer?.exportCapabilities?.[key] === true ? "Có" : "Không" })),
     ...safeDisplay(offer?.display).benefits.map(label => ({ label })),
@@ -43,16 +45,16 @@ function safeNonNegativeInteger(value) {
 function safeDisplay(display) {
   if (!isRecord(display)) return {};
   const benefits = Array.isArray(display.benefits)
-    ? display.benefits.map(safeText).filter(Boolean)
+    ? display.benefits.map(value => presentAutomaticDataLabel(safeText(value))).filter(Boolean)
     : [];
   return {
-    name: safeText(display.name),
-    description: safeText(display.description),
-    badge: safeText(display.badge),
+    name: presentAutomaticDataLabel(safeText(display.name)),
+    description: presentAutomaticDataLabel(safeText(display.description)),
+    badge: presentAutomaticDataLabel(safeText(display.badge)),
     recommended: display.recommended === true,
     visibility: PUBLIC_VISIBILITY.has(display.visibility) ? display.visibility : "public",
-    variantLabel: safeText(display.variantLabel),
-    periodLabel: safeText(display.periodLabel),
+    variantLabel: presentAutomaticDataLabel(safeText(display.variantLabel)),
+    periodLabel: presentAutomaticDataLabel(safeText(display.periodLabel)),
     benefits,
   };
 }
@@ -99,7 +101,7 @@ export function presentCommercialOffer(offer) {
   const canonicalBenefits = [
     memberQuota > 0 ? `${memberQuota.toLocaleString("vi-VN")} thành viên` : "",
     includedProcurementQuota > 0
-      ? `${includedProcurementQuota.toLocaleString("vi-VN")} lượt lấy hồ sơ Mua Sắm Công kèm theo`
+      ? `${includedProcurementQuota.toLocaleString("vi-VN")} lượt lấy dữ liệu tự động kèm theo`
       : "",
     source.violationCheckEnabled === true ? "Có kiểm tra vi phạm nhà thầu" : "",
   ].filter(Boolean);

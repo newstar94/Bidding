@@ -76,7 +76,7 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
     ${summaryHtml}
     ${canImport ? `<div class="workflow-action-row">
       <button type="button" id="btn-invitation-import-msc" class="btn btn-outline">
-        <i data-lucide="cloud-download"></i> Cập nhật làm rõ, gia hạn từ Mua Sắm Công
+        <i data-lucide="cloud-download"></i> Lấy dữ liệu làm rõ, gia hạn tự động
       </button>
       <span id="invitation-import-status" role="status" aria-live="polite"></span>
     </div>` : ""}

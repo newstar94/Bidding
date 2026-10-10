@@ -50,7 +50,7 @@ export const ANALYTICS_VIEWS = Object.freeze([
   ["activation", "Kích hoạt"],
   ["features", "Tính năng"],
   ["seats", "Chỗ ngồi"],
-  ["procurement", "Mua sắm công"],
+  ["procurement", "Lấy dữ liệu tự động"],
   ["credits", "Tín dụng"],
   ["funnel", "Phễu chuyển đổi"],
   ["retention", "Duy trì"],
@@ -104,7 +104,7 @@ const TABLE_FIELDS = Object.freeze([
   ["contributionMarginVnd", "Biên đóng góp (VND)"], ["contributionMarginRate", "Tỷ lệ biên đóng góp"],
   ["utilization", "Mức sử dụng"], ["workspace_count", "Không gian làm việc"],
   ["active_seats", "Chỗ ngồi hoạt động"], ["seat_utilization", "Mức sử dụng chỗ ngồi"],
-  ["procurement_usage", "Mức dùng mua sắm công"], ["quota_utilization", "Mức dùng hạn mức"],
+  ["procurement_usage", "Mức dùng lấy dữ liệu tự động"], ["quota_utilization", "Mức dùng hạn mức"],
   ["topup_spend_vnd", "Chi phí mua thêm (VND)"], ["repeat_topups", "Mua thêm lặp lại"],
   ["connected_feature_days", "Ngày dùng tính năng kết nối"], ["workflow_volume", "Khối lượng quy trình"],
   ["workflow_depth", "Độ sâu quy trình"], ["export_intensity", "Mức xuất tài liệu"],
@@ -465,12 +465,12 @@ export function analyticsResultsMarkup(usagePayload, productPayload) {
 
 const ANALYTICS_FILTER_CONTROLS = Object.freeze([
   ["ownerKind", "Loại chủ thể", [["", "Tất cả"], ["account", "Cá nhân"], ["organization", "Tổ chức"]]],
-  ["variant", "Biến thể", [["", "Tất cả"], ["internal", "Nội bộ"], ["connected", "Kết nối Mua Sắm Công"]]],
+  ["variant", "Biến thể", [["", "Tất cả"], ["internal", "Nội bộ"], ["connected", "Lấy dữ liệu tự động"]]],
   ["releaseMode", "Chế độ phát hành", [["", "Tất cả"], ["shadow", "Shadow"], ["live", "Pilot / production"]]],
   ["sizeBucket", "Quy mô", [["", "Tất cả"], ["1", "1"], ["2_5", "2–5"], ["6_15", "6–15"], ["16_50", "16–50"], ["over_50", ">50"]]],
   ["paidState", "Trạng thái trả phí", [["", "Tất cả"], ["paid", "Đã trả phí"], ["free", "Miễn phí / chưa gán"]]],
   ["cohortKind", "Loại cohort", [["", "Tất cả"], ["signup", "Đăng ký"], ["first_value", "Giá trị đầu tiên"], ["paid_activation", "Kích hoạt trả phí"]]],
-  ["procurementIntensity", "Mức dùng Mua Sắm Công", [["", "Tất cả"], ["none", "Không dùng"], ["low", "Thấp"], ["high", "Cao"]]],
+  ["procurementIntensity", "Mức dùng lấy dữ liệu tự động", [["", "Tất cả"], ["none", "Không dùng"], ["low", "Thấp"], ["high", "Cao"]]],
   ["collaborationIntensity", "Mức cộng tác", [["", "Tất cả"], ["none", "Không có"], ["active", "Đang hoạt động"]]],
   ["aiAdoption", "Mức dùng AI", [["", "Tất cả"], ["not_adopted", "Chưa sử dụng"], ["adopted", "Đã sử dụng"]]],
 ]);

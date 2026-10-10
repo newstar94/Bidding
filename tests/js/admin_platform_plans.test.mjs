@@ -35,7 +35,7 @@ test("Admin adds a monthly candidate without inventing prices or mutating annual
   assert.equal(month.memberQuota, 15);
   assert.equal(month.violationCheckEnabled, true);
   assert.deepEqual(result.policies.baseTerm, source.policies.baseTerm);
-  assert.equal(result.policies.monthlyBaseTerm.kind, "blocked_decision");
+  assert.deepEqual(result.policies.monthlyBaseTerm, { kind: "fixed_days", days: 30 });
   assert.throws(() => addMonthlyOffer(result, 0), /đã có cấu hình/u);
 });
 
@@ -122,7 +122,7 @@ function draftRoot(advanced, offerValues) {
   };
 }
 
-test("monthly duration entered in Admin survives serialization without changing annual policy", () => {
+test("Admin saves the approved 30/365-day cycles and preserves other policy metadata", () => {
   const policies = {
     baseTerm: { kind: "fixed_days", days: 365 },
     monthlyBaseTerm: { kind: "blocked_decision", reason: "pending" },
@@ -135,12 +135,13 @@ test("monthly duration entered in Admin survives serialization without changing 
     ? monthlyDays : querySelector(selector);
   const result = serializeDraftDocument(root, { offers: [], policies });
   assert.equal(result.policies.monthlyBaseTerm.kind, "fixed_days");
-  assert.equal(result.policies.monthlyBaseTerm.days, 28);
+  assert.equal(result.policies.monthlyBaseTerm.days, 30);
+  assert.equal(result.policies.monthlyBaseTerm.reason, undefined);
   assert.deepEqual(result.policies.baseTerm, policies.baseTerm);
   assert.deepEqual(result.policies.creditPackExpiry, policies.creditPackExpiry);
   assert.equal(policies.monthlyBaseTerm.kind, "blocked_decision");
   monthlyDays.value = "";
-  assert.throws(() => serializeDraftDocument(root, { offers: [] }), /phải là số nguyên/u);
+  assert.equal(serializeDraftDocument(root, { offers: [] }).policies.monthlyBaseTerm.days, 30);
 });
 
 test("plans catalog renders authoritative offers prices benefits and entitlement values", () => {
@@ -175,7 +176,7 @@ test("plans catalog renders authoritative offers prices benefits and entitlement
   assert.match(markup, /35[.]000[.]000/u);
   assert.match(markup, /Quyền lợi từ release/u);
   assert.match(markup, /Hạn mức thành viên:[\s\S]*15/u);
-  assert.match(markup, /Lượt Mua Sắm Công kèm theo:[\s\S]*7[.]000/u);
+  assert.match(markup, /Lượt lấy dữ liệu tự động kèm theo:[\s\S]*7[.]000/u);
   assert.match(markup, /Xuất Word:[\s\S]*Có/u);
   assert.match(markup, /Xuất Excel:[\s\S]*Không/u);
   assert.match(markup, /procurement[.]20[\s\S]*20[\s\S]*99[.]000/u);

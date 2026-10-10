@@ -55,7 +55,7 @@ function changedMessage(merged, saved) {
   if (merged.requests.added || merged.responses.added || merged.extensions.added) {
     return `${saved ? "Đã cập nhật và lưu" : "Đã thêm"} ${merged.requests.added} yêu cầu, ${merged.responses.added} trả lời làm rõ và ${merged.extensions.added} lần gia hạn.`;
   }
-  if (merged.linked) return `${saved ? "Đã lưu liên kết" : "Đã liên kết"} các dòng hiện có với dữ liệu Mua Sắm Công, giữ nguyên nội dung anh đã nhập.`;
+  if (merged.linked) return `${saved ? "Đã lưu liên kết" : "Đã liên kết"} các dòng hiện có với dữ liệu lấy tự động, giữ nguyên nội dung anh đã nhập.`;
   if (merged.extensions.reordered) return `Đã ${saved ? "lưu và " : ""}sắp xếp lịch sử gia hạn theo thời gian đóng thầu mới.`;
   return "Không có nội dung làm rõ, gia hạn mới. Các nội dung đang nhập được giữ nguyên.";
 }
@@ -76,7 +76,7 @@ function quotaSkippedMessage(usageCredits) {
     .filter((item) => item.reasonCode === "QUOTA_EXHAUSTED");
   if (!skipped.length) return "";
   const identities = skipped.map((item) => `${item.sourceCode}-${item.sourceRevision}`);
-  return ` Không đủ lượt Mua Sắm Công; chưa xử lý: ${identities.join(", ")}.`;
+  return ` Không đủ lượt lấy dữ liệu tự động; chưa xử lý: ${identities.join(", ")}.`;
 }
 
 function unavailableHistoryMessage(result) {
@@ -139,7 +139,7 @@ export function bindInvitationImportAction(view, container, pkg, appController, 
         title: "Đang lấy làm rõ, gia hạn",
         detail: pkg.tenGoiThau || pkg.maGoiThau || "",
         stages: [
-          { key: "fetch", label: "Lấy lịch sử", message: "Đang lấy yêu cầu làm rõ, trả lời và lịch sử gia hạn từ Mua Sắm Công…" },
+          { key: "fetch", label: "Lấy lịch sử", message: "Đang lấy tự động yêu cầu làm rõ, trả lời và lịch sử gia hạn…" },
           { key: "merge", label: "Điền vào bảng", message: "Đang đối chiếu lịch sử và giữ lại các nội dung anh đã nhập…" },
           ...(!initialEditMode ? [{ key: "save", label: "Lưu cập nhật", message: "Đang chờ máy chủ xác nhận dữ liệu cập nhật…" }] : []),
         ],
@@ -195,7 +195,7 @@ export function bindInvitationImportAction(view, container, pkg, appController, 
           const usageCredits = error.data?.fields?.usageCredits || error.data?.details?.usageCredits
             || error.fields?.usageCredits || error.details?.usageCredits;
           message = quotaSkippedMessage(usageCredits).trim()
-            || "Không đủ lượt Mua Sắm Công để lấy dữ liệu làm rõ, gia hạn.";
+            || "Không đủ lượt lấy dữ liệu tự động để lấy dữ liệu làm rõ, gia hạn.";
           message += " Nội dung đang nhập được giữ nguyên.";
         } else message = error?.code === "PROCUREMENT_REVISION_INVALID"
           ? "Chưa xác định được phiên bản TBMT của gói thầu. Kiểm tra mã và phiên bản trước khi lấy dữ liệu."

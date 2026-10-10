@@ -625,15 +625,16 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     assert.equal(await page.locator("#admin-new-package-tier").isDisabled(), true);
     await capturePackages(page, "creator-1-information");
     await page.locator('[data-admin-package-step="1"]').click();
-    await page.locator("#admin-new-package-month").check();
+    assert.equal(await page.locator("#admin-new-package-month").count(), 0);
     await page.locator("#admin-new-package-month-price").fill("150000");
     assert.equal(await page.locator("#admin-new-package-year-price").getAttribute("readonly"), "");
     await page.locator("#admin-new-package-vat").fill("10");
-    await page.locator("#admin-new-package-month-days").fill("30");
+    assert.equal(await page.locator("#admin-new-package-month-days").inputValue(), "30");
+    assert.equal(await page.locator("#admin-new-package-month-days").getAttribute("readonly"), "");
     await capturePackages(page, "creator-2-pricing");
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /1[.]650[.]000/u);
     assert.match(await page.locator("[data-admin-preview-total]").textContent(), /1[.]650[.]000/u);
-    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="0"]').click();
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period]').filter({ hasText: "Hàng tháng" }).click();
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /165[.]000/u);
     const periodBox = await page.locator('[data-admin-package-live-preview] .bf-admin-package-period').boundingBox();
     const cardBox = await page.locator('[data-admin-package-live-preview] .bf-admin-package-preview').boundingBox();
@@ -666,7 +667,8 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     await page.locator(".bf-admin-package-settings > summary").click();
     const policies = page.locator(".bf-admin-package-policies").first();
     await policies.locator("summary").click();
-    await page.locator("#admin-monthly-term-days").fill("30");
+    assert.equal(await page.locator("#admin-monthly-term-days").inputValue(), "30");
+    assert.equal(await page.locator("#admin-annual-term-days").inputValue(), "365");
     await page.locator('[data-admin-plan-action="save"]').click();
     await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
     assert.equal(saved.offers.length, 2);
@@ -759,8 +761,8 @@ test("complete sample click creates eight configured annual draft offers without
       assert.equal(await editor.locator(`[data-admin-offer-field="capability:${capability}"]`).isChecked(), true);
     }
     const policies = await page.locator("#admin-plan-advanced-document").inputValue();
-    assert.deepEqual(JSON.parse(policies).policies, completedDocument.policies);
-    assert.equal(JSON.parse(policies).policies.monthlyBaseTerm, undefined);
+    assert.deepEqual(JSON.parse(policies).policies, { ...completedDocument.policies, monthlyBaseTerm: { kind: "fixed_days", days: 30 } });
+    assert.equal(completedDocument.policies.monthlyBaseTerm, undefined);
     assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
     assert.equal(requests.some(entry => /\/(?:validate|publish)$/u.test(entry.path)), false);
   });
@@ -1205,5 +1207,69 @@ test("commercial draft fields have working associated labels including enhanced 
     const unnamed = await page.locator('[data-admin-offer-field]:not(select)').evaluateAll((elements) => elements.filter((element) => element.type !== "checkbox" && !element.labels?.length && !element.getAttribute("aria-label") && !element.getAttribute("aria-labelledby")).map((element) => element.dataset.adminOfferField));
     assert.deepEqual(unnamed, []);
     assert.equal(await page.getByLabel("Cấu hình chính sách nâng cao (JSON)", { exact: true }).count(), 1);
+  });
+});
+
+
+test("an annual-only package gains a selectable month after configuring its monthly base", async () => {
+  const source = draft("draft-a");
+  source.document.offers[0].price = { ...source.document.offers[0].price, total: 3990000, subtotal: 3990000 };
+  let saved;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      saved = entry.body.document;
+      return { payload: { id: "draft-a", revision: 2, document: saved } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    const monthlySwitch = page.locator('[data-admin-package-live-preview] [data-admin-package-period]').filter({ hasText: "Hàng tháng" });
+    assert.equal(await monthlySwitch.isDisabled(), true);
+    await page.locator('[data-admin-offer-editor][data-offer-index="0"] [data-admin-offer-field="display.description"]').fill("Giữ mô tả đang sửa");
+    await page.locator('[data-admin-package-step="1"]').click();
+    await page.locator('[data-admin-monthly-base="0"]').fill("399000");
+    assert.equal(await monthlySwitch.isDisabled(), false);
+    await monthlySwitch.click();
+    assert.equal(await page.locator('[data-admin-monthly-base="1"]').inputValue(), "399000");
+    assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /399[.]000/u);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers.length, 2);
+    assert.equal(saved.offers[0].price.total, 3990000);
+    assert.equal(saved.offers[1].price.total, 399000);
+    assert.equal(saved.offers[1].salesState, "sellable");
+    assert.equal(saved.offers[0].display.description, "Giữ mô tả đang sửa");
+    assert.equal(saved.policies.monthlyBaseTerm.days, 30);
+    assert.equal(saved.policies.baseTerm.days, 365);
+    assert.equal(source.document.offers.length, 1);
+  });
+});
+
+
+test("saving a stored monthly base fills the missing term without reentering the price", async () => {
+  const source = draft("draft-a");
+  source.document.offers[0].price = { ...source.document.offers[0].price, total: 3990000, subtotal: 3990000, monthlyBaseAmount: 399000 };
+  let saved;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      saved = entry.body.document;
+      return { payload: { id: "draft-a", revision: 2, document: saved } };
+    }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    assert.equal(saved.offers.length, 2);
+    assert.equal(saved.offers[1].price.total, 399000);
+    assert.equal(saved.policies.monthlyBaseTerm.days, 30);
+    const month = page.locator('[data-admin-package-live-preview] [data-admin-package-period]').filter({ hasText: "Hàng tháng" });
+    assert.equal(await month.isDisabled(), false);
+    await month.click();
+    assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /399[.]000/u);
   });
 });

@@ -72,6 +72,7 @@ def _insert_base_plan_order(
     actor_user_id=None,
     period="yearly",
     monthly_term=None,
+    base_term=None,
 ):
     token = uuid.uuid4().hex
     actor = cursor.execute(
@@ -160,7 +161,7 @@ def _insert_base_plan_order(
                 if item_type == "procurement_credit_pack"
                 else {"includedProcurementQuota": 3}
             ),
-            "policySnapshot": {"baseTerm": {"kind": "fixed_days", "days": 30}},
+            "policySnapshot": {"baseTerm": base_term or {"kind": "fixed_days", "days": 30}},
         }
     if monthly_term is not None:
         decision_payload["policySnapshot"]["monthlyBaseTerm"] = monthly_term
@@ -414,9 +415,11 @@ def test_payos_paid_get_transaction_evidence_activates_exactly_once(billing_curs
 
 
 @pytest.mark.parametrize("owner_kind", ["account", "organization"])
-def test_monthly_plan_uses_its_configured_duration_and_grant_expiry(billing_cursor, owner_kind):
-    order = _insert_base_plan_order(billing_cursor, owner_kind=owner_kind, period="monthly",
-                                    monthly_term={"kind": "fixed_days", "days": 31})
+@pytest.mark.parametrize("period,days", [("monthly", 30), ("yearly", 365), ("monthly", 31)])
+def test_plan_uses_its_configured_duration_and_grant_expiry(billing_cursor, owner_kind, period, days):
+    order = _insert_base_plan_order(billing_cursor, owner_kind=owner_kind, period=period,
+                                    monthly_term={"kind": "fixed_days", "days": 30 if period == "yearly" else days},
+                                    base_term={"kind": "fixed_days", "days": 365})
     service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
     result = service.apply_order_result(order["order_id"], _paid_result(order), provider_profile_id="provider-fake-v1")
     assert result["status"] == "applied"
@@ -424,7 +427,7 @@ def test_monthly_plan_uses_its_configured_duration_and_grant_expiry(billing_curs
         row = billing_cursor.execute("SELECT expires_at FROM account_subscriptions WHERE user_id = ?", (order["user_id"],)).fetchone()
     else:
         row = billing_cursor.execute("SELECT expires_at FROM organization_subscriptions WHERE organization_id = ?", (order["organization_id"],)).fetchone()
-    expected_expiry = order["now"] + 31 * 86400
+    expected_expiry = order["now"] + days * 86400
     assert row[0] == expected_expiry
     grant = billing_cursor.execute("SELECT expires_at FROM usage_credit_grants WHERE order_item_id IN (SELECT id FROM billing_order_items WHERE order_id = ?)", (order["order_id"],)).fetchone()
     assert grant[0] == expected_expiry

@@ -68,7 +68,7 @@ test("storefront matches the Admin card order and keeps configured rights visibl
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.locator('[data-storefront-group="advanced"]').click();
     const card = page.locator('[data-commercial-offer-code="personal.connected.yearly"]');
-    for (const label of ["Hạn mức thành viên: 1", "Lượt Mua Sắm Công kèm theo: 1.000", "Kiểm tra vi phạm nhà thầu: Không", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Lợi ích tùy chỉnh"]) assert.ok((await card.textContent()).includes(label), label);
+    for (const label of ["Hạn mức thành viên: 1", "Lượt lấy dữ liệu tự động kèm theo: 1.000", "Kiểm tra vi phạm nhà thầu: Không", "Xuất Word: Có", "Xuất Excel: Không", "Xuất kết quả lựa chọn nhà thầu: Có", "Lợi ích tùy chỉnh"]) assert.ok((await card.textContent()).includes(label), label);
     const layout = await card.evaluate(node => {
       const box = selector => node.querySelector(selector).getBoundingClientRect();
       const periods = box(".commercial-storefront__card-periods"), price = box(".commercial-storefront__price"), description = box(".commercial-storefront__description"), features = box("ul");
