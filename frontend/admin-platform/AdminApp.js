@@ -149,6 +149,22 @@ async function loadAdminModule(loader, exportName, content, options = {}) {
     if (!controller?.signal.aborted) content.innerHTML = trustedHTML(adminStateMarkup("error", { message: error?.message || "Không thể tải trang quản trị." }));
   }
 }
+function focusInitialRouteAfterPaint(main, signal) {
+  // Focusing the newly built shell forces style/layout synchronously. Let its
+  // first frame paint, but keep focus inside the authoritative startup budget.
+  return new Promise((resolve) => {
+    let frame;
+    const finish = () => { signal.removeEventListener("abort", abort); resolve(); };
+    const abort = () => { window.cancelAnimationFrame(frame); finish(); };
+    signal.addEventListener("abort", abort, { once: true });
+    frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        if (!signal.aborted) main?.focus({ preventScroll: true });
+        finish();
+      });
+    });
+  });
+}
 async function renderRoute() {
   routeController?.abort(); routeController = new AbortController();
   const controller = routeController;
@@ -164,7 +180,10 @@ async function renderRoute() {
   view.innerHTML = trustedHTML(`${pageHeader}<div id="admin-route-content" class="${route.path === "/admin" ? "" : "mt-3"}"></div>`);
   const content = document.getElementById("admin-route-content");
   renderedAdminLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  document.getElementById("admin-main")?.focus({ preventScroll: true });
+  const main = document.getElementById("admin-main");
+  const focusReady = startupReadyMarked
+    ? Promise.resolve(main?.focus({ preventScroll: true }))
+    : focusInitialRouteAfterPaint(main, controller.signal);
   if (route.path === "/admin") await renderAdminOverview(content, { signal: controller.signal });
   else if (route.path === "/admin/analytics") await loadAdminModule(() => import("./AdminAnalytics.js"), "renderAdminAnalytics", content, { signal: controller.signal });
   else if (route.path === "/admin/users") await loadAdminModule(() => import("./AdminDirectories.js"), "renderAdminUsers", content, { signal: controller.signal });
@@ -193,6 +212,7 @@ async function renderRoute() {
   else if (route.path === "/admin/system/jobs") await loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemJobs", content, { signal: controller.signal });
   else if (route.path === "/admin/system/sync") await loadAdminModule(() => import("./AdminSystem.js"), "renderAdminSystemSync", content, { signal: controller.signal });
   else content.innerHTML = trustedHTML(adminStateMarkup("empty", { message: "Chức năng này chưa có nguồn dữ liệu quản trị được xác thực." }));
+  await focusReady;
   if (controller.signal.aborted) return;
   window.performance?.mark?.("bf:admin-route:ready");
   markStartupReady();

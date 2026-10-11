@@ -45,17 +45,34 @@ test("admin startup waits for overview and health data while showing the shell i
   try {
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
+    await page.addInitScript(() => {
+      const frames = [];
+      window.requestAnimationFrame = (callback) => { frames.push(callback); return frames.length; };
+      window.releaseAdminFrame = () => {
+        const current = frames.splice(0);
+        current.forEach((callback) => callback(performance.now()));
+      };
+    });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/admin`, { waitUntil: "domcontentloaded" });
     await Promise.all([overviewRequest, healthRequest]);
     await page.waitForFunction(() => document.querySelector("#admin-route-content [aria-busy='true']") || document.querySelector("#admin-route-content")?.getAttribute("aria-busy") === "true");
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), "admin-main",
+      "initial focus must not force layout in the shell construction task");
     assert.equal(await page.evaluate(() => performance.getEntriesByName("bf:loader:hidden").length), 0);
     send("/api/admin/overview", { metrics: { organizations: 37 }, charts: [] });
     await page.locator('[data-admin-metric="organizations"]').waitFor();
     assert.equal(await page.evaluate(() => performance.getEntriesByName("bf:loader:hidden").length), 0);
     send("/api/admin/health", { resources: { application: { status: "healthy" } } });
+    await page.locator("[data-admin-health-summary][aria-busy='false']").waitFor();
+    assert.equal(await page.evaluate(() => performance.getEntriesByName("bf:loader:hidden").length), 0,
+      "the startup budget includes the deferred focus work");
+    await page.evaluate(() => window.releaseAdminFrame());
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), "admin-main");
+    await page.evaluate(() => window.releaseAdminFrame());
     await page.waitForFunction(() => performance.getEntriesByName("bf:loader:hidden").length === 1);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "admin-main");
     assert.match(await page.locator('[data-admin-metric="organizations"]').innerText(), /37/u);
     assert.deepEqual(errors, []);
   } finally {
