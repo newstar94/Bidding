@@ -195,6 +195,71 @@ test("complete_evaluation_uses_refreshed_bid_row_versions", async () => {
   assert.equal(refreshedBid.serverOnly, "preserved");
 });
 
+test("lot completion survives a package refresh while awaiting the lot lifecycle", async (t) => {
+  const scenario = completionScenario();
+  scenario.pkg.phanLo = "Có";
+  scenario.pkg.phanLoList = JSON.stringify([
+    { id: "lot-1", maPhanLo: "L1", tenPhanLo: "Lô 1" },
+    { id: "lot-2", maPhanLo: "L2", tenPhanLo: "Lô 2" },
+  ]);
+  scenario.controller._explicitEvaluationLotScopes = {
+    [`${scenario.pkg.id}:technical`]: { mode: "selected", selectedLotIds: ["lot-1"] },
+  };
+  const refreshedPackage = {
+    ...scenario.pkg,
+    rowVersion: 10,
+    tenGoiThau: "Tên gói từ máy chủ",
+    danhGiaHsdtMetadata: JSON.stringify({ schemaVersion: 1, saved: false, criteria: [{ id: "criterion-server" }] }),
+  };
+  const refreshedBid = { ...scenario.bid, rowVersion: 14, serverOnly: "preserved" };
+  t.mock.method(globalThis, "fetch", async (url) => {
+    assert.equal(url, `/api/packages/${scenario.pkg.id}/lot-lifecycle`);
+    scenario.model.state.goithau = [refreshedPackage];
+    scenario.model.state.thongtinmothau = [refreshedBid];
+    return Response.json({ batches: [{ id: "batch-1", status: "ACTIVE", lotIds: ["lot-1"] }] });
+  });
+  scenario.authority.resolve({ authoritative: true });
+
+  await saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });
+
+  const staged = scenario.staged.find((entry) => entry.table === "goithau").records[0];
+  const persisted = scenario.persisted.find((entry) => entry.table === "goithau").changes.upserts[0];
+  for (const record of [refreshedPackage, staged, persisted]) {
+    const metadata = JSON.parse(record.danhGiaHsdtMetadata);
+    assert.equal(metadata.lotBatches?.["batch-1"]?.saved, true);
+    assert.equal(metadata.lotBatches["batch-1"].soBaoCao, "01/BC-DG");
+    assert.deepEqual(metadata.criteria, [{ id: "criterion-server" }]);
+    assert.equal(record.rowVersion, 10);
+    assert.equal(record.tenGoiThau, "Tên gói từ máy chủ");
+  }
+  assert.equal(scenario.pkg.danhGiaHsdtMetadata, "", "detached package must not be mutated");
+  assert.equal(refreshedBid.danhGiaKetLuan, "Đạt");
+  assert.equal(refreshedBid.rowVersion, 14);
+  assert.equal(refreshedBid.serverOnly, "preserved");
+});
+
+for (const replacement of ["removed", "historical", "locked"]) {
+  test(`lot completion cannot mutate a package that became ${replacement} during the lifecycle request`, async (t) => {
+    const scenario = completionScenario();
+    scenario.pkg.phanLo = "Có";
+    scenario.pkg.phanLoList = JSON.stringify([{ id: "lot-1", maPhanLo: "L1", tenPhanLo: "Lô 1" }]);
+    t.mock.method(globalThis, "fetch", async () => {
+      scenario.model.state.goithau = replacement === "removed" ? [] : replacement === "locked"
+        ? [{ ...scenario.pkg, trangThai: "Đã có kết quả" }]
+        : [{ ...scenario.pkg, isLatest: 0 }, { ...scenario.pkg, id: "package-new", phienBan: "02", isLatest: 1 }];
+      return Response.json({ batches: [{ id: "batch-1", status: "ACTIVE", lotIds: ["lot-1"] }] });
+    });
+    scenario.authority.resolve({ authoritative: true });
+
+    assert.equal(await saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" }), false);
+    assert.deepEqual(scenario.staged, []);
+    assert.deepEqual(scenario.persisted, []);
+    assert.deepEqual(scenario.syncCalls, []);
+    assert.equal(scenario.pkg.danhGiaHsdtMetadata, "");
+    assert.equal(scenario.bid.danhGiaKetLuan, undefined);
+  });
+}
+
 test("complete_evaluation_never_commits_to_historical_package_after_refresh", async () => {
   const scenario = completionScenario();
   const saving = saveDanhGiaHsdt.call(scenario.controller, { mode: "complete" });

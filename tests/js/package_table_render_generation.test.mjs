@@ -72,7 +72,7 @@ test("a pointer interaction invalidates an in-flight render and queues its repla
   click();
   actionCount += 1;
   frameCallback();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(listenerCount, 1);
   assert.equal(renderIsCurrent(), false);
@@ -108,7 +108,7 @@ test("a primary drag without click still queues one replacement render", async (
   pointerdown({ button: 0 });
   pointerup();
   frameCallback();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(renderIsCurrent(), false);
   assert.equal(replacementCount, 1);
@@ -131,6 +131,31 @@ test("a non-primary pointer does not invalidate package-table ownership", () => 
   pointerdown({ button: 2 });
 
   assert.equal(renderIsCurrent(), true);
+});
+
+test("a render started during a primary gesture cannot replace its action target", async () => {
+  let pointerdown;
+  let click;
+  let replacementCount = 0;
+  const tableBody = {
+    querySelector() { return null; },
+    ownerDocument: {
+      defaultView: { requestAnimationFrame() {} },
+      addEventListener(type, listener) { if (type === "click") click = listener; },
+    },
+    addEventListener(type, listener) { if (type === "pointerdown") pointerdown = listener; },
+  };
+  installPackageTableInteractionOwnership(tableBody, () => { replacementCount += 1; });
+  pointerdown({ button: 0 });
+  const current = beginPackageTableRender(tableBody);
+  assert.equal(await canPackageTableRenderOwnDom(tableBody, current), false);
+  click();
+  // Capture listeners must not replace the target at the microtask checkpoint
+  // before the document's delegated action listener has received the click.
+  await Promise.resolve();
+  assert.equal(replacementCount, 0);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(replacementCount, 1);
 });
 
 test("row checkbox clicks keep the package row mounted through its native change event", () => {

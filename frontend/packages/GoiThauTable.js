@@ -72,7 +72,9 @@ export function installPackageTableInteractionOwnership(tableBody, requestRender
   const finishInteraction = () => {
     if (!packageTableInteractionPending.has(tableBody)) return;
     packageTableInteractionPending.delete(tableBody);
-    queueMicrotask(() => packageTableInteractionRefreshes.get(tableBody)?.());
+    // A microtask can run between the document's capture and bubble listeners.
+    // Let the delegated row action finish before replacing its native target.
+    setTimeout(() => packageTableInteractionRefreshes.get(tableBody)?.(), 0);
   };
   tableBody.ownerDocument.addEventListener("click", finishInteraction, { capture: true });
   tableBody.ownerDocument.addEventListener("pointercancel", finishInteraction, { capture: true });
@@ -103,6 +105,9 @@ function waitForPackageTableComboboxClose(tableBody) {
 
 export async function canPackageTableRenderOwnDom(tableBody, renderIsCurrent) {
   if (!renderIsCurrent()) return false;
+  // A search refresh may start after pointerdown. Invalidating only older
+  // renders does not protect that newer render; finishInteraction replays it.
+  if (packageTableInteractionPending.has(tableBody)) return false;
   if (!tableBody.querySelector(".bf-combobox.open")) return true;
 
   // A selection-triggered render starts inside the native select change event.

@@ -529,6 +529,26 @@ function restoreEvaluationFormSnapshot(view, snapshot) {
   });
 }
 
+function resolvePackageAfterLotContext(controller, originalPackage, lotContext, mode) {
+  if (lotContext.aborted) return { pkg: null };
+  if (mode !== "complete") return { pkg: originalPackage };
+  const packageId = originalPackage.id;
+  const pkg = controller.model.state.goithau.find((candidate) => String(candidate?.id) === String(packageId));
+  if (!pkg || String(resolveLatestPackage(controller.model, pkg)?.id) !== String(packageId)) return { pkg: null };
+  const status = resolvePackageResultStatus(pkg);
+  if (isLockedEvaluationStatus(status)) {
+    return {
+      pkg: null,
+      blocked: controller.view.customAlert(
+        "Báo cáo đánh giá đã được khóa",
+        `Không thể chỉnh sửa báo cáo đánh giá vì gói thầu đang ở trạng thái "${status}".`,
+        "lock",
+      ),
+    };
+  }
+  return { pkg };
+}
+
 export async function saveDanhGiaHsdt(options = {}) {
   const mode = normalizeBidEvaluationSaveMode(options);
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
@@ -638,7 +658,15 @@ export async function saveDanhGiaHsdt(options = {}) {
     mode,
     workspaceToken: completionWorkspaceToken,
   });
-  if (lotContext.aborted) return false;
+  // Lot lifecycle requests can replace the model projection while awaiting
+  // the batch. Apply changes to the current record for that same package,
+  // preserving its row version and unrelated server fields.
+  const current = resolvePackageAfterLotContext(this, gt, lotContext, mode);
+  if (!current.pkg) {
+    await current.blocked;
+    return false;
+  }
+  gt = current.pkg;
   const {
     evaluationBatch,
     evaluationLotDetails,
