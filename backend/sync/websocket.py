@@ -4,13 +4,18 @@ import asyncio
 import hashlib
 import json
 import os
+import threading
 import time
 import uuid
+from bisect import bisect_left
+
+from psycopg.types.multirange import Multirange
+from psycopg.types.range import Range
 
 from starlette.websockets import WebSocketDisconnect
 
 from backend.db.db_helper import database
-from backend.shared.async_io import run_blocking_io
+from backend.shared.async_io import finish_submitted_task, run_blocking_io, run_owned_blocking_io
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.origin_policy import is_websocket_origin_allowed
 from backend.shared.client_ip import get_client_ip
@@ -650,24 +655,112 @@ async def dispatch_websocket_broker_event(event):
         await _disconnect_user_local(event.get("user_id"))
 
 
-def _load_broker_events(after_id):
-    # ``after_id`` is only a wake-up hint.  Correctness is driven by durable
-    # pending/retry rows and their availability time, so a deferred low ID can
-    # never be skipped merely because a later event was dispatched.
-    del after_id
+class _BrokerConsumer:
+    """Local delivery receipts; the shared status is dispatch telemetry only.
+
+    Sequence IDs are allocated before commit. A compact set of ranges, rather
+    than a high-water cursor, leaves holes for transactions that commit later.
+    Completed history is captured once before this worker accepts connections,
+    so a past revocation is not replayed against a new session.
+    """
+
+    def __init__(self, last_event_id=0, completed=()):
+        self.last_event_id = int(last_event_id)
+        self.completed = [(item.lower, item.upper) for item in completed]
+        self.retries = {}
+
+    @staticmethod
+    def _include(ranges, lower, upper):
+        index = bisect_left(ranges, (lower, upper))
+        if index and ranges[index - 1][1] >= lower:
+            index -= 1
+        end = index
+        while end < len(ranges) and ranges[end][0] <= upper:
+            lower = min(lower, ranges[end][0])
+            upper = max(upper, ranges[end][1])
+            end += 1
+        ranges[index:end] = [(lower, upper)]
+
+    def mark_dispatched(self, event_id):
+        self._include(self.completed, event_id, event_id + 1)
+        self.retries.pop(event_id, None)
+        self.last_event_id = max(self.last_event_id, event_id)
+
+    def mark_failed(self, event_id, now=None):
+        now = int(time.time()) if now is None else int(now)
+        attempts = self.retries.get(event_id, (0, 0))[0] + 1
+        if attempts >= 5:
+            self.mark_dispatched(event_id)
+            return "dead_letter"
+        self.retries[event_id] = (attempts, now + min(60, 2 ** attempts))
+        return "retry"
+
+    def excluded_ranges(self, now):
+        excluded = list(self.completed)
+        for event_id, (_attempts, available_at) in self.retries.items():
+            if available_at > now:
+                self._include(excluded, event_id, event_id + 1)
+        return Multirange([Range(lower, upper) for lower, upper in excluded])
+
+    def due_retries(self, now):
+        return [
+            event_id for event_id, (_attempts, available_at) in self.retries.items()
+            if available_at <= now
+        ]
+
+    def wait_timeout(self, now=None):
+        now = time.time() if now is None else float(now)
+        future = [
+            available_at - now for _attempts, available_at in self.retries.values()
+            if available_at > now
+        ]
+        return min(30.0, min(future, default=30.0))
+
+    def prune_before(self, first_retained_id):
+        if first_retained_id is None:
+            self.completed.clear()
+            self.retries.clear()
+            return
+        floor = int(first_retained_id)
+        self.completed = [
+            (max(lower, floor), upper)
+            for lower, upper in self.completed if upper > floor
+        ]
+        self.retries = {
+            event_id: retry for event_id, retry in self.retries.items()
+            if event_id >= floor
+        }
+
+
+def _load_broker_events(consumer):
+    if not isinstance(consumer, _BrokerConsumer):
+        consumer = _BrokerConsumer(consumer or 0)
+    now = int(time.time())
     conn = database.get_connection()
     try:
         rows = conn.execute(
             """
-            SELECT id, event_type, organization_id, user_id, payload_json,
-                   status, attempt_count
-            FROM websocket_events
-            WHERE status IN ('pending', 'retry')
-              AND available_at <= ?
-            ORDER BY id
+            SELECT events.id, events.event_type, events.organization_id,
+                   events.user_id, events.payload_json,
+                   events.status, events.attempt_count
+            FROM unnest(
+                int8multirange(int8range(1, NULL)) - ?::int8multirange
+            ) AS missing(ids)
+            CROSS JOIN LATERAL (
+                SELECT id, event_type, organization_id, user_id, payload_json,
+                       status, attempt_count
+                FROM websocket_events
+                WHERE id >= lower(missing.ids)
+                  AND id < COALESCE(upper(missing.ids), 9223372036854775807)
+                  AND (status IN ('dispatched', 'dead_letter')
+                       OR available_at <= ? OR id = ANY(?::bigint[]))
+                ORDER BY id
+                LIMIT 500
+            ) AS events
+            ORDER BY events.id
             LIMIT 500
             """,
-            (int(time.time()),),
+            (consumer.excluded_ranges(now), now, consumer.due_retries(now)),
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -675,19 +768,17 @@ def _load_broker_events(after_id):
 
 
 def _pending_broker_start_id():
-    """Resume before the oldest event not acknowledged by any consumer."""
+    """Atomically skip completed history, retaining pending and invisible IDs."""
 
     conn = database.get_connection()
     try:
         row = conn.execute(
-            """SELECT COALESCE(
-                       MIN(id) FILTER (WHERE status IN ('pending', 'retry')) - 1,
-                       MAX(id),
-                       0
-                   )
+            """SELECT COALESCE(MAX(id), 0),
+                      range_agg(int8range(id::bigint, id::bigint + 1))
+                          FILTER (WHERE status IN ('dispatched', 'dead_letter'))
                FROM websocket_events"""
         ).fetchone()
-        return max(0, int(row[0] or 0))
+        return _BrokerConsumer(row[0] or 0, row[1] or ())
     finally:
         conn.close()
 
@@ -702,7 +793,7 @@ def _record_broker_dispatch(event_id, error=None):
                 """UPDATE websocket_events
                    SET status = 'dispatched', attempt_count = attempt_count + 1,
                        dispatched_at = ?, last_error_code = NULL
-                   WHERE id = ? AND status IN ('pending', 'retry')""",
+                   WHERE id = ? AND status IN ('pending', 'retry', 'dead_letter')""",
                 (now, event_id),
             )
             row = conn.execute(
@@ -745,68 +836,107 @@ def _record_broker_dispatch(event_id, error=None):
 async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
     """Dispatch best-effort hints locally; delta polling remains authoritative."""
     del poll_interval
-    last_event_id = int(start_after_id or 0)
+    consumer = (
+        start_after_id if isinstance(start_after_id, _BrokerConsumer)
+        else _BrokerConsumer(start_after_id or 0)
+    )
     listener = None
+    listener_stop = threading.Event()
+    pending_wait = None
     cleanup_counter = 0
-    while True:
-        try:
-            if listener is None or listener.closed:
-                listener = await run_blocking_io(
-                    _open_broker_listener, timeout_seconds=10.0
-                )
-            events = await run_blocking_io(_load_broker_events, last_event_id, timeout_seconds=5.0)
-            if not events:
-                await run_blocking_io(
-                    _wait_for_broker_signal,
-                    listener,
-                    timeout_seconds=35.0,
-                )
-                events = await run_blocking_io(
-                    _load_broker_events, last_event_id, timeout_seconds=5.0
-                )
-        except asyncio.CancelledError:
-            if listener is not None:
-                await run_blocking_io(listener.close, timeout_seconds=2.0)
-            raise
-        except Exception as broker_error:
-            log_error(broker_error, "websocket_broker_listener", level="WARN")
-            if listener is not None:
-                try:
-                    listener.close()
-                except Exception as close_error:  # noqa: BLE001 - broker recovery must continue
-                    log_error(close_error, "websocket_broker_listener_close", level="WARN")
-            listener = None
-            await asyncio.sleep(1.0)
-            continue
-        for event in events:
+
+    def open_listener():
+        nonlocal listener
+        # Retain a successfully opened resource even when its owner receives
+        # cancellation or the deadline expires before this call returns.
+        listener = _open_broker_listener()
+        return listener
+
+    async def close_listener():
+        listener_stop.set()
+        if pending_wait is not None:
             try:
-                await dispatch_websocket_broker_event(event)
-                await run_blocking_io(
-                    _record_broker_dispatch,
-                    int(event["id"]),
-                    timeout_seconds=5.0,
-                )
-                last_event_id = max(last_event_id, int(event["id"]))
-            except Exception as delivery_error:  # noqa: BLE001 - durable broker retries all delivery failures
-                status = await run_blocking_io(
-                    _record_broker_dispatch,
-                    int(event["id"]),
-                    delivery_error,
-                    timeout_seconds=5.0,
-                )
-                if status == "dead_letter":
-                    last_event_id = max(last_event_id, int(event["id"]))
-                # A retryable low-ID event must not block unrelated ready
-                # hints.  It remains durable in the pending/retry queue and
-                # will be selected again once available_at is reached.
+                await finish_submitted_task(pending_wait)
+            except asyncio.CancelledError:
+                pass
+            except Exception as wait_error:  # noqa: BLE001 - a failed reader must still release its connection
+                log_error(wait_error, "websocket_broker_wait_close", level="WARN")
+        if listener is not None:
+            try:
+                await run_owned_blocking_io(listener.close, timeout_seconds=2.0)
+            except Exception as close_error:  # noqa: BLE001 - cleanup must preserve the original failure
+                log_error(close_error, "websocket_broker_listener_close", level="WARN")
+
+    try:
+        while True:
+            try:
+                if listener is None or listener.closed:
+                    await run_owned_blocking_io(
+                        open_listener, timeout_seconds=10.0
+                    )
+                events = await run_owned_blocking_io(_load_broker_events, consumer, timeout_seconds=5.0)
+                if not events:
+                    pending_wait = asyncio.create_task(run_blocking_io(
+                        _wait_for_broker_signal,
+                        listener,
+                        consumer.wait_timeout(),
+                        listener_stop,
+                        timeout_seconds=35.0,
+                    ))
+                    await asyncio.shield(pending_wait)
+                    pending_wait = None
+                    events = await run_owned_blocking_io(
+                        _load_broker_events, consumer, timeout_seconds=5.0
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as broker_error:
+                log_error(broker_error, "websocket_broker_listener", level="WARN")
+                await close_listener()
+                listener = None
+                pending_wait = None
+                listener_stop = threading.Event()
+                await asyncio.sleep(1.0)
                 continue
-        cleanup_counter += 1
-        if cleanup_counter >= 1_000:
-            cleanup_counter = 0
-            try:
-                await run_blocking_io(_cleanup_broker_events, timeout_seconds=10.0)
-            except Exception as broker_cleanup_error:
-                log_error(broker_cleanup_error, "websocket_broker_cleanup", level="WARN")
+            for event in events:
+                try:
+                    await dispatch_websocket_broker_event(event)
+                    await run_owned_blocking_io(
+                        _record_broker_dispatch,
+                        int(event["id"]),
+                        timeout_seconds=5.0,
+                    )
+                    consumer.mark_dispatched(int(event["id"]))
+                except Exception as delivery_error:  # noqa: BLE001 - durable broker retries all delivery failures
+                    try:
+                        await run_owned_blocking_io(
+                            _record_broker_dispatch,
+                            int(event["id"]),
+                            delivery_error,
+                            timeout_seconds=5.0,
+                        )
+                    except Exception as record_error:  # noqa: BLE001 - a DB outage must not stop local retries
+                        log_error(record_error, "websocket_broker_dispatch_record", level="WARN")
+                    consumer.mark_failed(int(event["id"]))
+                    # A retryable low-ID event must not block unrelated ready
+                    # hints. Its local receipt stays retryable even if another
+                    # worker has already acknowledged the shared event.
+                    continue
+            cleanup_counter += 1
+            if cleanup_counter >= 1_000:
+                cleanup_counter = 0
+                try:
+                    cleaned = await run_owned_blocking_io(
+                        _cleanup_broker_events, timeout_seconds=10.0
+                    )
+                    if cleaned and cleaned[0]:
+                        consumer.prune_before(cleaned[1])
+                except Exception as broker_cleanup_error:
+                    log_error(broker_cleanup_error, "websocket_broker_cleanup", level="WARN")
+    finally:
+        # The LISTEN helper checks the stop event at most every second. Finish
+        # that owned reader before closing its connection from another thread.
+        await close_listener()
 
 
 def _open_broker_listener():
@@ -816,8 +946,20 @@ def _open_broker_listener():
     return connection
 
 
-def _wait_for_broker_signal(connection, timeout=30.0):
-    return next(connection.notifies(timeout=timeout, stop_after=1), None)
+def _wait_for_broker_signal(connection, timeout=30.0, stop_event=None):
+    if stop_event is None:
+        return next(connection.notifies(timeout=timeout, stop_after=1), None)
+    deadline = time.monotonic() + timeout
+    while not stop_event.is_set():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        notification = next(
+            connection.notifies(timeout=min(1.0, remaining), stop_after=1), None
+        )
+        if notification is not None:
+            return notification
+    return None
 
 
 def _cleanup_broker_events():
@@ -829,11 +971,13 @@ def _cleanup_broker_events():
         ).fetchone()
         if not leader or not leader[0]:
             conn.rollback()
-            return
+            return (False, None)
         conn.execute(
             "DELETE FROM websocket_events WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day'"
         )
+        floor = conn.execute("SELECT MIN(id) FROM websocket_events").fetchone()[0]
         conn.commit()
+        return (True, floor)
     finally:
         conn.close()
 

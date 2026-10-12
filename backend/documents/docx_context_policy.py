@@ -622,6 +622,89 @@ def _sanitize_image_value(
     )
 
 
+def collect_authorized_docx_image_paths(context, organization_id: str) -> frozenset[str]:
+    """Capture canonical record images before any custom/computed mapping runs.
+
+    The caller must supply the projected context loaded for the authorized
+    record. A mapping result, arbitrary string, or queued payload is not proof
+    of ownership of a legacy image.
+    """
+    paths = set()
+
+    def collect(value):
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                subfolder = BASE_IMAGE_FIELDS.get(str(key))
+                if subfolder and isinstance(child, str):
+                    path = _sanitize_managed_image_path(child, subfolder, organization_id)
+                    if path:
+                        paths.add(path)
+                elif isinstance(child, (Mapping, list)):
+                    collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+
+    collect(context)
+    return frozenset(paths)
+
+
+def validate_docx_image_references(context, manifest) -> set[str]:
+    """Require pre-mapping ownership proof for every managed image reference.
+
+    IPC examines strings even outside image fields, so this same gate also
+    covers text aliases and every normalized spelling before a file is read.
+    Image-free older manifests remain compatible. Older image-bearing jobs
+    must be exported again from the authorized record to obtain the proof.
+    """
+    references = set()
+
+    def collect(value, depth=0):
+        if depth > 16:
+            raise ValueError("Ngữ cảnh ảnh Word lồng quá sâu.")
+        if isinstance(value, Mapping):
+            for child in value.values():
+                collect(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child, depth + 1)
+        elif isinstance(value, str):
+            path = normalize_managed_image_path(value)
+            if path:
+                references.add(path)
+
+    collect(context)
+    raw_paths = manifest.get("authorized_image_paths") if isinstance(manifest, dict) else None
+    if raw_paths is None:
+        if references:
+            raise ValueError(
+                "Tác vụ Word cũ thiếu bằng chứng phạm vi ảnh. Hãy xuất lại tài liệu từ bản ghi được phép truy cập."
+            )
+        return references
+    if not isinstance(raw_paths, list) or len(raw_paths) > 100_000:
+        raise ValueError("Danh sách phạm vi ảnh Word không hợp lệ.")
+    authorized = set()
+    organization_id = str(manifest.get("media_organization_id") or "").strip()
+    for path in raw_paths:
+        if not isinstance(path, str) or not path or normalize_managed_image_path(path) != path:
+            raise ValueError("Danh sách phạm vi ảnh Word không hợp lệ.")
+        if len(path.split("/")) == 4 and (
+            not organization_id or not managed_image_path_matches_tenant(path, organization_id)
+        ):
+            raise ValueError("Ảnh Word không thuộc tổ chức hiện tại.")
+        if path in authorized:
+            raise ValueError("Danh sách phạm vi ảnh Word chứa đường dẫn trùng lặp.")
+        authorized.add(path)
+    for path in references:
+        if len(path.split("/")) == 4 and (
+            not organization_id or not managed_image_path_matches_tenant(path, organization_id)
+        ):
+            raise ValueError("Ảnh Word không thuộc tổ chức hiện tại.")
+        if path not in authorized:
+            raise ValueError("Ảnh Word không thuộc phạm vi bản ghi được phép xuất.")
+    return references
+
+
 def _capability_enabled(capabilities: Any, capability_id: str) -> bool:
     if capabilities is None:
         return False
@@ -841,6 +924,7 @@ def seal_docx_context(
     capabilities: Any = None,
     *,
     organization_id: str | None = None,
+    authorized_image_paths=(),
 ):
     """Return the final DTO and a worker-verifiable rendering manifest."""
     safe_context = project_docx_context(
@@ -891,6 +975,7 @@ def seal_docx_context(
         "money_root_keys": sorted(set(money_roots)),
         "image_fields": image_fields,
         "media_organization_id": str(organization_id or "").strip(),
+        "authorized_image_paths": sorted(authorized_image_paths),
     }
     validate_docx_context_manifest(safe_context, manifest)
     return safe_context, manifest
@@ -1027,6 +1112,7 @@ def validate_docx_context_manifest(context, manifest):
                 validate_images(child, depth + 1)
 
     validate_images(context)
+    validate_docx_image_references(context, manifest)
 
     return {
         "document_type": document_type,

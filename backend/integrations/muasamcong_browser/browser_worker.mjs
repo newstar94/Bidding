@@ -27,8 +27,18 @@ let runtimeConfiguration = null;
 
 async function fallbackRuntime() {
   if (runtime) return runtime;
-  runtime = new BrowserLookupRuntime({ chromium });
-  await runtime.initialize(runtimeConfiguration || {});
+  const candidate = new BrowserLookupRuntime({ chromium });
+  try {
+    await candidate.initialize(runtimeConfiguration || {});
+  } catch (error) {
+    try {
+      await candidate.close();
+    } catch (cleanupError) {
+      console.error("PROCUREMENT_BROWSER_CLEANUP_FAILED", publicError(cleanupError));
+    }
+    throw error;
+  }
+  runtime = candidate;
   return runtime;
 }
 
@@ -72,7 +82,7 @@ async function handle(request) {
       };
     }
     case "lookup": {
-      if (!runtime) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
       const code = String(request.code || "").trim().toUpperCase();
       const kind = String(request.kind || "").trim().toUpperCase();
       const pattern = kind === "PLAN" ? /^PL\d{10}$/ : /^IB\d{10}$/;

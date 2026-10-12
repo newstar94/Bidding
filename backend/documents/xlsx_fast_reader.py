@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from io import BytesIO
+import math
 import posixpath
 import re
 import zipfile
@@ -20,7 +21,7 @@ _BUILTIN_DATE_FORMAT_IDS = frozenset({
     *range(45, 48),
     *range(50, 59),
 })
-_CELL_REFERENCE = re.compile(r"^([A-Z]+)", re.IGNORECASE)
+_CELL_REFERENCE = re.compile(r"([A-Z]{1,3})([1-9][0-9]{0,6})", re.IGNORECASE)
 
 
 def _first_worksheet_path(archive, workbook_root):
@@ -91,9 +92,9 @@ def _date_style_indexes(archive):
 
 
 def _column_index(reference):
-    match = _CELL_REFERENCE.match(str(reference or ""))
+    match = _CELL_REFERENCE.fullmatch(str(reference or ""))
     if not match:
-        return None
+        raise ValueError("Tọa độ ô Excel không hợp lệ.")
     result = 0
     for character in match.group(1).upper():
         result = result * 26 + ord(character) - ord("A") + 1
@@ -144,7 +145,9 @@ def _cell_value(cell, shared_strings, date_styles, *, date_1904):
     return int(number) if number.is_integer() else number
 
 
-def read_first_worksheet_rows(content):
+def read_first_worksheet_rows(
+    content, *, max_rows=100_001, max_columns=16_384, max_cells=8_000_000,
+):
     """Return a rectangular row iterator without importing pandas/openpyxl."""
 
     with zipfile.ZipFile(BytesIO(content)) as archive:
@@ -160,24 +163,48 @@ def read_first_worksheet_rows(content):
         date_styles = _date_style_indexes(archive)
         worksheet = ElementTree.fromstring(archive.read(worksheet_path))
         rows = []
+        maximum_width = 0
+        previous_row = 0
         for row_node in worksheet.findall(f".//{{{_MAIN_NS}}}row"):
-            try:
-                row_number = max(1, int(row_node.attrib.get("r", len(rows) + 1)))
-            except ValueError:
-                row_number = len(rows) + 1
-            while len(rows) < row_number - 1:
-                rows.append([])
+            reference = str(row_node.attrib.get("r", previous_row + 1))
+            if not re.fullmatch(r"[1-9][0-9]{0,6}", reference):
+                raise ValueError("Tọa độ dòng Excel không hợp lệ.")
+            row_number = int(reference)
+            if row_number <= previous_row or row_number > 1_048_576:
+                raise ValueError("Tọa độ dòng Excel vượt giới hạn hoặc trùng lặp.")
+            previous_row = row_number
             values = {}
             for cell in row_node.findall(f"{{{_MAIN_NS}}}c"):
                 column_index = _column_index(cell.attrib.get("r"))
-                if column_index is None:
-                    continue
+                match = _CELL_REFERENCE.fullmatch(cell.attrib["r"])
+                if (
+                    column_index >= 16_384
+                    or int(match.group(2)) != row_number
+                    or column_index in values
+                ):
+                    raise ValueError("Tọa độ ô Excel vượt giới hạn hoặc không hợp lệ.")
                 values[column_index] = _cell_value(
                     cell,
                     shared_strings,
                     date_styles,
                     date_1904=date_1904,
                 )
+            # Excel often writes styled empty rows at the bottom of a sheet.
+            # The import already discards that tail. Defer all gap allocation
+            # until a nonempty row so formatting cannot consume the budget.
+            if all(
+                value is None or (isinstance(value, float) and math.isnan(value))
+                or str(value).strip() == ""
+                for value in values.values()
+            ):
+                continue
             width = max(values, default=-1) + 1
+            if row_number > max_rows or width > max_columns:
+                raise ValueError("Tọa độ ô hoặc dòng Excel vượt giới hạn.")
+            maximum_width = max(maximum_width, width)
+            if row_number * maximum_width > max_cells:
+                raise ValueError("Tệp Excel có quá nhiều ô dữ liệu.")
+            while len(rows) < row_number - 1:
+                rows.append([])
             rows.append([values.get(index) for index in range(width)])
         return rows

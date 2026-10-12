@@ -666,6 +666,17 @@ class ProviderCommandExecutor:
                 or int(result.get("amount") or 0) != int(claimed["total_amount"])
             ):
                 raise PaymentProviderError("PAYMENT_MISMATCH", "Provider checkout không khớp order snapshot.")
+            if (
+                claimed["command_type"] == "create_checkout"
+                and str(result.get("status") or "PENDING").upper() in {"PENDING", "PROCESSING", "UNDERPAID"}
+                and not result.get("checkoutUrl")
+                and not checkout_payment_snapshot(result)
+            ):
+                raise PaymentProviderError(
+                    "PROVIDER_CHECKOUT_UNAVAILABLE",
+                    "Chưa khôi phục được mã thanh toán; vui lòng thử lại.",
+                    retryable=True,
+                )
             self._complete(claimed, result)
         except PaymentProviderError as error:
             self._fail(claimed, error)

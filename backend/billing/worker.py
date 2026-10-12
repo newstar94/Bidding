@@ -8,7 +8,7 @@ import time
 
 from backend.commercial_policy.config import commercial_runtime_config
 from backend.commercial_policy.repository import new_id
-from backend.shared.async_io import BlockingIOBusyError, run_blocking_io
+from backend.shared.async_io import BlockingIOBusyError, run_owned_blocking_io as run_blocking_io
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_error
 from backend.usage_credits import UsageCreditService
@@ -116,7 +116,12 @@ class BillingWorkProcessor:
             connection.close()
 
     def _schedule_open_order_reconciliation(self):
-        """Create one idempotent query command for an open unverified order."""
+        """Reconcile unverified orders, including downtime across expiry.
+
+        Expiry closes checkout locally; it cannot prove that no payment arrived
+        before the deadline while this worker or its webhook was unavailable.
+        The unique query command gives an expired order one final provider read.
+        """
         connection = self.database.get_connection()
         now = int(self.clock())
         try:
@@ -126,9 +131,7 @@ class BillingWorkProcessor:
                           orders.provider_order_code
                      FROM billing_orders AS orders
                     WHERE orders.payment_state = 'unverified'
-                      AND orders.checkout_state IN ('creating', 'open')
-                      AND (orders.checkout_expires_at IS NULL
-                           OR orders.checkout_expires_at > ?)
+                      AND orders.checkout_state IN ('creating', 'open', 'expired')
                       AND NOT EXISTS (
                           SELECT 1 FROM billing_provider_commands AS active
                            WHERE active.order_id = orders.id
@@ -141,7 +144,6 @@ class BillingWorkProcessor:
                       )
                     ORDER BY orders.updated_at, orders.id
                     LIMIT 1 FOR UPDATE OF orders SKIP LOCKED""",
-                (now,),
             ).fetchone()
             if not row:
                 connection.rollback()

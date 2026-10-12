@@ -192,20 +192,18 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
     if operation == "parse_excel":
         from backend.documents.archive_validation import validate_ooxml_archive
         from backend.documents.excel_handler import parse_excel
+        from backend.documents.excel_import_limits import max_import_records
 
         content = _payload_content(payload)
         if payload.get("kind") == "xlsx":
             validate_ooxml_archive(content, "xlsx")
+        max_rows = max_import_records()
         rows = parse_excel(
             content,
             payload["import_type"],
             kind=payload.get("kind"),
+            max_records=max_rows,
         )
-        try:
-            max_rows = int(os.environ.get("EXCEL_MAX_IMPORT_ROWS", "10000"))
-        except (TypeError, ValueError):
-            max_rows = 10000
-        max_rows = min(100_000, max(100, max_rows))
         if len(rows) > max_rows:
             raise ValueError("Tệp Excel có quá nhiều dòng dữ liệu.")
         return rows

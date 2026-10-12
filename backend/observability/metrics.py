@@ -416,7 +416,7 @@ async def monitor_operational_artifacts():
     except ValueError:
         interval = 900.0
     interval = min(86_400.0, max(60.0, interval))
-    from backend.shared.async_io import run_blocking_io
+    from backend.shared.async_io import run_owned_blocking_io as run_blocking_io
 
     while True:
         try:
@@ -872,7 +872,7 @@ def operational_status_snapshot() -> dict[str, Any]:
 async def monitor_filesystem_metrics():
     """Keep expensive DB/filesystem metrics off the request-time scrape path."""
 
-    from backend.shared.async_io import run_blocking_io
+    from backend.shared.async_io import run_owned_blocking_io as run_blocking_io
 
     while True:
         try:

@@ -2067,20 +2067,13 @@ def test_start_plan_enrichment_hides_internal_context_and_returns_operation_id(m
         def get(self, *_args, **_kwargs):
             return SimpleNamespace(canonical_bundle=bundle)
 
-    class Thread:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def start(self):
-            return None
-
     monkeypatch.setattr(routes_module, "PREVIEW_STORE", PreviewStore())
     monkeypatch.setattr(
         routes_module,
         "_create_enrichment_operation",
         lambda *_args: {"operationId": "enrich-op-1"},
     )
-    monkeypatch.setattr(routes_module.threading, "Thread", Thread)
+    monkeypatch.setattr(routes_module, "_start_owned_plan_enrichment", lambda *_args, **_kwargs: True)
 
     result = routes_module._start_plan_enrichment({
         "previewId": "preview-1",

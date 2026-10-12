@@ -298,11 +298,12 @@ def _records_from_matrix(matrix, all_possible_headers):
     return records, False
 
 
-def _read_xlsx_records(file_bytes, all_possible_headers):
+def _read_xlsx_records(file_bytes, all_possible_headers, max_records):
     from backend.documents.xlsx_fast_reader import read_first_worksheet_rows
+    from backend.documents.excel_import_limits import worksheet_limits
 
     return _records_from_matrix(
-        read_first_worksheet_rows(file_bytes),
+        read_first_worksheet_rows(file_bytes, **worksheet_limits(max_records)),
         all_possible_headers,
     )
 
@@ -316,11 +317,15 @@ def _read_legacy_xls_records(file_bytes, all_possible_headers):
     return _records_from_matrix(frame.itertuples(index=False, name=None), all_possible_headers)
 
 
-def parse_excel(file_bytes, import_type, *, kind=None):
+def parse_excel(file_bytes, import_type, *, kind=None, max_records=None):
     """Phân tích file Excel và trả về danh sách các bản ghi cùng thông tin kiểm thử hợp lệ."""
     map_cols = _schema_to_map_cols(import_type)
     if map_cols is None:
         raise ValueError(f"Invalid type: {import_type}")
+    if max_records is None:
+        from backend.documents.excel_import_limits import max_import_records
+
+        max_records = max_import_records()
 
     all_possible_headers = {
         alias.strip().lower()
@@ -332,10 +337,12 @@ def parse_excel(file_bytes, import_type, *, kind=None):
         not normalized_kind and bytes(file_bytes[:4]) == b"PK\x03\x04"
     )
     records, is_vertical = (
-        _read_xlsx_records(file_bytes, all_possible_headers)
+        _read_xlsx_records(file_bytes, all_possible_headers, max_records)
         if is_xlsx
         else _read_legacy_xls_records(file_bytes, all_possible_headers)
     )
+    if len(records) > max_records:
+        raise ValueError("Tệp Excel có quá nhiều dòng dữ liệu.")
     columns = list(records[0]) if records else []
 
     rows = []

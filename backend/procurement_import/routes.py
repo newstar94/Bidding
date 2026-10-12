@@ -85,6 +85,49 @@ from backend.sync.visibility_scope import VisibilityScope
 
 LOGGER = logging.getLogger(__name__)
 
+_ENRICHMENT_WORKER_LOCK = threading.Lock()
+_ENRICHMENT_WORKERS = set()
+_ENRICHMENT_STOPPING = False
+
+
+def begin_plan_enrichment_lifecycle():
+    """Reopen admission after the preceding lifespan joined its children."""
+    global _ENRICHMENT_STOPPING
+    with _ENRICHMENT_WORKER_LOCK:
+        if _ENRICHMENT_WORKERS:
+            raise RuntimeError("Procurement enrichment workers are still running")
+        _ENRICHMENT_STOPPING = False
+
+
+def request_plan_enrichment_stop():
+    """Close child admission and return all submitted children for joining."""
+    global _ENRICHMENT_STOPPING
+    with _ENRICHMENT_WORKER_LOCK:
+        _ENRICHMENT_STOPPING = True
+        return tuple(_ENRICHMENT_WORKERS)
+
+
+def _start_owned_plan_enrichment(context, operation_id, *, name):
+    def run():
+        try:
+            _run_plan_enrichment(context, operation_id)
+        finally:
+            with _ENRICHMENT_WORKER_LOCK:
+                _ENRICHMENT_WORKERS.discard(threading.current_thread())
+
+    with _ENRICHMENT_WORKER_LOCK:
+        if _ENRICHMENT_STOPPING:
+            # The durable operation stays pending for the next recovery scan.
+            return False
+        worker = threading.Thread(target=run, name=name, daemon=True)
+        _ENRICHMENT_WORKERS.add(worker)
+        try:
+            worker.start()
+        except BaseException:
+            _ENRICHMENT_WORKERS.discard(worker)
+            raise
+        return True
+
 # Compatibility aliases for tests and callers that used the original route
 # helpers while the raw-snapshot policy moves behind its dedicated seam.
 _load_opening_from_raw_snapshot = opening_snapshot.load_complete_opening_snapshot
@@ -917,14 +960,11 @@ def recover_stale_plan_enrichments(*, limit=8):
             "provider": provider,
             "linkedNoticeCount": len(_linked_notice_numbers(bundle)),
         }
-        thread = threading.Thread(
-            target=_run_plan_enrichment,
-            args=(context, operation_id),
-            daemon=True,
+        if _start_owned_plan_enrichment(
+            context, operation_id,
             name="procurement-plan-enrichment-recovery",
-        )
-        thread.start()
-        started += 1
+        ):
+            started += 1
     return started
 
 
@@ -968,13 +1008,10 @@ def _start_plan_enrichment(result):
     if operation.get("status") in {"COMPLETED", "PARTIAL", "FAILED"}:
         result["enrichmentStatus"] = operation["status"]
         return result
-    thread = threading.Thread(
-        target=_run_plan_enrichment,
-        args=(context, operation["operationId"]),
+    _start_owned_plan_enrichment(
+        context, operation["operationId"],
         name="procurement-plan-enrichment",
-        daemon=True,
     )
-    thread.start()
     return result
 
 

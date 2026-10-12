@@ -22,7 +22,7 @@ from backend.shared.audit_chain import (
     set_audit_chain_health,
     write_audit_checkpoint,
 )
-from backend.shared.database_io import run_database_read
+from backend.shared.database_io import run_owned_database_read as run_database_read
 from backend.shared.logging_utils import log_structured_event
 from backend.shared.paths import resolve_runtime_path
 

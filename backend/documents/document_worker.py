@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
+from backend.shared.async_io import run_owned_task
 from backend.documents.document_ipc import (
     DocumentIpcError,
     WORKER_EVENT_PREFIX,
@@ -1547,10 +1548,13 @@ async def run_durable_document_queue_worker(database) -> None:
             concurrency = _positive_int_env(
                 "DOCUMENT_WORKER_MAX_CONCURRENCY", 4, 1, 8
             )
-            outcomes = await asyncio.gather(*(
+            outcomes = await run_owned_task(asyncio.gather(*(
                 asyncio.to_thread(process_next_durable_document_job, database)
                 for _index in range(concurrency)
-            ))
+            ), return_exceptions=True))
+            failure = next((item for item in outcomes if isinstance(item, Exception)), None)
+            if failure is not None:
+                raise failure
             processed = any(outcomes)
         except asyncio.CancelledError:
             raise

@@ -135,9 +135,43 @@ def _verified_package_file(
 def _verify_current_package_inventory(
     release_root: Path,
     package_records: dict[str, tuple[int, str]],
+    *,
+    current_release_id: str,
+    current_assets: tuple[str, ...],
+    current_manifest_digest: str,
+    current_marker_digest: str,
 ) -> None:
-    """Verify the complete freshly extracted package before mutating ``dist``."""
+    """Verify package bytes and only the changes owned by an earlier preparation."""
+    journal_relative_path = f"dist/{JOURNAL_NAME}"
+    journal_path = release_root / journal_relative_path
+    prepared = journal_path.exists()
+    retained_records = (
+        _verified_preparation_journal(
+            release_root,
+            current_release_id=current_release_id,
+            current_assets=current_assets,
+            current_manifest_digest=current_manifest_digest,
+            current_marker_digest=current_marker_digest,
+        )
+        if prepared
+        else {}
+    )
+    expected_files = set(package_records)
     for relative_path in sorted(package_records):
+        if prepared and relative_path == journal_relative_path:
+            # The helper atomically replaces the build-host predecessor journal.
+            continue
+        asset_path = relative_path.removeprefix("dist/")
+        if (
+            prepared
+            and relative_path.startswith("dist/")
+            and HASHED_ASSET_PATH.fullmatch(asset_path)
+            and asset_path not in current_assets
+            and not (release_root / relative_path).exists()
+        ):
+            # A prior preparation pruned only assets outside the immutable graph.
+            expected_files.remove(relative_path)
+            continue
         _verified_package_file(
             release_root,
             relative_path,
@@ -154,7 +188,9 @@ def _verify_current_package_inventory(
         relative_path = candidate.relative_to(release_root).as_posix()
         if relative_path != "PRODUCTION_MANIFEST.json":
             actual_files.add(relative_path)
-    expected_files = set(package_records)
+    if prepared:
+        expected_files.add(journal_relative_path)
+        expected_files.update(retained_records)
     if actual_files != expected_files:
         untracked = sorted(actual_files - expected_files)
         missing = sorted(expected_files - actual_files)
@@ -162,6 +198,72 @@ def _verify_current_package_inventory(
             "production package inventory does not match extracted files "
             f"(untracked={untracked[:5]}, missing={missing[:5]})"
         )
+
+
+def _verified_preparation_journal(
+    release_root: Path,
+    *,
+    current_release_id: str,
+    current_assets: tuple[str, ...],
+    current_manifest_digest: str,
+    current_marker_digest: str,
+) -> dict[str, tuple[int, str]]:
+    journal_path = release_root / "dist" / JOURNAL_NAME
+    if journal_path.is_symlink():
+        raise RuntimeError("frontend compatibility journal is unsafe")
+    journal = _load_json_object(journal_path, "frontend compatibility journal")
+    previous_release_id = journal.get("previousReleaseId")
+    previous_digests = (
+        journal.get("previousManifestSha256"),
+        journal.get("previousSecureMarkerSha256"),
+    )
+    assets = journal.get("assets")
+    if (
+        journal.get("version") != 1
+        or journal.get("currentReleaseId") != current_release_id
+        or journal.get("currentManifestSha256") != current_manifest_digest
+        or journal.get("currentSecureMarkerSha256") != current_marker_digest
+        or not isinstance(assets, list)
+        or previous_release_id is not None
+        and (
+            not isinstance(previous_release_id, str)
+            or not IMMUTABLE_RELEASE_ID.fullmatch(previous_release_id)
+            or previous_release_id == current_release_id
+            or not all(
+                isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in previous_digests
+            )
+        )
+        or previous_release_id is None
+        and (assets or any(value is not None for value in previous_digests))
+    ):
+        raise RuntimeError("frontend compatibility journal does not match the current release")
+    records: dict[str, tuple[int, str]] = {}
+    for asset in assets:
+        if not isinstance(asset, dict):
+            raise RuntimeError("frontend compatibility journal has an invalid asset record")
+        path, size, digest = asset.get("path"), asset.get("size"), asset.get("sha256")
+        if (
+            not isinstance(path, str)
+            or not HASHED_ASSET_PATH.fullmatch(path)
+            or path in current_assets
+            or f"dist/{path}" in records
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            raise RuntimeError("frontend compatibility journal has an invalid asset record")
+        records[f"dist/{path}"] = (size, digest)
+    for relative_path in records:
+        _verified_package_file(
+            release_root,
+            relative_path,
+            records,
+            label="frontend compatibility asset",
+        )
+    return records
 
 
 def _verified_release_metadata(
@@ -322,7 +424,14 @@ def prepare_compatibility_assets(
         current_manifest_digest,
         current_marker_digest,
     ) = _verified_release_metadata(current_root, current_records)
-    _verify_current_package_inventory(current_root, current_records)
+    _verify_current_package_inventory(
+        current_root,
+        current_records,
+        current_release_id=current_release_id,
+        current_assets=current_asset_paths,
+        current_manifest_digest=current_manifest_digest,
+        current_marker_digest=current_marker_digest,
+    )
     if (
         expected_current_release_id is not None
         and current_release_id != expected_current_release_id

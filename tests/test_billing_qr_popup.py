@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from backend.billing.providers.base import PaymentProviderError
+from backend.billing.providers.payos import PayOSCredentials, PayOSPaymentProvider, sign_signed_data
 from backend.billing.service import BillingService, ProviderCommandExecutor, public_order_payload
 from backend.commercial_policy.errors import CommercialPolicyError
 
@@ -252,3 +253,33 @@ def test_terminal_checkout_replay_does_not_rearm_a_dead_cancel(checkout_db, chec
     order, command_id, replayed = BillingService(connection, clock=lambda: NOW).request_cancel("order-public", "buyer", "Retry cancel")
     assert (order["checkout_state"], command_id, replayed) == (checkout_state, "cancel", True)
     assert connection.execute("SELECT status FROM billing_provider_commands WHERE id='cancel'").fetchone()[0] == "dead"
+
+
+def test_unknown_create_result_recovers_signed_hosted_checkout_without_another_post(checkout_db):
+    database, connection = checkout_db
+    request = {"orderCode": 123, "amount": 2000, "description": "ORDERTEST",
+               "cancelUrl": "https://example.test/cancel", "returnUrl": "https://example.test/return"}
+    connection.execute("UPDATE billing_provider_commands SET status='pending', attempt_count=0, request_json=?", (json.dumps(request),))
+    connection.commit()
+    calls = []
+    link_id = "124c33293c934a85be5b7f8761a27a07"
+    result = {"id": link_id, "orderCode": 123, "amount": 2000,
+              "amountPaid": 0, "status": "PENDING", "transactions": []}
+
+    def transport(method, *_args):
+        calls.append(method)
+        if method == "POST":
+            raise PaymentProviderError("PROVIDER_TRANSPORT_FAILED", "Timeout", outcome_unknown=True, retryable=True)
+        return 200, json.dumps({"code": "00", "data": result,
+                                "signature": sign_signed_data(result, "fixture")}).encode()
+
+    provider = PayOSPaymentProvider(PayOSCredentials("fixture", "fixture", "fixture"), transport=transport)
+    now = [NOW]
+    executor = ProviderCommandExecutor(database, providers={"profile": provider}, clock=lambda: now[0], environment={})
+    assert executor.execute("create")["checkout_state"] == "creating"
+    now[0] += 2
+    recovered = public_order_payload(executor.execute("create"))
+    assert recovered["checkoutState"] == "open"
+    assert recovered["checkoutUrl"] == f"https://pay.payos.vn/web/{link_id}"
+    assert recovered["paymentDetails"] is None
+    assert calls == ["POST", "GET"]

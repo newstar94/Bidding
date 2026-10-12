@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from cryptography.fernet import Fernet, InvalidToken
 
 from backend.auth.email_utils import gui_email
-from backend.shared.async_io import BlockingIOBusyError, run_blocking_io
+from backend.shared.async_io import BlockingIOBusyError, run_owned_blocking_io as run_blocking_io
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_error, log_structured_event
 

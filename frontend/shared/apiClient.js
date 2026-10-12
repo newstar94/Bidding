@@ -358,49 +358,58 @@ async function readResponseBody(response) {
   return text;
 }
 
-function wrapResponseBodyLifecycle(response, abort, callerSignal) {
+function wrapResponseBodyLifecycle(response, abort, callerSignal, sharedFinish = null) {
   if (!response?.body?.getReader) {
     abort.cleanup();
     return response;
   }
-  const reader = response.body.getReader();
   let finished = false;
-  const finish = () => {
+  const finish = sharedFinish || (() => {
     if (finished) return;
     finished = true;
     abort.cleanup();
-  };
-  const body = new globalThis.ReadableStream({
-    async pull(controller) {
+  });
+  // Keep fetch's native response and body. A synthetic Response stream bridge
+  // makes Gecko emit native console errors when navigation cancels a reader,
+  // even when its caller handles the rejected body-consumption promise.
+  for (const method of ["json", "text", "blob", "arrayBuffer", "formData", "bytes"]) {
+    if (typeof response[method] !== "function") continue;
+    const consume = response[method].bind(response);
+    response[method] = async (...args) => {
+      const ownsConsumption = !response.bodyUsed && !response.body.locked;
+      try { return await consume(...args); }
+      finally { if (ownsConsumption) finish(); }
+    };
+  }
+  const clone = response.clone.bind(response);
+  response.clone = (...args) => wrapResponseBodyLifecycle(clone(...args), abort, callerSignal, finish);
+  const body = response.body;
+  const getReader = body.getReader.bind(body);
+  body.getReader = (...args) => {
+    const reader = getReader(...args);
+    const read = reader.read.bind(reader);
+    const cancel = reader.cancel.bind(reader);
+    reader.read = async (...readArgs) => {
       try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          finish();
-          controller.close();
-        } else {
-          controller.enqueue(chunk.value);
-        }
-      } catch (error) {
-        finish();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      try { await reader.cancel(reason); } finally { finish(); }
-    },
-  });
-  const wrapped = new globalThis.Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-  Object.defineProperties(wrapped, {
-    redirected: { configurable: true, value: response.redirected },
-    type: { configurable: true, value: response.type },
-    url: { configurable: true, value: response.url },
-  });
-  responseLifecycles.set(wrapped, { callerSignal, didTimeOut: abort.didTimeOut });
-  return wrapped;
+        const chunk = await read(...readArgs);
+        if (chunk.done) finish();
+        return chunk;
+      } catch (error) { finish(); throw error; }
+    };
+    reader.cancel = async (...cancelArgs) => {
+      try { return await cancel(...cancelArgs); }
+      finally { finish(); }
+    };
+    return reader;
+  };
+  const cancel = body.cancel.bind(body);
+  body.cancel = async (...args) => {
+    const ownsCancellation = !body.locked;
+    try { return await cancel(...args); }
+    finally { if (ownsCancellation) finish(); }
+  };
+  responseLifecycles.set(response, { callerSignal, didTimeOut: abort.didTimeOut });
+  return response;
 }
 
 async function discardResponse(response, abort) {

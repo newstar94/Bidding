@@ -48,6 +48,7 @@ from backend.documents.award_result_excel.normalization import (
 )
 from backend.documents.spreadsheet_security import safe_spreadsheet_text
 from backend.documents.workbook_preservation import patch_worksheet_cells
+from backend.shared.async_io import run_owned_task
 from backend.shared.paths import resolve_runtime_path
 
 
@@ -1936,7 +1937,7 @@ def release_validation_artifact(token: str) -> None:
 async def run_validation_artifact_janitor() -> None:
     interval = _configured_limit("AWARD_RESULT_ARTIFACT_CLEANUP_INTERVAL_SECONDS", 60)
     while True:
-        await asyncio.to_thread(cleanup_expired_validation_artifacts)
+        await run_owned_task(asyncio.to_thread(cleanup_expired_validation_artifacts))
         await asyncio.sleep(interval)
 
 

@@ -268,6 +268,100 @@ def test_prepare_release_reverses_the_grace_set_before_rollback(tmp_path):
     assert [record["path"] for record in journal["assets"]] == [serving_asset]
 
 
+def test_prepare_rollback_accepts_a_previously_prepared_release(tmp_path):
+    oldest, rollback, serving = (tmp_path / name for name in ("oldest", "rollback", "serving"))
+    oldest_asset = "assets/lazy-OLDEST01.js"
+    rollback_asset = "assets/app-ROLLBACK1.js"
+    serving_asset = "assets/app-SERVING01.js"
+    _write_release(oldest, "c" * 40, {oldest_asset: b"obsolete graph"})
+    _write_release(rollback, "a" * 40, {rollback_asset: b"rollback graph"})
+    _write_release(serving, "b" * 40, {serving_asset: b"serving graph"})
+    prepare = prepare_frontend_asset_compatibility.prepare_compatibility_assets
+    prepare(current_release=rollback, previous_release=oldest)
+    prepare(current_release=serving, previous_release=rollback)
+
+    result = prepare(current_release=rollback, previous_release=serving)
+
+    assert result["retainedAssetCount"] == 1
+    assert sorted(path.name for path in (rollback / "dist" / "assets").iterdir()) == [
+        "app-ROLLBACK1.js", "app-SERVING01.js",
+    ]
+    # A repeated preparation verifies the newly written journal and stays idempotent.
+    assert prepare(current_release=rollback, previous_release=serving) == result
+
+
+def test_prepare_rollback_accepts_pruned_packaged_predecessor_assets(tmp_path):
+    rollback, serving = tmp_path / "rollback", tmp_path / "serving"
+    rollback_asset = "assets/app-ROLLBACK1.js"
+    obsolete_asset = "assets/lazy-OBSOLETE1.js"
+    _write_release(rollback, "a" * 40, {
+        rollback_asset: b"rollback graph", obsolete_asset: b"build predecessor",
+    }, manifest_assets=(rollback_asset,))
+    _write_release(serving, "b" * 40, {"assets/app-SERVING01.js": b"serving graph"})
+    prepare = prepare_frontend_asset_compatibility.prepare_compatibility_assets
+    prepare(current_release=rollback)
+    assert not (rollback / "dist" / obsolete_asset).exists()
+    prepare(current_release=serving, previous_release=rollback)
+
+    prepare(current_release=rollback, previous_release=serving)
+
+    assert not (rollback / "dist" / obsolete_asset).exists()
+
+
+@pytest.mark.parametrize("tamper", (
+    "journal", "retained", "untracked", "runtime", "removed-runtime",
+    "current-asset", "missing-retained", "journal-path", "journal-duplicate",
+))
+def test_prepare_rollback_rejects_tampering_before_mutating_assets(tmp_path, tamper):
+    oldest, rollback, serving = (tmp_path / name for name in ("oldest", "rollback", "serving"))
+    retained_asset = "assets/lazy-OLDEST01.js"
+    _write_release(oldest, "c" * 40, {retained_asset: b"obsolete graph"})
+    _write_release(rollback, "a" * 40, {"assets/app-ROLLBACK1.js": b"rollback graph"})
+    _write_release(serving, "b" * 40, {"assets/app-SERVING01.js": b"serving graph"})
+    runtime_path = rollback / "backend" / "app.py"
+    runtime_path.parent.mkdir()
+    runtime_path.write_bytes(b"packaged runtime")
+    package_path = rollback / "PRODUCTION_MANIFEST.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["files"].append({"path": "backend/app.py", "size": 16,
+                             "sha256": hashlib.sha256(b"packaged runtime").hexdigest()})
+    package_path.write_text(json.dumps(package), encoding="utf-8")
+    prepare = prepare_frontend_asset_compatibility.prepare_compatibility_assets
+    prepare(current_release=rollback, previous_release=oldest)
+    journal_path = rollback / "dist" / "frontend-compat-assets.json"
+    if tamper == "journal":
+        journal = json.loads(journal_path.read_text(encoding="utf-8"))
+        journal["currentManifestSha256"] = "0" * 64
+        journal_path.write_text(json.dumps(journal), encoding="utf-8")
+    elif tamper == "retained":
+        (rollback / "dist" / retained_asset).write_bytes(b"tampered retained asset")
+    elif tamper == "runtime":
+        runtime_path.write_bytes(b"tampered runtime")
+    elif tamper == "removed-runtime":
+        runtime_path.unlink()
+    elif tamper == "current-asset":
+        (rollback / "dist" / "assets" / "app-ROLLBACK1.js").write_bytes(b"tampered graph")
+    elif tamper == "missing-retained":
+        (rollback / "dist" / retained_asset).unlink()
+    elif tamper in {"journal-path", "journal-duplicate"}:
+        journal = json.loads(journal_path.read_text(encoding="utf-8"))
+        if tamper == "journal-path":
+            journal["assets"][0]["path"] = "../backend/app.py"
+        else:
+            journal["assets"].append(journal["assets"][0])
+        journal_path.write_text(json.dumps(journal), encoding="utf-8")
+    else:
+        (rollback / "dist" / "assets" / "untracked-UNKNOWN1.js").write_bytes(b"untrusted")
+    before = {path.relative_to(rollback): path.read_bytes()
+              for path in rollback.rglob("*") if path.is_file()}
+
+    with pytest.raises(RuntimeError):
+        prepare(current_release=rollback, previous_release=serving)
+
+    assert {path.relative_to(rollback): path.read_bytes()
+            for path in rollback.rglob("*") if path.is_file()} == before
+
+
 def test_deploy_prepared_release_uses_package_compatible_checksum_journal(
     monkeypatch,
     tmp_path,

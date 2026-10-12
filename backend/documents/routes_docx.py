@@ -53,6 +53,7 @@ from backend.documents.docx_bid_context_service import (
 )
 from backend.documents.docx_context_policy import (
     REPORT_DOCUMENT_TYPES,
+    collect_authorized_docx_image_paths,
     filter_mapping_rows,
     seal_docx_context,
     sensitive_capability_groups_present,
@@ -1078,6 +1079,7 @@ def _prepare_plan_render(
         mappings = [row for row in mappings if str(row[1] or "") != "ke_hoach_can_cu"]
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
+    authorized_image_paths = collect_authorized_docx_image_paths(context, organization_id)
     apply_custom_mappings(context, mappings)
     apply_computed_mappings(context, mappings)
     lowercase_partner_identity_codes(context, mappings)
@@ -1087,6 +1089,7 @@ def _prepare_plan_render(
         mappings,
         capabilities,
         organization_id=organization_id,
+        authorized_image_paths=authorized_image_paths,
     )
     manifest["record_revision"] = record_revision
     if include_plan_basis_mapping:
@@ -1155,6 +1158,7 @@ def _prepare_report_render(
     _scope_contracts_for_word_publication(context, publication_type)
     enrich_context_with_lot_summaries(context)
     enrich_context_with_filtered_bidders(context)
+    authorized_image_paths = collect_authorized_docx_image_paths(context, organization_id)
     apply_custom_mappings(context, mappings)
     apply_computed_mappings(context, mappings)
     lowercase_partner_identity_codes(context, mappings)
@@ -1164,6 +1168,7 @@ def _prepare_report_render(
         mappings,
         capabilities,
         organization_id=organization_id,
+        authorized_image_paths=authorized_image_paths,
     )
     manifest["record_revision"] = record_revision
     sensitive_groups = sorted(sensitive_capability_groups_present(context))

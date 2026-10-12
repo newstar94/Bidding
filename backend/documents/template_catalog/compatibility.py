@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from backend.documents import custom_exporter
+from backend.shared.async_io import run_owned_task
 from backend.shared.workspace_scope import personal_scope_owner_id
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.logging_utils import log_audit, log_error
@@ -375,9 +376,9 @@ async def run_legacy_alias_projection_worker(database) -> None:
                 recovered = False
             else:
                 if not recovered:
-                    await asyncio.to_thread(worker.recover_stale)
+                    await run_owned_task(asyncio.to_thread(worker.recover_stale))
                     recovered = True
-                processed = await asyncio.to_thread(worker.process_next)
+                processed = await run_owned_task(asyncio.to_thread(worker.process_next))
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - background worker must survive.
@@ -415,7 +416,7 @@ async def run_word_template_retention_janitor(database) -> None:
     while True:
         try:
             if catalog_enabled():
-                await asyncio.to_thread(_purge_catalog_retention, database)
+                await run_owned_task(asyncio.to_thread(_purge_catalog_retention, database))
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - janitor retries next interval.

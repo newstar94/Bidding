@@ -43,6 +43,24 @@ async def finish_submitted_task(task: asyncio.Task[Any]) -> Any:
     return result
 
 
+async def run_owned_task(awaitable) -> Any:
+    """Finish an owned operation before propagating caller cancellation."""
+    task = asyncio.ensure_future(awaitable)
+    cancellation = None
+    while not task.done():
+        try:
+            # wait() never forwards cancellation to the submitted operation.
+            # Its error also cannot replace an already received shutdown signal.
+            await asyncio.wait({task})
+        except asyncio.CancelledError as error:
+            cancellation = error
+    if cancellation is not None:
+        if not task.cancelled():
+            task.exception()
+        raise cancellation
+    return task.result()
+
+
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     try:
         value = int(os.environ.get(name, str(default)))
@@ -124,6 +142,7 @@ class _BlockingIOPool:
         *args: Any,
         timeout_seconds: float | None,
         timing_callback: Callable[[float, float], None] | None = None,
+        wait_for_completion: bool = False,
         **kwargs: Any,
     ) -> Any:
         if not self._slots.acquire(blocking=False):
@@ -158,15 +177,25 @@ class _BlockingIOPool:
             self._submission_failed()
             raise
         future.add_done_callback(self._complete)
+        submitted = asyncio.wrap_future(future)
         try:
             if timeout_seconds is None:
-                return await asyncio.shield(asyncio.wrap_future(future))
+                return await asyncio.shield(submitted)
             return await asyncio.wait_for(
-                asyncio.wrap_future(future),
+                asyncio.shield(submitted) if wait_for_completion else submitted,
                 timeout=max(0.1, min(120.0, float(timeout_seconds))),
             )
         except asyncio.TimeoutError as exc:
             self._mark_timed_out()
+            if wait_for_completion:
+                # The deadline still determines the public outcome. An owned
+                # worker must release its DB/file resources before reporting it.
+                outcomes = await asyncio.gather(submitted, return_exceptions=True)
+                if isinstance(outcomes[0], Exception):
+                    logger.debug(
+                        "Owned blocking operation failed after its deadline",
+                        exc_info=outcomes[0],
+                    )
             raise BlockingIOTimeoutError(
                 "Tác vụ mạng hoặc tệp đã vượt quá thời gian cho phép."
             ) from exc
@@ -230,6 +259,23 @@ async def run_blocking_io(
         timeout_seconds=timeout_seconds,
         **kwargs,
     )
+
+
+async def run_owned_blocking_io(
+    function: Callable[..., Any],
+    *args: Any,
+    timeout_seconds: float | None = 15.0,
+    lane: str | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Use the existing lane/deadline and retain ownership until work finishes."""
+    return await run_owned_task(_lane_pool(lane).run(
+        function,
+        *args,
+        timeout_seconds=timeout_seconds,
+        wait_for_completion=True,
+        **kwargs,
+    ))
 
 
 def get_blocking_io_stats() -> BlockingIOStats:

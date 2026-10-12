@@ -1518,6 +1518,72 @@ def test_local_checkout_expiry_uses_the_pinned_boundary(billing_cursor):
     assert state == "expired"
 
 
+@pytest.mark.parametrize("provider_state", ["on_time", "late", "unpaid"])
+def test_restart_after_expiry_reconciles_missed_webhook_once(
+    billing_cursor, provider_state,
+):
+    deadline = 1_800_000_100
+    order = _insert_base_plan_order(billing_cursor, checkout_expires_at=deadline)
+    database = _TransactionDatabase(billing_cursor)
+    calls = []
+
+    class Provider:
+        def get_payment(self, identifier):
+            calls.append(identifier)
+            if provider_state == "unpaid":
+                return {"status": "PENDING", "orderCode": order["order_code"], "amount": 100000}
+            return _paid_result(
+                order, occurred_at=deadline - 1 if provider_state == "on_time" else deadline + 1,
+            )
+
+    registry = PaymentProviderRegistry(credential_resolver=lambda _reference: None)
+    registry.install("provider-fake-v1", Provider())
+    processor = BillingWorkProcessor(
+        database, registry=registry, clock=lambda: deadline + 600,
+        environment={
+            "COMMERCIAL_POLICY_ENABLED": "true", "COMMERCIAL_POLICY_MODE": "enforce",
+            "PAYMENT_CHECKOUT_ENABLED": "true", "PAYMENT_ACTIVATION_ENABLED": "true",
+        },
+    )
+    # The server was down before either a query command or a webhook was stored.
+    assert processor.process_next() is True
+    assert billing_cursor.execute(
+        "SELECT checkout_state FROM billing_orders WHERE id = ?", (order["order_id"],),
+    ).fetchone()[0] == "expired"
+    assert processor._schedule_open_order_reconciliation() is True
+    assert processor._schedule_open_order_reconciliation() is False
+    assert processor.process_next() is True
+    assert len(calls) == 1
+    assert processor._schedule_open_order_reconciliation() is False
+    command = billing_cursor.execute(
+        "SELECT status FROM billing_provider_commands WHERE order_id = ? AND command_type = 'query_order'",
+        (order["order_id"],),
+    ).fetchone()
+    assert command[0] == "completed"
+    state = billing_cursor.execute(
+        "SELECT checkout_state, payment_state, activation_state FROM billing_orders WHERE id = ?",
+        (order["order_id"],),
+    ).fetchone()
+    assert state[0] == "expired"
+    if provider_state == "on_time":
+        assert state[1] == "verified_paid"
+        assert state[2] == "applied"
+        assert billing_cursor.execute(
+            "SELECT COUNT(*) FROM billing_subscription_activations WHERE order_id = ?",
+            (order["order_id"],),
+        ).fetchone()[0] == 1
+    elif provider_state == "late":
+        assert billing_cursor.execute(
+            "SELECT payment_timing FROM payment_transactions WHERE order_id = ?", (order["order_id"],),
+        ).fetchone()[0] == "late_after_expiry"
+        assert state[2] == "review_required"
+    else:
+        assert state[1] == "unverified"
+        assert billing_cursor.execute(
+            "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?", (order["order_id"],),
+        ).fetchone()[0] == 0
+
+
 def test_manual_refund_replay_survives_terminal_refund_state_and_binds_request(
     billing_cursor,
 ):

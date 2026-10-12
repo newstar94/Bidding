@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import hmac
 import json
+import re
 from urllib.parse import urlsplit
 
 from backend.commercial_policy.errors import CommercialPolicyError, REFUND_NOT_SUPPORTED
@@ -156,6 +157,16 @@ class PayOSPaymentProvider:
         self._validate_status(data)
         if data.get("id") and not data.get("paymentLinkId"):
             data["paymentLinkId"] = str(data["id"])
+        # The signed GET schema omits QR/checkoutUrl. Recover the documented
+        # hosted page from its opaque link ID after signature verification.
+        # Never retry creation or interpret arbitrary path/query characters.
+        link_id = str(data.get("paymentLinkId") or "")
+        if (
+            not data.get("checkoutUrl")
+            and str(data.get("status") or "").upper() in {"PENDING", "PROCESSING", "UNDERPAID"}
+            and re.fullmatch(r"[a-fA-F0-9]{32}", link_id)
+        ):
+            data["checkoutUrl"] = validate_checkout_url(f"https://pay.payos.vn/web/{link_id}")
         transactions = data.get("transactions")
         if transactions == {}:
             data["transactions"] = []

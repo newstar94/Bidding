@@ -492,10 +492,38 @@ test("back-forward saved scroll is restored against canonical layout without req
     const actual = await optimized.page.evaluate(() => ({
       y: window.scrollY,
       pricingTop: document.getElementById("bang-gia").getBoundingClientRect().top,
+      anchoring: document.documentElement.style.overflowAnchor,
     }));
     assert.ok(Math.abs(actual.y - savedY) <= 1, `restored y ${actual.y}, canonical saved ${savedY}`);
     assert.ok(Math.abs(actual.pricingTop + 180) <= 1, `canonical pricing position ${actual.pricingTop}`);
+    assert.equal(actual.anchoring, "", "history restoration must retain ordinary page anchoring");
   } finally { await baseline.context.close(); await optimized?.context.close(); }
+});
+
+test("a newer history restoration or user scroll owns the final viewport", async () => {
+  const { context, page } = await loadLanding(1280);
+  try {
+    await page.evaluate(async (url) => {
+      const { restoreLandingFragment } = await import(url);
+      document.documentElement.style.overflowAnchor = "auto";
+      for (const savedY of [900, 1200]) {
+        history.replaceState({ bfLandingScrollY: savedY }, "");
+        restoreLandingFragment({ navigationType: "back_forward" });
+      }
+    }, moduleURL);
+    await settle(page);
+    assert.deepEqual(await page.evaluate(() => ({ y: scrollY, anchoring: document.documentElement.style.overflowAnchor })),
+      { y: 1200, anchoring: "auto" });
+    await page.evaluate(async (url) => {
+      const { restoreLandingFragment } = await import(url);
+      history.replaceState({ bfLandingScrollY: 900 }, "");
+      restoreLandingFragment({ navigationType: "back_forward" });
+      window.scrollTo({ top: 1200, behavior: "instant" });
+    }, moduleURL);
+    await settle(page);
+    assert.deepEqual(await page.evaluate(() => ({ y: scrollY, anchoring: document.documentElement.style.overflowAnchor })),
+      { y: 1200, anchoring: "auto" }, "a restoration must not overwrite a later user scroll");
+  } finally { await context.close(); }
 });
 
 test("actual pagehide and native Back retain the viewport after jumping over deferred sections", async () => {

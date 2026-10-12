@@ -13,10 +13,7 @@ import shutil
 import stat
 from typing import Any
 
-from backend.shared.media_helper import (
-    managed_image_path_matches_tenant,
-    normalize_managed_image_path,
-)
+from backend.documents.docx_context_policy import validate_docx_image_references
 
 
 IPC_VERSION = 1
@@ -111,40 +108,10 @@ def _copy_source(source: Path, destination: Path) -> None:
 
 
 def _copy_referenced_images(
-    context: Any,
+    references: set[str],
     job_dir: Path,
     image_root: Path,
-    organization_id: str | None = None,
 ) -> int:
-    references: set[str] = set()
-
-    def collect(value: Any, depth: int = 0) -> None:
-        if depth > MAX_DEPTH:
-            return
-        if isinstance(value, dict):
-            for child in value.values():
-                collect(child, depth + 1)
-        elif isinstance(value, list):
-            for child in value:
-                collect(child, depth + 1)
-        elif isinstance(value, str):
-            managed = normalize_managed_image_path(value)
-            if not managed:
-                return
-            parts = managed.split("/")
-            if len(parts) == 4 and (
-                not organization_id
-                or not managed_image_path_matches_tenant(
-                    managed,
-                    organization_id,
-                )
-            ):
-                raise DocumentIpcError(
-                    "Ảnh của tác vụ không thuộc tổ chức hiện tại."
-                )
-            references.add(managed)
-
-    collect(context)
     total_bytes = 0
     for managed in references:
         parts = managed.split("/")
@@ -269,19 +236,18 @@ def write_job_manifest(
             prepared_templates.append(target)
         prepared["templates"] = prepared_templates
     image_bytes = 0
-    if "context" in prepared and copy_images:
+    if "context" in prepared:
         context_manifest = prepared.get("context_manifest")
-        organization_id = (
-            str(context_manifest.get("media_organization_id") or "").strip()
-            if isinstance(context_manifest, dict)
-            else ""
-        )
-        image_bytes = _copy_referenced_images(
-            prepared["context"],
-            path.parent,
-            image_root,
-            organization_id or None,
-        )
+        try:
+            references = validate_docx_image_references(prepared["context"], context_manifest)
+        except ValueError as exc:
+            raise DocumentIpcError(str(exc)) from exc
+        if copy_images:
+            image_bytes = _copy_referenced_images(
+                references,
+                path.parent,
+                image_root,
+            )
 
     if not re.fullmatch(r"input(?:-[a-z0-9]+)*", str(sidecar_prefix)):
         raise DocumentIpcError("Tiền tố tệp IPC không hợp lệ.")

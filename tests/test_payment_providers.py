@@ -294,6 +294,13 @@ def _provider_with_signed_response(data):
     )
 
 
+@pytest.mark.parametrize("link_id", ["../foreign", "safe?redirect=evil", "", "link-from-get"])
+def test_recovered_payos_url_never_interprets_a_noncanonical_link_id(link_id):
+    data = {"id": link_id, "orderCode": 123, "amount": 2000,
+            "status": "PENDING", "transactions": []}
+    assert not _provider_with_signed_response(data).get_payment(123).get("checkoutUrl")
+
+
 @pytest.mark.parametrize("operation", ["get", "cancel"])
 @pytest.mark.parametrize(
     "url",

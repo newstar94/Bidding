@@ -169,14 +169,11 @@ def test_restart_scanner_recovers_stale_operation_with_durable_scope(monkeypatch
     try:
         monkeypatch.setattr(routes, "database", database)
 
-        class ImmediateThread:
-            def __init__(self, *, target, args, **_kwargs):
-                self.target, self.args = target, args
+        def submit(context, _operation_id, **_kwargs):
+            captured.append(context)
+            return True
 
-            def start(self):
-                captured.append(self.args[0])
-
-        monkeypatch.setattr(routes.threading, "Thread", ImmediateThread)
+        monkeypatch.setattr(routes, "_start_owned_plan_enrichment", submit)
         monkeypatch.setattr(routes, "_run_plan_enrichment", lambda *_args: None)
         assert routes.recover_stale_plan_enrichments(limit=4) == 1
         assert captured == [{
@@ -338,14 +335,11 @@ def test_recovery_scan_does_not_starve_valid_rows_behind_missing_session(monkeyp
             connection.close()
         monkeypatch.setattr(routes, "database", database)
 
-        class ImmediateThread:
-            def __init__(self, *, target, args, **_kwargs):
-                self.args = args
+        def submit(context, _operation_id, **_kwargs):
+            captured.append(context)
+            return True
 
-            def start(self):
-                captured.append(self.args[0])
-
-        monkeypatch.setattr(routes.threading, "Thread", ImmediateThread)
+        monkeypatch.setattr(routes, "_start_owned_plan_enrichment", submit)
         monkeypatch.setattr(routes, "_run_plan_enrichment", lambda *_args: None)
         # The valid row must be found even though an invalid older row exists;
         # a pre-fix LIMIT query returned zero and retried the invalid row forever.

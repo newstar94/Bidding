@@ -16,6 +16,7 @@ from backend.shared.async_io import (
     BlockingIOTimeoutError,
     _BlockingIOPool,
     _bounded_env_int,
+    run_owned_task,
 )
 
 
@@ -42,6 +43,7 @@ async def run_database_read(
     function: Callable[..., Any],
     *args: Any,
     timeout_seconds: float = 30.0,
+    _wait_for_completion: bool = False,
     **kwargs: Any,
 ) -> Any:
     started = time.perf_counter()
@@ -52,6 +54,7 @@ async def run_database_read(
             function,
             *args,
             timeout_seconds=timeout_seconds,
+            wait_for_completion=_wait_for_completion,
             timing_callback=_record_executor_timing("read"),
             **kwargs,
         )
@@ -119,3 +122,16 @@ def get_database_io_stats() -> dict[str, BlockingIOStats]:
         "read": _read_pool.stats(),
         "write": _write_lane.stats(),
     }
+
+
+async def run_owned_database_read(function, *args, timeout_seconds=30.0, **kwargs):
+    """Preserve read admission, timing and errors while owning submitted work."""
+    return await run_owned_task(run_database_read(
+        function, *args, timeout_seconds=timeout_seconds,
+        _wait_for_completion=True, **kwargs,
+    ))
+
+
+async def run_owned_database_write(function, *args, **kwargs):
+    """Preserve the write lane and wait for its transaction on cancellation."""
+    return await run_owned_task(run_database_write(function, *args, **kwargs))

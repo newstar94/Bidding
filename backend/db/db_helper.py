@@ -21,6 +21,8 @@ from psycopg import sql
 from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool, PoolTimeout
 
+from backend.db.transport import resolve_sslmode
+
 from backend.shared.date_utils import VIETNAM_TIMEZONE, VIETNAM_TIMEZONE_NAME
 
 
@@ -375,6 +377,7 @@ class PostgresDatabase:
 
     def __init__(self, database_url: str | None = None):
         self._database_url = str(database_url or os.environ.get("DATABASE_URL", "")).strip()
+        self._use_environment_tls = database_url is None
         self._pool: ConnectionPool | None = None
         self._pool_lock = threading.Lock()
 
@@ -396,6 +399,20 @@ class PostgresDatabase:
             if self._pool is not None:
                 raise RuntimeError("Cannot reconfigure an open PostgreSQL pool.")
             self._database_url = str(database_url or "").strip()
+            self._use_environment_tls = False
+
+    def effective_sslmode(self, environ=None):
+        environment = os.environ if environ is None else environ
+        return resolve_sslmode(
+            self.database_url, environment if self._use_environment_tls else {},
+        )
+
+    def _tls_connection_options(self):
+        if not self._use_environment_tls or "DATABASE_SSLMODE" not in os.environ:
+            # Explicit URLs belong to independent consumers such as the document
+            # worker. They retain their own validated transport configuration.
+            return {}
+        return {"sslmode": self.effective_sslmode()}
 
     @staticmethod
     def _configure_connection(connection: psycopg.Connection[Any]) -> None:
@@ -447,6 +464,7 @@ class PostgresDatabase:
                     _bounded_int("DATABASE_POOL_MAX_LIFETIME_SECONDS", 1800, 60, 7200)
                 ),
                 kwargs={
+                    **self._tls_connection_options(),
                     "autocommit": False,
                     "row_factory": compat_row_factory,
                     "connect_timeout": _bounded_int(
@@ -486,6 +504,7 @@ class PostgresDatabase:
 
         connection = psycopg.connect(
             self.database_url,
+            **self._tls_connection_options(),
             autocommit=True,
             row_factory=compat_row_factory,
             connect_timeout=_bounded_int(

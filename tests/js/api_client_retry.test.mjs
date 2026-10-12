@@ -305,6 +305,68 @@ test("external abort listener is retained through body consumption and then rele
 });
 
 
+test("API transport retains the native response body and metadata", async () => {
+  const nativeResponse = new Response("native body");
+  const nativeBody = nativeResponse.body;
+  Object.defineProperty(nativeResponse, "url", { value: "https://example.test/api/body" });
+  const response = await apiFetch("/api/body", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 0,
+  }, async () => nativeResponse);
+
+  assert.equal(response, nativeResponse);
+  assert.equal(response.body, nativeBody);
+  assert.equal(response.body.locked, false);
+  assert.equal(response.url, "https://example.test/api/body");
+  assert.equal(await response.text(), "native body");
+});
+
+
+test("a native response clone retains the body timeout after headers", async () => {
+  const response = await apiFetch("/api/clone", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 15,
+  }, async (_url, options) => stalledResponse(options, "application/json"));
+
+  await assert.rejects(response.clone().json(), (error) => error?.name === "TimeoutError");
+});
+
+
+test("native stream readers retain cancellation until done and then release it", async () => {
+  const signal = new CountingSignal();
+  const response = await apiFetch("/api/stream", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 0,
+    signal,
+  }, async () => new Response("chunk"));
+  const reader = response.body.getReader();
+
+  assert.equal(signal.listeners.size, 1);
+  assert.equal(new TextDecoder().decode((await reader.read()).value), "chunk");
+  assert.equal(signal.listeners.size, 1);
+  assert.equal((await reader.read()).done, true);
+  assert.equal(signal.listeners.size, 0);
+  reader.releaseLock();
+});
+
+
+test("cancelling a native response body releases its caller listener", async () => {
+  const signal = new CountingSignal();
+  const response = await apiFetch("/api/discard", {
+    csrf: false,
+    retries: 0,
+    timeoutMs: 0,
+    signal,
+  }, async () => new Response("discard"));
+
+  await response.body.cancel();
+  assert.equal(signal.listeners.size, 0);
+});
+
+
 test("HTML gateway errors are never exposed as the API error message", async () => {
   const html = "<!DOCTYPE html><html><head><title>502 Bad gateway</title></head>"
     + `<body>${"upstream failure ".repeat(500)}</body></html>`;

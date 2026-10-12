@@ -23,6 +23,7 @@ from backend.security.turnstile import (
     get_turnstile_config,
 )
 from backend.ai.configuration import get_ai_config
+from backend.db.transport import resolve_sslmode
 from backend.procurement_lookup.config import (
     ProcurementLookupConfigurationError,
     ProcurementLookupSettings,
@@ -434,17 +435,14 @@ def _validate_postgresql_configuration(database, environ, *, production):
     if parsed.password is None:
         raise StartupValidationError("DATABASE_URL must include database credentials.")
     if production:
-        query = {
-            key.casefold(): value.casefold()
-            for key, value in (
-                item.split("=", 1) if "=" in item else (item, "")
-                for item in parsed.query.split("&")
-                if item
+        try:
+            resolver = getattr(database, "effective_sslmode", None)
+            sslmode = (
+                resolver(environ) if callable(resolver)
+                else resolve_sslmode(raw_url, environ)
             )
-        }
-        sslmode = str(
-            environ.get("DATABASE_SSLMODE", query.get("sslmode", ""))
-        ).strip().casefold()
+        except ValueError as error:
+            raise StartupValidationError("PostgreSQL sslmode is invalid.") from error
         if sslmode != "verify-full":
             raise StartupValidationError(
                 "PostgreSQL production connections require sslmode=verify-full."

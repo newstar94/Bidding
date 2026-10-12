@@ -1,7 +1,6 @@
 """ASGI lifecycle, readiness and background maintenance orchestration."""
 
 import asyncio
-import contextlib
 import os
 import threading
 import time
@@ -40,7 +39,7 @@ from backend.observability.metrics import (
     monitor_multiprocess_metrics,
     monitor_operational_artifacts,
 )
-from backend.shared.async_io import run_blocking_io
+from backend.shared.async_io import finish_submitted_task, run_owned_blocking_io as run_blocking_io
 from backend.shared.audit_monitor import (
     monitor_audit_chain,
     verify_audit_chain_before_ready,
@@ -321,10 +320,11 @@ def _purge_derived_images(image_dir):
         log_error(exc, "derived_image_cleanup", level="WARN")
 
 
-def _run_retention_cleanup(database, image_dir):
-    while True:
-        time.sleep(1800)
+def _run_retention_cleanup(database, image_dir, stop_event):
+    while not stop_event.wait(1800):
         _purge_retained_rows(database)
+        if stop_event.is_set():
+            return
         _purge_derived_images(image_dir)
 
 
@@ -349,19 +349,22 @@ async def application_lifespan(
     application.state.startup_complete = False
     application.state.readiness_reason = "STARTUP_INCOMPLETE"
     application.state.event_loop_lag_ms = 0.0
-    monitor_task = None
-    audit_monitor_task = None
-    artifact_monitor_task = None
-    multiprocess_metrics_task = None
-    broker_task = None
-    email_delivery_task = None
-    document_queue_task = None
-    billing_worker_task = None
-    validation_artifact_janitor_task = None
-    word_template_projection_task = None
-    word_template_retention_task = None
+    background_tasks = []
+    retention_stop_event = threading.Event()
     procurement_recovery_stop_event = threading.Event()
+    background_threads = []
+    stop_enrichment_children = None
+
+    def start_task(coroutine):
+        background_tasks.append(asyncio.create_task(coroutine))
+
     try:
+        from backend.procurement_import.routes import (
+            begin_plan_enrichment_lifecycle,
+            request_plan_enrichment_stop,
+        )
+        begin_plan_enrichment_lifecycle()
+        stop_enrichment_children = request_plan_enrichment_stop
         validate_startup(database)
         validate_artifact_store_configuration()
         validate_document_worker_configuration()
@@ -418,126 +421,99 @@ async def application_lifespan(
                 # application available and let the normal bounded request
                 # policy retry if startup prewarm could not reach it.
                 log_error(exc, "initialize_procurement_source", level="WARN")
-    except Exception as exc:
-        log_error(exc, "startup_database_init")
-        raise
-
-    application.state.startup_complete = True
-    application.state.ready = True
-    application.state.readiness_reason = None
-    monitor_task = asyncio.create_task(_monitor_event_loop(application))
-    audit_monitor_task = asyncio.create_task(
-        monitor_audit_chain(database, application=application)
-    )
-    artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
-    filesystem_metrics_task = asyncio.create_task(monitor_filesystem_metrics())
-    multiprocess_metrics_task = asyncio.create_task(
-        monitor_multiprocess_metrics(application)
-    )
-    validation_artifact_janitor_task = asyncio.create_task(
-        run_validation_artifact_janitor()
-    )
-    word_template_projection_task = asyncio.create_task(
-        run_legacy_alias_projection_worker(database)
-    )
-    word_template_retention_task = asyncio.create_task(
-        run_word_template_retention_janitor(database)
-    )
-    email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
-    if billing_worker_enabled():
-        billing_worker_task = asyncio.create_task(run_billing_worker(database))
-    if not external_document_worker_enabled():
-        document_queue_task = asyncio.create_task(
-            run_durable_document_queue_worker(database)
-        )
-    try:
+        start_task(_monitor_event_loop(application))
+        start_task(monitor_audit_chain(database, application=application))
+        start_task(monitor_operational_artifacts())
+        start_task(monitor_filesystem_metrics())
+        start_task(monitor_multiprocess_metrics(application))
+        start_task(run_validation_artifact_janitor())
+        start_task(run_legacy_alias_projection_worker(database))
+        start_task(run_word_template_retention_janitor(database))
+        start_task(run_email_delivery_worker(database))
+        if billing_worker_enabled():
+            start_task(run_billing_worker(database))
+        if not external_document_worker_enabled():
+            start_task(run_durable_document_queue_worker(database))
         from backend.sync.websocket import _pending_broker_start_id, run_websocket_event_broker
         broker_cursor = await run_blocking_io(_pending_broker_start_id, timeout_seconds=5.0)
-        broker_task = asyncio.create_task(run_websocket_event_broker(start_after_id=broker_cursor))
-    except Exception:
-        for task in (
-            monitor_task,
-            audit_monitor_task,
-            artifact_monitor_task,
-            filesystem_metrics_task,
-            multiprocess_metrics_task,
-            email_delivery_task,
-            billing_worker_task,
-            document_queue_task,
-            validation_artifact_janitor_task,
-            word_template_projection_task,
-            word_template_retention_task,
-        ):
-            if task is not None:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-        application.state.ready = False
-        application.state.startup_complete = False
-        raise
-
-    threading.Thread(
-        target=_start_optional_services,
-        args=(background_startup_delay_seconds, enable_image_cache_prewarm),
-        daemon=True,
-        name="optional-background-startup",
-    ).start()
-    threading.Thread(
-        target=_run_retention_cleanup,
-        args=(database, image_dir),
-        daemon=True,
-        name="cache-retention-cleanup",
-    ).start()
-    # Durable linked-notice enrichment survives worker crashes.  The recovery
-    # scanner claims only pending/stale rows and is fenced by the operation
-    # heartbeat, so multiple web workers may run it safely.
-    try:
-        from backend.procurement_import.routes import (
-            run_plan_enrichment_recovery_worker,
-        )
+        start_task(run_websocket_event_broker(start_after_id=broker_cursor))
 
         threading.Thread(
-            target=run_plan_enrichment_recovery_worker,
-            args=(procurement_recovery_stop_event,),
+            target=_start_optional_services,
+            args=(background_startup_delay_seconds, enable_image_cache_prewarm),
             daemon=True,
-            name="procurement-enrichment-recovery",
+            name="optional-background-startup",
         ).start()
-    except Exception as exc:  # noqa: BLE001 - optional worker must not block boot.
-        log_error(exc, "procurement_enrichment_recovery_start", level="WARN")
-    if enable_partner_lookup_worker:
-        from backend.partners.partner_lookup_service import (
-            start_partner_background_service,
+        retention_thread = threading.Thread(
+            target=_run_retention_cleanup,
+            args=(database, image_dir, retention_stop_event),
+            daemon=True,
+            name="cache-retention-cleanup",
         )
-
-        start_partner_background_service()
-    try:
-        yield
-    finally:
-        procurement_recovery_stop_event.set()
-        for task in (
-            monitor_task,
-            audit_monitor_task,
-            artifact_monitor_task,
-            filesystem_metrics_task,
-            multiprocess_metrics_task,
-            broker_task,
-            email_delivery_task,
-            billing_worker_task,
-            document_queue_task,
-            validation_artifact_janitor_task,
-            word_template_projection_task,
-            word_template_retention_task,
-        ):
-            if task is not None:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-        application.state.ready = False
-        application.state.startup_complete = False
-        if _procurement_source_initialization_enabled():
-            from backend.integrations.muasamcong_browser.registry import (
-                close_muasamcong_source,
+        retention_thread.start()
+        background_threads.append(retention_thread)
+        # The recovery scanner also holds DB connections during a scan. Stop
+        # and join it before closing the pool, including failed startup paths.
+        try:
+            from backend.procurement_import.routes import (
+                run_plan_enrichment_recovery_worker,
             )
 
-            close_muasamcong_source()
-        database.close()
+            recovery_thread = threading.Thread(
+                target=run_plan_enrichment_recovery_worker,
+                args=(procurement_recovery_stop_event,),
+                daemon=True,
+                name="procurement-enrichment-recovery",
+            )
+            recovery_thread.start()
+            background_threads.append(recovery_thread)
+        except Exception as exc:  # noqa: BLE001 - optional worker must not block boot.
+            log_error(exc, "procurement_enrichment_recovery_start", level="WARN")
+        if enable_partner_lookup_worker:
+            from backend.partners.partner_lookup_service import (
+                start_partner_background_service,
+            )
+
+            start_partner_background_service()
+        application.state.startup_complete = True
+        application.state.ready = True
+        application.state.readiness_reason = None
+        yield
+    except Exception as exc:
+        log_error(exc, "application_lifespan")
+        raise
+    finally:
+        application.state.ready = False
+        application.state.startup_complete = False
+        retention_stop_event.set()
+        procurement_recovery_stop_event.set()
+        if stop_enrichment_children is not None:
+            background_threads.extend(stop_enrichment_children())
+        from backend.partners.partner_lookup_service import (
+            request_partner_background_service_stop,
+        )
+        partner_thread = request_partner_background_service_stop()
+        if partner_thread is not None:
+            background_threads.append(partner_thread)
+        # Complete owned cleanup even when the ASGI shutdown caller is
+        # cancelled. Owned workers finish before database.close().
+        async def shutdown():
+            for task in background_tasks:
+                task.cancel()
+            results = await asyncio.gather(*background_tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    log_error(result, "background_worker_shutdown", level="WARN")
+            for thread in background_threads:
+                await asyncio.to_thread(thread.join)
+            try:
+                if _procurement_source_initialization_enabled():
+                    from backend.integrations.muasamcong_browser.registry import (
+                        close_muasamcong_source,
+                    )
+
+                    close_muasamcong_source()
+            finally:
+                database.close()
+
+        await finish_submitted_task(asyncio.create_task(shutdown()))

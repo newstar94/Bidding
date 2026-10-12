@@ -22,8 +22,10 @@ from backend.shared.safe_http import open_allowlisted_https
 
 
 _partner_worker_started = False
+_partner_worker_thread = None
 _partner_worker_lock = threading.Lock()
 _partner_work_event = threading.Event()
+_partner_stop_event = threading.Event()
 _lookup_locks = tuple(threading.Lock() for _ in range(64))
 PARTNER_LOOKUP_CACHE_VERSION = "4"
 
@@ -1048,7 +1050,7 @@ def _process_partner_enrichment_job(job):
 
 def _drain_partner_enrichment_jobs() -> int:
     processed = 0
-    while True:
+    while not _partner_stop_event.is_set():
         job = _claim_partner_enrichment_job()
         if job is None:
             return processed
@@ -1057,6 +1059,7 @@ def _drain_partner_enrichment_jobs() -> int:
             _process_partner_enrichment_job(job)
         except Exception as error:
             log_error(error, "PartnerLookup.DurableWorker")
+    return processed
 
 
 def run_partner_lookup_worker():
@@ -1068,28 +1071,64 @@ def run_partner_lookup_worker():
         "PARTNER_LOOKUP_MAX_POLL_SECONDS",
         default_initial=1.0,
     )
-    while True:
-        signaled = _partner_work_event.wait(timeout=backoff.next_delay())
-        _partner_work_event.clear()
-        if signaled:
-            backoff.reset()
-        try:
-            processed = _drain_partner_enrichment_jobs()
-        except Exception as error:
-            log_error(error, "PartnerLookup.DurableWorker")
-            processed = 0
-        if processed:
-            backoff.reset()
+    global _partner_worker_started, _partner_worker_thread
+    try:
+        while not _partner_stop_event.is_set():
+            signaled = _partner_work_event.wait(timeout=backoff.next_delay())
+            _partner_work_event.clear()
+            if _partner_stop_event.is_set():
+                return
+            if signaled:
+                backoff.reset()
+            try:
+                processed = _drain_partner_enrichment_jobs()
+            except Exception as error:
+                log_error(error, "PartnerLookup.DurableWorker")
+                processed = 0
+            if processed:
+                backoff.reset()
+    finally:
+        with _partner_worker_lock:
+            if _partner_worker_thread is threading.current_thread():
+                _partner_worker_thread = None
+                _partner_worker_started = False
 
 
 def start_partner_background_service():
-    global _partner_worker_started
+    global _partner_worker_started, _partner_worker_thread
     with _partner_worker_lock:
         if _partner_worker_started:
-            return
+            return _partner_worker_thread
+        _partner_stop_event.clear()
         _partner_worker_started = True
-        worker = threading.Thread(target=run_partner_lookup_worker, daemon=True)
-        worker.start()
+        worker = threading.Thread(
+            target=run_partner_lookup_worker, daemon=True, name="partner-enrichment-worker",
+        )
+        _partner_worker_thread = worker
+        try:
+            worker.start()
+        except BaseException:
+            _partner_worker_thread = None
+            _partner_worker_started = False
+            raise
+        return worker
+
+
+def request_partner_background_service_stop():
+    """Signal stop immediately; the lifecycle owner must join the returned worker."""
+    with _partner_worker_lock:
+        _partner_stop_event.set()
+        _partner_work_event.set()
+        return _partner_worker_thread
+
+
+def stop_partner_background_service(*, timeout=30.0):
+    """Stop and join within the deadline; report whether in-flight work finished."""
+    worker = request_partner_background_service_stop()
+    if worker is None:
+        return True
+    worker.join(timeout=max(0.0, float(timeout)))
+    return not worker.is_alive()
 
 
 def request_partner_enrichment(organization_id=None, contractor_ids=None):

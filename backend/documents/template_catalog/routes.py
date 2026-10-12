@@ -627,6 +627,7 @@ def _sample_preview_context(document_type):
 def _prepare_catalog_preview(request, version_id, payload):
     from backend.documents.docx_context_policy import (
         REPORT_DOCUMENT_TYPES,
+        collect_authorized_docx_image_paths,
         seal_docx_context,
     )
     from backend.documents.routes_docx import (
@@ -693,6 +694,7 @@ def _prepare_catalog_preview(request, version_id, payload):
             )
             from backend.documents.docx_mapping_service import apply_custom_mappings
             sample_context = _sample_preview_context(document_type)
+            authorized_image_paths = collect_authorized_docx_image_paths(sample_context, organization_id)
             apply_custom_mappings(sample_context, mappings)
             context, manifest = seal_docx_context(
                 document_type,
@@ -700,6 +702,7 @@ def _prepare_catalog_preview(request, version_id, payload):
                 mappings,
                 capabilities,
                 organization_id=organization_id,
+                authorized_image_paths=authorized_image_paths,
             )
         return {
             "role": role,

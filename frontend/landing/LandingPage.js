@@ -3,6 +3,7 @@ const WORKSPACE_PATH = "/tong-quan";
 const LANDING_HISTORY_SCROLL_KEY = "bfLandingScrollY";
 let landingHistoryCaptureInstalled = false;
 let landingMotionCleanup = null;
+let cancelLandingScrollRestoration = null;
 const pricingState = {
   offers: [],
   group: "basic",
@@ -443,10 +444,31 @@ export function installLandingHistoryScrollCapture() {
 export function restoreLandingFragment({ navigationType = landingNavigationType() } = {}) {
   const savedHistoryPosition = Number(history.state?.[LANDING_HISTORY_SCROLL_KEY]);
   if (navigationType === "back_forward" && Number.isFinite(savedHistoryPosition)) {
+    cancelLandingScrollRestoration?.();
     if (savedHistoryPosition > 0) {
       // A history coordinate was recorded against real section heights. Do
       // not restore it against estimates for previously skipped sections.
+      const root = document.documentElement;
+      const priorAnchoring = root.style.overflowAnchor;
+      root.style.overflowAnchor = "none";
       materializeLandingLayout();
+      // Under CPU pressure Chromium can apply a pending anchoring adjustment
+      // after materialization. Finish the canonical scroll after that render
+      // boundary and restore the page's ordinary anchoring behavior.
+      let frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          const stillRestoring = Math.abs(window.scrollY - savedHistoryPosition) <= 1;
+          root.style.overflowAnchor = priorAnchoring;
+          root.getBoundingClientRect();
+          if (stillRestoring) window.scrollTo({ top: savedHistoryPosition, behavior: "instant" });
+          cancelLandingScrollRestoration = null;
+        });
+      });
+      cancelLandingScrollRestoration = () => {
+        window.cancelAnimationFrame(frame);
+        root.style.overflowAnchor = priorAnchoring;
+        cancelLandingScrollRestoration = null;
+      };
     }
     window.scrollTo({ top: savedHistoryPosition, behavior: "instant" });
     return true;
