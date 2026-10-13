@@ -159,7 +159,9 @@ function focusInitialRouteAfterPaint(main, signal) {
     signal.addEventListener("abort", abort, { once: true });
     frame = window.requestAnimationFrame(() => {
       frame = window.requestAnimationFrame(() => {
-        if (!signal.aborted) main?.focus({ preventScroll: true });
+        if (!signal.aborted && !document.activeElement?.closest('[role="dialog"][aria-modal="true"]')) {
+          main?.focus({ preventScroll: true });
+        }
         finish();
       });
     });

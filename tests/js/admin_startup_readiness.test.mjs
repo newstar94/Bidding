@@ -8,6 +8,53 @@ import { chromium } from "playwright";
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
+test("deferred startup focus stays inside an already loaded deep-link drawer", async () => {
+  const organization = { id: "fixture-org", name: "Focus fixture", status: "active", users: [], recentAudit: [], links: {} };
+  const server = createServer(async (request, response) => {
+    const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+    try {
+      if (pathname.startsWith("/admin")) {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end('<!doctype html><html><body><script id="bf-admin-session" type="application/json">{"valid":true,"user":{"name":"Admin","platform_role":"super_admin"}}</script><div id="admin-app"></div><script type="module" src="/frontend/admin-platform/AdminApp.js"></script></body></html>');
+        return;
+      }
+      if (pathname.startsWith("/api/")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(pathname.endsWith("/fixture-org") ? { organization }
+          : { items: [organization], pagination: { page: 1, totalPages: 1, totalRows: 1 } }));
+        return;
+      }
+      const file = resolve(root, `.${pathname}`);
+      if (!file.startsWith(`${root}${sep}`)) throw new Error("Invalid fixture path");
+      response.writeHead(200, { "content-type": extname(file) === ".css" ? "text/css" : "text/javascript" });
+      response.end(await readFile(file));
+    } catch { response.writeHead(404); response.end("Not found"); }
+  });
+  await new Promise(done => server.listen(0, "127.0.0.1", done));
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      const frames = [];
+      window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+      window.releaseAdminFrame = () => frames.splice(0).forEach(callback => callback(performance.now()));
+    });
+    await page.goto(`http://127.0.0.1:${server.address().port}/admin/organizations?detail=fixture-org`);
+    const close = page.locator('[data-admin-detail-drawer] [data-admin-close-detail]');
+    await page.getByRole("heading", { name: "Focus fixture", exact: true }).waitFor();
+    assert.equal(await close.evaluate(element => document.activeElement === element), true);
+    await page.evaluate(() => window.releaseAdminFrame());
+    await page.evaluate(() => window.releaseAdminFrame());
+    await page.waitForFunction(() => performance.getEntriesByName("bf:loader:hidden").length === 1);
+    assert.equal(await close.evaluate(element => document.activeElement === element), true,
+      "the deferred main focus must not take focus from the hydrated dialog");
+  } finally {
+    await browser?.close(); server.closeAllConnections();
+    await new Promise(done => server.close(done));
+  }
+});
+
 test("admin startup waits for overview and health data while showing the shell immediately", async () => {
   const pending = new Map();
   let overviewRequested, healthRequested;
