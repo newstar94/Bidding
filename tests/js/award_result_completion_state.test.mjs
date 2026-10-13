@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAwardResultApprovalWorkflow } from "../../frontend/packages/detail/AwardResultApprovalWorkflow.js";
 import { packageWorkspaceFor } from "../../frontend/packages/detail/PackageWorkspaceState.js";
+import { commitPackageAwardDependencies } from "../../frontend/packages/packageEvaluationProgress.js";
 
 function scopedContext() {
   const batch = { id: "batch", status: "IN_PROGRESS", sequenceNo: 1, lotIds: ["lot"], lotCodes: ["PP01"] };
@@ -73,4 +74,60 @@ test("pending dependency sync never finalizes a lot or clears the approval draft
   assert.equal(result.kind, "sync_failed");
   assert.equal(context.workspace.isDirty(), true);
   assert.deepEqual(context.renders, []);
+});
+
+test("lot approval renders the committed result after dependency sync replaces the package projection", async () => {
+  const context = scopedContext();
+  context.pkg.trangThai = "Đang chấm thầu";
+  const beforeApproval = structuredClone(context.pkg);
+  const model = context.view.model;
+  model.commitLocalMutation = () => {};
+  model.persistChanges = async () => {};
+  model.flushMutationOutbox = async () => {};
+  model.applyCommittedRowVersions = async entries => {
+    for (const entry of entries) model.state.goithau.find(item => item.id === entry.id).rowVersion = entry.rowVersion;
+  };
+  const controller = {
+    model,
+    async autoSync() {
+      // A canonical dependency response can replace the package object while
+      // the separate lot-finalize operation still owns the entered award.
+      model.state.goithau = [structuredClone(beforeApproval)];
+      model.state.goithau[0].tenGoiThau = "Canonical unrelated name";
+      return { ok: true };
+    },
+  };
+  let rendered;
+  context.view.showPackageDetails = async () => { rendered = structuredClone(model.state.goithau[0]); };
+  const workflow = createAwardResultApprovalWorkflow({
+    commitDecision: async () => ({ ok: true }),
+    commitDependencies: commitPackageAwardDependencies,
+    finalizeLotBatch: async () => ({ packageStatus: "PARTIALLY_COMPLETED", packageRowVersion: 4, counts: { pendingLots: 1 } }),
+  });
+  const outcome = await workflow.execute({ ...context, appController: controller });
+  assert.equal(outcome.kind, "scoped_awarded");
+  assert.equal(rendered.rowVersion, 4);
+  assert.equal(rendered.trangThai, "Đã có kết quả một phần");
+  assert.equal(rendered.soQuyetDinhKetQua, context.command.decision.number);
+  assert.equal(JSON.parse(rendered.danhGiaHsdtMetadata).technical.lotBatches.batch.status, "FINAL");
+  assert.equal(rendered.tenGoiThau, "Canonical unrelated name");
+});
+
+test("a late lot-finalize response preserves a newer canonical package projection", async () => {
+  const context = scopedContext();
+  const newer = { ...structuredClone(context.pkg), rowVersion: 5,
+    trangThai: "Đã có kết quả", soQuyetDinhKetQua: "Newer official decision" };
+  const model = context.view.model;
+  let versions;
+  model.applyCommittedRowVersions = async entries => { versions = entries; };
+  const workflow = createAwardResultApprovalWorkflow({
+    commitDecision: async () => ({ ok: true }),
+    async commitDependencies() { model.state.goithau = [newer]; return { ok: true }; },
+    finalizeLotBatch: async () => ({ packageStatus: "PARTIALLY_COMPLETED", packageRowVersion: 4, counts: { pendingLots: 1 } }),
+  });
+  await workflow.execute(context);
+  assert.equal(model.state.goithau[0].rowVersion, 5);
+  assert.equal(model.state.goithau[0].trangThai, "Đã có kết quả");
+  assert.equal(model.state.goithau[0].soQuyetDinhKetQua, "Newer official decision");
+  assert.deepEqual(versions, [{ table: "goithau", id: context.pkg.id, rowVersion: 5 }]);
 });

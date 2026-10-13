@@ -306,11 +306,29 @@ export function createAwardResultApprovalWorkflow(ports = productionPorts) {
           pkg.ngayQuyetDinhKetQua = decision.date;
         }
         if (shouldFinalize) {
-          pkg.rowVersion = lifecycle.packageRowVersion;
+          // Dependency sync may replace the package projection while finalize
+          // still owns the entered award. Apply only the committed award fields
+          // to the current object before persisting its server row version.
+          const currentPackage = view.model.state.goithau.find(
+            (record) => String(record.id) === String(pkg.id),
+          );
+          if (currentPackage && currentPackage !== pkg) {
+            if (!Number.isInteger(currentPackage.rowVersion)
+              || currentPackage.rowVersion <= lifecycle.packageRowVersion) {
+              for (const field of ["phanLoList", "nhaThauTrungThauId", "giaTrungThau",
+                "thoiGianGoiThau", "thoiGianHopDong", "danhGiaHsdtMetadata",
+                "trangThai", "soQuyetDinhKetQua", "ngayQuyetDinhKetQua"]) {
+                currentPackage[field] = pkg[field];
+              }
+            }
+            pkg = currentPackage;
+          }
+          const committedRowVersion = Math.max(pkg.rowVersion || 0, lifecycle.packageRowVersion);
+          pkg.rowVersion = committedRowVersion;
           await view.model.applyCommittedRowVersions?.([{
             table: "goithau",
             id: pkg.id,
-            rowVersion: lifecycle.packageRowVersion,
+            rowVersion: committedRowVersion,
           }]);
           await view.renderGoiThauTable();
         } else {

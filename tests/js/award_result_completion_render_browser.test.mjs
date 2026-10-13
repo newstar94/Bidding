@@ -17,17 +17,22 @@ async function fillAwardForm(page) {
   await page.locator(".row-tg-goithau").fill("27 tháng");
 }
 
-async function withAwardPanel(exercise) {
+async function withAwardPanel(exercise, { scoped = false } = {}) {
   const server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, "http://localhost").pathname;
       if (pathname === "/") {
         response.setHeader("content-type", "text/html; charset=utf-8");
+        response.setHeader("set-cookie", "csrf_token=award-browser-fixture; Path=/; SameSite=Lax");
         response.end('<!doctype html><html><head><link rel="stylesheet" data-runtime-styles href="/views/css/runtime-styles.css"></head><body><div id="lazy-tab-root"></div></body></html>');
         return;
       }
       if (pathname.startsWith("/api/")) {
         response.setHeader("content-type", "application/json");
+        if (pathname.endsWith("/finalize")) {
+          response.end(JSON.stringify({ packageStatus: "PARTIALLY_COMPLETED", packageRowVersion: 4, counts: { pendingLots: 1 } }));
+          return;
+        }
         response.end(JSON.stringify({ contractors: [], results: [] }));
         return;
       }
@@ -45,7 +50,7 @@ async function withAwardPanel(exercise) {
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.evaluate(async () => {
+    await page.evaluate(async ({ scoped }) => {
       const [{ BiddingController }, { BiddingView }, detail, refs, runtime, formatters, workspace] = await Promise.all([
         import("/frontend/app/BiddingController.js"), import("/frontend/app/BiddingView.js"),
         import("/frontend/packages/GoiThauDetail.js"), import("/frontend/app/controllerRef.js"),
@@ -63,6 +68,18 @@ async function withAwardPanel(exercise) {
         thoiGianMoEhsdxtc: "2026-09-29 08:45:00",
         danhGiaHsdtMetadata: JSON.stringify({ is1G2T: true, technical: { saved: true, qualifiedSaved: true },
           financial: { saved: true }, result: {} }) };
+      if (scoped) {
+        pkg.phanLo = "Có";
+        pkg.trangThai = "Đang chấm thầu";
+        pkg.phanLoList = [{ id: "lot", maPhanLo: "PP01", tenPhanLo: "Lô thứ nhất", giaPhanLo: 5000000000 },
+          { id: "lot-pending", maPhanLo: "PP02", tenPhanLo: "Lô chưa đánh giá", giaPhanLo: 1000000 }];
+        const batch = { id: "batch", status: "IN_PROGRESS", sequenceNo: 1, saved: true, qualifiedSaved: true,
+          lotIds: ["lot"], lotCodes: ["PP01"], result: {} };
+        pkg.danhGiaHsdtMetadata = JSON.stringify({ is1G2T: true,
+          technical: { saved: true, qualifiedSaved: true, activeLotBatchId: "batch", lotBatches: { batch } },
+          financial: { saved: true, activeLotBatchId: "batch", lotBatches: { batch } }, result: {} });
+      }
+      const beforeApproval = structuredClone(pkg);
       const alerts = [], writes = [];
       let finishSync;
       const sync = new Promise((done) => { finishSync = done; });
@@ -79,7 +96,11 @@ async function withAwardPanel(exercise) {
         getStorageHydrationStatus: () => ({ state: "ready" }), commitLocalMutation() {},
         async persistChanges(table, changes) { writes.push({ table, changes: structuredClone(changes) }); },
         async flushMutationOutbox() {},
+        async applyCommittedRowVersions(entries) {
+          for (const entry of entries) model.state.goithau.find(item => item.id === entry.id).rowVersion = entry.rowVersion;
+        },
       };
+      if (scoped) model.state.thongtinmothau[0].maPhanLo = "PP01";
       const view = { model, elements: {}, _editingState: {},
         getActiveElement: BiddingView.prototype.getActiveElement,
         initFlatpickr() {}, createIconsScoped() {}, enhanceVisibleContent() {}, renderGoiThauTable() {},
@@ -94,6 +115,7 @@ async function withAwardPanel(exercise) {
       controller.autoSync = async () => {
         window.__award.syncStarted = true;
         const result = await sync;
+        if (scoped) model.state.goithau = [structuredClone(beforeApproval)];
         window.__award.committed = structuredClone(model.state);
         return result;
       };
@@ -108,7 +130,7 @@ async function withAwardPanel(exercise) {
         dirty: () => workspace.packageWorkspaceFor(view).isDirty(),
         clearDirty: () => workspace.completePackageWorkspaceEdit(view),
       };
-    });
+    }, { scoped });
     await exercise(page);
   } finally {
     await browser?.close();
@@ -116,6 +138,25 @@ async function withAwardPanel(exercise) {
     await new Promise((done) => server.close(done));
   }
 }
+
+test("confirmed scoped award renders its official round after dependency projection replacement", async () => {
+  await withAwardPanel(async page => {
+    await fillAwardForm(page);
+    await page.evaluate(() => { window.pendingApproval = document.querySelector("#btn-approve-award").onclick(); });
+    await page.waitForFunction(() => window.__award.syncStarted);
+    await page.evaluate(async () => {
+      window.__award.finishSync({ ok: true });
+      await window.pendingApproval;
+    });
+    const diagnostics = await page.evaluate(() => ({ alerts: window.__award.alerts,
+      pkg: window.__award.model.state.goithau[0],
+      render: { ...document.getElementById("detail-workflow-content-wrapper")?.dataset } }));
+    assert.equal(await page.locator(".evaluation-round-card").count(), 1, JSON.stringify(diagnostics));
+    assert.equal(await page.locator("#detail-workflow-content-wrapper").getAttribute("data-rendered-package-row-version"), "4");
+    assert.equal(await page.locator("#detail-workflow-content-wrapper").getAttribute("data-rendered-package-status"), "Đã có kết quả một phần");
+    assert.equal(await page.evaluate(() => window.__award.dirty()), false);
+  }, { scoped: true });
+});
 
 for (const dirty of [true, false]) {
   test(`confirmed whole-package award renders completed results with dirty=${dirty}`, async () => {

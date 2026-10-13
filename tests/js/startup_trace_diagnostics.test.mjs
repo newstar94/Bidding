@@ -73,13 +73,28 @@ test(`startup tracing ${enabled ? "captures blocking bootstrap" : "stays disable
       child.once("error", reject); child.once("close", done);
     });
     const report = JSON.parse(await readFile(output, "utf8"));
+    // Keep the native observation and trace evidence in CI's test log even
+    // when this temporary fixture directory is removed after an assertion.
+    let traceEvidence = null;
+    if (enabled) {
+      const trace = JSON.parse(await readFile(path.join(traces, "cold-1.json"), "utf8"));
+      traceEvidence = trace.traceEvents
+        .filter(event => event.name === "EvaluateScript" && event.dur > 100_000)
+        .map(event => ({ durationUs: event.dur, timestampUs: event.ts,
+          url: event.args?.data?.url || "" })).slice(0, 5);
+    }
+    const taskDiagnostics = JSON.stringify({ cold: report.cold.samples.map(sample => ({
+      loaderHiddenMs: sample.loaderHiddenMs, longestTaskMs: sample.longestTaskMs, longTasks: sample.longTasks,
+    })), warm: report.warm.samples.map(sample => ({
+      loaderHiddenMs: sample.loaderHiddenMs, longestTaskMs: sample.longestTaskMs, longTasks: sample.longTasks,
+    })), traceEvidence });
     assert.equal(code, 1, diagnostics);
     assert.equal(report.passed, false);
     assert.equal(report.diagnosticTracing, enabled);
     assert.equal(report.thresholds.longTaskLimitMs, 100);
-    assert.ok(report.cold.longestTaskMs > 100);
+    assert.ok(report.cold.longestTaskMs > 100, taskDiagnostics);
     for (const sample of [...report.cold.samples, ...report.warm.samples]) {
-      assert.ok(sample.longestTaskMs > 100, `${sample.mode} must include the completed blocking task`);
+      assert.ok(sample.longestTaskMs > 100, `${sample.mode} must include the completed blocking task: ${taskDiagnostics}`);
     }
     assert.equal(report.cold.samples[0].longTasks[0].phase, "document-bootstrap");
     assert.deepEqual(report.cold.samples[0].runtimeFailures, []);
