@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { installStartupLongTaskObserver, flushStartupLongTasks } from "./startup_long_task_observer.mjs";
 import {
   hasAuthoritativeWorkspaceReadiness,
   hasRequestedRouteReadiness,
@@ -114,28 +115,7 @@ function hostCpuBusyPercent(before, after) {
 }
 
 async function addPerformanceObserver(context) {
-  await context.addInitScript(() => {
-    globalThis.__bfStartupLongTasks = [];
-    try {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          globalThis.__bfStartupLongTasks.push({
-            startTime: entry.startTime,
-            duration: entry.duration,
-            attribution: (entry.attribution || []).map((item) => ({
-              name: item.name || "",
-              containerType: item.containerType || "",
-              containerName: item.containerName || "",
-              containerSrc: item.containerSrc || "",
-            })),
-          });
-        }
-      });
-      observer.observe({ type: "longtask", buffered: true });
-    } catch {
-      // A browser without Long Tasks support still reports all startup marks.
-    }
-  });
+  await context.addInitScript(installStartupLongTaskObserver);
 }
 
 async function isolateHostInjectedResources(page) {
@@ -188,6 +168,7 @@ async function measureNavigation(page, mode, run) {
       throw new Error(`Navigation failed: HTTP ${response?.status() || "unknown"}`);
     }
     await page.waitForFunction(() => performance.getEntriesByName("bf:loader:hidden").length > 0);
+    await page.evaluate(flushStartupLongTasks);
     const browserMetrics = await page.evaluate(({ mode: sampleMode, run: sampleRun }) => {
     const mark = (name) => performance.getEntriesByName(`bf:${name}`).at(-1)?.startTime ?? null;
     const navigation = performance.getEntriesByType("navigation").at(-1);

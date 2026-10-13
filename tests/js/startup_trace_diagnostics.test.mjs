@@ -6,6 +6,34 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
+import { installStartupLongTaskObserver, flushStartupLongTasks } from "../../scripts/startup_long_task_observer.mjs";
+
+test("startup snapshot drains queued Long Tasks after the readiness task ends", async () => {
+  let deliver;
+  const pending = [];
+  const state = {
+    MessageChannel,
+    PerformanceObserver: class {
+      constructor(callback) { deliver = callback; }
+      observe() {}
+      takeRecords() { return pending.splice(0); }
+    },
+  };
+  runInNewContext(`(${installStartupLongTaskObserver.toString()})()`, state);
+  const entry = { startTime: 7, duration: 180, attribution: [] };
+  const snapshot = runInNewContext(`(${flushStartupLongTasks.toString()})()`, state);
+  // Readiness is visible while its enclosing task is still finishing. The
+  // native observer has not delivered its callback when the entry is queued.
+  pending.push(entry);
+  assert.equal(state.__bfStartupLongTasks.length, 0);
+  await snapshot;
+  assert.equal(state.__bfStartupLongTasks.length, 1);
+  assert.equal(state.__bfStartupLongTasks[0].duration, 180);
+  deliver({ getEntries: () => pending.splice(0) });
+  await runInNewContext(`(${flushStartupLongTasks.toString()})()`, state);
+  assert.equal(state.__bfStartupLongTasks.length, 1, "draining must not duplicate observer entries");
+});
 
 for (const enabled of [false, true]) {
 test(`startup tracing ${enabled ? "captures blocking bootstrap" : "stays disabled by default"} without hiding the failed gate`, async () => {
@@ -50,6 +78,9 @@ test(`startup tracing ${enabled ? "captures blocking bootstrap" : "stays disable
     assert.equal(report.diagnosticTracing, enabled);
     assert.equal(report.thresholds.longTaskLimitMs, 100);
     assert.ok(report.cold.longestTaskMs > 100);
+    for (const sample of [...report.cold.samples, ...report.warm.samples]) {
+      assert.ok(sample.longestTaskMs > 100, `${sample.mode} must include the completed blocking task`);
+    }
     assert.equal(report.cold.samples[0].longTasks[0].phase, "document-bootstrap");
     assert.deepEqual(report.cold.samples[0].runtimeFailures, []);
     if (!enabled) {
