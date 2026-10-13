@@ -587,31 +587,12 @@ def validate_document(document, *, require_production_ready=False):
                 if any(price[key] != computed[key] for key in ("subtotal", "tax", "total")):
                     errors.append(_error("TAX_PRICE_MISMATCH", f"offers[{index}].price", "Thuế của gói không khớp thuế suất và cách làm tròn đã cấu hình."))
     if rollout_mode in {"pilot", "production"} or require_production_ready:
-        readiness = document.get("externalReadiness") or {}
-        if not isinstance(readiness, dict):
-            readiness = {}
-        missing = [key for key in ("vatInvoice", "payosMerchant", "credentialWebhook", "ecommercePrivacy", "termsRefund") if not isinstance(readiness.get(key), str) or not readiness[key].strip()]
-        if missing:
-            readiness_labels = {
-                "vatInvoice": "Chính sách thuế (đang chọn Không xuất hóa đơn)" if tax.get("invoiceEnabled") is False else "Chính sách thuế và hóa đơn",
-                "payosMerchant": "Tài khoản payOS",
-                "credentialWebhook": "Bộ khóa và webhook",
-                "ecommercePrivacy": "Thương mại điện tử và quyền riêng tư",
-                "termsRefund": "Điều khoản và hoàn tiền",
-            }
-            message = "Thiếu tham chiếu xác nhận: " + "; ".join(readiness_labels[key] for key in missing) + "."
-            if "vatInvoice" in missing:
-                message += " Điền xác nhận chính sách thuế trong phần Thuế & hóa đơn."
-            if any(key != "vatInvoice" for key in missing):
-                message += " Điền các xác nhận còn lại trong phần payOS & điều kiện mở bán."
-            errors.append(_error("BLOCKED_EXTERNAL", "externalReadiness", message))
-        tax_required = ["approvalReference", "taxInclusive", "taxBasisPoints", "rounding"]
+        tax_required = ["taxInclusive", "taxBasisPoints", "rounding"]
         if tax.get("invoiceEnabled") is not False:
             tax_required.append("invoiceTrigger")
         tax_missing = [key for key in tax_required if tax.get(key) is None]
         if tax_missing:
             tax_labels = {
-                "approvalReference": "Tham chiếu quyết định thuế",
                 "taxInclusive": "Giá niêm yết đã/chưa gồm VAT",
                 "taxBasisPoints": "Thuế suất (%)",
                 "rounding": "Quy tắc làm tròn",
@@ -633,7 +614,7 @@ def validate_document(document, *, require_production_ready=False):
             and bool(profile["credentialReference"].strip())
         ]
         if not healthy:
-            errors.append(_error("NO_HEALTHY_PROVIDER", "providerProfiles", "Chưa có cấu hình payOS sẵn sàng cho mở bán. Trong phần payOS & điều kiện mở bán, dùng cấu hình production, chọn Chế độ = Thanh toán thực tế, Trạng thái trong bản nháp = Đã chuẩn bị cấu hình và điền Tham chiếu bộ khóa. Chỉ xác nhận sẵn sàng sau khi kiểm tra tài khoản, bộ khóa và webhook thực tế."))
+            errors.append(_error("NO_HEALTHY_PROVIDER", "providerProfiles", "Chưa có cấu hình payOS thực tế phù hợp. Khi lưu, hệ thống tự lấy bộ khóa và trạng thái thanh toán từ máy chủ."))
     else:
         warnings.append(_error("SHADOW_ONLY", "rollout.mode", "Cấu hình chỉ sẵn sàng cho fake/local/shadow."))
 

@@ -4314,11 +4314,7 @@ html[data-bf-shell="landing"] body {
 .landing-commercial-groups { display: grid; gap: 2rem; margin-top: 2rem; }
 .landing-commercial-audience { min-width: 0; }
 .landing-commercial-audience-title { margin: 0 0 1rem; color: var(--landing-cobalt-950); font-size: 1.1rem; }
-.landing-commercial-audience-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.landing-commercial-audience[data-pricing-audience="account"] .landing-commercial-audience-grid {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 34rem;
-}
+.landing-commercial-audience-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 .landing-commercial-empty { margin: 0; color: var(--landing-muted); }
 .landing-commercial-groups .landing-commercial-option {
   min-height: 0;
@@ -4332,6 +4328,7 @@ html[data-bf-shell="landing"] body {
 .landing-commercial-option ul { display: block; margin: 1rem 0 1.4rem; padding-left: 1.15rem; list-style: disc; }
 .landing-commercial-option li { display: list-item; font-size: .92rem; line-height: 1.6; }
 .landing-commercial-option li + li { margin-top: .45rem; }
+.landing-credit-pack .landing-commercial-option { gap: 1.4rem; padding-top: 1rem; }
 
 .landing-commercial-groups .landing-commercial-option-label {
   text-transform: none;

@@ -26,6 +26,14 @@ let origin;
 let requests = [];
 let interceptApi = null;
 
+
+function incompleteCandidate() {
+  return { status: 409, payload: { error: "Cấu hình còn thiếu dữ liệu", code: "COMMERCIAL_POLICY_VALIDATION_FAILED" } };
+}
+async function waitForCandidateRejection(page) {
+  await page.locator("#admin-plan-status").filter({ hasText: "Cấu hình còn thiếu dữ liệu" }).waitFor();
+}
+
 function defaultPayload(path, method) {
   if (path === "/api/commercial/admin/overview") return {
     currentRelease: { id: "release-1", versionLabel: "v1", nonSellable: false },
@@ -53,7 +61,7 @@ before(async () => {
       if (url.pathname.startsWith("/api/")) {
         let body = "";
         for await (const chunk of request) body += chunk;
-        const entry = { path: url.pathname, query: Object.fromEntries(url.searchParams), method: request.method, body: body ? JSON.parse(body) : null };
+        const entry = { path: url.pathname, query: Object.fromEntries(url.searchParams), method: request.method, key: request.headers["idempotency-key"], body: body ? JSON.parse(body) : null };
         requests.push(entry);
         const result = await interceptApi?.(entry);
         response.writeHead(result?.status || 200, { "content-type": "application/json" });
@@ -128,7 +136,7 @@ function listConfigurationFixture({ failSave = false, failCreate = false } = {})
     if (entry.path === "/api/commercial/drafts/list-draft" && entry.method === "PATCH") {
       if (failSave) return { status: 409, payload: { error: "Lần sửa đã thay đổi", code: "CONFLICT" } };
       saved = { ...saved, revision: saved.revision + 1, document: entry.body.document };
-      return { payload: saved };
+      return { payload: { id: "saved-list-release", mode: saved.document.rollout.mode, effectiveFrom: 1 } };
     }
     return null;
   };
@@ -143,10 +151,10 @@ test("publication mode can be changed from the published list while retaining al
     assert.equal(await page.locator('[data-admin-package-list]').isVisible(), true);
     assert.equal(await page.locator('[data-admin-package-editor-zone]').isVisible(), false);
     assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.getByText("Đã lưu bản nháp.", { exact: true }).waitFor();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
     const mutations = requests.filter(entry => entry.method !== "GET");
     assert.deepEqual(mutations.map(entry => entry.method), ["POST", "PATCH"]);
     assert.deepEqual(mutations[0].body, { baseReleaseId: "list-release" });
@@ -179,7 +187,7 @@ test("monthly sales state and credit pack values are editable in the list and pr
     assert.equal(await page.locator('[data-admin-credit-field="price"]').inputValue(), "25000");
     assert.equal(await page.locator('[data-admin-credit-field="quantity"]').inputValue(), "100");
     assert.equal(await page.locator('[data-admin-list-sales="gold.internal.yearly"]').inputValue(), "stopped");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
   });
 });
@@ -209,11 +217,11 @@ test("monthly quota edits update both periods preview and saved data and survive
   let reject = false;
   interceptApi = async entry => {
     if (entry.path === "/api/commercial/admin/overview") return { payload: { currentRelease: null, drafts: [{ id: source.id, revision: saved.revision }], releaseHistory: [] } };
-    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: saved };
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: source };
     if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "PATCH") {
       if (reject) return { status: 409, payload: { error: "Xung đột hạn mức", code: "CONFLICT" } };
       saved = { id: source.id, revision: saved.revision + 1, document: entry.body.document };
-      return { payload: saved };
+      return incompleteCandidate();
     }
     return null;
   };
@@ -228,10 +236,10 @@ test("monthly quota edits update both periods preview and saved data and survive
     await year.locator('[data-admin-monthly-quota]').fill("120");
     assert.equal(await year.locator('[data-admin-offer-field="includedProcurementQuota"]').inputValue(), "1800");
     assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /1\.800/u);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.getByText("Đã lưu bản nháp.", { exact: true }).waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.document.offers[0].includedProcurementQuota, 1800);
     assert.equal(saved.document.offers[1].includedProcurementQuota, 120);
     for (const index of [0, 1]) {
@@ -249,7 +257,7 @@ test("monthly quota edits update both periods preview and saved data and survive
     await page.getByText("Xung đột hạn mức", { exact: true }).waitFor();
     assert.equal(await month.locator('[data-admin-monthly-quota]').inputValue(), "150");
     assert.equal(await year.locator('[data-admin-offer-field="includedProcurementQuota"]').inputValue(), "2250");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
   });
 });
@@ -295,7 +303,7 @@ test("editing the monthly base shows and saves ten times the annual price while 
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
@@ -309,9 +317,9 @@ test("editing the monthly base shows and saves ten times the annual price while 
     assert.equal(await year.locator('[data-admin-offer-field="price.total"]').inputValue(), "20000");
     assert.equal(await year.locator('[data-admin-offer-field="price.total"]').getAttribute("readonly"), "");
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /20[.]000/u);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers[0].price.total, 20000);
     assert.equal(saved.offers[1].price.total, 2000);
     assert.equal(saved.offers[0].price.monthlyBaseAmount, 2000);
@@ -323,55 +331,91 @@ test("editing the monthly base shows and saves ten times the annual price while 
     assert.equal(await page.locator('[data-admin-monthly-base="1"]').inputValue(), "1234");
     await page.locator('[data-admin-monthly-base="1"]').fill("1500");
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers[0].price.total, 15000);
     assert.equal(saved.offers[1].price.total, 1500);
   });
 });
 
-test("publishing needs only confirmation and records an automatic audit reason", async () => {
-  const digest = "a".repeat(64);
+test("one Save applies a release without publication confirmation or manual references", async () => {
   const source = draft("draft-a");
   source.document.rollout = { mode: "shadow" };
   interceptApi = async entry => {
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
-    if (entry.path.endsWith("/validate")) return { payload: { errors: [], validationDigest: digest, readinessExpiresAt: 9999999999 } };
-    if (entry.path.endsWith("/publish")) {
-      if (entry.body.validationDigest.length !== 64 || entry.body.reason.trim().length < 3) {
-        return { status: 400, payload: { code: "COMMERCIAL_POLICY_INVALID", error: "Thiếu digest hoặc lý do xuất bản hợp lệ." } };
-      }
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
+      assert.equal(entry.body.publish, true);
+      assert.equal(entry.body.expectedRevision, 1);
+      assert.equal(Object.hasOwn(entry.body, "validationDigest"), false);
+      assert.equal(Object.hasOwn(entry.body, "reason"), false);
       return { payload: { id: "release-test", mode: "shadow", effectiveFrom: 1 } };
     }
     return null;
   };
   await withPage("/admin/plans", async page => {
     await openDraft(page);
-    await page.locator('[data-admin-plan-action="validate"]').click();
-    await page.locator('[data-admin-plan-action="publish"]:enabled').waitFor();
-    await page.locator('[data-admin-plan-action="publish"]').click();
-    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
-    await dialog.waitFor();
-    assert.equal(await dialog.locator("input, textarea").count(), 0);
-    assert.doesNotMatch(await dialog.textContent(), /Lý do xuất bản|ít nhất 3 ký tự/u);
-    assert.match(await dialog.textContent(), /Original/u);
-    assert.match(await dialog.textContent(), /Chế độ phát hành: Thử nội bộ/u);
-    await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
-    await dialog.waitFor({ state: "hidden" });
-    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0);
-    await page.locator('[data-admin-plan-action="publish"]').click();
-    await dialog.waitFor();
-    await page.keyboard.press("Escape");
-    await dialog.waitFor({ state: "hidden" });
-    assert.equal(requests.filter(entry => entry.path.endsWith("/publish")).length, 0);
-    await page.locator('[data-admin-plan-action="publish"]').click();
-    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
-    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
-    assert.match(await page.locator('#admin-plan-status').textContent(), /Thử nội bộ[\s\S]*chọn Công khai/u);
-    const publication = requests.filter(entry => entry.path.endsWith("/publish"));
-    assert.equal(publication.length, 1);
-    assert.equal(publication[0].body.reason, "Xuất bản gói dịch vụ");
-    assert.equal(publication[0].body.validationDigest, digest);
-    assert.equal(publication[0].body.expectedRevision, 1);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"], [data-admin-plan-action="publish"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-commercial-config^="externalReadiness."], [data-admin-commercial-config="taxInvoice.approvalReference"]').count(), 0);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    assert.equal(await page.locator("[data-draft-id]").count(), 0);
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Thử nội bộ/u);
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 1);
+    assert.equal(requests.some(entry => /\/(?:validate|publish)$/u.test(entry.path)), false);
+  });
+});
+
+test("Save retains entered content when the server returns no valid release receipt", async () => {
+  interceptApi = async entry => entry.method === "PATCH"
+    ? { payload: { id: true, mode: "production", effectiveFrom: 1 } } : null;
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-offer-field="display.name"]').fill("Keep entered package");
+    await page.locator("details").filter({ has: page.locator("#admin-plan-effective") }).locator(":scope > summary").click();
+    await page.locator("#admin-plan-effective").fill("2027-01-01T10:30");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Chưa nhận được xác nhận áp dụng cấu hình hợp lệ" }).waitFor();
+    assert.equal(await page.locator('[data-admin-offer-field="display.name"]').inputValue(), "Keep entered package");
+    assert.equal(await page.locator("#admin-plan-effective").inputValue(), "2027-01-01T10:30");
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), false);
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 1);
+  });
+});
+
+test("a committed Save closes the draft even if the overview refresh fails", async () => {
+  let committed = false;
+  interceptApi = async entry => {
+    if (entry.method === "PATCH") {
+      committed = true;
+      return { payload: { id: "release-committed", mode: "production", effectiveFrom: 1 } };
+    }
+    if (committed && entry.path === "/api/commercial/admin/overview") return {
+      status: 503, payload: { error: "Overview temporarily unavailable" },
+    };
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Chưa tải lại được tổng quan" }).waitFor();
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Đã lưu và áp dụng cấu hình/u);
+    assert.equal(await page.locator("[data-draft-id]").count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="save"]').count(), 0);
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), true);
+    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 1);
+  });
+});
+
+test("changing only the effective date guards navigation and retains the entered date", async () => {
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator("details").filter({ has: page.locator("#admin-plan-effective") }).locator(":scope > summary").click();
+    await page.locator("#admin-plan-effective").fill("2027-01-01T10:30");
+    nextDialog(page, false);
+    await page.locator('[data-admin-link="/admin/security"]').click();
+    assert.equal(new URL(page.url()).pathname, "/admin/plans");
+    assert.equal(await page.locator("#admin-plan-effective").inputValue(), "2027-01-01T10:30");
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), false);
   });
 });
 
@@ -449,17 +493,16 @@ function preparePublicTransitionFixture({ validationErrors = [] } = {}) {
       : { availability: "off", offers: [], creditPacks: [], quotaWarnings: [] } };
     if (entry.path === `/api/commercial/releases/${sourceReleaseId}/clone`) return { payload: source };
     if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "PATCH") {
+      assert.equal(entry.body.publish, true);
+      if (validationErrors.length) return { status: 409, payload: {
+        code: "COMMERCIAL_POLICY_VALIDATION_FAILED", error: "Không thể lưu cấu hình",
+        details: { errors: validationErrors },
+      } };
       prepared = { id: source.id, revision: 5, document: entry.body.document };
-      return { payload: prepared };
-    }
-    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: prepared };
-    if (entry.path === `/api/commercial/drafts/${source.id}/validate`) return { payload: {
-      errors: validationErrors, validationDigest: digest, readinessExpiresAt: 9999999999,
-    } };
-    if (entry.path === `/api/commercial/drafts/${source.id}/publish`) {
       published = true;
       return { payload: { id: "release-public-transition", mode: "production", effectiveFrom: 1 } };
     }
+    if (entry.path === `/api/commercial/drafts/${source.id}` && entry.method === "GET") return { payload: prepared };
     return null;
   };
   return { sourceReleaseId, source, originalDocument, digest, validationErrors };
@@ -470,122 +513,95 @@ async function startPublicTransition(page) {
   await page.locator('[data-admin-plan-action="make-public"]').first().click();
 }
 
-function assertPreparedPublicTransition(fixture) {
-  const mutations = requests.filter(entry => entry.method !== "GET");
+function assertPreparedPublicTransition(fixture, attempts = 1) {
+  const mutations = requests.filter(entry => entry.method !== "GET" && entry.path !== "/api/auth/privileged-reauth");
   assert.deepEqual(mutations.map(entry => `${entry.method} ${entry.path}`), [
     `POST /api/commercial/releases/${fixture.sourceReleaseId}/clone`,
-    `PATCH /api/commercial/drafts/${fixture.source.id}`,
-    `POST /api/commercial/drafts/${fixture.source.id}/validate`,
+    ...Array(attempts).fill(`PATCH /api/commercial/drafts/${fixture.source.id}`),
   ]);
   assert.equal(mutations[1].body.expectedRevision, 4);
+  assert.equal(mutations[1].body.publish, true);
   assert.deepEqual(mutations[1].body.document, {
     ...fixture.originalDocument, rollout: { ...fixture.originalDocument.rollout, mode: "production" },
   });
-  assert.equal(mutations[2].body.expectedRevision, 5);
   assert.deepEqual(fixture.source.document, fixture.originalDocument);
 }
 
-test("direct public transition preserves all eight packages and configuration before a single publication confirmation", async () => {
+test("direct public transition uses one atomic save and retains every source package", async () => {
   const fixture = preparePublicTransitionFixture();
   await withPage("/admin/plans", async page => {
     await startPublicTransition(page);
-    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
-    await dialog.waitFor();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
     assertPreparedPublicTransition(fixture);
-    assert.equal(await page.getByRole("dialog").count(), 1);
-    assert.equal(await dialog.locator("input, textarea").count(), 0);
-    assert.match(await dialog.textContent(), /Chế độ phát hành: Công khai · Mở bán chính thức/u);
-    for (const configured of fixture.originalDocument.offers) {
-      assert.ok((await dialog.textContent()).includes(configured.display.name));
-    }
-    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).count(), 1);
-    assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
-    await dialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
-    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
-    assert.match(await page.locator("#admin-plan-status").textContent(), /Bảng giá đã hiển thị trên trang chủ/u);
-    const publication = requests.filter(entry => entry.path.endsWith("/publish"));
-    assert.equal(publication.length, 1);
-    assert.equal(publication[0].path, `/api/commercial/drafts/${fixture.source.id}/publish`);
-    assert.equal(publication[0].body.expectedRevision, 5);
-    assert.equal(publication[0].body.validationDigest, fixture.digest);
-    assert.equal(publication[0].body.reason, "Xuất bản gói dịch vụ");
-    assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    assert.equal(await page.locator("[data-draft-id]").count(), 0);
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Bảng giá đã hiển thị/u);
+    assert.equal(requests.some(entry => /\/(?:validate|publish)$/u.test(entry.path)), false);
   });
 });
 
-test("direct public transition cancellation keeps its validated public draft usable without cloning again", async () => {
+test("cancelled Save reauthentication retains the public draft for a retry without another clone", async () => {
   const fixture = preparePublicTransitionFixture();
+  const fixtureApi = interceptApi;
+  let authenticate = true;
+  interceptApi = async entry => {
+    if (authenticate && entry.method === "PATCH") return {
+      status: 403, payload: { error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." },
+    };
+    return fixtureApi(entry);
+  };
   await withPage("/admin/plans", async page => {
     await startPublicTransition(page);
-    const dialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
+    const dialog = page.getByRole("dialog", { name: "Xác thực thao tác quản trị" });
     await dialog.waitFor();
     await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
-    await dialog.waitFor({ state: "hidden" });
+    await page.locator("#admin-plan-status").filter({ hasText: "Cần xác thực lại mật khẩu" }).waitFor();
     assertPreparedPublicTransition(fixture);
-    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).isVisible(), true);
     assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
-    for (const action of ["save", "validate", "publish"]) {
-      assert.equal(await page.locator(`[data-admin-plan-action="${action}"]`).isEnabled(), true);
-    }
-    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), true);
-    await page.locator('[data-admin-plan-action="publish"]').click();
-    await dialog.waitFor();
-    await page.keyboard.press("Escape");
-    await dialog.waitFor({ state: "hidden" });
-    assertPreparedPublicTransition(fixture);
-    await page.locator('[data-admin-package-edit="0"]').first().click();
-    await page.locator('[data-admin-offer-field="display.name"][data-offer-index="0"]').fill("Chỉnh bản nháp sau khi hủy");
-    assert.equal(await page.locator('[data-admin-plan-action="save"]').isEnabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), false);
+    authenticate = false;
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
+    assertPreparedPublicTransition(fixture, 2);
   });
 });
 
-test("direct public transition validation errors retain the complete public draft without publishing or adjusting readiness", async () => {
+test("atomic Save validation errors preserve public mode all packages and effective date until retry", async () => {
   const fixture = preparePublicTransitionFixture({ validationErrors: [
-    { path: "providerProfiles", code: "NO_HEALTHY_PROVIDER", message: "payOS cần được xác nhận trước khi mở bán." },
+    { path: "providerProfiles", code: "NO_HEALTHY_PROVIDER", message: "Bộ khóa payOS chưa sử dụng được." },
   ] });
   fixture.source.document.providerProfiles[1].readiness = "blocked_external";
   fixture.originalDocument.providerProfiles[1].readiness = "blocked_external";
   fixture.source.document.offers[0].salesState = "stopped";
   fixture.originalDocument.offers[0].salesState = "stopped";
-  fixture.source.document.offers[0].display.visibility = "hidden";
-  fixture.originalDocument.offers[0].display.visibility = "hidden";
   await withPage("/admin/plans", async page => {
     await startPublicTransition(page);
-    await page.waitForFunction(() => document.querySelector("#admin-plan-validation")?.textContent.includes("payOS cần được xác nhận"));
+    await page.locator("#admin-plan-validation").filter({ hasText: "Bộ khóa payOS chưa sử dụng được." }).waitFor();
     assertPreparedPublicTransition(fixture);
     assert.equal(await page.getByRole("dialog").count(), 0);
-    assert.equal(await page.locator(`[data-draft-id="${fixture.source.id}"]`).isVisible(), true);
     assert.equal(await page.locator('[data-admin-commercial-config="rollout.mode"]').inputValue(), "production");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
-    for (const action of ["save", "validate"]) {
-      assert.equal(await page.locator(`[data-admin-plan-action="${action}"]`).isEnabled(), true);
-    }
-    assert.match(await page.locator("#admin-plan-status").textContent(), /lỗi/u);
     await page.locator('[data-admin-validation-target="payment"]').click();
-    assert.equal(await page.locator('[data-admin-commercial-config="providerProfiles.1.readiness"]').inputValue(), "blocked_external");
+    await page.locator("#admin-plan-effective").fill("2027-01-01T10:30");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Không thể lưu cấu hình" }).waitFor();
+    assert.equal(await page.locator("#admin-plan-effective").inputValue(), "2027-01-01T10:30");
+    assert.equal(requests.filter(entry => entry.method === "PATCH").at(-1).body.effectiveAt,
+      Math.floor(new Date("2027-01-01T10:30").getTime() / 1000));
     fixture.validationErrors.splice(0);
-    await page.locator('[data-admin-plan-action="validate"]').click();
-    await page.locator('[data-admin-plan-action="publish"]:enabled').waitFor();
-    assert.equal(await page.getByRole("dialog").count(), 0);
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
     assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
-    assert.equal(requests.filter(entry => entry.path.endsWith("/validate")).length, 2);
-    assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
   });
 });
 
-test("direct public transition late validation reauthentication retries only validation and ignores duplicate starts", async () => {
+test("Save step-up retries the same payload and idempotency key and ignores duplicate starts", async () => {
   const fixture = preparePublicTransitionFixture();
   const fixtureApi = interceptApi;
-  let validationAttempts = 0;
+  let attempts = 0;
   interceptApi = async entry => {
-    if (entry.path === `/api/commercial/drafts/${fixture.source.id}/validate`) {
-      validationAttempts += 1;
-      if (validationAttempts === 1) return {
-        status: 403, payload: { error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." },
-      };
-    }
+    if (entry.method === "PATCH" && ++attempts === 1) return {
+      status: 403, payload: { error: "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm." },
+    };
     if (entry.path === "/api/auth/privileged-reauth") return { payload: { success: true } };
     return fixtureApi(entry);
   };
@@ -595,36 +611,18 @@ test("direct public transition late validation reauthentication retries only val
       button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    const reauthentication = page.getByRole("dialog", { name: "Xác thực thao tác quản trị" });
-    await reauthentication.waitFor();
-    assertPreparedPublicTransition(fixture);
+    const dialog = page.getByRole("dialog", { name: "Xác thực thao tác quản trị" });
+    await dialog.waitFor();
     assert.equal(await page.locator('[data-admin-plan-action="make-public"]').first().isDisabled(), true);
-    assert.equal(await page.getByRole("dialog").count(), 1);
-    await reauthentication.locator('input[type="password"]').fill("fixture-admin-password");
-    await reauthentication.getByRole("button", { name: "Xác thực", exact: true }).click();
-    const publicationDialog = page.getByRole("dialog", { name: "Xuất bản gói dịch vụ" });
-    await publicationDialog.waitFor();
-    const mutations = requests.filter(entry => entry.method !== "GET");
-    assert.deepEqual(mutations.map(entry => `${entry.method} ${entry.path}`), [
-      `POST /api/commercial/releases/${fixture.sourceReleaseId}/clone`,
-      `PATCH /api/commercial/drafts/${fixture.source.id}`,
-      `POST /api/commercial/drafts/${fixture.source.id}/validate`,
-      "POST /api/auth/privileged-reauth",
-      `POST /api/commercial/drafts/${fixture.source.id}/validate`,
-    ]);
-    assert.deepEqual(mutations[4].body, mutations[2].body);
-    assert.equal(mutations[4].body.expectedRevision, 5);
-    assert.equal(await publicationDialog.locator("input, textarea").count(), 0);
-    assert.match(await publicationDialog.textContent(), /Chế độ phát hành: Công khai · Mở bán chính thức/u);
-    await publicationDialog.getByRole("button", { name: "Xuất bản", exact: true }).click();
-    await page.waitForFunction(() => document.body.textContent.includes("Đã xuất bản bản nháp."));
-    const publications = requests.filter(entry => entry.path.endsWith("/publish"));
-    assert.equal(publications.length, 1);
-    assert.equal(publications[0].body.expectedRevision, 5);
-    assert.equal(publications[0].body.validationDigest, fixture.digest);
-    assert.equal(requests.filter(entry => entry.path.endsWith("/clone")).length, 1);
-    assert.equal(requests.filter(entry => entry.method === "PATCH").length, 1);
-    assert.deepEqual(fixture.source.document, fixture.originalDocument);
+    await dialog.locator('input[type="password"]').fill("fixture-admin-password");
+    await dialog.getByRole("button", { name: "Xác thực", exact: true }).click();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
+    assertPreparedPublicTransition(fixture, 2);
+    const saves = requests.filter(entry => entry.method === "PATCH");
+    assert.deepEqual(saves[1].body, saves[0].body);
+    assert.equal(saves[1].key, saves[0].key);
+    assert.ok(saves[0].key);
+    assert.equal(await page.getByRole("dialog").count(), 0);
   });
 });
 
@@ -678,7 +676,7 @@ for (const publicState of ["off", "unavailable", "stale"]) {
   });
 }
 
-test("prominent publication mode switches from internal trial to public and requires validation again", async () => {
+test("prominent publication mode switches from internal trial to public and applies through Save", async () => {
   const source = draft("draft-a");
   source.document.rollout = { mode: "shadow", cohorts: ["keep-cohort"], unknownRolloutKey: "keep" };
   source.validation = { errors: [], warnings: [{ code: "SHADOW_ONLY" }] };
@@ -689,13 +687,13 @@ test("prominent publication mode switches from internal trial to public and requ
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
   await withPage("/admin/plans", async page => {
     await openDraft(page);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isEnabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     const mode = page.locator('[data-admin-commercial-config="rollout.mode"]');
     assert.equal(await mode.count(), 1);
     const id = await mode.getAttribute("id");
@@ -704,24 +702,20 @@ test("prominent publication mode switches from internal trial to public and requ
     assert.equal(await mode.evaluate(select => Boolean(select.closest("details"))), false);
     assert.equal(await mode.inputValue(), "shadow");
     assert.match(await combobox.inputValue(), /Thử nội bộ/u);
-    const warning = page.locator('[data-admin-rollout-warning]');
-    assert.equal(await warning.isVisible(), true);
-    assert.match(await warning.textContent(), /Kiểm tra đạt cho Thử nội bộ[\s\S]*chọn Công khai/u);
-    await warning.locator('[data-admin-validation-target="rollout"]').click();
-    assert.equal(await combobox.evaluate(input => input === document.activeElement), true);
+    assert.equal(await page.locator('[data-admin-rollout-warning]').count(), 0);
     await combobox.click();
     await page.locator(`#${id}-listbox [data-value="production"]`).click();
     assert.equal(await mode.inputValue(), "production");
     assert.match(await combobox.inputValue(), /Công khai · Mở bán chính thức/u);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     assert.match(await page.locator('#admin-plan-validation').textContent(), /Cấu hình đã thay đổi/u);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.rollout.mode, "production");
     assert.deepEqual(saved.rollout.cohorts, ["keep-cohort"]);
     assert.equal(saved.rollout.unknownRolloutKey, "keep");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     assert.equal(requests.some(entry => entry.path.endsWith("/publish")), false);
   });
 });
@@ -737,7 +731,7 @@ async function capturePackages(page, name, selector = "#admin-commercial-editor"
   await page.evaluate(() => document.documentElement.setAttribute("data-bs-theme", "light"));
 }
 
-test("admin bootstraps and saves a package when the public catalog has no effective release", async () => {
+test("admin bootstraps and retains an incomplete package after automatic Save rejects it", async () => {
   let saved = null;
   interceptApi = async (entry) => {
     if (entry.path === "/api/commercial/admin/overview") return { payload: { currentRelease: null, scheduledRelease: null, drafts: saved ? [{ id: "first", revision: 2 }] : [], releaseHistory: [] } };
@@ -745,9 +739,9 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: { id: "first", revision: 1, document: { schemaVersion: 1, currency: "VND", offers: [], policies: { baseTerm: { kind: "fixed_days", days: 365 } }, taxInvoice: { taxInclusive: false, taxBasisPoints: 1000, rounding: "half_up" }, unknown: { keep: true } } } };
     if (entry.path === "/api/commercial/drafts/first" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "first", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
-    if (entry.path === "/api/commercial/drafts/first" && entry.method === "GET") return { payload: { id: "first", revision: 2, document: saved } };
+    if (entry.path === "/api/commercial/drafts/first" && entry.method === "GET") return incompleteCandidate();
     if (entry.path.endsWith("/validate")) return { payload: { errors: [{ path: "offers", code: "OFFER_MATRIX_INCOMPLETE", message: "Chưa đủ khung 8 gói năm" }] } };
     return null;
   };
@@ -803,7 +797,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /Lợi ích từ Admin/u);
     await capturePackages(page, "creator-4-presentation");
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers[0].price.total, 1650000);
     assert.equal(saved.offers[1].price.total, 165000);
     assert.equal(saved.offers[0].display.description, "Mô tả gói đã nhập");
@@ -825,7 +819,7 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     assert.equal(await page.locator("#admin-monthly-term-days").inputValue(), "30");
     assert.equal(await page.locator("#admin-annual-term-days").inputValue(), "365");
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers.length, 2);
     assert.equal(saved.offers[0].price.total, 1650000);
     assert.equal(saved.offers[1].price.total, 165000);
@@ -835,23 +829,17 @@ test("admin bootstraps and saves a package when the public catalog has no effect
     assert.equal(saved.policies.monthlyBaseTerm.days, 30);
     assert.equal(saved.policies.baseTerm.days, 365);
     assert.equal(saved.offers[0].salesState, "non_sellable");
-    await page.locator('[data-admin-plan-action="validate"]').click();
-    await page.getByText("Chưa đủ khung 8 gói năm").waitFor();
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Cấu hình còn thiếu dữ liệu/u);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     await page.locator('[data-admin-package-step="2"]').click();
     await monthly.locator('[data-admin-plan-action="configure-exports"]').click();
     await page.locator('.modal button[type="submit"]').click();
     await monthly.locator('[data-admin-offer-field="capability:document.export.word"]').check();
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers[1].exportCapabilities["document.export.word"], true);
     assert.equal(saved.offers[0].exportCapabilities, null);
-    await page.locator('[data-admin-plan-action="close"]').click();
-    await openDraft(page, "first");
-    await page.locator('[data-admin-package-edit="0"]').first().click();
-    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="1"]').click();
-    await page.locator('[data-admin-package-step="2"]').click();
     assert.equal(await monthly.locator('[data-admin-offer-field="capability:document.export.word"]').isChecked(), true);
     assert.match(await page.locator("[data-admin-package-live-preview]").textContent(), /165[.]000/u);
     await capturePackages(page, "editor-limits");
@@ -919,7 +907,7 @@ test("complete sample click creates twenty editable products with monthly base w
       assert.doesNotMatch(await manager.locator('[data-admin-package-table]').textContent(), /Chưa cấu hình/u);
     }
     await capturePackages(page, "admin-samples", '[data-admin-package-manager="draft"]');
-    assert.match(await page.locator("#admin-plan-status").textContent(), /chỉnh sửa và kiểm tra trước khi phát hành/u);
+    assert.match(await page.locator("#admin-plan-status").textContent(), /Chỉnh sửa[\s\S]*rồi bấm Lưu/u);
     await manager.locator('[data-admin-package-group="internal"]').click();
     await manager.locator('[data-admin-package-table] [data-admin-package-edit="0"]').click();
     const editor = page.locator('[data-admin-offer-editor][data-offer-index="0"]');
@@ -932,7 +920,7 @@ test("complete sample click creates twenty editable products with monthly base w
     const policies = await page.locator("#admin-plan-advanced-document").inputValue();
     assert.deepEqual(JSON.parse(policies).policies, { ...completedDocument.policies, monthlyBaseTerm: { kind: "fixed_days", days: 30 } });
     assert.equal(completedDocument.policies.monthlyBaseTerm, undefined);
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     assert.equal(requests.some(entry => /\/(?:validate|publish)$/u.test(entry.path)), false);
   });
 });
@@ -977,7 +965,7 @@ test("creator saves explicit organization limits and features without changing s
     if (entry.path === "/api/commercial/drafts" && entry.method === "POST") return { payload: sourceDraft };
     if (entry.path === "/api/commercial/drafts/draft-new" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-new", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
@@ -1003,7 +991,7 @@ test("creator saves explicit organization limits and features without changing s
     await page.locator('[data-admin-package-step="3"]').click();
     await page.locator("#admin-new-package-visible").uncheck();
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.deepEqual(saved.offers[0], sourceOffer);
     const created = saved.offers[1];
     assert.equal(created.ownerKind, "organization");
@@ -1038,7 +1026,7 @@ test("a failed package save keeps edited content and blocks publish until author
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       if (fail) return { status: 503, payload: { error: "Lưu thất bại" } };
       documentValue = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: documentValue } };
+      return { payload: { id: "retry-release", mode: "shadow", effectiveFrom: 1 } };
     }
     return null;
   };
@@ -1048,11 +1036,11 @@ test("a failed package save keeps edited content and blocks publish until author
     await page.locator('[data-admin-plan-action="save"]').click();
     await page.getByText("Lưu thất bại", { exact: true }).waitFor();
     assert.equal(await page.locator('[data-admin-offer-field="display.name"]').inputValue(), "Nội dung cần giữ");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     fail = false;
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await page.locator("#admin-plan-status").filter({ hasText: "Đã lưu và áp dụng cấu hình." }).waitFor();
     assert.equal(documentValue.offers[0].display.name, "Nội dung cần giữ");
   });
 });
@@ -1066,7 +1054,7 @@ test("admin draft selection preserves independent package periods and unedited s
     assert.match(await page.locator('[data-admin-package-manager="draft"] [data-admin-package-cards]').textContent(), /Tên mới/u);
     await page.locator('[data-admin-package-edit="0"]').last().click();
     assert.equal(await page.locator('[data-admin-offer-field="display.name"]').inputValue(), "Tên mới");
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
   });
 });
 
@@ -1112,7 +1100,7 @@ test("dirty commercial editor cancels create clone and route changes and confirm
   });
 });
 
-test("tax and payOS forms save explicit configuration and invalidate the prior publication result", async () => {
+test("tax and payOS forms submit real settings and preserve metadata on rejected Save", async () => {
   const source = draft("draft-a");
   source.document.taxInvoice = { approvalReference: null, taxInclusive: null, taxBasisPoints: null, rounding: null, invoiceTrigger: null };
   source.document.providerProfiles = [
@@ -1129,7 +1117,7 @@ test("tax and payOS forms save explicit configuration and invalidate the prior p
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
@@ -1140,7 +1128,7 @@ test("tax and payOS forms save explicit configuration and invalidate the prior p
       await page.locator(`#${id}-combobox`).click();
       await page.locator(`#${id}-listbox [data-value="${value}"]`).click();
     };
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isEnabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     await page.locator(".bf-admin-package-settings > summary").click();
     await page.locator("[data-admin-tax-settings] > summary").click();
     assert.equal(await page.locator('[data-admin-commercial-config="taxInvoice.taxBasisPoints"]').inputValue(), "");
@@ -1151,32 +1139,30 @@ test("tax and payOS forms save explicit configuration and invalidate the prior p
     await chooseConfiguration("taxInvoice.invoiceTrigger", "verified_payment");
     await page.locator('[data-admin-commercial-config="taxInvoice.sellerProfile.legalName"]').fill("Đơn vị bán dịch vụ");
     await page.locator("[data-admin-payment-settings] > summary").click();
-    await page.locator('[data-admin-commercial-config="providerProfiles.1.credentialReference"]').fill("env://configured-by-admin");
     await page.locator('[data-admin-commercial-config="providerProfiles.1.checkoutTtlSeconds"]').fill("600");
-    await page.locator('[data-admin-commercial-config="externalReadiness.credentialWebhook"]').fill("webhook-confirmation-reference");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-admin-plan-action="validate"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
+    assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
     assert.match(await page.locator("#admin-plan-validation").textContent(), /Cấu hình đã thay đổi/u);
     assert.equal(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), true);
     await capturePackages(page, "tax-payos-settings");
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.taxInvoice.taxBasisPoints, 825);
     assert.equal(saved.taxInvoice.invoiceEnabled, true);
     assert.equal(saved.taxInvoice.taxInclusive, false);
     assert.equal(saved.taxInvoice.approvalReference, null);
     assert.equal(saved.taxInvoice.sellerProfile.legalName, "Đơn vị bán dịch vụ");
-    assert.equal(saved.providerProfiles[1].credentialReference, "env://configured-by-admin");
+    assert.equal(saved.providerProfiles[1].credentialReference, null);
     assert.equal(saved.providerProfiles[1].checkoutTtlSeconds, 600);
     assert.equal(saved.providerProfiles[1].readiness, "blocked_external");
     assert.equal(saved.providerProfiles[1].opaque, "keep payos");
     assert.deepEqual(saved.providerProfiles[0], source.document.providerProfiles[0]);
     assert.deepEqual(saved.offers[0].price, source.document.offers[0].price);
     assert.deepEqual(saved.rollout.cohorts, ["keep cohort"]);
-    assert.equal(saved.externalReadiness.credentialWebhook, "webhook-confirmation-reference");
+    assert.equal(saved.externalReadiness.credentialWebhook, null);
     assert.equal(saved.externalReadiness.vatInvoice, null);
     assert.equal(await page.locator('[data-admin-commercial-config="taxInvoice.taxBasisPoints"]').inputValue(), "8.25");
-    assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     assert.equal(requests.some(entry => /\/(?:validate|publish)$/u.test(entry.path)), false);
   });
 });
@@ -1238,8 +1224,8 @@ test("publication errors navigate to tax and payOS settings without changing the
         return rect.top >= 0 && rect.bottom <= innerHeight;
       }, `[data-admin-${target}-settings] > summary`);
       assert.deepEqual(await snapshot(), before);
-      assert.equal(await page.locator('[data-admin-plan-action="validate"]').isEnabled(), true);
-      assert.equal(await page.locator('[data-admin-plan-action="publish"]').isDisabled(), true);
+      assert.equal(await page.locator('[data-admin-plan-action="validate"]').count(), 0);
+      assert.equal(await page.locator('[data-admin-plan-action="publish"]').count(), 0);
     }
     assert.equal(requests.some(entry => entry.method !== "GET"), false);
   });
@@ -1389,7 +1375,7 @@ test("an annual-only package gains a selectable month after configuring its mont
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
@@ -1405,7 +1391,7 @@ test("an annual-only package gains a selectable month after configuring its mont
     assert.equal(await page.locator('[data-admin-monthly-base="1"]').inputValue(), "399000");
     assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /399[.]000/u);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers.length, 2);
     assert.equal(saved.offers[0].price.total, 3990000);
     assert.equal(saved.offers[1].price.total, 399000);
@@ -1426,14 +1412,14 @@ test("saving a stored monthly base fills the missing term without reentering the
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
     if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") {
       saved = entry.body.document;
-      return { payload: { id: "draft-a", revision: 2, document: saved } };
+      return incompleteCandidate();
     }
     return null;
   };
   await withPage("/admin/plans", async page => {
     await openDraft(page);
     await page.locator('[data-admin-plan-action="save"]').click();
-    await page.locator('[data-admin-plan-action="validate"]:enabled').waitFor();
+    await waitForCandidateRejection(page);
     assert.equal(saved.offers.length, 2);
     assert.equal(saved.offers[1].price.total, 399000);
     assert.equal(saved.policies.monthlyBaseTerm.days, 30);

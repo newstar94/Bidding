@@ -5,6 +5,7 @@ responses are local fixtures; these tests do not send payments or publish live.
 """
 
 from copy import deepcopy
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
+from starlette.requests import Request
 
 from backend.auth import auth_routes
 from backend.auth.auth_helper import SessionRole
@@ -26,6 +28,7 @@ from backend.commercial_policy.document import build_initial_draft_document, can
 from backend.commercial_policy.repository import CommercialRepository
 from backend.commercial_policy.service import CommercialPolicy
 from backend.commercial_policy import config as commercial_config
+from backend.commercial_policy import routes as commercial_routes
 from backend.commercial_policy.tax import calculate_tax_price
 from backend.db.db_helper import PostgresCursor, compat_row_factory
 from backend.db.postgres_schema import (
@@ -114,6 +117,86 @@ def _account(cursor, user_id):
            VALUES (?, 'fixture-only-hash', 'Projection Fixture', ?, ?)""",
         (user_id, f"{user_id}@example.test", f"{user_id}@example.test"),
     )
+
+
+@pytest.mark.parametrize("failure", [None, "stale", "invalid", "schedule", "audit", "outbox"])
+def test_atomic_admin_save_publication_in_postgres_preserves_draft_on_rollback(
+    projection_cursor, monkeypatch, failure
+):
+    cursor = projection_cursor
+    actor_id = cursor.execute("SELECT id FROM tai_khoan WHERE vai_tro = 'super_admin'").fetchone()[0]
+    repository = CommercialRepository(cursor)
+    source = build_initial_draft_document(load_legacy_export_capabilities(cursor))
+    before = repository.create_draft(source, actor_id)
+    releases_before = repository.list_recent_releases()
+    outbox_before = cursor.execute("SELECT count(*) FROM commercial_outbox").fetchone()[0]
+    seen = {"commit": 0, "rollback": 0}
+
+    class Connection:
+        def execute(self, statement):
+            assert statement == "BEGIN"
+            cursor.execute("SAVEPOINT single_save_test")
+        def cursor(self):
+            return cursor
+        def commit(self):
+            seen["commit"] += 1
+            cursor.execute("RELEASE SAVEPOINT single_save_test")
+        def rollback(self):
+            seen["rollback"] += 1
+            cursor.execute("ROLLBACK TO SAVEPOINT single_save_test")
+            cursor.execute("RELEASE SAVEPOINT single_save_test")
+        def close(self):
+            pass
+
+    audit_events = []
+    def audit(action, **kwargs):
+        audit_events.append(action)
+        assert kwargs["cursor"] is cursor and kwargs["required"] is True
+        if failure == "audit" and action == "commercial.release_published":
+            raise RuntimeError("Audit unavailable after publication")
+
+    monkeypatch.setattr(commercial_routes.database, "get_connection", Connection)
+    monkeypatch.setattr(commercial_routes, "verify_session_in_transaction",
+        lambda *a, **k: (True, SimpleNamespace(user_id=actor_id)))
+    monkeypatch.setattr(commercial_routes, "log_audit", audit)
+    monkeypatch.setattr(commercial_routes, "log_error", lambda *a, **k: None)
+    if failure == "outbox":
+        original_outbox = CommercialRepository.insert_outbox
+        def outbox(self, action, *args):
+            if action == "commercial.release_published":
+                raise RuntimeError("Outbox unavailable after publication")
+            return original_outbox(self, action, *args)
+        monkeypatch.setattr(CommercialRepository, "insert_outbox", outbox)
+    candidate = deepcopy(source)
+    candidate["offers"][0]["display"]["name"] = "Changed package"
+    if failure == "invalid":
+        candidate["offers"][0]["price"]["total"] = -1
+    request = Request({"type": "http", "method": "PATCH", "path": "/api/commercial/drafts/fixture",
+                       "path_params": {"draft_id": before["id"]}, "headers": []})
+    body = {"publish": True}
+    if failure == "schedule":
+        body["effectiveAt"] = 1
+    response = commercial_routes._save_commercial_draft_sync(
+        request, body, before["revision"] + (1 if failure == "stale" else 0), candidate
+    )
+    after = repository.get_draft(before["id"])
+    releases = repository.list_recent_releases()
+    if failure:
+        assert response.status_code in {409, 500}
+        assert seen == {"commit": 0, "rollback": 1}
+        assert after == before
+        assert releases == releases_before
+        assert cursor.execute("SELECT count(*) FROM commercial_outbox").fetchone()[0] == outbox_before
+    else:
+        assert response.status_code == 200, response.body
+        assert seen == {"commit": 1, "rollback": 0}
+        assert len(releases) == len(releases_before) + 1
+        release = repository.get_release(json.loads(response.body)["id"])
+        assert release["snapshot"] == candidate
+        assert after["revision"] == before["revision"] + 1
+        assert after["status"] == "archived"
+        assert audit_events == ["commercial.draft_saved", "commercial.draft_validated", "commercial.release_published"]
+        assert cursor.execute("SELECT count(*) FROM commercial_outbox").fetchone()[0] == outbox_before + 3
 
 
 def _document(cursor):

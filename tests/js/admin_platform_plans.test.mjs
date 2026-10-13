@@ -48,11 +48,10 @@ test("plan mutations use the shared accessible dialog and record publication aut
 
   assert.equal(await requestPlanActionInput("clone", { requestValue }), true);
   assert.equal(await requestPlanActionInput("stop-sales", { requestValue }), "Lý do đã duyệt");
-  assert.equal(await requestPlanActionInput("publish", { requestValue }), "Xuất bản gói dịch vụ");
-  assert.equal(requests.length, 3);
+  assert.equal(await requestPlanActionInput("publish", { requestValue }), null);
+  assert.equal(requests.length, 2);
   assert.equal(requests[0].label, null);
   assert.match(requests[1].message, /Quyền lợi đã áp dụng không thay đổi/u);
-  assert.equal(requests[2].label, null);
 });
 
 test("adding a monthly term uses an explicitly configured monthly base without changing annual rights or quotas", () => {
@@ -78,23 +77,19 @@ test("plan mutations stop cleanly when the shared dialog is cancelled", async ()
   assert.equal(await requestPlanActionInput("publish", { requestValue }), null);
 });
 
-test("publication confirmation keeps the offer summary without requiring manual input", async () => {
-  let options;
-  const requestValue = async value => { options = value; return ""; };
-  assert.equal(await requestPlanActionInput("publish", { requestValue, summary: "Cá nhân · Cơ bản · năm: 20.000 đ." }), "Xuất bản gói dịch vụ");
-  assert.equal(options.label, null);
-  assert.equal(options.validateValue, undefined);
-  assert.equal(options.confirmLabel, "Xuất bản");
-  assert.match(options.message, /Cá nhân · Cơ bản · năm: 20\.000 đ\./u);
-  assert.doesNotMatch(options.message, /Lý do|ít nhất 3 ký tự/u);
+test("saving no longer requests a publication confirmation", async () => {
+  let requested = false;
+  assert.equal(await requestPlanActionInput("publish", { requestValue: async () => { requested = true; } }), null);
+  assert.equal(requested, false);
 });
 
-test("publication stays disabled when the validation digest cannot satisfy the server contract", () => {
+test("save runs automatic validation without a client supplied digest", () => {
   for (const validationDigest of ["a", "a".repeat(63), "a".repeat(65)]) {
     const markup = draftEditorMarkup({ id: "draft", revision: 1, document: { offers: [] } }, {
       errors: [], validationDigest, readinessExpiresAt: 9999999999,
     });
-    assert.match(markup, /data-admin-plan-action="publish" disabled/u);
+    assert.match(markup, /data-admin-plan-action="save"/u);
+    assert.doesNotMatch(markup, /data-admin-plan-action="(?:validate|publish)"/u);
   }
 });
 
@@ -260,7 +255,7 @@ test("publication status distinguishes internal scheduled and verified public re
   publicCatalog.offers[0].salesState = "sellable";
   publicCatalog.offers[0].display.visibility = "public";
   const shadow = publicationStatusMessage({ id: "new-shadow", mode: "shadow", effectiveFrom: 1 });
-  assert.match(shadow, /^Đã xuất bản bản nháp\./u);
+  assert.match(shadow, /^Đã lưu và áp dụng cấu hình\./u);
   assert.match(shadow, /Thử nội bộ[\s\S]*chọn Công khai/u);
   assert.doesNotMatch(shadow, /Bảng giá đã hiển thị/u);
   for (const mode of ["pilot", "production"]) {
@@ -346,7 +341,7 @@ test("complete sample action is available without an initial release and when a 
     const markup = plansMarkup({ currentRelease, scheduledRelease: null, drafts: [] });
     assert.match(markup, /data-admin-plan-action="create-template"/u);
     assert.match(markup, /bộ mẫu Cơ bản \/ Nâng cao có cấu hình/u);
-    assert.match(markup, /chỉnh sửa, kiểm tra rồi phát hành/u);
+    assert.match(markup, /chỉnh sửa rồi bấm Lưu/u);
   }
 });
 
@@ -381,7 +376,7 @@ test("plans view exposes the three management tabs with associated panels", () =
   }
 });
 
-test("draft editor escapes JSON and gates publish on successful validation", () => {
+test("draft editor escapes JSON and presents save errors without manual validation gates", () => {
   const draft = {
     id: "draft-1",
     revision: 3,
@@ -403,19 +398,19 @@ test("draft editor escapes JSON and gates publish on successful validation", () 
   assert.match(blocked, /bf-admin-editor-group[\s\S]*1[.] Thông tin gói[\s\S]*2[.] Giá &amp; kỳ hạn[\s\S]*3[.] Hạn mức &amp; tính năng[\s\S]*4[.] Trình bày/u);
   assert.match(blocked, /Cấu hình chính sách nâng cao/u);
   assert.doesNotMatch(blocked, /id="admin-plan-document"/u);
-  assert.match(blocked, /data-admin-plan-action="publish" disabled/u);
+  assert.match(blocked, /data-admin-plan-action="save"/u);
   assert.match(blocked, /offers\[0\]/u);
 
   const ready = draftEditorMarkup(draft, {
     errors: [], validationDigest: "a".repeat(64), readinessExpiresAt: 9999999999,
   });
-  assert.match(ready, /Kiểm tra đạt/u);
+  assert.doesNotMatch(ready, /Kiểm tra đạt/u);
   assert.doesNotMatch(ready, /data-admin-plan-action="publish" disabled/u);
 
   const expired = draftEditorMarkup(draft, {
     errors: [], validationDigest: "a".repeat(64), readinessExpiresAt: 1,
   });
-  assert.match(expired, /data-admin-plan-action="publish" disabled/u);
+  assert.match(expired, /data-admin-plan-action="save"/u);
 });
 
 test("draft publication mode is prominent and a public choice preserves the rest of rollout policy", () => {
@@ -428,8 +423,7 @@ test("draft publication mode is prominent and a public choice preserves the rest
   assert.match(markup, /Chế độ phát hành/u);
   assert.match(markup, /Thử nội bộ/u);
   assert.match(markup, /Công khai · Mở bán chính thức/u);
-  assert.match(markup, /data-admin-rollout-warning[\s\S]*Kiểm tra đạt cho Thử nội bộ/u);
-  assert.match(markup, /data-admin-validation-target="rollout"/u);
+  assert.doesNotMatch(markup, /Kiểm tra đạt cho Thử nội bộ/u);
   assert.equal((markup.match(/data-admin-commercial-config="rollout[.]mode"/gu) || []).length, 1);
   assert.ok(markup.indexOf('data-admin-commercial-config="rollout.mode"') < markup.indexOf('data-admin-package-list'));
   const mode = { ...field("production"), dataset: {

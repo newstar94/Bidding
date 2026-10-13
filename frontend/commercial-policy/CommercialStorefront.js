@@ -520,7 +520,9 @@ async function startCheckout(skuCode, controller, operation = "purchase", button
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); }
   const offer = state.offers.find((item) => item.code === skuCode);
   const presented = offer ? presentCommercialOffer(offer) : null;
-  const packageTitle = presented ? [presented.name, presented.variantLabel].filter(Boolean).join(" · ") : "Gói lượt tra cứu";
+  const pack = state.creditPacks.find((item) => item.code === skuCode);
+  const packageTitle = presented ? [presented.name, presented.variantLabel].filter(Boolean).join(" · ")
+    : pack ? `${Number(pack.quantity).toLocaleString("vi-VN")} lượt lấy dữ liệu tự động` : "Gói lượt lấy dữ liệu tự động";
   const session = openCheckoutSession(controller, packageTitle);
   session.packageTitle = packageTitle;
   try {
@@ -653,18 +655,18 @@ export async function mountCommercialStorefront(controller) {
     controller._pendingCommercialCheckout = null;
     clearPendingCheckoutIntent();
     clearCheckoutIntentFromLocation();
-    const button = [...document.querySelectorAll('.storefront-buy[data-operation="purchase"]')]
+    const button = [...document.querySelectorAll('.storefront-buy[data-operation="purchase"], .storefront-buy[data-operation="credit_pack"]')]
       .find((node) => node.dataset.sku === pendingCheckout.sku);
     if (button) {
-      queueMicrotask(() => { void startCheckout(pendingCheckout.sku, controller, "purchase", button); });
+      queueMicrotask(() => { void startCheckout(pendingCheckout.sku, controller, button.dataset.operation, button); });
     } else {
       status("Gói bạn vừa chọn không còn trong catalog đang bán. Vui lòng chọn lại gói hiện hành.", "warning");
     }
   }
 }
 
-export async function startCommercialCheckoutFromLanding({ offer, session, onReturnToOverview } = {}) {
-  if (session?.valid !== true || !offer?.code) return false;
+export async function startCommercialCheckoutFromLanding({ offer, creditPack, session, onReturnToOverview } = {}) {
+  if (session?.valid !== true || (!offer?.code && !creditPack?.code)) return false;
   const activeuser = { ...(session.user || {}) };
   const controller = {
     model: { state: { activeuser } },
@@ -684,8 +686,9 @@ export async function startCommercialCheckoutFromLanding({ offer, session, onRet
   state.controller = controller;
   state.contextGeneration++;
   if (state.checkoutSession) retireStaleCheckout(state.checkoutSession);
-  state.offers = [offer];
+  state.offers = offer ? [offer] : [];
+  state.creditPacks = creditPack ? [creditPack] : [];
   await loadStyleOnce(STYLE_URL);
-  await startCheckout(offer.code, controller, "purchase");
+  await startCheckout((offer || creditPack).code, controller, offer ? "purchase" : "credit_pack");
   return true;
 }

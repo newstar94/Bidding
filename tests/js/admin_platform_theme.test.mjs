@@ -52,8 +52,8 @@ test("admin action buttons keep status colors reserved for status feedback", asy
     new URL("../../frontend/admin-platform/AdminPlans.js", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(plans, /data-admin-plan-action="publish"[^>]*btn-success/u);
-  assert.match(plans, /class="btn btn-primary"[^>]*data-admin-plan-action="publish"/u);
+  assert.doesNotMatch(plans, /data-admin-plan-action="save"[^>]*btn-success/u);
+  assert.match(plans, /class="btn btn-primary"[^>]*data-admin-plan-action="save"/u);
 });
 
 test("admin entry ships Tabler styles without the unused demo JavaScript bundle", async () => {

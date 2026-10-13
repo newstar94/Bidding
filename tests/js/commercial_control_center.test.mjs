@@ -15,11 +15,11 @@ test("Tabler plans replaces the retired commercial control center", async () => 
   assert.match(markup, /data-admin-plan-action="(?:create|clone|stop-sales)"/u);
 });
 
-test("replacement draft editor preserves validation and publish gates", () => {
+test("replacement draft editor applies configuration through one save", () => {
   const markup = draftEditorMarkup({ id: "d1", revision: 2, document: { offers: [] } }, {
     errors: [], validationDigest: "a".repeat(64), readinessExpiresAt: 9_999_999_999,
   });
   assert.match(markup, /data-admin-plan-action="save"/u);
-  assert.match(markup, /data-admin-plan-action="validate"/u);
+  assert.doesNotMatch(markup, /data-admin-plan-action="(?:validate|publish)"/u);
   assert.doesNotMatch(markup, /data-admin-plan-action="publish" disabled/u);
 });

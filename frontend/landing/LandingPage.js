@@ -6,6 +6,8 @@ let landingMotionCleanup = null;
 let cancelLandingScrollRestoration = null;
 const pricingState = {
   offers: [],
+  creditPacks: [],
+  currency: "VND",
   group: "basic",
   periods: {},
   sessionValid: false,
@@ -126,6 +128,58 @@ function createLandingIcon(name) {
   return createLandingSvgIcon(name);
 }
 
+function createCheckoutAction({ offer, creditPack, period = "" }) {
+  const action = document.createElement("a");
+  action.className = `landing-button ${offer?.display?.recommended ? "landing-button-primary" : "landing-button-secondary"}`;
+  const code = (offer || creditPack).code;
+  const destination = pricingState.sessionValid ? "/goi-va-thanh-toan" : LOGIN_PATH;
+  action.href = `${destination}?checkout=${encodeURIComponent(code)}${period ? `&period=${encodeURIComponent(period)}` : ""}`;
+  action.textContent = creditPack ? "Mua lượt" : "Bắt đầu";
+  action.append(createLandingIcon("arrow-right"));
+  action.addEventListener("click", (event) => {
+    if (!pricingState.sessionValid) return;
+    event.preventDefault();
+    if (action.getAttribute("aria-busy") === "true") return;
+    action.setAttribute("aria-busy", "true");
+    void import("../commercial-policy/CommercialStorefront.js")
+      .then(({ startCommercialCheckoutFromLanding }) => startCommercialCheckoutFromLanding({
+        offer,
+        creditPack,
+        session: pricingState.session,
+        onReturnToOverview: () => window.location.assign(WORKSPACE_PATH),
+      }))
+      .finally(() => { action.removeAttribute("aria-busy"); })
+      .catch(() => {});
+  });
+  return action;
+}
+
+function createCreditPackCard(pack) {
+  const card = document.createElement("article");
+  card.className = "landing-commercial-tier landing-credit-pack";
+  card.dataset.creditPackCode = pack.code;
+  const header = document.createElement("div");
+  header.className = "landing-commercial-tier-head";
+  const heading = document.createElement("h3");
+  heading.textContent = `${Number(pack.quantity).toLocaleString("vi-VN")} lượt`;
+  const subtitle = document.createElement("p");
+  subtitle.className = "landing-commercial-subtitle";
+  subtitle.textContent = "Lấy dữ liệu tự động";
+  header.append(heading, subtitle);
+  const option = document.createElement("div");
+  option.className = "landing-commercial-option";
+  const price = document.createElement("div");
+  price.className = "landing-commercial-price";
+  const amount = document.createElement("strong");
+  amount.textContent = formatCommercialMoney(pack.price, pricingState.currency);
+  const period = document.createElement("small");
+  period.textContent = "Giá bán sau VAT · Thanh toán một lần";
+  price.append(amount, period);
+  option.append(price, createCheckoutAction({ creditPack: pack }));
+  card.append(header, option);
+  return card;
+}
+
 function createCommercialOption(offer, group, selectionCard = null) {
   const presented = presentCommercialOffer(offer);
   const option = document.createElement("div");
@@ -156,25 +210,8 @@ function createCommercialOption(offer, group, selectionCard = null) {
   description.className = "landing-price-description";
   description.textContent = presented.description;
 
-  const action = document.createElement("a");
-  action.className = `landing-button ${presented.recommended ? "landing-button-primary" : "landing-button-secondary"}`;
-  const destination = pricingState.sessionValid ? "/goi-va-thanh-toan" : LOGIN_PATH;
   const periodValue = selectionCard?.period || offer?.price?.period || "yearly";
-  action.href = `${destination}?checkout=${encodeURIComponent(presented.code)}&period=${encodeURIComponent(periodValue)}`;
-  action.textContent = "Bắt đầu";
-  action.append(createLandingIcon("arrow-right"));
-  action.addEventListener("click", (event) => {
-    if (!pricingState.sessionValid) return;
-    event.preventDefault();
-    action.setAttribute("aria-busy", "true");
-    void import("../commercial-policy/CommercialStorefront.js")
-      .then(({ startCommercialCheckoutFromLanding }) => startCommercialCheckoutFromLanding({
-        offer,
-        session: pricingState.session,
-        onReturnToOverview: () => window.location.assign(WORKSPACE_PATH),
-      }))
-      .catch(() => { action.removeAttribute("aria-busy"); });
-  });
+  const action = createCheckoutAction({ offer, period: periodValue });
 
   option.append(price);
   if (presented.description) option.append(description);
@@ -217,10 +254,10 @@ function renderCommercialOffers(offers = []) {
   pricingState.offers = visibleOffers;
   const selection = selectCommercialOffers(visibleOffers, pricingState);
   renderPricingControls(selection);
-  if (!pricingGrid || visibleOffers.length === 0) return false;
+  if (!pricingGrid || (visibleOffers.length === 0 && pricingState.creditPacks.length === 0)) return false;
 
   pricingGrid.replaceChildren();
-  pricingGrid.className = selection.grouped ? "landing-commercial-groups" : "landing-commercial-grid";
+  pricingGrid.className = "landing-commercial-groups";
   pricingGrid.dataset.offerCount = String(visibleOffers.length);
   const createCard = (offer, selectionCard = null) => {
       const presented = presentCommercialOffer(offer);
@@ -228,6 +265,7 @@ function renderCommercialOffers(offers = []) {
       card.className = `landing-commercial-tier${presented.recommended ? " is-recommended" : ""}`;
       card.dataset.commercialOfferCode = presented.code;
       card.dataset.commercialGroup = commercialGroupForOffer(offer);
+      card.dataset.pricingAudience = offer.ownerKind;
       if (selectionCard) {
         card.dataset.pricingCard = selectionCard.key;
         card.id = `landing-offer-${encodeURIComponent(selectionCard.key)}`;
@@ -298,8 +336,7 @@ function renderCommercialOffers(offers = []) {
   };
   if (selection.grouped) {
     pricingGrid.setAttribute("aria-label", `Gói ${COMMERCIAL_GROUPS[selection.group].label}`);
-    appendAudience("Cá nhân", selection.personal, "account");
-    appendAudience("Tổ chức", selection.organization, "organization");
+    appendAudience("Gói dịch vụ", [...selection.personal, ...selection.organization], "subscriptions");
     if (selection.selected.length === 0) {
       const empty = document.createElement("p");
       empty.className = "landing-commercial-empty";
@@ -309,7 +346,20 @@ function renderCommercialOffers(offers = []) {
     appendAudience("Các gói khác", selection.additional, "other");
   } else {
     pricingGrid.removeAttribute("aria-label");
-    selection.additional.forEach((offer) => pricingGrid.append(createCard(offer)));
+    appendAudience("Gói dịch vụ", selection.additional, "subscriptions");
+  }
+  if (pricingState.creditPacks.length) {
+    const section = document.createElement("section");
+    section.className = "landing-commercial-audience";
+    section.dataset.pricingAudience = "credit-packs";
+    const heading = document.createElement("h3");
+    heading.className = "landing-commercial-audience-title";
+    heading.textContent = "Mua thêm lượt lấy dữ liệu tự động";
+    const grid = document.createElement("div");
+    grid.className = "landing-commercial-audience-grid";
+    pricingState.creditPacks.forEach(pack => grid.append(createCreditPackCard(pack)));
+    section.append(heading, grid);
+    pricingGrid.append(section);
   }
 
   pricingGrid.classList.remove("is-empty");
@@ -341,6 +391,8 @@ function renderDecisionSupport(offers = []) {
 }
 
 function renderPricingUnavailable(message) {
+  pricingState.offers = [];
+  pricingState.creditPacks = [];
   renderPricingControls(selectCommercialOffers([]));
   const pricingGrid = document.getElementById("landing-pricing-grid");
   if (pricingGrid) {
@@ -372,7 +424,9 @@ async function loadPublicPackages() {
         renderPricingUnavailable("Các gói trả phí hiện chưa được mở bán.");
         return;
       }
-      if (classification.state === "empty" || !renderCommercialOffers(classification.catalog.offers)) {
+      pricingState.creditPacks = classification.catalog.creditPacks;
+      pricingState.currency = classification.catalog.currency || "VND";
+      if (!renderCommercialOffers(classification.catalog.offers)) {
         renderPricingUnavailable("Chưa có gói dịch vụ đang được công bố.");
       }
       return;
@@ -522,6 +576,7 @@ export async function bootstrapLandingPage(session = { valid: false }) {
 import { APP_DEBUG } from "../app/appConfig.js";
 import {
   classifyPublicCommercialResponse,
+  formatCommercialMoney,
   presentCommercialOffer,
   visibleOffersForOwner,
 } from "../commercial-policy/PublicCommercialCatalog.js";

@@ -1,11 +1,12 @@
 import { apiFetch } from "../shared/apiClient.js";
 
 export class AdminApiError extends Error {
-  constructor(message, { status = 0, code = "", cause = null } = {}) {
+  constructor(message, { status = 0, code = "", cause = null, details = null } = {}) {
     super(message, cause ? { cause } : undefined);
     this.name = "AdminApiError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -88,6 +89,7 @@ function adminError(response, payload) {
   return new AdminApiError(errorMessage(response.status, payload), {
     status: response.status,
     code: payload?.code || payload?.error_code || "HTTP_ERROR",
+    details: payload?.details ?? null,
   });
 }
 

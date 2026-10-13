@@ -22,6 +22,7 @@ from .errors import CommercialPolicyError, QUOTE_NOT_AVAILABLE
 from .repository import CommercialRepository, new_id
 from .admin_drafts import load_legacy_export_capabilities, prepare_admin_draft
 from .service import CommercialPolicy
+from .publication import prepare_publication_document
 from .metrics import commercial_health_snapshot
 from .tax import calculate_tax_price
 
@@ -337,6 +338,8 @@ def _save_commercial_draft_sync(request, body, revision, document):
             conn.rollback()
             return JSONResponse({"error": actor, "code": "FORBIDDEN"}, status_code=403)
         repository = CommercialRepository(cursor)
+        if body.get("publish") is True:
+            document = prepare_publication_document(cursor, document)
         draft = repository.save_draft(
             request.path_params["draft_id"], revision, document, actor.user_id
         )
@@ -351,6 +354,33 @@ def _save_commercial_draft_sync(request, body, revision, document):
             required=True,
         )
         repository.insert_outbox("commercial.draft_saved", "commercial_draft", draft["id"], {"revision": draft["revision"]})
+        if body.get("publish") is True:
+            policy = CommercialPolicy(cursor)
+            validation = policy.validate_draft(draft["id"], draft["revision"])
+            if validation["errors"]:
+                raise CommercialPolicyError(
+                    "COMMERCIAL_POLICY_VALIDATION_FAILED",
+                    "Không thể lưu cấu hình: " + "; ".join(error["message"] for error in validation["errors"][:10]),
+                    status_code=409, details={"errors": validation["errors"]},
+                )
+            effective_at = body.get("effectiveAt") or int(time.time())
+            release = policy.publish_draft(
+                draft["id"], draft["revision"], validation["validationDigest"],
+                int(effective_at), "Lưu cấu hình gói dịch vụ", actor.user_id,
+            )
+            for action, target_type, target_id, metadata in (
+                ("commercial.draft_validated", "commercial_draft", draft["id"],
+                 {"revision": draft["revision"], "digest": validation["validationDigest"], "errorCount": 0}),
+                ("commercial.release_published", "commercial_release", release["id"],
+                 {"draftId": draft["id"], "revision": draft["revision"], "checksum": release["checksum"],
+                  "digest": validation["validationDigest"], "effectiveAt": int(effective_at),
+                  "reason": "Lưu cấu hình gói dịch vụ"}),
+            ):
+                log_audit(action, actor_user_id=actor.user_id, target_type=target_type,
+                          target_id=target_id, request=request, metadata=metadata, cursor=cursor, required=True)
+                repository.insert_outbox(action, target_type, target_id, metadata)
+            conn.commit()
+            return JSONResponse(_release_payload(release))
         conn.commit()
         return JSONResponse(_draft_payload(draft), headers={"ETag": f'"{draft["revision"]}"'})
     except Exception as exc:  # noqa: BLE001
@@ -369,6 +399,12 @@ async def save_commercial_draft_api(request):
         body = await _json_body(request)
         revision = _expected_revision(request, body)
         document = body.get("document")
+        if "publish" in body and type(body["publish"]) is not bool:
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Lựa chọn áp dụng cấu hình không hợp lệ.")
+        if body.get("publish") is True and "effectiveAt" in body and (
+            type(body["effectiveAt"]) is not int or body["effectiveAt"] <= 0
+        ):
+            raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thời điểm hiệu lực không hợp lệ.")
         if not isinstance(document, dict):
             raise CommercialPolicyError("COMMERCIAL_POLICY_INVALID", "Thiếu document có kiểu object.")
         return await run_database_write(

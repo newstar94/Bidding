@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -300,9 +301,80 @@ function pricingMatrix(periods = ["yearly", "monthly"]) {
   )));
 }
 
-const pricingCatalog = (offers) => ({ status: 200, payload: {
-  releaseId: "matrix", releaseChecksum: "matrix-checksum", offers, creditPacks: [], quotaWarnings: [],
+const pricingCatalog = (offers, creditPacks = []) => ({ status: 200, payload: {
+  releaseId: "matrix", releaseChecksum: "matrix-checksum", offers, creditPacks, quotaWarnings: [],
 } });
+
+test("desktop pricing puts personal and organization cards on one row and retains quota packs across selectors", async () => {
+  const packs = [20, 100, 500, 2000].map((quantity, index) => ({ code: `quota.${quantity}`, quantity, price: [99000, 399000, 1490000, 4490000][index] }));
+  const result = await renderScenario({ commercial: pricingCatalog(pricingMatrix(), packs), inspect: async page => {
+    await page.addStyleTag({ url: "/views/css/tokens.css" });
+    await page.addStyleTag({ url: "/views/css/variables.css" });
+    await page.addStyleTag({ url: "/views/css/base.css" });
+    await page.addStyleTag({ url: "/views/css/landing.css" });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const assertRow = async selector => {
+      const boxes = await page.locator(selector).evaluateAll(nodes => nodes.map(node => {
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      }));
+      assert.equal(boxes.length, 4);
+      assert.ok(boxes.every(box => Math.abs(box.y - boxes[0].y) < 1), JSON.stringify(boxes));
+      for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].x >= boxes[i - 1].x + boxes[i - 1].width);
+    };
+    await assertRow("[data-commercial-offer-code]");
+    await assertRow("[data-credit-pack-code]");
+    const quotaCards = page.locator("[data-credit-pack-code]");
+    assert.match(await quotaCards.first().textContent(), /20 lượt.*99\.000/su);
+    assert.match(await quotaCards.last().textContent(), /2\.000 lượt.*4\.490\.000/su);
+    assert.equal(await quotaCards.first().getByRole("link", { name: "Mua lượt" }).getAttribute("href"), "/dang-nhap?checkout=quota.20");
+    assert.equal(await quotaCards.locator("[data-pricing-period]").count(), 0);
+    await page.locator('[data-pricing-group="advanced"]').click();
+    await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
+    await assertRow("[data-commercial-offer-code]");
+    assert.deepEqual(await quotaCards.evaluateAll(nodes => nodes.map(node => node.dataset.creditPackCode)), packs.map(pack => pack.code));
+    await page.locator('[data-pricing-group="basic"]').click();
+    assert.equal(await quotaCards.count(), 4);
+    const dimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    assert.ok(dimensions.scroll <= dimensions.client + 1, JSON.stringify(dimensions));
+    await page.locator("#bang-gia").screenshot({ path: join(tmpdir(), `bidding-pricing-four-cards-quota-${process.pid}.png`), style: ".landing-header, .landing-skip-link { visibility: hidden; }" });
+  } });
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.requests, { commercial: 1, legacy: 0 });
+});
+
+test("published quota-only catalogs still display their packs", async () => {
+  const result = await renderScenario({ commercial: pricingCatalog([], [{ code: "quota.100", quantity: 100, price: 399000 }]) });
+  assert.equal(result.cardCount, 1);
+  assert.match(result.pricingText, /100 lượt.*399\.000/su);
+  assert.equal(result.noticeHidden, "");
+  assert.deepEqual(result.errors, []);
+});
+
+test("landing quota purchase opens QR directly and keeps the current billing owner", async () => {
+  const order = { publicId: "quota-order", checkoutState: "open", paymentState: "unverified", activationState: "pending", totalAmount: 99000,
+    paymentDetails: { qrCodeImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==" } };
+  for (const activeScope of ["personal:user-1", "org-1"]) {
+    await renderScenario({ commercial: pricingCatalog(pricingMatrix(), [{ code: "quota.20", quantity: 20, price: 99000 }]),
+      session: { valid: true, user: { id: "user-1", active_org_id: activeScope } }, inspect: async page => {
+        await page.evaluate(() => { document.cookie = "csrf_token=landing-test-token; path=/"; });
+        let quoteRequest;
+        await page.route("**/api/billing/quotes", route => {
+          quoteRequest = route.request().postDataJSON();
+          return route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "quota-quote" }) });
+        });
+        await page.route("**/api/billing/checkouts", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order }) }));
+        await page.route("**/api/billing/orders/quota-order", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order }) }));
+        await page.getByRole("link", { name: "Mua lượt" }).click();
+        const dialog = page.getByRole("dialog", { name: "Thanh toán gói dịch vụ" });
+        await dialog.getByRole("img", { name: "Mã QR thanh toán" }).waitFor();
+        assert.match(await dialog.textContent(), /20 lượt lấy dữ liệu tự động/u);
+        assert.match(await dialog.textContent(), /99\.000/u);
+        assert.equal(new URL(page.url()).pathname, "/");
+        assert.deepEqual(quoteRequest, { ownerKind: activeScope === "org-1" ? "organization" : "account", ownerId: activeScope === "org-1" ? "org-1" : "user-1", operation: "credit_pack", skuCode: "quota.20" });
+      } });
+  }
+});
 
 test("public cards match the Admin preview layout and show every configured right", async () => {
   const offers = pricingMatrix(["yearly"]);
@@ -372,8 +444,8 @@ test("each pricing card selects its own period without changing other cards", as
     inspect: async (page) => {
       const codes = () => page.locator("[data-commercial-offer-code]").evaluateAll((nodes) => nodes.map((node) => node.dataset.commercialOfferCode));
       assert.deepEqual(await codes(), ["personal", "silver", "gold", "diamond"].map((tier) => `${tier}.internal.yearly`));
-      assert.equal(await page.locator('[data-pricing-audience="account"] article').count(), 1);
-      assert.equal(await page.locator('[data-pricing-audience="organization"] article').count(), 3);
+      assert.equal(await page.locator('article[data-pricing-audience="account"]').count(), 1);
+      assert.equal(await page.locator('article[data-pricing-audience="organization"]').count(), 3);
       assert.equal(await page.locator('.landing-pricing-controls [data-pricing-period]').count(), 0);
       assert.equal(await page.locator('article [data-pricing-period="monthly"]').count(), 4);
       assert.doesNotMatch(await page.locator("#landing-pricing-grid").textContent(), /lượt lấy dữ liệu tự động/u);
@@ -383,7 +455,7 @@ test("each pricing card selects its own period without changing other cards", as
       assert.match(await page.locator("#landing-pricing-grid").textContent(), /Lượt lấy dữ liệu tự động kèm theo: 20/u);
       await page.locator('[data-pricing-audience="account"] [data-pricing-period="monthly"]').click();
       assert.deepEqual(await codes(), ["personal.connected.monthly", "silver.connected.yearly", "gold.connected.yearly", "diamond.connected.yearly"]);
-      const personal = page.locator('[data-pricing-audience="account"] article');
+      const personal = page.locator('article[data-pricing-audience="account"]');
       assert.match(await personal.textContent(), /123\.456/u);
       assert.doesNotMatch(await personal.textContent(), /987\.654/u);
       assert.equal(await personal.locator('[data-pricing-period="monthly"]').getAttribute("aria-pressed"), "true");

@@ -44,7 +44,7 @@ test("Admin can select no refunds while applying approved billing terms and pres
   assert.match(markup, /value="no_refunds" selected>Không hoàn tiền/u);
 });
 
-test("open sales errors use Vietnamese sections and link to settings without enabling publish", () => {
+test("open sales errors use Vietnamese sections and link to settings without a manual publication button", () => {
   const validation = {
     validationDigest: "test-digest", readinessExpiresAt: 9999999999,
     errors: [
@@ -65,7 +65,8 @@ test("open sales errors use Vietnamese sections and link to settings without ena
   assert.match(panel, /&lt;img/u);
   assert.match(panel, /&lt;script&gt;/u);
   assert.doesNotMatch(panel, /<img|<script>/u);
-  assert.match(markup, /data-admin-plan-action="publish" disabled/u);
+  assert.match(markup, /data-admin-plan-action="save"/u);
+  assert.doesNotMatch(markup, /data-admin-plan-action="(?:validate|publish)"/u);
   assert.deepEqual(validation, before);
 });
 
@@ -79,15 +80,16 @@ test("tax and payOS controls display unresolved values without filling decisions
   } });
   assert.match(markup, /data-admin-tax-settings/u);
   assert.match(markup, /data-admin-payment-settings/u);
-  for (const path of ["taxInvoice.approvalReference", "taxInvoice.taxInclusive", "taxInvoice.taxBasisPoints", "providerProfiles.0.credentialReference"]) {
+  for (const path of ["taxInvoice.taxInclusive", "taxInvoice.taxBasisPoints", "providerProfiles.0.minAmount"]) {
     assert.ok(markup.includes(`data-admin-commercial-config="${path}"`));
   }
   assert.match(markup, /data-admin-commercial-config="taxInvoice[.]taxInclusive"[^>]*><option value="" selected>/u);
   assert.match(markup, /data-admin-commercial-config="taxInvoice[.]taxBasisPoints"[^>]*value=""/u);
-  assert.match(markup, /value="blocked_external" selected/u);
+  assert.doesNotMatch(markup, /data-admin-commercial-config="(?:taxInvoice[.]approvalReference|externalReadiness[.]|providerProfiles[.]0[.](?:credentialReference|readiness|mode))/u);
   assert.doesNotMatch(markup, /value="ready" selected|env:\/\/payos\/default|PAYOS_API_KEY|PAYOS_CHECKSUM_KEY/u);
-  assert.match(markup, /Máy chủ vẫn kiểm tra/u);
-  assert.match(markup, /data-admin-plan-action="publish" disabled/u);
+  assert.match(markup, /tự động lấy từ cấu hình máy chủ khi lưu/u);
+  assert.match(markup, /data-admin-plan-action="save"/u);
+  assert.doesNotMatch(markup, /data-admin-plan-action="(?:validate|publish)"/u);
 });
 
 test("unmodified controls preserve missing null unknown and explicitly edited advanced configuration", () => {
@@ -103,10 +105,7 @@ test("unmodified controls preserve missing null unknown and explicitly edited ad
   const root = candidateRoot(advanced, [
     configField("taxInvoice.taxInclusive", "false", "false", "boolean"),
     configField("taxInvoice.taxBasisPoints", "", "", "percentage"),
-    configField("taxInvoice.approvalReference", ""),
     configField("taxInvoice.rounding", "existing_rule"),
-    configField("providerProfiles.1.credentialReference", ""),
-    configField("externalReadiness.vatInvoice", ""),
     configField("taxInvoice.sellerProfile.legalName", "Bên bán"),
     configField("taxInvoice.sellerProfile.taxCode", ""),
   ]);
@@ -132,14 +131,11 @@ test("tax and payOS edits serialize exactly while retaining other profiles and m
   const root = candidateRoot(advanced, [
     configField("taxInvoice.taxInclusive", "", "false", "boolean"),
     configField("taxInvoice.taxBasisPoints", "", "8.25", "percentage"),
-    configField("taxInvoice.approvalReference", "", "approved-tax-reference"),
     configField("taxInvoice.rounding", "", "half_up"),
     configField("taxInvoice.invoiceTrigger", "", "activation_applied"),
     configField("taxInvoice.sellerProfile.legalName", "", "Đơn vị bán dịch vụ"),
     configField("taxInvoice.sellerProfile.taxCode", "", "0123456789"),
-    configField("providerProfiles.1.credentialReference", "", "secret://configured-reference"),
     configField("providerProfiles.1.checkoutTtlSeconds", "", "600", "integer"),
-    configField("externalReadiness.vatInvoice", "", "confirmed-reference"),
     configField("rollout.mode", "shadow", "pilot"),
   ]);
   const result = serializeDraftDocument(root, { ...advanced, offers: [] });
@@ -151,7 +147,7 @@ test("tax and payOS edits serialize exactly while retaining other profiles and m
   assert.equal(result.taxInvoice.sellerProfile.unknown, "keep");
   assert.equal(result.taxInvoice.extra, "keep");
   assert.deepEqual(result.providerProfiles[0], advanced.providerProfiles[0]);
-  assert.equal(result.providerProfiles[1].credentialReference, "secret://configured-reference");
+  assert.equal(result.providerProfiles[1].credentialReference, null);
   assert.equal(result.providerProfiles[1].checkoutTtlSeconds, 600);
   assert.equal(result.providerProfiles[1].readiness, "blocked_external");
   assert.equal(result.providerProfiles[1].opaque, 9);
@@ -175,7 +171,7 @@ test("explicit clears remain unresolved and percentage validation rejects roundi
 });
 
 test("payOS edits cannot silently update a profile reordered through advanced JSON", () => {
-  const root = candidateRoot({ providerProfiles: [{ provider: "fake" }] }, [configField("providerProfiles.0.credentialReference", "", "new-reference")]);
+  const root = candidateRoot({ providerProfiles: [{ provider: "fake" }] }, [configField("providerProfiles.0.checkoutTtlSeconds", "", "600", "integer")]);
   assert.throws(() => serializeDraftDocument(root, { offers: [] }), /Danh sách cấu hình payOS đã thay đổi/u);
 });
 
@@ -225,6 +221,7 @@ test("configuration fields escape their authoritative values and preserve unknow
   } });
   assert.doesNotMatch(markup, /<script>attack\(\)<\/script>|<img src=x/u);
   assert.match(markup, /value="legacy_rounding" selected/u);
-  assert.match(markup, /value="legacy_status" selected/u);
+  assert.match(markup, /legacy_status/u);
+  assert.doesNotMatch(markup, /data-admin-commercial-config="providerProfiles[.]0[.]readiness"/u);
   assert.match(markup, /data-admin-commercial-config="taxInvoice[.]taxBasisPoints"[^>]*value="8[.]25"/u);
 });

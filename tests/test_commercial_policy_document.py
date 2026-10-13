@@ -105,15 +105,9 @@ def test_approved_sample_tax_defaults_do_not_mark_other_production_settings_read
 
     document["rollout"]["mode"] = "production"
     errors = {error["path"]: error for error in validate_document(document)["errors"]}
-    assert set(errors) == {"externalReadiness", "providerProfiles"}
-    assert "taxInvoice" not in errors
-    assert errors["externalReadiness"]["code"] == "BLOCKED_EXTERNAL"
-    assert "Chính sách thuế" not in errors["externalReadiness"]["message"]
-    assert "Thương mại điện tử và quyền riêng tư" not in errors["externalReadiness"]["message"]
-    assert "Điều khoản và hoàn tiền" not in errors["externalReadiness"]["message"]
-    assert "Tài khoản payOS" in errors["externalReadiness"]["message"]
-    assert "Bộ khóa và webhook" in errors["externalReadiness"]["message"]
+    assert set(errors) == {"providerProfiles"}
     assert errors["providerProfiles"]["code"] == "NO_HEALTHY_PROVIDER"
+
 
 
 def test_initial_draft_does_not_guess_missing_organization_exports():
@@ -146,7 +140,7 @@ def test_validation_bounds_credit_savings_computation_before_dynamic_programming
     assert sum(error["code"] == "VALUE_TOO_LARGE" for error in result["errors"]) == 2
 
 
-def test_production_release_requires_external_tax_and_live_provider_readiness():
+def test_production_release_requires_real_tax_and_live_provider_readiness():
     document = legacy_annual_document(LEGACY_EXPORTS)
     personal_mapping = {capability: True for capability in SUPPORTED_EXPORT_CAPABILITIES}
     for offer in document["offers"]:
@@ -160,15 +154,17 @@ def test_production_release_requires_external_tax_and_live_provider_readiness():
     result = validate_document(document)
 
     codes = {error["code"] for error in result["errors"]}
-    assert "BLOCKED_EXTERNAL" in codes
+    assert "BLOCKED_EXTERNAL" not in codes
     assert "NO_HEALTHY_PROVIDER" in codes
 
 
-def test_live_readiness_cannot_be_bypassed_by_omitting_all_references():
+def test_omitting_manual_references_keeps_the_actual_provider_gate():
     document = legacy_annual_document(LEGACY_EXPORTS)
     document["rollout"]["mode"] = "production"
     document["externalReadiness"] = {}
-    assert any(error["path"] == "externalReadiness" for error in validate_document(document)["errors"])
+    errors = validate_document(document)["errors"]
+    assert not any(error["path"] == "externalReadiness" for error in errors)
+    assert any(error["code"] == "NO_HEALTHY_PROVIDER" for error in errors)
 
 
 def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled():
@@ -179,19 +175,13 @@ def test_open_sales_errors_identify_missing_settings_when_invoices_are_disabled(
     errors = {error["path"]: error for error in validate_document(document)["errors"]}
 
     assert errors["taxInvoice"]["code"] == "BLOCKED_EXTERNAL"
-    for label in ("Tham chiếu quyết định thuế", "Thuế suất (%)", "Quy tắc làm tròn"):
+    for label in ("Thuế suất (%)", "Quy tắc làm tròn"):
         assert label in errors["taxInvoice"]["message"]
-    assert "Thời điểm yêu cầu khi bật xuất hóa đơn" not in errors["taxInvoice"]["message"]
-    for label in (
-        "Chính sách thuế (đang chọn Không xuất hóa đơn)", "Tài khoản payOS",
-        "Bộ khóa và webhook", "Thương mại điện tử và quyền riêng tư", "Điều khoản và hoàn tiền",
-    ):
-        assert label in errors["externalReadiness"]["message"]
-    for raw_key in document["externalReadiness"]:
-        assert raw_key not in errors["externalReadiness"]["message"]
+    assert "Tham chiếu quyết định thuế" not in errors["taxInvoice"]["message"]
+    assert "externalReadiness" not in errors
     assert errors["providerProfiles"]["code"] == "NO_HEALTHY_PROVIDER"
-    assert "Thanh toán thực tế" in errors["providerProfiles"]["message"]
-    assert "Tham chiếu bộ khóa" in errors["providerProfiles"]["message"]
+    assert "payOS thực tế" in errors["providerProfiles"]["message"]
+
 
 
 @pytest.mark.parametrize("invoice_enabled", [False, True])
@@ -210,7 +200,8 @@ def test_live_tax_gate_only_requires_invoice_timing_when_invoicing_is_enabled(in
         assert "Thuế suất (%)" not in tax_errors[0]["message"]
     else:
         assert tax_errors == []
-    assert {"externalReadiness", "providerProfiles"} <= {error["path"] for error in errors}
+    assert "providerProfiles" in {error["path"] for error in errors}
+    assert "externalReadiness" not in {error["path"] for error in errors}
 
 
 def test_live_payos_profile_requires_a_nonblank_credential_reference():

@@ -161,6 +161,26 @@ const pendingOrder = { publicId: "order-recovery", checkoutUrl: "https://example
   paymentDetails: { qrCodeImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", accountNumber: "0123456789", accountName: "BIDDINGFLOW", description: "BIDDING 123" } };
 const cancelledOrder = { ...pendingOrder, checkoutState: "cancelled" };
 
+test("a quota SKU selected before login resumes as a credit pack in the authenticated workspace", async () => {
+  const result = await renderScenario({ ...recoveryCatalog, creditPacks: [{ code: "quota.20", quantity: 20, price: 99000 }] }, { id: "user-1" }, async page => {
+    let quoteRequest;
+    await checkoutRoutes(page, { quote: route => {
+      quoteRequest = route.request().postDataJSON();
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "quota-login-quote" }) });
+    } });
+    await page.evaluate(async () => {
+      const { captureCheckoutIntentFromLocation } = await import("/frontend/commercial-policy/pendingCheckout.js");
+      captureCheckoutIntentFromLocation({ search: "?checkout=quota.20" });
+      const { mountCommercialStorefront } = await import("/frontend/commercial-policy/CommercialStorefront.js");
+      await mountCommercialStorefront(window.storefrontController);
+    });
+    await page.getByRole("dialog", { name: "Thanh toán gói dịch vụ" }).getByRole("img", { name: "Mã QR thanh toán" }).waitFor();
+    assert.deepEqual(quoteRequest, { ownerKind: "account", ownerId: "user-1", operation: "credit_pack", skuCode: "quota.20" });
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("bf_pending_commercial_checkout")), null);
+  });
+  assert.deepEqual(result.errors, []);
+});
+
 async function checkoutRoutes(page, { checkout, quote, order = pendingOrder, cancel, sessionUser = { id: "user-1", active_org_id: null, package_id: null, entitlements: {} } } = {}) {
   await page.evaluate(() => { document.cookie = "csrf_token=storefront-test-token; path=/"; });
   await page.route("**/api/billing/quotes", quote || ((route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ publicId: "quote-dialog" }) })));
