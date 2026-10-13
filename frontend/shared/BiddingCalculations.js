@@ -75,16 +75,16 @@ export function calculateRankings(gt, bids) {
         eligibleBids = lotBids.filter((b) => isQualified(b) && isPriceRankable(b));
         const prices = eligibleBids.map(getRankingPrice).filter((p) => p > 0n);
         const gMin = prices.reduce((minimum, price) => price < minimum ? price : minimum, prices[0] || 0n);
-        const techScores = eligibleBids.map(getTechScore);
-        const maxTech = techScores.length > 0 ? Math.max(...techScores) : 0;
         const K = parseFloat(gt.trongSoKyThuat !== void 0 && gt.trongSoKyThuat !== null ? gt.trongSoKyThuat : 80);
-        const T = 100 - K;
+        const G = 100 - K;
+        const T = 100;
         eligibleBids.forEach((b) => {
           const gCurrent = getRankingPrice(b);
           const techCurrent = getTechScore(b);
           let score = 0;
-          if (gCurrent > 0n && maxTech > 0) {
-            score = Number(gMin) / Number(gCurrent) * T + techCurrent / maxTech * K;
+          if (gCurrent > 0n) {
+            const priceScore = Number(gMin) * T / Number(gCurrent);
+            score = (K / 100) * techCurrent + (G / 100) * priceScore;
           }
           scores[b.id] = score;
         });

@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { savePackagePreparation } from "../../frontend/packages/packagePreparation.js";
 import { BiddingController } from "../../frontend/app/BiddingController.js";
-import { editGoiThau } from "../../frontend/packages/GoiThauWorkflow.js";
+import {
+  editGoiThau,
+  resolvePackageEditorRecord,
+} from "../../frontend/packages/GoiThauWorkflow.js";
 
 function deferred() {
   let resolve;
@@ -123,6 +126,23 @@ test("workspace switch during lazy package modal load cannot populate the new wo
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
   }
+});
+
+test("package editor resolves a server row missing from the local route cache", async () => {
+  const authoritative = { id: "pkg-server", tenGoiThau: "Server package" };
+  const controller = {
+    model: { state: { goithau: [] } },
+    fetchRecordByLookup: async (table, id) => {
+      assert.equal(table, "goithau");
+      assert.equal(id, authoritative.id);
+      return authoritative;
+    },
+  };
+
+  assert.equal(
+    await resolvePackageEditorRecord(controller, authoritative.id),
+    authoritative,
+  );
 });
 
 test("versioning from the detail screen inherits status and assignees of the stored package", async () => {

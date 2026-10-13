@@ -282,6 +282,19 @@ export async function hydratePackageExpertOptions(model, {
   return experts;
 }
 
+export async function resolvePackageEditorRecord(controller, id) {
+  if (!id) return null;
+  const local = controller?.model?.state?.goithau?.find(
+    (record) => String(record?.id) === String(id),
+  ) || null;
+  if (local || typeof controller?.fetchRecordByLookup !== "function") return local;
+  return await controller.fetchRecordByLookup("goithau", id)
+    || controller?.model?.state?.goithau?.find(
+      (record) => String(record?.id) === String(id),
+    )
+    || null;
+}
+
 export async function createOfficialPackageVersionFromForm(
   controller,
   sourcePackage,
@@ -341,9 +354,18 @@ export async function editGoiThau(id, isReadOnly = false) {
   const form = document.getElementById("form-goithau");
   setPackageEditorState(packageModal, "loading");
   form.dataset.submitState = "loading";
-  const storedPackage = id
-    ? this.model.state.goithau.find((g) => String(g.id) === String(id))
-    : null;
+  const storedPackage = await resolvePackageEditorRecord(this, id);
+  assertEditWorkspaceCurrent();
+  if (id && !storedPackage) {
+    setPackageEditorState(packageModal, "error");
+    form.dataset.submitState = "error";
+    this.view.showToast(
+      "Không thể mở gói thầu",
+      "Không tìm thấy dữ liệu gói thầu có thẩm quyền. Vui lòng tải lại danh sách và thử lại.",
+      "error",
+    );
+    return;
+  }
   const gt = storedPackage
     ? { ...storedPackage, trangThai: presentStatus(storedPackage.trangThai).label }
     : null;

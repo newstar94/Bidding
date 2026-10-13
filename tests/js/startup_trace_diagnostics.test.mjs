@@ -15,9 +15,12 @@ test("startup snapshot drains queued Long Tasks after the readiness task ends", 
   const state = {
     MessageChannel,
     PerformanceObserver: class {
-      constructor(callback) { deliver = callback; }
-      observe() {}
-      takeRecords() { return pending.splice(0); }
+      constructor(callback) { this.callback = callback; }
+      observe({ type }) {
+        this.type = type;
+        if (type === "longtask") deliver = this.callback;
+      }
+      takeRecords() { return this.type === "longtask" ? pending.splice(0) : []; }
     },
   };
   runInNewContext(`(${installStartupLongTaskObserver.toString()})()`, state);
@@ -33,6 +36,29 @@ test("startup snapshot drains queued Long Tasks after the readiness task ends", 
   deliver({ getEntries: () => pending.splice(0) });
   await runInNewContext(`(${flushStartupLongTasks.toString()})()`, state);
   assert.equal(state.__bfStartupLongTasks.length, 1, "draining must not duplicate observer entries");
+});
+
+test("startup snapshot uses script timing when native Long Tasks omit cold bootstrap", async () => {
+  const pending = {
+    longtask: [],
+    "long-animation-frame": [{
+      scripts: [{ startTime: 7, duration: 180 }],
+    }],
+  };
+  const state = {
+    MessageChannel,
+    PerformanceObserver: class {
+      observe({ type }) { this.type = type; }
+      takeRecords() { return pending[this.type]?.splice(0) || []; }
+    },
+  };
+
+  runInNewContext(`(${installStartupLongTaskObserver.toString()})()`, state);
+  await runInNewContext(`(${flushStartupLongTasks.toString()})()`, state);
+
+  assert.equal(state.__bfStartupLongTasks.length, 1);
+  assert.equal(state.__bfStartupLongTasks[0].startTime, 7);
+  assert.equal(state.__bfStartupLongTasks[0].duration, 180);
 });
 
 for (const enabled of [false, true]) {
