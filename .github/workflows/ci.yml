@@ -469,7 +469,16 @@ jobs:
           cat /tmp/biddingflow-performance.log
           exit 1
       - name: Performance budget
+        id: startup_budget
         run: npm run test:performance
+      - name: Trace startup after a failed performance budget
+        if: failure() && steps.startup_budget.outcome == 'failure'
+        env:
+          STARTUP_TRACE_DIR: data/logs/startup-traces
+          STARTUP_METRICS_OUTPUT: data/logs/startup-performance-traced.json
+        # Preserve the original failure and report. Instrumented samples are
+        # diagnostics, not a retry that can pass the release gate.
+        run: node scripts/measure_startup.mjs
       - name: Stop performance application
         if: always()
         run: |
@@ -482,6 +491,8 @@ jobs:
           name: biddingflow-performance-diagnostics-${{ github.sha }}
           path: |
             data/logs/startup-performance.json
+            data/logs/startup-performance-traced.json
+            data/logs/startup-traces/
             /tmp/biddingflow-performance.log
           if-no-files-found: ignore
           retention-days: 14

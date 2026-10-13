@@ -42,6 +42,11 @@ const blockedURLPatterns = process.env.STARTUP_BLOCKED_URLS === ""
     .map((value) => value.trim())
     .filter(Boolean);
 const outputPath = path.resolve(process.env.STARTUP_METRICS_OUTPUT || "data/logs/startup-performance.json");
+// Opt-in diagnostic runs only: tracing adds overhead and must never replace the
+// uninstrumented release gate or its report.
+const traceDirectory = process.env.STARTUP_TRACE_DIR
+  ? path.resolve(process.env.STARTUP_TRACE_DIR)
+  : null;
 const expectedReleaseId = String(process.env.STARTUP_EXPECTED_RELEASE_ID || (
   JSON.parse(await fs.readFile(new URL("../dist/secure-build.json", import.meta.url), "utf8")).releaseId
 ) || "").trim();
@@ -152,6 +157,13 @@ async function authenticate(context) {
 }
 
 async function measureNavigation(page, mode, run) {
+  const traceSession = traceDirectory ? await page.context().newCDPSession(page) : null;
+  if (traceSession) {
+    await traceSession.send("Tracing.start", {
+      categories: "devtools.timeline,v8,toplevel,blink.user_timing,disabled-by-default-devtools.timeline",
+      transferMode: "ReturnAsStream",
+    });
+  }
   const cpuBefore = hostCpuSnapshot();
   const runtimeFailures = [];
   const appOrigin = new URL(baseURL).origin;
@@ -293,6 +305,27 @@ async function measureNavigation(page, mode, run) {
     page.off("pageerror", onPageError);
     page.off("console", onConsole);
     page.off("response", onResponse);
+    if (traceSession) {
+      try {
+        const completed = new Promise((resolve) => traceSession.once("Tracing.tracingComplete", resolve));
+        await traceSession.send("Tracing.end");
+        const { stream } = await completed;
+        await fs.mkdir(traceDirectory, { recursive: true });
+        const file = await fs.open(path.join(traceDirectory, `${mode}-${run}.json`), "w");
+        try {
+          for (;;) {
+            const chunk = await traceSession.send("IO.read", { handle: stream });
+            await file.write(chunk.base64Encoded ? Buffer.from(chunk.data, "base64") : chunk.data);
+            if (chunk.eof) break;
+          }
+        } finally {
+          await file.close();
+          await traceSession.send("IO.close", { handle: stream });
+        }
+      } finally {
+        await traceSession.detach();
+      }
+    }
   }
 }
 
@@ -372,6 +405,7 @@ const result = {
     logicalCpuCount: os.cpus().length,
   },
   disableServiceWorker,
+  diagnosticTracing: Boolean(traceDirectory),
   blockedURLPatterns,
   thresholds: { coldP95LimitMs, warmP95LimitMs, longTaskLimitMs },
   cold: summarize(coldSamples),
