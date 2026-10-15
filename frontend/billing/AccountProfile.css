@@ -4,10 +4,17 @@
 }
 #tab-profile .account-profile__intro {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 24px;
+}
+#tab-profile .account-profile__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 #tab-profile .account-profile__intro h2 {
   margin: 4px 0 6px;

@@ -184,6 +184,10 @@ export async function mountAccountProfile(controller) {
   state.controller = controller;
   if (root.dataset.accountProfileBound !== "true") {
     root.dataset.accountProfileBound = "true";
+    node(state, "btn-create-organization")?.addEventListener("click", () => {
+      document.getElementById("form-create-organization")?.reset();
+      states.get(root).controller.view.openModal?.("modal-create-organization");
+    });
     root.querySelectorAll("[data-profile-tab]").forEach((tab) => {
       tab.addEventListener("click", () => selectTab(states.get(root), tab.dataset.profileTab));
       tab.addEventListener("keydown", (event) => {

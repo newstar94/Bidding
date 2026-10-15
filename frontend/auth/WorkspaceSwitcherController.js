@@ -74,11 +74,7 @@ export function renderWorkspaceSwitcher() {
         ${isActive ? '<i data-lucide="check" class="bf-s-2238b82015" aria-hidden="true"></i>' : ""}
       </button>
     `;
-  }).join("") + `
-    <button type="button" class="dropdown-item" id="btn-create-organization" role="menuitem">
-      <i data-lucide="building-2" aria-hidden="true"></i>
-      <span>Tạo tổ chức mới</span>
-    </button>`);
+  }).join(""));
 
   window.lucide?.createIcons?.({ root: orgSwitchList });
 
@@ -128,13 +124,6 @@ export function renderWorkspaceSwitcher() {
         }
       }
     });
-  });
-
-  orgSwitchList.querySelector("#btn-create-organization")?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    closeProfileDropdown();
-    document.getElementById("form-create-organization")?.reset();
-    this.view.openModal?.("modal-create-organization");
   });
 
   const form = document.getElementById("form-create-organization");

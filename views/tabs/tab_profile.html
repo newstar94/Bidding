@@ -7,7 +7,14 @@
                                 <h2 id="profile-account-name">Tài khoản của bạn</h2>
                                 <p id="profile-account-email" class="text-muted"></p>
                             </div>
-                            <p class="account-profile__context"><i data-lucide="user-round" aria-hidden="true"></i> Hồ sơ và giao dịch của riêng bạn</p>
+                            <div class="account-profile__actions">
+                                <p class="account-profile__context"><i data-lucide="user-round" aria-hidden="true"></i> Hồ sơ và giao dịch của riêng bạn</p>
+                                <button type="button" id="btn-create-organization" class="btn btn-outline"
+                                    aria-haspopup="dialog" aria-controls="modal-create-organization">
+                                    <i data-lucide="building-2" aria-hidden="true"></i>
+                                    Tạo tổ chức mới
+                                </button>
+                            </div>
                         </header>
                         <div class="account-profile__tabs" role="tablist" aria-label="Thông tin tài khoản">
                             <button type="button" id="profile-tab-details" role="tab" aria-selected="true" aria-controls="profile-panel-details" data-profile-tab="details"><i data-lucide="user-cog" aria-hidden="true"></i> Hồ sơ cá nhân</button>

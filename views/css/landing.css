@@ -3966,6 +3966,24 @@ html[data-bf-shell="landing"] body {
   word-spacing: 0.02em;
 }
 
+/* Vietnamese accents and descenders must remain separate on wrapped headings.
+ * Scope this to text headings; compact badges, icons and numbers are unchanged. */
+.landing-page h1,
+.landing-page h2,
+.landing-page h3 {
+  line-height: 1.35;
+}
+
+/* Large display headings can sit closer than smaller, densely accented text. */
+.landing-page .landing-hero h1,
+.landing-page .landing-proof-intro h2 {
+  line-height: 1.2;
+}
+
+.landing-page .landing-cta-content h2 {
+  line-height: 1.32;
+}
+
 .landing-proof-promise {
   display: flex;
   max-width: 31rem;
