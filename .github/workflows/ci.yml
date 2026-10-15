@@ -55,7 +55,7 @@ jobs:
           npm run check:static 2>&1 | tee quality.log
       - name: Upload quality diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-quality-diagnostics-${{ github.sha }}
           path: quality.log
@@ -121,7 +121,7 @@ jobs:
           python scripts/check_critical_coverage.py coverage.json
       - name: Upload Python test diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-python-test-diagnostics-${{ github.sha }}
           path: |
@@ -156,7 +156,7 @@ jobs:
           npm run test:js:coverage 2>&1 | tee javascript-tests.log
       - name: Upload JavaScript test diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-javascript-test-diagnostics-${{ github.sha }}
           path: |
@@ -192,7 +192,7 @@ jobs:
           set -o pipefail
           npm run build:secure 2>&1 | tee secure-build.log
       - name: Upload secure build for dependent gates
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-secure-build-${{ github.sha }}
           path: dist/
@@ -200,7 +200,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Upload private client symbols
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-private-client-symbols-${{ github.sha }}
           path: release/private-symbols/
@@ -208,7 +208,7 @@ jobs:
           retention-days: 30
       - name: Upload secure build diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-build-diagnostics-${{ github.sha }}
           path: secure-build.log
@@ -264,7 +264,7 @@ jobs:
           python scripts/benchmark_platform_admin.py --repetitions 3 2>&1 | tee platform-admin-database-budget.log
       - name: Upload database diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-database-diagnostics-${{ github.sha }}
           path: |
@@ -384,7 +384,7 @@ jobs:
           if [ "${{ job.status }}" != "success" ]; then cat /tmp/biddingflow-e2e.log || true; fi
       - name: Upload E2E diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-e2e-diagnostics-${{ github.sha }}
           path: |
@@ -486,7 +486,7 @@ jobs:
           if [ "${{ job.status }}" != "success" ]; then cat /tmp/biddingflow-performance.log || true; fi
       - name: Upload performance diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-performance-diagnostics-${{ github.sha }}
           path: |
@@ -563,7 +563,7 @@ jobs:
           npm run audit:dependencies 2>&1 | tee dependency-audit.log
       - name: Upload package diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-package-diagnostics-${{ github.sha }}
           path: |
@@ -613,7 +613,7 @@ jobs:
       - name: Write production artifact checksum
         run: sha256sum release/biddingflow-production.zip > release/biddingflow-production.zip.sha256
       - name: Upload production artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: biddingflow-production-${{ github.sha }}
           path: |
