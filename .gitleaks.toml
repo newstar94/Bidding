@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public reCAPTCHA site key published by muasamcong.mpi.gov.vn"
+regexTarget = "match"
+regexes = [
+  '''6LeQH9gpAAAAAPpzhkvYzd8QCrP-QyLVRSw_SD9U''',
+]

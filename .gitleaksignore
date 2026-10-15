@@ -1,0 +1,53 @@
+# Reviewed false positives: test idempotency key and Vietnamese domain identifiers.
+31f6d57aac17f54775c8588fb457ce3e36484193:tests/test_package_documents.py:generic-api-key:289
+9afdeb0e1dee3b868f2d55afe4bbb304366a880a:backend/sync/payload_validation.py:generic-api-key:490
+9b1c1ce4d39189059bd75e5344a70a1646939df4:backend/sync/mapper.py:generic-api-key:1175
+e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api-key:306
+e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api-key:332
+e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api-key:1307
+e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/google_auth_routes.py:generic-api-key:134
+e68e0030debde739f8392cd3a7cac0f672453352:backend/auth/auth_routes.py:generic-api-key:1310
+
+# Reviewed false positive: empty Ollama AI_API_KEY example in historical docs.
+7142abde24acbd155298285de3aee08a0fc92287:docs/ai/README.md:generic-api-key:36
+
+# Reviewed false positives: high-entropy identifiers emitted by the retired
+# JavaScript obfuscator into historical, generated dist artifacts.
+b9385b666b496ecb0ee5346959d64de98f8c6a8c:dist/assets/BiddingControllerForms-fd1dcc9b.js:generic-api-key:20
+224c4af5566d6562c71c1ffb0bbaab67a45b00a4:dist/assets/PartnerWorkflows-6c485681.js:generic-api-key:3
+c45644dd4b8f6542e30e2b46561e751360348de1:dist/controllers/app.bundle.js:generic-api-key:32
+0985ee63fc8d43a590a1ecb94efd894a4b154120:dist/controllers/app.bundle.js:generic-api-key:797
+ffefd5fc30dfb4f01d7c779b6918f191d8f48ec5:dist/controllers/app.bundle.js:generic-api-key:846
+
+# Reviewed false positive: historical public Google reCAPTCHA site key.
+# It was removed from runtime source and is not a private server credential.
+b2ebe0b1753b372eb92b6a35559191063c6bde5d:backend/integrations/muasamcong_browser/session_provider.mjs:generic-api-key:5
+
+# Reviewed false positive: deterministic document idempotency key used only by
+# a historical test fixture; it is not an authentication credential.
+083f7da3127bd8490b562f770aacd2b3bc8f6716:tests/test_package_documents.py:generic-api-key:331
+
+# Reviewed false positive: deterministic OTP HMAC material installed only via
+# monkeypatch in a historical test; production reads its key from the runtime.
+4258f3038e33b10f5891d225329a6554c6bfe283:tests/test_auth_security_hardening.py:generic-api-key:53
+
+# Reviewed false positive: analytics KPI label "P90 TTFV" in historical
+# product analytics code; it is a display label, not a credential.
+639d201f27b9f952e779c88691e4ac35da39e0e1:backend/product_analytics/query_service.py:generic-api-key:1935
+
+# Reviewed false positives: deterministic identifiers and redaction assertions
+# in historical tests; these values are not credentials and never authorize a
+# request.
+0109392b7c6007b59f85d151b19138d71cb2444b:tests/test_chuan_hoa_integration.py:generic-api-key:199
+b204bf808661c8178e3cb03305512e3918208dd1:tests/js/admin_platform_chuan_hoa.test.mjs:generic-api-key:46
+b204bf808661c8178e3cb03305512e3918208dd1:tests/test_chuan_hoa_integration.py:generic-api-key:150
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-token:115
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/ai/test_ai_core.py:stripe-access-token:124
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_document_scope_http_error.py:generic-api-key:22
+d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_lot_scope_http_error.py:generic-api-key:30
+
+# Reviewed false positives: multiline password rate-limit helper calls in
+# historical auth code. The matched helper identifier is not a credential;
+# the calls consume per-IP and per-user rate-limit attempts.
+bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1427
+bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1430
