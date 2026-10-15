@@ -75,7 +75,7 @@
     "@playwright/test": "1.62.0",
     "esbuild": "0.28.1",
     "eslint": "10.7.0",
-    "javascript-obfuscator": "5.4.3",
+    "javascript-obfuscator": "5.9.0",
     "source-map-js": "1.2.2",
     "vite": "8.1.4"
   },
