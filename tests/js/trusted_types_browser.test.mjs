@@ -5,6 +5,8 @@ import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
 test("shipped DOMPurify and the real Trusted Types wrapper retain safe rendering", async (t) => {
+  const lockfile = JSON.parse(await readFile(new URL("../../package-lock.json", import.meta.url), "utf8"));
+  const expectedPurifierVersion = lockfile.packages["node_modules/dompurify"].version;
   const sources = new Map(await Promise.all([
     "/frontend/shared/trustedTypes.js",
     "/frontend/shared/runtimeStyles.js",
@@ -80,7 +82,7 @@ test("shipped DOMPurify and the real Trusted Types wrapper retain safe rendering
               root.remove();
             }
           }, hook);
-          assert.equal(result.version, "3.4.16");
+          assert.equal(result.version, expectedPurifierVersion);
           assert.equal(result.detached, true);
           assert.equal(result.handler, null);
         } finally {

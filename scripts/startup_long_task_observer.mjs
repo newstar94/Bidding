@@ -52,6 +52,11 @@ export function installStartupLongTaskObserver() {
 // Finish the task that contains readiness marks before reading its Long Task
 // entry. Drain queued entries even if observer delivery has not run yet.
 export async function flushStartupLongTasks() {
+  // LoAF script entries are published when the first rendering frame ends.
+  // A MessageChannel turn alone may run before that frame on a cold renderer.
+  if (typeof requestAnimationFrame === "function") {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
   await new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {

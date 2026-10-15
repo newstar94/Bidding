@@ -459,10 +459,34 @@ try {
     null, { timeout: 20_000 });
   await page.locator("#search-goithau").fill(crudCodes.package);
   let packageRow = page.locator("#goithau-table tbody tr").filter({ hasText: crudCodes.package });
+  await page.evaluate(() => {
+    globalThis.__crudActionTrace = [];
+    const listeners = [];
+    for (const type of ['pointerdown', 'pointerup', 'click']) {
+      const listener = event => {
+        const action = event.target?.closest?.('[data-bf-action]');
+        globalThis.__crudActionTrace.push({ type, action: action?.dataset.bfAction,
+          id: action?.dataset.id, connected: event.target?.isConnected,
+          route: location.pathname, time: performance.now() });
+        globalThis.__crudActionTrace = globalThis.__crudActionTrace.slice(-12);
+      };
+      listeners.push([type, listener]);
+      document.addEventListener(type, listener, { capture: true });
+    }
+    globalThis.__crudStopActionTrace = () => {
+      for (const [type, listener] of listeners) document.removeEventListener(type, listener, true);
+    };
+  });
   await packageRow.locator('[data-bf-action="edit-package"]').click();
   await page.locator("#modal-goithau.active").waitFor({ state: "visible" }).catch(async error => {
     const handle = await page.waitForFunction(() => ({
       route: location.pathname,
+      actionTrace: globalThis.__crudActionTrace,
+      editor: {
+        id: document.getElementById('form-goithau-id')?.value,
+        state: document.getElementById('modal-goithau')?.dataset.editorState,
+        submitState: document.getElementById('form-goithau')?.dataset.submitState,
+      },
       sync: { ...document.getElementById("btn-force-sync")?.dataset },
       dialog: document.querySelector("#modal-custom-dialog.active")?.textContent?.trim(),
       toasts: [...document.querySelectorAll(".bf-toast:not(.toast-hiding)")].map(node => node.textContent?.trim()),
@@ -475,6 +499,13 @@ try {
     await handle.dispose();
     throw new Error(`Package edit did not open: ${JSON.stringify({ diagnostics,
       pageErrors: pageErrors.slice(-8), httpErrors: httpErrors.slice(-8) })}`, { cause: error });
+  });
+  await page.waitForFunction(id => document.getElementById('form-goithau-id')?.value === id,
+    createdPackage.id, { timeout: 10_000 });
+  await page.evaluate(() => {
+    globalThis.__crudStopActionTrace?.();
+    delete globalThis.__crudStopActionTrace;
+    delete globalThis.__crudActionTrace;
   });
   const packageUpdated = `Gói CRUD đã sửa ${runId}`;
   await page.locator("#gt-ten").fill(packageUpdated);

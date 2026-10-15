@@ -524,7 +524,7 @@ test("lifecycle evaluation completion reaches the authoritative rendered tab bef
     "utf8",
   );
   const completionHelper = source.match(
-    /const completeBidEvaluationAndWaitForWorkflow = async[\s\S]*?\n\};\n\nconst waitForAwardApprovalInputs/u,
+    /const completeBidEvaluationAndWaitForWorkflow = async[\s\S]*?\r?\n\};\r?\n\r?\nconst waitForAwardApprovalInputs/u,
   )?.[0] || "";
   assert.ok(completionHelper, "evaluation completion helper must remain covered");
   assert.match(
@@ -750,7 +750,7 @@ test("row-conflict browser isolation preserves cache and cleanup bypasses confli
     /async function isolateHostInjectedScripts\(context, \{ force = false \} = \{\}\) \{\s*const browserName = context\.browser\(\)\?\.browserType\(\)\.name\(\);\s*if \(!force && browserName !== "firefox"\) return;[\s\S]*context\.route/u,
   );
   const cleanup = source.match(
-    /async function cleanupCreatedEntities[\s\S]*?\n\}\n\nasync function cleanupStaleRowConflictFixtures/u,
+    /async function cleanupCreatedEntities[\s\S]*?\r?\n\}\r?\n\r?\nasync function cleanupStaleRowConflictFixtures/u,
   )?.[0] || "";
   assert.ok(cleanup, "row-conflict cleanup helper must remain covered");
   assert.doesNotMatch(
