@@ -13,6 +13,15 @@ from qrcode.image.svg import SvgPathFillImage
 _DETAIL_FIELDS = ("qrCode", "bin", "accountNumber", "accountName", "description")
 
 
+def _metadata_dict(metadata):
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except (ValueError, TypeError):
+            return None
+    return metadata if isinstance(metadata, dict) else None
+
+
 def checkout_payment_snapshot(result):
     """Project display fields from a provider result already verified by its adapter."""
     if not isinstance(result, dict):
@@ -36,10 +45,39 @@ def _qr_image(qr_code):
 
 
 def public_checkout_payment_details(metadata):
-    if isinstance(metadata, str):
-        try:
-            metadata = json.loads(metadata)
-        except (ValueError, TypeError):
-            return None
+    metadata = _metadata_dict(metadata)
     details = checkout_payment_snapshot(metadata)
     return {**details, "qrCodeImage": _qr_image(details["qrCode"])} if details else None
+
+
+def merge_payment_progress(metadata, result, expected_amount):
+    """Keep a bounded, monotonic provider payment observation beside the QR."""
+    current = dict(_metadata_dict(metadata) or {})
+    if not isinstance(result, dict):
+        return current or None
+    expected = int(expected_amount or 0)
+    paid = result.get("amountPaid")
+    if type(paid) is not int or expected <= 0 or paid < 0 or paid > expected:
+        return current or None
+    previous_paid = current.get("amountPaid")
+    paid = max(paid, previous_paid if type(previous_paid) is int else 0)
+    current.update({
+        "paymentStatus": "UNDERPAID" if 0 < paid < expected else str(result.get("status") or "PENDING").upper(),
+        "amountPaid": paid,
+        "amountRemaining": expected - paid,
+    })
+    return current
+
+
+def public_payment_progress(metadata, expected_amount):
+    metadata = _metadata_dict(metadata)
+    if not metadata:
+        return None
+    expected = int(expected_amount or 0)
+    paid = metadata.get("amountPaid")
+    remaining = metadata.get("amountRemaining")
+    status = str(metadata.get("paymentStatus") or "").upper()
+    if (status != "UNDERPAID" or type(paid) is not int or type(remaining) is not int
+            or expected <= 0 or not 0 < paid < expected or remaining != expected - paid):
+        return None
+    return {"status": "underpaid", "amountPaid": paid, "amountRemaining": remaining}

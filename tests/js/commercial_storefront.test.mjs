@@ -383,6 +383,80 @@ test("a checkout initially creating displays QR when polling returns the open or
   assert.deepEqual(result.errors, []);
 });
 
+test("an underpaid checkout shows received and remaining amounts without activation", async () => {
+  const underpaid = { ...pendingOrder, paymentProgress: { status: "underpaid", amountPaid: 400000, amountRemaining: 600000 } };
+  const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async (page) => {
+    await checkoutRoutes(page, { order: underpaid });
+    await page.locator('[data-operation="purchase"]').click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText(/còn thiếu 600\.000/iu).waitFor();
+    assert.match(await dialog.textContent(), /đã nhận 400\.000/iu);
+    assert.match(await page.locator("#storefront-status").textContent(), /Gói chưa được kích hoạt/u);
+    assert.equal(await dialog.getByRole("img", { name: "Mã QR thanh toán" }).count(), 1);
+  });
+  assert.deepEqual(result.errors, []);
+});
+
+for (const source of ["expired", "cancelled", "cancel response"]) {
+  test(`partial payment warning survives ${source}`, async () => {
+    const partial = { ...pendingOrder, paymentProgress: { status: "underpaid", amountPaid: 400000, amountRemaining: 600000 } };
+    const terminal = { ...partial, checkoutState: source === "expired" ? "expired" : "cancelled" };
+    const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async page => {
+      await checkoutRoutes(page, { order: source === "cancel response" ? partial : terminal,
+        cancel: route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: terminal }) }) });
+      await page.route("**/api/billing/orders", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ orders: [terminal] }) }));
+      await page.locator('[data-operation="purchase"]').click();
+      const dialog = page.getByRole("dialog");
+      if (source === "cancel response") {
+        await dialog.getByText(/còn thiếu 600\.000/iu).waitFor();
+        await dialog.getByRole("button", { name: "Hủy thanh toán", exact: true }).click();
+      }
+      await dialog.getByRole("button", { name: "Đóng", exact: true }).waitFor();
+      const text = await dialog.textContent();
+      assert.match(text, /đã nhận 400\.000/iu);
+      assert.match(text, /còn thiếu 600\.000/iu);
+      assert.match(text, /liên hệ hỗ trợ/iu);
+      assert.doesNotMatch(text, /chọn lại gói/iu);
+      assert.match(await page.locator('[data-order="order-recovery"]').textContent(), /đã nhận 400\.000/iu);
+      for (const width of [1440, 375]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.equal(await page.locator('[data-order="order-recovery"]').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+      }
+    });
+    assert.deepEqual(result.errors, []);
+  });
+}
+
+for (const networkFailure of [false, true]) {
+  test(`polling limit offers an in-dialog retry (${networkFailure ? "network" : "pending"})`, async () => {
+    let reads = 0;
+    let resumed = false;
+    const result = await renderScenario(recoveryCatalog, { id: "user-1" }, async page => {
+      await page.evaluate(() => {
+        const original = window.setTimeout;
+        window.setTimeout = (fn, delay, ...args) => original(fn, delay === 3000 ? 5 : delay, ...args);
+      });
+      await checkoutRoutes(page);
+      await page.route("**/api/billing/orders/order-recovery", route => {
+        reads += 1;
+        if (networkFailure && !resumed) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "TEMPORARY" }) });
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify({ order: resumed ? cancelledOrder : pendingOrder }) });
+      });
+      await page.locator('[data-operation="purchase"]').click();
+      const dialog = page.getByRole("dialog");
+      const retry = dialog.getByRole("button", { name: "Kiểm tra lại trạng thái", exact: true });
+      await retry.waitFor({ timeout: 10000 });
+      assert.equal(reads, 40);
+      resumed = true;
+      await retry.click();
+      await dialog.getByText("Giao dịch đã được hủy.", { exact: true }).waitFor();
+      assert.equal(reads, 41);
+      assert.equal(await retry.isVisible(), false);
+    });
+    assert.deepEqual(result.errors, []);
+  });
+}
+
 test("a stale open poll response cannot restore QR after confirmed cancellation", async () => {
   let releasePoll;
   let pollStarted;

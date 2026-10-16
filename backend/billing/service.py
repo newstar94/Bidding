@@ -19,7 +19,12 @@ from backend.commercial_policy.repository import CommercialRepository, new_id
 
 from .providers.base import PaymentProviderError
 from .authorization import authorize_organization_buyer
-from .checkout_payment import checkout_payment_snapshot, public_checkout_payment_details
+from .checkout_payment import (
+    checkout_payment_snapshot,
+    merge_payment_progress,
+    public_checkout_payment_details,
+    public_payment_progress,
+)
 from .renewal import validate_renewal_checkout
 from backend.commercial_policy.transitions import current_subscription, require_self_service_transition
 from .runtime import payment_provider_registry
@@ -134,6 +139,9 @@ def public_order_payload(order):
         "activationExpiresAt": schedule.get("expiresAt") if scheduled else None,
         "checkoutUrl": order.get("checkout_url"),
         "paymentDetails": public_checkout_payment_details(order.get("checkout_payment_json")),
+        "paymentProgress": public_payment_progress(
+            order.get("checkout_payment_json"), order["total_amount"]
+        ),
         "checkoutExpiresAt": order.get("checkout_expires_at"),
         "createdAt": order.get("created_at"),
         "updatedAt": order.get("updated_at"),
@@ -750,7 +758,8 @@ class ProviderCommandExecutor:
                 connection.rollback()
                 return
             current_order = connection.execute(
-                """SELECT checkout_state, checkout_url, checkout_expires_at
+                """SELECT checkout_state, checkout_url, checkout_expires_at,
+                          checkout_payment_json
                      FROM billing_orders WHERE id = ?""",
                 (claimed["order_id"],),
             ).fetchone()
@@ -793,13 +802,22 @@ class ProviderCommandExecutor:
             )
 
             payment_details = checkout_payment_snapshot(result)
-            if claimed["command_type"] == "create_checkout" and payment_details:
-                # Keep quote/decision and provider request snapshots immutable.
-                # Queries or cancellation responses never erase the original QR.
+            current_progress = None
+            if current_order[3]:
+                try:
+                    current_progress = json.loads(current_order[3]) if isinstance(current_order[3], str) else current_order[3]
+                except (TypeError, ValueError):
+                    pass
+            metadata = dict(current_progress) if isinstance(current_progress, dict) else {}
+            if claimed["command_type"] == "create_checkout" and payment_details and not checkout_payment_snapshot(metadata):
+                # A webhook may record progress before QR creation completes.
+                # Add the first QR without replacing an existing QR or receipt.
+                metadata.update(payment_details)
+            progress = merge_payment_progress(metadata, result, claimed["total_amount"])
+            if progress and progress != current_progress:
                 connection.execute(
-                    """UPDATE billing_orders SET checkout_payment_json = ?
-                         WHERE id = ? AND checkout_payment_json IS NULL""",
-                    (canonical_json(payment_details), claimed["order_id"]),
+                    "UPDATE billing_orders SET checkout_payment_json = ? WHERE id = ?",
+                    (canonical_json(progress), claimed["order_id"]),
                 )
 
             # A terminal paid query must not acknowledge the provider command

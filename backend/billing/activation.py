@@ -16,6 +16,7 @@ from backend.commercial_policy.repository import CommercialRepository, new_id
 from backend.commercial_policy.transitions import transition_review_reason
 from backend.shared.logging_utils import log_audit
 from backend.usage_credits import UsageCreditService, UsageOwner
+from .checkout_payment import merge_payment_progress
 from .provider_timestamp import parse_provider_transaction_time
 
 
@@ -83,12 +84,12 @@ class BillingActivationService:
             return {"status": "review_required", "reason": "ORDER_NOT_FOUND"}
         result = dict(provider_result or {})
         status = str(result.get("status") or signed.get("status") or "").upper()
-        amount = int(result.get("amountPaid") or result.get("amount") or 0)
+        amount = int(result["amountPaid"] if result.get("amountPaid") is not None else result.get("amount") or 0)
         if int(result.get("orderCode") or order_code) != order_code:
             return self._review(event_id, order, "PROVIDER_ORDER_CODE_MISMATCH")
         expected = int(order["total_amount"])
         signed_amount = int(signed.get("amount") or 0)
-        if signed_amount != expected:
+        if status in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"} and signed_amount != expected:
             return self._review(event_id, order, "WEBHOOK_AMOUNT_MISMATCH")
         signed_payment_link_id = str(signed.get("paymentLinkId") or "").strip()
         result_payment_link_id = str(
@@ -99,7 +100,8 @@ class BillingActivationService:
             or result_payment_link_id != signed_payment_link_id
         ):
             return self._review(event_id, order, "PAYMENT_LINK_ID_MISMATCH")
-        if amount > 0 and amount != expected:
+        self._record_payment_progress(order, result, expected)
+        if status in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"} and amount != expected:
             return self._review(event_id, order, "PAYMENT_AMOUNT_MISMATCH")
         if status not in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"} or amount < expected:
             self._event_state(event_id, "processed", None)
@@ -169,10 +171,12 @@ class BillingActivationService:
             return {"status": "missing"}
         result = dict(provider_result or {})
         status = str(result.get("status") or "").upper()
-        amount = int(result.get("amountPaid") or result.get("amount") or 0)
+        amount = int(result["amountPaid"] if result.get("amountPaid") is not None else result.get("amount") or 0)
         if int(result.get("orderCode") or order["provider_order_code"]) != int(order["provider_order_code"]):
             return self._mark_review(order, "PROVIDER_ORDER_CODE_MISMATCH")
-        if amount != int(order["total_amount"]):
+        expected = int(order["total_amount"])
+        self._record_payment_progress(order, result, expected)
+        if status in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"} and amount != expected:
             return self._mark_review(order, "PAYMENT_AMOUNT_MISMATCH")
         if status not in {"PAID", "SUCCESS", "COMPLETED", "SETTLED"}:
             return {"status": "not_paid", "providerStatus": status}
@@ -222,6 +226,28 @@ class BillingActivationService:
                 outcome=outcome,
             )
         return outcome
+
+    def _record_payment_progress(self, order, result, expected):
+        progress = merge_payment_progress(
+            order.get("checkout_payment_json"), result, expected
+        )
+        if progress is None:
+            return
+        current = order.get("checkout_payment_json")
+        try:
+            current = json.loads(current) if isinstance(current, str) else current
+        except (TypeError, ValueError):
+            current = None
+        if progress == current:
+            return
+        encoded = canonical_json(progress)
+        self.cursor.execute(
+            """UPDATE billing_orders SET checkout_payment_json = ?,
+                      revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ?""",
+            (encoded, order["id"]),
+        )
+        order["checkout_payment_json"] = encoded
 
     def _lock_order(self, order_id):
         """Match checkout/provider completion's stable owner -> order locks."""

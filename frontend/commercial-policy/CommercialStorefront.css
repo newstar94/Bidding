@@ -105,8 +105,9 @@
 .commercial-checkout-dialog__status[data-tone="danger"] { color: var(--danger-color, var(--commercial-literal-error)); }
 .commercial-checkout-dialog__status[data-tone="warning"] { color: var(--warning-color, #956300); }
 .commercial-checkout-dialog__notice { margin: 0; color: var(--checkout-muted); font-size: .8rem; line-height: 1.5; }
-.commercial-checkout-dialog footer { display: flex; justify-content: center; padding: 16px 24px; border-top: 1px solid var(--checkout-border); }
+.commercial-checkout-dialog footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--checkout-border); }
 .commercial-checkout-dialog footer .btn { min-width: 160px; min-height: 44px; }
+.commercial-checkout-dialog button[hidden] { display: none; }
 .commercial-checkout-dialog button:disabled { cursor: wait; opacity: .6; }
 .commercial-checkout-dialog button:focus-visible { outline: 3px solid var(--checkout-accent); outline-offset: 3px; }
 .commercial-storefront__offers { margin: 28px 0; }
@@ -176,6 +177,7 @@
 .commercial-storefront__section-heading h3 { margin: 0; }
 .commercial-storefront__orders { display: grid; gap: 8px; margin-top: 14px; }
 .commercial-storefront__orders > div { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--storefront-border); }
+.commercial-storefront__payment-warning { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
 .commercial-storefront__orders strong { overflow-wrap: anywhere; }
 .commercial-storefront__order-actions .btn { white-space: nowrap; min-height: 44px; }
 .commercial-storefront__orders span { color: var(--storefront-muted); font-size: .9rem; }

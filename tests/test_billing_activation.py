@@ -665,6 +665,78 @@ def test_wrong_amount_is_reviewed_without_payment_fact_or_entitlement(billing_cu
     ).fetchone()[0] == 0
 
 
+@pytest.mark.parametrize("seam", ["query", "webhook"])
+@pytest.mark.parametrize("status", ["PAID", "SUCCESS", "COMPLETED", "SETTLED"])
+def test_explicit_zero_paid_never_falls_back_to_order_amount(billing_cursor, seam, status):
+    order = _insert_base_plan_order(billing_cursor)
+    provider_result = {**_paid_result(order), "status": status, "amountPaid": 0, "amountRemaining": 100000}
+    service = BillingActivationService(billing_cursor, clock=lambda: order["now"])
+    if seam == "webhook":
+        event_id = f"payment-event-{uuid.uuid4().hex}"
+        link_id = f"link-{order['order_code']}"
+        provider_result["paymentLinkId"] = link_id
+        signed = {"orderCode": order["order_code"], "amount": 100000, "paymentLinkId": link_id}
+        billing_cursor.execute(
+            """INSERT INTO payment_webhook_events
+                   (id, provider_profile_id, dedupe_key, payload_hash, signed_fields_json, status, available_at)
+               VALUES (?, 'provider-fake-v1', ?, ?, ?, 'pending', ?)""",
+            (event_id, uuid.uuid4().hex, uuid.uuid4().hex * 2, json.dumps(signed), order["now"]),
+        )
+        result = service.apply_verified(event_id, provider_result, provider_profile_id="provider-fake-v1")
+    else:
+        result = service.apply_order_result(order["order_id"], provider_result, provider_profile_id="provider-fake-v1")
+    assert result["status"] == "review_required"
+    assert result["reason"] == "PAYMENT_AMOUNT_MISMATCH"
+    assert billing_cursor.execute("SELECT payment_state FROM billing_orders WHERE id = ?", (order["order_id"],)).fetchone()[0] == "unverified"
+    assert billing_cursor.execute("SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?", (order["order_id"],)).fetchone()[0] == 0
+    assert billing_cursor.execute("SELECT COUNT(*) FROM account_subscriptions WHERE user_id = ?", (order["user_id"],)).fetchone()[0] == 0
+
+
+def test_underpaid_webhook_stays_unverified_and_records_remaining_amount(billing_cursor):
+    order = _insert_base_plan_order(billing_cursor)
+    event_id = f"payment-event-{uuid.uuid4().hex}"
+    link_id = f"link-{order['order_code']}"
+    signed = {
+        "orderCode": order["order_code"], "amount": 40000,
+        "paymentLinkId": link_id, "status": "UNDERPAID",
+    }
+    billing_cursor.execute(
+        """INSERT INTO payment_webhook_events
+               (id, provider_profile_id, dedupe_key, payload_hash,
+                signed_fields_json, status, available_at)
+           VALUES (?, 'provider-fake-v1', ?, ?, ?, 'pending', ?)""",
+        (event_id, f"dedupe-{uuid.uuid4().hex}", uuid.uuid4().hex * 2,
+         json.dumps(signed, separators=(",", ":")), order["now"]),
+    )
+
+    result = BillingActivationService(
+        billing_cursor, clock=lambda: order["now"]
+    ).apply_verified(
+        event_id,
+        {
+            "status": "UNDERPAID", "orderCode": order["order_code"],
+            "amount": 100000, "amountPaid": 40000, "amountRemaining": 60000,
+            "paymentLinkId": link_id,
+        },
+        provider_profile_id="provider-fake-v1",
+    )
+
+    assert result["status"] == "not_paid"
+    row = billing_cursor.execute(
+        "SELECT payment_state, activation_state, checkout_payment_json FROM billing_orders WHERE id = ?",
+        (order["order_id"],),
+    ).fetchone()
+    assert (row["payment_state"], row["activation_state"]) == ("unverified", "not_ready")
+    assert json.loads(row[2]) == {
+        "amountPaid": 40000, "amountRemaining": 60000,
+        "paymentStatus": "UNDERPAID",
+    }
+    assert billing_cursor.execute(
+        "SELECT COUNT(*) FROM payment_transactions WHERE order_id = ?",
+        (order["order_id"],),
+    ).fetchone()[0] == 0
+
+
 @pytest.mark.parametrize(
     ("signed_overrides", "provider_overrides", "reason"),
     [

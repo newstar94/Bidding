@@ -9,7 +9,7 @@ import {
   visibleOffersForOwner,
 } from "./PublicCommercialCatalog.js";
 import { COMMERCIAL_GROUPS, selectCommercialOffers } from "./CommercialOfferSelection.js";
-import { createCheckoutPaymentDialog } from "./CheckoutPaymentDialog.js";
+import { createCheckoutPaymentDialog, underpaidPaymentMessage } from "./CheckoutPaymentDialog.js";
 import {
   checkoutIntentFromLocation,
   clearPendingCheckoutIntent,
@@ -187,7 +187,8 @@ function renderOrders() {
     const scheduledDate = scheduledActivationDate(order);
     const orderState = scheduledDate ? `Chờ đến kỳ kích hoạt · ${scheduledDate}` : `${order.paymentState} · ${order.activationState}`;
     const resume = checkoutUrl ? `<button type="button" class="btn btn-outline" data-storefront-resume="${escapeHtml(order.publicId)}" aria-label="Mở lại thanh toán ${escapeHtml(order.publicId)}">Mở lại thanh toán</button>` : "";
-    return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(orderState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div></div>`;
+    const warning = underpaidPaymentMessage(order);
+    return `<div data-order="${escapeHtml(order.publicId)}"><strong>${escapeHtml(order.publicId)}</strong><span>${escapeHtml(orderState)}</span><b>${money(order.totalAmount)}</b><div class="commercial-storefront__order-actions">${resume}</div>${warning ? `<p class="commercial-storefront__payment-warning">${escapeHtml(warning)}</p>` : ""}</div>`;
   }).join("")}</div>` : '<div class="commercial-empty">Chưa có order.</div>');
   node.querySelectorAll("[data-storefront-resume]").forEach((button) => {
     button.addEventListener("click", () => resumeCheckout(state.orders.find((order) => order.publicId === button.dataset.storefrontResume)));
@@ -205,6 +206,12 @@ function openCheckoutSession(controller, title, order = null) {
   session.dialog = createCheckoutPaymentDialog({
     title,
     onCancel: () => cancelCheckoutSession(session),
+    onRetry: () => {
+      if (session.dismissed || session.cancelRequested || retireStaleCheckout(session) || !session.order?.publicId) return;
+      session.pollGeneration += 1;
+      session.dialog.showState(`${underpaidPaymentMessage(session.order)} Đang kiểm tra trạng thái…`.trim(), "neutral", { canDismiss: session.settled });
+      void pollOrder(session.order.publicId, controller, 0, session);
+    },
     onDismiss: () => {
       session.dismissed = true;
       window.clearTimeout(session.cancelPolling);
@@ -333,8 +340,11 @@ async function cancellationResult(session, order) {
   }
   if (CLOSED_CHECKOUT_STATES.has(order.checkoutState)) {
     session.settled = true;
-    status(order.checkoutState === "cancelled" ? "Đã hủy giao dịch thanh toán." : "Giao dịch đã hết hiệu lực.", "neutral");
-    session.dialog.close();
+    const warning = underpaidPaymentMessage(order);
+    const message = `${order.checkoutState === "cancelled" ? "Đã hủy giao dịch thanh toán." : "Giao dịch đã hết hiệu lực."}${warning ? ` ${warning}` : ""}`;
+    status(message, warning ? "warning" : "neutral");
+    if (warning) session.dialog.showState(message, "warning", { canDismiss: true, hidePayment: true });
+    else session.dialog.close();
     return true;
   }
   return false;
@@ -430,7 +440,7 @@ async function createCheckoutOrder(session) {
 
 function showSessionPayment(session, order) {
   if (order.checkoutState !== "open" || PAID_PAYMENT_STATES.has(order.paymentState)) return;
-  const signature = `${order.checkoutState}:${order.paymentDetails?.qrCodeImage || ""}:${order.checkoutUrl || ""}`;
+  const signature = `${order.checkoutState}:${order.paymentDetails?.qrCodeImage || ""}:${order.checkoutUrl || ""}:${order.paymentProgress?.amountPaid || 0}:${order.paymentProgress?.amountRemaining || 0}`;
   if (session.paymentSignature === signature) return;
   session.paymentSignature = signature;
   session.dialog.showPayment(order, resumableCheckoutUrl(order));
@@ -468,6 +478,12 @@ async function pollOrder(publicId, controller, attempt = 0, session = null) {
     if (session) session.paymentPolling = timer;
     else state.polling = timer;
   };
+  const pause = (message) => {
+    const warning = underpaidPaymentMessage(session?.order);
+    const combined = `${warning ? `${warning} ` : ""}${message}`;
+    status(combined, "warning");
+    if (session && !session.dismissed) session.dialog.showState(combined, "warning", { retry: true, canDismiss: session.settled });
+  };
   if (!canContinue()) return;
   window.clearTimeout(session ? session.paymentPolling : state.polling);
   let payload;
@@ -476,7 +492,7 @@ async function pollOrder(publicId, controller, attempt = 0, session = null) {
   } catch (error) {
     if (!canContinue()) return;
     if (attempt >= 39) {
-      status(`Không thể cập nhật trạng thái order (${error.code || "NETWORK_ERROR"}). Hãy bấm làm mới để tiếp tục theo dõi.`, "warning");
+      pause(`Không thể cập nhật trạng thái order (${error.code || "NETWORK_ERROR"}). Bấm Kiểm tra lại trạng thái để tiếp tục theo dõi.`);
       return;
     }
     status("Đang tạm mất kết nối; sẽ tự thử lại trạng thái thanh toán…", "warning");
@@ -497,7 +513,8 @@ async function pollOrder(publicId, controller, attempt = 0, session = null) {
   const paid = PAID_PAYMENT_STATES.has(order.paymentState);
   if (order.activationState === "applied") { await refreshActivatedPurchase(controller, session); return; }
   if (TERMINAL_ACTIVATIONS.has(order.activationState) || (CLOSED_CHECKOUT_STATES.has(order.checkoutState) && !paid)) {
-    const message = order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt."
+    const warning = underpaidPaymentMessage(order);
+    const message = warning ? `${order.checkoutState === "cancelled" ? "Giao dịch đã được hủy." : order.checkoutState === "expired" ? "Mã QR đã hết hạn." : "Giao dịch cần đối soát."} ${warning}` : order.activationState === "applied" ? "Thanh toán đã được máy chủ xác minh và quyền lợi đã kích hoạt."
       : order.checkoutState === "cancelled" ? "Giao dịch đã được hủy." : order.checkoutState === "expired" ? "Mã QR đã hết hạn. Vui lòng chọn lại gói để tạo giao dịch mới." : order.checkoutState === "create_failed" ? "Không thể tạo mã thanh toán. Vui lòng chọn lại gói." : `Giao dịch cần xử lý: ${order.activationState}.`;
     const tone = order.activationState === "applied" ? "success" : "warning";
     status(message, tone);
@@ -508,8 +525,13 @@ async function pollOrder(publicId, controller, attempt = 0, session = null) {
   if (session && paid) {
     session.settled = true;
     session.dialog.showState("Đã xác minh thanh toán. Đang kích hoạt quyền lợi…", "success", { canDismiss: true, hidePayment: true });
-  } else if (session) showSessionPayment(session, order);
-  if (attempt >= 39) { status("Giao dịch vẫn đang đối soát. Bấm Làm mới để kiểm tra trạng thái.", "warning"); return; }
+  } else if (session) {
+    showSessionPayment(session, order);
+    if (order.paymentProgress?.status === "underpaid") {
+      status(`Giao dịch ghi nhận thiếu tiền: đã nhận ${money(order.paymentProgress.amountPaid)}, còn thiếu ${money(order.paymentProgress.amountRemaining)}. Gói chưa được kích hoạt; không chuyển thêm trên mã QR này.`, "warning");
+    }
+  }
+  if (attempt >= 39) { pause("Giao dịch vẫn đang đối soát. Bấm Kiểm tra lại trạng thái để tiếp tục theo dõi."); return; }
   schedule();
 }
 

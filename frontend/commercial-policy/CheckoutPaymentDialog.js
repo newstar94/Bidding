@@ -3,7 +3,13 @@ import { formatCommercialMoney } from "./PublicCommercialCatalog.js";
 
 // A native dialog keeps focus inside the checkout and stays in the browser's
 // top layer without depending on the application's other modal stacks.
-export function createCheckoutPaymentDialog({ title, onCancel, onDismiss }) {
+export function underpaidPaymentMessage(order) {
+  const progress = order?.paymentProgress;
+  if (progress?.status !== "underpaid") return "";
+  return `Giao dịch ghi nhận thiếu tiền: đã nhận ${formatCommercialMoney(progress.amountPaid, order.currency || "VND")}, còn thiếu ${formatCommercialMoney(progress.amountRemaining, order.currency || "VND")}. Gói chưa được kích hoạt. Không chuyển thêm trên mã QR này; vui lòng chờ đối soát hoặc liên hệ hỗ trợ.`;
+}
+
+export function createCheckoutPaymentDialog({ title, onCancel, onDismiss, onRetry }) {
   const dialog = document.createElement("dialog");
   dialog.className = "commercial-checkout-dialog";
   dialog.setAttribute("aria-labelledby", "commercial-checkout-title");
@@ -13,6 +19,12 @@ export function createCheckoutPaymentDialog({ title, onCancel, onDismiss }) {
   const payment = dialog.querySelector(".commercial-checkout-dialog__payment");
   const closeButton = dialog.querySelector(".commercial-checkout-dialog__close");
   const cancelButton = dialog.querySelector(".commercial-checkout-dialog__cancel");
+  const retryButton = document.createElement("button");
+  retryButton.type = "button";
+  retryButton.className = "btn btn-primary";
+  retryButton.textContent = "Kiểm tra lại trạng thái";
+  retryButton.hidden = true;
+  cancelButton.before(retryButton);
   const statusNode = dialog.querySelector(".commercial-checkout-dialog__status");
   const notice = dialog.querySelector(".commercial-checkout-dialog__notice");
   const originalFocus = document.activeElement;
@@ -34,6 +46,11 @@ export function createCheckoutPaymentDialog({ title, onCancel, onDismiss }) {
   };
   closeButton.addEventListener("click", requestClose);
   cancelButton.addEventListener("click", requestClose);
+  retryButton.addEventListener("click", () => {
+    if (busy || dismissed || retryButton.hidden) return;
+    retryButton.hidden = true;
+    void onRetry?.();
+  });
   dialog.addEventListener("cancel", (event) => { event.preventDefault(); requestClose(); });
   dialog.addEventListener("close", () => {
     if (dismissed) return;
@@ -53,6 +70,8 @@ export function createCheckoutPaymentDialog({ title, onCancel, onDismiss }) {
     statusNode.dataset.tone = tone;
     closeButton.disabled = busy;
     cancelButton.disabled = busy;
+    retryButton.hidden = options.retry !== true || typeof onRetry !== "function";
+    retryButton.disabled = busy;
     cancelButton.textContent = options.cancelLabel || (canDismiss ? "Đóng" : "Hủy thanh toán");
     cancelButton.toggleAttribute("aria-busy", busy);
     closeButton.setAttribute("aria-label", canDismiss ? "Đóng cửa sổ thanh toán" : "Đóng và hủy giao dịch");
@@ -99,7 +118,10 @@ export function createCheckoutPaymentDialog({ title, onCancel, onDismiss }) {
       facts.append(term, description);
     });
     payment.appendChild(facts);
-    showState(imageSource ? "Đang chờ thanh toán…" : "Đang chờ thanh toán trên payOS…");
+    const progress = order.paymentProgress;
+    if (progress?.status === "underpaid") {
+      showState(underpaidPaymentMessage(order), "warning");
+    } else showState(imageSource ? "Đang chờ thanh toán…" : "Đang chờ thanh toán trên payOS…");
   };
   showState("Đang tạo mã QR thanh toán…");
   dialog.showModal();

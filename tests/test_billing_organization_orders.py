@@ -64,17 +64,17 @@ def order_db():
         tax_amount INTEGER, total_amount INTEGER, currency TEXT, checkout_state TEXT,
         payment_state TEXT, activation_state TEXT, provider_reference TEXT,
         provider_profile_id TEXT, provider_order_code INTEGER, checkout_url TEXT,
-        checkout_expires_at INTEGER, revision INTEGER, updated_at TEXT
+        checkout_expires_at INTEGER, revision INTEGER, updated_at TEXT, checkout_payment_json TEXT
       );
       INSERT INTO billing_orders VALUES (
         'order-id', 'org-public', 'organization', NULL, 'org-a', 'creator', 'purchase',
         2000, 0, 2000, 'VND', 'open', 'unverified', 'not_ready', 'bf-order', 'profile',
-        123, 'https://checkout.example/link', 1800000900, 1, NULL
+        123, 'https://checkout.example/link', 1800000900, 1, NULL, NULL
       );
       INSERT INTO billing_orders VALUES (
         'personal-id', 'personal-public', 'account', 'creator', NULL, 'creator', 'purchase',
         2000, 0, 2000, 'VND', 'open', 'unverified', 'not_ready', 'bf-personal', 'profile',
-        124, NULL, 1800000900, 1, NULL
+        124, NULL, 1800000900, 1, NULL, NULL
       );
       CREATE TABLE billing_subscription_activations (order_id TEXT, after_json TEXT);
       CREATE TABLE billing_provider_commands (

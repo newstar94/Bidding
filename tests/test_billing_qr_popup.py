@@ -151,6 +151,52 @@ def test_provider_query_does_not_erase_original_qr(checkout_db):
     assert json.loads(executor._read_order("order-public")["checkout_payment_json"]) == DETAILS
 
 
+def test_underpaid_query_projects_monotonic_remaining_amount_without_erasing_qr(checkout_db):
+    database, connection = checkout_db
+    executor = ProviderCommandExecutor(database, clock=lambda: NOW, environment={})
+    executor._complete(_claimed(), _pending_result(**DETAILS))
+    connection.execute("INSERT INTO billing_provider_commands VALUES ('query','order-id','query_order','bf-order','{}','processing',1,1800000000,'lease',1800000060,NULL,NULL)")
+    connection.commit()
+    executor._complete(
+        _claimed("query_order", "query"),
+        _pending_result(status="UNDERPAID", amountPaid=750, amountRemaining=1250),
+    )
+
+    payload = public_order_payload(executor._read_order("order-public"))
+    assert payload["paymentProgress"] == {
+        "status": "underpaid", "amountPaid": 750, "amountRemaining": 1250,
+    }
+    assert payload["paymentDetails"]["qrCode"] == DETAILS["qrCode"]
+    assert payload["paymentState"] == "unverified"
+    connection.execute(
+        "UPDATE billing_provider_commands SET status='processing', locked_by='lease' WHERE id='query'"
+    )
+    connection.commit()
+    executor._complete(
+        _claimed("query_order", "query"),
+        _pending_result(status="PENDING", amountPaid=0, amountRemaining=2000),
+    )
+    assert public_order_payload(executor._read_order("order-public"))["paymentProgress"] == {
+        "status": "underpaid", "amountPaid": 750, "amountRemaining": 1250,
+    }
+
+
+@pytest.mark.parametrize("existing_qr", [False, True])
+@pytest.mark.parametrize("receipt", [{}, {"amountPaid": 0}])
+def test_late_create_preserves_progress_and_original_qr(checkout_db, existing_qr, receipt):
+    database, connection = checkout_db
+    metadata = {"amountPaid": 750, "amountRemaining": 1250, "paymentStatus": "UNDERPAID"}
+    if existing_qr:
+        metadata.update(DETAILS)
+    connection.execute("UPDATE billing_orders SET checkout_payment_json=?", (json.dumps(metadata),))
+    connection.commit()
+    executor = ProviderCommandExecutor(database, clock=lambda: NOW, environment={})
+    executor._complete(_claimed(), _pending_result(**{**DETAILS, "qrCode": "replacement"}, **receipt))
+    payload = public_order_payload(executor._read_order("order-public"))
+    assert payload["paymentProgress"] == {"status": "underpaid", "amountPaid": 750, "amountRemaining": 1250}
+    assert payload["paymentDetails"]["qrCode"] == (DETAILS["qrCode"] if existing_qr else "replacement")
+
+
 def test_cancel_waits_for_create_command_to_finish(checkout_db):
     database, connection = checkout_db
     connection.execute("INSERT INTO billing_provider_commands VALUES ('cancel','order-id','cancel_checkout','bf-order',?,'pending',0,1800000000,NULL,NULL,NULL,NULL)", (json.dumps({"identifier": 123}),))
