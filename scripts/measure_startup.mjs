@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
 import { installStartupLongTaskObserver, flushStartupLongTasks } from "./startup_long_task_observer.mjs";
+import { startStartupScriptTrace, startupScriptsFromTrace } from "./startup_script_trace.mjs";
 import {
   hasAuthoritativeWorkspaceReadiness,
   hasRequestedRouteReadiness,
@@ -137,13 +138,17 @@ async function authenticate(context) {
 }
 
 async function measureNavigation(page, mode, run) {
-  const traceSession = traceDirectory ? await page.context().newCDPSession(page) : null;
-  if (traceSession) {
-    await traceSession.send("Tracing.start", {
-      categories: "devtools.timeline,v8,toplevel,blink.user_timing,disabled-by-default-devtools.timeline",
-      transferMode: "ReturnAsStream",
-    });
-  }
+  let stopTrace = await startStartupScriptTrace(page, { diagnostic: Boolean(traceDirectory) });
+  const finishTrace = async () => {
+    const stop = stopTrace;
+    stopTrace = null;
+    const trace = await stop();
+    if (traceDirectory) {
+      await fs.mkdir(traceDirectory, { recursive: true });
+      await fs.writeFile(path.join(traceDirectory, `${mode}-${run}.json`), JSON.stringify(trace));
+    }
+    return trace;
+  };
   const cpuBefore = hostCpuSnapshot();
   const runtimeFailures = [];
   const appOrigin = new URL(baseURL).origin;
@@ -266,6 +271,21 @@ async function measureNavigation(page, mode, run) {
       serverTiming,
     };
     }, { mode, run });
+    const trace = await finishTrace();
+    const scriptTasks = startupScriptsFromTrace(trace, browserMetrics.loaderHiddenMs);
+    for (const task of scriptTasks) {
+      if (browserMetrics.longTasks.some(entry => Math.abs(entry.startTime - task.startTime) < 2
+        && Math.abs(entry.duration - task.duration) < 2)) continue;
+      browserMetrics.longTasks.push({
+        ...task,
+        startTime: Math.round(task.startTime),
+        duration: Math.round(task.duration),
+        phase: task.startTime < browserMetrics.appModuleStartMs ? "document-bootstrap" : "app-bootstrap",
+        overlappingResources: [],
+      });
+    }
+    browserMetrics.longTaskCount = browserMetrics.longTasks.length;
+    browserMetrics.longestTaskMs = Math.max(0, ...browserMetrics.longTasks.map(task => task.duration));
     const cpuBusyPercent = hostCpuBusyPercent(cpuBefore, hostCpuSnapshot());
     // The loader budget remains a shell/route budget. Measure authoritative
     // workspace readiness separately after deferred reconciliation settles.
@@ -286,27 +306,7 @@ async function measureNavigation(page, mode, run) {
     page.off("pageerror", onPageError);
     page.off("console", onConsole);
     page.off("response", onResponse);
-    if (traceSession) {
-      try {
-        const completed = new Promise((resolve) => traceSession.once("Tracing.tracingComplete", resolve));
-        await traceSession.send("Tracing.end");
-        const { stream } = await completed;
-        await fs.mkdir(traceDirectory, { recursive: true });
-        const file = await fs.open(path.join(traceDirectory, `${mode}-${run}.json`), "w");
-        try {
-          for (;;) {
-            const chunk = await traceSession.send("IO.read", { handle: stream });
-            await file.write(chunk.base64Encoded ? Buffer.from(chunk.data, "base64") : chunk.data);
-            if (chunk.eof) break;
-          }
-        } finally {
-          await file.close();
-          await traceSession.send("IO.close", { handle: stream });
-        }
-      } finally {
-        await traceSession.detach();
-      }
-    }
+    if (stopTrace) await finishTrace();
   }
 }
 
@@ -387,6 +387,7 @@ const result = {
   },
   disableServiceWorker,
   diagnosticTracing: Boolean(traceDirectory),
+  scriptTimingTracing: true,
   blockedURLPatterns,
   thresholds: { coldP95LimitMs, warmP95LimitMs, longTaskLimitMs },
   cold: summarize(coldSamples),

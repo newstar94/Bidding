@@ -9,6 +9,7 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { chromium } from "@playwright/test";
 import { installStartupLongTaskObserver, flushStartupLongTasks } from "../../scripts/startup_long_task_observer.mjs";
+import { startStartupScriptTrace, startupScriptsFromTrace } from "../../scripts/startup_script_trace.mjs";
 
 test("startup snapshot drains queued Long Tasks after the readiness task ends", async () => {
   let deliver;
@@ -81,7 +82,7 @@ test("startup snapshot waits for the rendering frame that publishes cold script 
   assert.equal(state.__bfStartupLongTasks[0].duration, 180);
 });
 
-test("cold browser bootstrap remains measurable without native Long Task entries", async () => {
+test("cold browser bootstrap remains measurable when both observer sources omit entries", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html" });
     response.end(`<!doctype html><html><body>Ready<script>
@@ -98,15 +99,19 @@ test("cold browser bootstrap remains measurable without native Long Task entries
       try {
         await context.addInitScript({ content: `
           globalThis.PerformanceObserver = class extends PerformanceObserver {
-            observe(options) { if (options.type !== "longtask") super.observe(options); }
+            observe() {}
           };
           (${installStartupLongTaskObserver.toString()})();
         ` });
         const page = await context.newPage();
+        const stopTrace = await startStartupScriptTrace(page);
         await page.goto(`http://127.0.0.1:${server.address().port}/`);
         await page.evaluate(flushStartupLongTasks);
         const tasks = await page.evaluate(() => globalThis.__bfStartupLongTasks);
-        assert.ok(tasks.some(task => task.duration > 100), JSON.stringify(tasks));
+        assert.deepEqual(tasks, [], "the regression must exercise missing observer entries");
+        const cutoff = await page.evaluate(() => performance.getEntriesByName("bf:loader:hidden")[0].startTime);
+        const scriptTasks = startupScriptsFromTrace(await stopTrace(), cutoff);
+        assert.ok(scriptTasks.some(task => task.duration > 100), JSON.stringify(scriptTasks));
       } finally { await context.close(); }
     }
   } finally {
@@ -116,8 +121,23 @@ test("cold browser bootstrap remains measurable without native Long Task entries
   }
 });
 
+test("startup trace fallback preserves cutoff, main thread and individual script durations", () => {
+  const script = (ts, dur, extra = {}) => ({ name: "EvaluateScript", ph: "X", pid: 1, tid: 2, ts, dur, ...extra });
+  const tasks = startupScriptsFromTrace({ traceEvents: [
+    script(100_000, 180_000), script(290_000, 60_000), script(360_000, 60_000),
+    script(450_000, 180_000),
+    script(510_000, 900_000), script(10_000, 999_000, { tid: 3 }),
+    { name: "bf:loader:hidden", pid: 1, tid: 2, ts: 500_000 },
+  ] }, 450);
+  assert.deepEqual(tasks.map(({ startTime, duration }) => ({ startTime, duration })), [
+    { startTime: 50, duration: 180 }, { startTime: 240, duration: 60 }, { startTime: 310, duration: 60 },
+    { startTime: 400, duration: 180 },
+  ]);
+  assert.throws(() => startupScriptsFromTrace({ traceEvents: [] }, 450), /missing the loader cutoff/u);
+});
+
 for (const enabled of [false, true]) {
-test(`startup tracing ${enabled ? "captures blocking bootstrap" : "stays disabled by default"} without hiding the failed gate`, async () => {
+test(`startup diagnostic trace files ${enabled ? "capture blocking bootstrap" : "stay disabled by default"} without hiding the failed gate`, async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "bidding-startup-trace-"));
   const output = path.join(temporary, "metrics.json");
   const traces = path.join(temporary, "traces");
@@ -172,6 +192,7 @@ test(`startup tracing ${enabled ? "captures blocking bootstrap" : "stays disable
     assert.equal(code, 1, diagnostics);
     assert.equal(report.passed, false);
     assert.equal(report.diagnosticTracing, enabled);
+    assert.equal(report.scriptTimingTracing, true);
     assert.equal(report.thresholds.longTaskLimitMs, 100);
     assert.ok(report.cold.longestTaskMs > 100, taskDiagnostics);
     for (const sample of [...report.cold.samples, ...report.warm.samples]) {
