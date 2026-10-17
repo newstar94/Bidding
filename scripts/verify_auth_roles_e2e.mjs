@@ -77,7 +77,7 @@ function assert(condition, message) {
 }
 
 function versionedMutation(item, changes = {}) {
-  const { allVersions: _allVersions, rowVersion, ...record } = item || {};
+  const { allVersions: _allVersions, deleteOwnerUserId: _deleteOwnerUserId, rowVersion, ...record } = item || {};
   return { ...record, ...changes, expectedVersion: rowVersion };
 }
 
@@ -676,6 +676,7 @@ try {
   auth = await apiLogin(permissionEmployeeContext, accounts.employee, password, organizationId);
   assert(auth.response.ok(), "Employee permission-test login failed");
   const expertId = `auth-e2e-${runId}-permission-expert`;
+  const ownedDeleteExpertId = `auth-e2e-${runId}-owned-delete-expert`;
   let employeeData = await loadAll(permissionEmployeeContext);
   let syncResult = await syncMutation(permissionEmployeeContext, {
     chuyengia: [{
@@ -684,6 +685,12 @@ try {
       hoTen: `Chuyên gia quyền ${runId}`,
       soChungChi: `CC-${runId}`,
       soCCCD: `079${runId.slice(-9)}`,
+    }, {
+      id: ownedDeleteExpertId,
+      rootId: ownedDeleteExpertId,
+      hoTen: `Chuyên gia tự tạo để xóa ${runId}`,
+      soChungChi: `DEL-${runId}`,
+      soCCCD: `077${runId.slice(-9)}`,
     }],
     baseSyncVersion: Number(employeeData.syncVersion || 0),
     clientMutationId: `auth-${runId}-employee-create`,
@@ -702,17 +709,31 @@ try {
   });
   assert(syncResult.response.ok(), `Employee could not update owned expert: ${JSON.stringify(syncResult.body)}`);
   employeeData = await loadAll(permissionEmployeeContext);
-  expert = await loadPaginatedRecord(permissionEmployeeContext, "chuyengia", expertId);
+  const ownedDeleteExpert = await loadPaginatedRecord(permissionEmployeeContext, "chuyengia", ownedDeleteExpertId);
+  assert(ownedDeleteExpert?.deleteOwnerUserId === accounts.employee.id, "Owned expert omitted the identity-bound delete hint");
   syncResult = await syncMutation(permissionEmployeeContext, {
-    deletions: [{ table: "chuyengia", id: expertId, expectedVersion: expert.rowVersion }],
+    deletions: [{ table: "chuyengia", id: ownedDeleteExpertId, expectedVersion: ownedDeleteExpert.rowVersion }],
     baseSyncVersion: Number(employeeData.syncVersion || 0),
-    clientMutationId: `auth-${runId}-employee-delete-denied`,
+    clientMutationId: `auth-${runId}-employee-delete-owned`,
   });
-  assert(!syncResult.response.ok(), "Employee unexpectedly deleted an organization record");
+  assert(syncResult.response.ok(), `Employee could not delete their own expert: ${JSON.stringify(syncResult.body)}`);
+  assert(!await loadPaginatedRecord(permissionEmployeeContext, "chuyengia", ownedDeleteExpertId), "Deleted owned expert remained visible");
+
+  // ADR 0089 grants creator deletion, not deletion of another user's records.
+  employeeData = await loadAll(permissionEmployeeContext);
+  const otherExpert = await loadPaginatedRecord(permissionEmployeeContext, "chuyengia", xssId);
+  assert(otherExpert && otherExpert.deleteOwnerUserId === null, "Manager-created expert incorrectly carries employee ownership");
+  syncResult = await syncMutation(permissionEmployeeContext, {
+    deletions: [{ table: "chuyengia", id: xssId, expectedVersion: otherExpert.rowVersion }],
+    baseSyncVersion: Number(employeeData.syncVersion || 0),
+    clientMutationId: `auth-${runId}-employee-delete-other-denied`,
+  });
+  assert(!syncResult.response.ok(), "Employee unexpectedly deleted another user's expert");
   assert(
     (syncResult.body.errors || []).some((error) => error?.code === "DELETE_ROLE_PROTECTED"),
     `Employee delete response omitted DELETE_ROLE_PROTECTED: ${JSON.stringify(syncResult.body)}`,
   );
+  assert(await loadPaginatedRecord(managerContext, "chuyengia", xssId), "Denied deletion removed another user's expert");
 
   let managerData = await loadAll(managerContext);
   const permissionId = `auth-e2e-${runId}-employee-permissions`;
@@ -739,6 +760,16 @@ try {
       && !("currentVersion" in syncResult.body),
     `Revoked edit response was not the bounded record-level deny contract: ${JSON.stringify(syncResult.body)}`,
   );
+  syncResult = await syncMutation(permissionEmployeeContext, {
+    deletions: [{ table: "chuyengia", id: expertId, expectedVersion: expert.rowVersion }],
+    baseSyncVersion: Number(employeeData.syncVersion || 0),
+    clientMutationId: `auth-${runId}-employee-delete-revoked-denied`,
+  });
+  assert(!syncResult.response.ok(), "Revoked employee still deleted their own expert");
+  assert(
+    (syncResult.body.errors || []).some((error) => error?.code === "RECORD_ACCESS_DENIED"),
+    `Revoked creator deletion bypassed record write access: ${JSON.stringify(syncResult.body)}`,
+  );
 
   managerData = await loadAll(managerContext);
   expert = await loadPaginatedRecord(managerContext, "chuyengia", expertId);
@@ -757,7 +788,7 @@ try {
   });
   assert(syncResult.response.ok(), `Manager could not delete expert: ${JSON.stringify(syncResult.body)}`);
   await permissionEmployeeContext.close();
-  mark("employee-crud-permission-revocation-and-manager-delete");
+  mark("employee-own-delete-other-denied-permission-revocation-and-manager-delete");
 
   const leftContext = await browser.newContext();
   auth = await apiLogin(leftContext, accounts.left);

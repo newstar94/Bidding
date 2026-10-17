@@ -59,3 +59,10 @@ write access and transaction rollback using isolated SQL fixtures. UI tests
 cover personal owners, identity-bound hints, organization managers, bulk
 preparation and rendered list buttons. Existing delete/reference/version tests
 remain required. Local tests are not a production deployment claim.
+
+CI compatibility regressions also cover exact opening-record reads with missing,
+own, and other-user creation evidence. The auth/roles E2E must omit the read-only
+`deleteOwnerUserId` from updates, allow deletion of an employee-created record,
+deny deletion of a manager-created record, and deny creator deletion after module
+edit access is revoked. These checks implement the approved contract above;
+they do not restore the former blanket employee-delete denial.

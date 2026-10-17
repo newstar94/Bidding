@@ -53,7 +53,8 @@ def test_joint_venture_bid_still_requires_joint_venture_criterion():
 
 
 class _RecordCursor:
-    def __init__(self):
+    def __init__(self, creator_id=None):
+        self.creator_id = creator_id
         self.row = {
             "id": "mt-1",
             "organization_id": "org-1",
@@ -67,6 +68,10 @@ class _RecordCursor:
     def fetchone(self):
         return self.row
 
+    def fetchall(self):
+        # Exact-record reads also project creator evidence from audit_log.
+        return [("mt-1", self.creator_id, "{}")] if self.creator_id else []
+
 
 class _RecordConnection:
     def __init__(self, cursor):
@@ -79,8 +84,9 @@ class _RecordConnection:
         pass
 
 
-def test_single_record_lookup_restores_opening_bid(monkeypatch):
-    cursor = _RecordCursor()
+@pytest.mark.parametrize("creator_id", [None, "user-1", "other-user"])
+def test_single_record_lookup_restores_opening_bid(monkeypatch, creator_id):
+    cursor = _RecordCursor(creator_id)
     attached = []
     monkeypatch.setattr(
         read_service,
@@ -136,4 +142,7 @@ def test_single_record_lookup_restores_opening_bid(monkeypatch):
 
     assert response.status_code == 200
     assert payload["item"]["id"] == "mt-1"
+    assert payload["item"]["deleteOwnerUserId"] == (
+        "user-1" if creator_id == "user-1" else None
+    )
     assert attached == [("thong_tin_mo_thau", [payload["item"]])]
