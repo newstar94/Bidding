@@ -2,11 +2,26 @@ function normalizedCode(input) {
   return String(input?.value || "").trim().toUpperCase();
 }
 
+export function setProcurementLookupLoading(loadingScreen, form, loading, code = "") {
+  if (loading) form?.setAttribute?.("aria-busy", "true");
+  else form?.removeAttribute?.("aria-busy");
+  if (!loadingScreen) return;
+
+  const codeLabel = loadingScreen.querySelector?.("[data-procurement-loading-code]");
+  if (codeLabel) {
+    codeLabel.textContent = code;
+    codeLabel.hidden = !code;
+  }
+  loadingScreen.setAttribute("aria-busy", String(loading));
+  loadingScreen.hidden = !loading;
+}
+
 export function bindProcurementCodeAutoLookup({
   codeInput,
   checkbox,
   enabled = true,
   runLookup,
+  onCleanup,
 }) {
   codeInput?.__bfProcurementAutoLookupCleanup?.();
   checkbox?.__bfProcurementAutoLookupCleanup?.();
@@ -48,6 +63,7 @@ export function bindProcurementCodeAutoLookup({
   checkbox.addEventListener("change", handleCheckboxChange);
 
   const cleanup = () => {
+    onCleanup?.();
     codeInput.removeEventListener("change", handleCodeFinished);
     codeInput.removeEventListener("blur", handleCodeFinished);
     checkbox.removeEventListener("change", handleCheckboxChange);

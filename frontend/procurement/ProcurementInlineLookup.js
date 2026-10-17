@@ -1,5 +1,6 @@
 import { ProcurementLookupClient } from "./ProcurementLookupClient.js";
 import { ProcurementImportClient } from "./ProcurementImportClient.js";
+import { setProcurementLookupLoading } from "./ProcurementAutoLookup.js";
 import { SequentialRevisionController } from "./SequentialRevisionController.js";
 import { presentAutomaticDataMessage } from "./sourcePresentation.js";
 import { fillPackageFormFromProcurementDraft } from "./ProcurementDraftWorkflow.js";
@@ -127,22 +128,6 @@ function setButtonLoading(button, loading) {
   else button.removeAttribute("aria-busy");
 }
 
-function setLookupLoading(loadingScreen, form, loading, code = "") {
-  if (loading) form?.setAttribute?.("aria-busy", "true");
-  else form?.removeAttribute?.("aria-busy");
-  if (!loadingScreen) return;
-
-  const codeLabel = loadingScreen.querySelector?.(
-    "[data-procurement-loading-code]",
-  );
-  if (codeLabel) {
-    codeLabel.textContent = code;
-    codeLabel.hidden = !code;
-  }
-  loadingScreen.setAttribute("aria-busy", String(loading));
-  loadingScreen.hidden = !loading;
-}
-
 function inlineImportCapabilityIsCurrent({
   controller,
   generation,
@@ -264,7 +249,7 @@ export class ProcurementInlineLookup {
       if (!isCompletionCapabilityCurrent()) throw workspaceChangedError();
     };
     setButtonLoading(button, true);
-    setLookupLoading(loadingScreen, form, true, code);
+    setProcurementLookupLoading(loadingScreen, form, true, code);
     this.setStatus(status, "Đang lấy dữ liệu tự động…", "loading");
     try {
       if (normalizedKind === "PACKAGE" || normalizedKind === "PLAN") {
@@ -468,7 +453,7 @@ export class ProcurementInlineLookup {
     } finally {
       if (isCompletionCapabilityCurrent()) {
         setButtonLoading(button, false);
-        setLookupLoading(loadingScreen, form, false);
+        setProcurementLookupLoading(loadingScreen, form, false);
       }
     }
   }

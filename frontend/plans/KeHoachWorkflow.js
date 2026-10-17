@@ -55,7 +55,10 @@ import {
   isPlanBreakdownDraftActive,
   rebasePlanBreakdownDraftAfterServerMerge,
 } from "./planBreakdownDraft.js";
-import { bindProcurementCodeAutoLookup } from "../procurement/ProcurementAutoLookup.js";
+import {
+  bindProcurementCodeAutoLookup,
+  setProcurementLookupLoading,
+} from "../procurement/ProcurementAutoLookup.js";
 import {
   createPlanVersionDraftSession,
   finalizePlanVersionDraft,
@@ -634,10 +637,12 @@ export async function editKeHoach(id, {
     delete procurementLookupStatus.dataset.state;
     procurementLookupStatus.setAttribute("aria-live", "polite");
   }
+  let pendingLookupLoadingCleanup = null;
   bindProcurementCodeAutoLookup({
     codeInput: document.getElementById("kh-ma"),
     checkbox: procurementLookupCheckbox,
     enabled: procurementLookupEnabled,
+    onCleanup: () => pendingLookupLoadingCleanup?.(),
     runLookup: async () => {
       const lookupModel = this.model;
       const lookupLease = captureWorkspaceLease(lookupModel);
@@ -647,36 +652,55 @@ export async function editKeHoach(id, {
       const codeInput = document.getElementById("kh-ma");
       const code = String(codeInput?.value || "").trim().toUpperCase();
       const binding = codeInput?.__bfProcurementAutoLookupCleanup;
+      const loadingScreen = document.getElementById("procurement-lookup-plan-loading");
+      const lookupForm = document.getElementById("form-kehoach");
+      pendingLookupLoadingCleanup?.();
+      const finishLoading = () => {
+        // A stale import must not hide the feedback of a newer lookup/binding.
+        if (pendingLookupLoadingCleanup !== finishLoading) return;
+        pendingLookupLoadingCleanup = null;
+        setProcurementLookupLoading(loadingScreen, lookupForm, false);
+      };
+      if (/^PL\d{10}(?:-\d{2})?$/i.test(code)) {
+        pendingLookupLoadingCleanup = finishLoading;
+        setProcurementLookupLoading(loadingScreen, lookupForm, true, code);
+      }
       // The manual editor does not need the procurement graph. Load it for
       // this action, then verify that the same form/workspace still owns it.
       let workflowLoadFailed = false;
       try {
-        await this.ensureBiddingWorkflows?.();
-      } catch {
-        workflowLoadFailed = true;
-      }
-      if (
-        this.model !== lookupModel
-        || !isWorkspaceLeaseCurrent(lookupModel, lookupLease)
-        || lookupModel.workspaceStorage !== lookupStorage
-        || this.procurementPlanImport !== lookupFlow
-        || codeInput?.__bfProcurementAutoLookupCleanup !== binding
-        || String(codeInput?.value || "").trim().toUpperCase() !== code
-        || !procurementLookupCheckbox?.checked
-        || procurementLookupCheckbox.disabled
-        || !lookupModal?.isConnected
-        || !lookupModal.classList.contains("active")
-        || document.getElementById("modal-kehoach") !== lookupModal
-      ) return null;
-      if (workflowLoadFailed) {
-        const status = document.getElementById("procurement-lookup-plan-status");
-        if (status) {
-          status.hidden = false;
-          status.textContent = "Không tải được chức năng lấy dữ liệu tự động. Vui lòng thử lại.";
-          status.dataset.state = "error";
-          status.setAttribute("aria-live", "assertive");
+        try {
+          await this.ensureBiddingWorkflows?.();
+        } catch {
+          workflowLoadFailed = true;
         }
-        return null;
+        if (
+          this.model !== lookupModel
+          || !isWorkspaceLeaseCurrent(lookupModel, lookupLease)
+          || lookupModel.workspaceStorage !== lookupStorage
+          || this.procurementPlanImport !== lookupFlow
+          || codeInput?.__bfProcurementAutoLookupCleanup !== binding
+          || String(codeInput?.value || "").trim().toUpperCase() !== code
+          || !procurementLookupCheckbox?.checked
+          || procurementLookupCheckbox.disabled
+          || !lookupModal?.isConnected
+          || !lookupModal.classList.contains("active")
+          || document.getElementById("modal-kehoach") !== lookupModal
+        ) return null;
+        if (workflowLoadFailed) {
+          const status = document.getElementById("procurement-lookup-plan-status");
+          if (status) {
+            status.hidden = false;
+            status.textContent = "Không tải được chức năng lấy dữ liệu tự động. Vui lòng thử lại.";
+            status.dataset.state = "error";
+            status.setAttribute("aria-live", "assertive");
+          }
+          return null;
+        }
+      } finally {
+        // Release preflight ownership synchronously before the inline lookup
+        // takes over the same overlay; no paint occurs between these updates.
+        finishLoading();
       }
       return this.runProcurementInlineLookup?.({
         kind: "PLAN",

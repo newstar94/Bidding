@@ -83,3 +83,27 @@ Regression thực thi editor, action listeners, switchTab và closeModal thật:
 trước sửa cả X/Hủy mở form lần thứ hai và giữ `/ke-hoach/tao-moi`; sau sửa cả hai
 đóng form, về `/ke-hoach`, action null. Suite liên quan gồm 99 tests đạt. Plugin
 trên origin thực xác minh cùng chuỗi với cả hai nút, không có console error.
+
+## Phản hồi tra cứu trước khi tải workflow — 2026-10-17
+
+Fixture Chromium với editor, modal và CSS thật, giữ promise tải workflow chưa hoàn
+thành, tái hiện loading vẫn ẩn sau cả checkbox change, mã change và blur. Event đã
+gọi loader ngay; khoảng trống phản hồi nằm trước `ProcurementInlineLookup.run`.
+
+Với mã PL hợp lệ, editor bật overlay hiện hữu và `aria-busy` đồng bộ trước await
+tải workflow. Setter loading dùng chung nằm trong module auto-lookup nhỏ đã được
+tải sẵn; không tải graph procurement/evaluation khi mở form thủ công. Cleanup
+preflight chỉ thuộc đúng lần gọi, được thu hồi khi rebind và kết thúc đồng bộ
+trước khi inline lookup tiếp quản overlay, tránh completion cũ tắt loading mới.
+Giữ nguyên validation, chống request trùng, retry, stale guards và các contract
+API/dữ liệu/quyền bên trên; không có migration hay thay đổi `.env`.
+
+Regression tại `tests/js/plan_modal_open_performance.test.mjs` kiểm tra loading
+ngay trong handler và ở cơ hội vẽ trước khi import hoàn tất; thêm handoff sang
+inline thật, lỗi request/import, mã sai/rỗng, unchecked, đổi mã, rebind và stale
+completion. Đây là bằng chứng local với độ trễ import được điều khiển, không phải
+phép đo thời gian tra cứu MSC hoặc hiệu năng production.
+
+Kiểm chứng: 307 tests liên quan đạt, browser regression chạy lại đạt;
+`npm run build:secure` đạt (ESLint, Trusted Types, vendor/archive checks,
+174 obfuscated bundles và route CSS). Chưa triển khai production.

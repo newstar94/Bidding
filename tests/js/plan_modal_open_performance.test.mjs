@@ -12,10 +12,11 @@ const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 function contentType(pathname) {
   if ([".js", ".mjs"].includes(extname(pathname))) return "text/javascript; charset=utf-8";
   if (extname(pathname) === ".html") return "text/html; charset=utf-8";
+  if (extname(pathname) === ".css") return "text/css; charset=utf-8";
   return "application/octet-stream";
 }
 
-test("plan modal paints early and refreshes a paginated record before editing", async () => {
+test("plan modal paints early and refreshes a paginated record before editing", async (t) => {
   const modalMarkup = await readFile(
     join(projectRoot, "views/modals/modal_kehoach.html"),
     "utf8",
@@ -220,8 +221,10 @@ test("plan modal paints early and refreshes a paginated record before editing", 
         serverCapabilities: ["procurement-lookup-v1"],
       });
       const scenarios = [];
-      for (const staleReason of [
-        null, "workspace", "storage", "code", "binding", "checkbox", "flow", "closed", "removed",
+      for (const { staleReason, trigger } of [
+        ...["checkbox", "change", "blur"].map((trigger) => ({ staleReason: null, trigger })),
+        ...["workspace", "storage", "code", "binding", "checkbox", "flow", "closed", "removed"]
+          .map((staleReason) => ({ staleReason, trigger: "checkbox" })),
       ]) {
         let workspaceToken = "user:org-a@1";
         let finishImport;
@@ -258,7 +261,18 @@ test("plan modal paints early and refreshes a paginated record before editing", 
         const modal = document.getElementById("modal-kehoach");
         codeInput.value = "PL2600000001";
         checkbox.checked = true;
-        checkbox.dispatchEvent(new Event("change"));
+        const startedAt = performance.now();
+        if (trigger === "checkbox") checkbox.dispatchEvent(new Event("change"));
+        else codeInput.dispatchEvent(new Event(trigger));
+        const loading = document.getElementById("procurement-lookup-plan-loading");
+        const loadingImmediately = !loading.hidden;
+        const busyImmediately = document.getElementById("form-kehoach").getAttribute("aria-busy");
+        const loadingCode = loading.querySelector("[data-procurement-loading-code]").textContent;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const loadingAtPaint = !loading.hidden && loading.getBoundingClientRect().height > 0
+          && getComputedStyle(loading).visibility !== "hidden"
+          && getComputedStyle(loading).display !== "none";
+        const paintOpportunityMs = performance.now() - startedAt;
         const lookupsBeforeImport = lookups.length;
         if (staleReason === "workspace") workspaceToken = "user:org-b@2";
         if (staleReason === "storage") controller.model.workspaceStorage = {};
@@ -270,12 +284,27 @@ test("plan modal paints early and refreshes a paginated record before editing", 
         if (staleReason === "removed") modal.remove();
         finishImport();
         await new Promise((resolve) => setTimeout(resolve, 0));
-        scenarios.push({ staleReason, importsBeforeAction, imports, lookupsBeforeImport, lookups });
+        scenarios.push({
+          staleReason, trigger, importsBeforeAction, imports, lookupsBeforeImport, lookups,
+          loadingImmediately, loadingAtPaint, paintOpportunityMs,
+          busyImmediately, loadingCode,
+          loadingAfterCompletion: !loading.hidden,
+        });
         if (staleReason === "removed") document.body.appendChild(modal);
       }
       return scenarios;
     });
+    t.diagnostic(JSON.stringify(lookupResult.filter((scenario) => !scenario.staleReason).map(
+      ({ trigger, loadingImmediately, loadingAtPaint, paintOpportunityMs }) => ({
+        trigger, loadingImmediately, loadingAtPaint, paintOpportunityMs,
+      }),
+    )));
     for (const scenario of lookupResult) {
+      assert.equal(scenario.loadingImmediately, true, `${scenario.trigger}: loading before workflow import`);
+      assert.equal(scenario.loadingAtPaint, true, `${scenario.trigger}: visible before workflow import`);
+      assert.equal(scenario.busyImmediately, "true");
+      assert.equal(scenario.loadingCode, "PL2600000001");
+      assert.equal(scenario.loadingAfterCompletion, false, `${scenario.staleReason}: loading cleanup`);
       assert.equal(scenario.importsBeforeAction, 0);
       assert.equal(scenario.imports, 1);
       assert.equal(scenario.lookupsBeforeImport, 0);
@@ -293,6 +322,108 @@ test("plan modal paints early and refreshes a paginated record before editing", 
           },
         }]);
       }
+    }
+
+    const handoffResults = await page.evaluate(async () => {
+      const { editKeHoach } = await import("/frontend/plans/KeHoachWorkflow.js");
+      const { ProcurementInlineLookup } = await import("/frontend/procurement/ProcurementInlineLookup.js");
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const results = [];
+      for (const mode of ["handoff", "invalid", "superseded", "rebound"]) {
+        const imports = [];
+        let failRequest;
+        let requests = 0;
+        const controller = {
+          model: {
+            state: { activetab: "kehoach", activeaction: null, kehoach: [] },
+            db: {}, workspaceStorage: {}, workspaceScope: { key: "user:org-a" },
+            getWorkspaceToken: () => "user:org-a@1",
+            getLatestChuDauTu: () => [],
+          },
+          procurementPlanImport: null,
+          switchTab() {}, makeSearchableSelect() {},
+          ensureBiddingWorkflows() {
+            return new Promise((resolve) => imports.push(resolve));
+          },
+          runProcurementInlineLookup(options) { return inlineLookup.run(options); },
+          view: { openModal(id) { document.getElementById(id).classList.add("active"); } },
+        };
+        const inlineLookup = new ProcurementInlineLookup({
+          controller,
+          importClient: {
+            preparePlan() {
+              requests += 1;
+              return new Promise((resolve, reject) => { failRequest = reject; });
+            },
+          },
+        });
+        await editKeHoach.call(controller, null);
+        const input = document.getElementById("kh-ma");
+        const checkbox = document.getElementById("procurement-lookup-plan-enabled");
+        const loading = document.getElementById("procurement-lookup-plan-loading");
+        const form = document.getElementById("form-kehoach");
+        const snapshot = () => ({
+          visible: !loading.hidden, busy: form.getAttribute("aria-busy"),
+          disabled: checkbox.disabled,
+          code: loading.querySelector("[data-procurement-loading-code]").textContent,
+          requests,
+        });
+        // No lookup/loading for empty codes or an unchecked automatic option.
+        input.value = "PL2600000001";
+        input.dispatchEvent(new Event("change"));
+        input.value = "";
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event("change"));
+        const idle = { ...snapshot(), imports: imports.length };
+        input.value = mode === "invalid" ? "PL123" : "PL2600000001";
+        input.dispatchEvent(new Event("change"));
+        const beforeImport = snapshot();
+        let afterOldImport = null;
+        let afterRebind = null;
+        if (mode === "superseded" || mode === "rebound") {
+          if (mode === "rebound") {
+            await editKeHoach.call(controller, null);
+            afterRebind = snapshot();
+            checkbox.checked = true;
+          }
+          input.value = "PL2600000002-01";
+          input.dispatchEvent(new Event("change"));
+          imports[0]();
+          await tick();
+          afterOldImport = snapshot();
+        }
+        imports.at(-1)();
+        await tick();
+        const duringRequest = snapshot();
+        failRequest?.(new Error("lookup request failed"));
+        await tick();
+        const status = document.getElementById("procurement-lookup-plan-status");
+        results.push({ mode, idle, beforeImport, afterOldImport, afterRebind, duringRequest,
+          afterRequest: snapshot(), statusState: status.dataset.state });
+      }
+      return results;
+    });
+    for (const result of handoffResults) {
+      assert.equal(result.idle.imports, 0, result.mode);
+      assert.equal(result.idle.visible, false, result.mode);
+      assert.equal(result.beforeImport.visible, result.mode !== "invalid", result.mode);
+      if (result.afterRebind) {
+        assert.equal(result.afterRebind.visible, false);
+        assert.equal(result.afterRebind.busy, null);
+      }
+      if (result.afterOldImport) {
+        assert.equal(result.afterOldImport.visible, true, "old completion must not hide new loading");
+        assert.equal(result.afterOldImport.busy, "true");
+        assert.equal(result.afterOldImport.code, "PL2600000002-01");
+        assert.equal(result.afterOldImport.requests, 0);
+      }
+      assert.equal(result.duringRequest.visible, result.mode !== "invalid", result.mode);
+      assert.equal(result.duringRequest.disabled, result.mode !== "invalid", result.mode);
+      assert.equal(result.duringRequest.requests, result.mode === "invalid" ? 0 : 1, result.mode);
+      assert.equal(result.afterRequest.visible, false, result.mode);
+      assert.equal(result.afterRequest.busy, null, result.mode);
+      assert.equal(result.afterRequest.disabled, false, result.mode);
+      assert.equal(result.statusState, "error", result.mode);
     }
 
     const loadFailureResult = await page.evaluate(async () => {
@@ -352,6 +483,8 @@ test("plan modal paints early and refreshes a paginated record before editing", 
           failImport(new Error("temporary workflow chunk failure"));
           await new Promise((resolve) => setTimeout(resolve, 0));
           const afterFailure = {
+            loadingHidden: document.getElementById("procurement-lookup-plan-loading").hidden,
+            formBusy: document.getElementById("form-kehoach").getAttribute("aria-busy"),
             hidden: status.hidden,
             text: status.textContent,
             state: status.dataset.state,
@@ -375,6 +508,8 @@ test("plan modal paints early and refreshes a paginated record before editing", 
     assert.deepEqual(loadFailureResult.unhandled, []);
     const [currentFailure, staleFailure] = loadFailureResult.scenarios;
     assert.equal(currentFailure.afterFailure.hidden, false);
+    assert.equal(currentFailure.afterFailure.loadingHidden, true);
+    assert.equal(currentFailure.afterFailure.formBusy, null);
     assert.match(currentFailure.afterFailure.text, /Vui lòng thử lại/u);
     assert.equal(currentFailure.afterFailure.state, "error");
     assert.equal(currentFailure.afterFailure.live, "assertive");
@@ -382,6 +517,8 @@ test("plan modal paints early and refreshes a paginated record before editing", 
     assert.equal(currentFailure.imports, 2);
     assert.equal(currentFailure.lookups, 1);
     assert.deepEqual(staleFailure.afterFailure, {
+      loadingHidden: true,
+      formBusy: null,
       hidden: false,
       text: "Trạng thái thuộc tổ chức mới",
       state: "loading",
