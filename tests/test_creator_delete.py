@@ -64,6 +64,32 @@ def test_creator_still_requires_existing_record_write_access(creator_api, monkey
     assert snapshot(fixture) == before
 
 
+def test_forged_creator_claim_is_rejected_before_any_deletion(creator_api, monkeypatch):
+    fixture = creator_api
+    creator_fixture(fixture, monkeypatch, "kehoach", other_second=True)
+    before = snapshot(fixture)
+    payload = delete_payload("kehoach")
+    payload["deletions"][1]["deleteOwnerUserId"] = "manager-1"
+    response = fixture.submit(payload)
+    assert response.status_code == 400
+    assert snapshot(fixture) == before
+
+
+def test_creator_package_delete_includes_opening_but_not_standalone_opening(creator_api, monkeypatch):
+    fixture = creator_api
+    creator_fixture(fixture, monkeypatch, "goithau")
+    fixture.raw.execute("INSERT INTO thong_tin_mo_thau (id, organization_id, goi_thau_id) VALUES ('opening', 'org-1', 'goithau-first')")
+    fixture.raw.commit()
+    opening = {"table": "thongtinmothau", "id": "opening", "expectedVersion": 3}
+    response = fixture.submit({"deletions": [opening], "baseSyncVersion": "10"})
+    assert response.status_code == 400
+    payload = delete_payload("goithau")
+    payload["deletions"].insert(0, opening)
+    response = fixture.submit(payload)
+    assert response.status_code == 200, json.loads(response.body)
+    assert len(json.loads(response.body)["deleteImpacts"]) == 3
+
+
 def test_creator_version_conflict_rolls_back_whole_batch(creator_api, monkeypatch):
     fixture = creator_api
     creator_fixture(fixture, monkeypatch, "hopdong")
@@ -103,12 +129,16 @@ def test_creation_evidence_is_tenant_scoped_first_event_and_original_lineage():
             (4, "org", "goi_thau", "later", "alice", "sync.record_created"),
             (5, "org", "goi_thau", "own", "alice", "sync.record_created"),
             (6, "org", "goi_thau", "updated-only", "alice", "sync.record_updated"),
+            (7, "org", "goi_thau", "forged-root", "bob", "sync.record_created"),
         ])
+        conn.execute("INSERT INTO audit_log VALUES (8, 'org', 'goi_thau', 'own-snapshot', 'bob', 'sync.record_created', ?)",
+                     (json.dumps({"rootAggregateId": "own"}),))
         rows = [{"id": "later", "rootId": "root"}, {"id": "own"},
-                {"id": "unknown", "deleteOwnerUserId": "alice"}, {"id": "updated-only"}]
-        assert load_creator_delete_ids(conn.cursor(), "org", "alice", "goi_thau", rows) == {"own"}
+                {"id": "unknown", "deleteOwnerUserId": "alice"}, {"id": "updated-only"},
+                {"id": "forged-root", "rootId": "own"}, {"id": "own-snapshot", "rootId": "own"}]
+        assert load_creator_delete_ids(conn.cursor(), "org", "alice", "goi_thau", rows) == {"own", "own-snapshot"}
         attach_delete_ownership(conn.cursor(), "org", "alice", "goi_thau", rows)
-        assert [row["deleteOwnerUserId"] for row in rows] == [None, "alice", None, None]
+        assert [row["deleteOwnerUserId"] for row in rows] == [None, "alice", None, None, None, "alice"]
         attach_delete_ownership(None, "personal:alice", "alice", "goi_thau", rows)
         assert all(row["deleteOwnerUserId"] == "alice" for row in rows)
 
