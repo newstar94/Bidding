@@ -1,7 +1,12 @@
 import fs from "node:fs";
 
 
-export const MSC_PORTAL_URL = "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection";
+export const OFFICIAL_HOST = String(process.env.MUASAMCONG_HOST ?? "muasamcong.mof.gov.vn").trim().toLowerCase();
+if (OFFICIAL_HOST !== "muasamcong.mof.gov.vn") {
+  throw new Error("PROCUREMENT_ADAPTER_UNSUPPORTED");
+}
+export const OFFICIAL_ORIGIN = `https://${OFFICIAL_HOST}`;
+export const MSC_PORTAL_URL = `${OFFICIAL_ORIGIN}/web/guest/contractor-selection`;
 export const MSC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const LAUNCH_ARGS = Object.freeze([

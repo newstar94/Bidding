@@ -131,7 +131,7 @@ Restore drill và smoke trên database/volume cách ly vẫn là release gate ri
    `PROCUREMENT_INTERACTION_REQUIRED`; không triển khai solver/token replay/bypass.
    Kiểm tra TLS bằng chính service account/process chạy Uvicorn; Edge extension tải
    được trang không phải bằng chứng worker có cùng egress. Network policy phải cho
-   phép TLS theo SNI `muasamcong.mpi.gov.vn`. Giữ
+   phép TLS theo SNI `muasamcong.mof.gov.vn`. Giữ
    `PROCUREMENT_BROWSER_WORKER_TIMEOUT_SECONDS` thấp hơn
    `PROCUREMENT_LOOKUP_TIMEOUT_SECONDS` ít nhất 5 giây (startup sẽ fail nếu sai), rồi
    chạy một mã thật bằng `python scripts/research_muasamcong.py --live PL...` trước

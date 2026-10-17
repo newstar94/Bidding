@@ -70,12 +70,12 @@ def test_unified_source_honors_the_server_owned_browser_mode(monkeypatch):
     monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "true")
     monkeypatch.setenv(
         "PROCUREMENT_ALLOWED_TARGET_HOSTS",
-        "muasamcong.mpi.gov.vn",
+        "muasamcong.mof.gov.vn",
     )
 
     source = MuaSamCongProcurementSource.from_environ()
 
-    assert source.runtime.configuration["targetHost"] == "muasamcong.mpi.gov.vn"
+    assert source.runtime.configuration["targetHost"] == "muasamcong.mof.gov.vn"
     assert source.runtime.configuration["chromiumArgs"] == []
 
 
@@ -96,12 +96,12 @@ def test_unified_source_ignores_legacy_browser_switches(monkeypatch, mode):
     monkeypatch.setenv("PROCUREMENT_BROWSER_ENABLED", "false")
     monkeypatch.setenv(
         "PROCUREMENT_ALLOWED_TARGET_HOSTS",
-        "muasamcong.mpi.gov.vn",
+        "muasamcong.mof.gov.vn",
     )
 
     source = MuaSamCongProcurementSource.from_environ()
     assert "browserMode" not in source.runtime.configuration
-    assert source.runtime.configuration["targetHost"] == "muasamcong.mpi.gov.vn"
+    assert source.runtime.configuration["targetHost"] == "muasamcong.mof.gov.vn"
     assert source.runtime.configuration["chromiumArgs"] == []
 
 

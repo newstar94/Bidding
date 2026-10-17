@@ -8,7 +8,7 @@ import {
   ENDPOINTS,
   resolveEndpoint,
 } from "../../backend/integrations/muasamcong_browser/endpoint_catalog.mjs";
-import { MscSessionProvider } from "../../backend/integrations/muasamcong_browser/session_provider.mjs";
+import { MSC_PORTAL_URL, MscSessionProvider } from "../../backend/integrations/muasamcong_browser/session_provider.mjs";
 import { MscIntegrationRuntime } from "../../backend/integrations/muasamcong_browser/integration_runtime.mjs";
 
 
@@ -39,11 +39,12 @@ function browserHarness({
     },
     setBypassCSP: async (value) => assert.equal(value, true),
     setUserAgent: async (value) => assert.match(value, /Chrome\/131/),
-    goto: async () => {
+    goto: async (url) => {
+      assert.equal(url, "https://muasamcong.mof.gov.vn/web/guest/contractor-selection");
       if (navigationError) throw navigationError;
       if (networkToken) {
         requestHandler?.({
-          url: () => `https://muasamcong.mpi.gov.vn/api?token=${networkToken}`,
+          url: () => `https://muasamcong.mof.gov.vn/api?token=${networkToken}`,
         });
       }
     },
@@ -59,7 +60,7 @@ function browserHarness({
       if (String(fn).includes("typeof window.grecaptcha")) return false;
       if (searchToken && String(fn).includes("querySelectorAll")) {
         requestHandler?.({
-          url: () => `https://muasamcong.mpi.gov.vn/api?token=${searchToken}`,
+          url: () => `https://muasamcong.mof.gov.vn/api?token=${searchToken}`,
         });
       }
       return undefined;
@@ -360,6 +361,8 @@ test("protected client refreshes exactly once on 401 and never returns secrets",
     sessionProvider: provider,
     retries: 0,
     fetchImpl: async (url, options) => {
+      assert.equal(new URL(url).origin, "https://muasamcong.mof.gov.vn");
+      assert.equal(options.headers.referer, MSC_PORTAL_URL);
       calls.push({ url: String(url), cookie: options.headers.cookie });
       return calls.filter((item) => typeof item === "object").length === 1
         ? response(401, {})
@@ -597,7 +600,7 @@ test("endpoint profile covers the complete WEB_DAU_THAU semantic catalog", () =>
   ];
   required.forEach((operation) => {
     assert.ok(operation in ENDPOINTS);
-    assert.match(resolveEndpoint(operation).url, /^https:\/\/muasamcong\.mpi\.gov\.vn\//);
+    assert.match(resolveEndpoint(operation).url, /^https:\/\/muasamcong\.mof\.gov\.vn\//);
   });
 });
 

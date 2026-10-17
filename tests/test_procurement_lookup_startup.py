@@ -27,6 +27,18 @@ def test_procurement_browser_mode_and_gate_default_enabled():
     settings = ProcurementLookupSettings.from_environ({})
 
     assert settings.enabled is True
+    assert settings.allowed_hosts == {"muasamcong.mof.gov.vn"}
+
+
+@pytest.mark.parametrize("hostname", [
+    "muasamcong.mpi.gov.vn",
+    "muasamcong.mof.gov.vn.evil.test",
+    "sub.muasamcong.mof.gov.vn",
+    "muasamcong.mof.gov.vn,example.test",
+])
+def test_lookup_hostname_migration_keeps_exact_allowlist(hostname):
+    with pytest.raises(StartupValidationError, match="official hostname"):
+        validate_procurement_lookup_configuration({"PROCUREMENT_ALLOWED_TARGET_HOSTS": hostname})
 
 
 @pytest.mark.parametrize("mode", ["standard", "", "invalid"])

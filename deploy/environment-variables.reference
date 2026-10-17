@@ -340,7 +340,9 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 # Default isolated compatibility profile for the exact official host. It does
 # not solve CAPTCHA, replay tokens/cookies, forge challenges or weaken Chromium
 # security boundaries. Giới hạn hostname chính thức vẫn được kiểm tra.
-PROCUREMENT_ALLOWED_TARGET_HOSTS=muasamcong.mpi.gov.vn
+# Official MSC hostname; HTTPS origin and portal URL are derived. Restart web/workers after changes.
+MUASAMCONG_HOST=muasamcong.mof.gov.vn
+PROCUREMENT_ALLOWED_TARGET_HOSTS=muasamcong.mof.gov.vn
 MUASAMCONG_DRIVER_VUE2=true
 MUASAMCONG_DRIVER_GENERIC=true
 MUASAMCONG_EXTRACT_NETWORK=true
@@ -360,7 +362,7 @@ PROCUREMENT_LOOKUP_OPEN_PACKAGE_CACHE_TTL_SECONDS=300
 PROCUREMENT_LOOKUP_CLOSED_PACKAGE_CACHE_TTL_SECONDS=3600
 PROCUREMENT_RAW_CACHE_TTL_SECONDS=900
 MUASAMCONG_BROWSER_EXECUTABLE_PATH=
-# Public reCAPTCHA site key currently published by muasamcong.mpi.gov.vn.
+# Public reCAPTCHA site key currently published by muasamcong.mof.gov.vn.
 # This is a browser identifier, not the private reCAPTCHA secret key.
 MUASAMCONG_RECAPTCHA_SITE_KEY="6LeQH9gpAAAAAPpzhkvYzd8QCrP-QyLVRSw_SD9U"
 MUASAMCONG_BROWSER_HEADLESS=true
@@ -459,12 +461,12 @@ AI_WEB_SEARCH_PROXY_URL=
 AI_WEB_SEARCH_ALLOWED_PROXY_HOSTS=
 AI_WEB_SEARCH_MODEL=
 AI_WEB_SEARCH_TIMEOUT_SECONDS=20
-AI_WEB_SEARCH_ALLOWED_DOMAINS=vanban.chinhphu.vn,vbpl.vn,muasamcong.gov.vn,muasamcong.mpi.gov.vn
+AI_WEB_SEARCH_ALLOWED_DOMAINS=vanban.chinhphu.vn,vbpl.vn,muasamcong.gov.vn,muasamcong.mof.gov.vn
 
 # Contractor violation lookup uses only the public service calls made by the
 # official MuaSamCong frontend. Keep the official HTTPS host; the adapter exact-
 # matches identifiers and never crawls additional result pages.
-VNEPS_VIOLATION_SERVICE_BASE=https://muasamcong.mpi.gov.vn/o/egp-portal-org-ind-violating/services
+VNEPS_VIOLATION_SERVICE_BASE=https://muasamcong.mof.gov.vn/o/egp-portal-org-ind-violating/services
 VNEPS_VIOLATION_TIMEOUT_SECONDS=6
 VNEPS_VIOLATION_RETRIES=1
 VNEPS_VIOLATION_CIRCUIT_SECONDS=30

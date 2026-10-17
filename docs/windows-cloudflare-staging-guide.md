@@ -391,7 +391,7 @@ Chỉ truy cập bằng URL HTTPS chính thức, không trộn URL IP/localhost 
 - Lookup/import mặc định bật; nếu không hoạt động, xác nhận deployment không đặt
   `PROCUREMENT_LOOKUP_ENABLED=false` hoặc `PROCUREMENT_IMPORT_ENABLED=false`.
 - Chromium của Playwright phải được cài trên máy chạy BiddingFlow.
-- Máy chủ phải truy cập được `muasamcong.mpi.gov.vn` qua TLS.
+- Máy chủ phải truy cập được `muasamcong.mof.gov.vn` qua TLS.
 - Kiểm tra khóa `MUASAMCONG_RECAPTCHA_SITE_KEY` trong `.env` theo cấu hình hiện hành.
 
 ### Người dùng ngoài danh sách vẫn truy cập được

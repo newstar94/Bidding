@@ -1,4 +1,4 @@
-import { MSC_USER_AGENT } from "./session_provider.mjs";
+import { MSC_PORTAL_URL, MSC_USER_AGENT } from "./session_provider.mjs";
 import { MSC_PROFILE_ID, resolveEndpoint } from "./endpoint_catalog.mjs";
 
 
@@ -7,7 +7,7 @@ function buildHeaders(cookie = "") {
     accept: "application/json, text/plain, */*",
     "content-type": "application/json",
     cookie: cookie || "COOKIE_SUPPORT=true; GUEST_LANGUAGE_ID=vi_VN",
-    referer: "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection",
+    referer: MSC_PORTAL_URL,
     "user-agent": MSC_USER_AGENT,
   };
 }

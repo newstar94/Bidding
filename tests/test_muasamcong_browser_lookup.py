@@ -223,7 +223,7 @@ def test_browser_launcher_factory_keeps_warm_browser_runtime_and_checks_host():
     assert launcher.get_runtime() is launcher.get_runtime()
     assert created == [{
         "headless": True,
-        "targetHost": "muasamcong.mpi.gov.vn",
+        "targetHost": "muasamcong.mof.gov.vn",
         "chromiumArgs": [],
         "drivers": {"vue2": True, "generic": True},
         "extractors": {"network": True, "vue": True, "dom": True},
@@ -236,7 +236,7 @@ def test_browser_launcher_factory_keeps_warm_browser_runtime_and_checks_host():
     }]
 
     research = BrowserLauncherFactory.create(
-        allowed_target_hosts={"muasamcong.mpi.gov.vn"},
+        allowed_target_hosts={"muasamcong.mof.gov.vn"},
         runtime_factory=runtime_factory,
     )
     assert isinstance(research, ProcurementBrowserLauncher)
@@ -267,7 +267,7 @@ def test_browser_launcher_factory_defaults_to_procurement_browser():
 
     assert isinstance(launcher, ProcurementBrowserLauncher)
     launcher.get_runtime()
-    assert created[0]["targetHost"] == "muasamcong.mpi.gov.vn"
+    assert created[0]["targetHost"] == "muasamcong.mof.gov.vn"
 
 
 def test_launcher_restarts_runtime_after_idle_ttl():
@@ -368,7 +368,7 @@ def test_node_browser_runtime_reuses_one_worker_and_exchanges_sanitized_json_lin
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "targetHost": "muasamcong.mpi.gov.vn",
+            "targetHost": "muasamcong.mof.gov.vn",
             "chromiumArgs": [],
         },
         popen=popen,
@@ -445,7 +445,7 @@ def test_node_browser_runtime_times_out_blocked_worker_and_marks_it_unhealthy():
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "targetHost": "muasamcong.mpi.gov.vn",
+            "targetHost": "muasamcong.mof.gov.vn",
             "chromiumArgs": [],
             "workerResponseTimeoutMs": 50,
         },
@@ -559,7 +559,7 @@ def test_node_browser_runtime_rejects_a_second_different_lookup_when_busy():
     runtime = NodeBrowserRuntime(
         {
             "headless": True,
-            "targetHost": "muasamcong.mpi.gov.vn",
+            "targetHost": "muasamcong.mof.gov.vn",
             "chromiumArgs": [],
             "workerResponseTimeoutMs": 1000,
             "workerQueueTimeoutMs": 50,

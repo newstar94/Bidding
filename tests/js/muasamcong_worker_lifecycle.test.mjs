@@ -51,14 +51,14 @@ function workerHarness({ failInitialization = false } = {}) {
 
 test("first fallback lookup initializes lazily without a preceding probe", async () => {
   const worker = workerHarness();
-  assert.equal((await worker.send("initialize", { configuration: { targetHost: "muasamcong.mpi.gov.vn" } })).ok, true);
+  assert.equal((await worker.send("initialize", { configuration: { targetHost: "muasamcong.mof.gov.vn" } })).ok, true);
   assert.equal(worker.runtimes.length, 0);
   const first = await worker.send("lookup", { code: "PL2600000001", kind: "PLAN" });
   assert.equal(first.ok, true);
   assert.deepEqual(first.result, { code: "PL2600000001", kind: "PLAN" });
   assert.equal((await worker.send("lookup", { code: "IB2600000002", kind: "PACKAGE" })).ok, true);
   assert.equal(worker.runtimes.length, 1);
-  assert.equal(worker.runtimes[0].configuration.targetHost, "muasamcong.mpi.gov.vn");
+  assert.equal(worker.runtimes[0].configuration.targetHost, "muasamcong.mof.gov.vn");
 });
 
 test("fallback lookup requires a live initialized worker and validates before launching", async () => {

@@ -4,6 +4,9 @@
 - Ngày: 2026-08-31
 - Phạm vi: nguồn tra cứu/nhập KHLCNT, TBMT và mở thầu từ Mua Sắm Công
 
+Hostname bên dưới là lịch sử; ADR 0087 cập nhật sang `muasamcong.mof.gov.vn`.
+Các quyết định bật/tắt nguồn và giới hạn hostname chính xác vẫn giữ nguyên.
+
 ## Quyết định
 
 1. Khi không có override môi trường, `PROCUREMENT_LOOKUP_ENABLED` và

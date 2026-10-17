@@ -100,8 +100,8 @@ def test_procurement_transport_enforces_tls_size_host_and_positive_cache():
 
     assert first == second == {"items": [{"id": "revision-1"}]}
     assert len(calls) == 1
-    assert calls[0][0].startswith("https://muasamcong.mpi.gov.vn/")
-    assert calls[0][1] == {"muasamcong.mpi.gov.vn"}
+    assert calls[0][0].startswith("https://muasamcong.mof.gov.vn/")
+    assert calls[0][1] == {"muasamcong.mof.gov.vn"}
     assert calls[0][3].minimum_version == ssl.TLSVersion.TLSv1_2
     assert calls[0][3].check_hostname is True
     assert calls[0][3].verify_mode == ssl.CERT_REQUIRED
@@ -180,7 +180,9 @@ def test_procurement_transport_size_guard_and_circuit_breaker():
 
 def test_procurement_transport_rejects_bad_origin_and_exhausted_capacity():
     with pytest.raises(ProcurementSourceError, match="PROCUREMENT_LOOKUP_DISABLED"):
-        VnepsProcurementTransport(origin="http://muasamcong.mpi.gov.vn")
+        VnepsProcurementTransport(origin="https://muasamcong.mpi.gov.vn")
+    with pytest.raises(ProcurementSourceError, match="PROCUREMENT_LOOKUP_DISABLED"):
+        VnepsProcurementTransport(origin="http://muasamcong.mof.gov.vn")
     with pytest.raises(ProcurementSourceError, match="PROCUREMENT_LOOKUP_DISABLED"):
         VnepsProcurementTransport(origin="https://example.test")
 

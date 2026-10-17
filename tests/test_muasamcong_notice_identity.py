@@ -62,6 +62,7 @@ def test_actual_02_ignores_stale_plan_link_and_plan_version():
     assert row["revisionNumber"] == "02"
     assert row["revisionId"] == row["notifyId"] == REVISION_IDS["02"]
     assert row["bidClosingAt"] == "2026-10-12T09:00:00"
+    assert row["publicUrl"].startswith("https://muasamcong.mof.gov.vn/")
 
 
 @pytest.mark.parametrize("version", ["00", "01"])

@@ -23,12 +23,12 @@ from backend.integrations.vneps.errors import (
 )
 from backend.integrations.vneps.response_parser import parse_violation_response
 from backend.shared.muasamcong_tls import MUASAMCONG_SSL_CONTEXT
+from backend.procurement_lookup.config import MUASAMCONG_HOST, MUASAMCONG_ORIGIN
 from backend.shared.safe_http import open_allowlisted_https
 
 
 OFFICIAL_SERVICE_BASE = (
-    "https://muasamcong.mpi.gov.vn/"
-    "o/egp-portal-org-ind-violating/services"
+    f"{MUASAMCONG_ORIGIN}/o/egp-portal-org-ind-violating/services"
 )
 MAX_SEARCH_RESULTS = 10
 MAX_DETAIL_REQUESTS = 10
@@ -176,7 +176,7 @@ class VnepsViolationProvider:
             or os.environ.get("VNEPS_VIOLATION_SERVICE_BASE", OFFICIAL_SERVICE_BASE)
         ).rstrip("/")
         parsed = urllib.parse.urlparse(self.service_base)
-        if parsed.scheme != "https" or parsed.hostname != "muasamcong.mpi.gov.vn":
+        if parsed.scheme != "https" or parsed.hostname != MUASAMCONG_HOST:
             raise VnepsConfigurationError(
                 "The VNEPS violation adapter must use the official HTTPS host"
             )
@@ -425,8 +425,8 @@ class VnepsViolationProvider:
             headers={
                 "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/json",
-                "Origin": "https://muasamcong.mpi.gov.vn",
-                "Referer": "https://muasamcong.mpi.gov.vn/vi/web/guest/organizations-violators",
+                "Origin": MUASAMCONG_ORIGIN,
+                "Referer": f"{MUASAMCONG_ORIGIN}/vi/web/guest/organizations-violators",
                 "User-Agent": "BiddingFlow/2.0",
             },
             method="POST",
@@ -440,7 +440,7 @@ class VnepsViolationProvider:
             try:
                 with open_allowlisted_https(
                     request,
-                    allowed_hosts={"muasamcong.mpi.gov.vn"},
+                    allowed_hosts={MUASAMCONG_HOST},
                     timeout=timeout,
                     context=MUASAMCONG_SSL_CONTEXT,
                 ) as response:

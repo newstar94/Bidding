@@ -8,6 +8,7 @@ import json
 import math
 import re
 from typing import Iterable
+from backend.procurement_lookup.config import MUASAMCONG_PORTAL_URL
 
 from backend.procurement_import.source import ProcurementSourceError
 from backend.integrations.muasamcong_browser.code_mapping import (
@@ -1167,8 +1168,7 @@ def normalize_notice_revision(
         "inputResultId": pick(notice, "inputResultId"),
         "techReqId": pick(notice, "techReqId"),
         "publicUrl": (
-            "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection"
-            f"?notifyNo={notice_no}&id={revision_id}"
+            f"{MUASAMCONG_PORTAL_URL}?notifyNo={notice_no}&id={revision_id}"
         ),
         "source": deepcopy(source or {}),
     }

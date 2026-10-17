@@ -5,7 +5,7 @@
   "driverVersion": "2026.1",
   "networkResponses": [
     {
-      "url": "https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/plan-detail",
+      "url": "https://muasamcong.mof.gov.vn/o/egp-portal-contractor-selection-v2/services/expose/lcnt/plan-detail",
       "method": "POST",
       "status": 200,
       "contentType": "application/json",

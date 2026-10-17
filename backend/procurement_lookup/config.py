@@ -6,12 +6,29 @@ from dataclasses import dataclass
 import os
 from typing import Mapping
 
-
-OFFICIAL_MUASAMCONG_HOST = "muasamcong.mpi.gov.vn"
+OFFICIAL_MUASAMCONG_HOST = "muasamcong.mof.gov.vn"
 
 
 class ProcurementLookupConfigurationError(ValueError):
     """Raised when an enabled lookup profile cannot run safely."""
+
+
+def muasamcong_host_from_environ(environ=None):
+    """Read the operator setting without expanding the official-host boundary."""
+    environ = os.environ if environ is None else environ
+    host = str(environ.get("MUASAMCONG_HOST", OFFICIAL_MUASAMCONG_HOST)).strip().casefold()
+    if host != OFFICIAL_MUASAMCONG_HOST:
+        raise ProcurementLookupConfigurationError(
+            "MUASAMCONG_HOST must match the exact official hostname."
+        )
+    return host
+
+
+# Startup loads .env before importing the adapters. Origin/path are derived,
+# not independent overrides that could send headers or tokens to another host.
+MUASAMCONG_HOST = muasamcong_host_from_environ()
+MUASAMCONG_ORIGIN = f"https://{MUASAMCONG_HOST}"
+MUASAMCONG_PORTAL_URL = f"{MUASAMCONG_ORIGIN}/web/guest/contractor-selection"
 
 
 def _boolean(environ, name, default):
@@ -73,11 +90,12 @@ class ProcurementLookupSettings:
         enabled = _boolean(
             environ, "PROCUREMENT_LOOKUP_ENABLED", "true"
         )
+        target_host = muasamcong_host_from_environ(environ)
         allowed_hosts = frozenset(
             host.strip().casefold()
             for host in str(environ.get(
                 "PROCUREMENT_ALLOWED_TARGET_HOSTS",
-                OFFICIAL_MUASAMCONG_HOST,
+                target_host,
             )).split(",")
             if host.strip()
         )
@@ -108,7 +126,7 @@ class ProcurementLookupSettings:
         )
 
         if enabled:
-            if allowed_hosts != {OFFICIAL_MUASAMCONG_HOST}:
+            if allowed_hosts != {target_host}:
                 raise ProcurementLookupConfigurationError(
                     "procurement-browser requires the exact official hostname "
                     "allowlist."

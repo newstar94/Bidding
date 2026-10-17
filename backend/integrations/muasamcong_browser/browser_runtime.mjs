@@ -1,4 +1,5 @@
 import { selectDriver } from "./drivers.mjs";
+import { OFFICIAL_HOST, OFFICIAL_ORIGIN } from "./session_provider.mjs";
 import { ExtractorRegistry } from "./extractors.mjs";
 import {
   DetailUrlBuilder,
@@ -13,8 +14,7 @@ import {
 } from "./runtime_support.mjs";
 
 
-const OFFICIAL_HOST = "muasamcong.mpi.gov.vn";
-export const SEARCH_URL = `https://${OFFICIAL_HOST}/vi/web/guest/contractor-selection?render=search`;
+export const SEARCH_URL = `${OFFICIAL_ORIGIN}/vi/web/guest/contractor-selection?render=search`;
 
 
 async function isKnownUpstreamFailure(page, response) {

@@ -15,10 +15,10 @@ import urllib.request
 from backend.procurement_import.source import ProcurementSourceError
 from backend.shared.muasamcong_tls import MUASAMCONG_SSL_CONTEXT
 from backend.shared.safe_http import open_allowlisted_https
-
-
-_OFFICIAL_ORIGIN = "https://muasamcong.mpi.gov.vn"
-_OFFICIAL_HOST = "muasamcong.mpi.gov.vn"
+from backend.procurement_lookup.config import (
+    MUASAMCONG_HOST as _OFFICIAL_HOST,
+    MUASAMCONG_ORIGIN as _OFFICIAL_ORIGIN,
+)
 
 
 def _bounded_float(name, default, minimum, maximum):

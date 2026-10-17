@@ -158,7 +158,7 @@ test("detail URL and network metadata exclude untrusted query material", () => {
     unexpected: "ignored",
   });
 
-  assert.match(url, /^https:\/\/muasamcong\.mpi\.gov\.vn\/vi\/web\/guest\/contractor-selection\?/);
+  assert.match(url, /^https:\/\/muasamcong\.mof\.gov\.vn\/vi\/web\/guest\/contractor-selection\?/);
   assert.match(url, /notifyNo=IB2600000002/);
   assert.match(
     url,
@@ -170,8 +170,8 @@ test("detail URL and network metadata exclude untrusted query material", () => {
   assert.match(url, /step=tbmt/);
   assert.doesNotMatch(url, /token|unexpected/);
   assert.equal(
-    redactResponseUrl("https://muasamcong.mpi.gov.vn/o/egp/search?token=secret#x"),
-    "https://muasamcong.mpi.gov.vn/o/egp/search",
+    redactResponseUrl("https://muasamcong.mof.gov.vn/o/egp/search?token=secret#x"),
+    "https://muasamcong.mof.gov.vn/o/egp/search",
   );
 });
 
@@ -179,7 +179,7 @@ test("detail URL and network metadata exclude untrusted query material", () => {
 test("search navigation uses the current localized public route", () => {
   assert.equal(
     SEARCH_URL,
-    "https://muasamcong.mpi.gov.vn/vi/web/guest/contractor-selection?render=search",
+    "https://muasamcong.mof.gov.vn/vi/web/guest/contractor-selection?render=search",
   );
 });
 
@@ -214,7 +214,7 @@ test("network collector matches schema and exact identifier instead of endpoint 
   const matching = collector.waitForExact(500);
 
   await page.emit({
-    url: () => "https://muasamcong.mpi.gov.vn/unrelated/path?token=secret",
+    url: () => "https://muasamcong.mof.gov.vn/unrelated/path?token=secret",
     status: () => 200,
     headers: () => ({ "content-type": "application/json; charset=utf-8" }),
     request: () => ({ method: () => "POST" }),
@@ -231,7 +231,7 @@ test("network collector matches schema and exact identifier instead of endpoint 
   assert.equal(payload.arbitraryWrapper.planNo, "PL2600000001");
   assert.equal(collector.responses.length, 1);
   assert.deepEqual(collector.responses[0], {
-    url: "https://muasamcong.mpi.gov.vn/unrelated/path",
+    url: "https://muasamcong.mof.gov.vn/unrelated/path",
     method: "POST",
     status: 200,
     contentType: "application/json; charset=utf-8",
@@ -607,6 +607,8 @@ test("browser rejects foreign hosts before launch", async () => {
   });
   for (const configuration of [
     { targetHost: "example.test" },
+    { targetHost: "muasamcong.mpi.gov.vn" },
+    { targetHost: "muasamcong.mof.gov.vn.evil.test" },
     { targetHost: "" },
   ]) {
     await assert.rejects(runtime.initialize(configuration), /PROCUREMENT_ADAPTER_UNSUPPORTED/);
@@ -630,7 +632,7 @@ test("browser initialization records cold startup time once", async () => {
 
   const initialized = await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     chromiumArgs: [],
   });
 
@@ -669,7 +671,7 @@ test("search-page challenge returns interaction-required without solving", async
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     chromiumArgs: [],
   });
 
@@ -706,7 +708,7 @@ test("read-only probe reports live capabilities even when no driver is usable", 
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     chromiumArgs: [],
   });
 
@@ -753,7 +755,7 @@ test("navigation retries one transient timeout within the configured budget", as
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     navigationTimeoutMs: 20_000,
   });
 
@@ -791,7 +793,7 @@ test("known upstream error page retries once and fails with stable taxonomy", as
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
   });
 
   await assert.rejects(
@@ -845,11 +847,11 @@ test("browser runtime keeps Chromium warm and follows exact search result to det
   };
   const collectors = [
     {
-      responses: [{ url: "https://muasamcong.mpi.gov.vn/search", body: searchPayload }],
+      responses: [{ url: "https://muasamcong.mof.gov.vn/search", body: searchPayload }],
       start() {}, stop() {}, async waitForExact() { return searchPayload; },
     },
     {
-      responses: [{ url: "https://muasamcong.mpi.gov.vn/detail", body: detailPayload }],
+      responses: [{ url: "https://muasamcong.mof.gov.vn/detail", body: detailPayload }],
       start() {}, stop() {}, async waitForExact() { return detailPayload; },
     },
   ];
@@ -868,7 +870,7 @@ test("browser runtime keeps Chromium warm and follows exact search result to det
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     chromiumArgs: [],
   });
 
@@ -940,7 +942,7 @@ test("browser runtime falls back to generic and opens a Vue2 fast-path circuit",
     collectorFactory: () => {
       const payload = collectorIndex++ % 2 === 0 ? searchPayload : detailPayload;
       return {
-        responses: [{ url: "https://muasamcong.mpi.gov.vn/data", body: payload }],
+        responses: [{ url: "https://muasamcong.mof.gov.vn/data", body: payload }],
         start() {}, stop() {}, async waitForExact() { return payload; },
       };
     },
@@ -949,7 +951,7 @@ test("browser runtime falls back to generic and opens a Vue2 fast-path circuit",
   });
   await runtime.initialize({
     headless: true,
-    targetHost: "muasamcong.mpi.gov.vn",
+    targetHost: "muasamcong.mof.gov.vn",
     chromiumArgs: [],
     drivers: { vue2: true, generic: true },
     extractors: { network: true, vue: true, dom: true },

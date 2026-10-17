@@ -11,9 +11,7 @@ import time
 from uuid import uuid4
 
 from backend.procurement_lookup.domain import ProcurementLookupError
-
-
-OFFICIAL_HOST = "muasamcong.mpi.gov.vn"
+from backend.procurement_lookup.config import MUASAMCONG_HOST as OFFICIAL_HOST
 
 
 class NodeBrowserRuntime:

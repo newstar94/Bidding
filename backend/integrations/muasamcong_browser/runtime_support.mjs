@@ -1,4 +1,4 @@
-const OFFICIAL_ORIGIN = "https://muasamcong.mpi.gov.vn";
+import { OFFICIAL_ORIGIN } from "./session_provider.mjs";
 const DETAIL_PATH = "/vi/web/guest/contractor-selection";
 const IDENTIFIER_PATTERN = /^(PL|IB)\d{10}(?:-\d{2})?$/i;
 const ROUTING_FIELDS = [

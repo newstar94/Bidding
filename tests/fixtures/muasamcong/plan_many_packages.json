@@ -5,7 +5,7 @@
   "driverVersion": "2026.1",
   "networkResponses": [
     {
-      "url": "https://muasamcong.mpi.gov.vn/plan/detail",
+      "url": "https://muasamcong.mof.gov.vn/plan/detail",
       "method": "POST",
       "status": 200,
       "contentType": "application/json",

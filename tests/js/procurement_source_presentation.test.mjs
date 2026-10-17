@@ -15,6 +15,10 @@ test("procurement presentation hides upstream names without changing message det
     presentAutomaticDataMessage("MSC quá thời gian tại https://muasamcong.mpi.gov.vn/path?q=1"),
     "dịch vụ lấy dữ liệu tự động quá thời gian tại dịch vụ lấy dữ liệu tự động",
   );
+  assert.equal(
+    presentAutomaticDataMessage("MSC quá thời gian tại https://muasamcong.mof.gov.vn/path?q=1"),
+    "dịch vụ lấy dữ liệu tự động quá thời gian tại dịch vụ lấy dữ liệu tự động",
+  );
 });
 
 test("procurement presentation preserves source-neutral messages", () => {
@@ -28,4 +32,6 @@ test("automatic-data labels preserve links and avoid repeated data wording", () 
   assert.equal(presentAutomaticDataLabel("Quản lý công việc và kết nối dữ liệu Mua Sắm Công."), "Quản lý công việc và kết nối dữ liệu tự động.");
   const link = "https://muasamcong.mpi.gov.vn/path?q=1";
   assert.equal(presentAutomaticDataLabel(link), link);
+  const newLink = "https://muasamcong.mof.gov.vn/path?q=1";
+  assert.equal(presentAutomaticDataLabel(newLink), newLink);
 });

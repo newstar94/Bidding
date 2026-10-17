@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 import os
 import re
 import urllib.parse
+from backend.procurement_lookup.config import MUASAMCONG_HOST
 
 
 def _env_bool(name: str, default: bool, environ=None) -> bool:
@@ -250,7 +251,7 @@ def get_ai_config(environ=None) -> AiConfig:
                 "vanban.chinhphu.vn",
                 "vbpl.vn",
                 "muasamcong.gov.vn",
-                "muasamcong.mpi.gov.vn",
+                MUASAMCONG_HOST,
             ),
             environ,
         ),

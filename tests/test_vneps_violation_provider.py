@@ -31,6 +31,9 @@ def test_provider_transport_uses_verified_ecdhe_tls_context(monkeypatch):
             return b"{}"
 
     def fake_open(_request, *, allowed_hosts, timeout, context):
+        assert _request.full_url.startswith("https://muasamcong.mof.gov.vn/")
+        assert _request.get_header("Origin") == "https://muasamcong.mof.gov.vn"
+        assert _request.get_header("Referer") == "https://muasamcong.mof.gov.vn/vi/web/guest/organizations-violators"
         captured.update({
             "allowed_hosts": allowed_hosts,
             "timeout": timeout,
@@ -46,7 +49,7 @@ def test_provider_transport_uses_verified_ecdhe_tls_context(monkeypatch):
     VnepsViolationProvider()._post("get-list-violate", {})
 
     context = captured["context"]
-    assert captured["allowed_hosts"] == {"muasamcong.mpi.gov.vn"}
+    assert captured["allowed_hosts"] == {"muasamcong.mof.gov.vn"}
     assert context.minimum_version == ssl.TLSVersion.TLSv1_2
     assert context.check_hostname is True
     assert context.verify_mode == ssl.CERT_REQUIRED

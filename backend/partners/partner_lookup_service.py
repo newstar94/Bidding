@@ -18,6 +18,7 @@ from backend.shared.logging_utils import log_error, log_structured_event
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.observability.recording import record_partner_upstream
 from backend.shared.muasamcong_tls import MUASAMCONG_SSL_CONTEXT
+from backend.procurement_lookup.config import MUASAMCONG_HOST, MUASAMCONG_ORIGIN
 from backend.shared.safe_http import open_allowlisted_https
 
 
@@ -273,10 +274,10 @@ def extract_clean_tax_code(val):
 
 
 MUASAMCONG_CONTRACTOR_SERVICE_BASE = (
-    "https://muasamcong.mpi.gov.vn/o/egp-portal-contractors-approved/services"
+    f"{MUASAMCONG_ORIGIN}/o/egp-portal-contractors-approved/services"
 )
 MUASAMCONG_INVESTOR_SERVICE_BASE = (
-    "https://muasamcong.mpi.gov.vn/o/egp-portal-investor-approved-v2/services"
+    f"{MUASAMCONG_ORIGIN}/o/egp-portal-investor-approved-v2/services"
 )
 
 
@@ -302,8 +303,8 @@ def _post_muasamcong_json(
         headers={
             "Accept": "application/json, text/plain, */*",
             "Content-Type": "application/json",
-            "Origin": "https://muasamcong.mpi.gov.vn",
-            "Referer": "https://muasamcong.mpi.gov.vn/",
+            "Origin": MUASAMCONG_ORIGIN,
+            "Referer": f"{MUASAMCONG_ORIGIN}/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150 Safari/537.36",
         },
         method="POST",
@@ -311,7 +312,7 @@ def _post_muasamcong_json(
     try:
         with open_allowlisted_https(
             request,
-            allowed_hosts={"muasamcong.mpi.gov.vn"},
+            allowed_hosts={MUASAMCONG_HOST},
             timeout=timeout,
             context=MUASAMCONG_SSL_CONTEXT,
         ) as response:

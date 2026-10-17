@@ -2,7 +2,7 @@
 useDefault = true
 
 [[allowlists]]
-description = "Public reCAPTCHA site key published by muasamcong.mpi.gov.vn"
+description = "Public reCAPTCHA site key published by the Mua Sam Cong portal"
 regexTarget = "match"
 regexes = [
   '''6LeQH9gpAAAAAPpzhkvYzd8QCrP-QyLVRSw_SD9U''',

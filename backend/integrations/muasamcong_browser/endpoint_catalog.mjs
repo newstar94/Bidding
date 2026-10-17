@@ -1,4 +1,6 @@
-const API_BASE = "https://muasamcong.mpi.gov.vn/o/egp-portal-contractor-selection-v2/services";
+import { OFFICIAL_ORIGIN } from "./session_provider.mjs";
+
+const API_BASE = `${OFFICIAL_ORIGIN}/o/egp-portal-contractor-selection-v2/services`;
 
 
 export const MSC_PROFILE_ID = "2026.08";

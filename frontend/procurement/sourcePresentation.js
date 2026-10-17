@@ -1,4 +1,4 @@
-const SOURCE_HOST_PATTERN = /https?:\/\/(?:www\.)?muasamcong(?:\.mpi)?\.gov\.vn[^\s]*/giu;
+const SOURCE_HOST_PATTERN = /https?:\/\/(?:www\.)?muasamcong(?:\.(?:mpi|mof))?\.gov\.vn[^\s]*/giu;
 const SOURCE_NAME_PATTERN = /Mua\s*Sắm\s*Công|MuaSamCong|\bMSC\b|\bVNEPS\b/giu;
 
 export function presentAutomaticDataMessage(message, fallback = "") {

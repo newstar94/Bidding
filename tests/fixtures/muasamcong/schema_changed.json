@@ -5,7 +5,7 @@
   "driverVersion": "2026.1",
   "networkResponses": [
     {
-      "url": "https://muasamcong.mpi.gov.vn/unknown",
+      "url": "https://muasamcong.mof.gov.vn/unknown",
       "method": "POST",
       "status": 200,
       "contentType": "application/json",
