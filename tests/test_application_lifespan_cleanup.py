@@ -123,6 +123,31 @@ def test_lifespan_stops_and_joins_retention_before_database_close(lifespan_harne
     asyncio.run(scenario())
 
 
+def test_lifespan_owns_scheduled_procurement_monitor(lifespan_harness, monkeypatch):
+    harness = lifespan_harness
+    events = []
+
+    async def monitor(database):
+        events.append("started")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            assert not database.closed
+            events.append("stopped")
+
+    monkeypatch.setattr(lifecycle, "monitor_enabled", lambda: True)
+    monkeypatch.setattr(lifecycle, "run_procurement_monitor", monitor)
+
+    async def scenario():
+        async with lifecycle.application_lifespan(harness.application, **harness.kwargs):
+            await asyncio.sleep(0)
+            assert events == ["started"]
+        assert events == ["started", "stopped"]
+        assert harness.database.closed
+
+    asyncio.run(scenario())
+
+
 def test_lifespan_closes_database_when_initial_validation_fails(lifespan_harness):
     harness = lifespan_harness
 

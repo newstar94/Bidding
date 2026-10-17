@@ -3969,6 +3969,24 @@ def _upgrade_to_v100_add_checkout_payment_details(cursor, _context):
     )
 
 
+def _upgrade_to_v101_add_procurement_monitor(cursor, context):
+    """Add isolated worker state without rewriting procurement records."""
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "procurement_monitor_state", SCHEMA_DINH_NGHIA["procurement_monitor_state"],
+    )
+    # Historical canonical reconciliation may already materialize new tables.
+    cursor.execute(create_sql.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1))
+    cursor.execute("ALTER TABLE user_notifications DROP CONSTRAINT user_notifications_kind_check")
+    cursor.execute("""ALTER TABLE user_notifications ADD CONSTRAINT user_notifications_kind_check
+        CHECK(kind IN ('assignment_added', 'assignment_removed', 'organization_added',
+                       'organization_removed', 'procurement_update'))""")
+    # ADR 0089 added this additive canonical index without a schema version.
+    # Bring v100 installations to the complete current catalog on this upgrade.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_record_creator ON audit_log (organization_id, target_type, target_id, id) WHERE action = 'sync.record_created'")
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4421,6 +4439,7 @@ UPGRADES = (
     DatabaseUpgrade(98, "add_durable_procurement_previews", _upgrade_to_v98_add_durable_procurement_previews),
     DatabaseUpgrade(99, "retire_optional_features", _upgrade_to_v99_retire_optional_features),
     DatabaseUpgrade(100, "add_checkout_payment_details", _upgrade_to_v100_add_checkout_payment_details),
+    DatabaseUpgrade(101, "add_procurement_monitor", _upgrade_to_v101_add_procurement_monitor),
 )
 
 
@@ -4444,7 +4463,8 @@ DB_SCHEMA_VERSION = (
 # V96 separates active reservations from billed tokens and persists idempotent state.
 # V99 archives the removed conflict-draft and legal/compliance persistence model.
 # V100 stores signed provider QR details used by the checkout popup.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 100
+# V101 persists scheduled procurement checks, leases and notification baselines.
+DB_RUNTIME_MIN_SCHEMA_VERSION = 101
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

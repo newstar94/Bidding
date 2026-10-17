@@ -1002,6 +1002,13 @@
       "table": "audit_log",
       "valid": true
     },
+    "idx_audit_log_record_creator": {
+      "definition": "CREATE INDEX idx_audit_log_record_creator ON $SCHEMA.audit_log USING btree (organization_id, target_type, target_id, id) WHERE (action = 'sync.record_created'::text)",
+      "live": true,
+      "ready": true,
+      "table": "audit_log",
+      "valid": true
+    },
     "idx_auth_sessions_active_absolute_expiry": {
       "definition": "CREATE INDEX idx_auth_sessions_active_absolute_expiry ON $SCHEMA.auth_sessions USING btree (absolute_expires_at) WHERE (revoked_at IS NULL)",
       "live": true,
@@ -3774,6 +3781,13 @@
       "table": "procurement_import_session",
       "valid": true
     },
+    "procurement_monitor_state_pkey": {
+      "definition": "CREATE UNIQUE INDEX procurement_monitor_state_pkey ON $SCHEMA.procurement_monitor_state USING btree (organization_id, package_root_id, notice_no)",
+      "live": true,
+      "ready": true,
+      "table": "procurement_monitor_state",
+      "valid": true
+    },
     "procurement_raw_snapshot_organization_id_provider_dedup_key_key": {
       "definition": "CREATE UNIQUE INDEX procurement_raw_snapshot_organization_id_provider_dedup_key_key ON $SCHEMA.procurement_raw_snapshot USING btree (organization_id, provider, dedup_key)",
       "live": true,
@@ -4238,7 +4252,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 100,
+  "schemaVersion": 101,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -21475,6 +21489,133 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "procurement_monitor_state": {
+      "columns": {
+        "attempt_slot": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "attempts": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "completed_slot": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "last_checked_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "bigint"
+        },
+        "last_error": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "lease_token": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "lease_until": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "notice_no": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "package_root_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "retry_after": {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "seen_json": {
+          "default": "'{}'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "procurement_monitor_state_attempts_check": {
+          "deferrable": false,
+          "definition": "CHECK (attempts >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_monitor_state_notice_no_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(notice_no) = 12)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_monitor_state_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_monitor_state_package_root_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (package_root_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "procurement_monitor_state_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, package_root_id, notice_no)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "procurement_raw_snapshot": {
       "columns": {
         "bundle_schema_version": {
@@ -25346,7 +25487,7 @@
         },
         "user_notifications_kind_check": {
           "deferrable": false,
-          "definition": "CHECK (kind = ANY (ARRAY['assignment_added'::text, 'assignment_removed'::text, 'organization_added'::text, 'organization_removed'::text]))",
+          "definition": "CHECK (kind = ANY (ARRAY['assignment_added'::text, 'assignment_removed'::text, 'organization_added'::text, 'organization_removed'::text, 'procurement_update'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

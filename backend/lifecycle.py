@@ -22,6 +22,7 @@ from backend.documents.document_worker import (
     validate_document_worker_configuration,
 )
 from backend.billing.worker import billing_worker_enabled, run_billing_worker
+from backend.procurement_monitor.worker import monitor_enabled, run_procurement_monitor
 from backend.billing.runtime import (
     configure_payment_runtime,
     validate_payment_provider_runtime,
@@ -430,6 +431,8 @@ async def application_lifespan(
         start_task(run_legacy_alias_projection_worker(database))
         start_task(run_word_template_retention_janitor(database))
         start_task(run_email_delivery_worker(database))
+        if monitor_enabled():
+            start_task(run_procurement_monitor(database))
         if billing_worker_enabled():
             start_task(run_billing_worker(database))
         if not external_document_worker_enabled():

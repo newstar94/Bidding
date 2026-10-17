@@ -44,6 +44,7 @@ export function formatMoment(value) {
 }
 
 function activityIcon(kind) {
+  if (kind === "procurement_update") return "bell";
   if (kind === "assignment_added") return "briefcase-business";
   if (kind === "assignment_removed") return "shield-off";
   if (kind === "organization_added") return "building-2";

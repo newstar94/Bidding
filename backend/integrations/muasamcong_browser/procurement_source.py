@@ -435,6 +435,11 @@ class MuaSamCongProcurementSource:
         self._observe("PLAN", result, canonical)
         return canonical
 
+    def get_notice_updates(self, notice_no: str) -> dict:
+        """Fresh read-only clarification/petition sidecars for scheduled checks."""
+        notice_no = _canonical_code(notice_no, _NOTICE_PATTERN)
+        return self._call(self.runtime.get_notice_updates, notice_no)
+
     def list_notice_revisions(self, notice_no: str) -> list[dict]:
         notice_no = _canonical_code(notice_no, _NOTICE_PATTERN)
         result = self._call(self.runtime.list_notice_revisions, notice_no)

@@ -528,6 +528,33 @@ export class MscCollectors {
     return { revisions: unique };
   }
 
+  async getNoticeUpdates(noticeNo) {
+    // Fresh, narrowly scoped reads: no import, HSMT download or lookup cache.
+    const { revisions } = await this.listNoticeRevisions(noticeNo);
+    const selected = [...revisions].sort((a, b) =>
+      Number(b.revisionNumber) - Number(a.revisionNumber))[0];
+    if (!selected || !/^\d+$/.test(String(selected.revisionNumber))) {
+      throw new Error("PROCUREMENT_REVISION_INVALID");
+    }
+    const sources = {};
+    await Promise.all([
+      ["clarification", "NOTICE_CLARIFICATION"],
+      ["petition", "NOTICE_PETITION"],
+    ].map(async ([key, operation]) => {
+      try {
+        const result = await this.client.request(operation, {
+          notifyNo: noticeNo, processApply: selected.processApply || "LDT",
+        });
+        sources[key] = { success: true, response: result.data };
+      } catch {
+        // Failures must never become an authoritative empty baseline.
+        sources[key] = { success: false };
+      }
+    }));
+    return { noticeNo, revisionNumber: selected.revisionNumber,
+      revisionId: selected.revisionId, sources };
+  }
+
   async _noticeDetail(noticeNo, revisionId, revisionNumber = null) {
     const revision = this.noticeRevisionHints.get(String(revisionId)) || {};
     const hint = revision.processApply || "";

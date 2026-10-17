@@ -45,6 +45,23 @@ MONEY_COLUMNS = frozenset({
 
 
 SCHEMA_DINH_NGHIA = {
+    "procurement_monitor_state": {
+        "columns": {
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "package_root_id": "TEXT NOT NULL CHECK(package_root_id != '')",
+            "notice_no": "TEXT NOT NULL CHECK(length(notice_no) = 12)",
+            "seen_json": "TEXT NOT NULL DEFAULT '{}'",
+            "completed_slot": "BIGINT NOT NULL DEFAULT 0",
+            "attempt_slot": "BIGINT NOT NULL DEFAULT 0",
+            "attempts": "INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0)",
+            "lease_token": "TEXT",
+            "lease_until": "BIGINT NOT NULL DEFAULT 0",
+            "retry_after": "BIGINT NOT NULL DEFAULT 0",
+            "last_checked_at": "BIGINT",
+            "last_error": "TEXT"
+        },
+        "primary_keys": ["organization_id", "package_root_id", "notice_no"]
+    },
     "database_metadata": {
         "columns": {
             "id": "INTEGER PRIMARY KEY CHECK(id = 1)",
@@ -168,7 +185,7 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "user_id": "TEXT NOT NULL",
             "organization_id": "TEXT",
-            "kind": "TEXT NOT NULL CHECK(kind IN ('assignment_added', 'assignment_removed', 'organization_added', 'organization_removed'))",
+            "kind": "TEXT NOT NULL CHECK(kind IN ('assignment_added', 'assignment_removed', 'organization_added', 'organization_removed', 'procurement_update'))",
             "severity": "TEXT NOT NULL DEFAULT 'info' CHECK(severity IN ('info', 'warning'))",
             "title": "TEXT NOT NULL CHECK(trim(title) != '')",
             "message": "TEXT NOT NULL CHECK(trim(message) != '')",

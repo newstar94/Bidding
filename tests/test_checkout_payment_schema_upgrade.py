@@ -24,12 +24,13 @@ def test_schema_99_to_100_preserves_existing_orders_and_keeps_legacy_qr_null():
         cursor.execute("INSERT INTO goi_dich_vu (id, ten_goi, gia_ca, han_muc_nhan_su) VALUES ('diamond', 'Test Diamond', 100000, 1)")
         data = _insert_base_plan_order(cursor)
         before = dict(cursor.execute("SELECT * FROM billing_orders WHERE id=?", (data["order_id"],)).fetchone())
-        assert apply_database_upgrades(cursor, 99, context) == DB_SCHEMA_VERSION == 100
+        assert apply_database_upgrades(cursor, 99, context, target_version=100) == 100
         after = dict(cursor.execute("SELECT * FROM billing_orders WHERE id=?", (data["order_id"],)).fetchone())
         assert after.pop("checkout_payment_json") is None
         assert after == before
+        assert apply_database_upgrades(cursor, 100, context) == DB_SCHEMA_VERSION
         assert_schema_contract(cursor)
-        assert apply_database_upgrades(cursor, 100, context) == 100
+        assert apply_database_upgrades(cursor, DB_SCHEMA_VERSION, context) == DB_SCHEMA_VERSION
         cursor.execute("UPDATE billing_orders SET checkout_payment_json=? WHERE id=?", (json.dumps({"qrCode": "signed-payload"}), data["order_id"]))
         cursor.execute("SAVEPOINT oversized_qr")
         with pytest.raises(psycopg.errors.CheckViolation):

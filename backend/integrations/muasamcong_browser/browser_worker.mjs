@@ -127,6 +127,11 @@ async function handle(request) {
         result: await integration.listNoticeRevisions(String(request.noticeNo || "")),
       };
     }
+    case "getNoticeUpdates": {
+      if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
+      return { requestId, ok: true,
+        result: await integration.getNoticeUpdates(String(request.noticeNo || "")) };
+    }
     case "getNoticeRevision": {
       if (!integration) throw new Error("PROCUREMENT_BROWSER_FAILED");
       return {

@@ -171,6 +171,9 @@ class NodeBrowserRuntime:
             revisionId=str(revision_id),
         )
 
+    def get_notice_updates(self, notice_no):
+        return self._exchange("getNoticeUpdates", noticeNo=str(notice_no))
+
     def get_opening_bundle(self, notice_no, revision_id, *, opening_phase=None):
         return self._exchange(
             "getOpeningBundle",
