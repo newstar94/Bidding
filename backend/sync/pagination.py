@@ -29,6 +29,7 @@ from backend.shared.sensitive_data import (
     resolve_sensitive_read_policy,
     serialize_sensitive_read_items,
 )
+from backend.shared.record_delete_access import attach_delete_ownership
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     db_column_for_json_key,
@@ -643,6 +644,7 @@ def _paginate_records_blocking(request):
         items = serialize_sensitive_read_items(
             table_name, items, sensitive_read_policy
         )
+        attach_delete_ownership(cursor, org_name, user_id, table_name, items)
 
         conn.close()
         return JSONResponse({

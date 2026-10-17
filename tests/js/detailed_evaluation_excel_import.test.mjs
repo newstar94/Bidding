@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  parseMuasamcongDetailedEvaluationWorkbook,
+  parseAutomaticDataDetailedEvaluationWorkbook,
 } from "../../frontend/packages/detailedEvaluationExcel.js";
 
 const validitySheet = {
@@ -24,7 +24,7 @@ const validitySheet = {
 };
 
 test("detailed evaluation Excel import keeps every source row and its hierarchical STT", () => {
-  const parsed = parseMuasamcongDetailedEvaluationWorkbook([validitySheet], {
+  const parsed = parseAutomaticDataDetailedEvaluationWorkbook([validitySheet], {
     group: "validity",
     bid: { loaiNhaThau: "Độc lập" },
   });

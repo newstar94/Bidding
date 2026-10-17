@@ -7,6 +7,7 @@ import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { sortVersionsDescending, versionFamily } from "../shared/versionResolver.js";
@@ -71,7 +72,7 @@ export async function renderChuDauTuTable() {
         id: displayedCdt.id,
         editCommand: "edit-investor",
         deleteCommand: "delete-investor",
-        allowDelete: this.model.state.activerole !== "employee"
+        allowDelete: canRequestRecordDelete(this.model, displayedCdt)
       }), { visible: displayedCdt.id === c.id && displayedCdt.canEdit !== false });
       return `
             <tr>

@@ -20,7 +20,7 @@ test("package appraisal decision survives outbound serialization", () => {
 
 test("current procurement import snapshot sends trusted revision authority", () => {
   const sourceRevision = {
-    provider: "MUASAMCONG",
+    provider: "AUTOMATIC_DATA",
     sessionId: "session-1",
     workspaceLease: "lease-1",
     revisionId: "revision-00",
@@ -45,7 +45,7 @@ test("current procurement import snapshot sends trusted revision authority", () 
 test("record normalization preserves the procurement import authority marker", () => {
   const model = new BiddingModel();
   const sourceRevision = {
-    provider: "MUASAMCONG",
+    provider: "AUTOMATIC_DATA",
     sessionId: "session-1",
     workspaceLease: "lease-1",
     revisionId: "revision-00",

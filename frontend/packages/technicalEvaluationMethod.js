@@ -95,7 +95,7 @@ export function getForcedTechnicalEvaluationMethod(pkg = {}) {
 function inferImportedMethod(criteria = []) {
   const imported = criteria.filter((criterion) => (
     criterion.group === "technical"
-    && ["muasamcong", "custom"].includes(String(criterion.source || "").trim().toLowerCase())
+    && ["automatic", "custom"].includes(String(criterion.source || "").trim().toLowerCase())
   ));
   if (imported.length === 0) return "";
   return imported.some((criterion) => criterion.resultType === "score")

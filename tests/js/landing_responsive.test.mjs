@@ -47,7 +47,7 @@ function offer(index) {
       visibility: "public",
       variantLabel: "Phương án cấu hình",
       periodLabel: "/ chu kỳ",
-      benefits: ["Lợi ích đến từ release", "Lượt lấy hồ sơ Mua Sắm Công"],
+      benefits: ["Lợi ích đến từ release", "Lượt lấy dữ liệu tự động"],
     },
   };
 }

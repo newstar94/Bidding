@@ -243,6 +243,10 @@ class FixtureCursor:
 def plan_list(monkeypatch):
     fixture_db = sqlite3.connect(":memory:")
     fixture_db.row_factory = sqlite3.Row
+    fixture_db.execute("""CREATE TABLE audit_log (
+        id INTEGER PRIMARY KEY, organization_id TEXT, target_type TEXT,
+        target_id TEXT, actor_user_id TEXT, action TEXT, metadata_json TEXT)""")
+    fixture_db.execute("INSERT INTO audit_log VALUES (1, 'org-1', 'ke_hoach_lcnt', 'p2', 'user-1', 'sync.record_created', '{}')")
     fixture_db.execute("""
         CREATE TABLE ke_hoach_lcnt (
             id TEXT, organization_id TEXT, owner_type TEXT, id_goc TEXT,
@@ -304,6 +308,7 @@ def test_filter_totals_and_page_rows_share_tenant_assignment_and_version_scope(p
     result = json.loads(response.body)
     assert result["totalItems"] == 3
     assert [item["id"] for item in result["items"]] == ["p2"]
+    assert result["items"][0]["deleteOwnerUserId"] == "user-1"
     assert result["items"][0]["ten_ke_hoach"] == "Máy 100%_B"
     count_sql, count_params = plan_list.queries[0]
     page_sql, page_params = plan_list.queries[1]

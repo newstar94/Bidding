@@ -6,7 +6,8 @@ const NEW_RECORD_SERVER_FIELDS = [
   "syncVersion",
   "organizationId",
   "ownerType",
-  "archivedAt"
+  "archivedAt",
+  "deleteOwnerUserId"
 ];
 
 export function copyAsNewRecord(source, overrides = {}) {

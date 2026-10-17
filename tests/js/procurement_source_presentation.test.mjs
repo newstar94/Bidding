@@ -6,18 +6,18 @@ import {
   presentAutomaticDataLabel,
 } from "../../frontend/procurement/sourcePresentation.js";
 
-test("procurement presentation hides upstream names without changing message details", () => {
+test("procurement presentation renders server-normalized messages without provider rules", () => {
   assert.equal(
-    presentAutomaticDataMessage("Không tìm thấy mã IB trên Mua Sắm Công."),
+    presentAutomaticDataMessage("Không tìm thấy mã IB trên dịch vụ lấy dữ liệu tự động."),
     "Không tìm thấy mã IB trên dịch vụ lấy dữ liệu tự động.",
   );
   assert.equal(
-    presentAutomaticDataMessage("MSC quá thời gian tại https://muasamcong.mpi.gov.vn/path?q=1"),
-    "dịch vụ lấy dữ liệu tự động quá thời gian tại dịch vụ lấy dữ liệu tự động",
+    presentAutomaticDataMessage(null, "Không thể lấy dữ liệu tự động."),
+    "Không thể lấy dữ liệu tự động.",
   );
   assert.equal(
-    presentAutomaticDataMessage("MSC quá thời gian tại https://muasamcong.mof.gov.vn/path?q=1"),
-    "dịch vụ lấy dữ liệu tự động quá thời gian tại dịch vụ lấy dữ liệu tự động",
+    presentAutomaticDataMessage(0),
+    "0",
   );
 });
 
@@ -28,10 +28,10 @@ test("procurement presentation preserves source-neutral messages", () => {
 
 
 test("automatic-data labels preserve links and avoid repeated data wording", () => {
-  assert.equal(presentAutomaticDataLabel("100 lượt Mua Sắm Công"), "100 lượt lấy dữ liệu tự động");
-  assert.equal(presentAutomaticDataLabel("Quản lý công việc và kết nối dữ liệu Mua Sắm Công."), "Quản lý công việc và kết nối dữ liệu tự động.");
-  const link = "https://muasamcong.mpi.gov.vn/path?q=1";
+  assert.equal(presentAutomaticDataLabel("100 lượt lấy dữ liệu tự động"), "100 lượt lấy dữ liệu tự động");
+  assert.equal(presentAutomaticDataLabel("Quản lý công việc và kết nối dữ liệu tự động."), "Quản lý công việc và kết nối dữ liệu tự động.");
+  const link = "https://example.org/path?q=1";
   assert.equal(presentAutomaticDataLabel(link), link);
-  const newLink = "https://muasamcong.mof.gov.vn/path?q=1";
+  const newLink = "https://example.org/other?q=1";
   assert.equal(presentAutomaticDataLabel(newLink), newLink);
 });

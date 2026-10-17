@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
@@ -114,7 +115,7 @@ export async function renderKeHoachTable() {
         id: displayedKh.id,
         editCommand: "edit-plan",
         deleteCommand: "delete-plan",
-        allowDelete: this.model.state.activerole !== "employee"
+        allowDelete: canRequestRecordDelete(this.model, displayedKh)
       });
       if (!isLatest) planActions.shift();
       const actionHtml = renderEntityActions(planActions);

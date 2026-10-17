@@ -1540,6 +1540,8 @@ from backend.http_middleware import (
     SecurityHeadersMiddleware,
 )
 
+from backend.shared.source_privacy import SourcePrivacyMiddleware
+
 middleware = [
     Middleware(ResponseIntegrityMiddleware),
     Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts, www_redirect=False),
@@ -1553,6 +1555,7 @@ middleware = [
     Middleware(ObservabilityMiddleware),
     Middleware(CSRFMiddleware),
     Middleware(SecurityHeadersMiddleware),
+    Middleware(SourcePrivacyMiddleware),
     Middleware(ErrorLoggingMiddleware),
     Middleware(BodySizeLimitMiddleware),
 ]

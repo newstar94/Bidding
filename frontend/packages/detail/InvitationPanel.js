@@ -75,7 +75,7 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
   container.innerHTML = trustedHTML(`
     ${summaryHtml}
     ${canImport ? `<div class="workflow-action-row">
-      <button type="button" id="btn-invitation-import-msc" class="btn btn-outline">
+      <button type="button" id="btn-invitation-import-automatic" class="btn btn-outline">
         <i data-lucide="cloud-download"></i> Lấy dữ liệu làm rõ, gia hạn tự động
       </button>
       <span id="invitation-import-status" role="status" aria-live="polite"></span>

@@ -20,7 +20,7 @@ function isJointVentureCriterion(criterion = {}) {
   const hasJointVentureName = name.startsWith("thoa thuan lien danh")
     && name.includes("doi voi nha thau lien danh");
   return code === "JV_AGREEMENT"
-    || (code === "MSC_VALIDITY_2" && source !== "muasamcong")
+    || (code === "AUTO_VALIDITY_2" && source !== "automatic")
     || hasJointVentureName;
 }
 

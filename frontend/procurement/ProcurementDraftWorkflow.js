@@ -973,7 +973,7 @@ export function fillPackageFormFromProcurementDraft(document, packageDraft, cont
   if (Array.isArray(packageDraft?.tuyChonMuaThemList)) {
     controller?._loadTuyChonMuaThemRows?.(packageDraft.tuyChonMuaThemList);
   }
-  // Lot loading recalculates aggregate money fields. MSC can provide a
+  // Lot loading recalculates aggregate money fields. automatic-source can provide a
   // package-level value while leaving every lot-level guarantee empty; keep
   // the authoritative package total visible without inventing a per-lot
   // allocation.

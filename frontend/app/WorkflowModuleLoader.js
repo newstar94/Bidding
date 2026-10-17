@@ -108,7 +108,7 @@ const BIDDING_WORKFLOW_PRIVATE_EXPORTS = Object.freeze([
   "splitAddressParts",
   "stripAdministrativeSuffix",
   "stripVietnamCountrySuffix",
-  "verifyMuasamcongDetailedEvaluationContractor",
+  "verifyAutomaticDataDetailedEvaluationContractor",
 ]);
 
 export async function importBiddingWorkflowsSequentially({

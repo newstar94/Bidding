@@ -1,4 +1,5 @@
 import { escapeHtml } from "../shared/view_helpers.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import {
   getCachedPaginatedRecords,
   loadPaginatedRecords,
@@ -431,7 +432,7 @@ export async function renderGoiThauTable() {
             `;
       const isCanceledPackage = displayedStatus === "Hủy thầu";
       const isCompletedPackage = ["Đã có kết quả một phần", "Đã có kết quả"].includes(displayedStatus);
-      const allowDelete = this.model.state.activerole !== "employee";
+      const allowDelete = canRequestRecordDelete(this.model, displayedGt);
       let packageActions;
       if (isHistorical) {
         packageActions = [{ id: displayedGt.id, command: "show-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" }];

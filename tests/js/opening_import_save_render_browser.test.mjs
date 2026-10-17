@@ -167,7 +167,7 @@ async function withOpeningFixture(run) {
         },
         async importDraft() {
           const applied = this.applied;
-          return await controller.importOpeningFromMuasamcong({ client: {
+          return await controller.importOpeningFromAutomaticData({ client: {
             async prepareOpening() {
               return { previewId: "opening-source-preview", package: { id: pkg.id, rowVersion: pkg.rowVersion } };
             },

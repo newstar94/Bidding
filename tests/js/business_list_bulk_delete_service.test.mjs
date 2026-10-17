@@ -133,10 +133,11 @@ test("permission changes invalidate a prepared command without posting", async (
   assert.equal(calls, 0);
 });
 
-test("the existing employee deletion restriction and unsynced local edits block preparation", async () => {
+test("employees may prepare creator deletion but unsynced local edits still block it", async () => {
   const { model, controller } = fixture();
   model.state.activerole = "employee";
-  await assert.rejects(createBusinessListBulkDeleteSession(controller), { code: "BULK_DELETE_ROLE" });
+  const session = await createBusinessListBulkDeleteSession(controller);
+  session.close();
   model.state.activerole = "manager";
   model.hasPendingMutationOutboxChanges = () => true;
   await assert.rejects(createBusinessListBulkDeleteSession(controller), { code: "BULK_DELETE_PENDING_CHANGES" });

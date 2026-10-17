@@ -45,7 +45,7 @@ async function withPanel(name, exercise) {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     await page.evaluate(async ({ opening, name }) => {
       const { renderFinancialOpeningPanel } = await import("/frontend/packages/detail/FinancialOpeningPanel.js");
-      const { importFinancialOpeningFromMuasamcong } = await import("/frontend/procurement/OpeningImportWizard.js");
+      const { importFinancialOpeningFromAutomaticData } = await import("/frontend/procurement/OpeningImportWizard.js");
       const { updateServerCapabilitiesFromSession } = await import("/frontend/auth/serverCapabilities.js");
       const formatters = await import("/frontend/shared/formatters.js");
       updateServerCapabilitiesFromSession({ valid: true, user: { id: "fixture" }, serverCapabilities: ["procurement-import-v2"] });
@@ -97,7 +97,7 @@ async function withPanel(name, exercise) {
       });
       window.__financialFixture = { pkg, model, view, wrapper, snapshot, confirm,
         async importSource(source = opening, afterApply, sourceError = false) {
-          return importFinancialOpeningFromMuasamcong({ view, pkg, contentWrapper: wrapper, client: {
+          return importFinancialOpeningFromAutomaticData({ view, pkg, contentWrapper: wrapper, client: {
             async prepareOpening() {
               if (sourceError) throw new Error("PROCUREMENT_UPSTREAM_UNAVAILABLE");
               return { previewId: "preview", package: { id: pkg.id, rowVersion: 3 } };
@@ -127,7 +127,7 @@ for (const [name, time, prices] of [
       const before = await page.evaluate(() => window.__financialFixture.snapshot());
       const draft = await page.evaluate(async () => {
         const f = window.__financialFixture;
-        await f.wrapper.querySelector("#btn-opening-fin-import-msc").onclick();
+        await f.wrapper.querySelector("#btn-opening-fin-import-automatic").onclick();
         return f.snapshot();
       });
       assert.equal(requests[0].body.openingPhase, "FINANCIAL");

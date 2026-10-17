@@ -8,6 +8,7 @@ import { resolveContractorVersion } from "./contractorVersionBinding.js";
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import {
@@ -85,7 +86,7 @@ export async function renderNhaThauTable() {
         id: displayedNt.id,
         editCommand: "edit-contractor",
         deleteCommand: "delete-contractor",
-        allowDelete: this.model.state.activerole !== "employee"
+        allowDelete: canRequestRecordDelete(this.model, displayedNt)
       }), { visible: displayedNt.id === n.id && displayedNt.canEdit !== false });
       const isJV = displayedNt.loaiNhaThau === "Liên danh";
       if (isJV) {

@@ -71,7 +71,7 @@ test("technical evaluation method uses draft, stored metadata and imported Excel
     pkg: { danhGiaHsdtMetadata: JSON.stringify({ technicalEvaluationMethod: PASS_FAIL }) },
   }), PASS_FAIL);
   assert.equal(resolveTechnicalEvaluationMethod({
-    criteria: [{ group: "technical", source: "muasamcong", resultType: "score" }],
+    criteria: [{ group: "technical", source: "automatic", resultType: "score" }],
   }), SCORE);
 });
 

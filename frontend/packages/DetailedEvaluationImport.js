@@ -1,7 +1,7 @@
 import { adaptDetailedEvaluationCriteriaForBid } from "./detailedEvaluationCriteria.js";
 import {
   mapDetailedEvaluationExcelRows,
-  parseMuasamcongDetailedEvaluationWorkbook,
+  parseAutomaticDataDetailedEvaluationWorkbook,
 } from "./detailedEvaluationExcel.js";
 import {
   applyHierarchicalDetailedEvaluationResults,
@@ -62,8 +62,8 @@ export function analyzeDetailedEvaluationWorkbook({
   }
   const groupCriteria = state.criteria.filter((criterion) => criterion.group === activeGroup);
   const roundId = `evaluation-round:${String(state.pkg.id || "pending")}:${state.roundType}`;
-  const muasamcongImports = state.context.editableGroups.map((group) => (
-    parseMuasamcongDetailedEvaluationWorkbook(sheets, {
+  const automaticImports = state.context.editableGroups.map((group) => (
+    parseAutomaticDataDetailedEvaluationWorkbook(sheets, {
       group,
       pkg: {
         ...state.pkg,
@@ -73,18 +73,18 @@ export function analyzeDetailedEvaluationWorkbook({
       roundId,
     })
   )).filter(Boolean);
-  const imported = muasamcongImports.length > 0
+  const imported = automaticImports.length > 0
     ? {
-      matches: muasamcongImports.flatMap((item) => item.matches),
+      matches: automaticImports.flatMap((item) => item.matches),
       unmatchedRows: [],
-      warnings: muasamcongImports.flatMap((item) => item.warnings || []),
+      warnings: automaticImports.flatMap((item) => item.warnings || []),
     }
     : mapDetailedEvaluationExcelRows(flattenFirstSheet(sheets), groupCriteria);
   if (imported.matches.length === 0) {
     return {
       imported,
-      isMuasamcong: muasamcongImports.length > 0,
-      muasamcongImports,
+      isAutomaticData: automaticImports.length > 0,
+      automaticImports,
       criteriaOverride: null,
       report: null,
     };
@@ -92,8 +92,8 @@ export function analyzeDetailedEvaluationWorkbook({
 
   let existingReportRows = state.report.chiTietList || [];
   let criteriaOverride = currentCriteriaOverride;
-  if (muasamcongImports.length > 0) {
-    const importedGroups = new Set(muasamcongImports.flatMap(
+  if (automaticImports.length > 0) {
+    const importedGroups = new Set(automaticImports.flatMap(
       (item) => item.criteria.map((criterion) => criterion.group),
     ));
     const previousGroupIds = new Set(state.baseCriteria
@@ -104,13 +104,13 @@ export function analyzeDetailedEvaluationWorkbook({
     );
     criteriaOverride = [
       ...state.baseCriteria.filter((criterion) => !importedGroups.has(criterion.group)),
-      ...muasamcongImports.flatMap((item) => item.sourceCriteria || item.criteria),
+      ...automaticImports.flatMap((item) => item.sourceCriteria || item.criteria),
     ];
   }
   const importedExtension = { ...(state.report.extension || {}) };
   delete importedExtension.excelBidType;
   const hierarchyCriteria = markHierarchicalDetailedEvaluationCriteria(
-    muasamcongImports.length > 0
+    automaticImports.length > 0
       ? adaptDetailedEvaluationCriteriaForBid(criteriaOverride || state.baseCriteria, state.bid)
       : state.criteria,
   );
@@ -121,15 +121,15 @@ export function analyzeDetailedEvaluationWorkbook({
   }, hierarchyCriteria);
   return {
     imported,
-    isMuasamcong: muasamcongImports.length > 0,
-    muasamcongImports,
+    isAutomaticData: automaticImports.length > 0,
+    automaticImports,
     criteriaOverride,
     report,
     stats: {
       matched: imported.matches.length,
       skipped: imported.unmatchedRows.length,
       warnings: imported.warnings.length,
-      sheetNames: muasamcongImports.map((item) => item.sheetName).join(", "),
+      sheetNames: automaticImports.map((item) => item.sheetName).join(", "),
     },
   };
 }

@@ -232,11 +232,11 @@ export function applyOpeningImportToDraft({
 }
 
 
-export async function importOpeningFromMuasamcong({
+export async function importOpeningFromAutomaticData({
   client = new ProcurementImportClient(),
 } = {}) {
   const select = getOpeningElement("mothau-goithau-select");
-  const button = getOpeningElement("btn-mothau-import-msc");
+  const button = getOpeningElement("btn-mothau-import-automatic");
   const pkg = this.model.state.goithau.find(
     (item) => String(item.id) === String(select?.value || ""),
   );
@@ -258,16 +258,16 @@ export async function importOpeningFromMuasamcong({
       && this.model?.workspaceStorage === storage
       && (openingPane
         ? openingPane.querySelector("#mothau-goithau-select") === select
-          && openingPane.querySelector("#btn-mothau-import-msc") === button
+          && openingPane.querySelector("#btn-mothau-import-automatic") === button
         : getOpeningElement("mothau-goithau-select") === select
-          && getOpeningElement("btn-mothau-import-msc") === button)
+          && getOpeningElement("btn-mothau-import-automatic") === button)
       && openingButtonOperations.get(button) === operationIdentity;
   };
   const isCurrentOperation = () => {
     const current = this.model?.state?.goithau?.find((item) => String(item.id) === String(pkg.id));
     return isOwnedOperation()
       && getOpeningElement("mothau-goithau-select") === select
-      && getOpeningElement("btn-mothau-import-msc") === button
+      && getOpeningElement("btn-mothau-import-automatic") === button
       && String(select?.value || "") === String(pkg.id)
       && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
   };
@@ -340,13 +340,13 @@ const openingBidKey = (code, lotNo) => openingBidIdentity({
 });
 
 
-export async function importFinancialOpeningFromMuasamcong({
+export async function importFinancialOpeningFromAutomaticData({
   view,
   pkg,
   contentWrapper,
   client = new ProcurementImportClient(),
 }) {
-  const button = contentWrapper?.querySelector?.("#btn-opening-fin-import-msc");
+  const button = contentWrapper?.querySelector?.("#btn-opening-fin-import-automatic");
   const saveButton = contentWrapper?.querySelector?.("#btn-save-opening-fin");
   if (!button || button.dataset.loading === "true" || saveButton?.disabled) return false;
   const draftFingerprint = () => JSON.stringify([
@@ -376,7 +376,7 @@ export async function importFinancialOpeningFromMuasamcong({
     return isWorkspaceLeaseCurrent(view.model, lease)
       && view.model?.workspaceStorage === storage
       && (!currentWrapper || currentWrapper === contentWrapper)
-      && contentWrapper?.querySelector?.("#btn-opening-fin-import-msc") === button
+      && contentWrapper?.querySelector?.("#btn-opening-fin-import-automatic") === button
       && openingButtonOperations.get(button) === operationIdentity
       && String(current?.rootId || current?.id || "") === String(pkg.rootId || pkg.id);
   };

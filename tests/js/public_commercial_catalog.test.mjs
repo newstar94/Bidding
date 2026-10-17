@@ -94,10 +94,10 @@ test("formats VND without inferring a billing period", () => {
 });
 
 
-test("legacy catalog copy uses automatic-data labels without mutating the release", () => {
+test("server-normalized catalog copy uses automatic-data labels without mutating the release", () => {
   const source = offer({ variant: "connected", display: {
-    name: "Nâng cao", description: "Bổ sung lấy dữ liệu Mua Sắm Công",
-    variantLabel: "Lấy dữ liệu tự động", benefits: ["100 lượt lấy hồ sơ Mua Sắm Công", "Xuất Word"],
+    name: "Nâng cao", description: "Bổ sung lấy dữ liệu tự động",
+    variantLabel: "Lấy dữ liệu tự động", benefits: ["100 lượt lấy dữ liệu tự động", "Xuất Word"],
   } });
   const original = structuredClone(source);
   const presented = presentCommercialOffer(source);

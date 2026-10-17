@@ -5,6 +5,7 @@ import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { getAppController } from "../app/controllerRef.js";
 import { beginTablePerf } from "../shared/perfDiagnostics.js";
@@ -90,7 +91,7 @@ export async function renderChuyenGiaTable({ reuseCurrentPage = false } = {}) {
         id: displayedCg.id,
         editCommand: "edit-expert",
         deleteCommand: "delete-expert",
-        allowDelete: this.model.state.activerole !== "employee"
+        allowDelete: canRequestRecordDelete(this.model, displayedCg)
       }), { visible: displayedCg.id === cg.id });
       const expertCccd = escapeHtml(displayedCg.soCCCD || "");
       const certificateNo = escapeHtml(displayedCg.soChungChi || "");

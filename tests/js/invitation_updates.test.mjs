@@ -47,7 +47,7 @@ test("notice target uses the notice version on a package imported from a newer p
   const target = resolveInvitationNoticeTarget(packageRecord({
     phienBan: "01",
     sourceRevision: {
-      provider: "MUASAMCONG", familyNo: "PL2600184109",
+      provider: "AUTOMATIC_DATA", familyNo: "PL2600184109",
       revisionNumber: "05", packageRevisionNumber: "1",
     },
     noticeLink: { noticeNo: NOTICE, noticeVersion: "01" },
@@ -186,10 +186,10 @@ test("partial quota lookup preserves fetched history and reports revisions never
   preview.usageCredits = {
     status: "PARTIAL",
     requested: ["00", "01"].map((sourceRevision) => ({
-      provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
+      provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
     })),
-    processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
-    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
+    processed: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
+    skipped: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
   };
   preview.rawBundle = { revisions: { "00": {} } };
   const result = await lookupPackageInvitationUpdates({
@@ -210,10 +210,10 @@ test("a target revision skipped for quota reports quota exhaustion and keeps the
   preview.usageCredits = {
     status: "PARTIAL",
     requested: ["00", "01"].map((sourceRevision) => ({
-      provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
+      provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision,
     })),
-    processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
-    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
+    processed: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "00" }],
+    skipped: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: NOTICE, sourceRevision: "01", reasonCode: "QUOTA_EXHAUSTED" }],
   };
   await assert.rejects(lookupPackageInvitationUpdates({
     pkg, model, client: { lookup: async () => preview },

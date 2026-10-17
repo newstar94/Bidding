@@ -168,7 +168,7 @@ export function renderMoThauPanel() {
     const saveBtn2 = getOpeningElement("btn-mothau-save");
     const importExcelBtnTop = getOpeningElement("btn-mothau-import-excel");
     const downloadExcelBtnTop = getOpeningElement("btn-mothau-download-excel");
-    const importMscBtn = getOpeningElement("btn-mothau-import-msc");
+    const importAutomaticBtn = getOpeningElement("btn-mothau-import-automatic");
     if (addBidBtn2) {
       setWorkflowActionVisibility(addBidBtn2, isEditable);
       addBidBtn2.innerHTML = trustedHTML(`<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`);
@@ -179,13 +179,13 @@ export function renderMoThauPanel() {
     if (downloadExcelBtnTop) {
       setWorkflowActionVisibility(downloadExcelBtnTop, isEditable);
     }
-    if (importMscBtn) {
-      const canImportMsc = isEditable
+    if (importAutomaticBtn) {
+      const canImportAutomatic = isEditable
         && !isDirectOrSpecial
         && hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
-      setWorkflowActionVisibility(importMscBtn, canImportMsc);
-      importMscBtn.onclick = canImportMsc
-        ? () => this.importOpeningFromMuasamcong()
+      setWorkflowActionVisibility(importAutomaticBtn, canImportAutomatic);
+      importAutomaticBtn.onclick = canImportAutomatic
+        ? () => this.importOpeningFromAutomaticData()
         : null;
     }
     if (saveBtn2) {

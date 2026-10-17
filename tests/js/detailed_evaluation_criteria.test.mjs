@@ -31,20 +31,20 @@ test("1G2T keeps the joint-venture agreement for a joint-venture bidder", () => 
 
 test("imported public-procurement criterion code is recognized without relying on its label", () => {
   const adapted = adaptDetailedEvaluationCriteriaForBid([
-    { code: "MSC_VALIDITY_1", name: "Tư cách hợp lệ", group: "validity", stt: "1" },
-    { code: "MSC_VALIDITY_2", name: "Imported label", group: "validity", stt: "2" },
+    { code: "AUTO_VALIDITY_1", name: "Tư cách hợp lệ", group: "validity", stt: "1" },
+    { code: "AUTO_VALIDITY_2", name: "Imported label", group: "validity", stt: "2" },
   ], { loaiNhaThau: "Độc lập" });
 
-  assert.deepEqual(adapted.map((criterion) => criterion.code), ["MSC_VALIDITY_1"]);
+  assert.deepEqual(adapted.map((criterion) => criterion.code), ["AUTO_VALIDITY_1"]);
 });
 
 
-test("Mua sắm công only removes MSC_VALIDITY_2 when its content is a joint-venture agreement", () => {
+test("Mua sắm công only removes AUTO_VALIDITY_2 when its content is a joint-venture agreement", () => {
   const ordinary = adaptDetailedEvaluationCriteriaForBid([
-    { code: "MSC_VALIDITY_2", name: "Tư cách hợp lệ theo quy định", group: "validity", stt: "2", source: "muasamcong" },
+    { code: "AUTO_VALIDITY_2", name: "Tư cách hợp lệ theo quy định", group: "validity", stt: "2", source: "automatic" },
   ], { loaiNhaThau: "Độc lập" });
   const jointVentureAgreement = adaptDetailedEvaluationCriteriaForBid([
-    { code: "MSC_VALIDITY_2", name: "Thỏa thuận liên danh (đối với nhà thầu liên danh)", group: "validity", stt: "2", source: "muasamcong" },
+    { code: "AUTO_VALIDITY_2", name: "Thỏa thuận liên danh (đối với nhà thầu liên danh)", group: "validity", stt: "2", source: "automatic" },
   ], { loaiNhaThau: "Độc lập" });
 
   assert.equal(ordinary.length, 1);

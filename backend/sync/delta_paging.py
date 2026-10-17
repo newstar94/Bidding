@@ -353,6 +353,18 @@ class _DeltaReadAuthorization:
         )
 
 
+def _attach_upsert_delete_ownership(cursor, prepared, authorization, organization_id, user_id):
+    from backend.shared.record_delete_access import attach_delete_ownership
+
+    grouped = {}
+    for (table_name, _record_id), item in prepared.items():
+        payload_key = _TABLE_KEYS_BY_NAME.get(table_name)
+        if authorization.allows(table_name, payload_key, item):
+            grouped.setdefault(table_name, []).append(item)
+    for table_name, items in grouped.items():
+        attach_delete_ownership(cursor, organization_id, user_id, table_name, items)
+
+
 def _read_delta_page_blocking(request):
     valid, role = verify_session(request)
     if not valid:
@@ -454,6 +466,9 @@ def _read_delta_page_blocking(request):
         )
         policy = resolve_sensitive_read_policy(
             cursor, role, role.user_id, organization_id
+        )
+        _attach_upsert_delete_ownership(
+            cursor, prepared_upserts, read_authorization, organization_id, role.user_id,
         )
         entries = []
         used_bytes = 256

@@ -610,6 +610,7 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (organization_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_record_creator ON audit_log (organization_id, target_type, target_id, id) WHERE action = 'sync.record_created'",
         "CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_user ON record_edit_ownership (organization_id, user_id, table_name)",
         "CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_by_user ON record_edit_ownership (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_package ON account_subscriptions (package_id)",

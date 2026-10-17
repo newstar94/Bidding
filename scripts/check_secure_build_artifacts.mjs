@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { verifySymbolArchive } from "./verify_symbolication.mjs";
+import { PUBLIC_SOURCE_IDENTIFIER } from "./public_source_policy.mjs";
 
 const projectRoot = process.cwd();
 const distRoot = path.resolve(projectRoot, "dist");
@@ -25,6 +26,8 @@ for (const transformed of marker.transformedFiles) {
   const relativePath = path.relative(distRoot, artifactPath);
   assert.ok(relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
   const code = fs.readFileSync(artifactPath, "utf8");
+  assert.doesNotMatch(code, PUBLIC_SOURCE_IDENTIFIER,
+    `${transformed.file} exposes an upstream provider identifier.`);
   const outputSha256 = createHash("sha256").update(code).digest("hex");
   assert.equal(outputSha256, transformed.outputSha256, `${transformed.file} hash does not match its marker.`);
   assert.notEqual(transformed.inputSha256, transformed.outputSha256, `${transformed.file} was not transformed.`);
@@ -53,6 +56,10 @@ const emittedFiles = (directory) => fs.readdirSync(directory, { withFileTypes: t
 );
 for (const emittedFile of emittedFiles(distRoot)) {
   assert.notEqual(path.extname(emittedFile), ".map", `Public build contains a source map: ${emittedFile}`);
+  if (emittedFile.endsWith(".js")) {
+    assert.doesNotMatch(fs.readFileSync(emittedFile, "utf8"), PUBLIC_SOURCE_IDENTIFIER,
+      `Public compatibility asset exposes a provider: ${emittedFile}`);
+  }
 }
 assert.doesNotMatch(
   fs.readFileSync(markerPath, "utf8"),

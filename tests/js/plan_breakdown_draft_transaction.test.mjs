@@ -156,7 +156,7 @@ test("procurement resync preserves existing goods and stable lot ids", () => {
       phanLo: true,
       danhSachPhanLo: [{ lotNo: "pp01", lotName: "Phần 1" }],
       danhSachHangHoa: [{
-        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ MSC",
+        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ automatic-source",
         donViTinh: "Hộp", soLuong: 12,
       }],
       sourceRevision: { stablePackageId: "stable-1" },
@@ -195,7 +195,7 @@ test("procurement resync backfills goods when the existing package has none", ()
       phanLo: true,
       danhSachPhanLo: [{ lotNo: "PP01", lotName: "Phần 1" }],
       danhSachHangHoa: [{
-        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ MSC",
+        maPhanLo: "PP01", maHangHoa: "1.1", tenHangHoa: "Tên từ automatic-source",
         donViTinh: "Hộp", soLuong: 12,
       }],
       sourceRevision: { stablePackageId: "stable-1" },
@@ -274,7 +274,7 @@ test("package procurement draft fills lifecycle and tender milestone controls", 
     },
     _loadPhanLoRows: () => {
       // The real lot loader recalculates the package-level guarantee from
-      // lot guarantees. MSC sometimes supplies only the package-level value.
+      // lot guarantees. automatic-source sometimes supplies only the package-level value.
       controls.get("gt-giatribaomothau").value = "0";
     },
     _loadTuyChonMuaThemRows: (rows) => additionalPurchaseRows.push(...rows),
@@ -926,7 +926,7 @@ test("new plan import materializes every prior linked notice revision on one pac
   );
 });
 
-test("next plan revision keeps three package lineages when MSC detail ids change", () => {
+test("next plan revision keeps three package lineages when automatic-source detail ids change", () => {
   let sequence = 0;
   const previousPackages = ["01", "02", "03"].map((symbol) => ({
     id: `pkg-${symbol}-00`,
@@ -2272,7 +2272,7 @@ test("cancelling plan revision 01 keeps committed 00 and removes only draft 01",
   assert.deepEqual(cancellations, ["cancel"]);
 });
 
-test("explicitly cancelling a new MSC plan removes its durable draft aggregate", async () => {
+test("explicitly cancelling a new automatic-source plan removes its durable draft aggregate", async () => {
   const previousDocument = globalThis.document;
   const controls = new Map([
     ["breakdown-plan-id", { value: "plan-draft-00" }],
@@ -2640,7 +2640,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         quyetDinhPheDuyet: "01/QĐ", pheDuyet: "Dự toán và kế hoạch",
         investorSource: { code: "vn123456789" },
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-00",
           revisionNumber: "00", revisionDigest: "sha256:00",
         },
@@ -2650,7 +2650,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         thoiGianThucHien: "30 ngày", nguonVon: "Ngân sách",
         thoiGianToChuc: "30 ngày", thoiGianBatDauToChuc: "Quý I/2026",
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-00",
           revisionNumber: "00", revisionDigest: "sha256:00",
           stablePackageId: "stable-a", packageObservationId: "detail-a-00",
@@ -2660,7 +2660,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         thoiGianThucHien: "60 ngày", nguonVon: "Ngân sách",
         thoiGianToChuc: "30 ngày", thoiGianBatDauToChuc: "Quý II/2026",
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-00",
           revisionNumber: "00", revisionDigest: "sha256:00",
           stablePackageId: "stable-b", packageObservationId: "detail-b-00",
@@ -2680,7 +2680,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         quyetDinhPheDuyet: "02/QĐ", pheDuyet: "Dự toán và kế hoạch",
         investorSource: { code: "vn123456789" },
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-01",
           revisionNumber: "01", revisionDigest: "sha256:01",
         },
@@ -2690,7 +2690,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         thoiGianThucHien: "45 ngày", nguonVon: "Nguồn điều chỉnh",
         thoiGianToChuc: "45 ngày", thoiGianBatDauToChuc: "Quý III/2026",
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-01",
           revisionNumber: "01", revisionDigest: "sha256:01",
           stablePackageId: "stable-a", packageObservationId: "detail-a-01",
@@ -2700,7 +2700,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
         thoiGianThucHien: "60 ngày", nguonVon: "Ngân sách",
         thoiGianToChuc: "30 ngày", thoiGianBatDauToChuc: "Quý II/2026",
         sourceRevision: {
-          sessionId: "session-plan", provider: "MUASAMCONG",
+          sessionId: "session-plan", provider: "AUTOMATIC_DATA",
           familyNo: "PL2600000001", revisionId: "plan-01",
           revisionNumber: "01", revisionDigest: "sha256:01",
           stablePackageId: "stable-b", packageObservationId: "detail-b-01",
@@ -2851,7 +2851,7 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.equal(
       controller.model.planVersionDraftSessions?.length,
       1,
-      "a new MSC plan must create one durable plan-version draft session",
+      "a new automatic-source plan must create one durable plan-version draft session",
     );
     assert.deepEqual(planModalEditOptions[0], {
       keepProcurementCodeEditable: true,
@@ -2936,14 +2936,14 @@ test("inline Plan import runs 00 then 01 through the existing forms and breakdow
     assert.deepEqual(
       finalizeCalls[0].kehoach.map((plan) => plan.sourceRevision?.revisionNumber),
       ["00", "01"],
-      "atomic finalization must retain MSC provenance for every plan revision",
+      "atomic finalization must retain automatic-source provenance for every plan revision",
     );
     assert.deepEqual(
       finalizeCalls[0].goithau
         .map((pkg) => pkg.sourceRevision?.revisionNumber)
         .sort(),
       ["00", "00", "01", "01"],
-      "atomic finalization must retain MSC provenance for historical package snapshots",
+      "atomic finalization must retain automatic-source provenance for historical package snapshots",
     );
     assert.deepEqual(packageModalEdits, [packageA00.id]);
     assert.equal(controller.procurementPlanImport, null);
@@ -3000,7 +3000,7 @@ test("retrying the same procurement revision reuses the saved plan version", asy
       maKeHoach: "PL2600164871",
       investorSource: { code: "vn3900786617" },
       sourceRevision: {
-        provider: "MUASAMCONG",
+        provider: "AUTOMATIC_DATA",
         familyNo: "PL2600164871",
         revisionId: "revision-00",
         revisionNumber: "00",
@@ -3066,7 +3066,7 @@ test("a newly published revision extends persisted 00 without opening a new-plan
       investorSource: { code: "vn3900786617" },
       sourceRevision: {
         sessionId: "session-later-01", workspaceLease: "org-1",
-        provider: "MUASAMCONG", familyNo: "PL2600225773",
+        provider: "AUTOMATIC_DATA", familyNo: "PL2600225773",
         revisionId: "revision-01", revisionNumber: "01",
         revisionDigest: "sha256:01",
       },
@@ -3096,7 +3096,7 @@ test("a newly published revision extends persisted 00 without opening a new-plan
   assert.equal(draftEnvelope, null);
 });
 
-test("procurement materialization replaces MSC option ids with internal child ids", () => {
+test("procurement materialization replaces automatic-source option ids with internal child ids", () => {
   const state = {
     kehoach: [{ id: "plan-00", rootId: "plan-00", phienBan: "00", rowVersion: 2 }],
     goithau: [],

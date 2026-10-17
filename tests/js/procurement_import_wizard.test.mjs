@@ -12,8 +12,8 @@ import {
   canApplyOpeningPreview,
   countOpeningContractors,
   financialOpeningTimestamp,
-  importFinancialOpeningFromMuasamcong,
-  importOpeningFromMuasamcong,
+  importFinancialOpeningFromAutomaticData,
+  importOpeningFromAutomaticData,
   mapOpeningBidder,
   prepareOpeningForLifecycle,
   reconcileOpeningDrafts,
@@ -1369,7 +1369,7 @@ test("stale opening completion does not alert or reset workspace B UI", async ()
   globalThis.document = {
     getElementById(id) {
       if (id === "mothau-goithau-select") return select;
-      if (id === "btn-mothau-import-msc") return button;
+      if (id === "btn-mothau-import-automatic") return button;
       return null;
     },
   };
@@ -1399,7 +1399,7 @@ test("stale opening completion does not alert or reset workspace B UI", async ()
   };
 
   try {
-    const pending = importOpeningFromMuasamcong.call(controller, { client });
+    const pending = importOpeningFromAutomaticData.call(controller, { client });
     await applyStarted.promise;
     token = "user:org-b@1";
     model.state = { goithau: [{ id: "package-b", rootId: "package-root-b" }] };
@@ -1431,7 +1431,7 @@ test("opening same-workspace target change cannot reset the new package button",
   globalThis.document = {
     getElementById(id) {
       if (id === "mothau-goithau-select") return select;
-      if (id === "btn-mothau-import-msc") return button;
+      if (id === "btn-mothau-import-automatic") return button;
       return null;
     },
   };
@@ -1461,7 +1461,7 @@ test("opening same-workspace target change cannot reset the new package button",
   };
 
   try {
-    const pending = importOpeningFromMuasamcong.call(controller, { client });
+    const pending = importOpeningFromAutomaticData.call(controller, { client });
     await applyStarted.promise;
     select.value = "package-b";
     button.innerHTML = "B đang lấy dữ liệu";
@@ -1500,14 +1500,14 @@ test("financial opening completion cannot reset a button moved into a new wrappe
   const wrapperA = {
     ownerDocument,
     querySelector(selector) {
-      return selector === "#btn-opening-fin-import-msc" && buttonInOldWrapper ? button : null;
+      return selector === "#btn-opening-fin-import-automatic" && buttonInOldWrapper ? button : null;
     },
     querySelectorAll() { return []; },
   };
   const wrapperB = {
     ownerDocument,
     querySelector(selector) {
-      return selector === "#btn-opening-fin-import-msc" ? button : null;
+      return selector === "#btn-opening-fin-import-automatic" ? button : null;
     },
     querySelectorAll() { return []; },
   };
@@ -1531,7 +1531,7 @@ test("financial opening completion cannot reset a button moved into a new wrappe
     },
   };
 
-  const pending = importFinancialOpeningFromMuasamcong({
+  const pending = importFinancialOpeningFromAutomaticData({
     view, pkg, contentWrapper: wrapperA, client,
   });
   await applyStarted.promise;
@@ -2389,7 +2389,7 @@ test("mid-persistence rollback and post-durable UI retry create no duplicate rev
   };
   const authority = (revisionNumber) => ({
     sessionId: "session-plan", workspaceLease: "user:org-a@1",
-    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    provider: "AUTOMATIC_DATA", familyNo: "PL2600000001",
     revisionId: `plan-${revisionNumber}`, revisionNumber,
     revisionDigest: `sha256:${revisionNumber}`,
   });
@@ -2591,7 +2591,7 @@ test("same-org new epoch rejects a late next plan revision without mutating B", 
   const nextResponse = new Promise((resolve) => { resolveNext = resolve; });
   const sourceAuthority = (revisionNumber) => ({
     sessionId: "session-a", workspaceLease: "user:org-a@1",
-    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    provider: "AUTOMATIC_DATA", familyNo: "PL2600000001",
     revisionId: `revision-${revisionNumber}`, revisionNumber,
     revisionDigest: `sha256:${revisionNumber}`,
   });
@@ -2672,7 +2672,7 @@ test("late next from replaced flow cannot materialize into the new same-workspac
   const db = memoryEnvelopeDb();
   const authority = (revisionNumber) => ({
     sessionId: "session-a", workspaceLease: "user:org-a@1",
-    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    provider: "AUTOMATIC_DATA", familyNo: "PL2600000001",
     revisionId: `revision-${revisionNumber}`, revisionNumber,
     revisionDigest: `sha256:${revisionNumber}`,
   });
@@ -2754,7 +2754,7 @@ test("durable next materialization failure keeps controller and draft flow on th
   let failPublish = false;
   const authority = (revisionNumber) => ({
     sessionId: "session-recovery", workspaceLease: "user:org-a@1",
-    provider: "MUASAMCONG", familyNo: "PL2600000001",
+    provider: "AUTOMATIC_DATA", familyNo: "PL2600000001",
     revisionId: `revision-${revisionNumber}`, revisionNumber,
     revisionDigest: `sha256:${revisionNumber}`,
   });
@@ -3373,31 +3373,31 @@ test("authoritative package versioning ignores date heuristics and follows sourc
   };
 
   assert.equal(shouldCreatePackageVersion(previous, changedDates, {
-    provider: "MUASAMCONG", revisionNumber: "01",
+    provider: "AUTOMATIC_DATA", revisionNumber: "01",
   }), false);
   assert.equal(shouldCreatePackageVersion(previous, changedDates, {
-    provider: "MUASAMCONG", revisionNumber: "02",
+    provider: "AUTOMATIC_DATA", revisionNumber: "02",
   }), true);
   assert.equal(shouldCreatePackageVersion({
     ...previous,
     phienBan: "00",
     _procurementImportCurrent: true,
     sourceRevision: {
-      provider: "MUASAMCONG",
+      provider: "AUTOMATIC_DATA",
       revisionNumber: "01",
       packageRevisionNumber: "00",
     },
-  }, changedDates), false, "plan revision 01 must not create TBMT revision 01 when MSC still declares 00");
+  }, changedDates), false, "plan revision 01 must not create TBMT revision 01 when automatic-source still declares 00");
   assert.equal(shouldCreatePackageVersion({
     ...previous,
     phienBan: "00",
     _procurementImportCurrent: true,
     sourceRevision: {
-      provider: "MUASAMCONG",
+      provider: "AUTOMATIC_DATA",
       revisionNumber: "01",
       packageRevisionNumber: "01",
     },
-  }, changedDates), true, "an actual MSC TBMT revision advance must still create the next package snapshot");
+  }, changedDates), true, "an actual automatic-source TBMT revision advance must still create the next package snapshot");
   assert.equal(shouldCreatePackageVersion(previous, changedDates), true);
 });
 
@@ -3456,7 +3456,7 @@ test("investor short name is derived only from a QĐ decision suffix", () => {
   assert.equal(deriveInvestorShortName(""), "");
 });
 
-test("investor resolver skips malformed optional MSC fields", async () => {
+test("investor resolver skips malformed optional automatic-source fields", async () => {
   const result = await resolveImportedInvestorDraft({
     source: { code: "vnz000005655" },
     records: [],

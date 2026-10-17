@@ -15,6 +15,27 @@ import {
 
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 
+test("retention does not republish a previous provider-identifying bundle", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bf-source-retention-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const distRoot = path.join(root, "dist");
+  const oldPath = "assets/source-OLDHASH1.js";
+  await writeRelease(distRoot, {
+    releaseId: "a".repeat(40),
+    assets: { [oldPath]: 'const source = "MUASAMCONG";' },
+    manifest: { "source.js": { file: oldPath } },
+  });
+  const snapshot = await snapshotPreviousFrontendAssets({ distRoot });
+  await writeRelease(distRoot, {
+    releaseId: "b".repeat(40),
+    assets: { "assets/source-NEWHASH1.js": 'const source = "AUTOMATIC_DATA";' },
+    manifest: { "source.js": { file: "assets/source-NEWHASH1.js" } },
+  });
+  const result = await retainPreviousFrontendAssets({ distRoot, snapshot });
+  assert.equal(result.retainedAssetCount, 0);
+  await assert.rejects(readFile(path.join(distRoot, oldPath)), { code: "ENOENT" });
+});
+
 test("secure Vite builds install frontend asset retention before output cleanup", () => {
   const config = readFileSync("vite.config.js", "utf8");
   assert.match(

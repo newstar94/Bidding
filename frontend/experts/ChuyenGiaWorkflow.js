@@ -163,10 +163,6 @@ export async function deleteChuyenGia(id) {
   const model = this.model;
   const lease = captureWorkspaceLease(model);
   const isCurrent = () => this.model === model && isWorkspaceLeaseCurrent(model, lease);
-  if (this.model.state.activerole === "employee") {
-    await this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép xóa Chuyên gia khỏi hệ thống!", "lock");
-    return;
-  }
   const target = await refreshRecordBeforeDelete(this, "chuyengia", id);
   if (!isCurrent() || !target) return;
   const family = getVersionFamily(this.model.state.chuyengia, target);

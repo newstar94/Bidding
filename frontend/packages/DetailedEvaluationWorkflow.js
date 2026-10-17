@@ -222,8 +222,8 @@ export async function importDetailedEvaluationExcel(file) {
       activeGroup: importContext.activeGroup,
       currentCriteriaOverride: this._detailedEvaluationCriteriaOverrides.get(state.criteriaKey),
     });
-    if (analysis.isMuasamcong) {
-      const verified = await verifyMuasamcongDetailedEvaluationContractor(
+    if (analysis.isAutomaticData) {
+      const verified = await verifyAutomaticDataDetailedEvaluationContractor(
         this,
         state,
         sheets,
@@ -288,14 +288,14 @@ export async function importDetailedEvaluationExcel(file) {
   }
 }
 
-export async function verifyMuasamcongDetailedEvaluationContractor(
+export async function verifyAutomaticDataDetailedEvaluationContractor(
   controller,
   state,
   sheets,
   isContextCurrent = null,
 ) {
   const [
-    { validateMuasamcongContractorIdentity },
+    { validateAutomaticDataContractorIdentity },
     { resolveBidContractorName },
   ] = await Promise.all([
     import("./detailedEvaluationExcel.js"),
@@ -304,7 +304,7 @@ export async function verifyMuasamcongDetailedEvaluationContractor(
   if (isContextCurrent && !isContextCurrent()) return false;
   const selectedContractorName = resolveBidContractorName(controller.model, state.bid)
     || String(state.bid?.tenNhaThau || "").trim();
-  const identity = validateMuasamcongContractorIdentity(sheets, selectedContractorName);
+  const identity = validateAutomaticDataContractorIdentity(sheets, selectedContractorName);
   if (identity.valid) return true;
   const message = identity.reason === "mismatch"
     ? `Tên nhà thầu trong Excel: "${identity.actualNames[0]}". Nhà thầu đang chọn: "${identity.expectedName}". Hãy kiểm tra kỹ trước khi tiếp tục.`

@@ -130,7 +130,7 @@ test("legacy import controls require their own server capability", () => {
 });
 
 
-test("MSC checkbox looks up after code entry without duplicate blur requests", async () => {
+test("automatic-source checkbox looks up after code entry without duplicate blur requests", async () => {
   const codeInput = Object.assign(new EventTarget(), { value: "" });
   const checkbox = Object.assign(new EventTarget(), {
     checked: false,
@@ -165,7 +165,7 @@ test("MSC checkbox looks up after code entry without duplicate blur requests", a
 });
 
 
-test("failed MSC auto lookup can retry the same code", async () => {
+test("failed automatic-source auto lookup can retry the same code", async () => {
   const codeInput = Object.assign(new EventTarget(), { value: "IB2600000001" });
   const checkbox = Object.assign(new EventTarget(), {
     checked: true,
@@ -776,7 +776,7 @@ function inlineLoading() {
 }
 
 
-test("inline MSC lookup shows and closes its loading screen", async () => {
+test("inline automatic-source lookup shows and closes its loading screen", async () => {
   let resolvePrepare;
   const identity = { value: "plan-loading" };
   const form = {

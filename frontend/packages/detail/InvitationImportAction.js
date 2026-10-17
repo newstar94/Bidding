@@ -108,7 +108,7 @@ export function bindInvitationImportAction(view, container, pkg, appController, 
   renderSaved,
   renderDraft,
 } = {}) {
-  const button = container.querySelector("#btn-invitation-import-msc");
+  const button = container.querySelector("#btn-invitation-import-automatic");
   if (!button) return;
   button.onclick = async () => {
     if (button.disabled || container.dataset.invitationImportBusy === "true"

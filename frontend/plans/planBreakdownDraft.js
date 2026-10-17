@@ -39,6 +39,7 @@ function clone(value) {
 const SERVER_OWNED_DRAFT_FIELDS = new Set([
   "rowVersion", "expectedVersion", "syncVersion", "organizationId",
   "createdAt", "updatedAt", "referenceOnly", "allVersions", "canEdit",
+  "deleteOwnerUserId",
   "_valid", "_comment", "_operation",
 ]);
 

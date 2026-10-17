@@ -115,4 +115,6 @@ async def read_json_object(request):
             "Nội dung JSON phải là một object.",
             status_code=400,
         )
-    return data, None
+    from backend.shared.source_privacy import internal_source_payload
+
+    return internal_source_payload(data), None

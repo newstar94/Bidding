@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { PUBLIC_SOURCE_IDENTIFIER } from "./public_source_policy.mjs";
 
 
 const IMMUTABLE_RELEASE_ID = /^(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})$/u;
@@ -409,6 +410,9 @@ export async function retainPreviousFrontendAssets({ distRoot = "dist", snapshot
       }
       continue;
     }
+    // ADR 0088: compatibility must not republish withdrawn provider metadata.
+    // Existing tabs using these legacy chunks need to reload the new release.
+    if (asset.path.endsWith(".js") && PUBLIC_SOURCE_IDENTIFIER.test(asset.content.toString("utf8"))) continue;
     await restoreAsset(root, asset);
     retained.push({ path: asset.path, sha256: asset.sha256, size: asset.size });
   }

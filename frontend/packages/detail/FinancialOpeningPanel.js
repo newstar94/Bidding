@@ -22,7 +22,7 @@ import {
   parseEvaluationMetadataForDisplay,
   serializeEvaluationMetadata,
 } from "../evaluationMetadata.js";
-import { importFinancialOpeningFromMuasamcong } from "../../procurement/OpeningImportWizard.js";
+import { importFinancialOpeningFromAutomaticData } from "../../procurement/OpeningImportWizard.js";
 import {
   hasServerCapability,
   PROCUREMENT_IMPORT_CAPABILITY,
@@ -309,9 +309,9 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
     });
     const importButton = contentWrapper.querySelector("#btn-opening-fin-import-excel");
     if (importButton) importButton.onclick = () => appController?.triggerExcelImport("opening_fin");
-    const importMscButton = contentWrapper.querySelector("#btn-opening-fin-import-msc");
-    if (importMscButton) {
-      importMscButton.onclick = () => importFinancialOpeningFromMuasamcong({
+    const importAutomaticButton = contentWrapper.querySelector("#btn-opening-fin-import-automatic");
+    if (importAutomaticButton) {
+      importAutomaticButton.onclick = () => importFinancialOpeningFromAutomaticData({
         view,
         pkg: state.pkg,
         contentWrapper,
@@ -321,7 +321,7 @@ function bindFinancialOpeningPanel(view, contentWrapper, state, appController) {
     const saveButton = contentWrapper.querySelector("#btn-save-opening-fin");
     if (saveButton) {
       saveButton.onclick = async () => {
-        if (saveButton.disabled || contentWrapper.querySelector("#btn-opening-fin-import-msc")?.dataset.loading === "true") return;
+        if (saveButton.disabled || contentWrapper.querySelector("#btn-opening-fin-import-automatic")?.dataset.loading === "true") return;
         const timeInput = contentWrapper.querySelector("#op-fin-thoigianmothau");
         const openingTime = timeInput?.value
           ? view.model.convertDMYHMSToYMDHMS(timeInput.value)
@@ -418,7 +418,7 @@ export function renderFinancialOpeningPanel(view, {
 } = {}) {
   beginWorkspaceRender(view?.model, financialOpeningCacheOwner(pkg));
   const state = buildFinancialOpeningState({ view, pkg, effectiveStatus });
-  const canImportMsc = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
+  const canImportAutomatic = hasServerCapability(PROCUREMENT_IMPORT_CAPABILITY);
   if (!state.qualifiedBids.length) {
     contentWrapper.innerHTML = trustedHTML(`
       <div class="bf-s-71ff99332d">
@@ -432,7 +432,7 @@ export function renderFinancialOpeningPanel(view, {
   contentWrapper.innerHTML = trustedHTML(`
     <div class="bf-s-175e7e1f51">
       <h4 class="bf-s-ff3bca23d8">Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)</h4>
-      ${state.isReadOnly ? "" : `<div class="bf-s-9c40389b4a"><button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button><button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>${canImportMsc ? '<button class="btn btn-outline btn-sm" type="button" id="btn-opening-fin-import-msc"><i data-lucide="cloud-download"></i> Lấy dữ liệu tự động</button>' : ""}</div>`}
+      ${state.isReadOnly ? "" : `<div class="bf-s-9c40389b4a"><button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button><button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>${canImportAutomatic ? '<button class="btn btn-outline btn-sm" type="button" id="btn-opening-fin-import-automatic"><i data-lucide="cloud-download"></i> Lấy dữ liệu tự động</button>' : ""}</div>`}
     </div>
     ${renderFinancialOpeningFacts(view, state)}
     ${renderFinancialOpeningTable({

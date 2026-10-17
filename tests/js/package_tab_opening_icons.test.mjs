@@ -32,9 +32,9 @@ test("package opening detail exposes the Mua Sắm Công import action", async (
     new URL("../../frontend/packages/detail/OpeningPanel.js", import.meta.url),
     "utf8",
   );
-  assert.match(source, /id="btn-mothau-import-msc"/u);
+  assert.match(source, /id="btn-mothau-import-automatic"/u);
   assert.match(source, /data-lucide="cloud-download"/u);
-  assert.match(source, /class="btn-excel-action" id="btn-mothau-import-msc"/u);
+  assert.match(source, /class="btn-excel-action" id="btn-mothau-import-automatic"/u);
   assert.match(source, /mothau-opening-actions/u);
-  assert.doesNotMatch(source, /mothau-import-msc-description/u);
+  assert.doesNotMatch(source, /mothau-import-automatic-description/u);
 });

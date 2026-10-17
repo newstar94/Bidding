@@ -68,7 +68,7 @@ export function shouldCreatePackageVersion(previousPackage, nextPackage, sourceR
     || (previousPackage?._procurementImportCurrent === true
       ? previousPackage?.sourceRevision
       : null);
-  const authoritative = effectiveSourceRevision?.provider === "MUASAMCONG";
+  const authoritative = effectiveSourceRevision?.provider === "AUTOMATIC_DATA";
   const sourceVersion = Number(
     effectiveSourceRevision?.packageRevisionNumber
       ?? effectiveSourceRevision?.revisionNumber,
@@ -1229,7 +1229,7 @@ export async function handleGoiThauSubmit(e) {
   // The child package modal can be opened after the breakdown controller has
   // moved to another version (or after its transient breakdown marker was
   // rebased), so relying on that marker alone would route this save through
-  // /api/sync and commit the MSC revision prematurely. Keep package changes
+  // /api/sync and commit the automatic-source revision prematurely. Keep package changes
   // memory-only whenever either draft marker identifies the target plan.
   const draftPackageSave = isPackageDraftSaveActive(this, planIdToSave);
   const updateAssignments = async (targetId) => {
@@ -1313,7 +1313,7 @@ export async function handleGoiThauSubmit(e) {
   if (id) {
     const oldGt = this.model.state.goithau.find((g) => g.id === id);
     const sourceAuthoritativeImport = Boolean(
-      procurementPackageDraft?.sourceRevision?.provider === "MUASAMCONG",
+      procurementPackageDraft?.sourceRevision?.provider === "AUTOMATIC_DATA",
     );
     const saveAsNewVersion = shouldCreatePackageVersion(
       oldGt, gtData, procurementPackageDraft?.sourceRevision,

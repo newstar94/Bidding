@@ -178,7 +178,7 @@ test("invitation tables preserve multiline text, source identity and read-only t
       globalThis.__invitationView = view;
       globalThis.__invitationOriginal = structuredClone(pkg);
       renderPackageOpeningPanel(view, { contentWrapper: document.getElementById("panel"), pkg, appController: controller });
-      globalThis.__invitationUpdate = document.getElementById("btn-invitation-import-msc").onclick()
+      globalThis.__invitationUpdate = document.getElementById("btn-invitation-import-automatic").onclick()
         .finally(() => { globalThis.__invitationSettled = true; });
     });
     await page.waitForFunction(() => typeof globalThis.__confirmInvitationSync === "function" || globalThis.__invitationSettled === true);
@@ -189,7 +189,7 @@ test("invitation tables preserve multiline text, source identity and read-only t
     assert.equal(pendingSave.waiting, true, `Expected canonical save: ${pendingSave.status}\n${resourceErrors.join("\n")}`);
     assert.deepEqual(lookupRequests.map(({ detailLevel, revisionMode }) => ({ detailLevel, revisionMode })), [{ detailLevel: "COMPLETE", revisionMode: "ALL" }]);
     const beforeConfirmation = await page.evaluate(() => ({
-      visibleButton: Boolean(document.querySelector("#panel #btn-invitation-import-msc")),
+      visibleButton: Boolean(document.querySelector("#panel #btn-invitation-import-automatic")),
       rows: document.querySelectorAll("#panel tbody tr").length,
       originalUnchanged: JSON.stringify(globalThis.__invitationModel.state.goithau[0]) === JSON.stringify(globalThis.__invitationOriginal),
       successMessage: document.querySelector("#panel #invitation-import-status").textContent,

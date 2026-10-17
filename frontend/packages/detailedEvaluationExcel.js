@@ -33,7 +33,7 @@ function extractContractorNamesFromSheet(sheet = {}) {
   return names;
 }
 
-export function validateMuasamcongContractorIdentity(sheets = [], expectedName = "") {
+export function validateAutomaticDataContractorIdentity(sheets = [], expectedName = "") {
   const namesByIdentity = new Map();
   sheets.flatMap(extractContractorNamesFromSheet).forEach((name) => {
     const identity = normalize(name);
@@ -219,7 +219,7 @@ function parseVietnameseNumber(value) {
 
 function criterionCode(group, stt, rowIndex) {
   const token = normalize(stt).replaceAll(" ", "_").toUpperCase() || String(rowIndex + 1);
-  return `MSC_${group.toUpperCase()}_${token}`;
+  return `AUTO_${group.toUpperCase()}_${token}`;
 }
 
 function makeCriterion({ group, stt, name, rowIndex, roundId, resultType = "pass_fail", maxScore = null, minScore = null, requirement = "" }) {
@@ -237,7 +237,7 @@ function makeCriterion({ group, stt, name, rowIndex, roundId, resultType = "pass
     stt: String(stt || rowIndex + 1).trim().replace(/\.$/, ""),
     sourceStt: String(stt || rowIndex + 1).trim().replace(/\.$/, ""),
     order: rowIndex,
-    source: "muasamcong",
+    source: "automatic",
   };
 }
 
@@ -554,7 +554,7 @@ function chooseTechnicalSheet(candidates, pkg = {}) {
   return candidates.find((sheet) => normalize(sheet.name).endsWith("b")) || candidates.at(-1);
 }
 
-export function parseMuasamcongDetailedEvaluationWorkbook(sheets = [], {
+export function parseAutomaticDataDetailedEvaluationWorkbook(sheets = [], {
   group,
   pkg = {},
   bid = {},

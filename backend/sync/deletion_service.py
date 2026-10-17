@@ -6,6 +6,7 @@ from backend.db.db_helper import IntegrityError
 
 
 from backend.shared.helpers import clean_id
+from backend.shared.record_delete_access import load_creator_delete_ids
 from backend.shared.access_policy import (
     authorize_package_goods_delete_from_context,
     authorize_record_write_from_context,
@@ -328,6 +329,12 @@ def apply_sync_deletions(
         records_by_table,
     )
     deleted_package_ids = set(records_by_table.get("goi_thau", {}))
+    creator_delete_ids = {}
+    if not authorization_context.organization_manager and not _is_actor_personal_scope(organization_id, actor_user_id):
+        creator_delete_ids = {
+            table: load_creator_delete_ids(cursor, organization_id, actor_user_id, table, records.values())
+            for table, records in records_by_table.items()
+        }
 
     for deletion in deletions:
         if not isinstance(deletion, dict):
@@ -421,19 +428,22 @@ def apply_sync_deletions(
                 result["imageCleanupCandidates"].add(path)
 
         organization_manager = authorization_context.organization_manager
-        # Employees may create data and edit assigned work, but deletion in an
-        # organization is always reserved for an organization manager. This is
-        # enforced here so direct API calls cannot bypass the UI.
+        creator_delete = str(record_id) in creator_delete_ids.get(table_name, set())
+        # Package-owned opening rows follow an explicitly deleted creator-owned
+        # package. Existing record write checks above still apply to every row.
+        if table_name == "thong_tin_mo_thau" and str(record.get("goi_thau_id") or "") in deleted_package_ids:
+            creator_delete = creator_delete or str(record["goi_thau_id"]) in creator_delete_ids.get("goi_thau", set())
         if (
             table_name not in HIGH_IMPACT_DELETE_TABLES
             and not _is_actor_personal_scope(organization_id, actor_user_id)
             and not organization_manager
+            and not creator_delete
         ):
             result["errors"].append({
                 "table": table_name,
                 "id": record_id,
                 "code": "DELETE_ROLE_PROTECTED",
-                "message": "Chỉ Quản lý tổ chức được phép xóa dữ liệu; Chuyên viên không được phép xóa.",
+                "message": "Chỉ Quản lý tổ chức hoặc người tạo dữ liệu được phép xóa.",
             })
             continue
         impact = impacts_by_table[table_name][str(record_id)]
@@ -441,12 +451,12 @@ def apply_sync_deletions(
             table_name in HIGH_IMPACT_DELETE_TABLES
             and not _is_actor_personal_scope(organization_id, actor_user_id)
         ):
-            if not organization_manager:
+            if not organization_manager and not creator_delete:
                 result["errors"].append({
                     "table": table_name,
                     "id": record_id,
                     "code": "DELETE_ELEVATED_PERMISSION_REQUIRED",
-                    "message": "Chỉ owner/manager của tổ chức được xóa aggregate nghiệp vụ.",
+                    "message": "Chỉ chủ sở hữu/quản lý tổ chức hoặc người tạo dữ liệu được phép xóa.",
                     "impact": impact,
                 })
                 continue

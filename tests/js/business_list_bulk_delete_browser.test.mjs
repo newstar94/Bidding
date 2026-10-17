@@ -130,7 +130,7 @@ test("selected-row delete controls use canonical confirmation and preserve data 
         await render(type);
         selection.toggleBusinessListRow(model, type, model.state[type][0], true);
       }, type);
-      assert.equal(await bar.locator("[data-list-selection-action='delete']").count(), 0);
+      assert.equal(await bar.locator("[data-list-selection-action='delete']").count(), 1);
       await page.evaluate(async (type) => {
         const { model, render, selection } = window.bulkFixture;
         model.state.activerole = "admin";

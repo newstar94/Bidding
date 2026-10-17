@@ -137,7 +137,7 @@ function isUserConfiguredCriterion(criterion = {}) {
   const source = String(criterion.source || "").trim().toLowerCase();
   return criterion.isCustom === true
     || source === "custom"
-    || source === "muasamcong"
+    || source === "automatic"
     || !criterion.templateId;
 }
 

@@ -481,7 +481,8 @@ export function refreshBusinessListSelection(view, type) {
   const bar = document.getElementById(`${type}-row-selection`);
   if (!bar) return;
   bar.hidden = !descriptor.count && !ui?.pendingBulkDelete;
-  const allowDelete = view.model.state.activerole !== "employee";
+  // Selections span unloaded pages; the server checks ownership of every row.
+  const allowDelete = true;
   const signature = JSON.stringify([descriptor.mode, descriptor.count, descriptor.totalItems, selectedCount === page.length, page.length, loading, allowDelete, ui?.pendingBulkDelete?.count]);
   if (bar.dataset.selectionSignature === signature) return;
   bar.dataset.selectionSignature = signature;
@@ -546,7 +547,7 @@ export function ensureBusinessListControls(view, type) {
       const action = event.target.closest("[data-list-selection-action]")?.dataset.listSelectionAction;
       if (action && !hasCurrentScope(ui) && !(action === "delete" && pendingDeleteScopeIsCurrent(ui))) return;
       if (action && ui.bulkDeleting) return;
-      if (action === "delete" && (!ui.loading || ui.pendingBulkDelete) && view.model.state.activerole !== "employee") {
+      if (action === "delete" && (!ui.loading || ui.pendingBulkDelete)) {
         ui.bulkDeleting = true;
         refreshBusinessListSelection(view, type);
         try {

@@ -18,7 +18,7 @@ function editorFixture() {
   const container = {
     dataset: {},
     contains: (node) => node === button,
-    querySelector: (selector) => selector === "#btn-invitation-import-msc" ? button : status,
+    querySelector: (selector) => selector === "#btn-invitation-import-automatic" ? button : status,
     querySelectorAll: () => [],
   };
   const loads = [];
@@ -205,11 +205,11 @@ test("partial quota results fill accepted rows and show every skipped notice rev
         usageCredits: {
           status: "PARTIAL",
           requested: ["00", "01", "02"].map((sourceRevision) => ({
-            provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision,
+            provider: "automatic", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision,
           })),
-          processed: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision: "00" }],
+          processed: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision: "00" }],
           skipped: ["01", "02"].map((sourceRevision) => ({
-            provider: "muasamcong", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision, reasonCode: "QUOTA_EXHAUSTED",
+            provider: "automatic", entityKind: "NOTICE", sourceCode: f.pkg.maGoiThau, sourceRevision, reasonCode: "QUOTA_EXHAUSTED",
           })),
         },
       }),
@@ -229,9 +229,9 @@ test("partial quota results fill accepted rows and show every skipped notice rev
 test("quota failures show skipped identities from HTTP fields or compatibility details without changing editor rows", async () => {
   const usageCredits = {
     status: "QUOTA_EXHAUSTED",
-    requested: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00" }],
+    requested: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00" }],
     processed: [],
-    skipped: [{ provider: "muasamcong", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00", reasonCode: "QUOTA_EXHAUSTED" }],
+    skipped: [{ provider: "automatic", entityKind: "NOTICE", sourceCode: "IB2600271825", sourceRevision: "00", reasonCode: "QUOTA_EXHAUSTED" }],
   };
   for (const payload of [
     { data: { fields: { usageCredits } } },

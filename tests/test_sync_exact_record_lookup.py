@@ -38,6 +38,9 @@ class FixtureCursor:
 def record_lookup(monkeypatch):
     fixture = SimpleNamespace(raw=sqlite3.connect(":memory:"), queries=[], module_allowed=True, record_allowed=True)
     fixture.raw.row_factory = sqlite3.Row
+    fixture.raw.execute("""CREATE TABLE audit_log (
+        id INTEGER PRIMARY KEY, organization_id TEXT, target_type TEXT,
+        target_id TEXT, actor_user_id TEXT, action TEXT, metadata_json TEXT)""")
     for table, code_column in TABLES.values():
         fixture.raw.execute(f"""CREATE TABLE {table} (
             id TEXT PRIMARY KEY, id_goc TEXT, organization_id TEXT,
@@ -97,6 +100,7 @@ def test_exact_id_keeps_historical_underscore_id_despite_latest_id_and_business_
     assert exact.status_code == 200
     assert item["id"] == "family_00"
     assert item["rowVersion"] == 4
+    assert item["deleteOwnerUserId"] is None
     assert item["allVersions"] == [{"id": "family", "phienBan": 2}, {"id": "family_00", "phienBan": 0}]
     sql, parameters = fixture.queries[0]
     assert "source_row.id = ?" in sql
@@ -110,6 +114,18 @@ def test_exact_id_keeps_historical_underscore_id_despite_latest_id_and_business_
     # The additive flag leaves the existing code/ID candidate lookup intact.
     default = fixture.read(table_key, "family_00", exact=False)
     assert json.loads(default.body)["item"]["id"] == "collision"
+
+
+@pytest.mark.parametrize("table_key", TABLES)
+def test_exact_record_projects_original_creator_without_changing_version_metadata(record_lookup, table_key):
+    fixture = record_lookup
+    fixture.raw.execute("INSERT INTO audit_log VALUES (1, 'org-1', ?, 'family', 'user-1', 'sync.record_created', '{}')",
+                        (TABLES[table_key][0],))
+    fixture.raw.execute("INSERT INTO audit_log VALUES (2, 'org-1', ?, 'family_00', 'other', 'sync.record_created', ?)",
+                        (TABLES[table_key][0], json.dumps({"rootAggregateId": "family"})))
+    response = fixture.read(table_key, "family_00")
+    assert response.status_code == 200
+    assert json.loads(response.body)["item"]["deleteOwnerUserId"] == "user-1"
 
 
 @pytest.mark.parametrize("table_key", TABLES)

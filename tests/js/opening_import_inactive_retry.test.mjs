@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import DOMPurify from "dompurify";
-import { importOpeningFromMuasamcong } from "../../frontend/procurement/OpeningImportWizard.js";
+import { importOpeningFromAutomaticData } from "../../frontend/procurement/OpeningImportWizard.js";
 
 async function withSharedOpeningImport(run) {
   const previousDocument = globalThis.document;
@@ -20,7 +20,7 @@ async function withSharedOpeningImport(run) {
   };
   const pane = {
     querySelector: (selector) => selector === "#mothau-goithau-select" ? select
-      : selector === "#btn-mothau-import-msc" ? button : null,
+      : selector === "#btn-mothau-import-automatic" ? button : null,
     contains: (element) => [select, button].includes(element),
   };
   select.closest = () => pane; button.closest = () => pane;
@@ -60,7 +60,7 @@ test("discarding an opening import after leaving its retained route allows retry
     setAttribute() {}, removeAttribute() {} };
   const pane = {
     querySelector: (selector) => selector === "#mothau-goithau-select" ? select
-      : selector === "#btn-mothau-import-msc" ? button : null,
+      : selector === "#btn-mothau-import-automatic" ? button : null,
     contains: (element) => [select, button].includes(element),
   };
   select.closest = () => pane; button.closest = () => pane;
@@ -84,7 +84,7 @@ test("discarding an opening import after leaving its retained route allows retry
     async applyOpening() { assert.fail("inactive route must not apply source data"); },
   };
   try {
-    const pending = importOpeningFromMuasamcong.call(controller, { client });
+    const pending = importOpeningFromAutomaticData.call(controller, { client });
     assert.equal(prepareCalls, 1);
     activePane = { querySelector: () => null };
     resolvePrepare({ previewId: "preview-a", package: { id: "package-a", rowVersion: 3 } });
@@ -94,7 +94,7 @@ test("discarding an opening import after leaving its retained route allows retry
     assert.equal(button.disabled, false, "returning to the retained route must not leave the old import busy");
     assert.equal(button.dataset.loading, undefined);
     assert.equal(String(button.innerHTML), "Lấy dữ liệu");
-    const retry = await importOpeningFromMuasamcong.call(controller, { client: {
+    const retry = await importOpeningFromAutomaticData.call(controller, { client: {
       async prepareOpening() { prepareCalls += 1; throw new Error("retry transport failure"); },
     } });
     assert.equal(retry, undefined);
@@ -110,7 +110,7 @@ test("changing the package on a retained opening form releases the old import bu
   await withSharedOpeningImport(async ({ controller, select, button, alerts, writes }) => {
     let resolvePrepare;
     const prepareReply = new Promise((done) => { resolvePrepare = done; });
-    const pending = importOpeningFromMuasamcong.call(controller, { client: {
+    const pending = importOpeningFromAutomaticData.call(controller, { client: {
       async prepareOpening() { return await prepareReply; },
       async applyOpening() { assert.fail("a response for the previous package must not apply"); },
     } });
@@ -125,7 +125,7 @@ test("changing the package on a retained opening form releases the old import bu
     assert.equal(button.dataset.loading, undefined);
     assert.equal(button.textContent, "Lấy dữ liệu");
     let retryCalls = 0;
-    await importOpeningFromMuasamcong.call(controller, { client: {
+    await importOpeningFromAutomaticData.call(controller, { client: {
       async prepareOpening({ packageId }) {
         retryCalls += 1;
         assert.equal(packageId, "package-b");
@@ -141,7 +141,7 @@ test("a completed old import cannot reset a newer operation on the same retained
     let resolveA, resolveB;
     const replyA = new Promise((done) => { resolveA = done; });
     const replyB = new Promise((done) => { resolveB = done; });
-    const pendingA = importOpeningFromMuasamcong.call(controller, { client: {
+    const pendingA = importOpeningFromAutomaticData.call(controller, { client: {
       async prepareOpening() { return await replyA; },
       async applyOpening() { assert.fail("old A must not apply after B starts"); },
     } });
@@ -150,7 +150,7 @@ test("a completed old import cannot reset a newer operation on the same retained
     button.disabled = false;
     button.innerHTML = "Lấy dữ liệu gói B";
     let callsB = 0;
-    const pendingB = importOpeningFromMuasamcong.call(controller, { client: {
+    const pendingB = importOpeningFromAutomaticData.call(controller, { client: {
       async prepareOpening({ packageId }) {
         callsB += 1;
         assert.equal(packageId, "package-b");

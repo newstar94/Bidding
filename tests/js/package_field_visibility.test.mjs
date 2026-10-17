@@ -55,7 +55,7 @@ test("modal setup reapplies lifecycle locking after legacy field handlers", asyn
   assert.ok(readOnlyIndex > finalPolicyIndex);
 });
 
-test("existing packages do not invent a missing MSC evaluation method", async () => {
+test("existing packages do not invent a missing automatic-source evaluation method", async () => {
   const source = await import("node:fs/promises").then((fs) => fs.readFile(
     new URL("../../frontend/app/BiddingControllerForms.js", import.meta.url),
     "utf8",

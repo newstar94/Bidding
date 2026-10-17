@@ -4,6 +4,7 @@ from backend.db.db_helper import DatabaseError
 
 import hmac
 import time
+from backend.shared.record_delete_access import attach_delete_ownership
 
 from starlette.responses import JSONResponse
 
@@ -531,6 +532,8 @@ def _read_sync_data_blocking(request):
             "visibilityToken": visibility_token,
             "domainContract": {"packageFieldPolicy": get_package_field_policy()},
         }
+        for payload_key, table_name in TABLE_KEYS.items():
+            attach_delete_ownership(cursor, org_name, user_id, table_name, response_payload.get(payload_key, []))
         if is_partial_response:
             for payload_key in list(TABLE_KEYS):
                 if payload_key not in requested_keys:
@@ -759,6 +762,7 @@ def _read_single_record_blocking(request):
             table_name, item, sensitive_read_policy
         )
 
+        attach_delete_ownership(cursor, org_name, user_id, table_name, [item])
         return JSONResponse({"item": item})
     except OrgPermissionError as scope_error:
         return error_response(

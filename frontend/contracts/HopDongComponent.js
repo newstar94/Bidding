@@ -8,6 +8,7 @@ import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js
 import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSelector.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
+import { canRequestRecordDelete } from "../shared/recordDeleteAccess.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { renderCustomStatusBadge } from "../shared/statusBadges.js";
 import { formatPartnerIdentityCode } from "../app/domUtils.js";
@@ -138,7 +139,7 @@ export async function renderHopDongTable() {
         id: displayedHd.id,
         editCommand: "edit-contract",
         deleteCommand: "delete-contract",
-        allowDelete: this.model.state.activerole !== "employee"
+        allowDelete: canRequestRecordDelete(this.model, displayedHd)
       }));
       const actionHtml = renderEntityActions(contractActions, {
         visible: canMutateDisplayedContractVersion(displayedHd, h),

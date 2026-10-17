@@ -290,7 +290,7 @@ function renderCriterionName(criterion, disabled = false, {
   editing = false,
 } = {}) {
   if (criterion.templateId === "bc-dgct-thuoc-v1") showRequirement = false;
-  const required = criterion.source === "muasamcong" || criterion.required === false
+  const required = criterion.source === "automatic" || criterion.required === false
     ? ""
     : ' <span class="required" aria-label="Bắt buộc">*</span>';
   // Technical criteria use the same compact display as the capacity and

@@ -716,7 +716,22 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
       }, { type, render: fields[type].render });
       await page.locator(`#${type}-table tbody [data-list-select-row]`).first().check();
       assert.equal(await page.locator(`#${type}-row-selection`).isVisible(), true);
-      assert.equal(await page.locator(`#${type}-row-selection [data-list-selection-action='delete']`).count(), 0, "employee row selection does not introduce a delete action");
+      assert.equal(await page.locator(`#${type}-row-selection [data-list-selection-action='delete']`).count(), 1, "employees may request an atomic creator-checked batch delete");
+      const command = { kehoach: "delete-plan", goithau: "delete-package", hopdong: "delete-contract" }[type];
+      for (const mode of ["personal", "own", "other"]) {
+        await page.evaluate(async ({ type, render, mode }) => {
+          const { model, view } = window.listFixture;
+          model.state.activeuser.activeOrganizationId = mode === "personal" ? "personal:user" : "org";
+          model.state.selectedPlanVersion = {};
+          model.state.selectedPackageVersion = {};
+          model.state.selectedPackageVersionIntent = {};
+          model.state.selectedHopDongVersion = {};
+          for (const row of model.state[type]) row.deleteOwnerUserId = mode === "own" ? "user" : null;
+          await view[render]();
+        }, { type, render: fields[type].render, mode });
+        const count = await page.locator(`#${type}-table [data-bf-action='${command}']`).count();
+        assert.equal(count > 0, mode !== "other", `${type}: ${mode} delete eligibility`);
+      }
     }
     // Package codes are optional while a package is still in preparation.
     // Searching by the Vietnamese package name must continue to work when

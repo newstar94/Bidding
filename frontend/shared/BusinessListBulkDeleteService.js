@@ -23,11 +23,8 @@ function assertReady(model) {
   if (globalThis.navigator?.onLine === false) {
     throw fail("Cần kết nối mạng để xác nhận và xóa các dòng đã chọn.", "BULK_DELETE_OFFLINE");
   }
-  // The same delete control is unavailable to employees in all three lists.
-  // Record/module/assignment authorization remains authoritative on the server.
-  if (model?.state?.activerole === "employee") {
-    throw fail("Vai trò hiện tại không có thao tác xóa trong danh sách này.", "BULK_DELETE_ROLE");
-  }
+  // Employees can delete their own creations; each record is checked by the
+  // server and one unauthorized row rejects the entire atomic batch.
   if (model?.hasPendingMutationOutboxChanges?.() || model?._workspaceMutations?.size) {
     throw fail("Có thay đổi đang chờ lưu. Hãy hoàn tất đồng bộ rồi thực hiện xóa hàng loạt.", "BULK_DELETE_PENDING_CHANGES");
   }

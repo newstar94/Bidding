@@ -478,7 +478,7 @@ export function buildPlanDraftFinalizePayload(model, session) {
     // The generic sync lane only emits provenance for the active source row.
     // Atomic new-plan finalization is different: every unpersisted revision is
     // committed together and the backend must validate each snapshot against
-    // its own authoritative MSC revision.
+    // its own authoritative automatic-source revision.
     if (
       ["kehoach", "goithau"].includes(table)
       && row?.sourceRevision
