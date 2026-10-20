@@ -753,6 +753,39 @@ test("bidder-goods edit action opens only the selected row", async () => {
   assert.equal(renderCount, 1);
 });
 
+test("bidder-goods Excel input resets after import even when event.target is cleared", async () => {
+  const listeners = {};
+  const input = {
+    files: [{ name: "goods.xlsx" }],
+    value: "C:\\fakepath\\goods.xlsx",
+    addEventListener(type, listener) { listeners[type] = listener; },
+  };
+  const root = {
+    querySelector: (selector) => selector === "#bidder-goods-excel-input" ? input : null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+  };
+  const controller = {
+    model: { state: { goithauhanghoa: [], hanghoaduthaunhathau: [] } },
+    view: { getActiveElement: () => root, createIconsScoped() {} },
+    async renderDetailedEvaluation() {},
+  };
+  bindBidderGoodsPanel(controller, {
+    pkg: { id: "package-1", phanLo: "Không", phanLoList: [] },
+    bid: { id: "opening-1", giaDuThau: 1 },
+    readOnly: true,
+    roundType: "single",
+  }, root);
+
+  // Browsers may clear Event.target once dispatch finishes, before awaited work resumes.
+  const event = { type: "change", target: input, currentTarget: input };
+  const handled = listeners.change(event);
+  event.target = null;
+  event.currentTarget = null;
+  await handled;
+  assert.equal(input.value, "");
+});
+
 test("detailed evaluation panel labels the bidder-goods tab", () => {
   const panelSource = fs.readFileSync(
     new URL("../../frontend/packages/detail/DetailedEvaluationPanel.js", import.meta.url),

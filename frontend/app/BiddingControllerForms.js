@@ -130,14 +130,16 @@ export function setupConditionalUI() {
   const gtKeHoachSelect = document.getElementById("gt-kehoachid");
   if (gtKeHoachSelect) {
     gtKeHoachSelect.addEventListener("change", async (e) => {
-      this.updateNguonVonFieldState(e.target.value);
+      // Read the value synchronously: Event.target is not reliable after an await.
+      const selectedPlanId = e.target.value;
+      this.updateNguonVonFieldState(selectedPlanId);
       const idInput = document.getElementById("form-goithau-id");
       const isNewPackage = !idInput || !idInput.value;
-      if (isNewPackage && e.target.value) {
+      if (isNewPackage && selectedPlanId) {
         if (typeof this.checkAndInheritCanceledPackage === "function") {
           await trackPackageInheritance(
             this,
-            () => this.checkAndInheritCanceledPackage(e.target.value),
+            () => this.checkAndInheritCanceledPackage(selectedPlanId),
           );
         }
       }

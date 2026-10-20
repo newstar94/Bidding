@@ -966,9 +966,11 @@ export function bindBidderGoodsPanel(controller, detailedState, root) {
   const state = buildBidderGoodsPanelState(controller, detailedState);
   root.querySelector("#btn-bidder-goods-import")?.addEventListener("click", () => root.querySelector("#bidder-goods-excel-input")?.click());
   root.querySelector("#bidder-goods-excel-input")?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
+    // Keep the element: Event.target/currentTarget are not reliable after an await.
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (file) await importBidderGoodsExcel(controller, detailedState, file);
-    event.target.value = "";
+    input.value = "";
   });
   root.querySelector("#btn-bidder-goods-preview-confirm")?.addEventListener("click", () => confirmBidderGoodsImport(controller));
   root.querySelector("#btn-bidder-goods-preview-cancel")?.addEventListener("click", () => {

@@ -79,9 +79,16 @@ async function loadOpening(context, openingId) {
   return { opening, syncVersion: Number(body.syncVersion || 0) };
 }
 
+// Read-only presentation hints the browser serializer never sends back
+// (see frontend/app/outboundSerializer.js LOCAL_ONLY_FIELDS).
+function withoutReadOnlyHints(item) {
+  const { allVersions: _allVersions, deleteOwnerUserId: _deleteOwnerUserId, ...record } = item;
+  return record;
+}
+
 async function saveDecision(context, staleSnapshot, decision, mutationId) {
   const item = {
-    ...staleSnapshot.opening,
+    ...withoutReadOnlyHints(staleSnapshot.opening),
     expectedVersion: staleSnapshot.opening.rowVersion,
     chapThuanGiaDeNghiTrungThauDuoi50: decision,
   };
@@ -98,7 +105,7 @@ async function saveDecision(context, staleSnapshot, decision, mutationId) {
 
 async function saveOpeningChanges(context, snapshot, changes, mutationId) {
   const item = {
-    ...snapshot.opening,
+    ...withoutReadOnlyHints(snapshot.opening),
     ...changes,
     expectedVersion: snapshot.opening.rowVersion,
   };

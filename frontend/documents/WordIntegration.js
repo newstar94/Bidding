@@ -93,13 +93,15 @@ export function setupWordTemplatesEvents() {
   if (templateInput && !templateInput.dataset.wordUploadBound) {
     templateInput.dataset.wordUploadBound = "true";
     templateInput.addEventListener("change", async (e) => {
+      // Keep the element: Event.target is not reliable after an await.
+      const input = e.currentTarget;
       const files = Array.from(e.target.files || []).filter(Boolean);
       if (files.length === 1) {
         await this.handleWordTemplateUpload(files[0]);
       } else if (files.length > 1) {
         await handleWordTemplateBatchUpload.call(this, files);
       }
-      e.target.value = "";
+      input.value = "";
     });
   }
   if (addButton && templateInput && !addButton.dataset.wordUploadBound) {
