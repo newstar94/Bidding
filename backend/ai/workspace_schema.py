@@ -19,6 +19,7 @@ from backend.ai.types import AiRequestContext, ToolResult
 from backend.ai.workspace_search import ENTITY_SPECS, _optional_filter, _scope, _value
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.domain_enums import enum_filter_value, is_user_defined_enum_filter
+from backend.shared.sql_identifiers import sql_alias, sql_identifier
 
 
 _FOREIGN_KEY_PATTERN = re.compile(
@@ -77,6 +78,18 @@ _FORBIDDEN_QUERY_COLUMNS = frozenset({
 })
 
 
+def _validate_spec_identifiers(spec, field_options) -> None:
+    """Identifiers below are interpolated into SQL; values stay bound parameters."""
+    sql_identifier(spec.table)
+    for column in (spec.status_column, spec.parent_column, spec.order_column):
+        if column:
+            sql_identifier(column)
+    for column in spec.searchable or ():
+        sql_identifier(column)
+    for column in field_options.values():
+        sql_identifier(column)
+
+
 def _field_options(spec) -> dict[str, str]:
     definition = _table_definition(spec.table)
     columns = set((definition.get("columns") or {}).keys())
@@ -119,6 +132,7 @@ def query_workspace_records(cursor, context: AiRequestContext, arguments: dict[s
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
         raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "limit phải nằm trong khoảng 1-50.")
     alias = "record"
+    _validate_spec_identifiers(spec, field_options)
     where, params = _scope(spec, context, alias)
     if spec.latest:
         where.append(f"{alias}.is_latest = 1")
@@ -146,7 +160,7 @@ def query_workspace_records(cursor, context: AiRequestContext, arguments: dict[s
         count = int(_value(row, "record_count") or 0)
         records: list[dict[str, Any]] = []
     else:
-        select_columns = ", ".join(f'{alias}.{field_options[output]} AS "{output}"' for output in selected_fields)
+        select_columns = ", ".join(f"{alias}.{field_options[output]} AS {sql_alias(output)}" for output in selected_fields)
         rows = cursor.execute(
             f"SELECT {select_columns} FROM {spec.table} AS {alias} WHERE {where_sql} "
             f"ORDER BY {alias}.{spec.order_column} DESC NULLS LAST LIMIT ?",

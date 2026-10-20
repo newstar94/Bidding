@@ -151,9 +151,12 @@ def test_google_setup_email_contains_link_and_never_a_password():
 
 
 def test_google_security_audits_are_required_before_commit():
-    source = inspect.getsource(google_auth_routes.google_login_api)
+    route_source = inspect.getsource(google_auth_routes.google_login_api)
+    # The transaction runs on the database write lane in _complete_google_login.
+    assert "_complete_google_login" in route_source
+    source = inspect.getsource(google_auth_routes._complete_google_login)
     before_commit = source[:source.index("conn.commit()")]
 
     assert before_commit.count("required=True") >= 3
-    assert "_add_background_audit" not in source
-    assert "bg_tasks.add_task(log_audit" not in source
+    assert "_add_background_audit" not in source + route_source
+    assert "bg_tasks.add_task(log_audit" not in source + route_source

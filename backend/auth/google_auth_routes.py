@@ -1,4 +1,4 @@
-from backend.db.db_helper import DatabaseError, IntegrityError
+from backend.db.db_helper import IntegrityError
 import os
 import json
 import uuid
@@ -128,88 +128,18 @@ def _password_setup_email(display_name, email, setup_link):
     return subject, body
 
 
-async def google_login_api(request):
+def _complete_google_login(request, *, google_id, email, name, picture, ip, rate_key):
+    """Account resolution, session issue and audit for Google login.
 
-    conn = None
-    bg_tasks = None
-    password_setup_delivery_id = None
-    password_setup_queued = False
+    Runs on the database write lane. Returns a rejection ``JSONResponse`` or a
+    dict with the committed login outcome.
+    """
     created_new_account = False
+    password_setup_delivery_id = None
+    conn = database.get_connection()
     try:
-        ip = get_client_ip(request)
-        rate_key = f"google_login:{ip}"
-        google_limit = await _rate_limit_decision(
-            rate_key, consume_attempt=True
-        )
-        if not google_limit.allowed:
-            return rate_limit_response("Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau.", google_limit)
-
-        if not GOOGLE_CLIENT_ID:
-            return JSONResponse(
-                {"error": "Đăng nhập Google chưa được cấu hình trên máy chủ."},
-                status_code=503,
-            )
-
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
-        invalid = validate_or_response(request, data, {
-            "credential": {"type": "string", "required": True, "min_length": 1, "max_length": 20_000},
-        })
-        if invalid:
-            return invalid
-
-        credential = (data.get("credential") or "").strip()
-        if not credential:
-            return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
-
-        try:
-            payload = await run_blocking_io(
-                _verify_google_token,
-                credential,
-                timeout_seconds=12,
-            )
-        except (BlockingIOBusyError, BlockingIOTimeoutError):
-            return JSONResponse(
-                {
-                    "error": "Dịch vụ xác thực Google đang bận. Vui lòng thử lại sau.",
-                    "code": "GOOGLE_AUTH_UPSTREAM_BUSY",
-                },
-                status_code=503,
-            )
-        if not payload:
-            log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
-            return JSONResponse(
-                {"error": "Token Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại."},
-                status_code=401,
-            )
-
-        google_id = str(payload.get("sub") or "").strip()
-        email = normalize_email(payload.get("email"))
-        name = payload.get("name") or email.split("@")[0]
-        picture = payload.get("picture") or ""
-        email_verified = payload.get("email_verified") in (True, "true", "True", "1")
-
-        if not google_id or not email:
-            return JSONResponse({"error": "Không lấy được thông tin từ tài khoản Google."}, status_code=400)
-
-        if not email_verified:
-            return JSONResponse(
-                {"error": "Email Google chưa được xác minh. Vui lòng xác minh email Google trước."},
-                status_code=400,
-            )
-
-        if len(google_id) > 255:
-            return JSONResponse({"error": "Định danh Google không hợp lệ."}, status_code=400)
-
-        try:
-            name, email, picture = validate_profile_fields(name, email, picture)
-        except ProfileValidationError as exc:
-            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
-
-        conn = database.get_connection()
-        conn.execute("BEGIN")
         cursor = conn.cursor()
+        conn.execute("BEGIN")
 
 
         user = None
@@ -409,6 +339,136 @@ async def google_login_api(request):
             required=True,
         )
         conn.commit()
+        needs_username = not user.get("ten_dang_nhap")
+
+
+        suggested_username = ""
+        if needs_username:
+            suggested_username = generate_suggested_username(user.get("ho_ten", ""), email, cursor)
+        return {
+            "user": user,
+            "account_linked": account_linked,
+            "created_new_account": created_new_account,
+            "password_setup_delivery_id": password_setup_delivery_id,
+            "access_payload": access_payload,
+            "session_token": session_token,
+            "needs_username": needs_username,
+            "suggested_username": suggested_username,
+        }
+    except BaseException:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+async def _log_audit_off_event_loop(*args, **kwargs):
+    """Best-effort standalone audit write without blocking the event loop."""
+    try:
+        return await run_database_write(log_audit, *args, **kwargs)
+    except BlockingIOBusyError:
+        return log_audit(*args, **kwargs)
+
+
+async def google_login_api(request):
+
+    bg_tasks = None
+    password_setup_delivery_id = None
+    password_setup_queued = False
+    created_new_account = False
+    try:
+        ip = get_client_ip(request)
+        rate_key = f"google_login:{ip}"
+        google_limit = await _rate_limit_decision(
+            rate_key, consume_attempt=True
+        )
+        if not google_limit.allowed:
+            return rate_limit_response("Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau.", google_limit)
+
+        if not GOOGLE_CLIENT_ID:
+            return JSONResponse(
+                {"error": "Đăng nhập Google chưa được cấu hình trên máy chủ."},
+                status_code=503,
+            )
+
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "credential": {"type": "string", "required": True, "min_length": 1, "max_length": 20_000},
+        })
+        if invalid:
+            return invalid
+
+        credential = (data.get("credential") or "").strip()
+        if not credential:
+            return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
+
+        try:
+            payload = await run_blocking_io(
+                _verify_google_token,
+                credential,
+                timeout_seconds=12,
+            )
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
+            return JSONResponse(
+                {
+                    "error": "Dịch vụ xác thực Google đang bận. Vui lòng thử lại sau.",
+                    "code": "GOOGLE_AUTH_UPSTREAM_BUSY",
+                },
+                status_code=503,
+            )
+        if not payload:
+            await _log_audit_off_event_loop("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
+            return JSONResponse(
+                {"error": "Token Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại."},
+                status_code=401,
+            )
+
+        google_id = str(payload.get("sub") or "").strip()
+        email = normalize_email(payload.get("email"))
+        name = payload.get("name") or email.split("@")[0]
+        picture = payload.get("picture") or ""
+        email_verified = payload.get("email_verified") in (True, "true", "True", "1")
+
+        if not google_id or not email:
+            return JSONResponse({"error": "Không lấy được thông tin từ tài khoản Google."}, status_code=400)
+
+        if not email_verified:
+            return JSONResponse(
+                {"error": "Email Google chưa được xác minh. Vui lòng xác minh email Google trước."},
+                status_code=400,
+            )
+
+        if len(google_id) > 255:
+            return JSONResponse({"error": "Định danh Google không hợp lệ."}, status_code=400)
+
+        try:
+            name, email, picture = validate_profile_fields(name, email, picture)
+        except ProfileValidationError as exc:
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
+
+        login = await run_database_write(
+            _complete_google_login,
+            request,
+            google_id=google_id,
+            email=email,
+            name=name,
+            picture=picture,
+            ip=ip,
+            rate_key=rate_key,
+        )
+        if isinstance(login, JSONResponse):
+            return login
+        user = login["user"]
+        account_linked = login["account_linked"]
+        created_new_account = login["created_new_account"]
+        password_setup_delivery_id = login["password_setup_delivery_id"]
+        access_payload = login["access_payload"]
+        session_token = login["session_token"]
+        needs_username = login["needs_username"]
+        suggested_username = login["suggested_username"]
         disconnect_user_websockets(user["id"])
 
         if password_setup_delivery_id:
@@ -425,12 +485,6 @@ async def google_login_api(request):
                 database,
                 password_setup_delivery_id,
             )
-        needs_username = not user.get("ten_dang_nhap")
-
-
-        suggested_username = ""
-        if needs_username:
-            suggested_username = generate_suggested_username(user.get("ho_ten", ""), email, cursor)
 
         response = JSONResponse({
             "success": True,
@@ -457,9 +511,17 @@ async def google_login_api(request):
         response.delete_cookie("username", path="/")
         return response
 
+    except BlockingIOBusyError:
+        response = JSONResponse(
+            {
+                "error": "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
+                "code": "DATABASE_WRITE_QUEUE_FULL",
+            },
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
     except IntegrityError as e:
-        if conn:
-            conn.rollback()
         conflict_code = identity_conflict_code(e)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
@@ -469,16 +531,8 @@ async def google_login_api(request):
             status_code=409,
         )
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "google_login_api")
         return JSONResponse(
             {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},
             status_code=500,
         )
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except DatabaseError:
-                pass

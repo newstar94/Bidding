@@ -336,6 +336,14 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 # inside the server-owned JSONL worker and are never returned to the browser.
 # Lookup is enabled by default. Uncomment only for an emergency rollback.
 # PROCUREMENT_LOOKUP_ENABLED=false
+# Kiểm tra làm rõ HSMT/kiến nghị lúc 08:30, 14:30 (ADR 0090).
+# PROCUREMENT_MONITOR_ENABLED=true
+# Giới hạn tải lên nguồn Mua Sắm Công khi kiểm tra định kỳ (mọi web worker cộng lại).
+PROCUREMENT_MONITOR_MAX_CONCURRENCY=1
+PROCUREMENT_MONITOR_MIN_INTERVAL_MS=1000
+PROCUREMENT_MONITOR_FETCH_TIMEOUT_SECONDS=120
+# Cùng mã TBMT trong cùng khung giờ chỉ đọc nguồn một lần cho nhiều tổ chức.
+PROCUREMENT_MONITOR_FETCH_CACHE_SECONDS=600
 # Trình duyệt tra cứu thống nhất; không có cấu hình lựa chọn chế độ.
 # Default isolated compatibility profile for the exact official host. It does
 # not solve CAPTCHA, replay tokens/cookies, forge challenges or weaken Chromium
@@ -482,6 +490,10 @@ VNEPS_VIOLATION_FIXTURE_PATH=
 # PROCUREMENT_IMPORT_ENABLED=false
 # PROCUREMENT_PROVIDER=muasamcong
 PROCUREMENT_IMPORT_PREVIEW_TTL_SECONDS=300
+# Giới hạn bộ nhớ cache preview (mỗi web worker). Preview bị loại trả về
+# PROCUREMENT_PREVIEW_EXPIRED giống như hết hạn.
+PROCUREMENT_IMPORT_PREVIEW_MAX_ITEMS=200
+PROCUREMENT_IMPORT_PREVIEW_MAX_PER_USER=5
 # Legacy aliases remain accepted during rollout:
 # VNEPS_PROCUREMENT_IMPORT_ENABLED=false
 # VNEPS_PROCUREMENT_PROVIDER=disabled

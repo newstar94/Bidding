@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from queue import Queue
 import secrets
 import time
+from collections import OrderedDict
 from threading import RLock
 
 from backend.procurement_import.domain import (
@@ -147,12 +148,52 @@ class StoredPreview:
 
 
 class PreviewStore:
-    """Short-lived working cache; apply authority is the durable import session."""
+    """Short-lived working cache; apply authority is the durable import session.
 
-    def __init__(self, ttl_seconds: int = 300):
+    The cache is bounded in memory: at most ``max_items`` previews per process
+    and ``max_per_user`` per (organization, user). When a bound is reached the
+    oldest preview of that same user is evicted first, then the least recently
+    used preview overall. An evicted preview behaves exactly like an expired
+    one (``PROCUREMENT_PREVIEW_EXPIRED``), which the client already handles.
+    """
+
+    _SWEEP_EVERY = 50
+
+    def __init__(self, ttl_seconds: int = 300, *, max_items: int = 200, max_per_user: int = 5):
         self.ttl_seconds = max(1, min(int(ttl_seconds), 1800))
-        self._items: dict[str, StoredPreview] = {}
+        self.max_items = max(1, min(int(max_items), 10_000))
+        self.max_per_user = max(1, min(int(max_per_user), self.max_items))
+        self._items: OrderedDict[str, StoredPreview] = OrderedDict()
         self._lock = RLock()
+        self._operations = 0
+        self.evictions = 0
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._items)
+
+    def _sweep_expired_locked(self, now):
+        for preview_id, item in list(self._items.items()):
+            if item.expires_at <= now:
+                self._items.pop(preview_id, None)
+
+    def _maybe_sweep_locked(self, now):
+        self._operations += 1
+        if self._operations % self._SWEEP_EVERY == 0:
+            self._sweep_expired_locked(now)
+
+    def _evict_for_locked(self, organization_id: str, user_id: str):
+        owned = [
+            preview_id
+            for preview_id, item in self._items.items()
+            if item.organization_id == organization_id and item.user_id == user_id
+        ]
+        while len(owned) >= self.max_per_user:
+            self._items.pop(owned.pop(0), None)
+            self.evictions += 1
+        while len(self._items) >= self.max_items:
+            self._items.popitem(last=False)
+            self.evictions += 1
 
     def put(self, canonical_bundle, *, organization_id, user_id, workspace_lease):
         now = datetime.now(timezone.utc)
@@ -166,15 +207,18 @@ class PreviewStore:
             canonical_bundle=deepcopy(canonical_bundle),
         )
         with self._lock:
-            for preview_id, item in list(self._items.items()):
-                if item.expires_at <= now:
-                    self._items.pop(preview_id, None)
+            self._sweep_expired_locked(now)
+            self._evict_for_locked(stored.organization_id, stored.user_id)
             self._items[stored.preview_id] = stored
         return stored
 
     def get(self, preview_id, *, organization_id, user_id, workspace_lease, now=None):
+        current = now or datetime.now(timezone.utc)
         with self._lock:
+            self._maybe_sweep_locked(current)
             stored = self._items.get(str(preview_id))
+            if stored is not None:
+                self._items.move_to_end(stored.preview_id)
         if stored is None:
             raise LookupError("PROCUREMENT_PREVIEW_EXPIRED")
         if (
@@ -183,7 +227,7 @@ class PreviewStore:
             or stored.workspace_lease != str(workspace_lease)
         ):
             raise PermissionError("PROCUREMENT_PREVIEW_SCOPE_INVALID")
-        if (now or datetime.now(timezone.utc)) >= stored.expires_at:
+        if current >= stored.expires_at:
             with self._lock:
                 self._items.pop(stored.preview_id, None)
             raise LookupError("PROCUREMENT_PREVIEW_EXPIRED")

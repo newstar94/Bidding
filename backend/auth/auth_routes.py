@@ -171,6 +171,58 @@ def _database_lane_unavailable_response(request, *, write: bool):
     return response
 
 
+def _run_in_owned_connection(function, *args, **kwargs):
+    """Run ``function(conn, cursor, ...)`` on a connection owned by this thread.
+
+    Used by async routes so every PostgreSQL round-trip (including pool
+    acquisition) happens on a database lane instead of the event loop. The
+    connection never crosses an ``await``; ``close`` rolls back anything left
+    uncommitted, matching the previous ``finally: conn.close()`` handling.
+    """
+    conn = database.get_connection()
+    try:
+        return function(conn, conn.cursor(), *args, **kwargs)
+    except BaseException:
+        try:
+            conn.rollback()
+        except DatabaseError:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except DatabaseError:
+            pass
+
+
+async def _db_read_phase(function, *args, **kwargs):
+    return await run_database_read(
+        _run_in_owned_connection, function, *args, _wait_for_completion=True, **kwargs
+    )
+
+
+async def _db_write_phase(function, *args, **kwargs):
+    return await run_database_write(_run_in_owned_connection, function, *args, **kwargs)
+
+
+async def _verify_session_off_event_loop(request, **kwargs):
+    return await run_database_read(
+        verify_session, request, timeout_seconds=5.0, **kwargs
+    )
+
+
+async def _log_audit_off_event_loop(*args, **kwargs):
+    """Best-effort standalone audit write without blocking the event loop.
+
+    Falls back to the historical inline write when the write lane is saturated
+    so that no audit event is dropped because of back-pressure.
+    """
+    try:
+        return await run_database_write(log_audit, *args, **kwargs)
+    except BlockingIOBusyError:
+        return log_audit(*args, **kwargs)
+
+
 async def _get_rate_limit_decision_off_event_loop(*args, **kwargs):
     try:
         return await run_database_write(get_rate_limit_decision, *args, **kwargs)
@@ -839,10 +891,159 @@ async def set_active_role_api(request):
         )
 
 
+def _load_profile_account(conn, cursor, user_id):
+    cursor.execute(
+        """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
+                  COALESCE(anh_dai_dien, '') AS anh_dai_dien
+           FROM tai_khoan WHERE id = ?""",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def _commit_profile_update(
+    conn,
+    cursor,
+    request,
+    role_or_err,
+    *,
+    name,
+    email,
+    avatar,
+    initial_user,
+    email_change_otp_hash,
+    replacement_password_hash,
+    request_ip,
+):
+    """Transactional phase of update_profile_api.
+
+    Returns ``(response, None)`` for an early rejection, or
+    ``(None, (updated_profile, locked_user, email_change_requested))``.
+    """
+    conn.execute("BEGIN")
+    authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+    if not authority_valid:
+        conn.rollback()
+        return JSONResponse({"error": current_actor}, status_code=403), None
+    cursor.execute(
+        """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
+                  COALESCE(anh_dai_dien, '') AS anh_dai_dien
+           FROM tai_khoan WHERE id = ?""",
+        (role_or_err.user_id,),
+    )
+    locked_user = cursor.fetchone()
+    if not locked_user:
+        conn.rollback()
+        return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404), None
+    locked_user = dict(locked_user)
+    email_change_requested = email != str(locked_user.get("email_norm") or "")
+    if email_change_requested and (
+        not email_change_otp_hash
+        or locked_user.get("mat_khau") != initial_user.get("mat_khau")
+    ):
+        conn.rollback()
+        return JSONResponse(
+            {
+                "error": "Thông tin xác thực vừa thay đổi. Vui lòng nhập lại mật khẩu.",
+                "code": "EMAIL_CHANGE_REAUTH_REQUIRED",
+            },
+            status_code=409,
+        ), None
+
+    now = int(time.time())
+    if email_change_requested:
+        cursor.execute("DELETE FROM pending_email_changes WHERE expires_at <= ?", (now,))
+        cursor.execute(
+            "SELECT id FROM tai_khoan WHERE email_norm = ? AND id != ?",
+            (email, role_or_err.user_id),
+        )
+        active_conflict = cursor.fetchone()
+        cursor.execute(
+            """SELECT user_id FROM pending_email_changes
+               WHERE pending_email_norm = ? AND user_id != ? AND expires_at > ?""",
+            (email, role_or_err.user_id, now),
+        )
+        pending_conflict = cursor.fetchone()
+        if active_conflict or pending_conflict:
+            conn.rollback()
+            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409), None
+        expires_at = now + EMAIL_CHANGE_OTP_TTL_SECONDS
+        cursor.execute(
+            """INSERT INTO pending_email_changes (
+                   user_id, current_email_norm, pending_email, pending_email_norm,
+                   otp_hash, requested_at, expires_at, requested_ip
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                   current_email_norm = excluded.current_email_norm,
+                   pending_email = excluded.pending_email,
+                   pending_email_norm = excluded.pending_email_norm,
+                   otp_hash = excluded.otp_hash,
+                   requested_at = excluded.requested_at,
+                   expires_at = excluded.expires_at,
+                   verified_at = NULL,
+                   requested_ip = excluded.requested_ip""",
+            (
+                role_or_err.user_id,
+                locked_user["email_norm"],
+                email,
+                email,
+                email_change_otp_hash,
+                now,
+                expires_at,
+                request_ip,
+            ),
+        )
+        if replacement_password_hash:
+            cursor.execute(
+                "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
+                (replacement_password_hash, role_or_err.user_id),
+            )
+
+    if avatar:
+        cursor.execute(
+            "UPDATE tai_khoan SET ho_ten = ?, anh_dai_dien = ? WHERE id = ?",
+            (name, avatar, role_or_err.user_id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE tai_khoan SET ho_ten = ? WHERE id = ?",
+            (name, role_or_err.user_id),
+        )
+
+    cursor.execute(
+        """
+        SELECT ten_dang_nhap AS username, ho_ten AS name, email,
+               COALESCE(anh_dai_dien, '') AS avatar
+        FROM tai_khoan
+        WHERE id = ?
+        """,
+        (role_or_err.user_id,),
+    )
+    updated_profile = cursor.fetchone()
+    if not updated_profile:
+        conn.rollback()
+        return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404), None
+
+    if email_change_requested:
+        log_audit(
+            "auth.email_change_requested",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=role_or_err.user_id,
+            request=request,
+            metadata={"expires_in": EMAIL_CHANGE_OTP_TTL_SECONDS},
+            cursor=cursor,
+            required=True,
+        )
+    conn.commit()
+    return None, (dict(updated_profile), locked_user, email_change_requested)
+
+
 async def update_profile_api(request):
-    conn = None
+    write_phase = False
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _verify_session_off_event_loop(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -871,19 +1072,10 @@ async def update_profile_api(request):
         except ProfileValidationError as exc:
             return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
-                      COALESCE(anh_dai_dien, '') AS anh_dai_dien
-               FROM tai_khoan WHERE id = ?""",
-            (role_or_err.user_id,),
-        )
-        initial_user = cursor.fetchone()
+        initial_user = await _db_read_phase(_load_profile_account, role_or_err.user_id)
         if not initial_user:
             return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404)
 
-        initial_user = dict(initial_user)
         email_change_requested = email != str(initial_user.get("email_norm") or "")
         password = data.get("password")
         email_change_code = None
@@ -916,7 +1108,7 @@ async def update_profile_api(request):
             )
             request_limits = (ip_limit, user_limit, session_limit)
             if any(not limit.allowed for limit in request_limits):
-                log_audit(
+                await _log_audit_off_event_loop(
                     "auth.email_change_rate_limited",
                     actor_user_id=role_or_err.user_id,
                     target_type="tai_khoan",
@@ -929,7 +1121,7 @@ async def update_profile_api(request):
                     next(limit for limit in request_limits if not limit.allowed),
                 )
             if not validate_password_input(password):
-                log_audit(
+                await _log_audit_off_event_loop(
                     "auth.email_change_reauth_failed",
                     actor_user_id=role_or_err.user_id,
                     target_type="tai_khoan",
@@ -961,7 +1153,7 @@ async def update_profile_api(request):
                 return _password_cpu_unavailable_response(request)
 
             if not password_verified:
-                log_audit(
+                await _log_audit_off_event_loop(
                     "auth.email_change_reauth_failed",
                     actor_user_id=role_or_err.user_id,
                     target_type="tai_khoan",
@@ -977,126 +1169,26 @@ async def update_profile_api(request):
                     status_code=403,
                 )
 
-        conn.execute("BEGIN")
-        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
-        if not authority_valid:
-            conn.rollback()
-            return JSONResponse({"error": current_actor}, status_code=403)
-        cursor.execute(
-            """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
-                      COALESCE(anh_dai_dien, '') AS anh_dai_dien
-               FROM tai_khoan WHERE id = ?""",
-            (role_or_err.user_id,),
+        write_phase = True
+        rejection, committed = await _db_write_phase(
+            _commit_profile_update,
+            request,
+            role_or_err,
+            name=name,
+            email=email,
+            avatar=avatar,
+            initial_user=initial_user,
+            email_change_otp_hash=email_change_otp_hash,
+            replacement_password_hash=replacement_password_hash,
+            request_ip=request_ip,
         )
-        locked_user = cursor.fetchone()
-        if not locked_user:
-            conn.rollback()
-            return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404)
-        locked_user = dict(locked_user)
-        email_change_requested = email != str(locked_user.get("email_norm") or "")
-        if email_change_requested and (
-            not email_change_otp_hash
-            or locked_user.get("mat_khau") != initial_user.get("mat_khau")
-        ):
-            conn.rollback()
-            return JSONResponse(
-                {
-                    "error": "Thông tin xác thực vừa thay đổi. Vui lòng nhập lại mật khẩu.",
-                    "code": "EMAIL_CHANGE_REAUTH_REQUIRED",
-                },
-                status_code=409,
-            )
-
-        now = int(time.time())
-        if email_change_requested:
-            cursor.execute("DELETE FROM pending_email_changes WHERE expires_at <= ?", (now,))
-            cursor.execute(
-                "SELECT id FROM tai_khoan WHERE email_norm = ? AND id != ?",
-                (email, role_or_err.user_id),
-            )
-            active_conflict = cursor.fetchone()
-            cursor.execute(
-                """SELECT user_id FROM pending_email_changes
-                   WHERE pending_email_norm = ? AND user_id != ? AND expires_at > ?""",
-                (email, role_or_err.user_id, now),
-            )
-            pending_conflict = cursor.fetchone()
-            if active_conflict or pending_conflict:
-                conn.rollback()
-                return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
-            expires_at = now + EMAIL_CHANGE_OTP_TTL_SECONDS
-            cursor.execute(
-                """INSERT INTO pending_email_changes (
-                       user_id, current_email_norm, pending_email, pending_email_norm,
-                       otp_hash, requested_at, expires_at, requested_ip
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                       current_email_norm = excluded.current_email_norm,
-                       pending_email = excluded.pending_email,
-                       pending_email_norm = excluded.pending_email_norm,
-                       otp_hash = excluded.otp_hash,
-                       requested_at = excluded.requested_at,
-                       expires_at = excluded.expires_at,
-                       verified_at = NULL,
-                       requested_ip = excluded.requested_ip""",
-                (
-                    role_or_err.user_id,
-                    locked_user["email_norm"],
-                    email,
-                    email,
-                    email_change_otp_hash,
-                    now,
-                    expires_at,
-                    request_ip,
-                ),
-            )
-            if replacement_password_hash:
-                cursor.execute(
-                    "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
-                    (replacement_password_hash, role_or_err.user_id),
-                )
-
-        if avatar:
-            cursor.execute(
-                "UPDATE tai_khoan SET ho_ten = ?, anh_dai_dien = ? WHERE id = ?",
-                (name, avatar, role_or_err.user_id),
-            )
-        else:
-            cursor.execute(
-                "UPDATE tai_khoan SET ho_ten = ? WHERE id = ?",
-                (name, role_or_err.user_id),
-            )
-
-        cursor.execute(
-            """
-            SELECT ten_dang_nhap AS username, ho_ten AS name, email,
-                   COALESCE(anh_dai_dien, '') AS avatar
-            FROM tai_khoan
-            WHERE id = ?
-            """,
-            (role_or_err.user_id,),
-        )
-        updated_profile = cursor.fetchone()
-        if not updated_profile:
-            conn.rollback()
-            return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404)
-
-        if email_change_requested:
-            log_audit(
-                "auth.email_change_requested",
-                actor_user_id=role_or_err.user_id,
-                target_type="tai_khoan",
-                target_id=role_or_err.user_id,
-                request=request,
-                metadata={"expires_in": EMAIL_CHANGE_OTP_TTL_SECONDS},
-                cursor=cursor,
-                required=True,
-            )
-        conn.commit()
+        if rejection is not None:
+            return rejection
+        updated_profile, locked_user, email_change_requested = committed
         payload = {
             "success": True,
             "message": "Cập nhật thông tin tài khoản thành công!",
-            "profile": dict(updated_profile),
+            "profile": updated_profile,
         }
         background = None
         if email_change_requested:
@@ -1113,28 +1205,192 @@ async def update_profile_api(request):
                 code=email_change_code,
             )
         return JSONResponse(payload, background=background)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=write_phase)
     except IntegrityError as e:
-        if conn:
-            conn.rollback()
         conflict_code = identity_conflict_code(e)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
         log_error(e, "update_profile_api_integrity")
         return JSONResponse({"error": "Không thể cập nhật do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "update_profile_api")
         return JSONResponse({"error": "Đã xảy ra lỗi cập nhật hồ sơ."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except DatabaseError: pass
+
+def _load_pending_email_change(conn, cursor, user_id):
+    cursor.execute(
+        """SELECT change.user_id, change.current_email_norm,
+                  change.pending_email, change.pending_email_norm,
+                  change.otp_hash, change.requested_at, change.expires_at,
+                  account.email AS current_email,
+                  account.email_norm AS account_email_norm
+           FROM pending_email_changes AS change
+           JOIN tai_khoan AS account ON account.id = change.user_id
+           WHERE change.user_id = ?""",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def _discard_expired_email_change(conn, cursor, request, user_id, otp_hash):
+    """Delete an expired pending change; returns a rejection response or None."""
+    conn.execute("BEGIN")
+    authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+    if not authority_valid:
+        conn.rollback()
+        return JSONResponse({"error": current_actor}, status_code=403)
+    cursor.execute(
+        "DELETE FROM pending_email_changes WHERE user_id = ? AND otp_hash = ?",
+        (user_id, otp_hash),
+    )
+    conn.commit()
+    return None
+
+
+def _commit_email_change(conn, cursor, request, role_or_err, initial_change):
+    """Transactional phase of verify_email_change_api.
+
+    Returns ``(response, None)`` for an early outcome, or
+    ``(None, locked_change)`` once the new email is committed.
+    """
+    conn.execute("BEGIN")
+    authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+    if not authority_valid:
+        conn.rollback()
+        return JSONResponse({"error": current_actor}, status_code=403), None
+    cursor.execute(
+        """SELECT change.user_id, change.current_email_norm,
+                  change.pending_email, change.pending_email_norm,
+                  change.otp_hash, change.expires_at,
+                  account.email AS current_email,
+                  account.email_norm AS account_email_norm
+           FROM pending_email_changes AS change
+           JOIN tai_khoan AS account ON account.id = change.user_id
+           WHERE change.user_id = ?""",
+        (role_or_err.user_id,),
+    )
+    locked_change = cursor.fetchone()
+    if not locked_change:
+        conn.rollback()
+        return JSONResponse(
+            {"error": "Yêu cầu thay đổi email không còn hiệu lực.", "code": "EMAIL_CHANGE_NOT_PENDING"},
+            status_code=409,
+        ), None
+    locked_change = dict(locked_change)
+    if locked_change["otp_hash"] != initial_change["otp_hash"]:
+        conn.rollback()
+        return JSONResponse(
+            {"error": "Yêu cầu thay đổi email đã được thay thế.", "code": "EMAIL_CHANGE_REQUEST_REPLACED"},
+            status_code=409,
+        ), None
+    now = int(time.time())
+    if now >= int(locked_change["expires_at"]):
+        cursor.execute(
+            "DELETE FROM pending_email_changes WHERE user_id = ?",
+            (role_or_err.user_id,),
+        )
+        conn.commit()
+        return JSONResponse(
+            {"error": "Mã OTP đã hết hạn.", "code": "EMAIL_CHANGE_OTP_EXPIRED"},
+            status_code=400,
+        ), None
+    if locked_change["account_email_norm"] != locked_change["current_email_norm"]:
+        cursor.execute(
+            "DELETE FROM pending_email_changes WHERE user_id = ?",
+            (role_or_err.user_id,),
+        )
+        conn.commit()
+        return JSONResponse(
+            {"error": "Email tài khoản đã thay đổi. Hãy tạo yêu cầu mới.", "code": "EMAIL_CHANGE_REQUEST_STALE"},
+            status_code=409,
+        ), None
+    cursor.execute(
+        "SELECT id FROM tai_khoan WHERE email_norm = ? AND id != ?",
+        (locked_change["pending_email_norm"], role_or_err.user_id),
+    )
+    if cursor.fetchone():
+        cursor.execute(
+            "DELETE FROM pending_email_changes WHERE user_id = ?",
+            (role_or_err.user_id,),
+        )
+        conn.commit()
+        return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409), None
+    affected_organization_ids = [
+        str(row[0])
+        for row in cursor.execute(
+            """SELECT organization_id
+               FROM thanh_vien_to_chuc
+               WHERE user_id = ?""",
+            (role_or_err.user_id,),
+        ).fetchall()
+    ]
+
+    cursor.execute(
+        """UPDATE pending_email_changes
+           SET verified_at = ?
+           WHERE user_id = ? AND otp_hash = ? AND verified_at IS NULL""",
+        (now, role_or_err.user_id, locked_change["otp_hash"]),
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        return JSONResponse(
+            {"error": "Yêu cầu thay đổi email không còn hiệu lực.", "code": "EMAIL_CHANGE_NOT_PENDING"},
+            status_code=409,
+        ), None
+    cursor.execute(
+        """UPDATE tai_khoan
+           SET email = ?, email_norm = ?, da_xac_minh = 1
+           WHERE id = ? AND email_norm = ?""",
+        (
+            locked_change["pending_email"],
+            locked_change["pending_email_norm"],
+            role_or_err.user_id,
+            locked_change["current_email_norm"],
+        ),
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        return JSONResponse(
+            {"error": "Không thể hoàn tất thay đổi email.", "code": "EMAIL_CHANGE_REQUEST_STALE"},
+            status_code=409,
+        ), None
+    cursor.execute(
+        "DELETE FROM pending_email_changes WHERE user_id = ?",
+        (role_or_err.user_id,),
+    )
+    revoke_user_sessions(cursor, role_or_err.user_id, now=now)
+    invalidate_password_reset_tokens(cursor, role_or_err.user_id, now=now)
+    log_audit(
+        "auth.email_changed",
+        actor_user_id=role_or_err.user_id,
+        target_type="tai_khoan",
+        target_id=role_or_err.user_id,
+        request=request,
+        metadata={"sessions_revoked": True},
+        cursor=cursor,
+        required=True,
+    )
+    enqueue_websocket_event(
+        cursor,
+        "revoke_user",
+        user_id=role_or_err.user_id,
+    )
+    for organization_id in affected_organization_ids:
+        enqueue_websocket_event(
+            cursor,
+            "broadcast",
+            organization_id=organization_id,
+            payload={"event": "organization_member_changed"},
+        )
+    conn.commit()
+    return None, locked_change
+
 
 async def verify_email_change_api(request):
-    conn = None
+    write_phase = False
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _verify_session_off_event_loop(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -1172,7 +1428,7 @@ async def verify_email_change_api(request):
         )
         verify_limits = (ip_limit, user_limit, session_limit)
         if any(not limit.allowed for limit in verify_limits):
-            log_audit(
+            await _log_audit_off_event_loop(
                 "auth.email_change_rate_limited",
                 actor_user_id=role_or_err.user_id,
                 target_type="tai_khoan",
@@ -1185,7 +1441,7 @@ async def verify_email_change_api(request):
                 next(limit for limit in verify_limits if not limit.allowed),
             )
         if not code.isdigit():
-            log_audit(
+            await _log_audit_off_event_loop(
                 "auth.email_change_verification_failed",
                 actor_user_id=role_or_err.user_id,
                 target_type="tai_khoan",
@@ -1198,39 +1454,27 @@ async def verify_email_change_api(request):
                 status_code=400,
             )
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT change.user_id, change.current_email_norm,
-                      change.pending_email, change.pending_email_norm,
-                      change.otp_hash, change.requested_at, change.expires_at,
-                      account.email AS current_email,
-                      account.email_norm AS account_email_norm
-               FROM pending_email_changes AS change
-               JOIN tai_khoan AS account ON account.id = change.user_id
-               WHERE change.user_id = ?""",
-            (role_or_err.user_id,),
+        initial_change = await _db_read_phase(
+            _load_pending_email_change, role_or_err.user_id
         )
-        initial_change = cursor.fetchone()
         if not initial_change:
             return JSONResponse(
                 {"error": "Không có yêu cầu thay đổi email đang chờ.", "code": "EMAIL_CHANGE_NOT_PENDING"},
                 status_code=400,
             )
-        initial_change = dict(initial_change)
         now = int(time.time())
         if now >= int(initial_change["expires_at"]):
-            conn.execute("BEGIN")
-            authority_valid, current_actor = verify_session_in_transaction(cursor, request)
-            if not authority_valid:
-                conn.rollback()
-                return JSONResponse({"error": current_actor}, status_code=403)
-            cursor.execute(
-                "DELETE FROM pending_email_changes WHERE user_id = ? AND otp_hash = ?",
-                (role_or_err.user_id, initial_change["otp_hash"]),
+            write_phase = True
+            rejection = await _db_write_phase(
+                _discard_expired_email_change,
+                request,
+                role_or_err.user_id,
+                initial_change["otp_hash"],
             )
-            conn.commit()
-            log_audit(
+            write_phase = False
+            if rejection is not None:
+                return rejection
+            await _log_audit_off_event_loop(
                 "auth.email_change_verification_failed",
                 actor_user_id=role_or_err.user_id,
                 target_type="tai_khoan",
@@ -1253,7 +1497,7 @@ async def verify_email_change_api(request):
             return _password_cpu_unavailable_response(request)
 
         if not otp_verified:
-            log_audit(
+            await _log_audit_off_event_loop(
                 "auth.email_change_verification_failed",
                 actor_user_id=role_or_err.user_id,
                 target_type="tai_khoan",
@@ -1266,136 +1510,15 @@ async def verify_email_change_api(request):
                 status_code=400,
             )
 
-        conn.execute("BEGIN")
-        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
-        if not authority_valid:
-            conn.rollback()
-            return JSONResponse({"error": current_actor}, status_code=403)
-        cursor.execute(
-            """SELECT change.user_id, change.current_email_norm,
-                      change.pending_email, change.pending_email_norm,
-                      change.otp_hash, change.expires_at,
-                      account.email AS current_email,
-                      account.email_norm AS account_email_norm
-               FROM pending_email_changes AS change
-               JOIN tai_khoan AS account ON account.id = change.user_id
-               WHERE change.user_id = ?""",
-            (role_or_err.user_id,),
+        write_phase = True
+        rejection, locked_change = await _db_write_phase(
+            _commit_email_change,
+            request,
+            role_or_err,
+            initial_change,
         )
-        locked_change = cursor.fetchone()
-        if not locked_change:
-            conn.rollback()
-            return JSONResponse(
-                {"error": "Yêu cầu thay đổi email không còn hiệu lực.", "code": "EMAIL_CHANGE_NOT_PENDING"},
-                status_code=409,
-            )
-        locked_change = dict(locked_change)
-        if locked_change["otp_hash"] != initial_change["otp_hash"]:
-            conn.rollback()
-            return JSONResponse(
-                {"error": "Yêu cầu thay đổi email đã được thay thế.", "code": "EMAIL_CHANGE_REQUEST_REPLACED"},
-                status_code=409,
-            )
-        now = int(time.time())
-        if now >= int(locked_change["expires_at"]):
-            cursor.execute(
-                "DELETE FROM pending_email_changes WHERE user_id = ?",
-                (role_or_err.user_id,),
-            )
-            conn.commit()
-            return JSONResponse(
-                {"error": "Mã OTP đã hết hạn.", "code": "EMAIL_CHANGE_OTP_EXPIRED"},
-                status_code=400,
-            )
-        if locked_change["account_email_norm"] != locked_change["current_email_norm"]:
-            cursor.execute(
-                "DELETE FROM pending_email_changes WHERE user_id = ?",
-                (role_or_err.user_id,),
-            )
-            conn.commit()
-            return JSONResponse(
-                {"error": "Email tài khoản đã thay đổi. Hãy tạo yêu cầu mới.", "code": "EMAIL_CHANGE_REQUEST_STALE"},
-                status_code=409,
-            )
-        cursor.execute(
-            "SELECT id FROM tai_khoan WHERE email_norm = ? AND id != ?",
-            (locked_change["pending_email_norm"], role_or_err.user_id),
-        )
-        if cursor.fetchone():
-            cursor.execute(
-                "DELETE FROM pending_email_changes WHERE user_id = ?",
-                (role_or_err.user_id,),
-            )
-            conn.commit()
-            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
-        affected_organization_ids = [
-            str(row[0])
-            for row in cursor.execute(
-                """SELECT organization_id
-                   FROM thanh_vien_to_chuc
-                   WHERE user_id = ?""",
-                (role_or_err.user_id,),
-            ).fetchall()
-        ]
-
-        cursor.execute(
-            """UPDATE pending_email_changes
-               SET verified_at = ?
-               WHERE user_id = ? AND otp_hash = ? AND verified_at IS NULL""",
-            (now, role_or_err.user_id, locked_change["otp_hash"]),
-        )
-        if cursor.rowcount != 1:
-            conn.rollback()
-            return JSONResponse(
-                {"error": "Yêu cầu thay đổi email không còn hiệu lực.", "code": "EMAIL_CHANGE_NOT_PENDING"},
-                status_code=409,
-            )
-        cursor.execute(
-            """UPDATE tai_khoan
-               SET email = ?, email_norm = ?, da_xac_minh = 1
-               WHERE id = ? AND email_norm = ?""",
-            (
-                locked_change["pending_email"],
-                locked_change["pending_email_norm"],
-                role_or_err.user_id,
-                locked_change["current_email_norm"],
-            ),
-        )
-        if cursor.rowcount != 1:
-            conn.rollback()
-            return JSONResponse(
-                {"error": "Không thể hoàn tất thay đổi email.", "code": "EMAIL_CHANGE_REQUEST_STALE"},
-                status_code=409,
-            )
-        cursor.execute(
-            "DELETE FROM pending_email_changes WHERE user_id = ?",
-            (role_or_err.user_id,),
-        )
-        revoke_user_sessions(cursor, role_or_err.user_id, now=now)
-        invalidate_password_reset_tokens(cursor, role_or_err.user_id, now=now)
-        log_audit(
-            "auth.email_changed",
-            actor_user_id=role_or_err.user_id,
-            target_type="tai_khoan",
-            target_id=role_or_err.user_id,
-            request=request,
-            metadata={"sessions_revoked": True},
-            cursor=cursor,
-            required=True,
-        )
-        enqueue_websocket_event(
-            cursor,
-            "revoke_user",
-            user_id=role_or_err.user_id,
-        )
-        for organization_id in affected_organization_ids:
-            enqueue_websocket_event(
-                cursor,
-                "broadcast",
-                organization_id=organization_id,
-                payload={"event": "organization_member_changed"},
-            )
-        conn.commit()
+        if rejection is not None:
+            return rejection
         response = JSONResponse(
             {
                 "success": True,
@@ -1409,29 +1532,83 @@ async def verify_email_change_api(request):
         )
         response.delete_cookie("session_token", path="/")
         return response
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=write_phase)
     except IntegrityError as exc:
-        if conn:
-            conn.rollback()
         conflict_code = identity_conflict_code(exc)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
         log_error(exc, "verify_email_change_api_integrity")
         return JSONResponse({"error": "Không thể thay đổi email do xung đột dữ liệu."}, status_code=409)
     except Exception as exc:
-        if conn:
-            conn.rollback()
         log_error(exc, "verify_email_change_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi xác minh email mới."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except DatabaseError: pass
+
+
+def _load_password_account(conn, cursor, user_id):
+    cursor.execute(
+        "SELECT mat_khau, id, email, ho_ten FROM tai_khoan WHERE id = ?",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def _commit_password_change(
+    conn,
+    cursor,
+    request,
+    role_or_err,
+    user,
+    *,
+    new_password_hash,
+    new_token,
+    token_expiry,
+    ip_rate_key,
+    user_rate_key,
+):
+    """Transactional phase of change_password_api; returns a rejection or None."""
+    conn.execute("BEGIN")
+    authority_valid, current_actor = verify_session_in_transaction(cursor, request)
+    if not authority_valid:
+        conn.rollback()
+        return JSONResponse({"error": current_actor}, status_code=403)
+    cursor.execute(
+        "UPDATE tai_khoan SET mat_khau = ? WHERE id = ? AND mat_khau = ?",
+        (new_password_hash, user['id'], user['mat_khau'])
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        return JSONResponse({"error": "Mật khẩu tài khoản đã thay đổi, vui lòng thử lại."}, status_code=409)
+    revoke_user_sessions(cursor, user['id'])
+    invalidate_password_reset_tokens(cursor, user['id'])
+    create_session(
+        cursor,
+        user_id=user['id'],
+        token=new_token,
+        absolute_expires_at=token_expiry,
+        idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+        remember=False,
+        device_info=None,
+    )
+    log_audit(
+        "auth.password_changed",
+        actor_user_id=role_or_err.user_id,
+        target_type="tai_khoan",
+        target_id=user['id'],
+        request=request,
+        cursor=cursor,
+        required=True,
+    )
+    clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
+    conn.commit()
+    return None
 
 
 async def change_password_api(request):
-    conn = None
+    write_phase = False
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _verify_session_off_event_loop(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -1468,18 +1645,11 @@ async def change_password_api(request):
         if not valid_password:
             return JSONResponse({"error": password_error, "code": "PASSWORD_POLICY_FAILED"}, status_code=400)
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT mat_khau, id, email, ho_ten FROM tai_khoan WHERE id = ?",
-            (role_or_err.user_id,),
-        )
-        row = cursor.fetchone()
+        user = await _db_read_phase(_load_password_account, role_or_err.user_id)
 
-        if not row:
+        if not user:
             return JSONResponse({"error": "Người dùng không tồn tại!"}, status_code=400)
 
-        user = dict(row)
         try:
             old_password_verified, new_password_hash = await run_cpu_bound(
                 _verify_and_hash_replacement,
@@ -1496,40 +1666,20 @@ async def change_password_api(request):
 
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
-        conn.execute("BEGIN")
-        authority_valid, current_actor = verify_session_in_transaction(cursor, request)
-        if not authority_valid:
-            conn.rollback()
-            return JSONResponse({"error": current_actor}, status_code=403)
-        cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ? AND mat_khau = ?",
-            (new_password_hash, user['id'], user['mat_khau'])
+        write_phase = True
+        rejection = await _db_write_phase(
+            _commit_password_change,
+            request,
+            role_or_err,
+            user,
+            new_password_hash=new_password_hash,
+            new_token=new_token,
+            token_expiry=token_expiry,
+            ip_rate_key=ip_rate_key,
+            user_rate_key=user_rate_key,
         )
-        if cursor.rowcount != 1:
-            conn.rollback()
-            return JSONResponse({"error": "Mật khẩu tài khoản đã thay đổi, vui lòng thử lại."}, status_code=409)
-        revoke_user_sessions(cursor, user['id'])
-        invalidate_password_reset_tokens(cursor, user['id'])
-        create_session(
-            cursor,
-            user_id=user['id'],
-            token=new_token,
-            absolute_expires_at=token_expiry,
-            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
-            remember=False,
-            device_info=None,
-        )
-        log_audit(
-            "auth.password_changed",
-            actor_user_id=role_or_err.user_id,
-            target_type="tai_khoan",
-            target_id=user['id'],
-            request=request,
-            cursor=cursor,
-            required=True,
-        )
-        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
-        conn.commit()
+        if rejection is not None:
+            return rejection
         try:
             disconnect_user_websockets(user['id'])
         except Exception as e:  # noqa: BLE001 - committed password rotation survives optional disconnect failure
@@ -1548,41 +1698,39 @@ async def change_password_api(request):
         )
         response.set_cookie("session_token", new_token, httponly=True, secure=session_cookie_secure(request), samesite="lax", path="/")
         return response
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=write_phase)
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "change_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đổi mật khẩu."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except DatabaseError: pass
+
+def _revoke_logout_session(conn, cursor, request, token):
+    user_id = revoke_session(cursor, token)
+    log_audit(
+        "auth.logout",
+        actor_user_id=user_id,
+        target_type="session",
+        request=request,
+        cursor=cursor,
+        required=True,
+    )
+    conn.commit()
+    return user_id
+
 
 async def logout_api(request):
-    conn = None
     user_id = None
     try:
         token = request.cookies.get('session_token')
         if token:
-            conn = database.get_connection()
-            cursor = conn.cursor()
-            user_id = revoke_session(cursor, token)
-            log_audit(
-                "auth.logout",
-                actor_user_id=user_id,
-                target_type="session",
-                request=request,
-                cursor=cursor,
-                required=True,
-            )
-            conn.commit()
+            user_id = await _db_write_phase(_revoke_logout_session, request, token)
             if user_id:
                 try:
                     disconnect_user_websockets(user_id)
                 except Exception as e:  # noqa: BLE001 - committed logout survives optional disconnect failure
                     log_error(e, "logout_api_disconnect")
         else:
-            log_audit(
+            await _log_audit_off_event_loop(
                 "auth.logout",
                 actor_user_id=None,
                 target_type="session",
@@ -1593,23 +1741,69 @@ async def logout_api(request):
         response.delete_cookie("username", path="/")
         return response
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "logout_api")
         return JSONResponse({
             "error": "Chưa thể hoàn tất đăng xuất. Vui lòng thử lại.",
             "code": "LOGOUT_PERSISTENCE_FAILED",
         }, status_code=503)
+
+
+def _load_privileged_reauth_account(request, user_id):
+    """Return ``(rejection, account_row, is_super_admin)`` for privileged re-auth."""
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, vai_tro, mat_khau FROM tai_khoan WHERE id = ?",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        row = dict(row) if row else None
     finally:
-        if conn:
-            try: conn.close()
-            except DatabaseError: pass
+        conn.close()
+    if not row:
+        return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403), None, False
+    is_super_admin = "super_admin" in get_effective_roles(row["vai_tro"])
+    if is_super_admin:
+        session_user = _load_user_by_session_token(
+            request.cookies.get("session_token")
+        ) or {}
+        controls_valid, controls_error = verify_super_admin_controls(
+            request,
+            session_user,
+            require_reauth=False,
+        )
+        if not controls_valid:
+            return JSONResponse({"error": controls_error}, status_code=403), None, is_super_admin
+    return None, row, is_super_admin
+
+
+def _commit_privileged_reauth(
+    conn, cursor, request, role_or_err, *, is_super_admin, ip_rate_key, user_rate_key
+):
+    """Persist a successful re-authentication; returns a rejection or None."""
+    reauthenticated_at = int(time.time())
+    if not set_session_reauthentication(
+        cursor, request.cookies.get('session_token'), reauthenticated_at
+    ):
+        return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
+    log_audit(
+        "admin.privileged_reauth_succeeded" if is_super_admin else "security.password_reauth_succeeded",
+        actor_user_id=role_or_err.user_id,
+        target_type="session",
+        request=request,
+        cursor=cursor,
+        required=True,
+    )
+    clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
+    conn.commit()
+    return None
 
 
 async def privileged_reauth_api(request):
-    conn = None
+    write_phase = False
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _verify_session_off_event_loop(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         ip = get_client_ip(request)
@@ -1635,27 +1829,14 @@ async def privileged_reauth_api(request):
         if invalid:
             return invalid
         password = data.get("password")
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, vai_tro, mat_khau FROM tai_khoan WHERE id = ?",
-            (role_or_err.user_id,),
+        rejection, row, is_super_admin = await run_database_read(
+            _load_privileged_reauth_account,
+            request,
+            role_or_err.user_id,
+            timeout_seconds=5.0,
         )
-        row = cursor.fetchone()
-        if not row:
-            return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
-        is_super_admin = "super_admin" in get_effective_roles(row["vai_tro"])
-        if is_super_admin:
-            session_user = _load_user_by_session_token(
-                request.cookies.get("session_token")
-            ) or {}
-            controls_valid, controls_error = verify_super_admin_controls(
-                request,
-                session_user,
-                require_reauth=False,
-            )
-            if not controls_valid:
-                return JSONResponse({"error": controls_error}, status_code=403)
+        if rejection is not None:
+            return rejection
         password_verified = False
         if password:
             try:
@@ -1668,43 +1849,216 @@ async def privileged_reauth_api(request):
             except (BlockingIOBusyError, BlockingIOTimeoutError):
                 return _password_cpu_unavailable_response(request)
         if not password_verified:
-            log_audit(
+            await _log_audit_off_event_loop(
                 "admin.privileged_reauth_failed" if is_super_admin else "security.password_reauth_failed",
                 actor_user_id=role_or_err.user_id,
                 target_type="session",
                 request=request,
             )
             return JSONResponse({"error": "Mật khẩu không chính xác."}, status_code=400)
-        reauthenticated_at = int(time.time())
-        if not set_session_reauthentication(
-            cursor, request.cookies.get('session_token'), reauthenticated_at
-        ):
-            return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
-        log_audit(
-            "admin.privileged_reauth_succeeded" if is_super_admin else "security.password_reauth_succeeded",
-            actor_user_id=role_or_err.user_id,
-            target_type="session",
-            request=request,
-            cursor=cursor,
-            required=True,
+        write_phase = True
+        rejection = await _db_write_phase(
+            _commit_privileged_reauth,
+            request,
+            role_or_err,
+            is_super_admin=is_super_admin,
+            ip_rate_key=ip_rate_key,
+            user_rate_key=user_rate_key,
         )
-        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
-        conn.commit()
+        if rejection is not None:
+            return rejection
         return JSONResponse({"success": True, "expires_in": PRIVILEGED_REAUTH_TTL_SECONDS})
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=write_phase)
     except Exception as exc:
-        if conn:
-            conn.rollback()
         log_error(exc, "privileged_reauth_api")
         return JSONResponse({"error": "Không thể xác thực lại quyền quản trị."}, status_code=500)
-    finally:
-        if conn:
-            conn.close()
 
 from backend.auth.admin_user_routes import (
     delete_user_api as delete_user_api,
     list_users_api as list_users_api,
     update_user_access_settings_api as update_user_access_settings_api,
 )
+
+def _check_role_update_controls(request, role_or_err):
+    """Super-admin controls / recent re-authentication gate (read lane)."""
+    actor_platform_admin = (
+        getattr(role_or_err, "active_role", None) == "super_admin"
+        or (
+            getattr(role_or_err, "active_role", None) is None
+            and getattr(role_or_err, "platform_role", str(role_or_err)) == "super_admin"
+        )
+    )
+    actor_session = _load_user_by_session_token(
+        request.cookies.get("session_token")
+    ) or {}
+    if actor_platform_admin:
+        controls_valid, controls_error = verify_super_admin_controls(
+            request,
+            actor_session,
+        )
+        if not controls_valid:
+            return JSONResponse({"error": controls_error}, status_code=403)
+    else:
+        reauth_valid, reauth_error = verify_recent_reauthentication(actor_session)
+        if not reauth_valid:
+            return JSONResponse({"error": reauth_error}, status_code=403)
+    return None
+
+
+def _commit_user_role_update(conn, cursor, request, role_or_err, *, user_id, new_role, scope):
+    """Authorization re-check and role mutation for update_user_role_api.
+
+    Runs on the database write lane; returns a rejection response or None.
+    """
+    cursor.execute("BEGIN")
+    authority_valid, current_actor = verify_session_in_transaction(
+        cursor,
+        request,
+        required_role="super_admin" if scope == "platform" else None,
+    )
+    if (
+        not authority_valid
+        or str(current_actor.user_id) != str(role_or_err.user_id)
+    ):
+        conn.rollback()
+        return JSONResponse(
+            {
+                "error": (
+                    current_actor
+                    if not authority_valid
+                    else "Phiên quản trị đã thay đổi."
+                )
+            },
+            status_code=403,
+        )
+    role_or_err = current_actor
+    actor_platform_admin = (
+        getattr(role_or_err, "active_role", None) == "super_admin"
+        or (
+            getattr(role_or_err, "active_role", None) is None
+            and getattr(role_or_err, "platform_role", str(role_or_err))
+            == "super_admin"
+        )
+    )
+    if scope == "platform":
+        if not actor_platform_admin:
+            conn.rollback()
+            return JSONResponse({"error": "Không có quyền thay đổi vai trò nền tảng."}, status_code=403)
+        if new_role not in {"super_admin", "user"}:
+            conn.rollback()
+            return JSONResponse({"error": "Vai trò nền tảng không hợp lệ."}, status_code=400)
+        lock_platform_role_invariants(cursor)
+        if user_id == str(role_or_err.user_id):
+            conn.rollback()
+            return JSONResponse({"error": "Không thể tự thay đổi quyền nền tảng."}, status_code=409)
+        cursor.execute(
+            "SELECT 1 FROM tai_khoan WHERE id = ? AND trang_thai = 'active'",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            conn.rollback()
+            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        target_platform_role = str(cursor.fetchone()[0] or '').strip().lower()
+        if target_platform_role == 'super_admin' and new_role != 'super_admin':
+            cursor.execute(
+                """SELECT count(*) FROM tai_khoan
+                   WHERE vai_tro = 'super_admin' AND trang_thai = 'active'"""
+            )
+            if int(cursor.fetchone()[0]) <= 1:
+                conn.rollback()
+                return JSONResponse({"error": "Không thể hạ quyền quản trị viên nền tảng cuối cùng."}, status_code=409)
+        cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (new_role, user_id))
+        audit_metadata = {"scope": "platform", "role": new_role}
+        audit_event = "admin.platform_role_updated"
+    elif scope == "organization":
+        org_id = get_active_org(request, role_or_err.user_id)
+        if not is_business_organization(cursor, org_id):
+            conn.rollback()
+            return JSONResponse({
+                "error": "Không thể thay đổi membership của không gian cá nhân.",
+                "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
+            }, status_code=409)
+        lock_organization_membership_invariants(cursor, org_id)
+        cursor.execute(
+            "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
+            (role_or_err.user_id, org_id),
+        )
+        actor_row = cursor.fetchone()
+        actor_role = str(actor_row[0] or "").strip().lower() if actor_row else ""
+        if not actor_platform_admin and actor_role != "manager":
+            conn.rollback()
+            return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
+        owner_row = cursor.execute("SELECT owner_user_id FROM to_chuc WHERE id = ?", (org_id,)).fetchone()
+        owner_user_id = str(owner_row[0] or "").strip() if owner_row else ""
+        if not actor_platform_admin and owner_user_id and str(role_or_err.user_id) != owner_user_id:
+            conn.rollback()
+            return JSONResponse({"error": "Chỉ quản lý tối cao mới được phân công hoặc thu hồi vai trò quản lý."}, status_code=403)
+        if new_role not in {"manager", "employee"}:
+            conn.rollback()
+            return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
+
+        cursor.execute(
+            "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
+            (user_id, org_id),
+        )
+        target_row = cursor.fetchone()
+        if not target_row:
+            conn.rollback()
+            return JSONResponse({"error": "Người dùng không thuộc tổ chức hiện tại."}, status_code=404)
+        target_role = str(target_row[0] or "").strip().lower()
+        if user_id == str(role_or_err.user_id) and new_role != target_role:
+            conn.rollback()
+            return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
+        if owner_user_id and str(user_id) == owner_user_id and new_role != "manager":
+            conn.rollback()
+            return JSONResponse({"error": "Không thể hạ quyền quản lý tối cao."}, status_code=409)
+
+        hierarchy = {"employee": 0, "manager": 1}
+        actor_is_owner = bool(owner_user_id and str(role_or_err.user_id) == owner_user_id)
+        if not actor_platform_admin and not actor_is_owner:
+            actor_rank = hierarchy[actor_role]
+            if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
+                conn.rollback()
+                return JSONResponse({"error": "Không thể sửa hoặc gán vai trò ngang/cao hơn mình."}, status_code=403)
+
+        if target_role == "manager" and new_role != "manager":
+            cursor.execute(
+                """SELECT count(*) FROM thanh_vien_to_chuc
+                   WHERE organization_id = ?
+                     AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                     AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+                (org_id,),
+            )
+            if int(cursor.fetchone()[0]) <= 1:
+                conn.rollback()
+                return JSONResponse({"error": "Không thể hạ quyền Quản lý cuối cùng."}, status_code=409)
+
+        cursor.execute(
+            "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND organization_id = ?",
+            (new_role, user_id, org_id),
+        )
+        audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
+        audit_event = "organization.member_role_updated"
+    else:
+        conn.rollback()
+        return JSONResponse({"error": "Phạm vi vai trò không hợp lệ."}, status_code=400)
+
+    log_audit(
+        audit_event,
+        actor_user_id=role_or_err.user_id,
+        organization_id=audit_metadata.get("organization_id"),
+        target_type="tai_khoan" if scope == "platform" else "organization_membership",
+        target_id=user_id,
+        request=request,
+        metadata=audit_metadata,
+        cursor=cursor,
+        required=True,
+    )
+    conn.commit()
+    return None
+
 
 async def update_user_role_api(request):
     """Update a platform role or a role in the active organization.
@@ -1714,9 +2068,9 @@ async def update_user_role_api(request):
     or deliberately promote an account globally.
     """
 
-    conn = None
+    write_phase = False
     try:
-        is_valid, role_or_err = verify_session(request)
+        is_valid, role_or_err = await _verify_session_off_event_loop(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
@@ -1738,182 +2092,32 @@ async def update_user_role_api(request):
         if "," in new_role:
             return JSONResponse({"error": "Mỗi phạm vi chỉ được có một vai trò."}, status_code=400)
 
-        actor_platform_admin = (
-            getattr(role_or_err, "active_role", None) == "super_admin"
-            or (
-                getattr(role_or_err, "active_role", None) is None
-                and getattr(role_or_err, "platform_role", str(role_or_err)) == "super_admin"
-            )
-        )
-        actor_session = _load_user_by_session_token(
-            request.cookies.get("session_token")
-        ) or {}
-        if actor_platform_admin:
-            controls_valid, controls_error = verify_super_admin_controls(
-                request,
-                actor_session,
-            )
-            if not controls_valid:
-                return JSONResponse({"error": controls_error}, status_code=403)
-        else:
-            reauth_valid, reauth_error = verify_recent_reauthentication(actor_session)
-            if not reauth_valid:
-                return JSONResponse({"error": reauth_error}, status_code=403)
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("BEGIN")
-        authority_valid, current_actor = verify_session_in_transaction(
-            cursor,
+        rejection = await run_database_read(
+            _check_role_update_controls,
             request,
-            required_role="super_admin" if scope == "platform" else None,
+            role_or_err,
+            timeout_seconds=5.0,
         )
-        if (
-            not authority_valid
-            or str(current_actor.user_id) != str(role_or_err.user_id)
-        ):
-            conn.rollback()
-            return JSONResponse(
-                {
-                    "error": (
-                        current_actor
-                        if not authority_valid
-                        else "Phiên quản trị đã thay đổi."
-                    )
-                },
-                status_code=403,
-            )
-        role_or_err = current_actor
-        actor_platform_admin = (
-            getattr(role_or_err, "active_role", None) == "super_admin"
-            or (
-                getattr(role_or_err, "active_role", None) is None
-                and getattr(role_or_err, "platform_role", str(role_or_err))
-                == "super_admin"
-            )
+        if rejection is not None:
+            return rejection
+        write_phase = True
+        rejection = await _db_write_phase(
+            _commit_user_role_update,
+            request,
+            role_or_err,
+            user_id=user_id,
+            new_role=new_role,
+            scope=scope,
         )
-        if scope == "platform":
-            if not actor_platform_admin:
-                conn.rollback()
-                return JSONResponse({"error": "Không có quyền thay đổi vai trò nền tảng."}, status_code=403)
-            if new_role not in {"super_admin", "user"}:
-                conn.rollback()
-                return JSONResponse({"error": "Vai trò nền tảng không hợp lệ."}, status_code=400)
-            lock_platform_role_invariants(cursor)
-            if user_id == str(role_or_err.user_id):
-                conn.rollback()
-                return JSONResponse({"error": "Không thể tự thay đổi quyền nền tảng."}, status_code=409)
-            cursor.execute(
-                "SELECT 1 FROM tai_khoan WHERE id = ? AND trang_thai = 'active'",
-                (user_id,),
-            )
-            if not cursor.fetchone():
-                conn.rollback()
-                return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
-            cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
-            target_platform_role = str(cursor.fetchone()[0] or '').strip().lower()
-            if target_platform_role == 'super_admin' and new_role != 'super_admin':
-                cursor.execute(
-                    """SELECT count(*) FROM tai_khoan
-                       WHERE vai_tro = 'super_admin' AND trang_thai = 'active'"""
-                )
-                if int(cursor.fetchone()[0]) <= 1:
-                    conn.rollback()
-                    return JSONResponse({"error": "Không thể hạ quyền quản trị viên nền tảng cuối cùng."}, status_code=409)
-            cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (new_role, user_id))
-            audit_metadata = {"scope": "platform", "role": new_role}
-            audit_event = "admin.platform_role_updated"
-        elif scope == "organization":
-            org_id = get_active_org(request, role_or_err.user_id)
-            if not is_business_organization(cursor, org_id):
-                conn.rollback()
-                return JSONResponse({
-                    "error": "Không thể thay đổi membership của không gian cá nhân.",
-                    "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
-                }, status_code=409)
-            lock_organization_membership_invariants(cursor, org_id)
-            cursor.execute(
-                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
-                (role_or_err.user_id, org_id),
-            )
-            actor_row = cursor.fetchone()
-            actor_role = str(actor_row[0] or "").strip().lower() if actor_row else ""
-            if not actor_platform_admin and actor_role != "manager":
-                conn.rollback()
-                return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
-            owner_row = cursor.execute("SELECT owner_user_id FROM to_chuc WHERE id = ?", (org_id,)).fetchone()
-            owner_user_id = str(owner_row[0] or "").strip() if owner_row else ""
-            if not actor_platform_admin and owner_user_id and str(role_or_err.user_id) != owner_user_id:
-                conn.rollback()
-                return JSONResponse({"error": "Chỉ quản lý tối cao mới được phân công hoặc thu hồi vai trò quản lý."}, status_code=403)
-            if new_role not in {"manager", "employee"}:
-                conn.rollback()
-                return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
-
-            cursor.execute(
-                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
-                (user_id, org_id),
-            )
-            target_row = cursor.fetchone()
-            if not target_row:
-                conn.rollback()
-                return JSONResponse({"error": "Người dùng không thuộc tổ chức hiện tại."}, status_code=404)
-            target_role = str(target_row[0] or "").strip().lower()
-            if user_id == str(role_or_err.user_id) and new_role != target_role:
-                conn.rollback()
-                return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
-            if owner_user_id and str(user_id) == owner_user_id and new_role != "manager":
-                conn.rollback()
-                return JSONResponse({"error": "Không thể hạ quyền quản lý tối cao."}, status_code=409)
-
-            hierarchy = {"employee": 0, "manager": 1}
-            actor_is_owner = bool(owner_user_id and str(role_or_err.user_id) == owner_user_id)
-            if not actor_platform_admin and not actor_is_owner:
-                actor_rank = hierarchy[actor_role]
-                if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
-                    conn.rollback()
-                    return JSONResponse({"error": "Không thể sửa hoặc gán vai trò ngang/cao hơn mình."}, status_code=403)
-
-            if target_role == "manager" and new_role != "manager":
-                cursor.execute(
-                    """SELECT count(*) FROM thanh_vien_to_chuc
-                       WHERE organization_id = ?
-                         AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
-                         AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
-                    (org_id,),
-                )
-                if int(cursor.fetchone()[0]) <= 1:
-                    conn.rollback()
-                    return JSONResponse({"error": "Không thể hạ quyền Quản lý cuối cùng."}, status_code=409)
-
-            cursor.execute(
-                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND organization_id = ?",
-                (new_role, user_id, org_id),
-            )
-            audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
-            audit_event = "organization.member_role_updated"
-        else:
-            conn.rollback()
-            return JSONResponse({"error": "Phạm vi vai trò không hợp lệ."}, status_code=400)
-
-        log_audit(
-            audit_event,
-            actor_user_id=role_or_err.user_id,
-            organization_id=audit_metadata.get("organization_id"),
-            target_type="tai_khoan" if scope == "platform" else "organization_membership",
-            target_id=user_id,
-            request=request,
-            metadata=audit_metadata,
-            cursor=cursor,
-            required=True,
-        )
-        conn.commit()
+        if rejection is not None:
+            return rejection
         disconnect_user_websockets(user_id)
         return JSONResponse(
             {"success": True, "message": "Cập nhật vai trò thành công!"}
         )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=write_phase)
     except OrgPermissionError as error:
-        if conn:
-            conn.rollback()
         if isinstance(error, OrgScopeRequiredError):
             return error_response(request, error.code, str(error), status_code=error.status_code)
         return error_response(
@@ -1923,13 +2127,8 @@ async def update_user_role_api(request):
             status_code=403,
         )
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "update_user_role_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật vai trò."}, status_code=500)
-    finally:
-        if conn:
-            conn.close()
 
 
 def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta
 import json
 import os
+from threading import Lock
 import time
 import uuid
 
@@ -21,6 +23,9 @@ from .domain import changes, due_slot, eligible, notice_code, snapshots
 
 LEASE_SECONDS = 1800
 MAX_ATTEMPTS = 3
+# Cluster-wide fetch permits use session-level advisory locks in this keyspace
+# (``pg_try_advisory_lock(key, permit_index)``); no schema change is required.
+FETCH_PERMIT_LOCK_KEY = 0x50524D4E  # "PRMN"
 PACKAGE_SELECT = """SELECT gt.* FROM goi_thau gt
     JOIN ke_hoach_lcnt plan ON plan.id = gt.ke_hoach_id
       AND plan.organization_id = gt.organization_id
@@ -30,6 +35,41 @@ PACKAGE_SELECT = """SELECT gt.* FROM goi_thau gt
       AND (gt.owner_type = 'personal' OR EXISTS (
           SELECT 1 FROM to_chuc org WHERE org.id = gt.organization_id AND org.trang_thai = 'active'))
 """
+
+
+def _bounded_float(environment, name, default, minimum, maximum):
+    try:
+        value = float(environment.get(name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(minimum, min(maximum, value))
+
+
+def monitor_settings(environment=None):
+    """Load bounded throttling settings for the scheduled monitor."""
+    env = os.environ if environment is None else environment
+    return {
+        # At most this many source fetches run at once across all web workers.
+        "max_concurrency": int(_bounded_float(env, "PROCUREMENT_MONITOR_MAX_CONCURRENCY", 1, 1, 8)),
+        # Minimum pause between two fetches made by the same worker loop.
+        "min_interval_seconds": _bounded_float(env, "PROCUREMENT_MONITOR_MIN_INTERVAL_MS", 1000, 0, 60_000) / 1000,
+        # A hung source call is abandoned well before the 30-minute lease expires.
+        "fetch_timeout_seconds": _bounded_float(
+            env, "PROCUREMENT_MONITOR_FETCH_TIMEOUT_SECONDS", 120, 1, LEASE_SECONDS / 2,
+        ),
+        # Same notice in the same slot is fetched once per worker for N tenants.
+        "fetch_cache_seconds": _bounded_float(env, "PROCUREMENT_MONITOR_FETCH_CACHE_SECONDS", 600, 0, 3600),
+    }
+
+
+def classify_source_error(error):
+    """Return a payload-free error code for logs."""
+    if isinstance(error, (FutureTimeoutError, TimeoutError)):
+        return "SOURCE_TIMEOUT"
+    code = str(getattr(error, "code", "") or (error.args[0] if getattr(error, "args", None) else "") or "")
+    if code.replace("_", "").isalnum() and code.upper() == code and len(code) <= 64:
+        return code if code.startswith(("SOURCE_", "PROCUREMENT_")) else f"SOURCE_{code}"
+    return "SOURCE_" + type(error).__name__.upper()[:48]
 
 
 def monitor_enabled(environment=None):
@@ -95,6 +135,68 @@ class ProcurementMonitor:
         self.fetch = fetch or fetch_updates
         self.clock = clock or time.time
         self.environment = os.environ if environment is None else environment
+        self.settings = monitor_settings(self.environment)
+        self._fetch_cache = {}
+        self._fetch_cache_lock = Lock()
+        # One dedicated thread: a hung source call cannot pile up more threads.
+        self._fetch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="procurement-monitor-fetch")
+
+    def close(self):
+        self._fetch_executor.shutdown(wait=False, cancel_futures=True)
+
+    def _acquire_fetch_permit(self):
+        """Take one cluster-wide fetch permit; returns (connection, index) or None."""
+        connection = self.database.get_connection()
+        try:
+            for index in range(self.settings["max_concurrency"]):
+                row = connection.execute(
+                    "SELECT pg_try_advisory_lock(?, ?)", (FETCH_PERMIT_LOCK_KEY, index),
+                ).fetchone()
+                if row and bool(row[0]):
+                    # Session-level locks survive commit; never sit idle in a transaction.
+                    connection.commit()
+                    return connection, index
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            connection.close()
+            raise
+        connection.close()
+        return None
+
+    @staticmethod
+    def _release_fetch_permit(permit):
+        connection, index = permit
+        try:
+            connection.execute("SELECT pg_advisory_unlock(?, ?)", (FETCH_PERMIT_LOCK_KEY, index)).fetchone()
+            connection.commit()
+        except Exception:  # noqa: BLE001 - closing the session releases the lock anyway.
+            log_error("Fetch permit release failed", "procurement_monitor_permit", level="WARN")
+        finally:
+            connection.close()
+
+    def _cached_fetch(self, code, slot):
+        ttl = self.settings["fetch_cache_seconds"]
+        key = (code, slot)
+        now = time.monotonic()
+        if ttl > 0:
+            with self._fetch_cache_lock:
+                for cached_key, (expires_at, _value) in list(self._fetch_cache.items()):
+                    if expires_at <= now or cached_key[1] != slot:
+                        self._fetch_cache.pop(cached_key, None)
+                hit = self._fetch_cache.get(key)
+            if hit is not None:
+                return json.loads(hit[1])
+        future = self._fetch_executor.submit(self.fetch, code)
+        observed = future.result(timeout=self.settings["fetch_timeout_seconds"])
+        complete = isinstance(observed, dict) and all(
+            observed.get(category) is not None for category in ("clarification", "petition")
+        )
+        if ttl > 0 and complete:
+            # Only complete reads are shared; partial failures are re-fetched.
+            with self._fetch_cache_lock:
+                self._fetch_cache[key] = (now + ttl, json.dumps(observed))
+        return observed
 
     def process_next(self):
         now = datetime.fromtimestamp(self.clock(), VIETNAM_TIMEZONE)
@@ -104,14 +206,25 @@ class ProcurementMonitor:
             # Arm newly tracked notices before the first daily scheduled check.
             # Midnight is only an initialization retry bucket, not a mail slot.
             slot = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        permit = self._acquire_fetch_permit()
+        if permit is None:
+            # Another worker holds every permit; its loop will keep draining.
+            return False
+        try:
+            return self._process_claimed(now, slot, baseline_only)
+        finally:
+            self._release_fetch_permit(permit)
+
+    def _process_claimed(self, now, slot, baseline_only):
         claim = self._claim(now, slot, baseline_only=baseline_only)
         if not claim:
             return False
         package, token = claim
         try:
-            observed = self.fetch(notice_code(package["ma_goi_thau"]))
-        except Exception:  # noqa: BLE001 - normalize source/outbox failures without leaking payloads.
+            observed = self._cached_fetch(notice_code(package["ma_goi_thau"]), slot)
+        except Exception as error:  # noqa: BLE001 - normalize source/outbox failures without leaking payloads.
             # Neither source payloads nor provider URLs belong in notifications/logs.
+            log_error(classify_source_error(error), "procurement_monitor_fetch", level="WARN")
             self._finish(package, token, slot, None, baseline_only=baseline_only)
         else:
             try:
@@ -261,10 +374,14 @@ class ProcurementMonitor:
 
 async def run_procurement_monitor(database):
     processor = ProcurementMonitor(database)
-    while True:
-        try:
-            worked = await run_owned_blocking_io(processor.process_next, timeout_seconds=None, lane="procurement_monitor")
-        except Exception:  # noqa: BLE001 - worker must survive transient DB/source failures.
-            log_error("Scheduled check failed; will retry", "procurement_monitor_worker", level="WARN")
-            worked = False
-        await asyncio.sleep(1 if worked else 30)
+    pause_after_work = max(1.0, processor.settings["min_interval_seconds"])
+    try:
+        while True:
+            try:
+                worked = await run_owned_blocking_io(processor.process_next, timeout_seconds=None, lane="procurement_monitor")
+            except Exception:  # noqa: BLE001 - worker must survive transient DB/source failures.
+                log_error("Scheduled check failed; will retry", "procurement_monitor_worker", level="WARN")
+                worked = False
+            await asyncio.sleep(pause_after_work if worked else 30)
+    finally:
+        processor.close()

@@ -29,6 +29,43 @@ def _error(message, code, status=400):
     return JSONResponse({"error": message, "code": code}, status_code=status, headers={"Cache-Control": "no-store"})
 
 
+def _record_commercial_event(request, user_id, payload, hmac_key):
+    """Insert one commercial analytics event (database write lane)."""
+    connection = database.get_connection()
+    try:
+        organization_id = get_active_org(request, user_id, cursor=connection.cursor())
+        owner_kind = "account" if str(organization_id).startswith("personal:") else "organization"
+        event = normalize_commercial_event(
+            {**payload, "ownerKind": owner_kind},
+            user_id=user_id,
+            workspace_id=organization_id,
+            hmac_key=hmac_key,
+        )
+        connection.execute("BEGIN")
+        inserted = insert_commercial_event(connection.cursor(), event)
+        connection.commit()
+        return inserted
+    finally:
+        connection.close()
+
+
+def _record_commercial_feedback(request, user_id, payload, hmac_key):
+    """Insert one commercial feedback row (database write lane)."""
+    connection = database.get_connection()
+    try:
+        workspace_id = get_active_org(request, user_id, cursor=connection.cursor())
+        owner_kind = "account" if str(workspace_id).startswith("personal:") else "organization"
+        feedback = normalize_commercial_feedback(
+            {**payload, "ownerKind": owner_kind}, workspace_id=workspace_id, hmac_key=hmac_key,
+        )
+        connection.execute("BEGIN")
+        inserted = insert_commercial_feedback(connection.cursor(), feedback)
+        connection.commit()
+        return inserted
+    finally:
+        connection.close()
+
+
 async def commercial_analytics_event_api(request):
     valid, session = await run_database_read(verify_session, request, timeout_seconds=5)
     if not valid:
@@ -42,21 +79,9 @@ async def commercial_analytics_event_api(request):
         # analytics secret/configuration is intentionally absent in dev.
         return JSONResponse({"accepted": True, "recorded": False}, status_code=202)
     try:
-        connection = database.get_connection()
-        try:
-            organization_id = get_active_org(request, session.user_id, cursor=connection.cursor())
-            owner_kind = "account" if str(organization_id).startswith("personal:") else "organization"
-            event = normalize_commercial_event(
-                {**payload, "ownerKind": owner_kind},
-                user_id=session.user_id,
-                workspace_id=organization_id,
-                hmac_key=hmac_key,
-            )
-            connection.execute("BEGIN")
-            inserted = insert_commercial_event(connection.cursor(), event)
-            connection.commit()
-        finally:
-            connection.close()
+        inserted = await run_database_write(
+            _record_commercial_event, request, session.user_id, payload, hmac_key
+        )
     except AnalyticsEventError as exc:
         return _error(str(exc), "ANALYTICS_EVENT_INVALID", 400)
     except Exception as exc:  # noqa: BLE001 - telemetry never blocks commerce.
@@ -76,18 +101,9 @@ async def commercial_analytics_feedback_api(request):
     if len(hmac_key) < 16:
         return JSONResponse({"accepted": True, "recorded": False}, status_code=202)
     try:
-        connection = database.get_connection()
-        try:
-            workspace_id = get_active_org(request, session.user_id, cursor=connection.cursor())
-            owner_kind = "account" if str(workspace_id).startswith("personal:") else "organization"
-            feedback = normalize_commercial_feedback(
-                {**payload, "ownerKind": owner_kind}, workspace_id=workspace_id, hmac_key=hmac_key,
-            )
-            connection.execute("BEGIN")
-            inserted = insert_commercial_feedback(connection.cursor(), feedback)
-            connection.commit()
-        finally:
-            connection.close()
+        inserted = await run_database_write(
+            _record_commercial_feedback, request, session.user_id, payload, hmac_key
+        )
     except AnalyticsEventError as exc:
         return _error(str(exc), "COMMERCIAL_FEEDBACK_INVALID", 400)
     except Exception as exc:  # noqa: BLE001 - optional feedback never blocks commerce.

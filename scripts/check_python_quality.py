@@ -15,6 +15,18 @@ TARGETS = ("backend", "scripts", "tests")
 MODULE_BASELINE_PATH = ROOT / "scripts" / "python_quality_module_baseline.json"
 MODULE_RATCHET_CODES = {"BLE001", "S608"}
 DEBT_LIMITS = {
+    # flake8-async: blocking calls inside ``async def`` stall the shared event
+    # loop. Existing findings are test busy-waits and local temp-file paths;
+    # the limits only prevent growth. Database round-trips are additionally
+    # enforced by scripts/check_async_blocking.py.
+    "ASYNC110": 8,
+    "ASYNC210": 0,
+    "ASYNC220": 0,
+    "ASYNC221": 0,
+    "ASYNC222": 0,
+    "ASYNC230": 0,
+    "ASYNC240": 3,
+    "ASYNC251": 0,
     "BLE001": 117,
     "F401": 0,
     "F841": 0,

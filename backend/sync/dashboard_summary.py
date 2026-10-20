@@ -14,6 +14,17 @@ from backend.documents.docx_formula_service import (
     _load_holidays,
 )
 from backend.shared.date_utils import vietnam_today
+from backend.shared.sql_identifiers import sql_identifier
+
+# Tables whose latest snapshot rows are counted by build_dashboard_summary.
+_DASHBOARD_LATEST_TABLES = frozenset({
+    "chu_dau_tu",
+    "nha_thau",
+    "chuyen_gia",
+    "ke_hoach_lcnt",
+    "goi_thau",
+    "hop_dong",
+})
 
 
 EVALUATION_REPORT_DELAY_DAYS = 7
@@ -247,6 +258,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         return can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name)
 
     def latest_cte(table_name):
+        table_name = sql_identifier(table_name, allowed=_DASHBOARD_LATEST_TABLES)
         if table_name == "goi_thau":
             # Package latest-ness is scoped to a plan snapshot. Only packages
             # belonging to the latest plan snapshot contribute to the global

@@ -342,7 +342,15 @@ def _run_lot_impl_in_worker(function, request, session, data):
 
 
 async def create_lot_batch_api(request):
-    valid, session = verify_session(request)
+    try:
+        valid, session = await run_database_read(
+            verify_session, request, timeout_seconds=5.0
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return JSONResponse(
+            {"error": "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau."},
+            status_code=503,
+        )
     if not valid:
         return JSONResponse({"error": session}, status_code=403)
     data, json_error = await read_json_object(request)
@@ -364,7 +372,15 @@ async def create_lot_batch_api(request):
 
 
 async def finalize_lot_batch_api(request):
-    valid, session = verify_session(request)
+    try:
+        valid, session = await run_database_read(
+            verify_session, request, timeout_seconds=5.0
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return JSONResponse(
+            {"error": "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau."},
+            status_code=503,
+        )
     if not valid:
         return JSONResponse({"error": session}, status_code=403)
     data, json_error = await read_json_object(request)

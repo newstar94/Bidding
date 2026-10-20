@@ -1,4 +1,4 @@
-from backend.db.db_helper import DatabaseError, IntegrityError
+from backend.db.db_helper import IntegrityError
 import time
 import hashlib
 import os
@@ -116,8 +116,45 @@ def _database_write_unavailable_response():
     response.headers["Retry-After"] = "1"
     return response
 
+def _create_unverified_account(*, username, password_hash, name, role, email, code):
+    """Registration transaction (database write lane); returns a rejection or None."""
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        conn.execute("BEGIN")
+
+        cursor.execute("SELECT id FROM tai_khoan WHERE username_norm = ?", (username,))
+        if cursor.fetchone():
+            conn.rollback()
+            return JSONResponse(conflict_payload("USERNAME_ALREADY_EXISTS"), status_code=409)
+
+        cursor.execute("SELECT id FROM tai_khoan WHERE email_norm = ?", (email,))
+        if cursor.fetchone():
+            conn.rollback()
+            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
+
+        user_uuid = generate_record_id("tai_khoan")
+        expiry = int(time.time()) + 600
+
+        cursor.execute(
+            "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_uuid, username, username, password_hash, name, role,
+                email, email, 0, hash_registration_otp(code, user_uuid), expiry,
+            )
+        )
+        ensure_personal_word_workspace(cursor, user_uuid)
+        conn.commit()
+        return None
+    except BaseException:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 async def register_api(request):
-    conn = None
     try:
         ip = get_client_ip(request)
         register_limit = await _rate_limit_decision(f"register:{ip}")
@@ -184,33 +221,18 @@ async def register_api(request):
         except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _password_work_unavailable_response()
 
-        conn = database.get_connection()
-        conn.execute("BEGIN")
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT id FROM tai_khoan WHERE username_norm = ?", (username,))
-        if cursor.fetchone():
-            conn.rollback()
-            return JSONResponse(conflict_payload("USERNAME_ALREADY_EXISTS"), status_code=409)
-
-        cursor.execute("SELECT id FROM tai_khoan WHERE email_norm = ?", (email,))
-        if cursor.fetchone():
-            conn.rollback()
-            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
-
-        user_uuid = generate_record_id("tai_khoan")
         code = generate_otp()
-        expiry = int(time.time()) + 600
-
-        cursor.execute(
-            "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                user_uuid, username, username, password_hash, name, role,
-                email, email, 0, hash_registration_otp(code, user_uuid), expiry,
-            )
+        rejection = await run_database_write(
+            _create_unverified_account,
+            username=username,
+            password_hash=password_hash,
+            name=name,
+            role=role,
+            email=email,
+            code=code,
         )
-        ensure_personal_word_workspace(cursor, user_uuid)
-        conn.commit()
+        if rejection is not None:
+            return rejection
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"
         noi_dung_html = render_branded_email(
@@ -234,23 +256,55 @@ async def register_api(request):
             {"success": True, "message": "Đăng ký thành công! Vui lòng kiểm tra email để lấy mã xác nhận kích hoạt tài khoản."},
             background=tasks
         )
+    except BlockingIOBusyError:
+        return _database_write_unavailable_response()
     except IntegrityError as e:
-        if conn:
-            conn.rollback()
         conflict_code = identity_conflict_code(e)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
         log_error(e, "register_api_integrity")
         return JSONResponse({"error": "Không thể tạo tài khoản do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
-        if conn:
-            conn.rollback()
         log_error(e, "register_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
+
+def _confirm_registration_otp(username, code):
+    """Registration OTP check and activation (database write lane).
+
+    Returns a rejection response, or None once the account is verified.
+    """
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
+        row = cursor.fetchone()
+
+        if not row:
+            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
+
+        user = dict(row)
+        current_time = int(time.time())
+
+        if not verify_registration_otp(user['ma_xac_minh'], code, user['id']):
+            return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
+
+        if user['han_xac_minh'] and current_time > user['han_xac_minh']:
+            return JSONResponse({"error": "Mã xác nhận đã hết hạn! Vui lòng yêu cầu mã mới."}, status_code=400)
+
+        cursor.execute(
+            """UPDATE tai_khoan
+                  SET da_xac_minh = 1,
+                      registration_verified_at = COALESCE(registration_verified_at, ?),
+                      ma_xac_minh = NULL,
+                      han_xac_minh = NULL
+                WHERE id = ?""",
+            (current_time, user['id']),
+        )
+        conn.commit()
+        return None
     finally:
-        if conn:
-            try: conn.close()
-            except DatabaseError: pass
+        conn.close()
+
 
 async def verify_email_api(request):
     try:
@@ -293,42 +347,51 @@ async def verify_email_api(request):
         if challenge_error:
             return challenge_error
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
-        row = cursor.fetchone()
-
-        if not row:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
-
-        user = dict(row)
-        current_time = int(time.time())
-
-        if not verify_registration_otp(user['ma_xac_minh'], code, user['id']):
-            conn.close()
-            return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
-
-        if user['han_xac_minh'] and current_time > user['han_xac_minh']:
-            conn.close()
-            return JSONResponse({"error": "Mã xác nhận đã hết hạn! Vui lòng yêu cầu mã mới."}, status_code=400)
-
-        cursor.execute(
-            """UPDATE tai_khoan
-                  SET da_xac_minh = 1,
-                      registration_verified_at = COALESCE(registration_verified_at, ?),
-                      ma_xac_minh = NULL,
-                      han_xac_minh = NULL
-                WHERE id = ?""",
-            (current_time, user['id']),
+        rejection = await run_database_write(
+            _confirm_registration_otp, username, code
         )
-        conn.commit()
-        conn.close()
+        if rejection is not None:
+            return rejection
 
         return JSONResponse({"success": True, "message": "Xác thực email thành công! Bạn có thể đăng nhập ngay bây giờ."})
+    except BlockingIOBusyError:
+        return _database_write_unavailable_response()
     except Exception as e:
         log_error(e, "verify_email_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi xác thực. Vui lòng thử lại sau."}, status_code=500)
+
+def _rotate_registration_otp(username):
+    """Issue a new registration OTP (database write lane).
+
+    Returns ``(rejection, None, None)`` or ``(None, user, code)``.
+    """
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
+        row = cursor.fetchone()
+
+        if not row:
+            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400), None, None
+
+        user = dict(row)
+        is_verified = bool(user.get('da_xac_minh'))
+
+        if is_verified:
+            return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400), None, None
+
+        code = generate_otp()
+        expiry = int(time.time()) + 600
+
+        cursor.execute(
+            "UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?",
+            (hash_registration_otp(code, user['id']), expiry, user['id']),
+        )
+        conn.commit()
+        return None, user, code
+    finally:
+        conn.close()
+
 
 async def resend_code_api(request):
     try:
@@ -365,31 +428,11 @@ async def resend_code_api(request):
         if challenge_error:
             return challenge_error
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
-        row = cursor.fetchone()
-
-        if not row:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
-
-        user = dict(row)
-        is_verified = bool(user.get('da_xac_minh'))
-
-        if is_verified:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400)
-
-        code = generate_otp()
-        expiry = int(time.time()) + 600
-
-        cursor.execute(
-            "UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?",
-            (hash_registration_otp(code, user['id']), expiry, user['id']),
+        rejection, user, code = await run_database_write(
+            _rotate_registration_otp, username
         )
-        conn.commit()
-        conn.close()
+        if rejection is not None:
+            return rejection
 
         tieu_de = "[BiddingFlow] Gửi lại mã xác thực tài khoản"
         noi_dung_html = render_branded_email(
@@ -413,6 +456,8 @@ async def resend_code_api(request):
             {"success": True, "message": "Đã gửi lại mã OTP xác nhận vào email của bạn!"},
             background=tasks
         )
+    except BlockingIOBusyError:
+        return _database_write_unavailable_response()
     except Exception as e:
         log_error(e, "resend_code_api")
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)

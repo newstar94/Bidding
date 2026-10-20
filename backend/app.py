@@ -1145,7 +1145,8 @@ class ProductionViewStaticFiles(NotFoundViewStaticFiles):
         return await super().get_response(path, scope)
 
 
-async def protected_image_api(request):
+def _protected_image_access_sync(request):
+    """Authorize a protected image read; returns a rejection or the file path."""
     is_valid, role_or_err = verify_session(request)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
@@ -1251,8 +1252,27 @@ async def protected_image_api(request):
             except (DatabaseError, RuntimeError) as close_error:
                 log_error(close_error, "protected_image_connection_close", level="WARN")
 
+    return file_path
+
+
+async def protected_image_api(request):
+    try:
+        outcome = await run_database_read(
+            _protected_image_access_sync,
+            request,
+            timeout_seconds=10.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return error_response(
+            request,
+            "DATABASE_READ_QUEUE_FULL",
+            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+    if isinstance(outcome, Response):
+        return outcome
     return FileResponse(
-        file_path,
+        outcome,
         headers={"Cache-Control": "private, no-store"},
     )
 

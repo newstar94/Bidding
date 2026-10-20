@@ -1835,6 +1835,18 @@ async def view_template_api(request):
     except (OrgPermissionError, BlockingIOBusyError, BlockingIOTimeoutError, OSError) as e:
         return _docx_error(request, e, "view_template_api")
 
+async def _log_audit_off_event_loop(*args, **kwargs):
+    """Best-effort standalone audit write without blocking the event loop.
+
+    Falls back to the historical inline write when the write lane is saturated
+    so that no audit event is dropped because of back-pressure.
+    """
+    try:
+        return await run_database_write(log_audit, *args, **kwargs)
+    except BlockingIOBusyError:
+        return log_audit(*args, **kwargs)
+
+
 async def set_active_template_api(request):
     try:
         is_valid, role_or_err = await run_database_read(verify_session, request)
@@ -1891,7 +1903,7 @@ async def set_active_template_api(request):
                 required=True,
             )
 
-        log_audit(
+        await _log_audit_off_event_loop(
             "document.word_template_availability_update_requested",
             actor_user_id=user_id,
             organization_id=organization_id,
@@ -1990,7 +2002,7 @@ async def upload_template_api(request):
             except ValueError as e:
                 return _docx_error(request, e, "upload_template_api")
 
-            log_audit(
+            await _log_audit_off_event_loop(
                 "document.word_template_upload_requested",
                 actor_user_id=user_id,
                 organization_id=organization_id,
@@ -2071,7 +2083,7 @@ async def replace_template_api(request):
             )
             mutation_revision["value"] = revision
 
-        log_audit(
+        await _log_audit_off_event_loop(
             "document.word_template_replace_requested",
             actor_user_id=user_id,
             organization_id=organization_id,
@@ -2183,7 +2195,7 @@ async def delete_template_api(request):
             )
             mutation_revision["value"] = revision
 
-        log_audit(
+        await _log_audit_off_event_loop(
             "document.word_template_delete_requested",
             actor_user_id=user_id,
             organization_id=organization_id,

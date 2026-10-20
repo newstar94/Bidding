@@ -136,11 +136,20 @@ _raw_snapshot_has_complete_opening_sources = (
 )
 
 
+def _preview_store_int(name, default):
+    try:
+        return int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 PREVIEW_STORE = PreviewStore(
     ttl_seconds=int(os.environ.get(
         "PROCUREMENT_IMPORT_PREVIEW_TTL_SECONDS",
         os.environ.get("VNEPS_PROCUREMENT_PREVIEW_TTL_SECONDS", "300"),
-    ))
+    )),
+    max_items=_preview_store_int("PROCUREMENT_IMPORT_PREVIEW_MAX_ITEMS", 200),
+    max_per_user=_preview_store_int("PROCUREMENT_IMPORT_PREVIEW_MAX_PER_USER", 5),
 )
 
 
