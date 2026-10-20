@@ -338,6 +338,8 @@ PARTNER_ESCODATA_TIMEOUT_SECONDS=4
 # PROCUREMENT_LOOKUP_ENABLED=false
 # Kiểm tra làm rõ HSMT/kiến nghị lúc 08:30, 14:30 (ADR 0090).
 # PROCUREMENT_MONITOR_ENABLED=true
+# Tự ghi làm rõ HSMT mới vào hồ sơ gói thầu (ADR 0091); đặt false để chỉ gửi email.
+# PROCUREMENT_MONITOR_AUTO_WRITE_ENABLED=true
 # Giới hạn tải lên nguồn Mua Sắm Công khi kiểm tra định kỳ (mọi web worker cộng lại).
 PROCUREMENT_MONITOR_MAX_CONCURRENCY=1
 PROCUREMENT_MONITOR_MIN_INTERVAL_MS=1000
