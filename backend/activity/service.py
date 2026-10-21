@@ -172,6 +172,7 @@ def insert_activity_events(
     actor_user_id: str | None,
     occurred_at: Any,
     events: Iterable[ActivityEvent],
+    actor_name: str | None = None,
 ) -> int:
     unique_events = []
     seen = set()
@@ -189,7 +190,8 @@ def insert_activity_events(
         unique_events.append(event)
     if not unique_events:
         return 0
-    actor_name = _actor_snapshot(cursor, actor_user_id)
+    # Background writers without a user (ADR 0091) pass an explicit label.
+    actor_name = actor_name or _actor_snapshot(cursor, actor_user_id)
     inserted = 0
     for offset in range(0, len(unique_events), _QUERY_CHUNK_SIZE):
         chunk = unique_events[offset:offset + _QUERY_CHUNK_SIZE]

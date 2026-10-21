@@ -1,0 +1,141 @@
+{
+  "description": "Shared parity cases for ADR 0091: the scheduled monitor must append exactly the clarification rows the manual invitation update would add. Row ids written as {\"idFrom\": ...} resolve to the source-derived lr- id; \"random\" means a generated id.",
+  "noticeNo": "IB2600374868",
+  "pinnedIds": [
+    {
+      "packageId": "gt-parity-1",
+      "noticeNo": "IB2600374868",
+      "version": "00",
+      "kind": "request",
+      "identity": "REQ01",
+      "id": "lr-ef583b80e2ee7a91a021bbe51bc7cbb6a09f549646504e359ce0920551f394bc"
+    }
+  ],
+  "targets": [
+    { "package": { "id": "gt-a", "maGoiThau": "IB2600374868", "phienBan": "00" }, "revision": "00" },
+    { "package": { "id": "gt-b", "maGoiThau": "IB2600374868-02", "phienBan": "2" }, "revision": "02" },
+    { "package": { "id": "gt-c", "maGoiThau": " ib2600374868-01 ", "phienBan": "00" }, "revision": "01" },
+    { "package": { "id": "gt-d", "maGoiThau": "IB2600374868", "phienBan": "7" }, "revision": "07" },
+    { "package": { "id": "gt-e", "maGoiThau": "IB2600374868", "phienBan": "000" }, "revision": "00" },
+    { "package": { "id": "gt-f", "maGoiThau": "PL2600184109", "phienBan": "00" }, "error": "PROCUREMENT_CODE_INVALID" },
+    { "package": { "id": "gt-g", "maGoiThau": "IB2600374868", "phienBan": "v1" }, "error": "PROCUREMENT_REVISION_INVALID" },
+    { "package": { "id": "gt-h", "maGoiThau": "IB2600374868", "phienBan": "" }, "error": "PROCUREMENT_REVISION_INVALID" },
+    { "package": { "id": "", "maGoiThau": "IB2600374868", "phienBan": "00" }, "error": "PROCUREMENT_CODE_INVALID" }
+  ],
+  "cases": [
+    {
+      "name": "append-only merge within the record notice version",
+      "package": { "id": "gt-parity-1", "maGoiThau": "IB2600374868-01", "phienBan": "00" },
+      "revisions": [
+        {
+          "revisionNumber": "00",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-1", "sourceRequestNo": "REQ01", "requestedAt": "2026-08-03T09:00:41", "content": "Tiêu chí bảo hành\nCâu hỏi về thời hạn bảo hành" },
+            { "sourceRequestId": "up-2", "sourceRequestNo": "REQ02", "requestedAt": "2026-08-05T10:15:00", "content": "Hỏi về mẫu số 04" }
+          ],
+          "clarificationResponses": [
+            { "sourceRequestId": "up-1", "sourceRequestNo": "REQ01", "respondedAt": "2026-08-04T16:20:09", "content": "Trả lời: bảo hành 24 tháng" }
+          ]
+        },
+        {
+          "revisionNumber": "01",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-3", "sourceRequestNo": "REQ03", "requestedAt": "2026-08-12T08:05:00", "content": "Hỏi về tiến độ thi công" },
+            { "requestedAt": "2026-08-12T09:00:00", "content": "Câu hỏi không có mã nguồn" },
+            { "sourceRequestId": "up-5", "sourceRequestNo": "REQ05", "requestedAt": "2026-08-12T10:00:00", "content": "   " },
+            { "sourceRequestId": "up-3", "sourceRequestNo": "REQ03", "requestedAt": "2026-08-12T08:05:00", "content": "Hỏi về tiến độ thi công" }
+          ],
+          "clarificationResponses": [
+            { "sourceRequestId": "up-2", "sourceRequestNo": "REQ02", "respondedAt": "2026-08-13T11:00:00", "content": "Trả lời: dùng mẫu số 04 bản sửa đổi" }
+          ]
+        },
+        {
+          "revisionNumber": "02",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-7", "sourceRequestNo": "REQ07", "requestedAt": "2026-08-20T09:00:00", "content": "Ngoài phạm vi phiên bản của bản ghi" }
+          ],
+          "clarificationResponses": []
+        }
+      ],
+      "current": {
+        "requests": [
+          { "id": { "idFrom": { "version": "00", "kind": "request", "identity": "REQ01" } }, "thoi_gian": "2026-08-03 09:00:00", "noi_dung": "Tiêu chí bảo hành\nCâu hỏi về thời hạn bảo hành" },
+          { "id": "lr-5d1c0a8e-7b9f-4c2e-9a41-3f6b2d8e1c07", "thoi_gian": "2026-08-05 10:15:00", "noi_dung": "Hỏi về mẫu số 04  \r\n" },
+          { "id": "lr-manual-summary", "thoi_gian": "2026-08-12 08:05:00", "noi_dung": "Tóm tắt: tiến độ" },
+          { "id": "lr-manual-draft", "thoi_gian": "", "noi_dung": "Đang soạn câu hỏi" }
+        ],
+        "responses": []
+      },
+      "expected": {
+        "revision": "01",
+        "requests": [
+          { "id": { "idFrom": { "version": "01", "kind": "request", "identity": "REQ03" } }, "time": "12/08/2026 08:05", "content": "Hỏi về tiến độ thi công" },
+          { "id": "random", "time": "12/08/2026 09:00", "content": "Câu hỏi không có mã nguồn" }
+        ],
+        "responses": [
+          { "id": { "idFrom": { "version": "00", "kind": "response", "identity": "REQ01" } }, "time": "04/08/2026 16:20", "content": "Trả lời: bảo hành 24 tháng" },
+          { "id": { "idFrom": { "version": "01", "kind": "response", "identity": "REQ02" } }, "time": "13/08/2026 11:00", "content": "Trả lời: dùng mẫu số 04 bản sửa đổi" }
+        ]
+      }
+    },
+    {
+      "name": "same source identity on two notice versions keeps both rows",
+      "package": { "id": "gt-parity-2", "maGoiThau": "IB2600374868", "phienBan": "01" },
+      "revisions": [
+        {
+          "revisionNumber": "00",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-9", "sourceRequestNo": "REQ09", "requestedAt": "2026-09-01T08:00:00", "content": "Câu hỏi lặp qua phiên bản" }
+          ],
+          "clarificationResponses": []
+        },
+        {
+          "revisionNumber": "01",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-9", "sourceRequestNo": "REQ09", "requestedAt": "2026-09-01T08:00:00", "content": "Câu hỏi lặp qua phiên bản" }
+          ],
+          "clarificationResponses": []
+        }
+      ],
+      "current": { "requests": [], "responses": [] },
+      "expected": {
+        "revision": "01",
+        "requests": [
+          { "id": { "idFrom": { "version": "00", "kind": "request", "identity": "REQ09" } }, "time": "01/09/2026 08:00", "content": "Câu hỏi lặp qua phiên bản" },
+          { "id": { "idFrom": { "version": "01", "kind": "request", "identity": "REQ09" } }, "time": "01/09/2026 08:00", "content": "Câu hỏi lặp qua phiên bản" }
+        ],
+        "responses": []
+      }
+    },
+    {
+      "name": "user-deleted source rows are appended again",
+      "package": { "id": "gt-parity-3", "maGoiThau": "IB2600374868", "phienBan": "00" },
+      "revisions": [
+        {
+          "revisionNumber": "00",
+          "clarificationRequests": [
+            { "sourceRequestId": "up-11", "sourceRequestNo": "REQ11", "requestedAt": "2026-09-10 14:30", "content": "Câu hỏi người dùng đã xóa" }
+          ],
+          "clarificationResponses": [
+            { "sourceRequestId": "up-11", "sourceRequestNo": "REQ11", "respondedAt": "11/09/2026 09:45", "content": "Trả lời mới" }
+          ]
+        }
+      ],
+      "current": {
+        "requests": [],
+        "responses": [
+          { "id": "lr-manual-unrelated", "thoi_gian": "2026-09-11 09:00:00", "noi_dung": "Trả lời khác" }
+        ]
+      },
+      "expected": {
+        "revision": "00",
+        "requests": [
+          { "id": { "idFrom": { "version": "00", "kind": "request", "identity": "REQ11" } }, "time": "10/09/2026 14:30", "content": "Câu hỏi người dùng đã xóa" }
+        ],
+        "responses": [
+          { "id": { "idFrom": { "version": "00", "kind": "response", "identity": "REQ11" } }, "time": "11/09/2026 09:45", "content": "Trả lời mới" }
+        ]
+      }
+    }
+  ]
+}

@@ -59,6 +59,8 @@ const ACTIVITY_FIELD_LABELS = Object.freeze({
     ngay_moi_doi_chieu: "Ngày mời đối chiếu tài liệu / thương thảo",
     ngay_doi_chieu: "Ngày đối chiếu tài liệu / thương thảo",
     is_rebid: "Trạng thái tổ chức lại gói thầu",
+    yeu_cau_lam_ro_list: "Yêu cầu làm rõ HSMT",
+    tra_loi_lam_ro_list: "Trả lời làm rõ HSMT",
   }),
   hopdong: Object.freeze({
     phien_ban: "Phiên bản dữ liệu",

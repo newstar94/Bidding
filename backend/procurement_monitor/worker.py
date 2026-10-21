@@ -18,7 +18,11 @@ from backend.shared.async_io import run_owned_blocking_io
 from backend.shared.date_utils import VIETNAM_TIMEZONE
 from backend.shared.logging_utils import log_error
 
-from .domain import changes, due_slot, eligible, notice_code, snapshots
+from .clarification_writer import (
+    ALREADY_PRESENT, BUSY, NEWER_REVISION, NOT_ENTITLED, TARGET_INVALID, WRITTEN,
+    append_clarifications, auto_write_enabled,
+)
+from .domain import CATEGORIES, CLARIFICATION_VERSIONS, changes, clarification_versions, due_slot, eligible, notice_code, snapshots
 
 
 LEASE_SECONDS = 1800
@@ -72,6 +76,23 @@ def classify_source_error(error):
     return "SOURCE_" + type(error).__name__.upper()[:48]
 
 
+def write_result_message(write):
+    """ADR 0091 outcome in user language; never includes source content."""
+    if write is None:
+        return ""
+    if write.status == WRITTEN:
+        return (f"Đã tự cập nhật {write.requests} yêu cầu và {write.responses} trả lời làm rõ "
+                "vào hồ sơ gói thầu.")
+    return {
+        ALREADY_PRESENT: "Hồ sơ gói thầu đã có đủ các làm rõ này.",
+        NEWER_REVISION: "Chưa tự cập nhật vì làm rõ thuộc phiên bản TBMT mới hơn bản ghi gói thầu.",
+        NOT_ENTITLED: "Chưa tự cập nhật vì gói dịch vụ hiện tại không có lấy dữ liệu tự động.",
+        TARGET_INVALID: "Chưa tự cập nhật vì chưa xác định được phiên bản TBMT của gói thầu.",
+        BUSY: ("Chưa tự cập nhật được do hồ sơ đang thay đổi. "
+               "Mở gói thầu để cập nhật làm rõ bằng tay."),
+    }.get(write.status, "")
+
+
 def monitor_enabled(environment=None):
     env = os.environ if environment is None else environment
     return (str(env.get("PROCUREMENT_LOOKUP_ENABLED", "true")).strip().lower() == "true"
@@ -82,7 +103,11 @@ def fetch_updates(code):
     from backend.integrations.muasamcong_browser.registry import get_muasamcong_source
 
     source = get_muasamcong_source()
-    return snapshots(source.get_notice_updates(code), code)
+    bundle = source.get_notice_updates(code)
+    observed = snapshots(bundle, code)
+    # Rows per notice version feed ADR 0091 writes; only CATEGORIES are hashed.
+    observed[CLARIFICATION_VERSIONS] = clarification_versions((bundle.get("sources") or {}).get("clarification"), code)
+    return observed
 
 
 def recipients(cursor, package):
@@ -300,8 +325,10 @@ class ProcurementMonitor:
             connection.execute("BEGIN")
             # Use the same package -> state lock order as claim, avoiding an
             # expired-lease takeover deadlock while an older owner finishes.
+            # The package row is held for update so an ADR 0091 write and its
+            # version bump cannot interleave with a user's save.
             current = connection.execute(
-                PACKAGE_SELECT + " AND gt.organization_id = ? AND gt.id = ? FOR SHARE OF gt, plan",
+                PACKAGE_SELECT + " AND gt.organization_id = ? AND gt.id = ? FOR UPDATE OF gt FOR SHARE OF plan",
                 (package["organization_id"], package["id"]),
             ).fetchone()
             state = connection.execute(
@@ -322,7 +349,9 @@ class ProcurementMonitor:
                 return
             current = dict(current)
             previous = json.loads(state["seen_json"])
-            observed = observed or {"clarification": None, "petition": None}
+            observed = observed or {category: None for category in CATEGORIES}
+            rows_by_version = observed.get(CLARIFICATION_VERSIONS)
+            observed = {category: rows for category, rows in observed.items() if category in CATEGORIES}
             if baseline_only:
                 # Retrying an unavailable category must not consume new content
                 # in an already initialized category ahead of the email schedule.
@@ -330,14 +359,24 @@ class ProcurementMonitor:
                             if previous.get(category) is None}
             updated, counts, failures = changes(previous, observed)
             error = failure_reason or ("SOURCE_UNAVAILABLE:" + ",".join(failures) if failures else None)
+            write = None
+            if counts.get("clarification") and rows_by_version is not None and auto_write_enabled(self.environment):
+                write = append_clarifications(
+                    connection.cursor(), current, rows_by_version,
+                    now_epoch=epoch, slot=slot, environment=self.environment,
+                )
+                if write.status == BUSY and state["attempts"] < MAX_ATTEMPTS:
+                    # Defer the whole publication so the retry can still write.
+                    updated, counts, error = previous, {}, "AUTO_WRITE_BUSY"
             if counts:
                 targets = recipients(connection.cursor(), current)
                 if not targets or not str(self.environment.get("EMAIL_OUTBOX_ENCRYPTION_KEY", "")).strip():
                     # Keep the old baseline: detecting new content is not delivery.
+                    # A completed write stays; repeating the merge adds nothing.
                     updated = previous
                     error = "EMAIL_CONFIGURATION_MISSING" if targets else "NO_ELIGIBLE_RECIPIENT"
                 else:
-                    self._notify(connection.cursor(), current, targets, counts, epoch)
+                    self._notify(connection.cursor(), current, targets, counts, epoch, write)
             completed = slot if not error or state["attempts"] >= MAX_ATTEMPTS else state["completed_slot"]
             connection.execute(
                 """UPDATE procurement_monitor_state SET seen_json = ?, completed_slot = ?,
@@ -355,7 +394,7 @@ class ProcurementMonitor:
             connection.close()
 
     @staticmethod
-    def _notify(cursor, package, targets, counts, epoch):
+    def _notify(cursor, package, targets, counts, epoch, write=None):
         categories = []
         if counts.get("clarification"):
             categories.append(f"làm rõ HSMT ({counts['clarification']} nội dung mới)")
@@ -363,6 +402,9 @@ class ProcurementMonitor:
             categories.append(f"kiến nghị ({counts['petition']} nội dung mới)")
         title = "Gói thầu có thông tin mới"
         message = f"Gói thầu {package['ma_goi_thau']} – {package['ten_goi_thau']}: " + "; ".join(categories) + "."
+        write_message = write_result_message(write)
+        if write_message:
+            message = f"{message} {write_message}"
         queue_user_notifications(cursor, [{
             "user_id": user_id, "organization_id": package["organization_id"],
             "kind": "procurement_update", "title": title, "message": message,

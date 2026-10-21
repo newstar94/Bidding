@@ -82,30 +82,45 @@ def petition_rows(source) -> list | None:
     return None
 
 
+CATEGORIES = ("clarification", "petition")
+# Extra fetch key for ADR 0091 writes; never hashed as a monitor category.
+CLARIFICATION_VERSIONS = "clarificationVersions"
+
+
+def clarification_versions(source, code: str) -> dict[str, dict[str, list]] | None:
+    """Normalized rows per notice version, or None unless every version group parses."""
+    if not isinstance(source, dict) or source.get("success") is not True:
+        return None
+    response = source.get("response")
+    groups = response.get("biduClarifyReqInvAndContentViewVersionDTOList") if isinstance(response, dict) else None
+    if not isinstance(groups, list):
+        return None
+    versions = {}
+    # A response to a question on an earlier HSMT revision is still new
+    # information for this notice. Validate each version independently.
+    for group in groups:
+        version = group.get("notifyVersion") if isinstance(group, dict) else None
+        if not str(version).isdigit():
+            return None
+        normalized = normalize_notice_clarifications(source, notice_no=code, revision_number=version)
+        if not normalized["clarificationAvailable"]:
+            return None
+        versions[str(version)] = {
+            "requests": normalized["clarificationRequests"],
+            "responses": normalized["clarificationResponses"],
+        }
+    return versions
+
+
 def snapshots(bundle: dict, code: str) -> dict[str, list | None]:
     if bundle.get("noticeNo") != code or not str(bundle.get("revisionNumber", "")).isdigit():
         raise ValueError("MONITOR_NOTICE_MISMATCH")
     sources = bundle.get("sources") or {}
-    source = sources.get("clarification")
-    clarification = None
-    if isinstance(source, dict) and source.get("success") is True:
-        response = source.get("response")
-        groups = response.get("biduClarifyReqInvAndContentViewVersionDTOList") if isinstance(response, dict) else None
-        if isinstance(groups, list):
-            clarification = []
-            # A response to a question on an earlier HSMT revision is still new
-            # information for this notice. Validate each version independently.
-            for group in groups:
-                version = group.get("notifyVersion") if isinstance(group, dict) else None
-                if not str(version).isdigit():
-                    clarification = None
-                    break
-                normalized = normalize_notice_clarifications(source, notice_no=code, revision_number=version)
-                if not normalized["clarificationAvailable"]:
-                    clarification = None
-                    break
-                clarification.extend(normalized["clarificationRequests"])
-                clarification.extend(normalized["clarificationResponses"])
+    versions = clarification_versions(sources.get("clarification"), code)
+    # Hashed content must stay byte-identical so existing baselines never reset.
+    clarification = None if versions is None else [
+        row for rows in versions.values() for row in (*rows["requests"], *rows["responses"])
+    ]
     return {
         "clarification": clarification,
         "petition": petition_rows(sources.get("petition")),

@@ -2,6 +2,12 @@
 
 Date: 2026-10-17. Status: product-owner approved; local implementation.
 
+Partially superseded on 2026-10-20 by
+[ADR 0091](0091-auto-write-hsmt-clarifications.md): for HSMT clarification
+requests and responses only, new content detected by a scheduled check is now
+appended to the package record. The no-import/no-overwrite rule below still
+applies to petitions and to every other package, plan and HSMT field.
+
 ## Approved business contract
 
 Automatically check HSMT clarifications and petitions at 08:30 and 14:30 every
