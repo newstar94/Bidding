@@ -198,15 +198,6 @@ def _validate_release_id(raw_value: str, variable_name: str) -> str:
     return value
 
 
-def _validate_header_name(raw_value: str, variable_name: str) -> str | None:
-    value = str(raw_value or "").strip()
-    if not value:
-        return None
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", value):
-        raise SmokeConfigurationError(f"{variable_name} chứa tên header không hợp lệ")
-    return value
-
-
 def _safe_log_path(raw_value: str) -> Path | None:
     value = str(raw_value or "").strip()
     if not value:

@@ -15,7 +15,6 @@ export const BUDGETS = Object.freeze({
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST_ROOT = path.join(ROOT, "dist");
-const MANIFEST_PATH = path.join(DIST_ROOT, ".vite", "manifest.json");
 const TEMPLATE_PATH = path.join(ROOT, "views", "admin", "index.html");
 const RUNTIME_STYLESHEET_PATH = path.join(ROOT, "views", "css", "runtime-styles.css");
 const RUNTIME_STYLESHEET_URL = "/css/runtime-styles.css";

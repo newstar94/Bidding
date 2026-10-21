@@ -40,10 +40,7 @@ test("validation errors prefer stable codes for all user-facing categories", () 
   });
 });
 import { hashWorkspaceScope } from "../../frontend/shared/releaseDiagnostics.js";
-import {
-  invalidateServerCapabilities,
-  updateServerCapabilitiesFromSession,
-} from "../../frontend/auth/serverCapabilities.js";
+import { invalidateServerCapabilities } from "../../frontend/auth/serverCapabilities.js";
 
 afterEach(() => invalidateServerCapabilities());
 

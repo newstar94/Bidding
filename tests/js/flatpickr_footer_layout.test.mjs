@@ -127,7 +127,6 @@ test("month selection replaces the date grid and restores it after choosing a mo
     const calendar = page.locator(".flatpickr-calendar.open");
     assert.equal(await calendar.locator(".flatpickr-footer").count(), 0);
     const dateGrid = calendar.locator(".flatpickr-innerContainer");
-    const timeGrid = calendar.locator(".flatpickr-time");
     const dateGridTop = await dateGrid.evaluate((element) => element.getBoundingClientRect().top);
     await calendar.locator(".cur-month").click();
     await page.waitForTimeout(50);

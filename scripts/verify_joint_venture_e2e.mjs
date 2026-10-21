@@ -119,7 +119,6 @@ async function assertActiveDialog(page, label) {
     throw new Error(`${label} is not active: ${JSON.stringify(diagnostics)}`, { cause: error });
   }
   return page.evaluate(() => {
-    const modal = document.getElementById("modal-custom-dialog");
     return {
       active: true,
       title: document.getElementById("dialog-title")?.textContent?.trim() || "",

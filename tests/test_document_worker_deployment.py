@@ -13,15 +13,6 @@ from scripts.verify_document_worker_deployment import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _directive_values(content: str, name: str) -> list[str]:
-    prefix = f"{name}="
-    return [
-        line[len(prefix) :].strip()
-        for line in content.splitlines()
-        if line.startswith(prefix)
-    ]
-
-
 def test_document_worker_systemd_template_matches_verifier_contract():
     worker = (
         ROOT / "deploy/systemd/biddingflow-document-worker.service.example"

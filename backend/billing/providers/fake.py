@@ -109,19 +109,6 @@ class FakePaymentProvider:
         self._payments[order_code] = payment
         return dict(payment)
 
-    def webhook_for(self, order_code):
-        payment = self.get_payment(order_code)
-        return {
-            "provider": "fake",
-            "data": {
-                "orderCode": payment["orderCode"],
-                "amount": payment["amount"],
-                "paymentLinkId": payment["id"],
-                "reference": f"FAKE-{payment['orderCode']}",
-                "status": payment["status"],
-            },
-        }
-
     def _payment(self, order_code, amount, status):
         paid = amount if status == "PAID" else 0
         return {

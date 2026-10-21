@@ -73,27 +73,6 @@ async function gotoRoute(page, route) {
 
 const select = (page, selector, option) => page.locator(selector).selectOption(option, { force: true });
 
-async function submitModal(page, formSelector, modalSelector) {
-  await page.locator(`${formSelector} button[type="submit"]`).click();
-  const modal = page.locator(`${modalSelector}.active`);
-  const outcome = await Promise.race([
-    modal.waitFor({ state: "hidden", timeout: 20_000 }).then(() => "closed").catch(() => null),
-    page.locator("#modal-custom-dialog.active").waitFor({ state: "visible", timeout: 20_000 }).then(() => "dialog").catch(() => null),
-  ]);
-  if (outcome === "dialog") {
-    const dialogText = await page.locator("#modal-custom-dialog.active").innerText();
-    await page.locator("#btn-dialog-ok").click();
-    await page.locator("#modal-custom-dialog.active").waitFor({ state: "hidden", timeout: 10_000 });
-    await modal.waitFor({ state: "hidden", timeout: 3_000 }).catch(async () => {
-      const invalid = await page.evaluate((selector) => [...document.querySelectorAll(`${selector} :invalid`)].map((element) => ({ id: element.id, message: element.validationMessage })), formSelector);
-      throw new Error(`${formSelector} stayed open after dialog ${JSON.stringify(dialogText)}; invalid=${JSON.stringify(invalid)}`);
-    });
-  }
-  if (outcome !== "closed" && outcome !== "dialog") {
-    throw new Error(`${formSelector} did not close`);
-  }
-}
-
 async function syncMutation(page, payload, { clientMutationId } = {}) {
   const result = await page.evaluate(async (body) => {
     const csrfToken = document.cookie.split(";")

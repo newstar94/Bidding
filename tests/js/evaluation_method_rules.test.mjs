@@ -16,7 +16,6 @@ import { calculateRankings } from "../../frontend/shared/BiddingCalculations.js"
 const {
   LOWEST_PRICE,
   EVALUATED_PRICE,
-  FIXED_PRICE,
   COMBINED,
   TECHNICAL,
 } = EVALUATION_METHODS;

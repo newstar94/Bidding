@@ -67,6 +67,8 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+artifacts/
+output/*.tgz
 
 # Node.js
 node_modules/

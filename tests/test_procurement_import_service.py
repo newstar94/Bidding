@@ -1542,10 +1542,6 @@ class _MemorySessionRepository:
             raise PermissionError("PROCUREMENT_SESSION_SCOPE_INVALID")
         return row
 
-    def update_progress(self, session_id, *, current_index, status):
-        self.rows[session_id]["currentIndex"] = current_index
-        self.rows[session_id]["status"] = status
-
     def bind_decision_authority(
         self, session_id, *, organization_id, user_id, workspace_lease,
         bundle_digest, authority,

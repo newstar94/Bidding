@@ -124,9 +124,6 @@ const launchOptions = {
 if (process.env.E2E_BROWSER_CHANNEL || process.env.STARTUP_BROWSER_CHANNEL) {
   launchOptions.channel = process.env.E2E_BROWSER_CHANNEL || process.env.STARTUP_BROWSER_CHANNEL;
 }
-let browser = null;
-let browserServer = null;
-let context = null;
 let page = null;
 
 const configureLifecyclePage = async (nextPage) => {
@@ -222,9 +219,6 @@ const browserSessions = createBrowserSessionManager({
 });
 
 const useBrowserSession = (nextSession) => {
-  browserServer = nextSession.server;
-  browser = nextSession.browser;
-  context = nextSession.context;
   page = nextSession.page;
 };
 

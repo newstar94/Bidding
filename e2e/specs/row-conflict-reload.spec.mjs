@@ -145,15 +145,6 @@ async function submitModal(page, formSelector, modalSelector) {
   await expect(page.locator(`${modalSelector}.active`)).toBeHidden({ timeout: 20_000 });
 }
 
-async function selectFirstAddress(page, provinceSelector, wardSelector) {
-  await page.locator(provinceSelector).selectOption({ index: 1 }, { force: true });
-  await page.waitForFunction((selector) => {
-    const ward = document.querySelector(selector);
-    return ward && !ward.disabled && ward.options.length > 1;
-  }, wardSelector);
-  await page.locator(wardSelector).selectOption({ index: 1 }, { force: true });
-}
-
 async function checkMountedCheckbox(locator) {
   await locator.evaluate((input) => {
     input.checked = true;
@@ -270,41 +261,6 @@ async function searchPlanRow(page, planCode, { responsePromise = null } = {}) {
   const row = page.locator("#kehoach-table tbody tr").filter({ hasText: planCode }).first();
   await expect(row).toBeVisible();
   return row;
-}
-
-async function createOwner(page, { code, name }) {
-  await openCreateModal(page, "/chu-dau-tu", "#btn-add-chudautu", "#modal-chudautu");
-  await page.locator("#cdt-ma").fill(code);
-  await page.locator("#cdt-ten").fill(name);
-  await page.locator("#cdt-ngayapdung").fill(clock.date(-60));
-  await page.locator("#cdt-danhxung").fill("Ông");
-  await page.locator("#cdt-daidiencdt").fill("Nguyễn Văn Kiểm Thử");
-  await page.locator("#cdt-chucvunguoidungdau").fill("Giám đốc");
-  await page.locator("#cdt-chucvudaidien").fill("Giám đốc");
-  await selectFirstAddress(page, "#cdt-tinh", "#cdt-xa");
-  await page.locator("#cdt-diachichitiet").fill("01 Đường kiểm thử xung đột");
-  const ownerCommitPromise = page.waitForResponse((response) => (
-    response.request().method() === "POST"
-      && new URL(response.url()).pathname === "/api/sync"
-      && (response.request().postDataJSON()?.chudautu || []).some((owner) => (
-        String(owner.maChuDauTu || "").toLowerCase() === String(code).toLowerCase()
-      ))
-  ));
-  await submitModal(page, "#form-chudautu", "#modal-chudautu");
-  const ownerCommitResponse = await ownerCommitPromise;
-  expect(ownerCommitResponse.ok(), await ownerCommitResponse.text().catch(() => "")).toBe(true);
-}
-
-async function createExpert(page, { name, suffix }) {
-  await openCreateModal(page, "/chuyen-gia", "#btn-add-chuyengia", "#modal-chuyengia");
-  await page.locator("#cg-hoten").fill(name);
-  await page.locator("#cg-socccd").fill(`07${String(Date.now()).slice(-9)}1`);
-  await page.locator("#cg-ngaycapcccd").fill(clock.date(-3_650));
-  await page.locator("#cg-noicapcccd").fill("Cục Cảnh sát QLHC về TTXH");
-  await page.locator("#cg-sochungchi").fill(`${suffix}-CC`);
-  await page.locator("#cg-ngaycapchungchi").fill(clock.date(-3_600));
-  await page.locator("#cg-donvicapchungchi").fill("Cục Quản lý Đấu thầu");
-  await submitModal(page, "#form-chuyengia", "#modal-chuyengia");
 }
 
 async function createReferenceFixtures(page, {
@@ -638,52 +594,6 @@ async function readServerRecords(page, { table, field, value = null }) {
       ? [{ id: row.id, rowVersion: row.rowVersion, value: fieldValue }]
       : [];
   });
-}
-
-async function deleteSearchedEntity(page, {
-  expectedText, table, exactField,
-}) {
-  // This scenario intentionally creates a durable conflict draft. Cleanup must
-  // remain operable while the sync pill advertises that expected conflict.
-  let records = await readServerRecords(page, { table, field: exactField, value: expectedText });
-  if (records.length === 0) return { alreadyAbsent: true };
-  const deletedIds = new Set();
-  while (records.length > 0) {
-    const repeatedId = records.find((record) => deletedIds.has(String(record.id)));
-    expect(repeatedId, `${table}:${expectedText} cleanup made no server progress`).toBeUndefined();
-    records.forEach((record) => deletedIds.add(String(record.id)));
-    const result = await page.evaluate(async ({ tableName, pendingRecords }) => {
-      const csrfToken = document.cookie.split(";")
-        .map((part) => part.trim())
-        .find((part) => part.startsWith("csrf_token="))
-        ?.slice("csrf_token=".length) || "";
-      const organizationId = sessionStorage.getItem("bf_active_org")
-        || localStorage.getItem("bf_active_org")
-        || "";
-      const response = await fetch("/api/sync", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Active-Org": encodeURIComponent(organizationId),
-          "X-CSRF-Token": decodeURIComponent(csrfToken),
-        },
-        body: JSON.stringify({
-          baseSyncVersion: localStorage.getItem("bf_last_sync_version") || "0",
-          clientMutationId: `row-conflict-cleanup-${crypto.randomUUID()}`,
-          deletions: pendingRecords.map((record) => ({
-            table: tableName,
-            id: record.id,
-            expectedVersion: record.rowVersion,
-          })),
-        }),
-      });
-      return { ok: response.ok, status: response.status, body: await response.json() };
-    }, { tableName: table, pendingRecords: records });
-    expect(result, JSON.stringify(result.body)).toMatchObject({ ok: true, status: 200 });
-    records = await readServerRecords(page, { table, field: exactField, value: expectedText });
-  }
-  return { deleted: deletedIds.size };
 }
 
 async function readServerRecordsForCleanup(request, headers, {
