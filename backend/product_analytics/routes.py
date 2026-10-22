@@ -31,8 +31,7 @@ def _error(message, code, status=400):
 
 def _record_commercial_event(request, user_id, payload, hmac_key):
     """Insert one commercial analytics event (database write lane)."""
-    connection = database.get_connection()
-    try:
+    with database.transaction() as connection:
         organization_id = get_active_org(request, user_id, cursor=connection.cursor())
         owner_kind = "account" if str(organization_id).startswith("personal:") else "organization"
         event = normalize_commercial_event(
@@ -41,29 +40,18 @@ def _record_commercial_event(request, user_id, payload, hmac_key):
             workspace_id=organization_id,
             hmac_key=hmac_key,
         )
-        connection.execute("BEGIN")
-        inserted = insert_commercial_event(connection.cursor(), event)
-        connection.commit()
-        return inserted
-    finally:
-        connection.close()
+        return insert_commercial_event(connection.cursor(), event)
 
 
 def _record_commercial_feedback(request, user_id, payload, hmac_key):
     """Insert one commercial feedback row (database write lane)."""
-    connection = database.get_connection()
-    try:
+    with database.transaction() as connection:
         workspace_id = get_active_org(request, user_id, cursor=connection.cursor())
         owner_kind = "account" if str(workspace_id).startswith("personal:") else "organization"
         feedback = normalize_commercial_feedback(
             {**payload, "ownerKind": owner_kind}, workspace_id=workspace_id, hmac_key=hmac_key,
         )
-        connection.execute("BEGIN")
-        inserted = insert_commercial_feedback(connection.cursor(), feedback)
-        connection.commit()
-        return inserted
-    finally:
-        connection.close()
+        return insert_commercial_feedback(connection.cursor(), feedback)
 
 
 async def commercial_analytics_event_api(request):

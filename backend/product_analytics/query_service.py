@@ -588,116 +588,8 @@ def _overview_period_values(cursor, start, end, filters):
     }
 
 
-def build_dashboard(
-    cursor, *, from_date, to_date, view="overview", filters=None, page=1, page_size=50,
-):
-    start, end = _date_range(from_date, to_date)
-    page = int(page)
-    page_size = int(page_size)
-    if page < 1 or page_size < 1 or page_size > 100:
-        raise ValueError("Analytics pagination is invalid.")
-    view = str(view or "overview").strip().lower()
-    if view not in VIEWS:
-        raise ValueError("Analytics view is not supported.")
-    normalized = {"from": start.isoformat(), "to": end.isoformat(), **(filters or {})}
-    # SQL uses an exclusive upper bound while the API exposes inclusive dates.
-    query_filters = {**normalized, "to": (end + timedelta(days=1)).isoformat()}
-    where, params = _where(query_filters)
-    usage_rows = cursor.execute(  # noqa: S608 - where uses fixed columns and placeholders.
-        f"SELECT * FROM workspace_usage_daily WHERE {where}",
-        params,
-    ).fetchall()
-    rows = [_row_dict(row) for row in usage_rows]
-    # Revenue and commercial funnel facts may exist before a workspace reaches
-    # a meaningful product action, so usage alone does not decide empty state.
-    auxiliary_count = _auxiliary_data_count(cursor, query_filters)
-    if not rows and not int(auxiliary_count or 0):
-        return {
-            "view": view, "hasData": False,
-            "message": "Chưa đủ dữ liệu trong khoảng thời gian này.",
-            "filters": normalized,
-            "timezone": "Asia/Ho_Chi_Minh",
-            "updatedAt": None,
-            "kpis": [], "series": [], "segments": [], "table": [],
-            "insufficientSample": False,
-        }
-    workspace_count = len({row.get("analytics_workspace_id") for row in rows})
-    latest_snapshot = _latest_usage_snapshot(rows)
-    seat_where, seat_params = _where(query_filters, alias="u")
-    active_seats_row = cursor.execute(  # noqa: S608 - where uses fixed columns and placeholders.
-        f"""SELECT COUNT(DISTINCT seat.analytics_workspace_id || ':' || seat.analytics_user_id) AS active_seats
-               FROM workspace_seat_daily AS seat
-               JOIN workspace_usage_daily AS u
-                 ON u.usage_date=seat.usage_date
-                AND u.analytics_workspace_id=seat.analytics_workspace_id
-              WHERE {seat_where}""",
-        seat_params,
-    ).fetchone()
-    active_seats = int((_row_dict(active_seats_row) if active_seats_row else {}).get("active_seats") or 0)
-    meaningful = _sum(rows, "meaningful_actions")
-    feature_uses = _sum(rows, "feature_uses")
-    fetches = _sum(rows, "successful_fetches")
-    exports = _sum(rows, "word_exports")
-    subscription_clauses = ["snapshot_date >= ?", "snapshot_date < ?"]
-    subscription_params = [query_filters["from"], query_filters["to"]]
-    for parameter, column in (
-        (normalized.get("ownerKind"), "owner_kind"),
-        (normalized.get("releaseId"), "commercial_release_id"),
-        (normalized.get("variant"), "variant"),
-        (normalized.get("plan"), "plan_code"),
-    ):
-        if parameter:
-            subscription_clauses.append(f"{column} = ?")
-            subscription_params.append(parameter)
-    release_mode = _release_mode_condition("commercial_release_id", normalized.get("releaseMode"))
-    if release_mode:
-        subscription_clauses.append(release_mode)
-    paid_summary = cursor.execute(
-        f"""SELECT COUNT(DISTINCT analytics_workspace_id) FILTER (WHERE status='active') AS paid,
-                   COUNT(DISTINCT analytics_workspace_id) FILTER (WHERE activated_today=1) AS new_paid
-              FROM subscription_snapshot_daily
-             WHERE {' AND '.join(subscription_clauses)}""",
-        tuple(subscription_params),
-    ).fetchone()
-    paid_item = _row_dict(paid_summary) if paid_summary else {}
-    response = {
-        "view": view,
-        "hasData": True,
-        "message": None,
-        "filters": normalized,
-        "timezone": "Asia/Ho_Chi_Minh",
-        "updatedAt": max((str(row.get("updated_at") or "") for row in rows), default=None),
-        "kpis": [
-            {"key": "monthlyActiveWorkspaces", "label": "Monthly Active Workspaces", "value": latest_snapshot["monthlyActiveWorkspaces"],
-             "definition": "Workspaces with a meaningful action in the rolling 30-day snapshot."},
-            {"key": "monthlyActiveSeats", "label": "Monthly Active Seats", "value": latest_snapshot["monthlyActiveSeats"],
-             "definition": "Distinct meaningful-action users in the latest rolling 30-day snapshot."},
-            {"key": "meaningfulActions", "label": "Meaningful Actions", "value": meaningful},
-            {"key": "successfulProcurementFetches", "label": "Successful Procurement Fetches", "value": fetches},
-            {"key": "wordExports", "label": "Word Exports", "value": exports},
-            {"key": "featureUses", "label": "Feature Uses", "value": feature_uses},
-            {"key": "registeredSeats", "label": "Registered Seats", "value": latest_snapshot["registeredSeats"]},
-            {"key": "powerSeats", "label": "Power Seats", "value": latest_snapshot["powerSeats"]},
-            {"key": "paidWorkspaces", "label": "Paid Workspaces", "value": int(paid_item.get("paid") or 0)},
-            {"key": "newPaidWorkspaces", "label": "New Paid Workspaces", "value": int(paid_item.get("new_paid") or 0)},
-        ],
-        "series": [
-            {"key": "monthlyActiveWorkspaces", "label": "Monthly active workspaces", "points": _workspace_count_trend(rows)},
-            {"key": "activeSeats", "label": "Active seats", "points": _trend(rows, "active_seats")},
-            {"key": "meaningfulActions", "label": "Meaningful actions", "points": _trend(rows, "meaningful_actions")},
-        ],
-        "segments": [],
-        "table": [],
-        "insufficientSample": workspace_count < SMALL_COHORT_THRESHOLD,
-        "correlationDisclaimer": "Correlation does not imply causation.",
-        "dataQuality": {
-            "procurementCacheHits": "not_available",
-            "procurementAttempts": "billable_ledger_only",
-            "costs": "estimated_or_not_configured",
-            "planFitRevenue": "not_attributable_to_workspace",
-        },
-    }
-
+def _dashboard_overview_kpis(cursor, view, params, response, rows, where):
+    """Overview headline KPIs."""
     if view == "overview":
         mix_rows = cursor.execute(
             f"""SELECT COALESCE(NULLIF(variant,''),'unknown') AS variant,
@@ -725,6 +617,10 @@ def build_dashboard(
         ])
         response["topupRevenueTrend"] = _trend(rows, "topup_spend_vnd")
 
+
+
+def _dashboard_feature_section(cursor, view, end, paid_item, query_filters, response, rows, start, workspace_count):
+    """Feature adoption section (features and overview views)."""
     if view in {"features", "overview"}:
         feature_where, feature_params = _where(query_filters, alias="u")
         retention_cutoff = max(start, end - timedelta(days=29)).isoformat()
@@ -878,6 +774,10 @@ def build_dashboard(
                 "paid": "Active subscription observed in the selected range.",
                 "disclaimer": "Correlation does not imply causation.",
             }
+
+
+def _dashboard_funnel_section(cursor, view, end, normalized, query_filters, response, start):
+    """Commercial funnel section (funnel and overview views)."""
     if view in {"funnel", "overview"}:
         funnel_clauses = ["usage_date >= ?", "usage_date < ?"]
         funnel_params = [query_filters["from"], query_filters["to"]]
@@ -1048,6 +948,10 @@ def build_dashboard(
                     ]},
                 ],
             }]
+
+
+def _dashboard_economics_section(cursor, view, active_seats, end, fetches, normalized, paid_item, query_filters, response, rows, start, subscription_clauses, subscription_params, workspace_count):
+    """Revenue and unit economics section (economics and overview views)."""
     if view in {"economics", "overview"}:
         revenue_clauses = ["usage_date >= ?", "usage_date < ?"]
         revenue_params = [query_filters["from"], query_filters["to"]]
@@ -1281,6 +1185,10 @@ def build_dashboard(
                 len(ai_workspace_ids & paid_workspace_ids),
             ),
         }
+
+
+def _dashboard_retention_section(cursor, view, normalized, response):
+    """Retention cohorts section."""
     if view == "retention":
         retention_clauses = ["cohort_week >= ?", "cohort_week <= ?"]
         retention_params = [normalized["from"], normalized["to"]]
@@ -1348,6 +1256,10 @@ def build_dashboard(
                 for cohort, points in sorted(cohort_series.items())
             ],
         }]
+
+
+def _dashboard_plan_fit_section(cursor, view, page, page_size, end, normalized, response, start):
+    """Plan-fit section."""
     if view == "plan-fit":
         plan_fit_clauses = ["snapshot_month >= ?", "snapshot_month <= ?"]
         plan_fit_params = [_month_start(start).isoformat(), _month_start(end).isoformat()]
@@ -1404,6 +1316,10 @@ def build_dashboard(
                 ],
             }],
         }]
+
+
+def _dashboard_seats_section(cursor, view, response, rows, subscription_clauses, subscription_params):
+    """Seat usage section."""
     if view == "seats":
         by_workspace = {}
         for row in rows:
@@ -1522,6 +1438,10 @@ def build_dashboard(
                 ],
             }],
         }]
+
+
+def _dashboard_procurement_section(cursor, view, end, normalized, paid_item, query_filters, response, rows, start):
+    """Procurement lookup and credits section."""
     if view in {"procurement", "credits"}:
         metric_keys = (
             ("fetchAttempted", "Fetch attempted", "fetch_attempted"),
@@ -1819,6 +1739,10 @@ def build_dashboard(
                     ],
                 }]},
             ]
+
+
+def _dashboard_activation_section(cursor, view, end, normalized, response, rows, start):
+    """Activation milestones section."""
     if view == "activation":
         activation_clauses = ["signup_at >= ?", "signup_at < ?"]
         activation_params = [
@@ -1955,6 +1879,127 @@ def build_dashboard(
             {"segment": key, **value, "activationRate": value["activated"] / value["workspaceCount"]}
             for key, value in sorted(breakdown.items())
         ])
+
+
+def build_dashboard(
+    cursor, *, from_date, to_date, view="overview", filters=None, page=1, page_size=50,
+):
+    start, end = _date_range(from_date, to_date)
+    page = int(page)
+    page_size = int(page_size)
+    if page < 1 or page_size < 1 or page_size > 100:
+        raise ValueError("Analytics pagination is invalid.")
+    view = str(view or "overview").strip().lower()
+    if view not in VIEWS:
+        raise ValueError("Analytics view is not supported.")
+    normalized = {"from": start.isoformat(), "to": end.isoformat(), **(filters or {})}
+    # SQL uses an exclusive upper bound while the API exposes inclusive dates.
+    query_filters = {**normalized, "to": (end + timedelta(days=1)).isoformat()}
+    where, params = _where(query_filters)
+    usage_rows = cursor.execute(  # noqa: S608 - where uses fixed columns and placeholders.
+        f"SELECT * FROM workspace_usage_daily WHERE {where}",
+        params,
+    ).fetchall()
+    rows = [_row_dict(row) for row in usage_rows]
+    # Revenue and commercial funnel facts may exist before a workspace reaches
+    # a meaningful product action, so usage alone does not decide empty state.
+    auxiliary_count = _auxiliary_data_count(cursor, query_filters)
+    if not rows and not int(auxiliary_count or 0):
+        return {
+            "view": view, "hasData": False,
+            "message": "Chưa đủ dữ liệu trong khoảng thời gian này.",
+            "filters": normalized,
+            "timezone": "Asia/Ho_Chi_Minh",
+            "updatedAt": None,
+            "kpis": [], "series": [], "segments": [], "table": [],
+            "insufficientSample": False,
+        }
+    workspace_count = len({row.get("analytics_workspace_id") for row in rows})
+    latest_snapshot = _latest_usage_snapshot(rows)
+    seat_where, seat_params = _where(query_filters, alias="u")
+    active_seats_row = cursor.execute(  # noqa: S608 - where uses fixed columns and placeholders.
+        f"""SELECT COUNT(DISTINCT seat.analytics_workspace_id || ':' || seat.analytics_user_id) AS active_seats
+               FROM workspace_seat_daily AS seat
+               JOIN workspace_usage_daily AS u
+                 ON u.usage_date=seat.usage_date
+                AND u.analytics_workspace_id=seat.analytics_workspace_id
+              WHERE {seat_where}""",
+        seat_params,
+    ).fetchone()
+    active_seats = int((_row_dict(active_seats_row) if active_seats_row else {}).get("active_seats") or 0)
+    meaningful = _sum(rows, "meaningful_actions")
+    feature_uses = _sum(rows, "feature_uses")
+    fetches = _sum(rows, "successful_fetches")
+    exports = _sum(rows, "word_exports")
+    subscription_clauses = ["snapshot_date >= ?", "snapshot_date < ?"]
+    subscription_params = [query_filters["from"], query_filters["to"]]
+    for parameter, column in (
+        (normalized.get("ownerKind"), "owner_kind"),
+        (normalized.get("releaseId"), "commercial_release_id"),
+        (normalized.get("variant"), "variant"),
+        (normalized.get("plan"), "plan_code"),
+    ):
+        if parameter:
+            subscription_clauses.append(f"{column} = ?")
+            subscription_params.append(parameter)
+    release_mode = _release_mode_condition("commercial_release_id", normalized.get("releaseMode"))
+    if release_mode:
+        subscription_clauses.append(release_mode)
+    paid_summary = cursor.execute(
+        f"""SELECT COUNT(DISTINCT analytics_workspace_id) FILTER (WHERE status='active') AS paid,
+                   COUNT(DISTINCT analytics_workspace_id) FILTER (WHERE activated_today=1) AS new_paid
+              FROM subscription_snapshot_daily
+             WHERE {' AND '.join(subscription_clauses)}""",
+        tuple(subscription_params),
+    ).fetchone()
+    paid_item = _row_dict(paid_summary) if paid_summary else {}
+    response = {
+        "view": view,
+        "hasData": True,
+        "message": None,
+        "filters": normalized,
+        "timezone": "Asia/Ho_Chi_Minh",
+        "updatedAt": max((str(row.get("updated_at") or "") for row in rows), default=None),
+        "kpis": [
+            {"key": "monthlyActiveWorkspaces", "label": "Monthly Active Workspaces", "value": latest_snapshot["monthlyActiveWorkspaces"],
+             "definition": "Workspaces with a meaningful action in the rolling 30-day snapshot."},
+            {"key": "monthlyActiveSeats", "label": "Monthly Active Seats", "value": latest_snapshot["monthlyActiveSeats"],
+             "definition": "Distinct meaningful-action users in the latest rolling 30-day snapshot."},
+            {"key": "meaningfulActions", "label": "Meaningful Actions", "value": meaningful},
+            {"key": "successfulProcurementFetches", "label": "Successful Procurement Fetches", "value": fetches},
+            {"key": "wordExports", "label": "Word Exports", "value": exports},
+            {"key": "featureUses", "label": "Feature Uses", "value": feature_uses},
+            {"key": "registeredSeats", "label": "Registered Seats", "value": latest_snapshot["registeredSeats"]},
+            {"key": "powerSeats", "label": "Power Seats", "value": latest_snapshot["powerSeats"]},
+            {"key": "paidWorkspaces", "label": "Paid Workspaces", "value": int(paid_item.get("paid") or 0)},
+            {"key": "newPaidWorkspaces", "label": "New Paid Workspaces", "value": int(paid_item.get("new_paid") or 0)},
+        ],
+        "series": [
+            {"key": "monthlyActiveWorkspaces", "label": "Monthly active workspaces", "points": _workspace_count_trend(rows)},
+            {"key": "activeSeats", "label": "Active seats", "points": _trend(rows, "active_seats")},
+            {"key": "meaningfulActions", "label": "Meaningful actions", "points": _trend(rows, "meaningful_actions")},
+        ],
+        "segments": [],
+        "table": [],
+        "insufficientSample": workspace_count < SMALL_COHORT_THRESHOLD,
+        "correlationDisclaimer": "Correlation does not imply causation.",
+        "dataQuality": {
+            "procurementCacheHits": "not_available",
+            "procurementAttempts": "billable_ledger_only",
+            "costs": "estimated_or_not_configured",
+            "planFitRevenue": "not_attributable_to_workspace",
+        },
+    }
+
+    _dashboard_overview_kpis(cursor, view, params, response, rows, where)
+    _dashboard_feature_section(cursor, view, end, paid_item, query_filters, response, rows, start, workspace_count)
+    _dashboard_funnel_section(cursor, view, end, normalized, query_filters, response, start)
+    _dashboard_economics_section(cursor, view, active_seats, end, fetches, normalized, paid_item, query_filters, response, rows, start, subscription_clauses, subscription_params, workspace_count)
+    _dashboard_retention_section(cursor, view, normalized, response)
+    _dashboard_plan_fit_section(cursor, view, page, page_size, end, normalized, response, start)
+    _dashboard_seats_section(cursor, view, response, rows, subscription_clauses, subscription_params)
+    _dashboard_procurement_section(cursor, view, end, normalized, paid_item, query_filters, response, rows, start)
+    _dashboard_activation_section(cursor, view, end, normalized, response, rows, start)
     if view == "retention":
         response["segments"] = response.get("cohorts", [])
     if view == "overview":

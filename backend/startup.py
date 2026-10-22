@@ -165,6 +165,39 @@ def validate_database_connection_budget(
     return budget
 
 
+def database_pool_lane_shortfall(environ=None):
+    """Return how many database-lane threads can wait on an exhausted pool.
+
+    Read and write lanes may each hold one pooled connection per thread, and
+    background workers need about two more. A smaller pool makes lane threads
+    wait on ``getconn`` and fail under load (PoolTimeout -> HTTP 500/503).
+    """
+
+    environ = os.environ if environ is None else environ
+    from backend.db.db_helper import default_pool_max_size
+
+    required = default_pool_max_size(environ)
+    configured = _bounded_configuration_int(
+        environ, "DATABASE_POOL_MAX_SIZE", required, 1, 64
+    )
+    return max(0, required - configured), configured, required
+
+
+def warn_database_pool_lane_shortfall(environ=None):
+    shortfall, configured, required = database_pool_lane_shortfall(environ)
+    if shortfall:
+        from backend.shared.logging_utils import log_error
+
+        log_error(
+            f"DATABASE_POOL_MAX_SIZE={configured} is below the {required} connections "
+            "needed by DATABASE_READ_WORKERS + DATABASE_WRITE_WORKERS + background "
+            "workers; raise it (and keep the cluster budget below max_connections).",
+            "database_pool_sizing",
+            level="WARN",
+        )
+    return shortfall
+
+
 def validate_http_resource_limits(environ=None):
     """Validate process-manager limits that bound HTTP/WebSocket overload."""
 
@@ -541,6 +574,7 @@ def validate_startup_configuration(database, environ=None):
     except TurnstileConfigurationError as exc:
         raise StartupValidationError(str(exc)) from exc
     validate_http_resource_limits(environ)
+    warn_database_pool_lane_shortfall(environ)
     try:
         get_ai_config(environ)
     except ValueError as exc:

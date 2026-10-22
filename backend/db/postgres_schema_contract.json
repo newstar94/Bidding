@@ -2654,6 +2654,41 @@
       "table": "nhom_phu_thuoc_phan_lo_thanh_vien",
       "valid": true
     },
+    "idx_org_invitations_accepted_user": {
+      "definition": "CREATE INDEX idx_org_invitations_accepted_user ON $SCHEMA.organization_invitations USING btree (accepted_user_id) WHERE (accepted_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
+    "idx_org_invitations_email_pending": {
+      "definition": "CREATE INDEX idx_org_invitations_email_pending ON $SCHEMA.organization_invitations USING btree (email_norm, expires_at) WHERE (status = 'pending'::text)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
+    "idx_org_invitations_invited_by": {
+      "definition": "CREATE INDEX idx_org_invitations_invited_by ON $SCHEMA.organization_invitations USING btree (invited_by)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
+    "idx_org_invitations_org_created": {
+      "definition": "CREATE INDEX idx_org_invitations_org_created ON $SCHEMA.organization_invitations USING btree (organization_id, created_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
+    "idx_org_invitations_pending": {
+      "definition": "CREATE UNIQUE INDEX idx_org_invitations_pending ON $SCHEMA.organization_invitations USING btree (organization_id, email_norm) WHERE (status = 'pending'::text)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
     "idx_organization_subscriptions_package": {
       "definition": "CREATE INDEX idx_organization_subscriptions_package ON $SCHEMA.organization_subscriptions USING btree (package_id)",
       "live": true,
@@ -3613,6 +3648,13 @@
       "table": "nhom_phu_thuoc_phan_lo_thanh_vien",
       "valid": true
     },
+    "organization_invitations_pkey": {
+      "definition": "CREATE UNIQUE INDEX organization_invitations_pkey ON $SCHEMA.organization_invitations USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "organization_invitations",
+      "valid": true
+    },
     "organization_subscriptions_pkey": {
       "definition": "CREATE UNIQUE INDEX organization_subscriptions_pkey ON $SCHEMA.organization_subscriptions USING btree (organization_id)",
       "live": true,
@@ -4252,7 +4294,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 101,
+  "schemaVersion": 102,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -19066,6 +19108,175 @@
         "nhom_phu_thuoc_phan_lo_thanh_vien_sync_version_check": {
           "deferrable": false,
           "definition": "CHECK (sync_version >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
+    "organization_invitations": {
+      "columns": {
+        "accepted_user_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "created_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "email_norm": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "employee_name": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "expires_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "bigint"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "invited_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "phone": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "responded_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "status": {
+          "default": "'pending'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_organization_invitations_1_900fddb1": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_organization_invitations_2_fd300338": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (invited_by) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_organization_invitations_3_b8510446": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (accepted_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "organization_invitations_check": {
+          "deferrable": false,
+          "definition": "CHECK (expires_at > created_at)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_created_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (created_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_email_norm_check": {
+          "deferrable": false,
+          "definition": "CHECK (email_norm <> ''::text AND length(email_norm) <= 320)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_employee_name_check": {
+          "deferrable": false,
+          "definition": "CHECK (TRIM(BOTH FROM employee_name) <> ''::text AND length(employee_name) <= 200)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_phone_check": {
+          "deferrable": false,
+          "definition": "CHECK (phone IS NULL OR length(phone) <= 32)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_invitations_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "organization_invitations_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'revoked'::text]))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

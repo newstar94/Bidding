@@ -3987,6 +3987,30 @@ def _upgrade_to_v101_add_procurement_monitor(cursor, context):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_record_creator ON audit_log (organization_id, target_type, target_id, id) WHERE action = 'sync.record_created'")
 
 
+ORGANIZATION_INVITATION_INDEXES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_org_invitations_pending ON organization_invitations (organization_id, email_norm) WHERE status = 'pending'",
+    "CREATE INDEX IF NOT EXISTS idx_org_invitations_email_pending ON organization_invitations (email_norm, expires_at) WHERE status = 'pending'",
+    "CREATE INDEX IF NOT EXISTS idx_org_invitations_org_created ON organization_invitations (organization_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_org_invitations_invited_by ON organization_invitations (invited_by)",
+    "CREATE INDEX IF NOT EXISTS idx_org_invitations_accepted_user ON organization_invitations (accepted_user_id) WHERE accepted_user_id IS NOT NULL",
+)
+
+
+def _upgrade_to_v102_add_organization_invitations(cursor, context):
+    """Consent-based membership: an invitation replaces email lookups."""
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    create_sql = context.build_create_table_sql(
+        "organization_invitations", SCHEMA_DINH_NGHIA["organization_invitations"],
+    )
+    cursor.execute(create_sql.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1))
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, ("organization_invitations",), if_not_exists=True)
+    for statement in ORGANIZATION_INVITATION_INDEXES:
+        cursor.execute(statement)
+    context.assert_foreign_key_integrity(cursor)
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4440,6 +4464,7 @@ UPGRADES = (
     DatabaseUpgrade(99, "retire_optional_features", _upgrade_to_v99_retire_optional_features),
     DatabaseUpgrade(100, "add_checkout_payment_details", _upgrade_to_v100_add_checkout_payment_details),
     DatabaseUpgrade(101, "add_procurement_monitor", _upgrade_to_v101_add_procurement_monitor),
+    DatabaseUpgrade(102, "add_organization_invitations", _upgrade_to_v102_add_organization_invitations),
 )
 
 
@@ -4464,7 +4489,8 @@ DB_SCHEMA_VERSION = (
 # V99 archives the removed conflict-draft and legal/compliance persistence model.
 # V100 stores signed provider QR details used by the checkout popup.
 # V101 persists scheduled procurement checks, leases and notification baselines.
-DB_RUNTIME_MIN_SCHEMA_VERSION = 101
+# V102 adds consent-based organization invitations (ADR 0093).
+DB_RUNTIME_MIN_SCHEMA_VERSION = 102
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

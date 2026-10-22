@@ -5,8 +5,6 @@ import re
 import time
 from starlette.responses import JSONResponse
 from backend.auth.security_notifications import build_security_notification_batch
-from backend.auth.auth_service import get_rate_limit_decision, rate_limit_response
-from backend.auth.identity import normalize_email
 from backend.auth.auth_helper import verify_session_in_transaction
 
 from backend.shared.helpers import (
@@ -53,7 +51,6 @@ from backend.activity.service import (
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
-_MEMBERSHIP_CANDIDATE_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _QUERY_CHUNK_SIZE = 500
 
 def _create_organization_sync(request, role_or_err, data):
@@ -628,149 +625,77 @@ async def update_organization_subscription_api(request):
     except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
         return database_unavailable_response(request, error, write=True)
 
-def _lookup_membership_candidate_sync(request, role_or_err):
-    email = normalize_email(request.query_params.get("email"))
-    if (
-        not email
-        or len(email) > 254
-        or not _MEMBERSHIP_CANDIDATE_EMAIL_RE.fullmatch(email)
-    ):
-        return error_response(
-            request,
-            "MEMBERSHIP_CANDIDATE_EMAIL_INVALID",
-            "Địa chỉ email không hợp lệ.",
-            status_code=400,
-        )
+def activate_organization_membership(
+    cursor,
+    request,
+    *,
+    actor_user_id,
+    org_id,
+    user_id,
+    employee_name,
+    phone,
+    reactivate,
+):
+    """Add (or re-add) an employee membership inside the caller's transaction.
 
-    conn = None
-    try:
-        organization_id = get_active_org(request, role_or_err.user_id)
-        conn = database.get_connection()
-        conn.execute("BEGIN")
-        cursor = conn.cursor()
-        if not is_business_organization(cursor, organization_id):
-            conn.rollback()
-            return error_response(
-                request,
-                "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
-                "Không thể thêm thành viên vào không gian cá nhân.",
-                status_code=409,
-            )
-        if not is_organization_manager(
-            cursor, role_or_err, role_or_err.user_id, organization_id
-        ):
-            conn.rollback()
-            return error_response(
-                request,
-                "MEMBERSHIP_CANDIDATE_LOOKUP_FORBIDDEN",
-                "Bạn không có quyền tra cứu tài khoản để thêm nhân sự.",
-                status_code=403,
-            )
+    Returns ``(error_response, None)`` or ``(None, success_message)``. Shared by
+    manager re-adds and by accepted invitations so quota, audit, notification
+    and broadcast behave identically.
+    """
 
-        row = cursor.execute(
-            """SELECT id, ho_ten AS name, email, vai_tro AS platform_role
-               FROM tai_khoan
-               WHERE email_norm = ?
-                 AND trang_thai = 'active'
-                 AND da_xac_minh = 1
-               LIMIT 1""",
-            (email,),
-        ).fetchone()
-        actor_roles = get_effective_roles(role_or_err)
-        if (
-            row
-            and "super_admin" not in actor_roles
-            and "super_admin" in get_effective_roles(row["platform_role"] or "")
-        ):
-            row = None
+    quota_error = _organization_member_quota_error(cursor, org_id)
+    if quota_error is not None:
+        return quota_error, None
 
-        candidate = None
-        if row:
-            candidate = {
-                "id": row["id"],
-                "name": row["name"] or "",
-                "email": row["email"] or "",
-            }
-        log_audit(
-            "organization.membership_candidate_looked_up",
-            actor_user_id=role_or_err.user_id,
-            organization_id=organization_id,
-            target_type="account",
-            target_id=candidate["id"] if candidate else None,
-            request=request,
-            metadata={
-                "found": candidate is not None,
-                "email_digest": hashlib.sha256(email.encode("utf-8")).hexdigest()[:16],
-            },
-            cursor=cursor,
-            required=True,
+    if reactivate:
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc
+               SET vai_tro_trong_to_chuc = 'employee',
+                   ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
+                   left_at = NULL, left_by = NULL, updated_at = CURRENT_TIMESTAMP
+               WHERE user_id = ? AND organization_id = ?""",
+            (employee_name, phone or None, user_id, org_id),
         )
-        conn.commit()
-        return JSONResponse({"candidate": candidate})
-    except OrgPermissionError as error:
-        if conn:
-            conn.rollback()
-        if isinstance(error, OrgScopeRequiredError):
-            return error_response(request, error.code, str(error), status_code=error.status_code)
-        return error_response(
-            request,
-            "ORG_ACCESS_DENIED",
-            "Không có quyền truy cập tổ chức này.",
-            status_code=403,
+        audit_event = "organization.member_reactivated"
+        success_message = "Đã thêm lại nhân viên vào tổ chức!"
+    else:
+        cursor.execute(
+            """INSERT INTO thanh_vien_to_chuc (
+                   user_id, organization_id, vai_tro_trong_to_chuc, ten_nhan_su, so_dien_thoai
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (user_id, org_id, 'employee', employee_name, phone or None)
         )
-    except Exception as exc:  # noqa: BLE001 - sanitized HTTP transaction boundary.
-        if conn:
-            conn.rollback()
-        return log_and_error(
-            request,
-            exc,
-            "lookup_membership_candidate_api",
-            "MEMBERSHIP_CANDIDATE_LOOKUP_FAILED",
-            "Không thể tra cứu tài khoản nhân sự.",
-        )
-    finally:
-        if conn:
-            conn.close()
+        audit_event = "organization.member_added"
+        success_message = "Thêm nhân sự vào tổ chức thành công!"
 
-
-async def lookup_membership_candidate_api(request):
-    try:
-        is_valid, role_or_err = await run_database_read(verify_session, request)
-    except (BlockingIOBusyError, BlockingIOTimeoutError) as error:
-        return database_unavailable_response(request, error)
-    if not is_valid:
-        return JSONResponse({"error": role_or_err}, status_code=403)
-    try:
-        decision = await run_database_write(
-            get_rate_limit_decision,
-            f"membership_candidate:{role_or_err.user_id}",
-            max_attempts=20,
-            window_seconds=60,
-        )
-        if decision.storage_failed:
-            return error_response(
-                request,
-                "MEMBERSHIP_CANDIDATE_RATE_LIMIT_UNAVAILABLE",
-                "Chưa thể kiểm tra giới hạn tra cứu. Vui lòng thử lại sau.",
-                status_code=503,
-            )
-        if not decision.allowed:
-            return rate_limit_response(
-                "Bạn đã tra cứu quá nhiều tài khoản. Vui lòng thử lại sau.",
-                decision,
-            )
-        return await run_database_write(
-            _lookup_membership_candidate_sync, request, role_or_err
-        )
-    except BlockingIOBusyError:
-        response = error_response(
-            request,
-            "DATABASE_WRITE_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
+    log_audit(
+        audit_event,
+        actor_user_id=actor_user_id,
+        organization_id=org_id,
+        target_type="organization_membership",
+        target_id=f"{org_id}:{user_id}",
+        request=request,
+        metadata={"organization_id": org_id, "membership_role": "employee"},
+        cursor=cursor,
+        required=True,
+    )
+    queue_membership_notification(
+        cursor,
+        user_id=user_id,
+        organization_id=org_id,
+        added=True,
+    )
+    enqueue_websocket_event(
+        cursor,
+        "broadcast",
+        organization_id=org_id,
+        payload={
+            "event": "organization_member_changed",
+            "userId": user_id,
+            "status": "active",
+        },
+    )
+    return None, success_message
 
 
 def _add_user_to_org_sync(request, role_or_err, data):
@@ -853,6 +778,19 @@ def _add_user_to_org_sync(request, role_or_err, data):
             conn.commit()
             return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
 
+        if not membership and 'super_admin' not in effective_roles:
+            # ADR 0093: a person joins a business organization only by
+            # accepting an invitation sent to their verified email. Direct
+            # adds by account ID remain for current/former members.
+            conn.rollback()
+            return JSONResponse(
+                {
+                    "error": "Hãy gửi lời mời qua email; người được mời cần chấp nhận để vào tổ chức.",
+                    "code": "MEMBERSHIP_INVITATION_REQUIRED",
+                },
+                status_code=409,
+            )
+
         cursor.execute(
             """SELECT vai_tro FROM tai_khoan
                WHERE id = ? AND trang_thai = 'active'""",
@@ -869,59 +807,19 @@ def _add_user_to_org_sync(request, role_or_err, data):
             conn.rollback()
             return JSONResponse({"error": "Bạn không có quyền thêm quản trị viên nền tảng vào tổ chức."}, status_code=403)
 
-        quota_error = _organization_member_quota_error(cursor, org_id)
-        if quota_error is not None:
-            conn.rollback()
-            return quota_error
-
-        if membership:
-            cursor.execute(
-                """UPDATE thanh_vien_to_chuc
-                   SET vai_tro_trong_to_chuc = 'employee',
-                       ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
-                       left_at = NULL, left_by = NULL, updated_at = CURRENT_TIMESTAMP
-                   WHERE user_id = ? AND organization_id = ?""",
-                (employee_name, phone or None, user_id, org_id),
-            )
-            audit_event = "organization.member_reactivated"
-            success_message = "Đã thêm lại nhân viên vào tổ chức!"
-        else:
-            cursor.execute(
-                """INSERT INTO thanh_vien_to_chuc (
-                       user_id, organization_id, vai_tro_trong_to_chuc, ten_nhan_su, so_dien_thoai
-                   ) VALUES (?, ?, ?, ?, ?)""",
-                (user_id, org_id, 'employee', employee_name, phone or None)
-            )
-            audit_event = "organization.member_added"
-            success_message = "Thêm nhân sự vào tổ chức thành công!"
-
-        log_audit(
-            audit_event,
+        error, success_message = activate_organization_membership(
+            cursor,
+            request,
             actor_user_id=role_or_err.user_id,
-            organization_id=org_id,
-            target_type="organization_membership",
-            target_id=f"{org_id}:{user_id}",
-            request=request,
-            metadata={"organization_id": org_id, "membership_role": "employee"},
-            cursor=cursor,
-            required=True,
-        )
-        queue_membership_notification(
-            cursor,
+            org_id=org_id,
             user_id=user_id,
-            organization_id=org_id,
-            added=True,
+            employee_name=employee_name,
+            phone=phone,
+            reactivate=bool(membership),
         )
-        enqueue_websocket_event(
-            cursor,
-            "broadcast",
-            organization_id=org_id,
-            payload={
-                "event": "organization_member_changed",
-                "userId": user_id,
-                "status": "active",
-            },
-        )
+        if error is not None:
+            conn.rollback()
+            return error
         conn.commit()
 
         return JSONResponse({"success": True, "message": success_message})

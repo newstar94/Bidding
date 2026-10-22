@@ -58,15 +58,15 @@ def test_lot_create_write_waits_off_event_loop(monkeypatch):
     async def read_json(_request):
         return {"lotIds": ["lot-1"], "approvalMode": "CONSOLIDATED_APPROVAL"}, None
 
-    async def impl(_request, *, _session, _data):
+    def impl(_request, _session, _data):
         worker_ids.append(get_ident())
         started.set()
-        await asyncio.to_thread(release.wait, 1)
+        release.wait(1)
         return SimpleNamespace(status_code=201)
 
     monkeypatch.setattr(routes, "verify_session", lambda _: (True, SimpleNamespace(user_id="u")))
     monkeypatch.setattr(routes, "read_json_object", read_json)
-    monkeypatch.setattr(routes, "_create_lot_batch_impl", impl)
+    monkeypatch.setattr(routes, "_create_lot_batch_sync", impl)
 
     async def scenario():
         loop_thread = get_ident()
@@ -92,15 +92,15 @@ def test_lot_finalize_write_waits_off_event_loop(monkeypatch):
     async def read_json(_request):
         return {"outcomes": {"lot-1": "AWARDED"}, "packageAward": {}}, None
 
-    async def impl(_request, *, _session, _data):
+    def impl(_request, _session, _data):
         worker_ids.append(get_ident())
         started.set()
-        await asyncio.to_thread(release.wait, 1)
+        release.wait(1)
         return SimpleNamespace(status_code=200)
 
     monkeypatch.setattr(routes, "verify_session", lambda _: (True, SimpleNamespace(user_id="u")))
     monkeypatch.setattr(routes, "read_json_object", read_json)
-    monkeypatch.setattr(routes, "_finalize_lot_batch_impl", impl)
+    monkeypatch.setattr(routes, "_finalize_lot_batch_sync", impl)
 
     async def scenario():
         loop_thread = get_ident()
@@ -132,3 +132,12 @@ def test_lot_write_lane_overload_keeps_503_contract(monkeypatch):
     monkeypatch.setattr(routes, "run_database_write", busy)
     response = asyncio.run(routes.create_lot_batch_api(SimpleNamespace()))
     assert response.status_code == 503
+
+
+def test_lot_commands_do_not_start_a_new_event_loop_per_request():
+    import inspect
+
+    source = inspect.getsource(routes)
+    assert "asyncio.run(" not in source
+    assert not inspect.iscoroutinefunction(routes._create_lot_batch_sync)
+    assert not inspect.iscoroutinefunction(routes._finalize_lot_batch_sync)

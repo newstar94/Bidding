@@ -668,3 +668,7 @@ REGISTRATION_OTP_MAX_FAILURES=5
 UNVERIFIED_ACCOUNT_RELEASE_HOURS=72
 # Optional override of the holiday calendar file edited from /admin/holidays.
 # HOLIDAYS_FILE=/opt/biddingflow/current/holidays.json
+
+# ADR 0093 organization invitations.
+ORGANIZATION_INVITATION_TTL_HOURS=168
+ORGANIZATION_INVITATIONS_PER_DAY=50

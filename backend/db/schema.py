@@ -62,6 +62,26 @@ SCHEMA_DINH_NGHIA = {
         },
         "primary_keys": ["organization_id", "package_root_id", "notice_no"]
     },
+    "organization_invitations": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY CHECK(id != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "email_norm": "TEXT NOT NULL CHECK(email_norm != '' AND length(email_norm) <= 320)",
+            "employee_name": "TEXT NOT NULL CHECK(trim(employee_name) != '' AND length(employee_name) <= 200)",
+            "phone": "TEXT CHECK(phone IS NULL OR length(phone) <= 32)",
+            "invited_by": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'declined', 'revoked'))",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > created_at)",
+            "responded_at": "INTEGER",
+            "accepted_user_id": "TEXT"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+            "FOREIGN KEY (invited_by) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+            "FOREIGN KEY (accepted_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
     "database_metadata": {
         "columns": {
             "id": "INTEGER PRIMARY KEY CHECK(id = 1)",

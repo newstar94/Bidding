@@ -176,6 +176,440 @@ async def paginate_records(request):
         return response
 
 
+class _PageRequestRejected(Exception):
+    """Carry a ready 4xx response out of a pagination helper."""
+
+    def __init__(self, response):
+        super().__init__("page request rejected")
+        self.response = response
+
+
+def _build_page_where(params, table_name, org_name, record_visibility, search, list_filters, can_view_sensitive_expert):
+    """Build the authorized WHERE fragments (visibility, version, search, filters, period)."""
+    query_parts = [record_visibility.sql]
+    query_params = list(record_visibility.parameters)
+    if table_name in ARCHIVED_TABLES:
+        query_parts.append("archived_at IS NULL")
+
+
+
+
+    plan_snapshot_id = params.get("keHoachId", "").strip()
+    if table_name == "goi_thau" and plan_snapshot_id:
+        query_parts.append("ke_hoach_id = ?")
+        query_params.append(plan_snapshot_id)
+    elif table_name in {
+        "thong_tin_mo_thau",
+        "goi_thau_hang_hoa",
+        "hang_hoa_du_thau_nha_thau",
+    } and plan_snapshot_id:
+        query_parts.append("""
+            goi_thau_id IN (
+                SELECT id FROM goi_thau
+                WHERE organization_id = ? AND ke_hoach_id = ?
+                  AND archived_at IS NULL
+            )
+        """)
+        query_params.extend([org_name, plan_snapshot_id])
+    elif table_name == "phan_cong_nhan_su" and plan_snapshot_id:
+        query_parts.append("""
+            (
+                (loai_doi_tuong = 'kehoach' AND id_muc_tieu = ?)
+                OR
+                (loai_doi_tuong = 'goithau' AND id_muc_tieu IN (
+                    SELECT id FROM goi_thau
+                    WHERE organization_id = ? AND ke_hoach_id = ?
+                      AND archived_at IS NULL
+                ))
+            )
+        """)
+        query_params.extend([plan_snapshot_id, org_name, plan_snapshot_id])
+    elif table_name in VERSIONED_TABLES:
+        query_parts.append("is_latest = 1")
+        if table_name == "goi_thau":
+            query_parts.append("""
+                (
+                    ke_hoach_id IS NULL
+                    OR ke_hoach_id IN (
+                        SELECT id FROM ke_hoach_lcnt
+                        WHERE organization_id = ? AND is_latest = 1 AND archived_at IS NULL
+                    )
+                )
+            """)
+            query_params.append(org_name)
+
+    def add_like_search_filter():
+        columns = ()
+        if table_name == "ke_hoach_lcnt":
+            columns = ("ma_ke_hoach", "ten_ke_hoach", "ten_du_an_du_toan")
+        elif table_name == "goi_thau":
+            columns = ("ma_goi_thau", "ten_goi_thau")
+        elif table_name == "chu_dau_tu":
+            columns = ("ma_chu_dau_tu", "ten_chu_dau_tu", "ten_viet_tat", "ma_so_thue")
+        elif table_name == "nha_thau":
+            columns = ("ma_nha_thau", "ten_nha_thau", "ten_viet_tat", "ma_so_thue")
+        elif table_name == "chuyen_gia":
+            columns = (("ho_ten", "so_cccd", "so_chung_chi") if can_view_sensitive_expert else ("ho_ten", "so_chung_chi"))
+        elif table_name == "hop_dong":
+            columns = ("so_hop_dong", "ten_hop_dong")
+        if columns:
+            expression = " || ' ' || ".join(
+                f"COALESCE({column}, '')" for column in columns
+            )
+            # PostgreSQL's locale-aware ``lower`` does not fold every
+            # Vietnamese uppercase code point (for example ``Đ``).  Keep
+            # the accent-insensitive projection, then use ILIKE so a
+            # lowercased client query still matches a title beginning
+            # with an uppercase Vietnamese letter.
+            base_search = (
+                f"bf_unaccent(lower({expression})) ILIKE bf_unaccent(lower(?))"
+            )
+            if table_name in {"goi_thau", "hop_dong"}:
+                target_type = (
+                    "goithau" if table_name == "goi_thau" else "hopdong"
+                )
+                base_search = f"""(
+                    {base_search}
+                    OR EXISTS (
+                        SELECT 1
+                        FROM phan_cong_nhan_su AS assignment_search
+                        JOIN tai_khoan AS account_search
+                          ON account_search.id = assignment_search.id_nhan_vien
+                        LEFT JOIN thanh_vien_to_chuc AS member_search
+                          ON member_search.organization_id = assignment_search.organization_id
+                         AND member_search.user_id = assignment_search.id_nhan_vien
+                        WHERE assignment_search.organization_id = {table_name}.organization_id
+                          AND assignment_search.id_muc_tieu = {table_name}.id
+                          AND assignment_search.loai_doi_tuong = '{target_type}'
+                          AND bf_unaccent(lower(
+                              COALESCE(member_search.ten_nhan_su, '') || ' ' ||
+                              COALESCE(account_search.ho_ten, '') || ' ' ||
+                              COALESCE(account_search.email, '')
+                          )) ILIKE bf_unaccent(lower(?))
+                    )
+                )"""
+            query_parts.append(base_search)
+            # Keep wildcard characters in the bound value. Literal `%`
+            # characters in the SQL text are interpreted by psycopg as
+            # placeholder prefixes after the qmark adapter translates `?`
+            # to `%s`, which made every non-empty search return HTTP 500.
+            query_params.append(f"%{search}%")
+            if table_name in {"goi_thau", "hop_dong"}:
+                query_params.append(f"%{search}%")
+
+
+    if search:
+        add_like_search_filter()
+
+    effective_status_filter = table_name == "goi_thau" and any(
+        field == "trangThai" for field, _operator, _value in list_filters
+    )
+    list_filter_predicate = build_list_filter_predicate(
+        table_name,
+        list_filters,
+        effective_package_status=effective_status_filter,
+    )
+    if list_filter_predicate.sql:
+        query_parts.append(list_filter_predicate.sql)
+        query_params.extend(list_filter_predicate.parameters)
+
+
+    if table_name == "goi_thau":
+        trang_thai = params.get("trangThai", "")
+        hinh_thuc = params.get("hinhThuc", "")
+        if trang_thai:
+            query_parts.append("trang_thai = ?")
+            query_params.append(enum_code("goi_thau", "trang_thai", trang_thai))
+        if hinh_thuc:
+            query_parts.append("hinh_thuc_lua_chon = ?")
+            query_params.append(hinh_thuc)
+        alert_key = params.get("alertKey", "").strip()
+        alert_conditions = package_alert_conditions("goi_thau")
+        if alert_key:
+            if alert_key not in alert_conditions:
+                raise _PageRequestRejected(JSONResponse({"error": "Bộ lọc cảnh báo không hợp lệ"}, status_code=400))
+            query_parts.append(alert_conditions[alert_key])
+
+
+    nam = params.get("nam", "")
+    thang = params.get("thang", "")
+    date_column = None
+    if table_name == "ke_hoach_lcnt":
+        date_column = "ngay_phe_duyet"
+    elif table_name == "goi_thau":
+        date_column = "ngay_quyet_dinh"
+    elif table_name == "hop_dong":
+        date_column = "ngay_ky"
+
+    if date_column:
+        try:
+            year_num = int(nam) if nam else None
+            month_num = int(thang) if thang else None
+        except ValueError:
+            year_num = None
+            month_num = None
+        if year_num and month_num and 1 <= month_num <= 12:
+            next_year = year_num + 1 if month_num == 12 else year_num
+            next_month = 1 if month_num == 12 else month_num + 1
+            query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
+            query_params.extend([
+                f"{year_num:04d}-{month_num:02d}-01",
+                f"{next_year:04d}-{next_month:02d}-01",
+            ])
+        elif year_num:
+            query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
+            query_params.extend([
+                f"{year_num:04d}-01-01",
+                f"{year_num + 1:04d}-01-01",
+            ])
+        elif month_num and 1 <= month_num <= 12:
+            # Month-only filtering uses an indexed deterministic expression;
+            # year/month and year-only filters above remain sargable ranges.
+            query_parts.append(f"EXTRACT(MONTH FROM {date_column}) = ?")
+            query_params.append(month_num)
+
+
+    return query_parts, query_params, plan_snapshot_id, effective_status_filter
+
+
+def _resolve_page_sort(params, table_name):
+    """Resolve the requested sort to a known column and direction."""
+    sort_by = params.get("sortBy", "").strip()
+    sort_order = params.get("sortOrder", "asc").strip().upper()
+    if sort_order not in ["ASC", "DESC"]:
+        sort_order = "ASC"
+
+    db_column = ""
+    if sort_by:
+        db_column = db_column_for_json_key(table_name, sort_by)
+
+    valid_columns = SCHEMA_DINH_NGHIA.get(table_name, {}).get("columns", {})
+    if db_column and db_column in valid_columns:
+        sort_column = db_column
+    else:
+        default_sorts = {
+            "ke_hoach_lcnt": "ma_ke_hoach",
+            "goi_thau": "ma_goi_thau",
+            "chu_dau_tu": "ten_chu_dau_tu",
+            "nha_thau": "ten_nha_thau",
+            "chuyen_gia": "ho_ten",
+            "hop_dong": "ten_hop_dong"
+        }
+        def_col = default_sorts.get(table_name)
+        if def_col and def_col in valid_columns:
+            sort_column = def_col
+            sort_order = "ASC"
+        else:
+            sort_column = "id"
+            sort_order = "ASC"
+
+    return sort_column, sort_order, valid_columns
+
+
+def _fetch_page_rows(cursor, params, table_name, org_name, page, page_size, query_parts, query_params, effective_status_filter, sort_column, sort_order, valid_columns, media_session_token):
+    """Count (when needed) and fetch one page, in offset or keyset mode."""
+    cursor_mode = params.get("pagination", "").strip().lower() == "cursor"
+    # Keyset mode is deliberately limited to textual keys. It preserves the
+    # database's text collation and avoids changing numeric sort semantics.
+    column_declaration = postgres_column_definition(
+        table_name,
+        sort_column,
+        str(valid_columns.get(sort_column, "TEXT")),
+    ).upper()
+    is_text_sort = column_declaration.startswith("TEXT")
+    cursor_mode = cursor_mode and (sort_column == "id" or is_text_sort)
+    where_clause = " AND ".join(query_parts)
+    source_sql = table_name
+    source_params = []
+    if table_name == "goi_thau" and (
+        params.get("alertKey", "").strip() or effective_status_filter
+    ):
+        # The summary, drilldown and structured status filters evaluate the
+        # same official result status. Scope the projection to this tenant;
+        # the existing live visibility predicate still gates every row.
+        source_sql = (
+            "(" + _effective_package_rows_sql(  # noqa: S608 - fixed SQL with bound organization
+                "SELECT * FROM goi_thau WHERE organization_id = ?"
+            ) + ") "
+            "AS goi_thau"
+        )
+        source_params = [org_name]
+    include_total = (
+        not cursor_mode
+        or params.get("includeTotal", "").strip().lower()
+        in {"1", "true", "yes"}
+    )
+    total_items = None
+    if include_total:
+        count_sql = (
+            f"SELECT COUNT(*) FROM {source_sql} WHERE {where_clause}"
+        )
+        cursor.execute(count_sql, tuple(source_params + query_params))
+        total_items = cursor.fetchone()[0]
+    item_query_parts = list(query_parts)
+    item_query_params = list(query_params)
+    decoded_cursor = None
+    raw_cursor = params.get("cursor", "").strip()
+    if cursor_mode and raw_cursor:
+        decoded_cursor = _decode_keyset_cursor(
+            raw_cursor,
+            table_name,
+            sort_column,
+            sort_order,
+            signing_key=media_session_token,
+        )
+        if decoded_cursor is None:
+            raise _PageRequestRejected(JSONResponse({"error": "Cursor phân trang không hợp lệ"}, status_code=400))
+        cursor_value, cursor_id = decoded_cursor
+        comparator = ">" if sort_order == "ASC" else "<"
+        item_query_parts.append(
+            f"(COALESCE({sort_column}, '') {comparator} ? OR "
+            f"(COALESCE({sort_column}, '') = ? AND id {comparator} ?))"
+        )
+        item_query_params.extend([cursor_value, cursor_value, cursor_id])
+
+    sort_expression = (
+        f"COALESCE({sort_column}, '')" if is_text_sort else sort_column
+    )
+    stable_sort_sql = f" ORDER BY {sort_expression} {sort_order} NULLS LAST"
+    if sort_column != "id":
+        stable_sort_sql += f", id {sort_order}"
+    item_where_clause = " AND ".join(item_query_parts)
+    if cursor_mode:
+        items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ?"
+        cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size + 1]))
+    else:
+        offset = (page - 1) * page_size
+        items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ? OFFSET ?"
+        cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size, offset]))
+    rows = cursor.fetchall()
+    return cursor_mode, rows, total_items
+
+
+def _serialize_page_items(cursor, rows, cursor_mode, table_name, table_key, org_name, user_id, role_str, page_size, plan_snapshot_id, sort_column, sort_order, visibility_scope, sensitive_read_policy, media_session_token):
+    """Map rows to the client projection and compute the next keyset cursor."""
+    has_more = cursor_mode and len(rows) > page_size
+    if has_more:
+        rows = rows[:page_size]
+    next_cursor = None
+    if cursor_mode and has_more and rows:
+        last_row = rows[-1]
+        next_cursor = _encode_keyset_cursor(
+            table_name,
+            sort_column,
+            sort_order,
+            last_row[sort_column],
+            last_row["id"],
+            signing_key=media_session_token,
+        )
+
+
+    relations_map = {}
+    if table_name == "goi_thau" and rows:
+        gt_ids = [r["id"] for r in rows]
+        relations_map = _get_expert_relations_for_packages(cursor, gt_ids, org_name)
+
+
+    contract_packages_map = {}
+    if table_name == "hop_dong" and rows:
+        hd_ids = [r["id"] for r in rows]
+        contract_packages_map = _get_contract_package_ids(cursor, hd_ids, org_name)
+
+
+    versions_by_root = {}
+    if table_name in VERSIONED_TABLES and rows:
+        all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
+        versions_by_root = load_visible_version_metadata(
+            cursor,
+            visibility_scope,
+            table_name,
+            all_root_vals,
+            plan_snapshot_id=plan_snapshot_id,
+        )
+
+    contractor_write_context = None
+    if table_name == "nha_thau" and rows:
+        # Prefetch the same write-authority inputs once for this page only.
+        # No authority is retained across requests or workspace changes.
+        contractor_write_context = build_batch_write_authorization_context(
+            cursor,
+            role_str,
+            user_id,
+            org_name,
+            {table_name: [
+                {"id": row["id"], "rootId": row["id_goc"]}
+                for row in rows
+            ]},
+            {table_name: {row["id"]: row for row in rows}},
+        )
+
+    items = []
+    for row in rows:
+        row_dict = dict(row)
+
+        if table_name == "chuyen_gia":
+            img_path = row_dict.get("anh_chung_chi", "")
+            sig_path = row_dict.get("anh_chu_ky", "")
+            row_dict["anh_chung_chi"] = public_image_path(
+                img_path,
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+            row_dict["anh_chu_ky"] = public_image_path(
+                sig_path,
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+        elif table_name == "nha_thau":
+            row_dict["anh_dau"] = public_image_path(
+                row_dict.get("anh_dau"),
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+
+        item = map_db_to_json(table_name, row_dict)
+        if contractor_write_context is not None:
+            item["canEdit"] = authorize_record_write_from_context(
+                contractor_write_context, table_key, table_name, item,
+            ).allowed
+        elif table_name in OWNERSHIP_SCOPED_TABLES:
+            item["canEdit"] = authorize_record_write(
+                cursor,
+                role_str,
+                user_id,
+                org_name,
+                table_key,
+                table_name,
+                item,
+            ).allowed
+        if table_name == "goi_thau":
+            gt_id = row_dict["id"]
+            pkg_rels = relations_map.get(gt_id, {"to_cg": [], "to_td": [], "cg_ids": []})
+            item["toChuyenGia"] = pkg_rels.get("to_cg", [])
+            item["toThamDinh"] = pkg_rels.get("to_td", [])
+            item["chuyenGiaIds"] = pkg_rels.get("cg_ids", [])
+            for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
+                if item.get(list_key) is None:
+                    item[list_key] = []
+        elif table_name == "hop_dong":
+            item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
+
+
+        if table_name in VERSIONED_TABLES:
+            root_val = row_dict.get("id_goc") or row_dict.get("id")
+            item["allVersions"] = versions_by_root.get(root_val, [])
+
+        items.append(item)
+    if table_name in ["ke_hoach_lcnt", "goi_thau", "nha_thau", "thong_tin_mo_thau"]:
+        attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
+    items = serialize_sensitive_read_items(
+        table_name, items, sensitive_read_policy
+    )
+    attach_delete_ownership(cursor, org_name, user_id, table_name, items)
+
+    return items, next_cursor, has_more
+
+
 def _paginate_records_blocking(request):
     conn = None
     try:
@@ -240,412 +674,10 @@ def _paginate_records_blocking(request):
             table_name,
             table_name,
         )
-        query_parts = [record_visibility.sql]
-        query_params = list(record_visibility.parameters)
-        if table_name in ARCHIVED_TABLES:
-            query_parts.append("archived_at IS NULL")
-
-
-
-
-        plan_snapshot_id = params.get("keHoachId", "").strip()
-        if table_name == "goi_thau" and plan_snapshot_id:
-            query_parts.append("ke_hoach_id = ?")
-            query_params.append(plan_snapshot_id)
-        elif table_name in {
-            "thong_tin_mo_thau",
-            "goi_thau_hang_hoa",
-            "hang_hoa_du_thau_nha_thau",
-        } and plan_snapshot_id:
-            query_parts.append("""
-                goi_thau_id IN (
-                    SELECT id FROM goi_thau
-                    WHERE organization_id = ? AND ke_hoach_id = ?
-                      AND archived_at IS NULL
-                )
-            """)
-            query_params.extend([org_name, plan_snapshot_id])
-        elif table_name == "phan_cong_nhan_su" and plan_snapshot_id:
-            query_parts.append("""
-                (
-                    (loai_doi_tuong = 'kehoach' AND id_muc_tieu = ?)
-                    OR
-                    (loai_doi_tuong = 'goithau' AND id_muc_tieu IN (
-                        SELECT id FROM goi_thau
-                        WHERE organization_id = ? AND ke_hoach_id = ?
-                          AND archived_at IS NULL
-                    ))
-                )
-            """)
-            query_params.extend([plan_snapshot_id, org_name, plan_snapshot_id])
-        elif table_name in VERSIONED_TABLES:
-            query_parts.append("is_latest = 1")
-            if table_name == "goi_thau":
-                query_parts.append("""
-                    (
-                        ke_hoach_id IS NULL
-                        OR ke_hoach_id IN (
-                            SELECT id FROM ke_hoach_lcnt
-                            WHERE organization_id = ? AND is_latest = 1 AND archived_at IS NULL
-                        )
-                    )
-                """)
-                query_params.append(org_name)
-
-        def add_like_search_filter():
-            columns = ()
-            if table_name == "ke_hoach_lcnt":
-                columns = ("ma_ke_hoach", "ten_ke_hoach", "ten_du_an_du_toan")
-            elif table_name == "goi_thau":
-                columns = ("ma_goi_thau", "ten_goi_thau")
-            elif table_name == "chu_dau_tu":
-                columns = ("ma_chu_dau_tu", "ten_chu_dau_tu", "ten_viet_tat", "ma_so_thue")
-            elif table_name == "nha_thau":
-                columns = ("ma_nha_thau", "ten_nha_thau", "ten_viet_tat", "ma_so_thue")
-            elif table_name == "chuyen_gia":
-                columns = (("ho_ten", "so_cccd", "so_chung_chi") if can_view_sensitive_expert else ("ho_ten", "so_chung_chi"))
-            elif table_name == "hop_dong":
-                columns = ("so_hop_dong", "ten_hop_dong")
-            if columns:
-                expression = " || ' ' || ".join(
-                    f"COALESCE({column}, '')" for column in columns
-                )
-                # PostgreSQL's locale-aware ``lower`` does not fold every
-                # Vietnamese uppercase code point (for example ``Đ``).  Keep
-                # the accent-insensitive projection, then use ILIKE so a
-                # lowercased client query still matches a title beginning
-                # with an uppercase Vietnamese letter.
-                base_search = (
-                    f"bf_unaccent(lower({expression})) ILIKE bf_unaccent(lower(?))"
-                )
-                if table_name in {"goi_thau", "hop_dong"}:
-                    target_type = (
-                        "goithau" if table_name == "goi_thau" else "hopdong"
-                    )
-                    base_search = f"""(
-                        {base_search}
-                        OR EXISTS (
-                            SELECT 1
-                            FROM phan_cong_nhan_su AS assignment_search
-                            JOIN tai_khoan AS account_search
-                              ON account_search.id = assignment_search.id_nhan_vien
-                            LEFT JOIN thanh_vien_to_chuc AS member_search
-                              ON member_search.organization_id = assignment_search.organization_id
-                             AND member_search.user_id = assignment_search.id_nhan_vien
-                            WHERE assignment_search.organization_id = {table_name}.organization_id
-                              AND assignment_search.id_muc_tieu = {table_name}.id
-                              AND assignment_search.loai_doi_tuong = '{target_type}'
-                              AND bf_unaccent(lower(
-                                  COALESCE(member_search.ten_nhan_su, '') || ' ' ||
-                                  COALESCE(account_search.ho_ten, '') || ' ' ||
-                                  COALESCE(account_search.email, '')
-                              )) ILIKE bf_unaccent(lower(?))
-                        )
-                    )"""
-                query_parts.append(base_search)
-                # Keep wildcard characters in the bound value. Literal `%`
-                # characters in the SQL text are interpreted by psycopg as
-                # placeholder prefixes after the qmark adapter translates `?`
-                # to `%s`, which made every non-empty search return HTTP 500.
-                query_params.append(f"%{search}%")
-                if table_name in {"goi_thau", "hop_dong"}:
-                    query_params.append(f"%{search}%")
-
-
-        if search:
-            add_like_search_filter()
-
-        effective_status_filter = table_name == "goi_thau" and any(
-            field == "trangThai" for field, _operator, _value in list_filters
-        )
-        list_filter_predicate = build_list_filter_predicate(
-            table_name,
-            list_filters,
-            effective_package_status=effective_status_filter,
-        )
-        if list_filter_predicate.sql:
-            query_parts.append(list_filter_predicate.sql)
-            query_params.extend(list_filter_predicate.parameters)
-
-
-        if table_name == "goi_thau":
-            trang_thai = params.get("trangThai", "")
-            hinh_thuc = params.get("hinhThuc", "")
-            if trang_thai:
-                query_parts.append("trang_thai = ?")
-                query_params.append(enum_code("goi_thau", "trang_thai", trang_thai))
-            if hinh_thuc:
-                query_parts.append("hinh_thuc_lua_chon = ?")
-                query_params.append(hinh_thuc)
-            alert_key = params.get("alertKey", "").strip()
-            alert_conditions = package_alert_conditions("goi_thau")
-            if alert_key:
-                if alert_key not in alert_conditions:
-                    return JSONResponse({"error": "Bộ lọc cảnh báo không hợp lệ"}, status_code=400)
-                query_parts.append(alert_conditions[alert_key])
-
-
-        nam = params.get("nam", "")
-        thang = params.get("thang", "")
-        date_column = None
-        if table_name == "ke_hoach_lcnt":
-            date_column = "ngay_phe_duyet"
-        elif table_name == "goi_thau":
-            date_column = "ngay_quyet_dinh"
-        elif table_name == "hop_dong":
-            date_column = "ngay_ky"
-
-        if date_column:
-            try:
-                year_num = int(nam) if nam else None
-                month_num = int(thang) if thang else None
-            except ValueError:
-                year_num = None
-                month_num = None
-            if year_num and month_num and 1 <= month_num <= 12:
-                next_year = year_num + 1 if month_num == 12 else year_num
-                next_month = 1 if month_num == 12 else month_num + 1
-                query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
-                query_params.extend([
-                    f"{year_num:04d}-{month_num:02d}-01",
-                    f"{next_year:04d}-{next_month:02d}-01",
-                ])
-            elif year_num:
-                query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
-                query_params.extend([
-                    f"{year_num:04d}-01-01",
-                    f"{year_num + 1:04d}-01-01",
-                ])
-            elif month_num and 1 <= month_num <= 12:
-                # Month-only filtering uses an indexed deterministic expression;
-                # year/month and year-only filters above remain sargable ranges.
-                query_parts.append(f"EXTRACT(MONTH FROM {date_column}) = ?")
-                query_params.append(month_num)
-
-
-        sort_by = params.get("sortBy", "").strip()
-        sort_order = params.get("sortOrder", "asc").strip().upper()
-        if sort_order not in ["ASC", "DESC"]:
-            sort_order = "ASC"
-
-        db_column = ""
-        if sort_by:
-            db_column = db_column_for_json_key(table_name, sort_by)
-
-        valid_columns = SCHEMA_DINH_NGHIA.get(table_name, {}).get("columns", {})
-        if db_column and db_column in valid_columns:
-            sort_column = db_column
-        else:
-            default_sorts = {
-                "ke_hoach_lcnt": "ma_ke_hoach",
-                "goi_thau": "ma_goi_thau",
-                "chu_dau_tu": "ten_chu_dau_tu",
-                "nha_thau": "ten_nha_thau",
-                "chuyen_gia": "ho_ten",
-                "hop_dong": "ten_hop_dong"
-            }
-            def_col = default_sorts.get(table_name)
-            if def_col and def_col in valid_columns:
-                sort_column = def_col
-                sort_order = "ASC"
-            else:
-                sort_column = "id"
-                sort_order = "ASC"
-
-        cursor_mode = params.get("pagination", "").strip().lower() == "cursor"
-        # Keyset mode is deliberately limited to textual keys. It preserves the
-        # database's text collation and avoids changing numeric sort semantics.
-        column_declaration = postgres_column_definition(
-            table_name,
-            sort_column,
-            str(valid_columns.get(sort_column, "TEXT")),
-        ).upper()
-        is_text_sort = column_declaration.startswith("TEXT")
-        cursor_mode = cursor_mode and (sort_column == "id" or is_text_sort)
-        where_clause = " AND ".join(query_parts)
-        source_sql = table_name
-        source_params = []
-        if table_name == "goi_thau" and (
-            params.get("alertKey", "").strip() or effective_status_filter
-        ):
-            # The summary, drilldown and structured status filters evaluate the
-            # same official result status. Scope the projection to this tenant;
-            # the existing live visibility predicate still gates every row.
-            source_sql = (
-                "(" + _effective_package_rows_sql(  # noqa: S608 - fixed SQL with bound organization
-                    "SELECT * FROM goi_thau WHERE organization_id = ?"
-                ) + ") "
-                "AS goi_thau"
-            )
-            source_params = [org_name]
-        include_total = (
-            not cursor_mode
-            or params.get("includeTotal", "").strip().lower()
-            in {"1", "true", "yes"}
-        )
-        total_items = None
-        if include_total:
-            count_sql = (
-                f"SELECT COUNT(*) FROM {source_sql} WHERE {where_clause}"
-            )
-            cursor.execute(count_sql, tuple(source_params + query_params))
-            total_items = cursor.fetchone()[0]
-        item_query_parts = list(query_parts)
-        item_query_params = list(query_params)
-        decoded_cursor = None
-        raw_cursor = params.get("cursor", "").strip()
-        if cursor_mode and raw_cursor:
-            decoded_cursor = _decode_keyset_cursor(
-                raw_cursor,
-                table_name,
-                sort_column,
-                sort_order,
-                signing_key=media_session_token,
-            )
-            if decoded_cursor is None:
-                return JSONResponse({"error": "Cursor phân trang không hợp lệ"}, status_code=400)
-            cursor_value, cursor_id = decoded_cursor
-            comparator = ">" if sort_order == "ASC" else "<"
-            item_query_parts.append(
-                f"(COALESCE({sort_column}, '') {comparator} ? OR "
-                f"(COALESCE({sort_column}, '') = ? AND id {comparator} ?))"
-            )
-            item_query_params.extend([cursor_value, cursor_value, cursor_id])
-
-        sort_expression = (
-            f"COALESCE({sort_column}, '')" if is_text_sort else sort_column
-        )
-        stable_sort_sql = f" ORDER BY {sort_expression} {sort_order} NULLS LAST"
-        if sort_column != "id":
-            stable_sort_sql += f", id {sort_order}"
-        item_where_clause = " AND ".join(item_query_parts)
-        if cursor_mode:
-            items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ?"
-            cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size + 1]))
-        else:
-            offset = (page - 1) * page_size
-            items_sql = f"SELECT * FROM {source_sql} WHERE {item_where_clause}{stable_sort_sql} LIMIT ? OFFSET ?"
-            cursor.execute(items_sql, tuple(source_params + item_query_params + [page_size, offset]))
-        rows = cursor.fetchall()
-        has_more = cursor_mode and len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
-        next_cursor = None
-        if cursor_mode and has_more and rows:
-            last_row = rows[-1]
-            next_cursor = _encode_keyset_cursor(
-                table_name,
-                sort_column,
-                sort_order,
-                last_row[sort_column],
-                last_row["id"],
-                signing_key=media_session_token,
-            )
-
-
-        relations_map = {}
-        if table_name == "goi_thau" and rows:
-            gt_ids = [r["id"] for r in rows]
-            relations_map = _get_expert_relations_for_packages(cursor, gt_ids, org_name)
-
-
-        contract_packages_map = {}
-        if table_name == "hop_dong" and rows:
-            hd_ids = [r["id"] for r in rows]
-            contract_packages_map = _get_contract_package_ids(cursor, hd_ids, org_name)
-
-
-        versions_by_root = {}
-        if table_name in VERSIONED_TABLES and rows:
-            all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
-            versions_by_root = load_visible_version_metadata(
-                cursor,
-                visibility_scope,
-                table_name,
-                all_root_vals,
-                plan_snapshot_id=plan_snapshot_id,
-            )
-
-        contractor_write_context = None
-        if table_name == "nha_thau" and rows:
-            # Prefetch the same write-authority inputs once for this page only.
-            # No authority is retained across requests or workspace changes.
-            contractor_write_context = build_batch_write_authorization_context(
-                cursor,
-                role_str,
-                user_id,
-                org_name,
-                {table_name: [
-                    {"id": row["id"], "rootId": row["id_goc"]}
-                    for row in rows
-                ]},
-                {table_name: {row["id"]: row for row in rows}},
-            )
-
-        items = []
-        for row in rows:
-            row_dict = dict(row)
-
-            if table_name == "chuyen_gia":
-                img_path = row_dict.get("anh_chung_chi", "")
-                sig_path = row_dict.get("anh_chu_ky", "")
-                row_dict["anh_chung_chi"] = public_image_path(
-                    img_path,
-                    session_token=media_session_token,
-                    organization_id=org_name,
-                )
-                row_dict["anh_chu_ky"] = public_image_path(
-                    sig_path,
-                    session_token=media_session_token,
-                    organization_id=org_name,
-                )
-            elif table_name == "nha_thau":
-                row_dict["anh_dau"] = public_image_path(
-                    row_dict.get("anh_dau"),
-                    session_token=media_session_token,
-                    organization_id=org_name,
-                )
-
-            item = map_db_to_json(table_name, row_dict)
-            if contractor_write_context is not None:
-                item["canEdit"] = authorize_record_write_from_context(
-                    contractor_write_context, table_key, table_name, item,
-                ).allowed
-            elif table_name in OWNERSHIP_SCOPED_TABLES:
-                item["canEdit"] = authorize_record_write(
-                    cursor,
-                    role_str,
-                    user_id,
-                    org_name,
-                    table_key,
-                    table_name,
-                    item,
-                ).allowed
-            if table_name == "goi_thau":
-                gt_id = row_dict["id"]
-                pkg_rels = relations_map.get(gt_id, {"to_cg": [], "to_td": [], "cg_ids": []})
-                item["toChuyenGia"] = pkg_rels.get("to_cg", [])
-                item["toThamDinh"] = pkg_rels.get("to_td", [])
-                item["chuyenGiaIds"] = pkg_rels.get("cg_ids", [])
-                for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
-                    if item.get(list_key) is None:
-                        item[list_key] = []
-            elif table_name == "hop_dong":
-                item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
-
-
-            if table_name in VERSIONED_TABLES:
-                root_val = row_dict.get("id_goc") or row_dict.get("id")
-                item["allVersions"] = versions_by_root.get(root_val, [])
-
-            items.append(item)
-        if table_name in ["ke_hoach_lcnt", "goi_thau", "nha_thau", "thong_tin_mo_thau"]:
-            attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
-        items = serialize_sensitive_read_items(
-            table_name, items, sensitive_read_policy
-        )
-        attach_delete_ownership(cursor, org_name, user_id, table_name, items)
-
+        query_parts, query_params, plan_snapshot_id, effective_status_filter = _build_page_where(params, table_name, org_name, record_visibility, search, list_filters, can_view_sensitive_expert)
+        sort_column, sort_order, valid_columns = _resolve_page_sort(params, table_name)
+        cursor_mode, rows, total_items = _fetch_page_rows(cursor, params, table_name, org_name, page, page_size, query_parts, query_params, effective_status_filter, sort_column, sort_order, valid_columns, media_session_token)
+        items, next_cursor, has_more = _serialize_page_items(cursor, rows, cursor_mode, table_name, table_key, org_name, user_id, role_str, page_size, plan_snapshot_id, sort_column, sort_order, visibility_scope, sensitive_read_policy, media_session_token)
         conn.close()
         return JSONResponse({
             "items": items,
@@ -653,6 +685,8 @@ def _paginate_records_blocking(request):
             "nextCursor": next_cursor,
             "hasMore": bool(has_more),
         })
+    except _PageRequestRejected as rejected:
+        return rejected.response
     except OrgPermissionError as scope_error:
         return error_response(
             request,

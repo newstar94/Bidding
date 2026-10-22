@@ -389,6 +389,9 @@ export function renderManagerNhanVienPanel() {
         <td colspan="5" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
       </tr>`);
   }
+  void import("./OrganizationInvitations.js")
+    .then(({ renderOrganizationInvitations }) => renderOrganizationInvitations({ view: this }))
+    .catch(() => {});
   renderTablePagination(
     document.getElementById("manager-employees-pagination"),
     employeePage,

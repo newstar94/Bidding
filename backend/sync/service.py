@@ -681,6 +681,339 @@ def _cleanup_rolled_back_images(newly_written_images, log_sync_error):
         )
 
 
+class _SyncMutationRejected(Exception):
+    """Carry a ready error response (after rollback) out of a sync helper."""
+
+    def __init__(self, response):
+        super().__init__("sync mutation rejected")
+        self.response = response
+
+
+def _prepare_aggregate_version_payload(request, data, conn, current_time, cursor, org_name, role_str, user_id):
+    """Authorize the version source and build the server-generated version payload."""
+    command_kind = str(data.get("kind") or "").strip().lower()
+    source_access = {
+        "package": ("goithau", "goi_thau"),
+        "plan": ("kehoach", "ke_hoach_lcnt"),
+    }.get(command_kind)
+    if source_access is None:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "INVALID_VERSION_COMMAND",
+            "Loại đối tượng tạo phiên bản không hợp lệ.",
+            status_code=400,
+        ))
+    payload_key, table_name = source_access
+    access = authorize_record_write(
+        cursor,
+        role_str,
+        user_id,
+        org_name,
+        payload_key,
+        table_name,
+        {"id": data.get("sourceId")},
+    )
+    if not access.allowed:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "VERSION_SOURCE_WRITE_DENIED",
+            access.message or "Không có quyền tạo phiên bản cho bản ghi này.",
+            status_code=403,
+        ))
+    data = build_aggregate_version_payload(
+        AggregateVersionRepository(cursor),
+        org_name,
+        data,
+        timestamp=current_time,
+        actor_authority_id=user_id,
+    )
+    server_inherited_assignment_ids = {
+        str(item.get("id"))
+        for item in data.get("assignments", ())
+        if isinstance(item, dict) and item.get("id")
+    }
+    shape_errors = validate_sync_payload_shape(
+        data, trusted_server_projection=True
+    )
+    if shape_errors:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "SYNC_VALIDATION_FAILED",
+            "Dữ liệu phiên bản sinh trên máy chủ không hợp lệ.",
+            status_code=400,
+            fields={"errors": shape_errors},
+        ))
+    generated_batch_size = _sync_batch_size(data)
+    generated_batch_limit = _generated_aggregate_batch_limit()
+    if generated_batch_size > generated_batch_limit:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "SYNC_BATCH_TOO_LARGE",
+            "Số lượng bản ghi của phiên bản vượt quá giới hạn cho phép.",
+            status_code=413,
+            fields={
+                "maxItems": generated_batch_limit,
+                "receivedItems": generated_batch_size,
+            },
+        ))
+    return data, server_inherited_assignment_ids
+
+
+def _validate_finalize_draft_payload(request, data, conn, cursor, org_name):
+    """Validate a plan-draft finalize payload before any write."""
+    validate_plan_draft_finalize(cursor, org_name, data)
+    shape_errors = validate_sync_payload_shape({
+        key: value
+        for key, value in data.items()
+        if key not in {"draftId", "planRootId", "versions"}
+    })
+    if shape_errors:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "SYNC_VALIDATION_FAILED",
+            "Dữ liệu hoàn tất kế hoạch không hợp lệ.",
+            status_code=400,
+            fields={"errors": shape_errors},
+        ))
+    generated_batch_size = _sync_batch_size(data)
+    generated_batch_limit = _generated_aggregate_batch_limit()
+    if generated_batch_size > generated_batch_limit:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "SYNC_BATCH_TOO_LARGE",
+            "Số lượng bản ghi của kế hoạch vượt quá giới hạn cho phép.",
+            status_code=413,
+            fields={
+                "maxItems": generated_batch_limit,
+                "receivedItems": generated_batch_size,
+            },
+        ))
+
+
+def _authorize_protected_media_changes(request, data, actor_context, conn, cursor, org_name, owner_type, user_id):
+    """Re-check, inside the write transaction, who may upload or change stamps, signatures and certificates."""
+    # Re-evaluate this permission in the write transaction. A manager may
+    # have been demoted after the initial session/organization lookup.
+    transaction_can_upload_assets = can_upload_workspace_assets(
+        cursor,
+        actor_context.role,
+        user_id,
+        org_name,
+    )
+    protected_media_errors = validate_protected_media_upload_access(
+        data,
+        owner_type=owner_type,
+        can_upload=transaction_can_upload_assets,
+    )
+    if protected_media_errors:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
+            "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
+            status_code=403,
+            fields={"errors": protected_media_errors},
+        ))
+
+    protected_media_mutation_errors = validate_protected_media_mutation_access(
+        data,
+        owner_type=owner_type,
+        can_upload=transaction_can_upload_assets,
+        cursor=cursor,
+        organization_id=org_name,
+    )
+    if protected_media_mutation_errors:
+        conn.rollback()
+        raise _SyncMutationRejected(error_response(
+            request,
+            "ORG_ASSET_MUTATION_MANAGER_REQUIRED",
+            "Chỉ Quản lý của tổ chức được thêm, thay đổi hoặc xóa ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
+            status_code=403,
+            fields={"errors": protected_media_mutation_errors},
+        ))
+
+
+def _write_sync_table_items(data, atomic_command, batch_sync_version, conn, current_time, cursor, get_clean_id, log_sync_error, mutation_tracker, org_name, payload_index, public_correlation_id, record_serializer, record_writer, sync_item_errors):
+    """Write every payload item; per-item savepoints keep one bad record from aborting the batch."""
+    for payload_key, table_name, items in iter_sync_table_payloads(data):
+        for item in items:
+            item_id_for_skip = get_clean_id(table_name, item.get("id")) if isinstance(item, dict) else None
+            if payload_index.should_skip(table_name, item_id_for_skip):
+                continue
+            item = canonicalize_payload_item(table_name, item)
+            incoming_record_id = get_clean_id(table_name, item.get("id"))
+            previous_record = payload_index.stored_record(
+                table_name,
+                incoming_record_id,
+            )
+            if atomic_command:
+                db_row_data = record_serializer.serialize(
+                    table_name,
+                    item,
+                    previous_record,
+                )
+                write_result = record_writer.write(
+                    payload_key=payload_key,
+                    table_name=table_name,
+                    item=item,
+                    db_row_data=db_row_data,
+                    previous_record=previous_record,
+                )
+                if write_result.conflict_error:
+                    sync_item_errors.append(write_result.conflict_error)
+                continue
+            cursor.execute("SAVEPOINT sync_item")
+            try:
+                db_row_data = record_serializer.serialize(
+                    table_name,
+                    item,
+                    previous_record,
+                )
+
+                write_result = record_writer.write(
+                    payload_key=payload_key,
+                    table_name=table_name,
+                    item=item,
+                    db_row_data=db_row_data,
+                    previous_record=previous_record,
+                )
+                if write_result.conflict_error:
+                    sync_item_errors.append(write_result.conflict_error)
+                    cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
+                    cursor.execute("RELEASE SAVEPOINT sync_item")
+                    continue
+                cursor.execute("RELEASE SAVEPOINT sync_item")
+            except Exception as item_err:
+                item_id = get_clean_id(table_name, item.get('id'))
+
+                try:
+                    cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
+                    cursor.execute("RELEASE SAVEPOINT sync_item")
+                except DatabaseError as savepoint_error:
+                    error = public_sync_item_error(
+                        item_err,
+                        table_name=table_name,
+                        record_id=item_id,
+                        correlation_id=public_correlation_id,
+                    )
+                    log_sync_error(
+                        f"Không thể phục hồi transaction sau lỗi bản ghi {item_id}: "
+                        f"{savepoint_error}"
+                    )
+                    raise _SyncMutationRejected(rollback_sync_response(
+                        conn,
+                        [error],
+                        "Không thể đồng bộ vì có bản ghi không hợp lệ.",
+                        status_code=400,
+                        correlation_id=public_correlation_id,
+                    ))
+
+                if (
+                    isinstance(item_err, IntegrityError)
+                    and getattr(item_err, "sqlstate", None) == "23503"
+                    and item_id
+                    and table_name in ALLOWED_ORPHAN_TABLES
+                ):
+                    cursor.execute("SAVEPOINT sync_orphan_cleanup")
+                    try:
+                        cursor.execute(
+                            DELETED_RECORD_UPSERT_SQL,
+                            (table_name, item_id, org_name, current_time, batch_sync_version)
+                        )
+                        mutation_tracker.record_orphan(table_name, item_id)
+                        cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
+                    except DatabaseError as orphan_cleanup_error:
+                        cursor.execute("ROLLBACK TO SAVEPOINT sync_orphan_cleanup")
+                        cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
+                        log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
+                else:
+                    log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
+                    sync_item_errors.append(public_sync_item_error(
+                        item_err,
+                        table_name=table_name,
+                        record_id=item_id,
+                        correlation_id=public_correlation_id,
+                    ))
+
+
+def _record_sync_side_records(request, data, finalize_draft_command, assignment_state_before, client_mutation_id, conn, current_time, cursor, mutation_tracker, org_name, owner_type, public_correlation_id, sync_item_errors, user_id):
+    """Reject a batch with item errors, then write assignment history, notifications, audit, activity and import provenance."""
+    assignment_state_after = {}
+    if owner_type == "organization" and not sync_item_errors:
+        assignment_state_after = snapshot_assignment_state(cursor, org_name)
+
+    if sync_item_errors:
+        conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)
+        raise _SyncMutationRejected(rollback_sync_response(
+            conn,
+            sync_item_errors,
+            "Không thể đồng bộ vì có bản ghi không hợp lệ.",
+            status_code=409 if conflict else 400,
+            correlation_id=public_correlation_id,
+        ))
+
+    if owner_type == "organization":
+        insert_assignment_removal_history(
+            cursor,
+            organization_id=org_name,
+            actor_user_id=user_id,
+            occurred_at=current_time,
+            before=assignment_state_before,
+            after=assignment_state_after,
+        )
+        mutation_tracker.extend_activity(build_assignment_activity_events(
+            assignment_state_before,
+            assignment_state_after,
+            client_mutation_id=client_mutation_id,
+        ))
+        queue_assignment_state_changes(
+            cursor,
+            organization_id=org_name,
+            before=assignment_state_before,
+            after=assignment_state_after,
+        )
+
+    insert_mutation_audit_events(
+        cursor,
+        organization_id=org_name,
+        actor_user_id=user_id,
+        ip_address=get_client_ip(request),
+        events=mutation_tracker.audit_events,
+    )
+    insert_activity_events(
+        cursor,
+        organization_id=org_name,
+        owner_type=owner_type,
+        actor_user_id=user_id,
+        occurred_at=current_time,
+        events=mutation_tracker.activity_events,
+    )
+
+    procurement_import_result = (
+        persist_plan_draft_import_provenance(
+            cursor,
+            data,
+            organization_id=org_name,
+            user_id=user_id,
+        )
+        if finalize_draft_command
+        else persist_import_session_provenance(
+            cursor,
+            data,
+            organization_id=org_name,
+            user_id=user_id,
+        )
+    )
+
+    return procurement_import_result
+
+
 def execute_sync_mutation(
     request,
     data,
@@ -766,146 +1099,12 @@ def execute_sync_mutation(
             resolve_pending_imported_investor(cursor, data, org_name)
 
         if aggregate_version_command:
-            command_kind = str(data.get("kind") or "").strip().lower()
-            source_access = {
-                "package": ("goithau", "goi_thau"),
-                "plan": ("kehoach", "ke_hoach_lcnt"),
-            }.get(command_kind)
-            if source_access is None:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "INVALID_VERSION_COMMAND",
-                    "Loại đối tượng tạo phiên bản không hợp lệ.",
-                    status_code=400,
-                )
-            payload_key, table_name = source_access
-            access = authorize_record_write(
-                cursor,
-                role_str,
-                user_id,
-                org_name,
-                payload_key,
-                table_name,
-                {"id": data.get("sourceId")},
-            )
-            if not access.allowed:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "VERSION_SOURCE_WRITE_DENIED",
-                    access.message or "Không có quyền tạo phiên bản cho bản ghi này.",
-                    status_code=403,
-                )
-            data = build_aggregate_version_payload(
-                AggregateVersionRepository(cursor),
-                org_name,
-                data,
-                timestamp=current_time,
-                actor_authority_id=user_id,
-            )
-            server_inherited_assignment_ids = {
-                str(item.get("id"))
-                for item in data.get("assignments", ())
-                if isinstance(item, dict) and item.get("id")
-            }
-            shape_errors = validate_sync_payload_shape(
-                data, trusted_server_projection=True
-            )
-            if shape_errors:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "SYNC_VALIDATION_FAILED",
-                    "Dữ liệu phiên bản sinh trên máy chủ không hợp lệ.",
-                    status_code=400,
-                    fields={"errors": shape_errors},
-                )
-            generated_batch_size = _sync_batch_size(data)
-            generated_batch_limit = _generated_aggregate_batch_limit()
-            if generated_batch_size > generated_batch_limit:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "SYNC_BATCH_TOO_LARGE",
-                    "Số lượng bản ghi của phiên bản vượt quá giới hạn cho phép.",
-                    status_code=413,
-                    fields={
-                        "maxItems": generated_batch_limit,
-                        "receivedItems": generated_batch_size,
-                    },
-                )
+            data, server_inherited_assignment_ids = _prepare_aggregate_version_payload(request, data, conn, current_time, cursor, org_name, role_str, user_id)
 
         if finalize_draft_command:
-            validate_plan_draft_finalize(cursor, org_name, data)
-            shape_errors = validate_sync_payload_shape({
-                key: value
-                for key, value in data.items()
-                if key not in {"draftId", "planRootId", "versions"}
-            })
-            if shape_errors:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "SYNC_VALIDATION_FAILED",
-                    "Dữ liệu hoàn tất kế hoạch không hợp lệ.",
-                    status_code=400,
-                    fields={"errors": shape_errors},
-                )
-            generated_batch_size = _sync_batch_size(data)
-            generated_batch_limit = _generated_aggregate_batch_limit()
-            if generated_batch_size > generated_batch_limit:
-                conn.rollback()
-                return error_response(
-                    request,
-                    "SYNC_BATCH_TOO_LARGE",
-                    "Số lượng bản ghi của kế hoạch vượt quá giới hạn cho phép.",
-                    status_code=413,
-                    fields={
-                        "maxItems": generated_batch_limit,
-                        "receivedItems": generated_batch_size,
-                    },
-                )
+            _validate_finalize_draft_payload(request, data, conn, cursor, org_name)
 
-        # Re-evaluate this permission in the write transaction. A manager may
-        # have been demoted after the initial session/organization lookup.
-        transaction_can_upload_assets = can_upload_workspace_assets(
-            cursor,
-            actor_context.role,
-            user_id,
-            org_name,
-        )
-        protected_media_errors = validate_protected_media_upload_access(
-            data,
-            owner_type=owner_type,
-            can_upload=transaction_can_upload_assets,
-        )
-        if protected_media_errors:
-            conn.rollback()
-            return error_response(
-                request,
-                "ORG_ASSET_UPLOAD_MANAGER_REQUIRED",
-                "Chỉ Quản lý của tổ chức được tải lên ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
-                status_code=403,
-                fields={"errors": protected_media_errors},
-            )
-
-        protected_media_mutation_errors = validate_protected_media_mutation_access(
-            data,
-            owner_type=owner_type,
-            can_upload=transaction_can_upload_assets,
-            cursor=cursor,
-            organization_id=org_name,
-        )
-        if protected_media_mutation_errors:
-            conn.rollback()
-            return error_response(
-                request,
-                "ORG_ASSET_MUTATION_MANAGER_REQUIRED",
-                "Chỉ Quản lý của tổ chức được thêm, thay đổi hoặc xóa ảnh dấu, ảnh chữ ký và ảnh chứng chỉ.",
-                status_code=403,
-                fields={"errors": protected_media_mutation_errors},
-            )
+        _authorize_protected_media_changes(request, data, actor_context, conn, cursor, org_name, owner_type, user_id)
 
         _persist_incoming_images(
             data,
@@ -1023,105 +1222,7 @@ def execute_sync_mutation(
                 headers=dict(response.headers),
             )
 
-        for payload_key, table_name, items in iter_sync_table_payloads(data):
-            for item in items:
-                item_id_for_skip = get_clean_id(table_name, item.get("id")) if isinstance(item, dict) else None
-                if payload_index.should_skip(table_name, item_id_for_skip):
-                    continue
-                item = canonicalize_payload_item(table_name, item)
-                incoming_record_id = get_clean_id(table_name, item.get("id"))
-                previous_record = payload_index.stored_record(
-                    table_name,
-                    incoming_record_id,
-                )
-                if atomic_command:
-                    db_row_data = record_serializer.serialize(
-                        table_name,
-                        item,
-                        previous_record,
-                    )
-                    write_result = record_writer.write(
-                        payload_key=payload_key,
-                        table_name=table_name,
-                        item=item,
-                        db_row_data=db_row_data,
-                        previous_record=previous_record,
-                    )
-                    if write_result.conflict_error:
-                        sync_item_errors.append(write_result.conflict_error)
-                    continue
-                cursor.execute("SAVEPOINT sync_item")
-                try:
-                    db_row_data = record_serializer.serialize(
-                        table_name,
-                        item,
-                        previous_record,
-                    )
-
-                    write_result = record_writer.write(
-                        payload_key=payload_key,
-                        table_name=table_name,
-                        item=item,
-                        db_row_data=db_row_data,
-                        previous_record=previous_record,
-                    )
-                    if write_result.conflict_error:
-                        sync_item_errors.append(write_result.conflict_error)
-                        cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
-                        cursor.execute("RELEASE SAVEPOINT sync_item")
-                        continue
-                    cursor.execute("RELEASE SAVEPOINT sync_item")
-                except Exception as item_err:
-                    item_id = get_clean_id(table_name, item.get('id'))
-
-                    try:
-                        cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
-                        cursor.execute("RELEASE SAVEPOINT sync_item")
-                    except DatabaseError as savepoint_error:
-                        error = public_sync_item_error(
-                            item_err,
-                            table_name=table_name,
-                            record_id=item_id,
-                            correlation_id=public_correlation_id,
-                        )
-                        log_sync_error(
-                            f"Không thể phục hồi transaction sau lỗi bản ghi {item_id}: "
-                            f"{savepoint_error}"
-                        )
-                        return rollback_sync_response(
-                            conn,
-                            [error],
-                            "Không thể đồng bộ vì có bản ghi không hợp lệ.",
-                            status_code=400,
-                            correlation_id=public_correlation_id,
-                        )
-
-                    if (
-                        isinstance(item_err, IntegrityError)
-                        and getattr(item_err, "sqlstate", None) == "23503"
-                        and item_id
-                        and table_name in ALLOWED_ORPHAN_TABLES
-                    ):
-                        cursor.execute("SAVEPOINT sync_orphan_cleanup")
-                        try:
-                            cursor.execute(
-                                DELETED_RECORD_UPSERT_SQL,
-                                (table_name, item_id, org_name, current_time, batch_sync_version)
-                            )
-                            mutation_tracker.record_orphan(table_name, item_id)
-                            cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
-                        except DatabaseError as orphan_cleanup_error:
-                            cursor.execute("ROLLBACK TO SAVEPOINT sync_orphan_cleanup")
-                            cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
-                            log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
-                    else:
-                        log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
-                        sync_item_errors.append(public_sync_item_error(
-                            item_err,
-                            table_name=table_name,
-                            record_id=item_id,
-                            correlation_id=public_correlation_id,
-                        ))
+        _write_sync_table_items(data, atomic_command, batch_sync_version, conn, current_time, cursor, get_clean_id, log_sync_error, mutation_tracker, org_name, payload_index, public_correlation_id, record_serializer, record_writer, sync_item_errors)
         # Versioned upserts are staged with ``is_latest = 0`` to satisfy the
         # partial unique indexes. Settle those derived flags before deletion
         # guards inspect parent mutability in the same transaction.
@@ -1152,73 +1253,7 @@ def execute_sync_mutation(
             recalculate_plan_total=recalculate_tong_muc_dau_tu,
         )
 
-        assignment_state_after = {}
-        if owner_type == "organization" and not sync_item_errors:
-            assignment_state_after = snapshot_assignment_state(cursor, org_name)
-
-        if sync_item_errors:
-            conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)
-            return rollback_sync_response(
-                conn,
-                sync_item_errors,
-                "Không thể đồng bộ vì có bản ghi không hợp lệ.",
-                status_code=409 if conflict else 400,
-                correlation_id=public_correlation_id,
-            )
-
-        if owner_type == "organization":
-            insert_assignment_removal_history(
-                cursor,
-                organization_id=org_name,
-                actor_user_id=user_id,
-                occurred_at=current_time,
-                before=assignment_state_before,
-                after=assignment_state_after,
-            )
-            mutation_tracker.extend_activity(build_assignment_activity_events(
-                assignment_state_before,
-                assignment_state_after,
-                client_mutation_id=client_mutation_id,
-            ))
-            queue_assignment_state_changes(
-                cursor,
-                organization_id=org_name,
-                before=assignment_state_before,
-                after=assignment_state_after,
-            )
-
-        insert_mutation_audit_events(
-            cursor,
-            organization_id=org_name,
-            actor_user_id=user_id,
-            ip_address=get_client_ip(request),
-            events=mutation_tracker.audit_events,
-        )
-        insert_activity_events(
-            cursor,
-            organization_id=org_name,
-            owner_type=owner_type,
-            actor_user_id=user_id,
-            occurred_at=current_time,
-            events=mutation_tracker.activity_events,
-        )
-
-        procurement_import_result = (
-            persist_plan_draft_import_provenance(
-                cursor,
-                data,
-                organization_id=org_name,
-                user_id=user_id,
-            )
-            if finalize_draft_command
-            else persist_import_session_provenance(
-                cursor,
-                data,
-                organization_id=org_name,
-                user_id=user_id,
-            )
-        )
-
+        procurement_import_result = _record_sync_side_records(request, data, finalize_draft_command, assignment_state_before, client_mutation_id, conn, current_time, cursor, mutation_tracker, org_name, owner_type, public_correlation_id, sync_item_errors, user_id)
         mutation_outcome = mutation_tracker.outcome()
         if transaction_completion is not None:
             transaction_completion(cursor, actor_context)
@@ -1256,6 +1291,8 @@ def execute_sync_mutation(
             clean_record_id=get_clean_id,
             log_sync_error=log_sync_error,
         )
+    except _SyncMutationRejected as rejected:
+        return rejected.response
     except AggregateVersionConflict as conflict:
         if conn:
             conn.rollback()

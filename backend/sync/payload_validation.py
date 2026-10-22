@@ -754,142 +754,163 @@ def parse_date(val):
     return parse_datetime_value(val)
 
 
-def validate_sync_item(
-    table_name,
-    item,
-    allowed_contract_status_names=None,
-    *,
-    allow_source_option_without_items=False,
-):
-    allowed_contract_status_names = allowed_contract_status_names or set()
-    errors = []
-
+def _apply_effective_date_default(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
     if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
         created_at = str(item.get("createdAt") or "").strip()
         item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else vietnam_today().isoformat()
 
-    if table_name == "chu_dau_tu":
-        if not str(item.get("tenChuDauTu") or "").strip():
-            errors.append("Tên chủ đầu tư không được để trống.")
-        item["chucVuNguoiDungDau"] = derive_investor_head_position(
-            item.get("chucVuDaiDien")
-        )
-    elif table_name == "ke_hoach_lcnt":
+
+
+def _require_fields_for_chu_dau_tu(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    if not str(item.get("tenChuDauTu") or "").strip():
+        errors.append("Tên chủ đầu tư không được để trống.")
+    item["chucVuNguoiDungDau"] = derive_investor_head_position(
+        item.get("chucVuDaiDien")
+    )
+
+
+def _require_fields_for_ke_hoach_lcnt(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    _require_fields(item, (
+        ("tenKeHoach", "Tên kế hoạch LCNT"),
+        ("loaiHinhMuaSam", "Loại hình mua sắm"),
+        ("chuDauTuId", "Chủ đầu tư"),
+        ("ngayPheDuyet", "Ngày phê duyệt kế hoạch"),
+        ("quyetDinhPheDuyet", "Quyết định phê duyệt kế hoạch"),
+    ), errors)
+
+
+def _require_fields_for_goi_thau(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    derived_package_price = _derive_lotted_package_price(item)
+    if derived_package_price is not None:
+        item["giaGoiThau"] = str(derived_package_price)
+    _require_fields(item, (
+        ("keHoachId", "Kế hoạch LCNT liên kết"),
+        ("tenGoiThau", "Tên gói thầu"),
+        ("giaGoiThau", "Giá gói thầu"),
+        ("thoiGianThucHien", "Thời gian thực hiện"),
+        ("nguonVon", "Nguồn vốn"),
+        ("thoiGianToChuc", "Thời gian tổ chức LCNT"),
+        ("thoiGianBatDauToChuc", "Thời gian bắt đầu tổ chức"),
+    ), errors)
+
+
+def _require_fields_for_goi_thau_hang_hoa(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    _require_fields(item, (
+        ("goiThauId", "Gói thầu"),
+        ("maHangHoa", "Mã hàng hóa"),
+        ("tenHangHoa", "Tên hàng hóa"),
+        ("donViTinh", "Đơn vị tính"),
+        ("soLuong", "Số lượng"),
+    ), errors)
+    item["maHangHoa"] = str(item.get("maHangHoa") or "").strip()
+    quantity = item.get("soLuong")
+    if isinstance(quantity, bool) or not isinstance(quantity, (int, float)) or not math.isfinite(quantity) or quantity <= 0:
+        errors.append("Số lượng hàng hóa phải là số lớn hơn 0.")
+    for key, label in (
+        ("donGiaDuToan", "Đơn giá dự toán"),
+        ("thanhTienDuToan", "Thành tiền dự toán"),
+    ):
+        value = item.get(key)
+        parsed = parse_vnd_amount(value) if value not in (None, "") else None
+        if value not in (None, "") and (parsed is None or parsed < 0):
+            errors.append(f"{label} phải là số tiền không âm.")
+
+
+def _require_fields_for_hang_hoa_du_thau_nha_thau(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    _require_fields(item, (
+        ("goiThauId", "Gói thầu"),
+        ("thongTinMoThauId", "Hồ sơ mở thầu"),
+        ("danhMucHangHoa", "Danh mục hàng hóa"),
+    ), errors)
+    appraisal_code = item.get("yeuCauThamDinhHsmtCode")
+    if appraisal_code not in (None, "", "UNDETERMINED", "REQUIRED", "NOT_REQUIRED"):
+        errors.append("Mã yêu cầu thẩm định E-HSMT không hợp lệ.")
+    for key in (
+        "sttNguon", "maPhanLoNguon", "tenPhanLoNguon", "danhMucHangHoa",
+        "kyMaHieu", "nhanHieu", "namSanXuat", "xuatXu", "hangSanXuat",
+        "cauHinhTinhNangKyThuat", "donViTinh", "maHs",
+    ):
+        if key in item and item[key] is not None:
+            item[key] = str(item[key]).strip()
+    quantity = item.get("khoiLuong")
+    if quantity not in (None, "") and (
+        isinstance(quantity, bool)
+        or not isinstance(quantity, (int, float))
+        or not math.isfinite(quantity)
+        or quantity <= 0
+    ):
+        errors.append("Khối lượng hàng hóa dự thầu phải là số lớn hơn 0.")
+    for key, label in (
+        ("donGiaDuThau", "Đơn giá dự thầu"),
+        ("thanhTienDuThau", "Thành tiền dự thầu"),
+    ):
+        value = item.get(key)
+        parsed = parse_vnd_amount(value) if value not in (None, "") else None
+        if value not in (None, "") and parsed is None:
+            errors.append(f"{label} phải là số tiền không âm.")
+        elif parsed is not None:
+            item[key] = str(parsed)
+    is_draft = item.get("isDraft", True) in (True, 1, "1", "true", "True")
+    item["isDraft"] = is_draft
+    if not is_draft:
         _require_fields(item, (
-            ("tenKeHoach", "Tên kế hoạch LCNT"),
-            ("loaiHinhMuaSam", "Loại hình mua sắm"),
-            ("chuDauTuId", "Chủ đầu tư"),
-            ("ngayPheDuyet", "Ngày phê duyệt kế hoạch"),
-            ("quyetDinhPheDuyet", "Quyết định phê duyệt kế hoạch"),
-        ), errors)
-    elif table_name == "goi_thau":
-        derived_package_price = _derive_lotted_package_price(item)
-        if derived_package_price is not None:
-            item["giaGoiThau"] = str(derived_package_price)
-        _require_fields(item, (
-            ("keHoachId", "Kế hoạch LCNT liên kết"),
-            ("tenGoiThau", "Tên gói thầu"),
-            ("giaGoiThau", "Giá gói thầu"),
-            ("thoiGianThucHien", "Thời gian thực hiện"),
-            ("nguonVon", "Nguồn vốn"),
-            ("thoiGianToChuc", "Thời gian tổ chức LCNT"),
-            ("thoiGianBatDauToChuc", "Thời gian bắt đầu tổ chức"),
-        ), errors)
-    elif table_name == "goi_thau_hang_hoa":
-        _require_fields(item, (
-            ("goiThauId", "Gói thầu"),
-            ("maHangHoa", "Mã hàng hóa"),
-            ("tenHangHoa", "Tên hàng hóa"),
+            ("goiThauHangHoaId", "Hàng hóa yêu cầu được ghép"),
             ("donViTinh", "Đơn vị tính"),
-            ("soLuong", "Số lượng"),
-        ), errors)
-        item["maHangHoa"] = str(item.get("maHangHoa") or "").strip()
-        quantity = item.get("soLuong")
-        if isinstance(quantity, bool) or not isinstance(quantity, (int, float)) or not math.isfinite(quantity) or quantity <= 0:
-            errors.append("Số lượng hàng hóa phải là số lớn hơn 0.")
-        for key, label in (
-            ("donGiaDuToan", "Đơn giá dự toán"),
-            ("thanhTienDuToan", "Thành tiền dự toán"),
-        ):
-            value = item.get(key)
-            parsed = parse_vnd_amount(value) if value not in (None, "") else None
-            if value not in (None, "") and (parsed is None or parsed < 0):
-                errors.append(f"{label} phải là số tiền không âm.")
-    elif table_name == "hang_hoa_du_thau_nha_thau":
-        _require_fields(item, (
-            ("goiThauId", "Gói thầu"),
-            ("thongTinMoThauId", "Hồ sơ mở thầu"),
-            ("danhMucHangHoa", "Danh mục hàng hóa"),
-        ), errors)
-        appraisal_code = item.get("yeuCauThamDinhHsmtCode")
-        if appraisal_code not in (None, "", "UNDETERMINED", "REQUIRED", "NOT_REQUIRED"):
-            errors.append("Mã yêu cầu thẩm định E-HSMT không hợp lệ.")
-        for key in (
-            "sttNguon", "maPhanLoNguon", "tenPhanLoNguon", "danhMucHangHoa",
-            "kyMaHieu", "nhanHieu", "namSanXuat", "xuatXu", "hangSanXuat",
-            "cauHinhTinhNangKyThuat", "donViTinh", "maHs",
-        ):
-            if key in item and item[key] is not None:
-                item[key] = str(item[key]).strip()
-        quantity = item.get("khoiLuong")
-        if quantity not in (None, "") and (
-            isinstance(quantity, bool)
-            or not isinstance(quantity, (int, float))
-            or not math.isfinite(quantity)
-            or quantity <= 0
-        ):
-            errors.append("Khối lượng hàng hóa dự thầu phải là số lớn hơn 0.")
-        for key, label in (
+            ("khoiLuong", "Khối lượng"),
             ("donGiaDuThau", "Đơn giá dự thầu"),
             ("thanhTienDuThau", "Thành tiền dự thầu"),
-        ):
-            value = item.get(key)
-            parsed = parse_vnd_amount(value) if value not in (None, "") else None
-            if value not in (None, "") and parsed is None:
-                errors.append(f"{label} phải là số tiền không âm.")
-            elif parsed is not None:
-                item[key] = str(parsed)
-        is_draft = item.get("isDraft", True) in (True, 1, "1", "true", "True")
-        item["isDraft"] = is_draft
-        if not is_draft:
-            _require_fields(item, (
-                ("goiThauHangHoaId", "Hàng hóa yêu cầu được ghép"),
-                ("donViTinh", "Đơn vị tính"),
-                ("khoiLuong", "Khối lượng"),
-                ("donGiaDuThau", "Đơn giá dự thầu"),
-                ("thanhTienDuThau", "Thành tiền dự thầu"),
-            ), errors)
-            if str(item.get("mappingStatus") or "") != "matched":
-                errors.append("Trạng thái ghép phải hợp lệ trước khi lưu chính thức.")
-    elif table_name == "nha_thau":
-        if not str(item.get("tenNhaThau") or "").strip():
-            errors.append("Tên nhà thầu không được để trống.")
-        if str(item.get("loaiNhaThau") or "").strip() == "Liên danh" and str(item.get("maSoThue") or "").strip():
-            errors.append(
-                "Nhà thầu liên danh không dùng mã số thuế chung; mã số thuế thuộc từng thành viên liên danh."
-            )
-    elif table_name == "chuyen_gia":
-        if not str(item.get("hoTen") or "").strip():
-            errors.append("Họ và tên chuyên gia không được để trống.")
-        cccd = item.get("soCCCD")
-        if cccd and not re.match(r"^\d{12}$", str(cccd).strip()):
-            errors.append("Số CCCD phải gồm đúng 12 chữ số.")
-    elif table_name == "hop_dong":
-        _require_fields(item, (
-            ("tenHopDong", "Tên hợp đồng"),
-            ("soHopDong", "Số hợp đồng"),
-            ("ngayKy", "Ngày ký hợp đồng"),
-            ("chuDauTuId", "Chủ đầu tư của hợp đồng"),
-            ("nhaThauId", "Nhà thầu của hợp đồng"),
-            ("keHoachId", "Kế hoạch LCNT của hợp đồng"),
-            ("giaTri", "Giá trị hợp đồng"),
-            ("loaiHopDong", "Loại hợp đồng"),
-            ("soNgayThucHien", "Thời gian thực hiện hợp đồng"),
-            ("trangThaiHopDong", "Trạng thái hợp đồng"),
         ), errors)
-        if not _as_list(item.get("goiThauIds")):
-            errors.append("Hợp đồng phải liên kết với ít nhất một gói thầu.")
+        if str(item.get("mappingStatus") or "") != "matched":
+            errors.append("Trạng thái ghép phải hợp lệ trước khi lưu chính thức.")
 
+
+def _require_fields_for_nha_thau(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    if not str(item.get("tenNhaThau") or "").strip():
+        errors.append("Tên nhà thầu không được để trống.")
+    if str(item.get("loaiNhaThau") or "").strip() == "Liên danh" and str(item.get("maSoThue") or "").strip():
+        errors.append(
+            "Nhà thầu liên danh không dùng mã số thuế chung; mã số thuế thuộc từng thành viên liên danh."
+        )
+
+
+def _require_fields_for_chuyen_gia(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    if not str(item.get("hoTen") or "").strip():
+        errors.append("Họ và tên chuyên gia không được để trống.")
+    cccd = item.get("soCCCD")
+    if cccd and not re.match(r"^\d{12}$", str(cccd).strip()):
+        errors.append("Số CCCD phải gồm đúng 12 chữ số.")
+
+
+def _require_fields_for_hop_dong(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    _require_fields(item, (
+        ("tenHopDong", "Tên hợp đồng"),
+        ("soHopDong", "Số hợp đồng"),
+        ("ngayKy", "Ngày ký hợp đồng"),
+        ("chuDauTuId", "Chủ đầu tư của hợp đồng"),
+        ("nhaThauId", "Nhà thầu của hợp đồng"),
+        ("keHoachId", "Kế hoạch LCNT của hợp đồng"),
+        ("giaTri", "Giá trị hợp đồng"),
+        ("loaiHopDong", "Loại hợp đồng"),
+        ("soNgayThucHien", "Thời gian thực hiện hợp đồng"),
+        ("trangThaiHopDong", "Trạng thái hợp đồng"),
+    ), errors)
+    if not _as_list(item.get("goiThauIds")):
+        errors.append("Hợp đồng phải liên kết với ít nhất một gói thầu.")
+
+
+_REQUIRED_FIELD_RULES = {
+    'chu_dau_tu': _require_fields_for_chu_dau_tu,
+    'ke_hoach_lcnt': _require_fields_for_ke_hoach_lcnt,
+    'goi_thau': _require_fields_for_goi_thau,
+    'goi_thau_hang_hoa': _require_fields_for_goi_thau_hang_hoa,
+    'hang_hoa_du_thau_nha_thau': _require_fields_for_hang_hoa_du_thau_nha_thau,
+    'nha_thau': _require_fields_for_nha_thau,
+    'chuyen_gia': _require_fields_for_chuyen_gia,
+    'hop_dong': _require_fields_for_hop_dong,
+}
+
+
+def _validate_child_party_rows(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
     if table_name in {"nha_thau", "thong_tin_mo_thau"}:
         members = _as_list(item.get("thanhVienLienDanh"))
         is_joint_venture = str(item.get("loaiNhaThau") or "").strip().casefold() == "liên danh"
@@ -924,6 +945,9 @@ def validate_sync_item(
             if leader_count != 1:
                 errors.append("Liên danh phải có đúng một thành viên đứng đầu.")
 
+
+
+def _validate_typed_columns(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
     table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
     explicit_json_fields = set(table_spec.get("json_fields", []))
     for col in table_spec.get("columns", {}).keys():
@@ -946,6 +970,9 @@ def validate_sync_item(
         else:
             errors.append(f"Trường JSON '{json_key}' phải là mảng, object hoặc chuỗi JSON hợp lệ.")
 
+
+
+def _validate_contact_and_date_fields(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
     email = item.get("email")
     if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(email).strip()):
         errors.append("Email không đúng định dạng.")
@@ -973,292 +1000,357 @@ def validate_sync_item(
         if val and not is_valid_date_format(str(val).strip()):
             errors.append(f"Trường ngày/giờ '{date_key}' không đúng định dạng.")
 
-    if table_name == "goi_thau":
-        is_rebid = item.get("isRebid") in (True, 1, "1", "true", "True")
-        rebid_from = str(item.get("rebidFromPackageId") or "").strip()
-        item["isRebid"] = 1 if is_rebid else 0
-        item["rebidFromPackageId"] = rebid_from or None
-        if is_rebid and not rebid_from:
-            errors.append("Gói đấu thầu lại phải tham chiếu gói thầu nguồn.")
-        if not is_rebid and rebid_from:
-            errors.append("Gói không đấu thầu lại không được tham chiếu gói thầu nguồn.")
-        if rebid_from and str(item.get("id") or "").strip() == rebid_from:
-            errors.append("Gói đấu thầu lại không được tự tham chiếu.")
 
-        raw_status = item.get("trangThai") or "Chuẩn bị"
-        item["trangThai"] = raw_status
-        if raw_status:
-            normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
-            item["trangThai"] = normalized_status
-            if normalized_status not in PACKAGE_STATUSES:
-                errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
-            elif normalized_status == "Đã có kết quả một phần" and str(item.get("phanLo") or "").strip() != "Có":
-                errors.append("Trạng thái 'Đã có kết quả một phần' chỉ áp dụng cho gói thầu có phần lô.")
 
-        dang_tai = parse_date(item.get("thoiGianDangTai"))
-        dong_thau = parse_date(item.get("thoiGianDongThau"))
-        mo_thau = parse_date(item.get("thoiGianMoThau"))
-        if dang_tai and dong_thau and dong_thau <= dang_tai:
-            errors.append("Thời gian đóng thầu phải sau thời gian đăng tải.")
-        if dong_thau and mo_thau and mo_thau < dong_thau:
-            errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
+def _validate_package_rebid(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    is_rebid = item.get("isRebid") in (True, 1, "1", "true", "True")
+    rebid_from = str(item.get("rebidFromPackageId") or "").strip()
+    item["isRebid"] = 1 if is_rebid else 0
+    item["rebidFromPackageId"] = rebid_from or None
+    if is_rebid and not rebid_from:
+        errors.append("Gói đấu thầu lại phải tham chiếu gói thầu nguồn.")
+    if not is_rebid and rebid_from:
+        errors.append("Gói không đấu thầu lại không được tham chiếu gói thầu nguồn.")
+    if rebid_from and str(item.get("id") or "").strip() == rebid_from:
+        errors.append("Gói đấu thầu lại không được tự tham chiếu.")
 
-        status_order = {
-            "Đang mời thầu": 1,
-            "Đã mở thầu": 2,
-            "Đang chấm thầu": 3,
-            "Đã có kết quả một phần": 4,
-            "Đã có kết quả": 5,
-        }
-        status_level = status_order.get(item.get("trangThai"), 0)
-        is_direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {
-            "Chỉ định thầu rút gọn",
-            "Lựa chọn nhà thầu trong trường hợp đặc biệt",
-        }
-        if status_level >= 1 and not is_direct_or_special:
-            _require_fields(item, (
-                ("thoiGianDangTai", "Thời gian đăng tải"),
-                ("thoiGianDongThau", "Thời gian đóng thầu"),
-            ), errors)
-            hieu_luc = safe_int(item.get("hieuLucHsdt"))
-            if hieu_luc is None or hieu_luc <= 0:
-                errors.append("Hiệu lực HSDT phải lớn hơn 0 khi gói đã mời thầu.")
-        if status_level >= 2 and not is_direct_or_special:
-            _require_fields(item, (("thoiGianMoThau", "Thời gian mở thầu"),), errors)
-        is_lotted_package = str(item.get("phanLo") or "").strip() == "Có"
-        if status_level >= 4:
-            _require_fields(item, (
-                ("soQuyetDinhKetQua", "Số quyết định kết quả"),
-                ("ngayQuyetDinhKetQua", "Ngày quyết định kết quả"),
-                ("giaTrungThau", "Giá trúng thầu"),
-            ), errors)
-            if not is_lotted_package:
-                _require_fields(
-                    item,
-                    (("nhaThauTrungThauId", "Nhà thầu trúng thầu"),),
-                    errors,
-                )
 
-        phan_lo_list = _as_list(item.get("phanLoList"))
-        if str(item.get("phanLo") or "").strip() == "Có":
-            if not phan_lo_list:
-                errors.append("Gói thầu phân lô phải có ít nhất một phần lô.")
-            normalized_codes = []
-            lot_total = 0
-            for index, lot in enumerate(phan_lo_list):
-                if not isinstance(lot, dict):
-                    continue
-                code = normalize_lot_code(
-                    lot.get("maPhanLo") or lot.get("ma_phan_lo")
-                )
-                if not code:
-                    errors.append(f"Phần lô thứ {index + 1} chưa có mã phần lô.")
-                else:
-                    normalized_codes.append(code)
-                value = parse_vnd_amount(lot.get("giaTriPhanLo", lot.get("gia_tri_phan_lo")))
-                if value is not None:
-                    lot_total += value
-            if len(normalized_codes) != len(set(normalized_codes)):
-                errors.append("Mã phần lô không được trùng trong cùng gói thầu.")
-            if phan_lo_list:
-                item["giaGoiThau"] = str(lot_total)
-        elif phan_lo_list:
-            errors.append("Gói không phân lô không được chứa danh sách phần lô.")
 
-        if status_level >= 4 and is_lotted_package:
-            awarded_lots = _as_list(item.get("awardedPhanLoList"))
-            if not awarded_lots:
-                awarded_lots = [
-                    lot for lot in phan_lo_list
-                    if isinstance(lot, dict) and (
-                        lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id")
-                    )
-                ]
-            known_codes = {
-                normalize_lot_code(lot.get("maPhanLo") or lot.get("ma_phan_lo"))
-                for lot in phan_lo_list if isinstance(lot, dict)
-            }
-            awarded_codes = []
-            awarded_total = 0
-            awarded_winner_ids = set()
-            for lot in awarded_lots:
-                if not isinstance(lot, dict):
-                    continue
-                code = normalize_lot_code(
-                    lot.get("maPhanLo") or lot.get("ma_phan_lo")
-                )
-                winner = str(lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id") or "").strip()
-                value = parse_vnd_amount(lot.get("giaTrungThau", lot.get("gia_trung_thau")))
-                awarded_codes.append(code)
-                if not code or code not in known_codes:
-                    errors.append("Kết quả trúng thầu chứa phần lô không thuộc gói thầu.")
-                if not winner:
-                    errors.append("Mỗi phần lô trúng thầu phải xác định nhà thầu trúng thầu.")
-                else:
-                    awarded_winner_ids.add(winner)
-                if value is None:
-                    errors.append("Mỗi phần lô trúng thầu phải có giá trúng thầu hợp lệ.")
-                else:
-                    awarded_total += value
-            if len(awarded_codes) != len(set(awarded_codes)):
-                errors.append("Một phần lô không được xuất hiện nhiều lần trong kết quả trúng thầu.")
-            if awarded_lots:
-                # Derived financial totals are server-authoritative. The UI may
-                # preview the value, but cannot persist a divergent total.
-                item["giaTrungThau"] = str(awarded_total)
-                # The legacy package winner remains a compatibility projection
-                # only when every awarded lot has the same winner. Lot results
-                # are the source of truth for a lotted package.
-                item["nhaThauTrungThauId"] = (
-                    next(iter(awarded_winner_ids))
-                    if len(awarded_winner_ids) == 1
-                    else None
-                )
+def _normalize_package_status(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    raw_status = item.get("trangThai") or "Chuẩn bị"
+    item["trangThai"] = raw_status
+    if raw_status:
+        normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
+        item["trangThai"] = normalized_status
+        if normalized_status not in PACKAGE_STATUSES:
+            errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
+        elif normalized_status == "Đã có kết quả một phần" and str(item.get("phanLo") or "").strip() != "Có":
+            errors.append("Trạng thái 'Đã có kết quả một phần' chỉ áp dụng cho gói thầu có phần lô.")
 
-        option_list = _as_list(item.get("tuyChonMuaThemList"))
-        # MSC can publish the package-level option flag in a plan revision
-        # before it publishes any item detail. The caller enables this narrow
-        # exception only after validating the active procurement import session.
-        if (
-            str(item.get("tuyChonMuaThem") or "").strip() == "Có"
-            and not option_list
-            and not allow_source_option_without_items
-        ):
-            errors.append("Gói có tùy chọn mua thêm phải khai báo ít nhất một hạng mục.")
-        if str(item.get("tuyChonMuaThem") or "").strip() != "Có" and option_list:
-            errors.append("Gói không có tùy chọn mua thêm không được chứa danh sách tùy chọn.")
 
-        phuong_phap = item.get("phuongPhapDanhGia")
-        is_combined_method = is_combined_evaluation_method(phuong_phap)
-        if not is_combined_method:
-            item["trongSoKyThuat"] = None
 
-        trong_so = item.get("trongSoKyThuat")
-        if trong_so is not None:
-            ts_val = safe_int(trong_so)
-            if ts_val is not None and (ts_val < 0 or ts_val > 100):
-                errors.append("Trọng số kỹ thuật phải nằm trong khoảng 0-100.")
+def _validate_package_timeline_order(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    dang_tai = parse_date(item.get("thoiGianDangTai"))
+    dong_thau = parse_date(item.get("thoiGianDongThau"))
+    mo_thau = parse_date(item.get("thoiGianMoThau"))
+    if dang_tai and dong_thau and dong_thau <= dang_tai:
+        errors.append("Thời gian đóng thầu phải sau thời gian đăng tải.")
+    if dong_thau and mo_thau and mo_thau < dong_thau:
+        errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
 
-        is_medicine_package = (
-            str(item.get("linhVuc") or "").strip() == "Hàng hóa"
-            and item.get("isThuoc") in (True, 1, "1", "true", "True")
-        )
-        if is_combined_method and is_medicine_package:
-            ts_val = safe_int(trong_so)
-            if ts_val is None or ts_val < 30 or ts_val > 40:
-                errors.append("Đối với gói thầu thuốc, trọng số kỹ thuật phải nằm trong khoảng 30% - 40%.")
 
-        gia = item.get("giaGoiThau")
-        if gia not in (None, ""):
-            gia_val = parse_vnd_amount(gia)
-            if gia_val is None:
-                errors.append("Giá gói thầu không được nhỏ hơn 0.")
 
-    elif table_name == "ke_hoach_lcnt":
-        is_auto = item.get("isTongMucTuDong")
-        item["isTongMucTuDong"] = 1 if (is_auto is True or str(is_auto) in ("1", "true", "True")) else 0
+def _validate_package_status_and_lots(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    status_order = {
+        "Đang mời thầu": 1,
+        "Đã mở thầu": 2,
+        "Đang chấm thầu": 3,
+        "Đã có kết quả một phần": 4,
+        "Đã có kết quả": 5,
+    }
+    status_level = status_order.get(item.get("trangThai"), 0)
+    is_direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {
+        "Chỉ định thầu rút gọn",
+        "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+    }
+    if status_level >= 1 and not is_direct_or_special:
+        _require_fields(item, (
+            ("thoiGianDangTai", "Thời gian đăng tải"),
+            ("thoiGianDongThau", "Thời gian đóng thầu"),
+        ), errors)
+        hieu_luc = safe_int(item.get("hieuLucHsdt"))
+        if hieu_luc is None or hieu_luc <= 0:
+            errors.append("Hiệu lực HSDT phải lớn hơn 0 khi gói đã mời thầu.")
+    if status_level >= 2 and not is_direct_or_special:
+        _require_fields(item, (("thoiGianMoThau", "Thời gian mở thầu"),), errors)
+    is_lotted_package = str(item.get("phanLo") or "").strip() == "Có"
+    if status_level >= 4:
+        _require_fields(item, (
+            ("soQuyetDinhKetQua", "Số quyết định kết quả"),
+            ("ngayQuyetDinhKetQua", "Ngày quyết định kết quả"),
+            ("giaTrungThau", "Giá trúng thầu"),
+        ), errors)
+        if not is_lotted_package:
+            _require_fields(
+                item,
+                (("nhaThauTrungThauId", "Nhà thầu trúng thầu"),),
+                errors,
+            )
 
-        tong_muc = item.get("tongMucDauTu")
-        if tong_muc not in (None, ""):
-            tm_val = parse_vnd_amount(tong_muc)
-            if tm_val is None:
-                errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
-
-        if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự toán mua sắm":
-            _require_fields(item, (
-                ("tenDuAnDuToan", "Tên dự toán"),
-            ), errors)
-        if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
-            _require_fields(item, (
-                ("ngayPheDuyetDuToan", "Ngày phê duyệt dự toán"),
-                ("soQdPheDuyetDuToan", "Số quyết định phê duyệt dự toán"),
-            ), errors)
-        elif str(item.get("pheDuyet") or "").strip() == "Dự toán và kế hoạch":
-            # Số/ngày tờ trình là thông tin bổ sung; quyết định phê duyệt
-            # vẫn được kiểm tra ở phần trường dùng chung bên dưới.
-            pass
-        plan_date_pairs = (
-            ("ngayTrinhDuToan", "ngayPheDuyetDuToan", "Ngày phê duyệt dự toán không được trước ngày trình dự toán."),
-            ("ngayTrinhKeHoach", "ngayPheDuyet", "Ngày phê duyệt kế hoạch không được trước ngày trình kế hoạch."),
-        )
-        for start_key, end_key, message in plan_date_pairs:
-            start_date = parse_date(item.get(start_key))
-            end_date = parse_date(item.get(end_key))
-            if start_date and end_date and end_date < start_date:
-                errors.append(message)
-
-    elif table_name == "hop_dong":
-        gia_tri = item.get("giaTri")
-        if gia_tri not in (None, ""):
-            gt_val = parse_vnd_amount(gia_tri)
-            if gt_val is None:
-                errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
-        signed_date = parse_date(item.get("ngayKy"))
-        liquidation_date = parse_date(item.get("ngayThanhLy"))
-        if signed_date and liquidation_date and liquidation_date < signed_date:
-            errors.append("Ngày thanh lý không được trước ngày ký hợp đồng.")
-        is_direct_award = item.get("coQdChiDinh") in (True, 1, "1", "true", "True")
-        if is_direct_award:
-            _require_fields(item, (
-                ("soQdChiDinh", "Số quyết định chỉ định thầu"),
-                ("ngayQdChiDinh", "Ngày quyết định chỉ định thầu"),
-            ), errors)
-            decision_date = parse_date(item.get("ngayQdChiDinh"))
-            if signed_date and decision_date and decision_date > signed_date:
-                errors.append("Ngày quyết định chỉ định thầu không được sau ngày ký hợp đồng.")
-        elif not _is_blank(item.get("soQdChiDinh")) or not _is_blank(item.get("ngayQdChiDinh")):
-            errors.append("Thông tin quyết định chỉ định thầu phải để trống khi không áp dụng.")
-        contract_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
-        item["trangThaiHopDong"] = contract_status
-        if contract_status not in allowed_contract_status_names:
-            errors.append("Trạng thái hợp đồng không tồn tại trong danh mục của tổ chức.")
-
-    elif table_name == "danh_muc_trang_thai_hop_dong":
-        status_name = item.get("name") or item.get("tenTrangThai")
-        status_color = item.get("color") or item.get("mauSac") or DEFAULT_CONTRACT_STATUS_COLOR
-        if not status_name or not str(status_name).strip():
-            errors.append("Tên trạng thái hợp đồng không được để trống.")
-        if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
-            errors.append("Màu trạng thái hợp đồng phải ở dạng HEX.")
-
-    elif table_name == "thong_tin_mo_thau":
-        bid_price = parse_vnd_amount(item.get("giaDuThau"))
-        discount_rate = item.get("tyLeGiamGia")
-        if bid_price is not None and discount_rate not in (None, ""):
-            try:
-                rate = Decimal(str(discount_rate))
-                if not rate.is_finite() or rate < Decimal("0") or rate > Decimal("100"):
-                    errors.append("Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.")
-                    rate = None
-                if rate is None:
-                    raise ValueError("discount rate out of range")
-                expected = (
-                    Decimal(bid_price) * (Decimal("100") - rate) / Decimal("100")
-                ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-                item["giaSauGiamGia"] = str(int(expected))
-            except (InvalidOperation, ValueError):
-                if not errors or errors[-1] != "Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.":
-                    errors.append("Tỷ lệ giảm giá không hợp lệ.")
-        elif bid_price is not None and discount_rate in (None, ""):
-            item["giaSauGiamGia"] = str(bid_price)
-
-        for field, label in (
-            ("giaXepHang", "Giá xếp hạng"),
-            ("giaDeNghiTrungThau", "Giá đề nghị trúng thầu"),
-        ):
-            raw_value = item.get(field)
-            if raw_value in (None, ""):
+    phan_lo_list = _as_list(item.get("phanLoList"))
+    if str(item.get("phanLo") or "").strip() == "Có":
+        if not phan_lo_list:
+            errors.append("Gói thầu phân lô phải có ít nhất một phần lô.")
+        normalized_codes = []
+        lot_total = 0
+        for index, lot in enumerate(phan_lo_list):
+            if not isinstance(lot, dict):
                 continue
-            parsed_value = parse_vnd_amount(raw_value)
-            if parsed_value is None:
-                errors.append(f"{label} không được nhỏ hơn 0.")
+            code = normalize_lot_code(
+                lot.get("maPhanLo") or lot.get("ma_phan_lo")
+            )
+            if not code:
+                errors.append(f"Phần lô thứ {index + 1} chưa có mã phần lô.")
             else:
-                item[field] = str(parsed_value)
+                normalized_codes.append(code)
+            value = parse_vnd_amount(lot.get("giaTriPhanLo", lot.get("gia_tri_phan_lo")))
+            if value is not None:
+                lot_total += value
+        if len(normalized_codes) != len(set(normalized_codes)):
+            errors.append("Mã phần lô không được trùng trong cùng gói thầu.")
+        if phan_lo_list:
+            item["giaGoiThau"] = str(lot_total)
+    elif phan_lo_list:
+        errors.append("Gói không phân lô không được chứa danh sách phần lô.")
 
-        low_price_acceptance = item.get("chapThuanGiaDeNghiTrungThauDuoi50")
-        if low_price_acceptance not in (None, "", True, False, 0, 1):
-            errors.append("Lựa chọn xử lý giá đề nghị trúng thầu dưới 50% không hợp lệ.")
-        elif low_price_acceptance not in (None, ""):
-            item["chapThuanGiaDeNghiTrungThauDuoi50"] = bool(low_price_acceptance)
+    if status_level >= 4 and is_lotted_package:
+        awarded_lots = _as_list(item.get("awardedPhanLoList"))
+        if not awarded_lots:
+            awarded_lots = [
+                lot for lot in phan_lo_list
+                if isinstance(lot, dict) and (
+                    lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id")
+                )
+            ]
+        known_codes = {
+            normalize_lot_code(lot.get("maPhanLo") or lot.get("ma_phan_lo"))
+            for lot in phan_lo_list if isinstance(lot, dict)
+        }
+        awarded_codes = []
+        awarded_total = 0
+        awarded_winner_ids = set()
+        for lot in awarded_lots:
+            if not isinstance(lot, dict):
+                continue
+            code = normalize_lot_code(
+                lot.get("maPhanLo") or lot.get("ma_phan_lo")
+            )
+            winner = str(lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id") or "").strip()
+            value = parse_vnd_amount(lot.get("giaTrungThau", lot.get("gia_trung_thau")))
+            awarded_codes.append(code)
+            if not code or code not in known_codes:
+                errors.append("Kết quả trúng thầu chứa phần lô không thuộc gói thầu.")
+            if not winner:
+                errors.append("Mỗi phần lô trúng thầu phải xác định nhà thầu trúng thầu.")
+            else:
+                awarded_winner_ids.add(winner)
+            if value is None:
+                errors.append("Mỗi phần lô trúng thầu phải có giá trúng thầu hợp lệ.")
+            else:
+                awarded_total += value
+        if len(awarded_codes) != len(set(awarded_codes)):
+            errors.append("Một phần lô không được xuất hiện nhiều lần trong kết quả trúng thầu.")
+        if awarded_lots:
+            # Derived financial totals are server-authoritative. The UI may
+            # preview the value, but cannot persist a divergent total.
+            item["giaTrungThau"] = str(awarded_total)
+            # The legacy package winner remains a compatibility projection
+            # only when every awarded lot has the same winner. Lot results
+            # are the source of truth for a lotted package.
+            item["nhaThauTrungThauId"] = (
+                next(iter(awarded_winner_ids))
+                if len(awarded_winner_ids) == 1
+                else None
+            )
+
+
+
+def _validate_package_purchase_options(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    option_list = _as_list(item.get("tuyChonMuaThemList"))
+    # MSC can publish the package-level option flag in a plan revision
+    # before it publishes any item detail. The caller enables this narrow
+    # exception only after validating the active procurement import session.
+    if (
+        str(item.get("tuyChonMuaThem") or "").strip() == "Có"
+        and not option_list
+        and not allow_source_option_without_items
+    ):
+        errors.append("Gói có tùy chọn mua thêm phải khai báo ít nhất một hạng mục.")
+    if str(item.get("tuyChonMuaThem") or "").strip() != "Có" and option_list:
+        errors.append("Gói không có tùy chọn mua thêm không được chứa danh sách tùy chọn.")
+
+
+
+def _validate_package_evaluation_method(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    phuong_phap = item.get("phuongPhapDanhGia")
+    is_combined_method = is_combined_evaluation_method(phuong_phap)
+    if not is_combined_method:
+        item["trongSoKyThuat"] = None
+
+    trong_so = item.get("trongSoKyThuat")
+    if trong_so is not None:
+        ts_val = safe_int(trong_so)
+        if ts_val is not None and (ts_val < 0 or ts_val > 100):
+            errors.append("Trọng số kỹ thuật phải nằm trong khoảng 0-100.")
+
+    is_medicine_package = (
+        str(item.get("linhVuc") or "").strip() == "Hàng hóa"
+        and item.get("isThuoc") in (True, 1, "1", "true", "True")
+    )
+    if is_combined_method and is_medicine_package:
+        ts_val = safe_int(trong_so)
+        if ts_val is None or ts_val < 30 or ts_val > 40:
+            errors.append("Đối với gói thầu thuốc, trọng số kỹ thuật phải nằm trong khoảng 30% - 40%.")
+
+
+
+def _validate_package_price(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    gia = item.get("giaGoiThau")
+    if gia not in (None, ""):
+        gia_val = parse_vnd_amount(gia)
+        if gia_val is None:
+            errors.append("Giá gói thầu không được nhỏ hơn 0.")
+
+
+def _validate_rules_for_goi_thau(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    _validate_package_rebid(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _normalize_package_status(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_package_timeline_order(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_package_status_and_lots(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_package_purchase_options(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_package_evaluation_method(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_package_price(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+
+
+def _validate_rules_for_ke_hoach_lcnt(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    is_auto = item.get("isTongMucTuDong")
+    item["isTongMucTuDong"] = 1 if (is_auto is True or str(is_auto) in ("1", "true", "True")) else 0
+
+    tong_muc = item.get("tongMucDauTu")
+    if tong_muc not in (None, ""):
+        tm_val = parse_vnd_amount(tong_muc)
+        if tm_val is None:
+            errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
+
+    if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự toán mua sắm":
+        _require_fields(item, (
+            ("tenDuAnDuToan", "Tên dự toán"),
+        ), errors)
+    if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
+        _require_fields(item, (
+            ("ngayPheDuyetDuToan", "Ngày phê duyệt dự toán"),
+            ("soQdPheDuyetDuToan", "Số quyết định phê duyệt dự toán"),
+        ), errors)
+    elif str(item.get("pheDuyet") or "").strip() == "Dự toán và kế hoạch":
+        # Số/ngày tờ trình là thông tin bổ sung; quyết định phê duyệt
+        # vẫn được kiểm tra ở phần trường dùng chung bên dưới.
+        pass
+    plan_date_pairs = (
+        ("ngayTrinhDuToan", "ngayPheDuyetDuToan", "Ngày phê duyệt dự toán không được trước ngày trình dự toán."),
+        ("ngayTrinhKeHoach", "ngayPheDuyet", "Ngày phê duyệt kế hoạch không được trước ngày trình kế hoạch."),
+    )
+    for start_key, end_key, message in plan_date_pairs:
+        start_date = parse_date(item.get(start_key))
+        end_date = parse_date(item.get(end_key))
+        if start_date and end_date and end_date < start_date:
+            errors.append(message)
+
+
+def _validate_rules_for_hop_dong(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    gia_tri = item.get("giaTri")
+    if gia_tri not in (None, ""):
+        gt_val = parse_vnd_amount(gia_tri)
+        if gt_val is None:
+            errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
+    signed_date = parse_date(item.get("ngayKy"))
+    liquidation_date = parse_date(item.get("ngayThanhLy"))
+    if signed_date and liquidation_date and liquidation_date < signed_date:
+        errors.append("Ngày thanh lý không được trước ngày ký hợp đồng.")
+    is_direct_award = item.get("coQdChiDinh") in (True, 1, "1", "true", "True")
+    if is_direct_award:
+        _require_fields(item, (
+            ("soQdChiDinh", "Số quyết định chỉ định thầu"),
+            ("ngayQdChiDinh", "Ngày quyết định chỉ định thầu"),
+        ), errors)
+        decision_date = parse_date(item.get("ngayQdChiDinh"))
+        if signed_date and decision_date and decision_date > signed_date:
+            errors.append("Ngày quyết định chỉ định thầu không được sau ngày ký hợp đồng.")
+    elif not _is_blank(item.get("soQdChiDinh")) or not _is_blank(item.get("ngayQdChiDinh")):
+        errors.append("Thông tin quyết định chỉ định thầu phải để trống khi không áp dụng.")
+    contract_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
+    item["trangThaiHopDong"] = contract_status
+    if contract_status not in allowed_contract_status_names:
+        errors.append("Trạng thái hợp đồng không tồn tại trong danh mục của tổ chức.")
+
+
+def _validate_rules_for_danh_muc_trang_thai_hop_dong(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    status_name = item.get("name") or item.get("tenTrangThai")
+    status_color = item.get("color") or item.get("mauSac") or DEFAULT_CONTRACT_STATUS_COLOR
+    if not status_name or not str(status_name).strip():
+        errors.append("Tên trạng thái hợp đồng không được để trống.")
+    if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
+        errors.append("Màu trạng thái hợp đồng phải ở dạng HEX.")
+
+
+def _validate_rules_for_thong_tin_mo_thau(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items):
+    bid_price = parse_vnd_amount(item.get("giaDuThau"))
+    discount_rate = item.get("tyLeGiamGia")
+    if bid_price is not None and discount_rate not in (None, ""):
+        try:
+            rate = Decimal(str(discount_rate))
+            if not rate.is_finite() or rate < Decimal("0") or rate > Decimal("100"):
+                errors.append("Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.")
+                rate = None
+            if rate is None:
+                raise ValueError("discount rate out of range")
+            expected = (
+                Decimal(bid_price) * (Decimal("100") - rate) / Decimal("100")
+            ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            item["giaSauGiamGia"] = str(int(expected))
+        except (InvalidOperation, ValueError):
+            if not errors or errors[-1] != "Tỷ lệ giảm giá phải nằm trong khoảng từ 0 đến 100.":
+                errors.append("Tỷ lệ giảm giá không hợp lệ.")
+    elif bid_price is not None and discount_rate in (None, ""):
+        item["giaSauGiamGia"] = str(bid_price)
+
+    for field, label in (
+        ("giaXepHang", "Giá xếp hạng"),
+        ("giaDeNghiTrungThau", "Giá đề nghị trúng thầu"),
+    ):
+        raw_value = item.get(field)
+        if raw_value in (None, ""):
+            continue
+        parsed_value = parse_vnd_amount(raw_value)
+        if parsed_value is None:
+            errors.append(f"{label} không được nhỏ hơn 0.")
+        else:
+            item[field] = str(parsed_value)
+
+    low_price_acceptance = item.get("chapThuanGiaDeNghiTrungThauDuoi50")
+    if low_price_acceptance not in (None, "", True, False, 0, 1):
+        errors.append("Lựa chọn xử lý giá đề nghị trúng thầu dưới 50% không hợp lệ.")
+    elif low_price_acceptance not in (None, ""):
+        item["chapThuanGiaDeNghiTrungThauDuoi50"] = bool(low_price_acceptance)
+
+
+_TABLE_RULES = {
+    'goi_thau': _validate_rules_for_goi_thau,
+    'ke_hoach_lcnt': _validate_rules_for_ke_hoach_lcnt,
+    'hop_dong': _validate_rules_for_hop_dong,
+    'danh_muc_trang_thai_hop_dong': _validate_rules_for_danh_muc_trang_thai_hop_dong,
+    'thong_tin_mo_thau': _validate_rules_for_thong_tin_mo_thau,
+}
+
+
+def validate_sync_item(
+    table_name,
+    item,
+    allowed_contract_status_names=None,
+    *,
+    allow_source_option_without_items=False,
+):
+    allowed_contract_status_names = allowed_contract_status_names or set()
+    errors = []
+
+    _apply_effective_date_default(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _rule = _REQUIRED_FIELD_RULES.get(table_name)
+    if _rule is not None:
+        _rule(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_child_party_rows(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_typed_columns(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _validate_contact_and_date_fields(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
+    _rule = _TABLE_RULES.get(table_name)
+    if _rule is not None:
+        _rule(table_name, item, errors, allowed_contract_status_names, allow_source_option_without_items)
 
     return item, errors, set()

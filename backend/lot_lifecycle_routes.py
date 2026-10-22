@@ -1,6 +1,5 @@
 """HTTP boundary for lot-scoped procurement lifecycle commands."""
 
-import asyncio
 from hashlib import sha256
 import json
 import re
@@ -187,18 +186,10 @@ def _get_lot_lifecycle(request):
         )
 
 
-async def _create_lot_batch_impl(request, *, _session=None, _data=None):
+def _create_lot_batch_sync(request, session, data):
+    """Run the already-authenticated, already-parsed command (write lane)."""
     connection = None
     try:
-        valid, session = (True, _session) if _session is not None else verify_session(request)
-        if not valid:
-            return JSONResponse({"error": session}, status_code=403)
-        if _data is None:
-            data, json_error = await read_json_object(request)
-            if json_error:
-                return json_error
-        else:
-            data = _data
         invalid = validate_or_response(
             request,
             data,
@@ -335,12 +326,6 @@ async def _create_lot_batch_impl(request, *, _session=None, _data=None):
             connection.close()
 
 
-def _run_lot_impl_in_worker(function, request, session, data):
-    """Run the already-parsed command body in the bounded write lane."""
-
-    return asyncio.run(function(request, _session=session, _data=data))
-
-
 async def create_lot_batch_api(request):
     try:
         valid, session = await run_database_read(
@@ -358,8 +343,7 @@ async def create_lot_batch_api(request):
         return json_error
     try:
         return await run_database_write(
-            _run_lot_impl_in_worker,
-            _create_lot_batch_impl,
+            _create_lot_batch_sync,
             request,
             session,
             data,
@@ -388,8 +372,7 @@ async def finalize_lot_batch_api(request):
         return json_error
     try:
         return await run_database_write(
-            _run_lot_impl_in_worker,
-            _finalize_lot_batch_impl,
+            _finalize_lot_batch_sync,
             request,
             session,
             data,
@@ -401,18 +384,10 @@ async def finalize_lot_batch_api(request):
         )
 
 
-async def _finalize_lot_batch_impl(request, *, _session=None, _data=None):
+def _finalize_lot_batch_sync(request, session, data):
+    """Run the already-authenticated, already-parsed command (write lane)."""
     connection = None
     try:
-        valid, session = (True, _session) if _session is not None else verify_session(request)
-        if not valid:
-            return JSONResponse({"error": session}, status_code=403)
-        if _data is None:
-            data, json_error = await read_json_object(request)
-            if json_error:
-                return json_error
-        else:
-            data = _data
         idempotency_key = str(
             request.headers.get("Idempotency-Key") or ""
         ).strip()

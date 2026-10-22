@@ -949,7 +949,6 @@ from backend.api.org_routes import (
     add_user_to_org_api,
     get_document_export_capabilities_api,
     list_former_organization_members_api,
-    lookup_membership_candidate_api,
     remove_user_from_org_api,
     update_document_export_capabilities_api,
     update_organization_subscription_api,
@@ -1032,6 +1031,7 @@ from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
 from backend.deadlines.routes import deadline_routes
 from backend.holidays.routes import holiday_admin_routes
+from backend.api.org_invitations import organization_invitation_routes
 
 
 async def list_holidays_api(request):
@@ -1367,6 +1367,7 @@ routes = [
     *procurement_lookup_routes(Route),
     *deadline_routes(Route),
     *holiday_admin_routes(Route),
+    *organization_invitation_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
@@ -1428,7 +1429,6 @@ routes = [
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
     Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
-    Route("/api/organizations/membership-candidate", lookup_membership_candidate_api, methods=["GET"]),
     Route("/api/organizations", create_organization_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
     Route("/api/organizations/former-members", list_former_organization_members_api, methods=["GET"]),

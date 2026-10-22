@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-test("manager employee form uses the exact membership candidate endpoint", () => {
+test("manager employee form invites by email and never looks accounts up (ADR 0093)", () => {
   const controller = fs.readFileSync("frontend/admin/AdminUserController.js", "utf8");
   const membershipCommand = fs.readFileSync(
     "frontend/admin/OrganizationMembershipCommand.js",
@@ -10,16 +10,9 @@ test("manager employee form uses the exact membership candidate endpoint", () =>
   );
   const app = fs.readFileSync("backend/app.py", "utf8");
 
-  assert.match(
-    membershipCommand,
-    /api\/organizations\/membership-candidate\?email=\$\{encodeURIComponent\(normalized\)\}/u,
-  );
-  assert.match(
-    controller,
-    /foundUser\s*=\s*await organizationMembershipCommand\(this\)\.lookupCandidate/u,
-  );
-  assert.match(
-    app,
-    /Route\("\/api\/organizations\/membership-candidate",\s*lookup_membership_candidate_api,\s*methods=\["GET"\]\)/su,
-  );
+  assert.match(controller, /apiFetch\("\/api\/organizations\/invitations",\s*\{\s*method: "POST"/u);
+  assert.doesNotMatch(controller, /lookupCandidate|prefetchCandidate|membership-candidate/u);
+  assert.doesNotMatch(membershipCommand, /membership-candidate|lookupCandidate/u);
+  assert.doesNotMatch(app, /membership-candidate|lookup_membership_candidate_api/u);
+  assert.match(app, /organization_invitation_routes\(Route\)/u);
 });

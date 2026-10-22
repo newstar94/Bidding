@@ -1,3 +1,4 @@
+import { describeApiError } from "../shared/apiErrorText.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
@@ -420,17 +421,6 @@ export function setupRBACEvents() {
   }
   const formEmp = document.getElementById("form-manager-employee");
   if (formEmp) {
-    const employeeEmail = document.getElementById("emp-email");
-    let candidatePrefetchTimer = null;
-    if (typeof employeeEmail?.addEventListener === "function") bindAdminEvent(employeeEmail, "input", "prefetch-membership-candidate", () => {
-      if (candidatePrefetchTimer) clearTimeout(candidatePrefetchTimer);
-      const email = employeeEmail?.value?.trim?.().toLowerCase() || "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) return;
-      candidatePrefetchTimer = setTimeout(() => {
-        candidatePrefetchTimer = null;
-        void organizationMembershipCommand(this).prefetchCandidate(email);
-      }, 250);
-    });
     bindAdminEvent(formEmp, "submit", "save-manager-employee", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formEmp)) return;
@@ -457,79 +447,53 @@ export function setupRBACEvents() {
         await this.triggerUpgradePrompt();
         return;
       }
-      let foundUser = null;
       const employeeName = document.getElementById("emp-name").value.trim();
       const employeePhone = document.getElementById("emp-phone").value.trim();
       const emailInput = document.getElementById("emp-email").value.trim().toLowerCase();
-      let lookupFailureMessage = "";
-      setEmployeeSubmitBusy(true);
-      try {
-        // Submit always revalidates even when typing already prefetched it.
-        foundUser = await organizationMembershipCommand(this).lookupCandidate(
-          emailInput,
-          { revalidate: true },
-        );
-      } catch (err) {
-        console.error("Failed to load account information:", err);
-        lookupFailureMessage = err?.message || "Không thể kết nối máy chủ để tra cứu tài khoản.";
+      if (!id) {
+        // ADR 0093: new people join only by accepting an emailed invitation.
+        // The response never reveals whether the email has an account.
+        setEmployeeSubmitBusy(true);
+        try {
+          const response = await apiFetch("/api/organizations/invitations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: emailInput, employee_name: employeeName, phone: employeePhone }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          setEmployeeSubmitBusy(false);
+          if (!response.ok) {
+            await this.view.customAlert(
+              "Không thể gửi lời mời",
+              describeApiError(payload, "Không thể gửi lời mời.", { status: response.status, includeReference: true }),
+              "alert-triangle",
+            );
+            return;
+          }
+          this.view.closeModal("modal-manager-employee");
+          this.view.showToast?.("Đã gửi lời mời", payload.message || "Người được mời cần chấp nhận để vào tổ chức.", "success");
+          void import("./OrganizationInvitations.js").then(({ renderOrganizationInvitations }) => renderOrganizationInvitations({ force: true, view: this.view }));
+        } catch (err) {
+          setEmployeeSubmitBusy(false);
+          await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+        }
+        return;
       }
-      if (!foundUser) {
-        setEmployeeSubmitBusy(false);
+      const existingEmp = this.model.state.employees.find((em) => String(em.id) === String(id));
+      if (!existingEmp) {
+        await this.view.customAlert("Thông báo", "Không tìm thấy nhân sự cần cập nhật. Vui lòng tải lại danh sách.", "alert-triangle");
+        return;
+      }
+      if (String(existingEmp.email || "").trim().toLowerCase() !== emailInput) {
         await this.view.customAlert(
-          "Thông báo",
-          lookupFailureMessage || "Nhân sự chưa có tài khoản đang hoạt động và đã xác minh trên hệ thống!",
-          "alert-triangle"
+          "Không thể đổi email",
+          "Email gắn với tài khoản của nhân sự. Để thay người, hãy gỡ nhân sự cũ khỏi tổ chức rồi gửi lời mời cho người mới.",
+          "alert-triangle",
         );
         return;
       }
-      if (id) {
-        const existingEmp = this.model.state.employees.find((em) => em.id === id);
-        if (existingEmp && existingEmp.email.trim().toLowerCase() !== emailInput) {
-          try {
-            const oldUserId = id;
-            const removeResponse = await apiFetch("/api/auth/users/remove-from-org", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_id: oldUserId })
-            });
-            if (!removeResponse.ok) {
-              setEmployeeSubmitBusy(false);
-              let removePayload = {};
-              try { removePayload = await removeResponse.json(); } catch { /* empty error body */ }
-              await this.view.customAlert(
-                "Không thể thay nhân sự",
-                removePayload.error || "Không thể gỡ nhân sự cũ khỏi tổ chức. Vui lòng xử lý các công việc đang phụ trách trước.",
-                "alert-triangle",
-              );
-              return;
-            }
-          } catch (err) {
-            console.error("Failed to remove the previous employee from the organization:", err);
-            setEmployeeSubmitBusy(false);
-            await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối máy chủ để gỡ nhân sự cũ. Vui lòng thử lại.", "alert-triangle");
-            return;
-          }
-          const newEmpId = foundUser.id;
-          const changedPermissions = [];
-          const changedAssignments = [];
-          this.model.state.permissionmatrix.forEach((m) => {
-            if (m.empId === id) {
-              m.empId = newEmpId;
-              changedPermissions.push(m);
-            }
-          });
-          this.model.state.assignments.forEach((a) => {
-            if (a.empId === id) {
-              a.empId = newEmpId;
-              changedAssignments.push(a);
-            }
-          });
-          await persistAdminUpserts(this.model, {
-            assignments: changedAssignments,
-            permissionmatrix: changedPermissions,
-          });
-        }
-      }
+      const foundUser = existingEmp;
+      setEmployeeSubmitBusy(true);
       try {
         const resAdd = await apiFetch("/api/auth/users/add-to-org", {
           method: "POST",

@@ -569,6 +569,83 @@ function installOnboarding(controller, tools) {
   return { render };
 }
 
+/* --------------------------- Organization invitations --------------------------- */
+
+async function showPendingInvitations() {
+  let invitations = [];
+  try {
+    const response = await apiFetch("/api/invitations", { handleHttpErrors: false });
+    if (!response.ok) return;
+    invitations = (await response.json())?.invitations || [];
+  } catch {
+    return;
+  }
+  if (!invitations.length) return;
+  const dialog = element("dialog", "bf-tools-dialog bf-invitation-dialog");
+  dialog.setAttribute("aria-labelledby", "bf-invitation-title");
+  const title = element("h2", "", invitations.length > 1 ? `Bạn có ${invitations.length} lời mời tham gia tổ chức` : "Bạn có lời mời tham gia tổ chức");
+  title.id = "bf-invitation-title";
+  const list = element("ul", "bf-invitation-list");
+  const status = element("p", "bf-deadline-status");
+  status.setAttribute("role", "status");
+  for (const invitation of invitations) {
+    const item = element("li", "bf-deadline-item");
+    const text = element("div", "bf-deadline-text");
+    text.append(element("strong", "", invitation.organizationName));
+    text.append(element("span", "", `Người mời: ${invitation.inviterName || "Quản lý tổ chức"} · Tên hiển thị trong tổ chức: ${invitation.employeeName}`));
+    text.append(element("small", "", `Hết hạn: ${new Date(invitation.expiresAt * 1000).toLocaleDateString("vi-VN")}`));
+    const controls = element("div", "bf-deadline-controls");
+    const decline = element("button", "btn btn-outline", "Từ chối");
+    decline.type = "button";
+    const accept = element("button", "btn btn-primary", "Chấp nhận");
+    accept.type = "button";
+    const respond = async (action) => {
+      accept.disabled = true;
+      decline.disabled = true;
+      try {
+        const response = await apiFetch(`/api/invitations/${encodeURIComponent(invitation.id)}/${action}`, {
+          method: "POST",
+          handleHttpErrors: false,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          status.textContent = payload.error || "Không thể xử lý lời mời.";
+          accept.disabled = false;
+          decline.disabled = false;
+          return;
+        }
+        if (action === "accept") {
+          try { globalThis.sessionStorage?.setItem("bf_active_org", invitation.organizationId); } catch { /* optional */ }
+          try { globalThis.localStorage?.setItem("bf_active_org", invitation.organizationId); } catch { /* optional */ }
+          status.textContent = `${payload.message || "Bạn đã tham gia tổ chức."} Đang chuyển sang tổ chức…`;
+          setTimeout(() => window.location.assign("/tong-quan"), 800);
+          return;
+        }
+        item.remove();
+        status.textContent = payload.message || "Đã từ chối lời mời.";
+        if (!list.children.length) setTimeout(() => dialog.close(), 800);
+      } catch (error) {
+        status.textContent = error.message;
+        accept.disabled = false;
+        decline.disabled = false;
+      }
+    };
+    accept.addEventListener("click", () => respond("accept"));
+    decline.addEventListener("click", () => respond("decline"));
+    controls.append(decline, accept);
+    item.append(text, controls);
+    list.append(item);
+  }
+  const later = element("button", "btn btn-outline", "Để sau");
+  later.type = "button";
+  later.addEventListener("click", () => dialog.close());
+  const body = element("div", "bf-deadline-body");
+  body.append(list, status, later);
+  dialog.append(title, body);
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 export async function installWorkspaceTools(controller) {
   if (!controller || controller.workspaceTools) return controller?.workspaceTools;
   await loadStyleOnce(STYLESHEET_URL).catch(() => {});
@@ -579,5 +656,6 @@ export async function installWorkspaceTools(controller) {
   installHeaderButtons({ search, deadlines });
   const onboarding = installOnboarding(controller, { deadlines });
   controller.workspaceTools = { search, shortcuts, deadlines, onboarding };
+  void showPendingInvitations();
   return controller.workspaceTools;
 }

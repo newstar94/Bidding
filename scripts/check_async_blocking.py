@@ -37,12 +37,6 @@ ALLOWLIST: dict[str, str] = {
     "backend/documents/routes_docx.py::_log_audit_off_event_loop": (
         "inline fallback only when the write lane rejects the job; keeps required audit lossless"
     ),
-    "backend/lot_lifecycle_routes.py::_create_lot_batch_impl": (
-        "executed by _run_lot_impl_in_worker on a private loop inside the database write lane"
-    ),
-    "backend/lot_lifecycle_routes.py::_finalize_lot_batch_impl": (
-        "executed by _run_lot_impl_in_worker on a private loop inside the database write lane"
-    ),
 }
 
 

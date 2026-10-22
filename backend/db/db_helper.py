@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -524,6 +525,43 @@ class PostgresDatabase:
                 outcome=outcome,
             )
         return PostgresConnection(self._pool, connection)
+
+    @contextmanager
+    def connection(self) -> Iterator[PostgresConnection]:
+        """Lease one pooled connection for reads; always returned to the pool.
+
+        Nothing is committed: an implicit transaction left open by the body is
+        rolled back on return. Use :meth:`transaction` for writes.
+        """
+
+        leased = self.get_connection()
+        try:
+            yield leased
+        finally:
+            leased.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[PostgresConnection]:
+        """Run the body in one explicit transaction.
+
+        ``BEGIN`` before the body, ``COMMIT`` when it returns, ``ROLLBACK`` when
+        it raises (the original exception propagates unchanged). The
+        connection always goes back to the pool. Nested savepoints keep using
+        the existing ``SAVEPOINT`` statements on the yielded connection.
+        """
+
+        leased = self.get_connection()
+        try:
+            leased.execute("BEGIN")
+            try:
+                yield leased
+            except BaseException:
+                if leased.in_transaction:
+                    leased.rollback()
+                raise
+            leased.commit()
+        finally:
+            leased.close()
 
     def listen_connection(self) -> psycopg.Connection[Any]:
         """Open a dedicated autocommit connection for LISTEN/NOTIFY."""

@@ -166,3 +166,7 @@
   cursor: pointer;
 }
 .bf-onboarding-step:disabled { color: var(--ink-muted); text-decoration: line-through; cursor: default; }
+
+.bf-invitation-dialog { padding: 0; }
+.bf-invitation-dialog h2 { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 1.05rem; }
+.bf-invitation-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }

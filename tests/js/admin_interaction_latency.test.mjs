@@ -290,10 +290,7 @@ test("active-role rejects a server role outside the user's allowed set", async (
   }
 });
 
-test("confirmed organization member renders before background reload and sync complete", async () => {
-  const reload = deferred();
-  const sync = deferred();
-  const events = [];
+function employeeForm(values) {
   const submitButton = {
     disabled: false,
     attributes: new Map(),
@@ -309,22 +306,31 @@ test("confirmed organization member renders before background reload and sync co
   const input = (value) => ({ value });
   const document = emptyDocument({
     "form-manager-employee": form,
-    "form-employee-id": input(""),
-    "emp-name": input("Nguyễn Văn A"),
-    "emp-phone": input("0900000000"),
-    "emp-email": input("a@example.test"),
+    "form-employee-id": input(values.id || ""),
+    "emp-name": input(values.name),
+    "emp-phone": input(values.phone || ""),
+    "emp-email": input(values.email),
   });
-  let requestCount = 0;
+  return { form, submitButton, document };
+}
+
+const managerOrganization = (subscription = { member_quota: 10, member_count: 1 }) => ({
+  organizations: [{
+    id: "org-1", name: "Tổ chức 1", role: "manager", scope_type: "organization",
+    status: "active", subscription,
+  }],
+});
+
+test("new employee is invited by email without adding a local member (ADR 0093)", async () => {
+  const { form, submitButton, document } = employeeForm({ name: "Nguyễn Văn A", phone: "0900000000", email: "a@example.test" });
+  const requests = [];
+  const events = [];
   const restore = installGlobals({
     document,
-    fetch: async () => {
-      requestCount += 1;
-      const payload = requestCount === 1
-        ? { candidate: { id: "employee-1", name: "Nguyễn Văn A", email: "a@example.test" } }
-        : { success: true };
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { "content-type": "application/json" },
+    fetch: async (url, options = {}) => {
+      requests.push({ url: String(url), method: options.method || "GET", body: options.body ? JSON.parse(options.body) : null });
+      return new Response(JSON.stringify({ success: true, message: "Đã gửi lời mời." }), {
+        status: 200, headers: { "content-type": "application/json" },
       });
     },
     localStorage: memoryStorage({ bf_active_org: "org-1" }),
@@ -335,18 +341,56 @@ test("confirmed organization member renders before background reload and sync co
   try {
     const controller = {
       model: {
+        state: { activeuser: managerOrganization(), employees: [], permissionmatrix: [], assignments: [] },
+        async persistChanges() { assert.fail("an invitation must not create a local member"); },
+      },
+      view: {
+        validateForm: () => true,
+        closeModal() { events.push("modal-closed"); },
+        showToast(title) { events.push(`toast:${title}`); },
+        async customAlert(title) { events.push(`alert:${title}`); },
+      },
+    };
+    setupRBACEvents.call(controller);
+    await form.listener({ preventDefault() {} });
+
+    const invitation = requests.find((item) => item.url.endsWith("/api/organizations/invitations"));
+    assert.ok(invitation, "the form posts an invitation");
+    assert.equal(invitation.method, "POST");
+    assert.deepEqual(invitation.body, { email: "a@example.test", employee_name: "Nguyễn Văn A", phone: "0900000000" });
+    assert.equal(requests.some((item) => /membership-candidate|add-to-org/u.test(item.url)), false);
+    assert.deepEqual(controller.model.state.employees, []);
+    assert.deepEqual(events.slice(0, 2), ["modal-closed", "toast:Đã gửi lời mời"]);
+    assert.equal(form.attributes.get("aria-busy"), "false");
+    assert.equal(submitButton.disabled, false);
+  } finally {
+    restore();
+  }
+});
+
+test("existing employee profile edit renders before background reload and sync complete", async () => {
+  const reload = deferred();
+  const sync = deferred();
+  const events = [];
+  const { form, submitButton, document } = employeeForm({
+    id: "employee-1", name: "Chị Lan (Kế toán)", phone: "0911", email: "a@example.test",
+  });
+  const restore = installGlobals({
+    document,
+    fetch: async () => new Response(JSON.stringify({ success: true }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }),
+    localStorage: memoryStorage({ bf_active_org: "org-1" }),
+    location: { origin: "http://localhost" },
+    navigator: { onLine: true },
+    sessionStorage: memoryStorage({ bf_active_org: "org-1" }),
+  });
+  try {
+    const controller = {
+      model: {
         state: {
-          activeuser: {
-            organizations: [{
-              id: "org-1",
-              name: "Tổ chức 1",
-              role: "manager",
-              scope_type: "organization",
-              status: "active",
-              subscription: { member_quota: 10, member_count: 1 },
-            }],
-          },
-          employees: [],
+          activeuser: managerOrganization(),
+          employees: [{ id: "employee-1", name: "Lan", email: "a@example.test", phone: "" }],
           permissionmatrix: [{ empId: "employee-1" }],
           assignments: [],
         },
@@ -363,18 +407,15 @@ test("confirmed organization member renders before background reload and sync co
       autoSync() { events.push("sync-start"); return sync.promise; },
     };
     setupRBACEvents.call(controller);
-
     let settled = false;
     const handling = form.listener({ preventDefault() {} }).then(() => { settled = true; });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert.equal(settled, true, "submit must not wait for the authoritative reload or sync");
-    assert.deepEqual(controller.model.state.employees.map(({ id }) => id), ["employee-1"]);
+    assert.equal(controller.model.state.employees[0].name, "Chị Lan (Kế toán)");
     assert.ok(events.indexOf("local-durable") < events.indexOf("modal-closed"));
     assert.ok(events.indexOf("modal-closed") < events.indexOf("reload-start"));
-    assert.equal(form.attributes.get("aria-busy"), "false");
     assert.equal(submitButton.disabled, false);
-
     reload.resolve();
     sync.resolve({ ok: true });
     await handling;
@@ -385,40 +426,13 @@ test("confirmed organization member renders before background reload and sync co
   }
 });
 
-test("member quota conflict leaves local membership permission and assignments unchanged", async () => {
-  const submitButton = {
-    disabled: false,
-    setAttribute() {},
-  };
-  const form = {
-    listener: null,
-    addEventListener(_type, listener) { this.listener = listener; },
-    querySelector() { return submitButton; },
-    setAttribute() {},
-  };
-  const input = (value) => ({ value });
-  const document = emptyDocument({
-    "form-manager-employee": form,
-    "form-employee-id": input(""),
-    "emp-name": input("Nguyễn Văn A"),
-    "emp-phone": input("0900000000"),
-    "emp-email": input("a@example.test"),
-  });
-  let requestCount = 0;
+test("rejected invitation leaves local membership, permissions and assignments unchanged", async () => {
+  const { form, document } = employeeForm({ name: "Nguyễn Văn A", email: "a@example.test" });
   const restore = installGlobals({
     document,
-    fetch: async () => {
-      requestCount += 1;
-      if (requestCount === 1) {
-        return new Response(JSON.stringify({
-          candidate: { id: "employee-1", name: "Nguyễn Văn A", email: "a@example.test" },
-        }), { status: 200, headers: { "content-type": "application/json" } });
-      }
-      return new Response(JSON.stringify({
-        code: "MEMBER_QUOTA_EXCEEDED",
-        error: "Đã đạt giới hạn nhân sự.",
-      }), { status: 409, headers: { "content-type": "application/json" } });
-    },
+    fetch: async () => new Response(JSON.stringify({
+      code: "rate_limit_exceeded", error: "Tổ chức đã gửi quá nhiều lời mời hôm nay.", retry_after: 120,
+    }), { status: 429, headers: { "content-type": "application/json" } }),
     localStorage: memoryStorage({ bf_active_org: "org-1" }),
     location: { origin: "http://localhost" },
     navigator: { onLine: true },
@@ -431,20 +445,16 @@ test("member quota conflict leaves local membership permission and assignments u
     const controller = {
       model: {
         state: {
-          activeuser: {
-            organizations: [{
-              id: "org-1", role: "manager", scope_type: "organization", status: "active",
-              subscription: { member_quota: 1, member_count: 1 },
-            }],
-          },
+          activeuser: managerOrganization(),
           employees: [],
           permissionmatrix: [...initialPermission],
           assignments: [...initialAssignments],
         },
-        async persistChanges() { assert.fail("409 must not persist local membership"); },
+        async persistChanges() { assert.fail("a rejected invitation must not persist local membership"); },
       },
       view: {
         validateForm: () => true,
+        closeModal() { assert.fail("the form stays open on rejection"); },
         async customAlert(title, message) { alerts.push([title, message]); },
       },
     };
@@ -454,7 +464,7 @@ test("member quota conflict leaves local membership permission and assignments u
     assert.deepEqual(controller.model.state.employees, []);
     assert.deepEqual(controller.model.state.permissionmatrix, initialPermission);
     assert.deepEqual(controller.model.state.assignments, initialAssignments);
-    assert.match(alerts.at(-1)?.[1] || "", /giới hạn nhân sự/u);
+    assert.match(alerts.at(-1)?.[1] || "", /quá nhiều lời mời.*thử lại sau 2 phút/u);
   } finally {
     restore();
   }
