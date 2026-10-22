@@ -173,6 +173,34 @@ def test_invitation_ends_when_inviter_is_no_longer_manager(invitation_db):
     assert invitation_db.connection.execute(
         "SELECT count(*) FROM thanh_vien_to_chuc WHERE user_id = 'invitee'"
     ).fetchone()[0] == 0
+    assert "organization.invitation_revoked" in invitation_db.events
+
+
+def test_expired_invitation_is_listed_as_expired_and_renewed_on_reinvite(invitation_db):
+    role = SimpleNamespace(user_id="manager")
+    response, _ = org_invitations._create_invitation_sync(
+        _request("manager"), role, {"email": "invitee@example.test", "employee_name": "Chị Lan"},
+    )
+    invitation_id = _body(response)["invitationId"]
+    invitation_db.connection.execute(
+        "UPDATE organization_invitations SET created_at = ?, expires_at = ? WHERE id = ?",
+        (int(time.time()) - 20, int(time.time()) - 10, invitation_id),
+    )
+    # Another invitation from the same organization must not relabel it.
+    org_invitations._create_invitation_sync(
+        _request("manager"), role, {"email": "other@example.test", "employee_name": "Anh Minh"},
+    )
+    listing = _body(org_invitations._list_organization_invitations_sync(_request("manager"), role))
+    statuses = {item["email"]: item["status"] for item in listing["invitations"]}
+    assert statuses["invitee@example.test"] == "expired"
+
+    renewed, _ = org_invitations._create_invitation_sync(
+        _request("manager"), role, {"email": "invitee@example.test", "employee_name": "Chị Lan"},
+    )
+    assert _body(renewed)["invitationId"] == invitation_id
+    listing = _body(org_invitations._list_organization_invitations_sync(_request("manager"), role))
+    statuses = {item["email"]: item["status"] for item in listing["invitations"]}
+    assert statuses["invitee@example.test"] == "pending"
 
 
 def test_expired_and_declined_invitations_cannot_be_accepted(invitation_db):

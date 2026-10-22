@@ -45,8 +45,16 @@
 @media (max-width: 900px) {
   .bf-header-tool-label, .bf-header-tool kbd { display: none; }
 }
+/* The header tools take room from the page title; keep it on one line. */
+@media (max-width: 1100px) {
+  .app-header .header-left { min-width: 0; flex: 1 1 auto; }
+  .app-header .header-right { flex-shrink: 0; }
+  .app-header .page-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 
 .bf-tools-dialog {
+  /* The global reset zeroes dialog margins; restore the centred placement. */
+  margin: auto;
   width: min(680px, calc(100vw - 32px));
   max-height: min(80vh, 720px);
   padding: 0;
@@ -58,7 +66,7 @@
 }
 .bf-tools-dialog::backdrop { background: var(--color-scrim); }
 
-.bf-search-dialog { margin-top: 10vh; }
+.bf-search-dialog { margin: 10vh auto auto; }
 .bf-search-field {
   display: flex;
   align-items: center;
@@ -107,7 +115,8 @@
 .bf-shortcut-list dt { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; }
 .bf-shortcut-list dd { margin: 0; color: var(--ink-muted); }
 
-.bf-deadline-dialog { width: min(860px, calc(100vw - 32px)); display: flex; flex-direction: column; }
+/* Only an open dialog may be laid out; a closed one must stay display: none. */
+.bf-deadline-dialog { width: min(860px, calc(100vw - 32px)); flex-direction: column; }
 .bf-deadline-dialog[open] { display: flex; }
 .bf-deadline-header {
   display: flex;

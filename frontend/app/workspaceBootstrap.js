@@ -158,7 +158,7 @@ export function scheduleWorkspaceEnhancements(controller, {
     }
   }, {
     timeout: 3000,
-    delay: POST_STARTUP_TIMING.notificationCenter,
+    delay: POST_STARTUP_TIMING.workspaceTools,
     key: "workspace-tools",
     priority: "maintenance",
   });

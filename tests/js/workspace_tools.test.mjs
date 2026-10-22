@@ -92,3 +92,11 @@ test("saved list views are scoped per workspace and validated", () => {
     globalThis.localStorage = previous;
   }
 });
+
+test("snoozed invitations stay hidden unless new or opened from the email link", async () => {
+  const { invitationsToShow } = await import("../../frontend/app/WorkspaceTools.js");
+  const invitations = [{ id: "a" }, { id: "b" }];
+  assert.deepEqual(invitationsToShow(invitations, { snoozed: new Set(["a"]) }).map((item) => item.id), ["b"]);
+  assert.deepEqual(invitationsToShow(invitations, { snoozed: new Set(["a", "b"]) }), []);
+  assert.equal(invitationsToShow(invitations, { snoozed: new Set(["a", "b"]), force: true }).length, 2);
+});

@@ -8,6 +8,7 @@
             <form id="form-manager-employee" novalidate>
                 <input type="hidden" id="form-employee-id">
                 <div class="modal-body">
+                    <p class="text-muted small" id="emp-invite-hint">Hệ thống gửi lời mời tới email này. Người được mời đăng nhập (hoặc đăng ký) bằng đúng email đó và chấp nhận thì mới vào tổ chức.</p>
                     <div class="form-grid bf-s-37f523c2dc">
                         <div class="form-group">
                             <label for="emp-name">Họ và tên nhân sự <span class="required">*</span></label>
@@ -35,7 +36,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline" data-close="modal-manager-employee">Hủy</button>
-                    <button type="submit" class="btn btn-primary">Lưu nhân sự</button>
+                    <button type="submit" class="btn btn-primary" id="btn-employee-submit">Lưu nhân sự</button>
                 </div>
             </form>
         </div>

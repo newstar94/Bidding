@@ -413,9 +413,9 @@ export function setupRBACEvents() {
       if (!document.getElementById("modal-manager-employee")) {
         await this.ensureLazyModal?.("modal-manager-employee");
       }
-      document.getElementById("modal-employee-title").textContent = "Thêm Nhân sự phòng thầu";
       document.getElementById("form-manager-employee").reset();
       document.getElementById("form-employee-id").value = "";
+      setEmployeeModalMode("invite");
       this.view.openModal("modal-manager-employee");
     });
   }
@@ -1048,13 +1048,24 @@ export function setupRBACEvents() {
     });
   }
 }
+// New people join by invitation (ADR 0093); editing keeps the direct save.
+function setEmployeeModalMode(mode) {
+  const invite = mode === "invite";
+  document.getElementById("modal-employee-title").textContent = invite
+    ? "Mời nhân sự vào tổ chức"
+    : "Cập nhật Nhân sự phòng thầu";
+  const hint = document.getElementById("emp-invite-hint");
+  if (hint) hint.hidden = !invite;
+  const submit = document.getElementById("btn-employee-submit");
+  if (submit) submit.textContent = invite ? "Gửi lời mời" : "Lưu nhân sự";
+}
 export async function editEmployee(id) {
   const emp = this.model.state.employees.find((e) => e.id === id);
   if (!emp) return;
   if (!document.getElementById("modal-manager-employee")) {
     await this.ensureLazyModal?.("modal-manager-employee");
   }
-  document.getElementById("modal-employee-title").textContent = "Cập nhật Nhân sự phòng thầu";
+  setEmployeeModalMode("edit");
   document.getElementById("form-employee-id").value = emp.id;
   document.getElementById("emp-name").value = emp.name;
   document.getElementById("emp-email").value = emp.email;

@@ -12,6 +12,9 @@ export const POST_STARTUP_TIMING = Object.freeze({
   remainingStorageHydration: 0,
   holidayData: POST_STARTUP_INTERACTION_GRACE_MS + 1000,
   notificationCenter: POST_STARTUP_INTERACTION_GRACE_MS + 10000,
+  // Search, deadlines and shortcuts are visible header affordances: release
+  // them right after the interaction grace instead of with notifications.
+  workspaceTools: POST_STARTUP_INTERACTION_GRACE_MS,
   primaryModalPreload: POST_STARTUP_INTERACTION_GRACE_MS + 12000,
   // The assistant trigger is part of the shell's visible affordances. Load
   // its small config/module as soon as the first frame is interactive; the

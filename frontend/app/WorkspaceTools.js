@@ -566,10 +566,33 @@ function installOnboarding(controller, tools) {
   controller.model?.addStorageHydrationListener?.(() => render());
   window.addEventListener("bf:workspace-changed", () => setTimeout(render, 0));
   window.addEventListener("popstate", () => setTimeout(render, 0));
-  return { render };
+  const markVisited = (id) => {
+    const saved = read();
+    if (saved.visited?.[id]) return;
+    write({ ...saved, visited: { ...(saved.visited || {}), [id]: true } });
+    render();
+  };
+  return { render, markVisited };
 }
 
 /* --------------------------- Organization invitations --------------------------- */
+
+// "Để sau" hides the invitations shown for the rest of this browser session;
+// a new invitation, a new session or the email link (?loi-moi=1) shows them again.
+const INVITATION_SNOOZE_KEY = "bf_invitations_snoozed";
+
+function readSnoozedInvitations(storage) {
+  try {
+    const parsed = JSON.parse(storage?.getItem(INVITATION_SNOOZE_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function invitationsToShow(invitations, { snoozed = new Set(), force = false } = {}) {
+  return force ? invitations : invitations.filter((invitation) => !snoozed.has(String(invitation.id)));
+}
 
 async function showPendingInvitations() {
   let invitations = [];
@@ -580,6 +603,11 @@ async function showPendingInvitations() {
   } catch {
     return;
   }
+  const session = globalThis.sessionStorage;
+  invitations = invitationsToShow(invitations, {
+    snoozed: readSnoozedInvitations(session),
+    force: new URLSearchParams(globalThis.location?.search || "").has("loi-moi"),
+  });
   if (!invitations.length) return;
   const dialog = element("dialog", "bf-tools-dialog bf-invitation-dialog");
   dialog.setAttribute("aria-labelledby", "bf-invitation-title");
@@ -638,7 +666,12 @@ async function showPendingInvitations() {
   }
   const later = element("button", "btn btn-outline", "Để sau");
   later.type = "button";
-  later.addEventListener("click", () => dialog.close());
+  later.addEventListener("click", () => {
+    const snoozed = readSnoozedInvitations(session);
+    for (const invitation of invitations) snoozed.add(String(invitation.id));
+    try { session?.setItem(INVITATION_SNOOZE_KEY, JSON.stringify([...snoozed])); } catch { /* optional */ }
+    dialog.close();
+  });
   const body = element("div", "bf-deadline-body");
   body.append(list, status, later);
   dialog.append(title, body);
@@ -655,6 +688,12 @@ export async function installWorkspaceTools(controller) {
   installShortcuts({ search, shortcuts, deadlines });
   installHeaderButtons({ search, deadlines });
   const onboarding = installOnboarding(controller, { deadlines });
+  // Opening the deadline center from the header or Shift+H counts too.
+  const openDeadlines = deadlines.open;
+  deadlines.open = (...args) => {
+    onboarding.markVisited("deadlines");
+    return openDeadlines(...args);
+  };
   controller.workspaceTools = { search, shortcuts, deadlines, onboarding };
   void showPendingInvitations();
   return controller.workspaceTools;

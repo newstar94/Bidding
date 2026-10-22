@@ -78,14 +78,6 @@ def _invitation_email(*, organization_name, inviter_name, employee_name):
     return subject, body
 
 
-def _expire_stale(cursor, now):
-    cursor.execute(
-        "UPDATE organization_invitations SET status = 'revoked', responded_at = ? "
-        "WHERE status = 'pending' AND expires_at <= ?",
-        (now, now),
-    )
-
-
 # ------------------------------------------------------------- manager side
 
 def _manager_context(cursor, request, role):
@@ -138,8 +130,9 @@ def _create_invitation_sync(request, role, data):
         if not limit.allowed:
             connection.rollback()
             return rate_limit_response("Tổ chức đã gửi quá nhiều lời mời hôm nay. Vui lòng thử lại sau.", limit), None
+        # Expired invitations stay 'pending' and are reported as expired from
+        # expires_at; re-inviting the same email renews that row below.
         now = int(time.time())
-        _expire_stale(cursor, now)
         organization = cursor.execute(
             "SELECT ten_to_chuc FROM to_chuc WHERE id = ?", (organization_id,)
         ).fetchone()
@@ -499,6 +492,12 @@ def _respond_invitation_sync(request, role, invitation_id, accept):
             cursor.execute(
                 "UPDATE organization_invitations SET status = 'revoked', responded_at = ? WHERE id = ?",
                 (now, invitation_id),
+            )
+            log_audit(
+                "organization.invitation_revoked", actor_user_id=actor.user_id,
+                organization_id=organization_id, target_type="organization_invitation",
+                target_id=invitation_id, request=request, cursor=cursor, required=True,
+                metadata={"reason": "inviter_no_longer_manager"},
             )
             connection.commit()
             return error_response(request, "INVITATION_NOT_FOUND", "Lời mời không còn hiệu lực.", status_code=404)

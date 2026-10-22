@@ -4,7 +4,7 @@ import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { applyWordNavigationPresentation, normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { applyWordNavigationPresentation, isFreeWordWorkspace, normalizeOrganizations, organizationDisplayName, organizationEmployeeLabel, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import {
@@ -181,9 +181,21 @@ export function updateActiveUserProfileDisplay() {
     (workspace) => workspace.id === String(activeUser?.activeOrganizationId || getActiveOrganizationId()),
   );
   applyWordNavigationPresentation(activeWorkspace);
-  saItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none"));
-  managerItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none"));
-  clientItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" || item.hidden ? "none" : "block"));
+  // initial-route.js sets the hidden attribute for the role active at page
+  // load; recompute it here so switching roles without a reload shows the
+  // menu of the new role (the [hidden] rule is display: none !important).
+  const menuRole = this.model.state.activerole;
+  const wordLocked = isFreeWordWorkspace(activeWorkspace);
+  const showMenuItem = (item, visible) => {
+    item.hidden = !visible;
+    setRuntimeStyle(item, "display", visible ? "block" : "none");
+  };
+  saItems.forEach((item) => showMenuItem(item, menuRole === "super_admin"));
+  managerItems.forEach((item) => showMenuItem(item, menuRole === "manager"));
+  clientItems.forEach((item) => showMenuItem(
+    item,
+    menuRole !== "super_admin" && !(item.hasAttribute("data-word-navigation") && wordLocked),
+  ));
   this.applySecurityLockOverlay();
   this.populateNhanVienPhuTrachDropdowns();
 }

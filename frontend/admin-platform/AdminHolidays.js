@@ -49,8 +49,9 @@ function pageMarkup(state) {
   const warning = missing.length
     ? `<div class="alert alert-warning" role="alert">Chưa có lịch nghỉ cho năm ${missing.map(escapeHtml).join(", ")}. Các hạn tính theo ngày làm việc trong năm này sẽ bỏ qua ngày lễ.</div>`
     : "";
-  return `<div class="page-header mb-3"><div class="row align-items-center g-2">
-      <div class="col"><h2 class="page-title">Ngày nghỉ lễ</h2>
+  // The admin shell already renders the "Ngày nghỉ lễ" page title.
+  return `<div class="mb-3"><div class="row align-items-center g-2">
+      <div class="col">
         <p class="text-secondary mb-0">Dùng cho mọi hạn tính theo ngày làm việc: cảnh báo tổng quan, tiến độ gói thầu và công thức Word.</p></div>
       <div class="col-auto d-flex gap-2">
         <form class="d-flex gap-2" data-holiday-add-year>

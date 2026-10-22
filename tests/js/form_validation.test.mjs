@@ -174,3 +174,26 @@ test("application forms opt out of browser tooltips and use the shared submit gu
   assert.match(componentsCss, /\.form-group\.invalid textarea[\s\S]*\.field-validation-error/u);
   assert.match(shell, /components\.css[^"\n]*inline-form-validation-v1-20260802/u);
 });
+
+test("table captions come from the nearest card, not the tab's first heading", async () => {
+  const { enhanceSemanticAccessibility } = await import("../../frontend/shared/semanticAccessibility.js");
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: () => ({ className: "", textContent: "" }) };
+  try {
+    const heading = (text) => ({ textContent: text });
+    const tab = { querySelector: () => heading("Hạn mức nhân sự đơn vị:") };
+    const card = { querySelector: () => heading("Lời mời đang chờ") };
+    let caption = null;
+    const table = {
+      closest: (selector) => (selector.startsWith(".dashboard-card") ? card : tab),
+      prepend(node) { caption = node; },
+    };
+    enhanceSemanticAccessibility({
+      matches: () => false,
+      querySelectorAll: (selector) => (selector === "table:not(:has(caption))" ? [table] : []),
+    });
+    assert.equal(caption?.textContent, "Lời mời đang chờ");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});

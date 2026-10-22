@@ -43,7 +43,9 @@ export function inferIconButtonName(button) {
 }
 
 function nearestSectionName(element) {
-  const section = element.closest("section, .tab-content, .modal-card, .card") || element.parentElement;
+  // The nearest card names its table; a whole tab section would hand every
+  // table the tab's first heading.
+  const section = element.closest(".dashboard-card, .card, .modal-card, section, .tab-content") || element.parentElement;
   const heading = section?.querySelector("h1, h2, h3, h4, h5, .modal-title, [data-table-title]");
   return heading?.textContent?.trim() || "Danh sách dữ liệu";
 }
