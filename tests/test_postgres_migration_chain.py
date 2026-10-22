@@ -851,7 +851,10 @@ def test_v59_to_v61_replaces_delete_function_and_renames_default_workspace():
         _close_fixture_connection(connection, cursor, schema_name)
 
 
-def test_v46_exact_catalog_only_advances_version_without_rebuilding_objects():
+def test_v46_exact_catalog_only_advances_version_without_rebuilding_objects(monkeypatch):
+    # The fresh catalog seeds the bootstrap admin, so keep this test independent
+    # of whatever ADMIN_PASSWORD the developer shell or an earlier test left.
+    monkeypatch.setenv("ADMIN_PASSWORD", "Test-only!Schema46Password")
     # Model an exact active catalog with old metadata, without replaying v99
     # retirement twice into an archive that already owns the original tables.
     connection, cursor, schema_name = _open_fixture_connection(fresh_catalog=True)
