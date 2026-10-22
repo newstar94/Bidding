@@ -867,7 +867,7 @@ def _add_user_to_org_sync(request, role_or_err, data):
             )
         if 'super_admin' not in effective_roles and 'super_admin' in get_effective_roles(u_row['vai_tro'] or ''):
             conn.rollback()
-            return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền thêm quản trị viên nền tảng vào tổ chức."}, status_code=403)
 
         quota_error = _organization_member_quota_error(cursor, org_id)
         if quota_error is not None:
@@ -1063,7 +1063,7 @@ def _remove_user_from_org_sync(request, *, _data=None, _json_error=None):
         target_membership = cursor.fetchone()
         if not target_membership:
             conn.close()
-            return JSONResponse({"error": "Nguoi dung khong thuoc to chuc hien tai."}, status_code=404)
+            return JSONResponse({"error": "Người dùng không thuộc tổ chức hiện tại."}, status_code=404)
         if str(target_membership[0] or "").strip().lower() == "manager":
             manager_count = int(cursor.execute(
                 """SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ?

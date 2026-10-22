@@ -46,7 +46,9 @@ from backend.documents.plan_basis_context import (
 from backend.documents.export_policy_registry import governed_export
 from backend.shared.access_policy import can_read_record
 from backend.shared.client_ip import get_client_ip
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.logging_utils import log_error
 from backend.shared.helpers import clean_id, database, get_active_org, log_audit, verify_session
 
 
@@ -647,6 +649,74 @@ async def download_document_export_job_api(request):
     )
 
 
+@governed_export("docx.document_job")
+async def preview_document_export_job_api(request):
+    """Inline HTML preview of a finished export, under the download checks."""
+
+    from backend.documents.docx_preview import PreviewTooLarge, build_document_preview
+    from backend.shared.cpu_io import run_cpu_bound
+
+    access, job, error = await run_database_read(_job_access, request)
+    if error:
+        return error
+    role, organization_id = access
+    if int(job["expires_at"] or 0) <= int(time.time()):
+        return _error("DOCUMENT_JOB_EXPIRED", 410)
+    job, result = await run_database_read(
+        read_document_export_result,
+        database,
+        job["id"],
+        organization_id,
+        role.user_id,
+    )
+    if result is None:
+        return _error("DOCUMENT_JOB_NOT_READY", 409)
+    if not isinstance(result, (bytes, bytearray)):
+        return _error("DOCUMENT_JOB_RESULT_INVALID", 500)
+    try:
+        documents = await run_cpu_bound(
+            build_document_preview,
+            bytes(result),
+            str(job["filename"] or ""),
+            timeout_seconds=30,
+        )
+    except PreviewTooLarge as exc:
+        return JSONResponse(
+            {"error": str(exc), "code": "DOCUMENT_PREVIEW_TOO_LARGE"},
+            status_code=413,
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return JSONResponse(
+            {"error": "Hệ thống đang bận, chưa tạo được bản xem trước.", "code": "DOCUMENT_PREVIEW_BUSY"},
+            status_code=503,
+            headers={"Cache-Control": "private, no-store", "Retry-After": "2"},
+        )
+    except Exception as exc:  # noqa: BLE001 - preview is optional; download still works
+        log_error(exc, "document_job_preview", level="WARN")
+        return JSONResponse(
+            {"error": "Không thể tạo bản xem trước cho tài liệu này.", "code": "DOCUMENT_PREVIEW_FAILED"},
+            status_code=422,
+            headers={"Cache-Control": "private, no-store"},
+        )
+    record_scope = document_job_record_scope(job)
+    await run_database_write(
+        log_audit,
+        "document.export_job_previewed",
+        actor_user_id=role.user_id,
+        organization_id=organization_id,
+        target_type=record_scope["record_type"],
+        target_id=record_scope["record_id"],
+        request=request,
+        metadata={"job_id": job["id"]},
+        required=True,
+    )
+    return JSONResponse(
+        {"jobId": job["id"], "filename": str(job["filename"] or ""), "documents": documents},
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 async def cancel_document_export_job_api(request):
     access, job, error = await run_database_read(_job_access, request)
     if error:
@@ -705,6 +775,11 @@ def document_job_routes(Route):
         Route(
             "/api/document-jobs/{job_id}/download",
             download_document_export_job_api,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/document-jobs/{job_id}/preview",
+            preview_document_export_job_api,
             methods=["GET"],
         ),
         Route(

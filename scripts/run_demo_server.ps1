@@ -74,6 +74,10 @@ while ($true) {
     $env:APP_DEBUG = 'False'
     $env:FRONTEND_ASSET_MODE = 'bundle'
     $env:APP_RELEASE_ID = $releaseId
+    # Two workers keep HTML/JSON work off a single event loop; rate limits,
+    # sessions, WebSocket fan-out and import sessions are already shared via
+    # PostgreSQL. Override with UVICORN_WORKERS in .env when needed.
+    if (-not $env:UVICORN_WORKERS) { $env:UVICORN_WORKERS = '2' }
 
     $process = Start-Process `
         -FilePath $pythonExe `

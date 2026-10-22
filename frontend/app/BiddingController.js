@@ -11,6 +11,7 @@ import { setCommandExecutor } from "./commandBus.js";
 import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { setAppController } from "./controllerRef.js";
+import { describeApiError } from "../shared/apiErrorText.js";
 import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState.js";
 import { isSessionAuthenticationFailure } from "../auth/AuthSessionController.js";
 import { quarantineForcedSession } from "../auth/logoutMutationSafety.js";
@@ -887,13 +888,15 @@ export class BiddingController {
           await this.view.customAlert("⚠️ LỖI QUYỀN HẠN", "Không có quyền truy cập tổ chức này!", "log-out");
           window.location.reload();
         } else if (response.status === 403) {
-          await this.view.customAlert("⚠️ LỖI QUYỀN HẠN (403)", `${errorMsg}
+          const reference = describeApiError(data, errorMsg, { includeReference: true });
+          await this.view.customAlert("⚠️ LỖI QUYỀN HẠN (403)", `${reference}
 
 Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           window.location.reload();
         } else if (response.status === 409) {
           window.dispatchEvent(new CustomEvent("bf:api-conflict", { detail: { error: errorMsg, data } }));
         } else if (response.status === 429) {
+          this.view.showToast?.("Thao tác quá nhanh", describeApiError(data, errorMsg, { status: 429 }), "warning");
           window.dispatchEvent(new CustomEvent("bf:api-rate-limit", { detail: { error: errorMsg, data } }));
         }
         return null;

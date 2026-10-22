@@ -13,10 +13,19 @@ export async function exportContractWordInBackground({
 }, {
   beginLoading = beginWordExportLoading,
   runJob = runWordPublicationExportJob,
+  previewDocument = typeof globalThis.document?.createElement === "function"
+    ? async (details) => (await import("../documents/WordPreviewDialog.js")).confirmWordPreview(details)
+    : null,
 } = {}) {
   const loading = await beginLoading({
     detail: `Hợp đồng: ${contractNumber || "LCNT"}`,
   });
+  let loadingOpen = true;
+  const closeLoading = async () => {
+    if (!loadingOpen) return;
+    loadingOpen = false;
+    await loading.close();
+  };
   try {
     const snapshotVersion = await prepareExportSnapshot();
     await loading.update(
@@ -30,7 +39,14 @@ export async function exportContractWordInBackground({
           snapshotVersion,
         ),
         filename: contractFilename(contractNumber),
-        onProgress: (stage, message) => loading.update(stage, message),
+        onProgress: (stage, message) => (loadingOpen ? loading.update(stage, message) : undefined),
+      }, {
+        preview: previewDocument
+          ? async (details) => {
+            await closeLoading();
+            return previewDocument(details);
+          }
+          : null,
       });
     } catch (error) {
       const wrapped = new Error("Không thể xuất hợp đồng", { cause: error });
@@ -39,6 +55,6 @@ export async function exportContractWordInBackground({
       throw wrapped;
     }
   } finally {
-    await loading.close();
+    await closeLoading();
   }
 }

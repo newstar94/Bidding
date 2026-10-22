@@ -53,6 +53,7 @@ def test_every_production_export_artifact_route_is_bound_to_registered_policy():
         "/api/document-jobs/plan/{plan_id}": "docx.plan",
         "/api/document-jobs/{job_id}/download": "docx.document_job",
         "/api/document-jobs/{job_id}/retry": "docx.document_job",
+        "/api/document-jobs/{job_id}/preview": "docx.document_job",
     }
     discovered = {}
     for route in routes:
@@ -70,6 +71,7 @@ def test_every_production_export_artifact_route_is_bound_to_registered_policy():
                     or "/plan/" in path
                     or path.endswith("/download")
                     or path.endswith("/retry")
+                    or path.endswith("/preview")
                 )
             )
         )

@@ -537,12 +537,19 @@ async def _broadcast_local(organization_id, message):
         return
     websockets = list(active_connections[organization_id])
     msg_str = json.dumps(serialize_websocket_event(message))
-    dead = []
-    for ws in websockets:
-        try:
-            await ws.send_text(msg_str)
-        except Exception:
-            dead.append(ws)
+
+    async def deliver(ws):
+        # One slow client must not delay the invalidation for everyone else.
+        await asyncio.wait_for(ws.send_text(msg_str), timeout=5.0)
+
+    results = await asyncio.gather(
+        *(deliver(ws) for ws in websockets),
+        return_exceptions=True,
+    )
+    dead = [
+        ws for ws, result in zip(websockets, results, strict=True)
+        if isinstance(result, BaseException)
+    ]
     for ws in dead:
         active_connections.get(organization_id, set()).discard(ws)
     if not active_connections.get(organization_id):

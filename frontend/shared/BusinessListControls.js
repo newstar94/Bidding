@@ -2,6 +2,7 @@ import { trustedHTML } from "./trustedTypes.js";
 import { escapeHtml } from "./view_helpers.js";
 import { renderLucideIcons } from "./lucideIcons.js";
 import { loadStyleOnce } from "./externalAssets.js";
+import { deleteView, findView, listSavedViews, saveView } from "./BusinessListSavedViews.js";
 import { loadPaginatedRecords } from "./tableDataUtils.js";
 import { getVersionLabel } from "./formatters.js";
 import { isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
@@ -218,6 +219,51 @@ function renderConditions(ui) {
   showError(ui);
 }
 
+function renderSavedViews(ui) {
+  const host = ui.panel.querySelector("[data-filter-saved]");
+  if (!host) return;
+  const views = listSavedViews(ui.view.model, ui.type);
+  const options = views.map((view) => `<option value="${esc(view.name)}">${esc(view.name)}</option>`).join("");
+  host.innerHTML = trustedHTML(`<label class="business-filter-saved-label">Chế độ xem đã lưu
+      <select data-filter-saved-select aria-label="Chọn chế độ xem đã lưu"${views.length ? "" : " disabled"}>
+        <option value="">${views.length ? "Chọn chế độ xem…" : "Chưa có chế độ xem nào"}</option>${options}</select></label>
+    <button type="button" class="btn btn-outline" data-filter-action="saved-apply"${views.length ? "" : " disabled"}>Dùng</button>
+    <button type="button" class="btn btn-outline" data-filter-action="saved-delete"${views.length ? "" : " disabled"} aria-label="Xóa chế độ xem đã chọn">Xóa</button>
+    <button type="button" class="btn btn-outline" data-filter-action="saved-save">Lưu điều kiện hiện tại</button>`);
+}
+async function handleSavedViewAction(ui, action) {
+  const selected = ui.panel.querySelector("[data-filter-saved-select]")?.value || "";
+  if (action === "saved-apply") {
+    const view = selected && findView(ui.view.model, ui.type, selected);
+    if (!view) return showError(ui, "Chọn một chế độ xem để dùng.");
+    ui.draft = normalizeBusinessListFilters(ui.type, view.conditions);
+    ui.generation += 1;
+    showError(ui, "");
+    renderConditions(ui);
+    return;
+  }
+  if (action === "saved-delete") {
+    if (!selected) return showError(ui, "Chọn một chế độ xem để xóa.");
+    deleteView(ui.view.model, ui.type, selected);
+    renderSavedViews(ui);
+    return;
+  }
+  if (action === "saved-save") {
+    try {
+      const conditions = normalizeBusinessListFilters(ui.type, ui.draft);
+      if (!conditions.length) return showError(ui, "Thêm ít nhất một điều kiện trước khi lưu.");
+      const name = typeof ui.view.customPrompt === "function"
+        ? await ui.view.customPrompt("Lưu chế độ xem", "Đặt tên cho bộ lọc này:", "")
+        : globalThis.prompt?.("Đặt tên cho bộ lọc này:");
+      if (name === null || name === undefined || name === false) return;
+      saveView(ui.view.model, ui.type, name, conditions);
+      showError(ui, "");
+      renderSavedViews(ui);
+    } catch (error) {
+      showError(ui, error.message || "Không thể lưu chế độ xem.");
+    }
+  }
+}
 function openPanel(ui) {
   hasCurrentScope(ui);
   ui.generation += 1;
@@ -226,6 +272,7 @@ function openPanel(ui) {
   ui.panel.innerHTML = trustedHTML(`<div class="business-filter-heading"><div><h3 id="${ui.type}-filter-title">Bộ lọc ${LABELS[ui.type]}</h3>
     <p>Thỏa mãn tất cả trường đã chọn. Trong mỗi trường, chỉ cần khớp một giá trị. Lọc trên phiên bản hiện hành.</p></div>
     <button type="button" class="btn btn-outline" data-filter-action="cancel" aria-label="Đóng bộ lọc">×</button></div>
+    <div class="business-filter-saved" data-filter-saved></div>
     <div class="business-filter-body"><details class="business-filter-field-picker"><summary><i data-lucide="plus" aria-hidden="true"></i> Thêm trường lọc</summary>
       <div class="business-filter-field-body"><input type="search" data-filter-field-search placeholder="Tìm trường dữ liệu…" aria-label="Tìm trường dữ liệu">
         <div class="business-filter-field-list">${filterChoices(ui.type).map((choice) => `<label class="business-filter-option" data-field-choice-label="${esc(searchText(choice.label))}"><input type="checkbox" data-filter-field value="${esc(choice.id)}"><span>${esc(choice.label)}</span></label>`).join("")}</div></div></details>
@@ -236,6 +283,7 @@ function openPanel(ui) {
       <button type="button" class="btn btn-outline" data-filter-action="cancel">Hủy</button>
       <button type="button" class="btn btn-primary" data-filter-action="apply">Áp dụng</button></div></div>`);
   ui.panel.hidden = false;
+  renderSavedViews(ui);
   renderConditions(ui);
   if (!ui.panel.open) ui.panel.showModal();
   updateFilterButton(ui);
@@ -341,6 +389,7 @@ function bindPanel(ui) {
     const action = event.target.closest("[data-filter-action]")?.dataset.filterAction;
     if (action === "cancel") closePanel(ui);
     if (action === "clear") { ui.draft = []; ui.generation += 1; renderConditions(ui); }
+    if (String(action || "").startsWith("saved-")) { await handleSavedViewAction(ui, action); return; }
     if (action === "apply") {
       try {
         const filters = normalizeBusinessListFilters(ui.type, ui.draft);

@@ -573,11 +573,20 @@ async function executeForceSyncData(
     if (fullSyncRetry?.handled) return fullSyncRetry.result;
     if (response.status === 401 || response.status === 403) {
       let errorMsg = "";
-      try { errorMsg = (await response.clone().json())?.error || ""; } catch { errorMsg = ""; }
+      let errorCode = "";
+      try {
+        const errorPayload = await response.clone().json();
+        errorMsg = errorPayload?.error || "";
+        errorCode = String(errorPayload?.code || "");
+      } catch { errorMsg = ""; }
       if (!pullIsCurrent()) return stalePullResult();
       const normalized = errorMsg.toLowerCase();
-      const isAuthError = ["xác thực", "phiên", "đăng nhập", "tài khoản", "authentication", "session"]
-        .some((term) => normalized.includes(term));
+      // Prefer the stable server code; keep the text match only for older
+      // endpoints that do not send one yet.
+      const isAuthError = response.status === 401
+        || errorCode === "AUTH_REQUIRED"
+        || ["xác thực", "phiên", "đăng nhập", "tài khoản", "authentication", "session"]
+          .some((term) => normalized.includes(term));
       if (isAuthError || isBackground) {
         updatePullFailureState(this, syncStatusText, {
           preserveActionablePhase,

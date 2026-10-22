@@ -134,6 +134,11 @@ async function withPublicationPage(run) {
         }));
         return;
       }
+      if (/^\/api\/document-jobs\/job-\d+\/preview$/u.test(pathname)) {
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ documents: [{ filename: "xem-truoc.docx", html: "<p>Bản xem trước</p>" }] }));
+        return;
+      }
       if (/^\/api\/document-jobs\/job-\d+\/download$/u.test(pathname)) {
         jobRequests.push({ method: request.method, url: request.url });
         response.writeHead(200, {
@@ -209,6 +214,13 @@ async function withPublicationPage(run) {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+// A finished Word export is previewed first; downloading is the user's choice.
+async function downloadFromPreview(page) {
+  const preview = page.locator("dialog.bf-word-preview");
+  await preview.waitFor({ state: "visible" });
+  await preview.getByRole("button", { name: "Tải xuống" }).click();
 }
 
 async function choose(page, accessibleName, query) {
@@ -377,6 +389,7 @@ test("Word export opens a multi-file selection table then follows a background j
       .analyze();
     assert.deepEqual(loadingAxe.violations, []);
     await evaluationRequest;
+    await downloadFromPreview(page);
     assert.match((await evaluationDownload).suggestedFilename(), /\.zip$/u);
     await page.waitForFunction(() => window.__publicationToasts.length === 1);
     await loading.waitFor({ state: "hidden" });
@@ -443,6 +456,7 @@ test("Word export can render one selected assigned file as DOCX", async () => {
     const downloadPromise = page.waitForEvent("download");
     await dialog.locator('[data-word-publication-confirm]').click();
     await requestPromise;
+    await downloadFromPreview(page);
     assert.match((await downloadPromise).suggestedFilename(), /\.docx$/u);
     assert.equal(exportRequests.length, 1);
     await page.waitForFunction(() => window.__publicationToasts.length === 1);
@@ -476,6 +490,7 @@ test("plan Word export defaults all bases and can send an explicit subset", asyn
     assert.deepEqual(request.postDataJSON(), {
       selectedCanCuLapKeHoachIds: ["khcc-2"],
     });
+    await downloadFromPreview(page);
     await downloadPromise;
   });
 });
@@ -502,6 +517,7 @@ test("plan Word export supports an explicit zero-basis selection", async () => {
     assert.deepEqual(request.postDataJSON(), {
       selectedCanCuLapKeHoachIds: [],
     });
+    await downloadFromPreview(page);
     await downloadPromise;
   });
 });

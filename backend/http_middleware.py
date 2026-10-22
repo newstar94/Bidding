@@ -28,16 +28,49 @@ _DIST_CONTENT_HASHED_ASSET = re.compile(
 )
 
 
+_turnstile_enabled_cache = {}
+_TURNSTILE_CONFIG_ENV = (
+    "APP_ENV",
+    "TURNSTILE_ENABLED",
+    "TURNSTILE_SITE_KEY",
+    "TURNSTILE_SECRET_KEY",
+    "TURNSTILE_ALLOWED_HOSTNAMES",
+    "TURNSTILE_EDGE_CHALLENGE_HEADER",
+    "TURNSTILE_EDGE_CHALLENGE_VALUE",
+    "TURNSTILE_VERIFY_TIMEOUT_SECONDS",
+)
+
+
 def _turnstile_enabled():
+    # Evaluated for every response; parse the configuration only when one of
+    # the environment values it depends on changes.
+    key = tuple(os.environ.get(name) for name in _TURNSTILE_CONFIG_ENV)
+    cached = _turnstile_enabled_cache.get(key)
+    if cached is not None:
+        return cached
     from backend.security.turnstile import (
         TurnstileConfigurationError,
         get_turnstile_config,
     )
 
     try:
-        return get_turnstile_config().enabled
+        enabled = bool(get_turnstile_config().enabled)
     except TurnstileConfigurationError:
-        return False
+        enabled = False
+    if len(_turnstile_enabled_cache) > 32:
+        _turnstile_enabled_cache.clear()
+    _turnstile_enabled_cache[key] = enabled
+    return enabled
+
+
+def _reference_data_max_age(path):
+    """Browser cache lifetime for viewer-independent reference endpoints."""
+
+    if path in {"/api/address/provinces"} or path.startswith("/api/address/wards/"):
+        return 86_400
+    if path in {"/api/holidays", "/api/public/packages"}:
+        return 300
+    return 0
 
 
 def _websocket_source(origin):
@@ -223,7 +256,12 @@ class SecurityHeadersMiddleware:
             path = request.url.path
             if is_request_secure(request):
                 headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-            if path.startswith(("/api/", "/ws/")):
+            reference_max_age = _reference_data_max_age(path)
+            if reference_max_age and status_code == 200:
+                # Non-personal reference data (holidays, administrative units,
+                # public price list) is identical for every viewer.
+                headers["Cache-Control"] = f"public, max-age={reference_max_age}"
+            elif path.startswith(("/api/", "/ws/")):
                 headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             elif (
                 _DIST_CONTENT_HASHED_ASSET.fullmatch(path)

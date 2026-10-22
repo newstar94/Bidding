@@ -218,7 +218,7 @@ def test_foreign_parent_lot_id_rejects_and_rolls_back_entire_batch(
     else:
         payload[entrypoint] = [malicious]
 
-    with pytest.raises(ValueError, match="Phan lo khong thuoc goi thau hien tai") as error:
+    with pytest.raises(ValueError, match="Phần lô không thuộc gói thầu hiện tại") as error:
         _write_package(writer, "package-a", **payload)
 
     # The SQL guard itself leaves the foreign row unchanged before rollback.

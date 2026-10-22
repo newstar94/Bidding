@@ -89,7 +89,10 @@ test("assistant trigger loads with the interactive shell while notifications sta
   });
 
   assert.deepEqual(imports, [], "optional chunks must not compete with the first interaction");
-  assert.equal(scheduled.length, 2);
+  assert.equal(scheduled.length, 3);
+  const tools = scheduled.find(({ options }) => options.key === "workspace-tools");
+  assert.ok(tools);
+  assert.ok(tools.options.delay >= POST_STARTUP_INTERACTION_GRACE_MS);
   const notification = scheduled.find(({ options }) => options.key === "notification-center");
   const assistant = scheduled.find(({ options }) => options.key === "assistant");
   assert.ok(notification);

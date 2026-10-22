@@ -5,6 +5,7 @@ import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
 import { createFrontendAssetRetentionPlugin } from './scripts/frontend_asset_retention.mjs';
 import { localSecureReleaseId } from './scripts/secure_release_id.mjs';
+import { createTablerPurgePlugin } from './scripts/purge_tabler_css.mjs';
 
 const appEntry = path.resolve(__dirname, 'frontend/app/app.js');
 const adminEntry = path.resolve(__dirname, 'frontend/admin-platform/AdminEntry.js');
@@ -34,7 +35,8 @@ const SECURE_OBFUSCATION_OPTIONS = Object.freeze({
   deadCodeInjectionThreshold: 0.02,
   debugProtection: false,
   disableConsoleOutput: false,
-  identifierNamesGenerator: 'hexadecimal',
+  // Short mangled names instead of _0x… hex: ~25% smaller JS, same transforms.
+  identifierNamesGenerator: 'mangled',
   log: false,
   numbersToExpressions: false,
   renameGlobals: false,
@@ -244,6 +246,7 @@ export default defineConfig(({ mode }) => {
     base: '/dist/',
     plugins: [
       singleBundleStylesPlugin(),
+      createTablerPurgePlugin(__dirname),
       ...(mode === 'secure' ? [
         createFrontendAssetRetentionPlugin(),
         secureObfuscatorPlugin(releaseId)

@@ -1,4 +1,11 @@
+import os
+
 import pytest
+
+# DB-backed tests read TEST_DATABASE_URL from .env. When that local cluster is
+# stopped, libpq would otherwise wait on the OS TCP timeout per connect and the
+# suite appears hung; fail the connect quickly so those tests skip/error fast.
+os.environ.setdefault("PGCONNECT_TIMEOUT", "5")
 
 
 @pytest.fixture(autouse=True)

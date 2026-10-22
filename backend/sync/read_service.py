@@ -49,6 +49,10 @@ from backend.shared.database_io import run_database_read
 from backend.observability.recording import record_database_phase
 
 
+class TombstoneWindowExceeded(Exception):
+    """A timestamp-based delta has more tombstones than one response carries."""
+
+
 def _load_visible_deletions(
     cursor, visibility_scope, *, after_version=None, since=None,
     payload_keys=None, limit=1000
@@ -78,12 +82,14 @@ def _load_visible_deletions(
     )
     query = " UNION ALL ".join(statements) + f" ORDER BY {order}"  # noqa: S608 - fixed clauses plus registry-built branches
     if after_version is None:
+        # Fetch one extra row: silently dropping older tombstones would leave
+        # deleted records in the client cache, so overflow forces a full sync.
         query += " LIMIT ?"
-        parameters.append(limit)
-    return [
-        {"table": row[0], "id": row[1]}
-        for row in cursor.execute(query, tuple(parameters)).fetchall()
-    ]
+        parameters.append(limit + 1)
+    rows = cursor.execute(query, tuple(parameters)).fetchall()
+    if after_version is None and len(rows) > limit:
+        raise TombstoneWindowExceeded()
+    return [{"table": row[0], "id": row[1]} for row in rows]
 
 
 def _database_read_unavailable(request, code, message):
@@ -123,7 +129,7 @@ def _read_sync_data_blocking(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
+            return JSONResponse({"error": role_or_err, "code": "AUTH_REQUIRED"}, status_code=403)
 
         read_window = parse_sync_read_window(request.query_params)
         since = read_window.since
@@ -390,13 +396,23 @@ def _read_sync_data_blocking(request):
                 permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
 
 
-        deletions = _load_visible_deletions(
-            cursor,
-            visibility_scope,
-            after_version=after_version,
-            since=since,
-            payload_keys=requested_keys if is_partial_response else None,
-        )
+        try:
+            deletions = _load_visible_deletions(
+                cursor,
+                visibility_scope,
+                after_version=after_version,
+                since=since,
+                payload_keys=requested_keys if is_partial_response else None,
+            )
+        except TombstoneWindowExceeded:
+            conn.close()
+            conn = None
+            return JSONResponse({
+                "error": "Có quá nhiều bản ghi đã xóa kể từ lần đồng bộ trước; cần tải lại dữ liệu đầy đủ.",
+                "code": "FULL_SYNC_REQUIRED",
+                "requiresFullSync": True,
+                "minAvailableSyncVersion": min_available_sync_version,
+            }, status_code=409)
 
         chudautu = filter_items_for_read(cursor, role_str, user_id, org_name, "chudautu", "chu_dau_tu", chudautu)
         kehoach = filter_items_for_read(cursor, role_str, user_id, org_name, "kehoach", "ke_hoach_lcnt", kehoach)
@@ -498,9 +514,21 @@ def _read_sync_data_blocking(request):
                 )
 
         if not is_organization_manager(cursor, role_str, user_id, org_name):
+            # The decision depends only on the table, so evaluate it once per
+            # table instead of ~5 queries for every tombstone.
+            readable_tables = {}
+
+            def table_readable(table_key):
+                if table_key not in readable_tables:
+                    readable_tables[table_key] = can_read_table(
+                        cursor, role_str, user_id, org_name,
+                        table_key, TABLE_KEYS.get(table_key, ""),
+                    )
+                return readable_tables[table_key]
+
             deletions = [
                 item for item in deletions
-                if can_read_table(cursor, role_str, user_id, org_name, item.get("table"), TABLE_KEYS.get(item.get("table"), ""))
+                if table_readable(item.get("table"))
             ]
 
         current_sync_version = get_current_sync_version(cursor, org_name)
@@ -615,7 +643,7 @@ def _read_single_record_blocking(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
+            return JSONResponse({"error": role_or_err, "code": "AUTH_REQUIRED"}, status_code=403)
 
         params = request.query_params
         table_key = params.get("table")

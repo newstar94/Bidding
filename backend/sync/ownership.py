@@ -493,7 +493,7 @@ def validate_owner_scoped_references(
                 )
                 valid_employee = cursor.fetchone() is not None
             if not valid_employee:
-                errors.append(f"Nhan su {emp_id} khong thuoc owner hien tai.")
+                errors.append("Nhân sự được phân công không thuộc không gian làm việc hiện tại.")
 
     if table_name == "phan_cong_nhan_su":
         target_id = clean_id(get_payload_value(table_name, item, "id_muc_tieu"))
@@ -513,7 +513,7 @@ def validate_owner_scoped_references(
                 )
                 target_exists = cursor.fetchone() is not None
             if not target_exists:
-                errors.append(f"Phan cong {target_type}={target_id} khong thuoc owner hien tai.")
+                errors.append("Đối tượng được phân công không thuộc không gian làm việc hiện tại.")
 
     for col_name, ref_table in OWNER_SCOPED_REFERENCES.get(table_name, []):
         ref_id = clean_id(get_payload_value(table_name, item, col_name))
@@ -531,7 +531,7 @@ def validate_owner_scoped_references(
             )
             reference_exists = cursor.fetchone() is not None
         if not reference_exists:
-            errors.append(f"Tham chieu {col_name}={ref_id} khong thuoc owner hien tai.")
+            errors.append("Dữ liệu tham chiếu không thuộc không gian làm việc hiện tại.")
 
     if table_name == "goi_thau":
         package_id = clean_id(item.get("id"))
@@ -551,7 +551,7 @@ def validate_owner_scoped_references(
                     (organization_id, rebid_from_id),
                 ).fetchone()
             if not source:
-                errors.append(f"Goi thau nguon {rebid_from_id} khong ton tai hoac da duoc luu tru.")
+                errors.append("Gói thầu nguồn không tồn tại hoặc đã được lưu trữ.")
             elif str(enum_label("goi_thau", "trang_thai", source[0]) or "").strip() != "Hủy thầu":
                 errors.append("Chỉ được đấu thầu lại từ một gói đã hủy thầu.")
             if package_id:
@@ -878,7 +878,7 @@ def validate_owner_scoped_references(
                 )
                 contractor_exists = cursor.fetchone() is not None
             if not contractor_exists:
-                errors.append(f"Thanh vien lien danh nha_thau_id={contractor_id} khong thuoc owner hien tai.")
+                errors.append("Thành viên liên danh không thuộc không gian làm việc hiện tại.")
 
     if table_name in {"nha_thau", "thong_tin_mo_thau"}:
         member_root_ids = []

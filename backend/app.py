@@ -47,6 +47,7 @@ from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -227,6 +228,49 @@ def _path_is_within_root(candidate, root):
     return os.path.normcase(common) == os.path.normcase(resolved_root)
 
 
+_production_assets_cache = None
+_production_preload_cache = {}
+_production_assets_lock = threading.Lock()
+
+
+def _production_assets_signature():
+    signature = []
+    for relative in (
+        os.path.join("dist", ".vite", "manifest.json"),
+        os.path.join("dist", "secure-build.json"),
+    ):
+        try:
+            stat = os.stat(os.path.join(project_root, relative))
+            signature.append((relative, stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            signature.append((relative, None, None))
+    return tuple(signature)
+
+
+def _production_frontend_assets():
+    """Validate the immutable release graph once per release, not per request.
+
+    Full validation reads and checks every manifest entry (~20 ms) and used to
+    run on the event loop for every HTML response. Two ``stat`` calls detect a
+    release swap, which re-validates and clears the derived preload tags.
+    """
+    global _production_assets_cache
+    # The validator identity is part of the key so a replaced validator (tests,
+    # hot patches) never reuses assets that the previous one produced.
+    signature = (_production_assets_signature(), id(assert_production_frontend_ready))
+    cached = _production_assets_cache
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    with _production_assets_lock:
+        cached = _production_assets_cache
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        assets = assert_production_frontend_ready(project_root)
+        _production_preload_cache.clear()
+        _production_assets_cache = (signature, assets)
+        return assets
+
+
 def compile_html(file_path):
     """Biên dịch file HTML bằng cách giải quyết INCLUDE placeholders đệ quy.
     Khi production: trả về cache nếu đã biên dịch. Khi debug: luôn đọc từ disk.
@@ -281,7 +325,7 @@ def compile_html(file_path):
         bundled_stylesheet = None
         font_manifest = {}
         if IS_PRODUCTION:
-            frontend_assets = assert_production_frontend_ready(project_root)
+            frontend_assets = _production_frontend_assets()
             font_manifest = frontend_assets.manifest
             bundle_src = f"/dist/{frontend_assets.app_file}"
             bundled_stylesheet = (
@@ -383,7 +427,7 @@ def _prewarm_frontend_assets():
     )
     try:
         if IS_PRODUCTION:
-            frontend_assets = assert_production_frontend_ready(project_root)
+            frontend_assets = _production_frontend_assets()
             manifest = frontend_assets.manifest
             dist_root = os.fspath(frontend_assets.dist_root)
         else:
@@ -499,16 +543,21 @@ def _workspace_preload_tag(session_bootstrap, request_path="/workspace"):
         return module_tags
 
     if IS_PRODUCTION:
-        frontend_assets = assert_production_frontend_ready(project_root)
+        frontend_assets = _production_frontend_assets()
+        cached_tag = _production_preload_cache.get(entry_keys)
+        if cached_tag is not None:
+            return cached_tag
         preload_files = resolve_preload_graph(
             frontend_assets.manifest,
             frontend_assets.dist_root,
             entry_keys,
         )
-        return "\n".join(
+        tag = "\n".join(
             f'<link rel="modulepreload" href="/dist/{bundle_file}">'
             for bundle_file in dict.fromkeys(preload_files)
         )
+        _production_preload_cache[entry_keys] = tag
+        return tag
 
     manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
     try:
@@ -650,9 +699,7 @@ def _page_bundle_stylesheet(html_content, path):
 
     try:
         if IS_PRODUCTION:
-            landing_stylesheet = assert_production_frontend_ready(
-                project_root,
-            ).landing_stylesheet
+            landing_stylesheet = _production_frontend_assets().landing_stylesheet
         else:
             manifest_path = os.path.join(
                 project_root,
@@ -720,8 +767,12 @@ async def index(request, *, not_found=False):
             request,
         )
     except Exception as exc:
-        log_error(exc, "index_session_bootstrap")
-        session_bootstrap = {"valid": False, "reason": "bootstrap_error"}
+        log_error(exc, "index_session_bootstrap", level="WARN")
+        # An infrastructure failure (busy lane, pool or lock timeout) says
+        # nothing about the cookie. ``valid: null`` makes the client re-check
+        # the session instead of rendering the sign-in shell to a signed-in
+        # user, whose re-login would revoke the session on every other device.
+        session_bootstrap = {"valid": None, "reason": "bootstrap_unavailable"}
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     request_path = request.url.path
     if request_path in {"/index.html", "/views/index.html"}:
@@ -979,30 +1030,18 @@ from backend.ai.routes import ai_routes
 from backend.contractor_risk.routes import contractor_risk_routes
 from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
+from backend.deadlines.routes import deadline_routes
+from backend.holidays.routes import holiday_admin_routes
 
-
-_holidays_cache = None
-
-
-def _load_holidays_file(path):
-    if not os.path.exists(path):
-        return {}
-    with open(path, 'r', encoding='utf-8') as holidays_stream:
-        return json.load(holidays_stream)
 
 async def list_holidays_api(request):
-    global _holidays_cache
-    if _holidays_cache is not None:
-        return JSONResponse(_holidays_cache)
+    # Admin edits replace holidays.json atomically; the store re-reads it when
+    # its signature changes, so every worker serves the new calendar at once.
+    from backend.holidays.store import load_holidays
 
-    holidays_file = os.path.join(project_root, 'holidays.json')
     try:
-        _holidays_cache = await run_blocking_io(
-            _load_holidays_file,
-            holidays_file,
-            timeout_seconds=5,
-        )
-        return JSONResponse(_holidays_cache)
+        data = await run_blocking_io(load_holidays, timeout_seconds=5)
+        return JSONResponse(data)
     except Exception as e:
         return log_and_error(
             request,
@@ -1326,6 +1365,8 @@ routes = [
     *contractor_risk_routes(Route),
     *procurement_import_routes(Route),
     *procurement_lookup_routes(Route),
+    *deadline_routes(Route),
+    *holiday_admin_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
@@ -1562,8 +1603,13 @@ from backend.http_middleware import (
 
 from backend.shared.source_privacy import SourcePrivacyMiddleware
 
+_RESPONSE_COMPRESSION = os.environ.get("HTTP_RESPONSE_COMPRESSION", "false").strip().lower() == "true"
+
 middleware = [
     Middleware(ResponseIntegrityMiddleware),
+    # Deployments without an nginx tier (e.g. cloudflared straight to the app)
+    # can compress large JSON/HTML here; nginx deployments use gzip there.
+    *([Middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)] if _RESPONSE_COMPRESSION else []),
     Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts, www_redirect=False),
     Middleware(ProxyHeaderTrustMiddleware),
     Middleware(CORSMiddleware,
@@ -1675,4 +1721,21 @@ if __name__ == "__main__":
         _start_local_database_before_reloader()
         uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=True, proxy_headers=False)
     else:
-        uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False, proxy_headers=False)
+        try:
+            workers = max(1, min(int(os.environ.get("UVICORN_WORKERS", "1")), 16))
+        except ValueError:
+            workers = 1
+        if workers > 1:
+            # Start the managed local database once in the supervisor so the
+            # worker processes do not race each other on pg_ctl.
+            _start_local_database_before_reloader()
+            uvicorn.run(
+                "backend.app:app",
+                host=APP_HOST,
+                port=APP_PORT,
+                workers=workers,
+                reload=False,
+                proxy_headers=False,
+            )
+        else:
+            uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False, proxy_headers=False)

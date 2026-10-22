@@ -157,10 +157,46 @@ def sandbox_worker_command(command: list[str], job_dir: Path, environment: dict[
     raise RuntimeError("Unsupported document worker sandbox mode.")
 
 
+def _warn_unisolated_public_worker(environment) -> bool:
+    """Warn when a non-production but Internet-facing host parses untrusted files
+    without OS isolation (e.g. a Windows pilot behind Cloudflare Tunnel)."""
+
+    from urllib.parse import urlparse
+
+    public_url = str(environment.get("APP_PUBLIC_URL", "")).strip()
+    host = str(urlparse(public_url).hostname or "").casefold()
+    if not public_url.startswith("https://") or host in {"", "localhost", "127.0.0.1", "::1"}:
+        return False
+    mode = configured_sandbox_mode(environment)
+    if os.name == "posix":
+        isolated = mode == "bwrap"
+    else:
+        isolated = mode == "windows_job" and all(
+            str(environment.get(name, "")).strip().casefold() == "true"
+            for name in (
+                "DOCUMENT_WORKER_SERVICE_ACCOUNT_CONFIRMED",
+                "DOCUMENT_WORKER_NETWORK_ISOLATION_CONFIRMED",
+            )
+        )
+    if isolated:
+        return False
+    from backend.shared.logging_utils import log_error
+
+    log_error(
+        "Public document worker runs without OS isolation; run it under a "
+        "dedicated low-privilege service account without network access "
+        "(see deploy/README.md).",
+        "document_sandbox_unisolated",
+        level="WARN",
+    )
+    return True
+
+
 def validate_document_sandbox_configuration(environ=None) -> None:
     environment = os.environ if environ is None else environ
     production = str(environment.get("APP_ENV", "development")).strip().casefold() in {"prod", "production"}
     if not production:
+        _warn_unisolated_public_worker(environment)
         return
     mode = configured_sandbox_mode(environment)
     if os.name == "posix":

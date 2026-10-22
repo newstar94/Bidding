@@ -367,7 +367,7 @@ async def export_opening_fin_template_api(request):
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
         if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
-            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền xuất dữ liệu gói thầu này."}, status_code=403)
 
         workbook_spec = await run_database_read(
             excel_service.prepare_opening_fin_template_spec,
@@ -417,7 +417,7 @@ async def export_danhgiahsdt_template_api(request):
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
         if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
-            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền xuất dữ liệu gói thầu này."}, status_code=403)
 
         workbook_spec = await run_database_read(
             excel_service.prepare_danhgiahsdt_template_spec,
@@ -465,7 +465,7 @@ async def export_ketquaqd_template_api(request):
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
         if not await run_database_read(_can_export_package, role_or_err, org_name, pkg_id_clean):
-            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền xuất dữ liệu gói thầu này."}, status_code=403)
 
         workbook_spec = await run_database_read(
             excel_service.prepare_ketquaqd_template_spec,

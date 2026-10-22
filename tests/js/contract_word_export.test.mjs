@@ -137,6 +137,14 @@ test("contract command shows the application loading surface until its job downl
         }));
         return;
       }
+      if (url.pathname === "/api/document-jobs/job-contract/preview") {
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({
+          jobId: "job-contract",
+          documents: [{ filename: "Hop_dong_HĐ-01.docx", html: "<p>Nội dung hợp đồng xem trước</p>" }],
+        }));
+        return;
+      }
       if (url.pathname === "/api/document-jobs/job-contract/download") {
         response.writeHead(200, {
           "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -204,6 +212,11 @@ test("contract command shows the application loading surface until its job downl
     await loading.waitFor({ state: "visible" });
     assert.equal(await loading.getAttribute("data-task"), "word-publication");
     assert.equal(await page.locator("#export-contract").isDisabled(), true);
+    // The finished document is previewed first; download happens on request.
+    const preview = page.locator("dialog.bf-word-preview");
+    await preview.waitFor({ state: "visible" });
+    await page.getByText("Nội dung hợp đồng xem trước").waitFor({ state: "visible" });
+    await preview.getByRole("button", { name: "Tải xuống" }).click();
     assert.equal((await download).suggestedFilename(), "Hop_dong_HĐ-01.docx");
     await page.evaluate(() => globalThis.__contractExport);
     await loading.waitFor({ state: "hidden" });

@@ -74,10 +74,86 @@ from backend.auth.username_validator import generate_suggested_username
 from backend.shared.safe_http import open_allowlisted_https
 
 
+_GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_GOOGLE_JWKS_TTL_SECONDS = 3600
+_google_jwks_cache = {"keys": None, "expires_at": 0.0}
+_google_jwks_lock = __import__("threading").Lock()
+
+
+def _b64url_decode(value: str) -> bytes:
+    import base64
+
+    padded = value + "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(padded.encode("ascii"))
+
+
+def _google_signing_keys(*, refresh=False):
+    now = time.time()
+    with _google_jwks_lock:
+        cached = _google_jwks_cache["keys"]
+        if cached is not None and not refresh and now < _google_jwks_cache["expires_at"]:
+            return cached
+        req = urllib.request.Request(_GOOGLE_JWKS_URL, headers={"Accept": "application/json"})
+        with open_allowlisted_https(
+            req,
+            allowed_hosts={"www.googleapis.com"},
+            timeout=5,
+        ) as resp:
+            document = json.loads(resp.read().decode("utf-8"))
+        keys = {
+            str(item.get("kid")): item
+            for item in document.get("keys", [])
+            if item.get("kty") == "RSA" and item.get("kid")
+        }
+        _google_jwks_cache.update(keys=keys, expires_at=now + _GOOGLE_JWKS_TTL_SECONDS)
+        return keys
+
+
+def _verify_google_token_locally(id_token: str):
+    """Verify an RS256 Google ID token with cached JWKS (no per-login HTTP call).
+
+    Returns the claims, or raises on any doubt so the caller can fall back to
+    Google's tokeninfo endpoint.
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    header_b64, payload_b64, signature_b64 = id_token.split(".")
+    header = json.loads(_b64url_decode(header_b64))
+    if header.get("alg") != "RS256" or not header.get("kid"):
+        raise ValueError("unsupported Google token header")
+    keys = _google_signing_keys()
+    jwk = keys.get(str(header["kid"]))
+    if jwk is None:
+        jwk = _google_signing_keys(refresh=True).get(str(header["kid"]))
+    if jwk is None:
+        raise ValueError("unknown Google signing key")
+    public_key = rsa.RSAPublicNumbers(
+        int.from_bytes(_b64url_decode(jwk["e"]), "big"),
+        int.from_bytes(_b64url_decode(jwk["n"]), "big"),
+    ).public_key()
+    public_key.verify(
+        _b64url_decode(signature_b64),
+        f"{header_b64}.{payload_b64}".encode("ascii"),
+        padding.PKCS1v15(),
+        hashes.SHA256(),
+    )
+    payload = json.loads(_b64url_decode(payload_b64))
+    if payload.get("aud") != GOOGLE_CLIENT_ID or payload.get("iss") not in GOOGLE_ISSUERS:
+        return None
+    if int(payload.get("exp", 0)) < int(time.time()):
+        return None
+    return payload
+
+
 def _verify_google_token(id_token: str):
 
     if not id_token or not GOOGLE_CLIENT_ID:
         return None
+    try:
+        return _verify_google_token_locally(id_token)
+    except Exception as local_error:  # noqa: BLE001 - any doubt falls back to Google's own check
+        log_error(local_error, "google_token_local_verification", level="DEBUG")
     try:
         url = _GOOGLE_TOKENINFO_URL.format(token=urllib.parse.quote(id_token))
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -128,6 +204,27 @@ def _password_setup_email(display_name, email, setup_link):
     return subject, body
 
 
+def _google_link_notice_email(display_name, email, reset_link):
+    subject = "[BiddingFlow] Tài khoản đã được liên kết với Google"
+    body = render_branded_email(
+        title="Tài khoản đã được liên kết với Google",
+        preheader="Cảnh báo bảo mật: tài khoản BiddingFlow của bạn vừa được liên kết Google.",
+        eyebrow="CẢNH BÁO BẢO MẬT",
+        recipient_name=display_name or "bạn",
+        lead="Bạn vừa đăng nhập BiddingFlow bằng Google và tài khoản đã được liên kết.",
+        details=(("Email", email),),
+        paragraphs=(
+            "Tài khoản này cũng có mật khẩu đăng nhập. Nếu bạn không tự đặt mật khẩu đó, "
+            "hãy dùng chức năng \"Quên mật khẩu\" trên trang đăng nhập để đặt mật khẩu mới ngay.",
+        ),
+        action_label="Mở trang đăng nhập",
+        action_url=reset_link,
+        notice="Nếu chính bạn đã đặt mật khẩu, bạn có thể bỏ qua email này.",
+        notice_tone="danger",
+    )
+    return subject, body
+
+
 def _complete_google_login(request, *, google_id, email, name, picture, ip, rate_key):
     """Account resolution, session issue and audit for Google login.
 
@@ -136,6 +233,7 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
     """
     created_new_account = False
     password_setup_delivery_id = None
+    link_notice_delivery_id = None
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
@@ -251,6 +349,11 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
             )
 
 
+        existing_password_linked = bool(
+            account_linked
+            and user.get("da_xac_minh")
+            and str(user.get("mat_khau") or "") not in {"", "!google-external-only!"}
+        )
         promoted_unverified_account = not user.get("da_xac_minh")
         if promoted_unverified_account:
             # The Google owner has proved the email; a password chosen before
@@ -294,6 +397,27 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
                 user_id=user["id"],
                 purpose="google_password_setup",
                 recipient=setup_email,
+                subject=email_subject,
+                html_body=email_body,
+            )
+        elif existing_password_linked:
+            # The Google owner has now proved the email, but someone else may
+            # have set this account's password. Tell the owner; the existing
+            # password and any pending recovery link stay untouched.
+            public_url = os.environ.get(
+                "APP_PUBLIC_URL", "http://127.0.0.1:8000"
+            ).rstrip("/")
+            email_subject, email_body = _google_link_notice_email(
+                user.get("ho_ten"),
+                email,
+                f"{public_url}/dang-nhap",
+            )
+            link_notice_delivery_id = create_email_delivery(
+                cursor,
+                user_id=user["id"],
+                # Only the schema-approved purposes are allowed (CHECK).
+                purpose="user_notification",
+                recipient=email,
                 subject=email_subject,
                 html_body=email_body,
             )
@@ -350,6 +474,7 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
             "account_linked": account_linked,
             "created_new_account": created_new_account,
             "password_setup_delivery_id": password_setup_delivery_id,
+            "link_notice_delivery_id": link_notice_delivery_id,
             "access_payload": access_payload,
             "session_token": session_token,
             "needs_username": needs_username,
@@ -484,6 +609,14 @@ async def google_login_api(request):
                 deliver_email_once,
                 database,
                 password_setup_delivery_id,
+            )
+        if login.get("link_notice_delivery_id"):
+            if bg_tasks is None:
+                bg_tasks = BackgroundTasks()
+            bg_tasks.add_task(
+                deliver_email_once,
+                database,
+                login["link_notice_delivery_id"],
             )
 
         response = JSONResponse({

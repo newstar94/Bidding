@@ -11,6 +11,7 @@ import {
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
 import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
+import { LUCIDE_SUBSET_URL } from "../shared/lucideSubsetVersion.js";
 import {
   embeddedSessionNeedsWorkspaceRefresh,
   preferredWorkspaceId
@@ -61,25 +62,63 @@ const checkInitialSession = async () => {
     && !embeddedSessionNeedsWorkspaceRefresh(embedded, preferredWorkspace)
   ) return embedded;
   startupMark("session-check-start");
-  try {
-    const response = await apiFetch("/api/auth/check-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
-    });
-    if (response.ok) {
-      const result = await response.json();
-      startupMark("session-check-end");
-      return result;
+  // A busy server must not look like a signed-out user: retry with backoff
+  // and tell the user we are reconnecting instead of showing the login form.
+  const loaderText = document.getElementById("system-init-loader-text");
+  const retryDelaysMs = [1_000, 2_000, 4_000];
+  let lastError = null;
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const response = await apiFetch("/api/auth/check-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (typeof result?.valid === "boolean") {
+          startupMark("session-check-end");
+          return result;
+        }
+        lastError = new Error("Session check returned no decision");
+      } else if (response.status === 401 || response.status === 403) {
+        return { valid: false };
+      } else {
+        lastError = new Error(`Session check unavailable (${response.status})`);
+      }
+    } catch (err) {
+      lastError = err;
     }
-    if (response.status === 401 || response.status === 403) {
-      return { valid: false };
+    if (attempt < retryDelaysMs.length) {
+      if (loaderText) loaderText.textContent = "Đang kết nối lại với máy chủ…";
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelaysMs[attempt]));
     }
-    throw new Error(`Session check unavailable (${response.status})`);
-  } catch (err) {
-    console.warn("Initial session check failed:", err);
-    throw err;
   }
+  console.warn("Initial session check failed:", lastError);
+  throw lastError;
+};
+const FULL_LUCIDE_URL = "/vendor/lucide/lucide.min.js?v=1.21.0.1";
+let fullLucidePromise = null;
+window.__bfLoadFullLucide = () => {
+  if (fullLucidePromise) return fullLucidePromise;
+  fullLucidePromise = new Promise((resolve, reject) => {
+    const subsetApi = window.lucide;
+    const script = document.createElement("script");
+    script.src = trustedScriptURL(FULL_LUCIDE_URL);
+    script.async = true;
+    script.addEventListener("load", () => {
+      const full = window.lucide;
+      window.lucide = subsetApi;
+      if (full && full !== subsetApi) resolve(full);
+      else reject(new Error("Full Lucide library did not load"));
+    }, { once: true });
+    script.addEventListener("error", () => {
+      window.lucide = subsetApi;
+      reject(new Error(`Lucide script request failed: ${FULL_LUCIDE_URL}`));
+    }, { once: true });
+    document.head.appendChild(script);
+  });
+  return fullLucidePromise;
 };
 const isLucideReady = () => typeof window.lucide?.createIcons === "function" && window.lucide.__bfLucideShim !== true;
 const loadLucideIcons = () => new Promise((resolve, reject) => {
@@ -101,11 +140,13 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
     return;
   }
   const script = document.createElement("script");
-  script.src = trustedScriptURL("/vendor/lucide/lucide.min.js?v=1.21.0.1");
+  // ~42 KB subset of the pinned Lucide library; unknown icon names make the
+  // subset call __bfLoadFullLucide below, so nothing renders blank.
+  script.src = trustedScriptURL(LUCIDE_SUBSET_URL);
   script.async = true;
   script.dataset.bfLucide = "true";
   const handleRuntimeError = (event) => {
-    if (!String(event.filename || "").includes("/vendor/lucide/lucide.min.js")) return;
+    if (!String(event.filename || "").includes("/vendor/lucide/lucide-subset.js")) return;
     window.removeEventListener("error", handleRuntimeError);
     reject(new Error(`Lucide runtime error: ${event.message || "unknown error"} (${event.lineno || 0}:${event.colno || 0})`));
   };

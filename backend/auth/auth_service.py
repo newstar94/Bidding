@@ -97,6 +97,14 @@ def get_rate_limit_decision_in_transaction(
         ).fetchone()
     attempt_count = int(row[0]) if row is not None else 0
     expires_at = int(row[1]) if row is not None else now + window_seconds
+    if not consume_attempt:
+        # A peek reports how many failures were already recorded. A full
+        # bucket blocks the next attempt, so it must also report the wait.
+        return RateLimitDecision(
+            attempt_count < max_attempts,
+            max(1, expires_at - now) if attempt_count >= max_attempts else 0,
+            max(0, max_attempts - attempt_count),
+        )
     return RateLimitDecision(
         attempt_count <= max_attempts,
         max(1, expires_at - now) if attempt_count > max_attempts else 0,

@@ -1,3 +1,4 @@
+import { describeApiError } from "../shared/apiErrorText.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { focusInvalidControl } from "../app/formStateUtils.js";
@@ -608,7 +609,7 @@ export function setupAuth() {
       }
       let data = await res.json();
       if (!res.ok) {
-        errorDiv.textContent = data.error || "Đăng nhập không thành công!";
+        errorDiv.textContent = describeApiError(data, "Đăng nhập không thành công!", { status: res.status });
         setRuntimeStyle(errorDiv, "display", "block");
         if (data.code === "BOT_CHALLENGE_REQUIRED") {
           await prepareTurnstile("login");
@@ -754,7 +755,7 @@ export function setupAuth() {
       }
       const data = await res.json();
       if (!res.ok) {
-        errorDiv.textContent = data.error || "Đăng ký tài khoản thất bại!";
+        errorDiv.textContent = describeApiError(data, "Đăng ký tài khoản thất bại!", { status: res.status });
         setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
@@ -806,7 +807,7 @@ export function setupAuth() {
         }
         const data = await res.json();
         if (!res.ok) {
-          errorDiv.textContent = data.error || "Xác thực OTP thất bại!";
+          errorDiv.textContent = describeApiError(data, "Xác thực OTP thất bại!", { status: res.status });
           setRuntimeStyle(errorDiv, "display", "block");
           if (data.code === "BOT_CHALLENGE_REQUIRED") {
             await prepareTurnstile("verify_email");
@@ -856,7 +857,7 @@ export function setupAuth() {
         }
         const data = await res.json();
         if (!res.ok) {
-          errorDiv.textContent = data.error || "Không thể gửi lại mã OTP!";
+          errorDiv.textContent = describeApiError(data, "Không thể gửi lại mã OTP!", { status: res.status });
           setRuntimeStyle(errorDiv, "display", "block");
           return;
         }
@@ -894,7 +895,7 @@ export function setupAuth() {
       }
       const data = await res.json();
       if (!res.ok) {
-        errorDiv.textContent = data.error || "Thông tin khôi phục không hợp lệ!";
+        errorDiv.textContent = describeApiError(data, "Thông tin khôi phục không hợp lệ!", { status: res.status });
         setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
@@ -981,7 +982,7 @@ export function setupAuth() {
       });
       const data = await res.json();
       if (!res.ok) {
-        errorDiv.textContent = data.error || "Không thể đặt lại mật khẩu.";
+        errorDiv.textContent = describeApiError(data, "Không thể đặt lại mật khẩu.", { status: res.status });
         setRuntimeStyle(errorDiv, "display", "block");
         return;
       }

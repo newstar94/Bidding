@@ -1,7 +1,6 @@
 """Safe formula evaluation for computed Word mappings."""
 
 import ast
-import json
 import os
 import re
 from datetime import date, datetime, timedelta
@@ -19,13 +18,10 @@ def _project_root():
 
 
 def _load_holidays():
-    holidays_file = os.path.join(_project_root(), 'holidays.json')
-    try:
-        with open(holidays_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}
+    from backend.holidays.store import load_holidays
+
+    data = load_holidays()
+    return data if isinstance(data, dict) else {}
 
 
 def _parse_formula_date(value):

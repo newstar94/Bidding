@@ -61,6 +61,30 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return min(maximum, max(minimum, value))
 
 
+def default_pool_max_size(environ=None) -> int:
+    """Pool default that covers every thread allowed to hold a connection.
+
+    The read and write lanes run up to ``DATABASE_READ_WORKERS`` and
+    ``DATABASE_WRITE_WORKERS`` blocking calls at once, and background workers
+    (procurement monitor permit, e-mail outbox, partner lookup) need two more.
+    A smaller pool makes lane threads wait on ``getconn`` and fail under load.
+    """
+
+    environment = os.environ if environ is None else environ
+
+    def lane(name, default):
+        try:
+            value = int(str(environment.get(name, default)).strip())
+        except (TypeError, ValueError):
+            value = default
+        return min(16, max(1, value))
+
+    return min(
+        64,
+        lane("DATABASE_READ_WORKERS", 8) + lane("DATABASE_WRITE_WORKERS", 4) + 2,
+    )
+
+
 def _canonical_value(value: Any) -> Any:
     """Return the same scalar shapes previously exposed by SQLite rows."""
 
@@ -451,7 +475,9 @@ class PostgresDatabase:
             if self._pool is not None:
                 return
             min_size = _bounded_int("DATABASE_POOL_MIN_SIZE", 2, 0, 32)
-            max_size = _bounded_int("DATABASE_POOL_MAX_SIZE", 8, 1, 64)
+            max_size = _bounded_int(
+                "DATABASE_POOL_MAX_SIZE", default_pool_max_size(), 1, 64
+            )
             if min_size > max_size:
                 min_size = max_size
             pool = ConnectionPool(

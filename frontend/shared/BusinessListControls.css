@@ -58,3 +58,7 @@ html:has(.business-list-filter-panel[open]), body:has(.business-list-filter-pane
 }
 .business-list-filter-panel[hidden], .business-list-selection-bar[hidden],
 .business-list-filter-panel [hidden] { display: none; }
+.business-filter-saved { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+.business-filter-saved-label { display: grid; gap: 4px; flex: 1 1 220px; min-width: 0; font-size: .78rem; font-weight: 600; color: var(--ink-muted); }
+.business-filter-saved-label select { min-height: var(--touch-target-min, 44px); }
+.business-filter-saved .btn { min-height: var(--touch-target-min, 44px); }

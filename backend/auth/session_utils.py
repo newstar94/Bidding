@@ -68,15 +68,30 @@ def get_active_org(request, user_id, *, cursor=None):
     if active_org:
         active_org = urllib.parse.unquote(active_org)
 
+    # A caller-supplied cursor means a transactional re-check (for example a
+    # write that must observe a concurrent deactivation); always re-query then.
+    reuse_session_snapshot = cursor is None
     if cursor is None:
         connection = database.get_connection()
         cursor = connection.cursor()
 
     try:
-        account_row = cursor.execute(
-            "SELECT vai_tro, trang_thai FROM tai_khoan WHERE id = ? LIMIT 1",
-            (user_id,),
-        ).fetchone()
+        # verify_session already loaded this account on the same request;
+        # reuse that snapshot instead of a second identical query.
+        session_user = getattr(getattr(request, "state", None), "auth_session_user", None)
+        if (
+            reuse_session_snapshot
+            and isinstance(session_user, dict)
+            and str(session_user.get("id") or "") == str(user_id or "")
+            and "vai_tro" in session_user
+            and "account_status" in session_user
+        ):
+            account_row = (session_user["vai_tro"], session_user["account_status"])
+        else:
+            account_row = cursor.execute(
+                "SELECT vai_tro, trang_thai FROM tai_khoan WHERE id = ? LIMIT 1",
+                (user_id,),
+            ).fetchone()
         if (
             not account_row
             or str(account_row[1] or "").strip().lower() != "active"

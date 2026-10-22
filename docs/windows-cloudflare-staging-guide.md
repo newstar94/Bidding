@@ -73,6 +73,10 @@ ALLOWED_HOSTS=thu-nghiem.example.com
 CORS_ORIGINS=https://thu-nghiem.example.com
 ALLOWED_WS_ORIGINS=https://thu-nghiem.example.com
 
+TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128
+METRICS_ENABLED=false
+SUPER_ADMIN_IP_ALLOWLIST=<IP-public-cua-quan-tri>/32
+
 DATABASE_AUTO_START_LOCAL=true
 ```
 
@@ -83,6 +87,9 @@ Giải thích:
 - `APP_PUBLIC_URL`, `CORS_ORIGINS` và `ALLOWED_WS_ORIGINS` phải cùng một HTTPS origin.
 - `ALLOWED_HOSTS` chỉ chứa hostname, không chứa `https://` và không chứa đường dẫn.
 - `APP_SECURE_COOKIES=True` là bắt buộc vì người dùng truy cập qua HTTPS.
+- `TRUSTED_PROXY_CIDRS` bắt buộc khi `cloudflared` nối thẳng tới BiddingFlow: nếu thiếu, mọi người dùng đều mang IP `127.0.0.1`, rate-limit theo IP thành giới hạn chung, WebSocket chỉ còn 10 kết nối cho cả hệ thống, cookie phiên mất cờ `Secure` và `/metrics` mở công khai.
+- `METRICS_ENABLED=false` (hoặc đặt `METRICS_BEARER_TOKEN`) vì không có nginx chặn `/metrics`.
+- `SUPER_ADMIN_IP_ALLOWLIST` chỉ chứa IP public của quản trị viên; không dùng `*`.
 - `DATABASE_AUTO_START_LOCAL=true` cho phép lifecycle development/staging khởi động PostgreSQL cục bộ. Nếu PostgreSQL được quản lý bằng service riêng, có thể đặt `false`.
 
 Không gửi file `.env` cho người dùng và không commit file này lên Git.

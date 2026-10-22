@@ -118,8 +118,10 @@ def calculate_database_connection_budget(environ=None):
     workers = _bounded_configuration_int(
         environ, "UVICORN_WORKERS", 1, 1, 64
     )
+    from backend.db.db_helper import default_pool_max_size
+
     pool_max = _bounded_configuration_int(
-        environ, "DATABASE_POOL_MAX_SIZE", 8, 1, 64
+        environ, "DATABASE_POOL_MAX_SIZE", default_pool_max_size(environ), 1, 64
     )
     dedicated = _bounded_configuration_int(
         environ,

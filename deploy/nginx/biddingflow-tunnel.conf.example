@@ -36,6 +36,17 @@ server {
     limit_req_status 429;
     limit_conn_status 429;
 
+    # Compress large text responses (sync JSON, HTML shell, JS/CSS) before they
+    # cross the tunnel. Requests stay uncompressed; the app rejects encoded bodies.
+    gzip on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_vary on;
+    gzip_types application/json application/javascript text/javascript text/css image/svg+xml text/plain application/xml;
+    # With ngx_brotli installed, prefer brotli for the same types:
+    # brotli on; brotli_comp_level 5; brotli_types application/json application/javascript text/javascript text/css image/svg+xml;
+
     location = /health/live {
         allow 127.0.0.1;
         deny all;

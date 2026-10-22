@@ -251,7 +251,7 @@ def package_alert_conditions(alias="vp"):
     }
 
 
-def build_dashboard_summary(cursor, organization_id, role_str, user_id):
+def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert_limit=8):
     manager = is_organization_manager(cursor, role_str, user_id, organization_id)
 
     def can(payload_key, table_name):
@@ -523,8 +523,8 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                         ELSE 4
                      END,
                      COALESCE(thoi_gian_dong_thau, thoi_gian_mo_thau, updated_at, created_at) ASC
-            LIMIT 8
-        """, tuple(package_params))
+            LIMIT ?
+        """, (*package_params, max(1, int(alert_limit))))
         for row in cursor.fetchall():
             raw_item = dict(row)
             alert_key = str(raw_item.pop("alert_key", ""))
@@ -641,7 +641,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         counts["assignedHopdong"] = int(assigned_row[0] or 0)
         counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)
 
-    alert_items = _select_alert_items(alert_items)
+    alert_items = _select_alert_items(alert_items, limit=alert_limit)
 
     return {
         "counts": counts,

@@ -1412,7 +1412,7 @@ async def export_plan_api(request):
         if snapshot_error is not None:
             return snapshot_error
         if not await run_database_read(_can_export_record, role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
-            return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền xuất kế hoạch này."}, status_code=403)
         try:
             (
                 unified_context,
@@ -1517,7 +1517,7 @@ async def export_report_api(request):
         if type_param not in REPORT_DOCUMENT_TYPES:
             return JSONResponse(
                 {
-                    "error": "Loai bao cao Word khong duoc ho tro.",
+                    "error": "Loại báo cáo Word không được hỗ trợ.",
                     "code": "DOCX_TYPE_INVALID",
                 },
                 status_code=400,
@@ -1526,7 +1526,7 @@ async def export_report_api(request):
         if snapshot_error is not None:
             return snapshot_error
         if not await run_database_read(_can_export_record, role_or_err, org_name, "goithau", "goi_thau", package_id):
-            return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền xuất gói thầu này."}, status_code=403)
         try:
             (
                 unified_context,
@@ -2238,7 +2238,7 @@ def _list_word_mappings_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_read_word_config(cursor, role_or_err, user_id, org_name):
-            return JSONResponse({"error": "Ban khong co quyen su dung cau hinh Word."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền sử dụng cấu hình Word."}, status_code=403)
 
         include_disabled = str(
             request.query_params.get("includeDisabled") or ""
@@ -2347,7 +2347,7 @@ def _save_word_mapping_sync(request, data, json_error):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền quản lý cấu hình Word."}, status_code=403)
 
 
 
@@ -2417,7 +2417,7 @@ def _delete_word_mapping_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền quản lý cấu hình Word."}, status_code=403)
         owner_type, _owner_id = _word_template_scope(user_id, org_name)
         result = delete_word_mapping(
             cursor,
@@ -2476,7 +2476,7 @@ def _reset_word_mapping_sync(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, role_or_err, user_id, org_name):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
+            return JSONResponse({"error": "Bạn không có quyền quản lý cấu hình Word."}, status_code=403)
         result = reset_word_mapping(cursor, org_name, mapping_id)
         log_audit(
             "document.word_mapping_reset",

@@ -118,6 +118,7 @@ export async function runWordPublicationExportJob({
 }, {
   request = requestJson,
   download = authFetchDownload,
+  preview = null,
   wait = delay,
   now = Date.now,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
@@ -184,6 +185,16 @@ export async function runWordPublicationExportJob({
   const downloadUrl = String(latest.downloadUrl || created.downloadUrl || "").trim();
   if (!downloadUrl) {
     throw new Error("Máy chủ không trả về đường dẫn tải tài liệu Word.");
+  }
+  if (typeof preview === "function") {
+    const confirmed = await preview({ downloadUrl, filename });
+    if (confirmed === false) {
+      return Object.freeze({
+        jobId: String(latest.jobId || created.jobId || ""),
+        status: "preview_closed",
+        downloadUrl,
+      });
+    }
   }
   await onProgress("download", "Tài liệu đã sẵn sàng. Hệ thống đang tải file xuống.");
   try {

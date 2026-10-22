@@ -26,7 +26,7 @@
     "backend/sync/read_service.py": 2,
     "backend/sync/service.py": 6,
     "backend/sync/version_api.py": 1,
-    "backend/sync/websocket.py": 10,
+    "backend/sync/websocket.py": 9,
     "scripts/backup.py": 5,
     "scripts/run_document_worker.py": 1
   },

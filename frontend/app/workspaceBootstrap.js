@@ -104,6 +104,7 @@ async function bootstrapUnassignedAccount(initialSession) {
 export function scheduleWorkspaceEnhancements(controller, {
   importAssistantLoader = () => import("../assistant/AssistantLoader.js"),
   importNotificationCenter = () => import("./NotificationCenter.js"),
+  importWorkspaceTools = () => import("./WorkspaceTools.js"),
 } = {}) {
   if (typeof controller?.schedulePostStartupTask !== "function") return false;
   let notificationFlight = null;
@@ -147,6 +148,19 @@ export function scheduleWorkspaceEnhancements(controller, {
     delay: POST_STARTUP_TIMING.assistant,
     key: "assistant",
     priority: "local",
+  });
+  controller.schedulePostStartupTask(async () => {
+    try {
+      const { installWorkspaceTools } = await importWorkspaceTools();
+      await installWorkspaceTools(controller);
+    } catch (error) {
+      console.warn("Workspace tools could not be initialized:", error);
+    }
+  }, {
+    timeout: 3000,
+    delay: POST_STARTUP_TIMING.notificationCenter,
+    key: "workspace-tools",
+    priority: "maintenance",
   });
   return true;
 }

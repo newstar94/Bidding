@@ -368,7 +368,7 @@ def _save_package_expert_relations(cursor, parent_id, item, organization_id, own
                 (organization_id, expert_id),
             )
             if not cursor.fetchone():
-                raise ValueError(f"Chuyen gia {expert_id} khong thuoc owner hien tai.")
+                raise ValueError("Chuyên gia được chọn không thuộc không gian làm việc hiện tại.")
             rows.append((
                 organization_id,
                 owner_type,
@@ -513,7 +513,7 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
             WHERE goi_thau_phan_lo.goi_thau_id = excluded.goi_thau_id
         """, rows)
         if cursor.rowcount != len(rows):
-            raise ValueError("Phan lo khong thuoc goi thau hien tai.")
+            raise ValueError("Phần lô không thuộc gói thầu hiện tại.")
 
     archive_sql = """UPDATE goi_thau_phan_lo
        SET archived_at = COALESCE(archived_at, ?),
@@ -1299,7 +1299,7 @@ def _validate_completed_detailed_evaluation_report(
             continue
         result = str(_db_row_value(row, 3, "ket_qua", "pending") or "pending")
         if result == "pending":
-            raise ValueError("Tieu chi bat buoc chua duoc danh gia.")
+            raise ValueError("Tiêu chí bắt buộc chưa được đánh giá.")
 
 
 def _aggregate_persisted_detailed_evaluation_group(
@@ -1387,7 +1387,7 @@ def _save_bid_detailed_evaluation_reports(
         (organization_id, opening_id),
     ).fetchone()
     if not opening:
-        raise ValueError("Ho so du thau khong thuoc owner hien tai.")
+        raise ValueError("Hồ sơ dự thầu không thuộc không gian làm việc hiện tại.")
     package_id = clean_id(_db_row_value(opening, 0, "goi_thau_id"))
     retained_report_ids = []
     for raw_report in reports:
@@ -1400,16 +1400,16 @@ def _save_bid_detailed_evaluation_reports(
             (organization_id, round_id),
         ).fetchone()
         if not evaluation_round:
-            raise ValueError("Vong danh gia khong thuoc owner hien tai.")
+            raise ValueError("Vòng đánh giá không thuộc không gian làm việc hiện tại.")
         round_package_id = clean_id(_db_row_value(evaluation_round, 0, "goi_thau_id"))
         round_type = str(_db_row_value(evaluation_round, 1, "loai_vong", "") or "")
         payload_round_type = str(
             _first_value(raw_report, "loaiVong", "loai_vong", default="") or ""
         )
         if round_package_id != package_id:
-            raise ValueError("Vong danh gia khong thuoc goi thau cua ho so.")
+            raise ValueError("Vòng đánh giá không thuộc gói thầu của hồ sơ.")
         if payload_round_type and payload_round_type != round_type:
-            raise ValueError("Loai vong danh gia khong khop bao cao chi tiet.")
+            raise ValueError("Loại vòng đánh giá không khớp báo cáo chi tiết.")
         if round_type == "financial":
             technical_result = cursor.execute(
                 """SELECT result.danh_gia_ky_thuat,
@@ -1490,7 +1490,7 @@ def _save_bid_detailed_evaluation_reports(
             or "draft"
         )
         if status not in {"draft", "completed"}:
-            raise ValueError("Trang thai bao cao chi tiet khong hop le.")
+            raise ValueError("Trạng thái báo cáo chi tiết không hợp lệ.")
         completed_at = (
             _first_value(raw_report, "hoanThanhLuc", "hoan_thanh_luc")
             or (updated_at if status == "completed" else None)
@@ -1582,15 +1582,15 @@ def _save_bid_detailed_evaluation_reports(
         for raw_detail, criterion_id in requested_details:
             criterion = criteria_by_id.get(criterion_id)
             if not criterion:
-                raise ValueError("Tieu chi danh gia khong thuoc owner hien tai.")
+                raise ValueError("Tiêu chí đánh giá không thuộc không gian làm việc hiện tại.")
             if clean_id(_db_row_value(criterion, 1, "vong_danh_gia_id")) != round_id:
-                raise ValueError("Tieu chi danh gia khong thuoc vong bao cao.")
+                raise ValueError("Tiêu chí đánh giá không thuộc vòng báo cáo.")
             result = str(
                 _first_value(raw_detail, "ketQua", "ket_qua", default="pending")
                 or "pending"
             )
             if result not in {"pending", "pass", "fail", "not_applicable"}:
-                raise ValueError("Ket qua tieu chi khong hop le.")
+                raise ValueError("Kết quả tiêu chí không hợp lệ.")
             score_value = _first_value(raw_detail, "diem", default=None)
             score = safe_float(score_value) if score_value not in (None, "") else None
             maximum_score = safe_float(_db_row_value(criterion, 2, "diem_toi_da"))

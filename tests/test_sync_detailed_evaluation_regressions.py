@@ -43,7 +43,7 @@ def test_joint_venture_bid_still_requires_joint_venture_criterion():
         "loai_nha_thau": "Liên danh",
     }])
 
-    with pytest.raises(ValueError, match="Tieu chi bat buoc"):
+    with pytest.raises(ValueError, match="Tiêu chí bắt buộc"):
         mapper._validate_completed_detailed_evaluation_report(
             cursor,
             "org-1",

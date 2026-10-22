@@ -899,7 +899,7 @@ def test_owner_reference_context_rejects_cross_tenant_or_archived_ids():
     )
 
     assert errors == [
-        "Tham chieu ke_hoach_id=foreign-plan khong thuoc owner hien tai."
+        "Dữ liệu tham chiếu không thuộc không gian làm việc hiện tại."
     ]
     assert cursor.calls[0][1][0] == "organization-1"
 

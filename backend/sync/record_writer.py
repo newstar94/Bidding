@@ -244,7 +244,7 @@ class SyncRecordWriter:
         ]
         if missing_ids:
             raise ValueError(
-                f"Goi thau {missing_ids[0]} khong thuoc owner hien tai."
+                "Gói thầu được chọn không thuộc không gian làm việc hiện tại."
             )
         if package_ids:
             cursor.executemany(

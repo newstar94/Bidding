@@ -21,7 +21,7 @@ const COMMON_OPTIONS = Object.freeze({
   deadCodeInjectionThreshold: 0.02,
   debugProtection: false,
   disableConsoleOutput: false,
-  identifierNamesGenerator: "hexadecimal",
+  identifierNamesGenerator: "mangled",
   log: false,
   numbersToExpressions: false,
   renameGlobals: false,

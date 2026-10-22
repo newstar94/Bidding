@@ -181,7 +181,7 @@ def _paginate_records_blocking(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
+            return JSONResponse({"error": role_or_err, "code": "AUTH_REQUIRED"}, status_code=403)
 
         params = request.query_params
         table_key = params.get("table")

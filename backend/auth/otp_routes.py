@@ -15,6 +15,8 @@ from backend.shared.helpers import (
 from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
+    get_rate_limit_decision_in_transaction,
+    clear_rate_limit_buckets,
     RateLimitDecision,
     RATE_LIMIT_MAX,
     rate_limit_response,
@@ -123,18 +125,66 @@ def _create_unverified_account(*, username, password_hash, name, role, email, co
         cursor = conn.cursor()
         conn.execute("BEGIN")
 
-        cursor.execute("SELECT id FROM tai_khoan WHERE username_norm = ?", (username,))
-        if cursor.fetchone():
-            conn.rollback()
-            return JSONResponse(conflict_payload("USERNAME_ALREADY_EXISTS"), status_code=409)
+        now = int(time.time())
+        expiry = now + 600
+        cursor.execute(
+            "SELECT id, da_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ? FOR UPDATE",
+            (username,),
+        )
+        username_row = cursor.fetchone()
+        cursor.execute(
+            "SELECT id, da_xac_minh, han_xac_minh FROM tai_khoan WHERE email_norm = ? FOR UPDATE",
+            (email,),
+        )
+        email_row = cursor.fetchone()
 
-        cursor.execute("SELECT id FROM tai_khoan WHERE email_norm = ?", (email,))
-        if cursor.fetchone():
-            conn.rollback()
-            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
+        def abandoned(row):
+            # Never verified, its last code expired long ago, and no external
+            # identity proved ownership: the holder never controlled the email.
+            if row is None or row["da_xac_minh"] or row["han_xac_minh"] is None:
+                return False
+            if int(row["han_xac_minh"]) > now - UNVERIFIED_ACCOUNT_RELEASE_SECONDS:
+                return False
+            return cursor.execute(
+                "SELECT 1 FROM dinh_danh_ngoai WHERE user_id = ? LIMIT 1",
+                (row["id"],),
+            ).fetchone() is None
+
+        reclaim_id = None
+        conflicting = [row for row in (username_row, email_row) if row is not None]
+        if conflicting:
+            if (
+                all(abandoned(row) for row in conflicting)
+                and len({row["id"] for row in conflicting}) == 1
+            ):
+                reclaim_id = conflicting[0]["id"]
+            elif username_row is not None:
+                conn.rollback()
+                return JSONResponse(conflict_payload("USERNAME_ALREADY_EXISTS"), status_code=409)
+            else:
+                conn.rollback()
+                return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
+
+        if reclaim_id is not None:
+            # Reuse the abandoned row in place instead of deleting it, so no
+            # dependent workspace metadata has to be removed.
+            cursor.execute(
+                """UPDATE tai_khoan
+                      SET ten_dang_nhap = ?, username_norm = ?, mat_khau = ?,
+                          ho_ten = ?, email = ?, email_norm = ?,
+                          ma_xac_minh = ?, han_xac_minh = ?
+                    WHERE id = ? AND da_xac_minh = 0""",
+                (
+                    username, username, password_hash, name, email, email,
+                    hash_registration_otp(code, reclaim_id), expiry, reclaim_id,
+                ),
+            )
+            clear_rate_limit_buckets(cursor, _otp_failure_bucket(reclaim_id))
+            ensure_personal_word_workspace(cursor, reclaim_id)
+            conn.commit()
+            return None
 
         user_uuid = generate_record_id("tai_khoan")
-        expiry = int(time.time()) + 600
 
         cursor.execute(
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -268,15 +318,33 @@ async def register_api(request):
         log_error(e, "register_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
 
+REGISTRATION_OTP_MAX_FAILURES = max(
+    1, int(os.environ.get("REGISTRATION_OTP_MAX_FAILURES", "5"))
+)
+UNVERIFIED_ACCOUNT_RELEASE_SECONDS = max(
+    3600, int(os.environ.get("UNVERIFIED_ACCOUNT_RELEASE_HOURS", "72")) * 3600
+)
+_OTP_INVALIDATED_MESSAGE = (
+    "Mã xác nhận đã bị vô hiệu do nhập sai quá nhiều lần. "
+    "Vui lòng yêu cầu gửi lại mã mới."
+)
+
+
+def _otp_failure_bucket(user_id):
+    return f"registration_otp_fail:{user_id}"
+
+
 def _confirm_registration_otp(username, code):
     """Registration OTP check and activation (database write lane).
 
     Returns a rejection response, or None once the account is verified.
+    Each issued code tolerates only ``REGISTRATION_OTP_MAX_FAILURES`` wrong
+    guesses; after that it is cleared and a new code must be requested.
     """
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
+        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ? FOR UPDATE", (normalize_username(username),))
         row = cursor.fetchone()
 
         if not row:
@@ -284,13 +352,36 @@ def _confirm_registration_otp(username, code):
 
         user = dict(row)
         current_time = int(time.time())
+        failure_bucket = _otp_failure_bucket(user['id'])
+
+        if not user['ma_xac_minh']:
+            return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
 
         if not verify_registration_otp(user['ma_xac_minh'], code, user['id']):
+            failures = get_rate_limit_decision_in_transaction(
+                cursor,
+                failure_bucket,
+                consume_attempt=True,
+                max_attempts=REGISTRATION_OTP_MAX_FAILURES,
+                window_seconds=24 * 3600,
+            )
+            if failures.remaining <= 0:
+                cursor.execute(
+                    "UPDATE tai_khoan SET ma_xac_minh = NULL, han_xac_minh = NULL WHERE id = ?",
+                    (user['id'],),
+                )
+                conn.commit()
+                return JSONResponse(
+                    {"error": _OTP_INVALIDATED_MESSAGE, "code": "REGISTRATION_OTP_INVALIDATED"},
+                    status_code=400,
+                )
+            conn.commit()
             return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
 
         if user['han_xac_minh'] and current_time > user['han_xac_minh']:
             return JSONResponse({"error": "Mã xác nhận đã hết hạn! Vui lòng yêu cầu mã mới."}, status_code=400)
 
+        clear_rate_limit_buckets(cursor, failure_bucket)
         cursor.execute(
             """UPDATE tai_khoan
                   SET da_xac_minh = 1,
@@ -387,6 +478,7 @@ def _rotate_registration_otp(username):
             "UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?",
             (hash_registration_otp(code, user['id']), expiry, user['id']),
         )
+        clear_rate_limit_buckets(cursor, _otp_failure_bucket(user['id']))
         conn.commit()
         return None, user, code
     finally:

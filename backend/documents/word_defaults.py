@@ -534,6 +534,16 @@ def ensure_personal_word_workspace(cursor, user_id):
     if not user_id:
         return 0
     scope_id = personal_scope_id(user_id)
+    # Session bootstrap and check-session call this on every page view. Once
+    # the scope exists there is nothing to create, so skip the advisory lock
+    # and the write; otherwise a long personal-workspace sync (which holds the
+    # same lock) would make page loads time out.
+    existing = cursor.execute(
+        "SELECT 1 FROM sync_metadata WHERE organization_id = ? LIMIT 1",
+        (scope_id,),
+    ).fetchone()
+    if existing:
+        return 0
     lock_personal_workspace_mutations(cursor, scope_id)
     account = cursor.execute(
         """SELECT 1 FROM tai_khoan

@@ -114,6 +114,36 @@ TURNSTILE_LOGIN_AFTER_ATTEMPTS = max(
 )
 
 
+def _turnstile_escape_available():
+    """Whether a solved bot challenge may replace a hard account lockout."""
+
+    from backend.security.turnstile import (
+        TurnstileConfigurationError,
+        get_turnstile_config,
+    )
+
+    try:
+        return bool(get_turnstile_config().enabled)
+    except TurnstileConfigurationError:
+        return False
+
+
+def _account_challenge_required(decision):
+    """Challenge once the account already has the configured prior failures."""
+
+    if decision is None:
+        return False
+    remaining = max(0, int(getattr(decision, "remaining", RATE_LIMIT_MAX)))
+    return RATE_LIMIT_MAX - remaining >= TURNSTILE_LOGIN_AFTER_ATTEMPTS
+
+
+def _record_failed_account_attempt(user_rate_key):
+    """Count one failed password check against the account (write lane)."""
+
+    if user_rate_key:
+        get_rate_limit_decision(user_rate_key, consume_attempt=True)
+
+
 def _login_challenge_required(*decisions):
     """Require a challenge only after the configured number of prior attempts."""
 
@@ -452,15 +482,21 @@ async def login_api(request):
                 user_limit = None
         except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
-        if user_limit and not user_limit.allowed:
+        account_locked = bool(user_limit and not user_limit.allowed)
+        if account_locked and not _turnstile_escape_available():
             return rate_limit_response("Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau.", user_limit)
 
+        # A locked account is not a hard block when a bot challenge is
+        # available: a human who solves it may still try their password, so
+        # junk requests cannot keep the real owner out.
         challenge_error = await enforce_turnstile(
             request,
             data,
             expected_action="login",
             required=(
-                _login_challenge_required(ip_limit, user_limit)
+                account_locked
+                or _login_challenge_required(ip_limit)
+                or _account_challenge_required(user_limit)
                 or edge_challenge_required(request)
             ),
         )
@@ -469,6 +505,13 @@ async def login_api(request):
 
         async def record_failed_login():
             _record_failed_login(ip_rate_key, user_rate_key, request)
+            if user_rate_key:
+                try:
+                    await run_database_write(
+                        _record_failed_account_attempt, user_rate_key
+                    )
+                except (BlockingIOBusyError, BlockingIOTimeoutError):
+                    pass
 
         if not username or not validate_password_input(password):
             await record_failed_login()
@@ -596,7 +639,12 @@ def _get_access_for_session(user, request):
 
 
 def _load_login_user_with_rate_limit(username, user_rate_key):
-    """Consume the account bucket and read the account on one DB connection."""
+    """Peek the account bucket and read the account on one DB connection.
+
+    The account bucket only counts *failed* password checks (see
+    ``_record_failed_account_attempt``). Consuming it before the bot challenge
+    let anyone lock a victim out with unauthenticated junk requests.
+    """
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
@@ -604,7 +652,7 @@ def _load_login_user_with_rate_limit(username, user_rate_key):
             decision = get_rate_limit_decision_in_transaction(
                 cursor,
                 user_rate_key,
-                consume_attempt=True,
+                consume_attempt=False,
             )
         except DatabaseError as rate_limit_error:
             conn.rollback()
@@ -617,7 +665,7 @@ def _load_login_user_with_rate_limit(username, user_rate_key):
             ), None
 
         user = None
-        if decision.allowed:
+        if decision.allowed or _turnstile_escape_available():
             row = cursor.execute(
                 """SELECT id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
                           anh_dai_dien, da_xac_minh

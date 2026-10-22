@@ -282,7 +282,12 @@ def test_google_verified_account_keeps_existing_password_and_recovery(auth_datab
 
     assert response.status_code == 200
     assert auth_database.rows("SELECT mat_khau FROM tai_khoan")[0]["mat_khau"] == existing_hash
-    assert auth_database.rows("SELECT * FROM email_delivery_status") == []
+    deliveries = auth_database.rows("SELECT purpose FROM email_delivery_status")
+    # First Google link to a password account warns the email owner (who
+    # just proved the address); linked logins send nothing new.
+    assert [row["purpose"] for row in deliveries] == (
+        [] if linked else ["user_notification"]
+    )
     assert auth_database.rows("SELECT used_at FROM password_reset_tokens")[0]["used_at"] is None
     assert json.loads(response.body)["password_setup_queued"] is False
     assert existing_reset["token"]

@@ -88,7 +88,9 @@ DATABASE_AUTO_START_LOCAL=false
 # firewall/security-group rules admit only the application and migration jobs.
 DATABASE_PRIVATE_NETWORK_CONFIRMED=false
 DATABASE_POOL_MIN_SIZE=2
-DATABASE_POOL_MAX_SIZE=8
+# Default = DATABASE_READ_WORKERS + DATABASE_WRITE_WORKERS + 2 (14), so every
+# database lane thread can hold a connection without waiting on the pool.
+DATABASE_POOL_MAX_SIZE=14
 # Keep these values aligned with the process manager and replica count. Startup
 # refuses production when the declared cluster budget plus reserve reaches
 # PostgreSQL max_connections.
@@ -653,3 +655,16 @@ ANALYTICS_AI_COST_VND_MULTIPLIER=
 # DOCUMENT_WORKER_JOB_DIR=
 # DOCUMENT_WORKER_PARENT_UID=
 # DOCUMENT_WORKER_PARENT_GID=
+
+# Compress responses in-process when no nginx tier exists (cloudflared -> app).
+# Keep false behind nginx, which compresses itself.
+HTTP_RESPONSE_COMPRESSION=false
+
+# Registration OTP: wrong guesses tolerated per issued code before it is
+# cleared and a new code must be requested.
+REGISTRATION_OTP_MAX_FAILURES=5
+# A never-verified registration whose last code expired this long ago no
+# longer holds its username/email; a new registration reuses that row.
+UNVERIFIED_ACCOUNT_RELEASE_HOURS=72
+# Optional override of the holiday calendar file edited from /admin/holidays.
+# HOLIDAYS_FILE=/opt/biddingflow/current/holidays.json

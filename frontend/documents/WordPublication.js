@@ -563,14 +563,30 @@ async function exportWordPublicationDocument(
       "render",
       "Dữ liệu đã được chuẩn bị. Hệ thống đang tạo tài liệu Word ở chế độ nền.",
     );
-    await runWordPublicationExportJob({
+    const job = await runWordPublicationExportJob({
       createJobUrl: appendExportSnapshotVersion(request.createJobUrl, snapshotVersion),
       filename: request.filename,
       createBody: documentType.exportTarget?.scope === "plan"
         ? { selectedCanCuLapKeHoachIds: requestedPlanBasisIds || [] }
         : undefined,
-      onProgress: (stage, message) => loading.update(stage, message),
+      onProgress: (stage, message) => loading?.update?.(stage, message),
+    }, {
+      preview: async (details) => {
+        // Hide the progress overlay while the user reads the preview.
+        await loading?.close?.();
+        loading = null;
+        const { confirmWordPreview } = await import("./WordPreviewDialog.js");
+        return confirmWordPreview(details);
+      },
     });
+    if (job?.status === "preview_closed") {
+      controller.view?.showToast?.(
+        "Chưa tải tài liệu",
+        "Bạn đã đóng bản xem trước. Xuất lại khi cần tải tài liệu.",
+        "info",
+      );
+      return true;
+    }
     controller.view?.showToast?.(
       "Đã xuất Word",
       selectedTemplates.length > 1
