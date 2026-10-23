@@ -235,6 +235,9 @@ class SecurityHeadersMiddleware:
             )
             headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
             turnstile_source = f" {TURNSTILE_ORIGIN}" if _turnstile_enabled() else ""
+            # A route serving user uploads may ask for a sandboxed document;
+            # keep that directive on top of the global policy.
+            route_sandbox = "sandbox" in str(headers.get("Content-Security-Policy") or "").split()
             headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
                 f"script-src 'self' https://accounts.google.com https://apis.google.com{turnstile_source}; "
@@ -251,6 +254,8 @@ class SecurityHeadersMiddleware:
                 "worker-src 'self'; base-uri 'self'; object-src 'none'; "
                 "require-trusted-types-for 'script'; trusted-types biddingflow-html biddingflow-dompurify goog#html 'allow-duplicates';"
             )
+            if route_sandbox:
+                headers["Content-Security-Policy"] += " sandbox;"
             if "Content-Security-Policy-Report-Only" in headers:
                 del headers["Content-Security-Policy-Report-Only"]
             path = request.url.path

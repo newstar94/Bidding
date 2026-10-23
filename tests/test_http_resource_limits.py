@@ -118,7 +118,7 @@ def test_plan_draft_finalize_uses_sync_body_budget(monkeypatch):
     assert messages[0]["status"] == 200
 
 
-def _security_headers(monkeypatch, mode, *, configured=True):
+def _security_headers(monkeypatch, mode, *, configured=True, route_headers=()):
     monkeypatch.setenv("TURNSTILE_ENABLED", mode)
     values = {
         "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
@@ -133,7 +133,7 @@ def _security_headers(monkeypatch, mode, *, configured=True):
     messages = []
 
     async def inner_app(_scope, _receive, send):
-        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.start", "status": 200, "headers": list(route_headers)})
         await send({"type": "http.response.body", "body": b"ok"})
 
     async def receive():
@@ -179,3 +179,14 @@ def test_csp_tracks_auto_mode_activation(monkeypatch):
 
     assert "https://challenges.cloudflare.com" in active
     assert "https://challenges.cloudflare.com" not in inactive
+
+
+def test_csp_keeps_a_route_requested_sandbox_for_uploaded_documents(monkeypatch):
+    sandboxed = _security_headers(
+        monkeypatch, "false", route_headers=[(b"content-security-policy", b"sandbox")],
+    )["content-security-policy"]
+    regular = _security_headers(monkeypatch, "false")["content-security-policy"]
+
+    assert sandboxed.endswith(" sandbox;")
+    assert "default-src 'self'" in sandboxed
+    assert "sandbox" not in regular

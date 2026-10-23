@@ -108,6 +108,8 @@ export async function renderOrganizationVerification({ view = null } = {}) {
         return;
       }
       const summary = verificationSummary(state);
+      const heading = document.getElementById("manager-verification-title");
+      if (heading) heading.textContent = state.organizationName ? `Xác minh mã số thuế · ${state.organizationName}` : "Xác minh mã số thuế";
       card.hidden = false;
       body.replaceChildren();
       const status = element("p", `bf-verification-status bf-verification-${summary.tone}`);

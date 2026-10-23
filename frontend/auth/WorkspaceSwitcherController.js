@@ -204,7 +204,7 @@ export function renderWorkspaceSwitcher() {
         if (created.taxCodeClaimedByVerifiedOrganization) {
           this.view.showToast?.(
             "Mã số thuế đã được xác minh ở tổ chức khác",
-            "Bạn vẫn dùng tổ chức này bình thường. Nếu bạn là đại diện hợp pháp, hãy gửi hồ sơ xác minh trong mục Nhân sự & Phân quyền.",
+            "Bạn vẫn dùng tổ chức này bình thường. Nếu bạn là đại diện hợp pháp, hãy gửi hồ sơ xác minh trong trang Thông tin tài khoản.",
             "warning",
             { duration: 12_000 },
           );

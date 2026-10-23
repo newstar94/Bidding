@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   bucketDeadline,
   foldText,
-  onboardingSteps,
   readReminders,
   reminderFireAt,
   searchWorkspace,
@@ -38,17 +37,6 @@ test("deadline buckets and reminder fire times use local calendar days", () => {
   assert.equal(reminderFireAt("2026-10-30", 3), new Date(2026, 9, 27, 8, 0, 0).getTime());
   assert.equal(reminderFireAt("", 1), null);
   assert.deepEqual(readReminders({ getItem: () => "not json" }, "k"), {});
-});
-
-test("onboarding tracks real workspace progress and manager-only steps", () => {
-  const empty = onboardingSteps({}, { isManager: false });
-  assert.equal(empty.some((step) => step.id === "staff"), false);
-  assert.equal(empty.every((step) => !step.done), true);
-  const progressed = onboardingSteps(
-    { kehoach: [{ id: "k" }], goithau: [{ id: "g" }], employees: [{}, {}] },
-    { isManager: true, visited: { word: true } },
-  );
-  assert.deepEqual(progressed.filter((step) => step.done).map((step) => step.id), ["plan", "package", "staff", "word"]);
 });
 
 test("API error text adds the wait time and support reference", () => {

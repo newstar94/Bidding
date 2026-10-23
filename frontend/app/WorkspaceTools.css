@@ -42,15 +42,14 @@
   line-height: 20px;
   text-align: center;
 }
-@media (max-width: 900px) {
+.bf-header-tool { white-space: nowrap; }
+@media (max-width: 1600px) {
   .bf-header-tool-label, .bf-header-tool kbd { display: none; }
 }
 /* The header tools take room from the page title; keep it on one line. */
-@media (max-width: 1100px) {
-  .app-header .header-left { min-width: 0; flex: 1 1 auto; }
-  .app-header .header-right { flex-shrink: 0; }
-  .app-header .page-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-}
+.app-header .header-left { min-width: 0; flex: 1 1 auto; }
+.app-header .header-right { flex-shrink: 0; }
+.app-header .page-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .bf-tools-dialog {
   /* The global reset zeroes dialog margins; restore the centred placement. */
@@ -150,31 +149,6 @@
 .bf-deadline-text span, .bf-deadline-text small { color: var(--ink-muted); }
 .bf-deadline-controls { display: flex; gap: 8px; align-items: center; }
 .bf-deadline-remind { min-height: var(--touch-target-min, 44px); }
-
-.bf-onboarding {
-  margin: 0 0 20px;
-  padding: 16px 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg, 14px);
-  background: var(--surface);
-}
-.bf-onboarding-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.bf-onboarding-head h2 { margin: 0; font-size: 1rem; }
-.bf-onboarding-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
-.bf-onboarding-steps li { display: flex; align-items: center; gap: 10px; }
-.bf-onboarding-steps svg { width: 18px; height: 18px; color: var(--ink-muted); flex: none; }
-.bf-onboarding-steps li.is-done svg { color: var(--success); }
-.bf-onboarding-step {
-  min-height: var(--touch-target-min, 44px);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.bf-onboarding-step:disabled { color: var(--ink-muted); text-decoration: line-through; cursor: default; }
 
 .bf-invitation-dialog { padding: 0; }
 .bf-invitation-dialog h2 { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 1.05rem; }

@@ -495,86 +495,6 @@ function installHeaderButtons({ search, deadlines }) {
   renderLucideIcons(headerRight);
 }
 
-/* ---------------------------- Getting started ---------------------------- */
-
-function onboardingKey(controller) {
-  const scope = String(controller.model?.workspaceScope?.key || "").trim();
-  return scope ? `bf_onboarding:${scope}` : "";
-}
-
-export function onboardingSteps(state, { isManager = false, visited = {} } = {}) {
-  const count = (table) => (state?.[table] || []).filter(isLatest).length;
-  const steps = [
-    { id: "plan", label: "Tạo kế hoạch lựa chọn nhà thầu đầu tiên", done: count("kehoach") > 0, tab: "kehoach", action: "taomoi" },
-    { id: "package", label: "Thêm gói thầu (hoặc lấy dữ liệu tự động trong màn hình kế hoạch)", done: count("goithau") > 0, tab: "goithau", action: "taomoi" },
-    { id: "word", label: "Chọn mẫu Word cho hồ sơ, báo cáo", done: Boolean(visited.word), tab: "xuatban-word" },
-    { id: "deadlines", label: "Xem trung tâm hạn chót và đặt nhắc việc", done: Boolean(visited.deadlines), tool: "deadlines" },
-  ];
-  if (isManager) {
-    steps.splice(2, 0, { id: "staff", label: "Mời nhân sự và phân công gói thầu", done: (state?.employees || []).length > 1, tab: "managernhanvien" });
-  }
-  return steps;
-}
-
-function installOnboarding(controller, tools) {
-  const key = onboardingKey(controller);
-  const storage = globalThis.localStorage;
-  const read = () => readReminders(storage, key);
-  const write = (value) => writeReminders(storage, key, value);
-  const isManager = String(controller._initialSessionData?.user?.membership_role || "") === "manager";
-
-  const render = () => {
-    const host = document.getElementById("tab-dashboard");
-    host?.querySelector(".bf-onboarding")?.remove();
-    const saved = read();
-    if (!host || saved.dismissed) return;
-    const steps = onboardingSteps(controller.model?.state, { isManager, visited: saved.visited || {} });
-    const remaining = steps.filter((step) => !step.done).length;
-    if (remaining === 0) return;
-    const card = element("section", "bf-onboarding");
-    card.setAttribute("aria-labelledby", "bf-onboarding-title");
-    const head = element("div", "bf-onboarding-head");
-    const heading = element("h2", "", `Bắt đầu với BiddingFlow (${steps.length - remaining}/${steps.length})`);
-    heading.id = "bf-onboarding-title";
-    const dismiss = element("button", "btn btn-outline", "Ẩn hướng dẫn");
-    dismiss.type = "button";
-    dismiss.addEventListener("click", () => { write({ ...read(), dismissed: true }); card.remove(); });
-    head.append(heading, dismiss);
-    const list = element("ol", "bf-onboarding-steps");
-    for (const step of steps) {
-      const item = element("li", step.done ? "is-done" : "");
-      item.append(icon(step.done ? "circle-check" : "circle"));
-      const button = element("button", "bf-onboarding-step", step.label);
-      button.type = "button";
-      button.disabled = step.done;
-      button.addEventListener("click", () => {
-        const visited = { ...(read().visited || {}) };
-        if (step.id === "word" || step.id === "deadlines") visited[step.id] = true;
-        write({ ...read(), visited });
-        if (step.tool === "deadlines") tools.deadlines.open();
-        else controller.switchTab?.(step.tab, step.action || null);
-        render();
-      });
-      item.append(button);
-      list.append(item);
-    }
-    card.append(head, list);
-    host.prepend(card);
-    renderLucideIcons(card);
-  };
-  render();
-  controller.model?.addStorageHydrationListener?.(() => render());
-  window.addEventListener("bf:workspace-changed", () => setTimeout(render, 0));
-  window.addEventListener("popstate", () => setTimeout(render, 0));
-  const markVisited = (id) => {
-    const saved = read();
-    if (saved.visited?.[id]) return;
-    write({ ...saved, visited: { ...(saved.visited || {}), [id]: true } });
-    render();
-  };
-  return { render, markVisited };
-}
-
 /* --------------------------- Organization invitations --------------------------- */
 
 // "Để sau" hides the invitations shown for the rest of this browser session;
@@ -693,14 +613,7 @@ export async function installWorkspaceTools(controller) {
   const deadlines = createDeadlineCenter(controller);
   installShortcuts({ search, shortcuts, deadlines });
   installHeaderButtons({ search, deadlines });
-  const onboarding = installOnboarding(controller, { deadlines });
-  // Opening the deadline center from the header or Shift+H counts too.
-  const openDeadlines = deadlines.open;
-  deadlines.open = (...args) => {
-    onboarding.markVisited("deadlines");
-    return openDeadlines(...args);
-  };
-  controller.workspaceTools = { search, shortcuts, deadlines, onboarding };
+  controller.workspaceTools = { search, shortcuts, deadlines };
   void showPendingInvitations();
   return controller.workspaceTools;
 }

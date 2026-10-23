@@ -182,6 +182,11 @@ export async function mountAccountProfile(controller) {
     states.set(root, state);
   }
   state.controller = controller;
+  // ADR 0094: a manager verifies the active organization's tax code here,
+  // next to "Tạo tổ chức mới"; the card stays hidden for anyone else.
+  void import("../admin/OrganizationVerification.js")
+    .then(({ renderOrganizationVerification }) => renderOrganizationVerification({ view: controller.view }))
+    .catch(() => {});
   if (root.dataset.accountProfileBound !== "true") {
     root.dataset.accountProfileBound = "true";
     node(state, "btn-create-organization")?.addEventListener("click", () => {

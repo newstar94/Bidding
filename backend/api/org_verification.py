@@ -155,7 +155,7 @@ def _verification_status_sync(request, role):
         if rejection:
             return rejection
         organization = cursor.execute(
-            """SELECT ma_so_thue, tax_code_status, tax_code_verified_at, tax_code_verification_method
+            """SELECT ten_to_chuc, ma_so_thue, tax_code_status, tax_code_verified_at, tax_code_verification_method
                  FROM to_chuc WHERE id = ?""",
             (organization_id,),
         ).fetchone()
@@ -173,6 +173,7 @@ def _verification_status_sync(request, role):
         ) is not None
         return _json({
             "organizationId": organization_id,
+            "organizationName": str(organization["ten_to_chuc"] or ""),
             "taxCode": tax_code,
             "status": "verified" if verified else "unverified",
             "verifiedAt": int(organization["tax_code_verified_at"]) if verified and organization["tax_code_verified_at"] else None,
