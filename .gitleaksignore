@@ -52,3 +52,7 @@ d40895ca124f4e17d5a6f36febb3a44f3069d4ba:tests/test_lot_scope_http_error.py:gene
 bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1427
 bf72199e6b7a9f2e49174197e5e92d24cc02bb94:backend/auth/auth_routes.py:generic-api-key:1430
 89ba1f90f0f97655686eadb97280793a66f24e6f:backend/auth/google_auth_routes.py:generic-api-key:384
+
+# Reviewed false positive: fixed Idempotency-Key in a PostgreSQL test request
+# fixture. It identifies a replay; it is not a credential or authorization key.
+797d871bc964638052fbf2bd100149415c61dfdb:tests/test_organization_tax_code_verification_postgres.py:generic-api-key:87

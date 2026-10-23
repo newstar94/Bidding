@@ -43,7 +43,12 @@ export function purgeTablerCss(css, { tokens, prefixes }) {
   root.walkRules((rule) => {
     if (rule.parent?.type === 'atrule' && /keyframes$/i.test(rule.parent.name)) return;
     const selectors = rule.selectors.filter((selector) => (
-      [...selector.matchAll(/\.([A-Za-z0-9_-]+)/g)].every((match) => keepClass(match[1]))
+      // Classes inside functional selectors are not all required: :not()
+      // excludes them and :is()/:where() can select alternative branches.
+      // Keep these selectors conservatively instead of treating a regex as a
+      // selector parser (notably Tabler's .offcanvas.show:not(.hiding)).
+      /:(?:not|is|where|has)\(/i.test(selector)
+      || [...selector.matchAll(/\.([A-Za-z0-9_-]+)/g)].every((match) => keepClass(match[1]))
     ));
     if (selectors.length === 0) rule.remove();
     else rule.selectors = selectors;
