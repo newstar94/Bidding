@@ -375,7 +375,7 @@ test("F18 organization creation does not claim a workspace switch when navigatio
   await page.route("**/api/organizations", route => route.fulfill({ status: 201, json: { organization: { id: "organization-B", name: "Workspace B", role: "manager", status: "active", scope_type: "organization" } } }));
   const result = await page.evaluate(async () => {
     document.cookie = "csrf_token=race-fixture;path=/";
-    document.body.innerHTML = '<div id="org-switch-section"><div id="org-switch-list"></div></div><div class="modal-overlay active" data-bf-unsaved="true"></div><form id="form-create-organization"><input id="organization-tax-code" value="fixture-tax"><input id="organization-short-name" value="Fixture"><button type="submit">Create</button></form>';
+    document.body.innerHTML = '<div id="org-switch-section"><div id="org-switch-list"></div></div><div class="modal-overlay active" data-bf-unsaved="true"></div><form id="form-create-organization"><input id="organization-tax-code" value="0101234567"><input id="organization-short-name" value="Fixture"><button type="submit">Create</button></form>';
     sessionStorage.setItem("bf_active_org", "organization-A");
     const events = [];
     const host = { model: { workspaceScope: { organizationId: "organization-A" }, state: { activeuser: { id: "u1", organizations: [{ id: "organization-A", name: "Workspace A", role: "manager", status: "active", scope_type: "organization" }] } } },

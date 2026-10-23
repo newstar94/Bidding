@@ -1148,3 +1148,39 @@ def test_unknown_package_status_is_available_after_upgrade_chain():
         assert "'UNKNOWN'::text" in definition
     finally:
         _close_fixture_connection(connection, cursor, schema_name)
+
+
+def test_v103_keeps_existing_tax_codes_and_relaxes_uniqueness_to_verified_rows():
+    connection, cursor, schema_name = _open_fixture_connection()
+    try:
+        context = _upgrade_context()
+        assert apply_database_upgrades(cursor, 1, context, target_version=102) == 102
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue) VALUES ('org-legacy', 'Legacy', '0101234567')"
+        )
+        assert apply_database_upgrades(cursor, 102, context) == DB_SCHEMA_VERSION
+        assert tuple(cursor.execute(
+            "SELECT tax_code_status, tax_code_verification_method FROM to_chuc WHERE id = 'org-legacy'"
+        ).fetchone()) == ("verified", "legacy")
+        indexes = {
+            row[0] for row in cursor.execute(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'to_chuc'"
+            ).fetchall()
+        }
+        assert "uq_to_chuc_ma_so_thue" not in indexes
+        assert {"uq_to_chuc_verified_tax_code", "idx_to_chuc_tax_code"} <= indexes
+        # A new organization may reuse the tax code while unverified ...
+        cursor.execute(
+            "INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue) VALUES ('org-new', 'New', '0101234567')"
+        )
+        assert cursor.execute(
+            "SELECT tax_code_status FROM to_chuc WHERE id = 'org-new'"
+        ).fetchone()[0] == "unverified"
+        # ... but never become a second verified holder.
+        cursor.execute("SAVEPOINT second_verified_holder")
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            cursor.execute("UPDATE to_chuc SET tax_code_status = 'verified' WHERE id = 'org-new'")
+        cursor.execute("ROLLBACK TO SAVEPOINT second_verified_holder")
+        assert_schema_contract(cursor)
+    finally:
+        _close_fixture_connection(connection, cursor, schema_name)

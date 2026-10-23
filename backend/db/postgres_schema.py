@@ -569,6 +569,11 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_org_invitations_org_created ON organization_invitations (organization_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_org_invitations_invited_by ON organization_invitations (invited_by)",
         "CREATE INDEX IF NOT EXISTS idx_org_invitations_accepted_user ON organization_invitations (accepted_user_id) WHERE accepted_user_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_org_verification_pending ON organization_verification_requests (organization_id) WHERE status = 'pending'",
+        "CREATE INDEX IF NOT EXISTS idx_org_verification_org_created ON organization_verification_requests (organization_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_org_verification_status_created ON organization_verification_requests (status, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_org_verification_requested_by ON organization_verification_requests (requested_by)",
+        "CREATE INDEX IF NOT EXISTS idx_org_verification_reviewed_by ON organization_verification_requests (reviewed_by) WHERE reviewed_by IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_workspace_updated ON ai_conversations (user_id, organization_id, updated_at DESC) WHERE status = 'active'",
         "CREATE INDEX IF NOT EXISTS idx_ai_conversations_workspace_created ON ai_conversations (organization_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_created ON ai_messages (organization_id, conversation_id, created_at ASC)",
@@ -601,7 +606,8 @@ def _create_indexes(cursor, *, include_product_usage: bool = True) -> None:
         "CREATE INDEX IF NOT EXISTS idx_document_jobs_expiry ON document_jobs (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_document_jobs_record_owner ON document_jobs (organization_id, record_type, record_id, user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id, user_id)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_ma_so_thue ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_verified_tax_code ON to_chuc (ma_so_thue) WHERE tax_code_status = 'verified' AND ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''",
+        "CREATE INDEX IF NOT EXISTS idx_to_chuc_tax_code ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''",
         "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_status_expiry ON account_subscriptions (status, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_api_idempotency_created ON api_idempotency (created_at)",
@@ -1356,10 +1362,19 @@ def _historical_v46_catalog(latest_catalog):
     catalog["tables"]["to_chuc"]["columns"].pop("ma_so_thue", None)
     catalog["tables"]["to_chuc"]["columns"].pop("ten_viet_tat", None)
     catalog["tables"]["to_chuc"]["columns"].pop("owner_user_id", None)
+    # V103 (ADR 0094) owns tax-code verification state.
+    for column_name in (
+        "tax_code_status",
+        "tax_code_verified_at",
+        "tax_code_verified_by",
+        "tax_code_verification_method",
+    ):
+        catalog["tables"]["to_chuc"]["columns"].pop(column_name, None)
     catalog["tables"]["to_chuc"]["constraints"] = {
         name: constraint
         for name, constraint in catalog["tables"]["to_chuc"]["constraints"].items()
         if "owner_user_id" not in constraint.get("definition", "")
+        and "tax_code_" not in constraint.get("definition", "")
     }
     catalog["tables"]["ke_hoach_lcnt"]["columns"].pop("can_cu_gia_goi_thau", None)
     for index_name in (
@@ -1367,6 +1382,8 @@ def _historical_v46_catalog(latest_catalog):
         "idx_ai_token_reservations_user",
         "idx_to_chuc_owner_user",
         "uq_to_chuc_ma_so_thue",
+        "uq_to_chuc_verified_tax_code",
+        "idx_to_chuc_tax_code",
     ):
         catalog["indexes"].pop(index_name, None)
     websocket_events = catalog["tables"]["websocket_events"]
@@ -1466,6 +1483,8 @@ def _historical_v46_catalog(latest_catalog):
         "workspace_feature_user_daily",
         "commercial_feedback",
         "commercial_funnel_workspace_daily",
+        # Tax-code verification requests are introduced by v103.
+        "organization_verification_requests",
     }
     for table_name in post_v46_tables:
         catalog["tables"].pop(table_name, None)

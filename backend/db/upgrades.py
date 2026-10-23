@@ -4011,6 +4011,56 @@ def _upgrade_to_v102_add_organization_invitations(cursor, context):
     context.assert_foreign_key_integrity(cursor)
 
 
+TAX_CODE_VERIFICATION_COLUMNS = (
+    "tax_code_status",
+    "tax_code_verified_at",
+    "tax_code_verified_by",
+    "tax_code_verification_method",
+)
+ORGANIZATION_VERIFICATION_INDEXES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_to_chuc_verified_tax_code ON to_chuc (ma_so_thue) WHERE tax_code_status = 'verified' AND ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''",
+    "CREATE INDEX IF NOT EXISTS idx_to_chuc_tax_code ON to_chuc (ma_so_thue) WHERE ma_so_thue IS NOT NULL AND btrim(ma_so_thue) <> ''",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_org_verification_pending ON organization_verification_requests (organization_id) WHERE status = 'pending'",
+    "CREATE INDEX IF NOT EXISTS idx_org_verification_org_created ON organization_verification_requests (organization_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_org_verification_status_created ON organization_verification_requests (status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_org_verification_requested_by ON organization_verification_requests (requested_by)",
+    "CREATE INDEX IF NOT EXISTS idx_org_verification_reviewed_by ON organization_verification_requests (reviewed_by) WHERE reviewed_by IS NOT NULL",
+)
+
+
+def _upgrade_to_v103_add_tax_code_verification(cursor, context):
+    """ADR 0094: create now, verify the tax code later.
+
+    Every organization that exists before this step keeps its tax code
+    exclusively (``legacy``); only verified rows stay unique afterwards.
+    """
+    from backend.db.postgres_schema import postgres_column_definition
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    columns = SCHEMA_DINH_NGHIA["to_chuc"]["columns"]
+    for column_name in TAX_CODE_VERIFICATION_COLUMNS:
+        definition = postgres_column_definition("to_chuc", column_name, columns[column_name])
+        cursor.execute(f"ALTER TABLE to_chuc ADD COLUMN IF NOT EXISTS {column_name} {definition}")
+    cursor.execute(
+        """UPDATE to_chuc
+              SET tax_code_status = 'verified',
+                  tax_code_verification_method = 'legacy',
+                  tax_code_verified_at = COALESCE(tax_code_verified_at, EXTRACT(EPOCH FROM now())::bigint)
+            WHERE tax_code_status = 'unverified' AND tax_code_verification_method IS NULL"""
+    )
+    create_sql = context.build_create_table_sql(
+        "organization_verification_requests", SCHEMA_DINH_NGHIA["organization_verification_requests"],
+    )
+    cursor.execute(create_sql.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1))
+    if callable(context.create_foreign_keys):
+        context.create_foreign_keys(cursor, ("organization_verification_requests",), if_not_exists=True)
+    # The verified-only index is created before the global one is dropped, so
+    # no instant exists without a uniqueness guarantee for the legacy rows.
+    for statement in ORGANIZATION_VERIFICATION_INDEXES:
+        cursor.execute(statement)
+    cursor.execute("DROP INDEX IF EXISTS uq_to_chuc_ma_so_thue")
+    context.assert_foreign_key_integrity(cursor)
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4465,6 +4515,7 @@ UPGRADES = (
     DatabaseUpgrade(100, "add_checkout_payment_details", _upgrade_to_v100_add_checkout_payment_details),
     DatabaseUpgrade(101, "add_procurement_monitor", _upgrade_to_v101_add_procurement_monitor),
     DatabaseUpgrade(102, "add_organization_invitations", _upgrade_to_v102_add_organization_invitations),
+    DatabaseUpgrade(103, "add_tax_code_verification", _upgrade_to_v103_add_tax_code_verification),
 )
 
 
@@ -4490,7 +4541,8 @@ DB_SCHEMA_VERSION = (
 # V100 stores signed provider QR details used by the checkout popup.
 # V101 persists scheduled procurement checks, leases and notification baselines.
 # V102 adds consent-based organization invitations (ADR 0093).
-DB_RUNTIME_MIN_SCHEMA_VERSION = 102
+# V103 adds tax-code verification; only verified tax codes stay unique (ADR 0094).
+DB_RUNTIME_MIN_SCHEMA_VERSION = 103
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

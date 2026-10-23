@@ -1032,6 +1032,7 @@ from backend.procurement_lookup.routes import procurement_lookup_routes
 from backend.deadlines.routes import deadline_routes
 from backend.holidays.routes import holiday_admin_routes
 from backend.api.org_invitations import organization_invitation_routes
+from backend.api.org_verification import organization_verification_routes
 
 
 async def list_holidays_api(request):
@@ -1368,6 +1369,7 @@ routes = [
     *deadline_routes(Route),
     *holiday_admin_routes(Route),
     *organization_invitation_routes(Route),
+    *organization_verification_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),

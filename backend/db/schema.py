@@ -82,6 +82,30 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (accepted_user_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
         ]
     },
+    "organization_verification_requests": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY CHECK(id != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "requested_by": "TEXT NOT NULL",
+            "tax_code": "TEXT NOT NULL CHECK(tax_code != '' AND length(tax_code) <= 64)",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'cancelled'))",
+            "storage_key": "TEXT NOT NULL CHECK(storage_key != '' AND length(storage_key) <= 255)",
+            "original_filename": "TEXT NOT NULL CHECK(original_filename != '' AND length(original_filename) <= 255)",
+            "content_type": "TEXT NOT NULL CHECK(content_type IN ('application/pdf', 'image/jpeg', 'image/png'))",
+            "size_bytes": "INTEGER NOT NULL CHECK(size_bytes > 0)",
+            "sha256": "TEXT NOT NULL CHECK(length(sha256) = 64)",
+            "note": "TEXT CHECK(note IS NULL OR length(note) <= 1000)",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "reviewed_at": "INTEGER",
+            "reviewed_by": "TEXT",
+            "review_note": "TEXT CHECK(review_note IS NULL OR length(review_note) <= 1000)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+            "FOREIGN KEY (requested_by) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+            "FOREIGN KEY (reviewed_by) REFERENCES tai_khoan(id) ON DELETE SET NULL"
+        ]
+    },
     "database_metadata": {
         "columns": {
             "id": "INTEGER PRIMARY KEY CHECK(id = 1)",
@@ -1802,7 +1826,12 @@ SCHEMA_DINH_NGHIA = {
             "owner_user_id": "TEXT",
             "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
-            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
+            # ADR 0094: only a verified organization holds its tax code exclusively.
+            "tax_code_status": "TEXT NOT NULL DEFAULT 'unverified' CHECK(tax_code_status IN ('unverified', 'verified'))",
+            "tax_code_verified_at": "INTEGER",
+            "tax_code_verified_by": "TEXT",
+            "tax_code_verification_method": "TEXT CHECK(tax_code_verification_method IS NULL OR tax_code_verification_method IN ('legacy', 'document'))"
         },
         "foreign_keys": [
             "FOREIGN KEY (owner_user_id) REFERENCES tai_khoan(id) ON DELETE RESTRICT"

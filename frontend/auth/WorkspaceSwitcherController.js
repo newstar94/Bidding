@@ -4,12 +4,15 @@ import { normalizeOrganizations } from "./accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { describeApiError } from "../shared/apiErrorText.js";
+import { isVietnamTaxCode, normalizeVietnamTaxCode } from "../app/domUtils.js";
+import { lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
 
 function closeProfileDropdown() {
   document.getElementById("profile-dropdown-menu")?.classList.remove("active");
 }
 
-export async function createOrganization({ taxCode, shortName, idempotencyKey }, request = apiFetch) {
+export async function createOrganizationRequest({ taxCode, shortName, idempotencyKey }, request = apiFetch) {
   const response = await request("/api/organizations", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
@@ -17,8 +20,47 @@ export async function createOrganization({ taxCode, shortName, idempotencyKey },
     retries: 2,
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Không thể tạo tổ chức.");
-  return payload.organization;
+  if (!response.ok) throw new Error(describeApiError(payload, "Không thể tạo tổ chức."));
+  return payload;
+}
+
+export async function createOrganization(input, request = apiFetch) {
+  return (await createOrganizationRequest(input, request)).organization;
+}
+
+// ADR 0094: the tax code shape is checked here and on the server; a lookup
+// only suggests the registered name, it never blocks creation.
+export function organizationTaxCodeProblem(value) {
+  const normalized = normalizeVietnamTaxCode(value);
+  if (!normalized) return "Vui lòng nhập mã số thuế.";
+  return isVietnamTaxCode(normalized) ? "" : "Mã số thuế gồm 10 chữ số, hoặc 10 chữ số-3 chữ số cho chi nhánh.";
+}
+
+function bindTaxCodeLookup(form) {
+  const input = document.getElementById("organization-tax-code");
+  const shortName = document.getElementById("organization-short-name");
+  const hint = document.getElementById("organization-tax-code-hint");
+  if (!input || !hint) return;
+  let controller = null;
+  let timer = null;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    controller?.abort();
+    hint.textContent = "";
+    const value = input.value;
+    if (organizationTaxCodeProblem(value)) return;
+    timer = setTimeout(async () => {
+      controller = new AbortController();
+      try {
+        const info = await lookupPartnerInfo({ taxCode: value, partnerRole: "CDT", signal: controller.signal });
+        if (!info?.name || input.value !== value || !form.isConnected) return;
+        hint.textContent = `Tên theo đăng ký thuế: ${info.name}`;
+        if (shortName && !shortName.value.trim() && info.short_name) shortName.value = info.short_name;
+      } catch {
+        // Lookup is a convenience only.
+      }
+    }, 500);
+  });
 }
 
 export function renderWorkspaceSwitcher() {
@@ -70,6 +112,7 @@ export function renderWorkspaceSwitcher() {
           <span style="font-size: 0.78rem; font-weight: ${isActive ? "700" : "500"}; color: ${isActive ? "var(--primary)" : "var(--text-main)"}; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: 1; min-width: 0;">
             ${escapeHtml(workspace.name)}
           </span>
+          ${workspace.tax_code_verified ? '<span class="bf-org-verified" title="Tổ chức đã xác minh"><i data-lucide="badge-check" aria-hidden="true"></i><span class="visually-hidden">Đã xác minh</span></span>' : ""}
         </div>
         ${isActive ? '<i data-lucide="check" class="bf-s-2238b82015" aria-hidden="true"></i>' : ""}
       </button>
@@ -129,17 +172,24 @@ export function renderWorkspaceSwitcher() {
   const form = document.getElementById("form-create-organization");
   if (form && form.dataset.bound !== "true") {
     form.dataset.bound = "true";
+    bindTaxCodeLookup(form);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!this.view.validateForm(form)) return;
       const submit = form.querySelector('button[type="submit"]');
       const taxCode = document.getElementById("organization-tax-code")?.value?.trim() || "";
+      const taxCodeProblem = organizationTaxCodeProblem(taxCode);
+      if (taxCodeProblem) {
+        await this.view.customAlert("Mã số thuế chưa hợp lệ", taxCodeProblem, "alert-triangle");
+        return;
+      }
       const shortName = document.getElementById("organization-short-name")?.value?.trim() || "";
       const idempotencyKey = globalThis.crypto?.randomUUID?.() || `org-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       submit.disabled = true;
       form.setAttribute("aria-busy", "true");
       try {
-        const organization = await createOrganization({ taxCode, shortName, idempotencyKey });
+        const created = await createOrganizationRequest({ taxCode, shortName, idempotencyKey });
+        const organization = created.organization;
         currentUser.organizations = [
           ...(Array.isArray(currentUser.organizations) ? currentUser.organizations : []),
           organization,
@@ -151,6 +201,14 @@ export function renderWorkspaceSwitcher() {
         this.view.showToast?.("Đã tạo tổ chức", switched
           ? `Đang làm việc tại “${organization.name}”.`
           : `Tổ chức “${organization.name}” đã được tạo. Không gian làm việc hiện tại được giữ nguyên.`, "success");
+        if (created.taxCodeClaimedByVerifiedOrganization) {
+          this.view.showToast?.(
+            "Mã số thuế đã được xác minh ở tổ chức khác",
+            "Bạn vẫn dùng tổ chức này bình thường. Nếu bạn là đại diện hợp pháp, hãy gửi hồ sơ xác minh trong mục Nhân sự & Phân quyền.",
+            "warning",
+            { duration: 12_000 },
+          );
+        }
       } catch (error) {
         await this.view.customAlert("Không thể tạo tổ chức", error.message || "Vui lòng thử lại.", "alert-triangle");
       } finally {

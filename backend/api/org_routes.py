@@ -6,6 +6,12 @@ import time
 from starlette.responses import JSONResponse
 from backend.auth.security_notifications import build_security_notification_batch
 from backend.auth.auth_helper import verify_session_in_transaction
+from backend.auth.auth_service import get_rate_limit_decision_in_transaction, rate_limit_response
+from backend.api.org_tax_code import (
+    normalize_tax_code,
+    organizations_created_per_day,
+    verified_tax_code_holder,
+)
 
 from backend.shared.helpers import (
     database,
@@ -59,11 +65,14 @@ def _create_organization_sync(request, role_or_err, data):
         "short_name": {"type": "string", "required": True, "min_length": 1, "max_length": 120},
     })
     if invalid: return invalid
-    tax_code = str(data.get("tax_code") or "").strip()
+    raw_tax_code = str(data.get("tax_code") or "").strip()
     short_name = re.sub(r"\s+", " ", str(data.get("short_name") or "").strip())
     idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
-    if not tax_code or not short_name:
+    if not raw_tax_code or not short_name:
         return JSONResponse({"error": "Mã số thuế và tên viết tắt là bắt buộc.", "code": "ORGANIZATION_FIELDS_REQUIRED"}, status_code=400)
+    tax_code = normalize_tax_code(raw_tax_code)
+    if tax_code is None:
+        return JSONResponse({"error": "Mã số thuế không đúng định dạng (10 chữ số, hoặc 10 chữ số-3 chữ số cho chi nhánh).", "code": "ORGANIZATION_TAX_CODE_INVALID"}, status_code=400)
     if not _IDEMPOTENCY_KEY_RE.fullmatch(idempotency_key):
         return JSONResponse({"error": "Thiếu Idempotency-Key hợp lệ.", "code": "INVALID_IDEMPOTENCY_KEY"}, status_code=400)
     conn = database.get_connection()
@@ -82,11 +91,19 @@ def _create_organization_sync(request, role_or_err, data):
         if replay:
             conn.commit()
             return JSONResponse(json.loads(replay[0]))
-        row = cursor.execute("SELECT id FROM to_chuc WHERE ma_so_thue = ?", (tax_code,)).fetchone()
-        if row:
-            conn.rollback(); return JSONResponse({"error": "Mã số thuế đã được đăng ký cho một tổ chức khác.", "code": "ORGANIZATION_TAX_CODE_EXISTS"}, status_code=409)
+        # ADR 0094: a tax code never blocks creation. Only a verified
+        # organization holds it exclusively; this one starts unverified.
+        actor_platform_role = cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,)).fetchone()
+        if "super_admin" not in get_effective_roles(actor_platform_role[0] if actor_platform_role else ""):
+            limit = get_rate_limit_decision_in_transaction(
+                cursor, f"organization_create:{role_or_err.user_id}",
+                max_attempts=organizations_created_per_day(), window_seconds=SECONDS_PER_DAY,
+            )
+            if not limit.allowed:
+                conn.rollback(); return rate_limit_response("Bạn đã tạo đủ số tổ chức cho phép trong 24 giờ. Vui lòng thử lại sau.", limit)
+        claimed_by_verified = verified_tax_code_holder(cursor, tax_code) is not None
         org_id = "org-" + hashlib.sha256(f"{tax_code}:{short_name}:{time.time_ns()}".encode()).hexdigest()[:32]
-        cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue, ten_viet_tat, owner_user_id) VALUES (?, ?, ?, ?, ?)", (org_id, short_name, tax_code, short_name, role_or_err.user_id))
+        cursor.execute("INSERT INTO to_chuc (id, ten_to_chuc, ma_so_thue, ten_viet_tat, owner_user_id, tax_code_status) VALUES (?, ?, ?, ?, ?, 'unverified')", (org_id, short_name, tax_code, short_name, role_or_err.user_id))
         cursor.execute("INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, 'manager')", (role_or_err.user_id, org_id))
         # Every newly-created organization starts on the explicit free tier.
         # Never infer a paid tier from the current catalog ordering (or from
@@ -100,7 +117,7 @@ def _create_organization_sync(request, role_or_err, data):
             now = int(time.time())
             cursor.execute("INSERT INTO organization_subscriptions (organization_id, package_id, status, starts_at, expires_at, member_quota) VALUES (?, ?, 'active', ?, ?, ?)", (org_id, package[0], now, now + LEGACY_SUBSCRIPTION_TERM_DAYS * SECONDS_PER_DAY, int(package[1])))
         log_audit("organization.created", actor_user_id=role_or_err.user_id, organization_id=org_id, target_type="to_chuc", target_id=org_id, request=request, metadata={"tax_code": tax_code, "short_name": short_name, "owner_user_id": role_or_err.user_id}, cursor=cursor, required=True)
-        response_payload = {"success": True, "organization": {"id": org_id, "name": short_name, "taxCode": tax_code, "shortName": short_name, "ownerUserId": role_or_err.user_id, "scope_type": "organization", "role": "manager", "status": "active"}}
+        response_payload = {"success": True, "taxCodeClaimedByVerifiedOrganization": claimed_by_verified, "organization": {"id": org_id, "name": short_name, "taxCode": tax_code, "shortName": short_name, "ownerUserId": role_or_err.user_id, "scope_type": "organization", "role": "manager", "status": "active", "tax_code_verified": False}}
         cursor.execute(
             "INSERT INTO api_idempotency (actor_user_id, operation, idempotency_key, response_json, created_at) VALUES (?, ?, ?, ?, ?)",
             (role_or_err.user_id, operation, idempotency_key, json.dumps(response_payload, ensure_ascii=False), int(time.time())),
@@ -109,7 +126,7 @@ def _create_organization_sync(request, role_or_err, data):
         return JSONResponse(response_payload)
     except IntegrityError:
         if conn: conn.rollback()
-        return JSONResponse({"error": "Mã số thuế đã được đăng ký cho một tổ chức khác.", "code": "ORGANIZATION_TAX_CODE_EXISTS"}, status_code=409)
+        return JSONResponse({"error": "Tổ chức vừa được tạo đồng thời. Vui lòng thử lại.", "code": "ORGANIZATION_CREATE_CONFLICT"}, status_code=409)
     except Exception as exc:
         if conn: conn.rollback()
         return log_and_error(request, exc, "create_organization_api", "ORGANIZATION_CREATE_FAILED", "Không thể tạo tổ chức.")

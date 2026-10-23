@@ -404,6 +404,9 @@ export function renderManagerNhanVienPanel() {
   void import("./OrganizationInvitations.js")
     .then(({ renderOrganizationInvitations }) => renderOrganizationInvitations({ view: this }))
     .catch(() => {});
+  void import("./OrganizationVerification.js")
+    .then(({ renderOrganizationVerification }) => renderOrganizationVerification({ view: this }))
+    .catch(() => {});
   renderTablePagination(
     document.getElementById("manager-employees-pagination"),
     employeePage,

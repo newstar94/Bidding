@@ -1,6 +1,6 @@
 export const ADMIN_ROUTES = Object.freeze([
   ["/admin", "Tổng quan"], ["/admin/analytics", "Phân tích"],
-  ["/admin/organizations", "Tổ chức"], ["/admin/users", "Người dùng"],
+  ["/admin/organizations", "Tổ chức"], ["/admin/organization-verifications", "Xác minh tổ chức"], ["/admin/users", "Người dùng"],
   ["/admin/plans", "Gói dịch vụ"], ["/admin/subscriptions", "Đăng ký"],
   ["/admin/invoices", "Hóa đơn"], ["/admin/payments", "Thanh toán"],
   ["/admin/settings", "Cài đặt"], ["/admin/holidays", "Ngày nghỉ lễ"], ["/admin/environment", "Môi trường"],
@@ -10,7 +10,10 @@ export const ADMIN_ROUTES = Object.freeze([
 ]);
 export const ADMIN_NAV_GROUPS = Object.freeze([
   Object.freeze({ label: "Điều hành", paths: Object.freeze(["/admin", "/admin/analytics"]) }),
-  Object.freeze({ label: "Khách hàng", paths: Object.freeze(["/admin/organizations", "/admin/users"]) }),
+  Object.freeze({
+    label: "Khách hàng",
+    paths: Object.freeze(["/admin/organizations", "/admin/organization-verifications", "/admin/users"]),
+  }),
   Object.freeze({
     label: "Thương mại",
     paths: Object.freeze(["/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments"]),

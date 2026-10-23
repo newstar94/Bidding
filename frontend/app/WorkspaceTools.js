@@ -620,6 +620,12 @@ async function showPendingInvitations() {
     const item = element("li", "bf-deadline-item");
     const text = element("div", "bf-deadline-text");
     text.append(element("strong", "", invitation.organizationName));
+    // ADR 0094: lets the invitee tell a verified organization from a look-alike.
+    text.append(element(
+      "span",
+      invitation.organizationVerified ? "bf-invitation-verified" : "bf-invitation-unverified",
+      invitation.organizationVerified ? "Mã số thuế đã được xác minh" : "Tổ chức chưa xác minh mã số thuế",
+    ));
     text.append(element("span", "", `Người mời: ${invitation.inviterName || "Quản lý tổ chức"} · Tên hiển thị trong tổ chức: ${invitation.employeeName}`));
     text.append(element("small", "", `Hết hạn: ${new Date(invitation.expiresAt * 1000).toLocaleDateString("vi-VN")}`));
     const controls = element("div", "bf-deadline-controls");

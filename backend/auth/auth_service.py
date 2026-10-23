@@ -185,6 +185,7 @@ def get_user_organizations(cursor, user_id):
         """
         SELECT tc.id, tc.ten_to_chuc,
                tc.trang_thai AS organization_status,
+               tc.tax_code_status,
                tvtc.vai_tro_trong_to_chuc,
                sub.package_id, sub.status AS subscription_status,
                sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
@@ -253,6 +254,8 @@ def get_user_organizations(cursor, user_id):
                 "scope_type": "organization",
                 "role": membership_role,
                 "status": workspace_status,
+                # ADR 0094: a badge only; it never changes access.
+                "tax_code_verified": str(row['tax_code_status'] or '') == 'verified',
                 "subscription": subscription,
                 "entitlements": {
                     "word_export": export_enabled

@@ -30,6 +30,8 @@ export function normalizeOrganizations(payload = {}) {
         status: String(organization?.status || "active").trim().toLowerCase(),
         employee_name: String(organization?.employee_name || "").trim(),
         employee_phone: String(organization?.employee_phone || "").trim(),
+        // ADR 0094: a badge only; access never depends on it.
+        tax_code_verified: organization?.tax_code_verified === true,
         subscription: organization?.subscription && typeof organization.subscription === "object"
           ? { ...organization.subscription }
           : null,

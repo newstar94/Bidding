@@ -1043,6 +1043,38 @@ body[data-active-role="employee"] #header-profile-avatar.has-initials {
   background: var(--color-accent-soft, var(--primary-soft));
 }
 
+/* ADR 0094: tax-code verified organization badge. */
+.bf-org-verified {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--success);
+}
+
+.bf-org-verified svg {
+  width: 15px;
+  height: 15px;
+}
+
+.bf-verification-status {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--neutral-soft);
+}
+
+.bf-verification-success { background: var(--success-soft); }
+.bf-verification-warning { background: var(--warning-soft, var(--neutral-soft)); }
+
+.bf-verification-form {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+  margin-bottom: 8px;
+}
+
+.bf-verification-form .btn { justify-self: start; }
+
 .nav-btn.bf-nav-waiting::after,
 :is(.dropdown-org-btn, .dropdown-role-btn)[aria-busy="true"]::after,
 :is(.btn, .btn-excel-action, .btn-add-row, .btn-text)[aria-busy="true"]:not(:has(.anim-spin, .animate-spin, .loading-spinner))::after {

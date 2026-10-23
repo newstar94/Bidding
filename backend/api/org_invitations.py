@@ -388,7 +388,7 @@ def _my_invitations_sync(request, role):
             return _json({"invitations": []})
         rows = cursor.execute(
             """SELECT inv.id, inv.organization_id, inv.employee_name, inv.created_at, inv.expires_at,
-                      org.ten_to_chuc AS organization_name,
+                      org.ten_to_chuc AS organization_name, org.tax_code_status,
                       COALESCE(NULLIF(trim(tv.ten_nhan_su), ''), tk.ho_ten, tk.ten_dang_nhap) AS inviter_name
                  FROM organization_invitations AS inv
                  JOIN to_chuc AS org ON org.id = inv.organization_id AND org.trang_thai = 'active'
@@ -407,6 +407,7 @@ def _my_invitations_sync(request, role):
             "id": row["id"],
             "organizationId": row["organization_id"],
             "organizationName": row["organization_name"],
+            "organizationVerified": str(row["tax_code_status"] or "") == "verified",
             "inviterName": row["inviter_name"] or "",
             "employeeName": row["employee_name"],
             "createdAt": int(row["created_at"]),

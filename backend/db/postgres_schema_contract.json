@@ -2689,6 +2689,41 @@
       "table": "organization_invitations",
       "valid": true
     },
+    "idx_org_verification_org_created": {
+      "definition": "CREATE INDEX idx_org_verification_org_created ON $SCHEMA.organization_verification_requests USING btree (organization_id, created_at DESC)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
+    "idx_org_verification_pending": {
+      "definition": "CREATE UNIQUE INDEX idx_org_verification_pending ON $SCHEMA.organization_verification_requests USING btree (organization_id) WHERE (status = 'pending'::text)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
+    "idx_org_verification_requested_by": {
+      "definition": "CREATE INDEX idx_org_verification_requested_by ON $SCHEMA.organization_verification_requests USING btree (requested_by)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
+    "idx_org_verification_reviewed_by": {
+      "definition": "CREATE INDEX idx_org_verification_reviewed_by ON $SCHEMA.organization_verification_requests USING btree (reviewed_by) WHERE (reviewed_by IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
+    "idx_org_verification_status_created": {
+      "definition": "CREATE INDEX idx_org_verification_status_created ON $SCHEMA.organization_verification_requests USING btree (status, created_at)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
     "idx_organization_subscriptions_package": {
       "definition": "CREATE INDEX idx_organization_subscriptions_package ON $SCHEMA.organization_subscriptions USING btree (package_id)",
       "live": true,
@@ -3160,6 +3195,13 @@
     },
     "idx_to_chuc_owner_user": {
       "definition": "CREATE INDEX idx_to_chuc_owner_user ON $SCHEMA.to_chuc USING btree (owner_user_id) WHERE (owner_user_id IS NOT NULL)",
+      "live": true,
+      "ready": true,
+      "table": "to_chuc",
+      "valid": true
+    },
+    "idx_to_chuc_tax_code": {
+      "definition": "CREATE INDEX idx_to_chuc_tax_code ON $SCHEMA.to_chuc USING btree (ma_so_thue) WHERE ((ma_so_thue IS NOT NULL) AND (btrim(ma_so_thue) <> ''::text))",
       "live": true,
       "ready": true,
       "table": "to_chuc",
@@ -3662,6 +3704,13 @@
       "table": "organization_subscriptions",
       "valid": true
     },
+    "organization_verification_requests_pkey": {
+      "definition": "CREATE UNIQUE INDEX organization_verification_requests_pkey ON $SCHEMA.organization_verification_requests USING btree (organization_id, id)",
+      "live": true,
+      "ready": true,
+      "table": "organization_verification_requests",
+      "valid": true
+    },
     "partner_enrichment_jobs_organization_id_contractor_id_key": {
       "definition": "CREATE UNIQUE INDEX partner_enrichment_jobs_organization_id_contractor_id_key ON $SCHEMA.partner_enrichment_jobs USING btree (organization_id, contractor_id)",
       "live": true,
@@ -4033,8 +4082,8 @@
       "table": "billing_orders",
       "valid": true
     },
-    "uq_to_chuc_ma_so_thue": {
-      "definition": "CREATE UNIQUE INDEX uq_to_chuc_ma_so_thue ON $SCHEMA.to_chuc USING btree (ma_so_thue) WHERE ((ma_so_thue IS NOT NULL) AND (btrim(ma_so_thue) <> ''::text))",
+    "uq_to_chuc_verified_tax_code": {
+      "definition": "CREATE UNIQUE INDEX uq_to_chuc_verified_tax_code ON $SCHEMA.to_chuc USING btree (ma_so_thue) WHERE ((tax_code_status = 'verified'::text) AND (ma_so_thue IS NOT NULL) AND (btrim(ma_so_thue) <> ''::text))",
       "live": true,
       "ready": true,
       "table": "to_chuc",
@@ -4294,7 +4343,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 102,
+  "schemaVersion": 103,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -19454,6 +19503,231 @@
       "persistence": "p",
       "rowSecurity": false
     },
+    "organization_verification_requests": {
+      "columns": {
+        "content_type": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "created_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "note": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "organization_id": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "original_filename": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "requested_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "review_note": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "reviewed_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "reviewed_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "sha256": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "size_bytes": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "integer"
+        },
+        "status": {
+          "default": "'pending'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "storage_key": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "tax_code": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        }
+      },
+      "constraints": {
+        "fk_organization_verification_requests_1_900fddb1": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_organization_verification_requests_2_dc59c754": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (requested_by) REFERENCES tai_khoan(id) ON DELETE CASCADE",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "fk_organization_verification_requests_3_3d00527a": {
+          "deferrable": false,
+          "definition": "FOREIGN KEY (reviewed_by) REFERENCES tai_khoan(id) ON DELETE SET NULL",
+          "initiallyDeferred": false,
+          "kind": "f",
+          "validated": true
+        },
+        "organization_verification_requests_content_type_check": {
+          "deferrable": false,
+          "definition": "CHECK (content_type = ANY (ARRAY['application/pdf'::text, 'image/jpeg'::text, 'image/png'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_created_at_check": {
+          "deferrable": false,
+          "definition": "CHECK (created_at > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_note_check": {
+          "deferrable": false,
+          "definition": "CHECK (note IS NULL OR length(note) <= 1000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_organization_id_check": {
+          "deferrable": false,
+          "definition": "CHECK (organization_id <> ''::text)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_original_filename_check": {
+          "deferrable": false,
+          "definition": "CHECK (original_filename <> ''::text AND length(original_filename) <= 255)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_pkey": {
+          "deferrable": false,
+          "definition": "PRIMARY KEY (organization_id, id)",
+          "initiallyDeferred": false,
+          "kind": "p",
+          "validated": true
+        },
+        "organization_verification_requests_review_note_check": {
+          "deferrable": false,
+          "definition": "CHECK (review_note IS NULL OR length(review_note) <= 1000)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_sha256_check": {
+          "deferrable": false,
+          "definition": "CHECK (length(sha256) = 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_size_bytes_check": {
+          "deferrable": false,
+          "definition": "CHECK (size_bytes > 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'cancelled'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_storage_key_check": {
+          "deferrable": false,
+          "definition": "CHECK (storage_key <> ''::text AND length(storage_key) <= 255)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "organization_verification_requests_tax_code_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_code <> ''::text AND length(tax_code) <= 64)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        }
+      },
+      "persistence": "p",
+      "rowSecurity": false
+    },
     "partner_enrichment_jobs": {
       "columns": {
         "attempt_count": {
@@ -24976,6 +25250,34 @@
           "notNull": false,
           "type": "text"
         },
+        "tax_code_status": {
+          "default": "'unverified'::text",
+          "generated": "",
+          "identity": "",
+          "notNull": true,
+          "type": "text"
+        },
+        "tax_code_verification_method": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
+        "tax_code_verified_at": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "integer"
+        },
+        "tax_code_verified_by": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "text"
+        },
         "ten_to_chuc": {
           "default": null,
           "generated": "",
@@ -25018,6 +25320,20 @@
           "definition": "PRIMARY KEY (id)",
           "initiallyDeferred": false,
           "kind": "p",
+          "validated": true
+        },
+        "to_chuc_tax_code_status_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_code_status = ANY (ARRAY['unverified'::text, 'verified'::text]))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "to_chuc_tax_code_verification_method_check": {
+          "deferrable": false,
+          "definition": "CHECK (tax_code_verification_method IS NULL OR (tax_code_verification_method = ANY (ARRAY['legacy'::text, 'document'::text])))",
+          "initiallyDeferred": false,
+          "kind": "c",
           "validated": true
         },
         "to_chuc_trang_thai_check": {

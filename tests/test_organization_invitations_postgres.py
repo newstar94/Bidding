@@ -36,7 +36,7 @@ def invitation_db(monkeypatch):
     proxy = SimpleNamespace(get_connection=lambda: view)
     try:
         for ddl in (
-            "CREATE TEMP TABLE to_chuc (id TEXT PRIMARY KEY, ten_to_chuc TEXT, trang_thai TEXT DEFAULT 'active')",
+            "CREATE TEMP TABLE to_chuc (id TEXT PRIMARY KEY, ten_to_chuc TEXT, trang_thai TEXT DEFAULT 'active', tax_code_status TEXT DEFAULT 'unverified')",
             """CREATE TEMP TABLE tai_khoan (id TEXT PRIMARY KEY, email_norm TEXT, ho_ten TEXT,
                 ten_dang_nhap TEXT, vai_tro TEXT DEFAULT 'user', trang_thai TEXT DEFAULT 'active',
                 da_xac_minh INTEGER DEFAULT 1)""",
@@ -136,6 +136,7 @@ def test_only_the_invited_email_owner_can_accept_and_gets_default_permissions(in
 
     mine = _body(org_invitations._my_invitations_sync(_request("invitee"), SimpleNamespace(user_id="invitee")))
     assert [item["organizationName"] for item in mine["invitations"]] == ["Ban QLDA A"]
+    assert mine["invitations"][0]["organizationVerified"] is False
 
     accepted = org_invitations._respond_invitation_sync(
         _request("invitee"), SimpleNamespace(user_id="invitee"), invitation_id, True,
