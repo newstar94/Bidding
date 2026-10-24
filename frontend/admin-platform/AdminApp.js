@@ -210,6 +210,7 @@ async function renderRoute() {
   else if (route.path === "/admin/health") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminHealth", content, { signal: controller.signal });
   else if (route.path === "/admin/settings") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSettings", content, { signal: controller.signal });
   else if (route.path === "/admin/holidays") await loadAdminModule(() => import("./AdminHolidays.js"), "renderAdminHolidays", content, { signal: controller.signal });
+  else if (route.path === "/admin/business-profile") await loadAdminModule(() => import("./AdminBusinessProfile.js"), "renderAdminBusinessProfile", content, { signal: controller.signal });
   else if (route.path === "/admin/organization-verifications") await loadAdminModule(() => import("./AdminOrganizationVerifications.js"), "renderAdminOrganizationVerifications", content, { signal: controller.signal });
   else if (route.path === "/admin/environment") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminEnvironment", content, { signal: controller.signal });
   else if (route.path === "/admin/system/version") await loadAdminModule(() => import("./AdminOperations.js"), "renderAdminSystemVersion", content, { signal: controller.signal });

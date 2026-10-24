@@ -292,6 +292,7 @@ def test_email_registration_bootstraps_word_variables_before_commit(monkeypatch)
                 "password": "Strong-Unique-2026!",
                 "name": "Người dùng mới",
                 "email": "new.user@example.com",
+                "acceptLegal": True,
             }
 
     async def allow_rate_limit(*_args, **_kwargs):
@@ -310,6 +311,11 @@ def test_email_registration_bootstraps_word_variables_before_commit(monkeypatch)
         "ensure_personal_word_workspace",
         lambda _cursor, user_id: events.append(("word_variables_created", user_id)),
     )
+    monkeypatch.setattr(
+        otp_routes,
+        "record_legal_consent",
+        lambda _cursor, *, user_id, method, request: events.append(("legal_consent", user_id, method)),
+    )
 
     response = asyncio.run(otp_routes.register_api(Request()))
 
@@ -317,5 +323,6 @@ def test_email_registration_bootstraps_word_variables_before_commit(monkeypatch)
     assert events == [
         "account_inserted",
         ("word_variables_created", "user-new"),
+        ("legal_consent", "user-new", "registration_checkbox"),
         "committed",
     ]

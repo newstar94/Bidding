@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { withRouteFixtureNavigation } from "../../scripts/route_fixture_navigation.mjs";
+import { COOKIE_NOTICE_STORAGE_KEY, COOKIE_NOTICE_VERSION } from "../../frontend/shared/storageDisclosure.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const template = await readFile(join(root, "views/components/landing_page.html"), "utf8");
@@ -96,6 +97,8 @@ async function settle(page) {
 
 async function loadLanding(width = 1280, { baseline = false, hash = "", browserOverride } = {}) {
   const context = await (browserOverride || browser).newContext({ viewport: { width, height: 800 }, reducedMotion: "reduce" });
+  // The fixed storage disclosure (ADR 0095) is not part of the layout under test.
+  await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [COOKIE_NOTICE_STORAGE_KEY, COOKIE_NOTICE_VERSION]);
   try {
   const page = await context.newPage();
   const errors = [];

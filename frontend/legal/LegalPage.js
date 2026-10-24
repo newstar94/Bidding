@@ -1,5 +1,7 @@
 import { APP_DEBUG } from "../app/appConfig.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
+import { loadBusinessProfile } from "../shared/businessProfile.js";
+import { installCookieNotice } from "../shared/storageDisclosure.js";
 
 const LEGAL_STYLESHEET_URL = new URL("../../views/css/legal.css", import.meta.url).pathname;
 
@@ -7,7 +9,7 @@ export function isLegalPath(pathname = window.location.pathname) {
   return pathname === "/legal";
 }
 
-const LEGAL_PANEL_IDS = ["terms", "privacy", "security"];
+const LEGAL_PANEL_IDS = ["terms", "privacy", "security", "cookies", "refund"];
 
 function panelIdFromHash(hash = window.location.hash) {
   const candidate = String(hash || "").replace(/^#/, "");
@@ -95,4 +97,6 @@ export async function bootstrapLegalPage() {
     node.textContent = String(new Date().getFullYear());
   });
   installLegalTabs();
+  void loadBusinessProfile(document);
+  installCookieNotice(document);
 }

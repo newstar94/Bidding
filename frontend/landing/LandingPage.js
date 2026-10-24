@@ -572,6 +572,8 @@ export async function bootstrapLandingPage(session = { valid: false }) {
   if (document.documentElement.dataset.trialFullAccess !== "true") {
     void loadPublicPackages();
   }
+  void loadBusinessProfile(document);
+  installCookieNotice(document);
 }
 import { APP_DEBUG } from "../app/appConfig.js";
 import {
@@ -581,6 +583,8 @@ import {
   visibleOffersForOwner,
 } from "../commercial-policy/PublicCommercialCatalog.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
+import { loadBusinessProfile } from "../shared/businessProfile.js";
+import { installCookieNotice } from "../shared/storageDisclosure.js";
 import { createLandingSvgIcon, renderLandingIcons } from "./landingIcons.js";
 import {
   COMMERCIAL_GROUPS,

@@ -38,6 +38,10 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import replace_user_session
+from backend.auth.legal_consent import (
+    CONSENT_METHOD_GOOGLE_SIGN_IN_NOTICE,
+    record_legal_consent,
+)
 from backend.auth.email_delivery_service import (
     create_email_delivery,
     deliver_email_once,
@@ -346,6 +350,14 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
                 metadata={"email": email, "username": None},
                 cursor=cursor,
                 required=True,
+            )
+            # The Google button sits next to the clickwrap notice; a returning
+            # user signs in through the same button, so it is not a checkbox.
+            record_legal_consent(
+                cursor,
+                user_id=new_id,
+                method=CONSENT_METHOD_GOOGLE_SIGN_IN_NOTICE,
+                request=request,
             )
 
 

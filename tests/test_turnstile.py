@@ -343,6 +343,7 @@ def _enable_local_turnstile(monkeypatch):
                 "password": "Strong-Unique-2026!",
                 "name": "Người dùng mới",
                 "email": "new.user@example.com",
+                "acceptLegal": True,
             },
         ),
         ("resend_code_api", {"username": "newuser2026"}),

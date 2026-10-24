@@ -668,6 +668,9 @@ REGISTRATION_OTP_MAX_FAILURES=5
 UNVERIFIED_ACCOUNT_RELEASE_HOURS=72
 # Optional override of the holiday calendar file edited from /admin/holidays.
 # HOLIDAYS_FILE=/opt/biddingflow/current/holidays.json
+# ADR 0095: optional override of the public business profile edited from
+# /admin/business-profile (default: $BIDDING_DATA_DIR/business_profile.json).
+# BUSINESS_PROFILE_FILE=/var/lib/biddingflow/business_profile.json
 
 # ADR 0093 organization invitations.
 ORGANIZATION_INVITATION_TTL_HOURS=168

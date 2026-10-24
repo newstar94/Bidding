@@ -68,7 +68,7 @@ def _reference_data_max_age(path):
 
     if path in {"/api/address/provinces"} or path.startswith("/api/address/wards/"):
         return 86_400
-    if path in {"/api/holidays", "/api/public/packages"}:
+    if path in {"/api/holidays", "/api/public/packages", "/api/public/business-profile"}:
         return 300
     return 0
 

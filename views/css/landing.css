@@ -4089,7 +4089,8 @@ html[data-bf-shell="landing"] body {
 .landing-feature:not(.landing-feature-dark) > span,
 .landing-feature-wide:not(.landing-feature-dark) .landing-feature-copy > span,
 .landing-pricing-note,
-.landing-footer-inner > p {
+.landing-footer-inner > p,
+.landing-footer-identity > p {
   color: var(--landing-muted);
 }
 
@@ -4384,5 +4385,47 @@ html[data-bf-shell="landing"] body {
   .landing-pricing-periods button {
     flex: 1;
     padding-inline: 0.75rem;
+  }
+}
+
+/* Operator identity in the footer (ADR 0095). */
+.landing-footer-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.landing-footer .business-profile {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 14px;
+  max-width: 640px;
+  color: var(--landing-ink);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.landing-footer .business-profile-name {
+  flex-basis: 100%;
+}
+
+.landing-footer .business-profile a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .landing-footer-identity {
+    align-items: flex-start;
+  }
+
+  .landing-footer .business-profile {
+    justify-content: flex-start;
+    text-align: left;
   }
 }

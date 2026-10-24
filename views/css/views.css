@@ -1745,6 +1745,44 @@ table th {
 .auth-legal-consent + .btn-auth-submit {
   margin-top: 12px;
 }
+.auth-purpose-note {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.auth-purpose-note a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: underline;
+}
+.auth-legal-consent-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 4px 10px;
+  margin-bottom: 0;
+  text-align: left;
+}
+.auth-legal-consent-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.auth-legal-consent-check label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.55;
+  cursor: pointer;
+}
+.auth-legal-consent-check .auth-field-error {
+  grid-column: 2;
+  margin: 0;
+}
 .auth-turnstile {
   display: grid;
   width: 100%;

@@ -1,0 +1,38 @@
+<section class="legal-section" id="cookies" role="tabpanel" aria-labelledby="tab-cookies" tabindex="0" data-legal-panel="cookies" hidden>
+    <span class="legal-section-number">04 / 05</span>
+    <h2 id="cookies-title">Chính sách cookie</h2>
+    <p class="legal-section-intro">Trang này liệt kê cookie và bộ nhớ trình duyệt mà BiddingFlow sử dụng. Ứng dụng chỉ dùng cookie cần thiết để vận hành; không dùng cookie quảng cáo hoặc công cụ phân tích của bên thứ ba.</p>
+
+    <section class="legal-clause">
+        <h3><span>01</span>Cookie là gì</h3>
+        <p>Cookie là tệp dữ liệu nhỏ mà trang web lưu trong trình duyệt để nhận biết phiên làm việc. Bộ nhớ trình duyệt (localStorage, IndexedDB) có chức năng tương tự nhưng chỉ được đọc bởi chính ứng dụng trên thiết bị của bạn.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>02</span>Cookie cần thiết của BiddingFlow</h3>
+        <ul>
+            <li><strong>session_token</strong>: duy trì phiên đăng nhập. Cookie được đánh dấu HttpOnly nên mã JavaScript không đọc được; hết hạn sau 12 giờ, hoặc 30 ngày khi bạn chọn “Ghi nhớ đăng nhập”, và bị xóa khi đăng xuất.</li>
+            <li><strong>csrf_token</strong>: chống giả mạo yêu cầu (CSRF) cho các thao tác ghi dữ liệu. Cookie tồn tại trong phiên trình duyệt.</li>
+        </ul>
+        <p>Hai cookie này chỉ được gửi tới tên miền của BiddingFlow, dùng thuộc tính SameSite=Lax và thuộc tính Secure khi truy cập qua HTTPS.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>03</span>Bộ nhớ trình duyệt</h3>
+        <ul>
+            <li><strong>localStorage</strong>: lưu lựa chọn ghi nhớ đăng nhập, mã và tên tài khoản đăng nhập gần nhất, thời điểm hoạt động gần nhất để tự đăng xuất khi không sử dụng, vai trò đang làm việc, trạng thái thu gọn thanh bên và việc bạn đã đóng thông báo cookie.</li>
+            <li><strong>IndexedDB (BiddingFlowDB)</strong>: lưu bản sao dữ liệu làm việc và các thay đổi chưa đồng bộ để ứng dụng tiếp tục hoạt động khi kết nối mạng gián đoạn.</li>
+        </ul>
+        <p>Dữ liệu này nằm trên thiết bị của bạn. Trên máy dùng chung, hãy đăng xuất sau khi sử dụng và xóa dữ liệu trang web trong cài đặt trình duyệt khi cần.</p>
+    </section>
+    <section class="legal-clause">
+        <h3><span>04</span>Cookie của dịch vụ bên thứ ba</h3>
+        <ul>
+            <li><strong>Cloudflare</strong>: lưu lượng truy cập đi qua mạng Cloudflare. Cloudflare có thể đặt cookie kỹ thuật (ví dụ <code>__cf_bm</code>) để phát hiện truy cập tự động.</li>
+            <li><strong>Cloudflare Turnstile</strong>: khung xác minh chống bot ở các biểu mẫu đăng nhập, đăng ký và khôi phục mật khẩu.</li>
+            <li><strong>Google</strong>: khi bạn chọn “Tiếp tục với Google”, Google có thể dùng cookie trên tên miền của Google theo chính sách của Google.</li>
+        </ul>
+    </section>
+    <section class="legal-clause">
+        <h3><span>05</span>Quản lý cookie</h3>
+        <p>Các cookie nêu trên là cần thiết để đăng nhập và bảo vệ tài khoản, vì vậy không cần lựa chọn đồng ý riêng. Nếu trình duyệt chặn chúng, bạn sẽ không đăng nhập được. Trường hợp BiddingFlow sử dụng cookie phân tích hoặc quảng cáo trong tương lai, chúng tôi sẽ hỏi ý kiến của bạn trước khi đặt cookie và cập nhật trang này.</p>
+    </section>
+</section>

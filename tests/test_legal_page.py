@@ -59,24 +59,27 @@ def test_public_legal_route_is_registered_without_an_auth_dependency():
     assert legal_routes[0].endpoint is app_module.index
 
 
-def test_legal_shell_contains_three_independent_sections_and_valid_anchors(monkeypatch):
+def test_legal_shell_contains_five_independent_sections_and_valid_anchors(monkeypatch):
     legal_html = app_module._page_shell(_compiled_shell(monkeypatch), "/legal")
     parser = _LegalMarkupParser()
     parser.feed(legal_html)
 
-    assert {"terms", "privacy", "security"}.issubset(parser.ids)
+    assert {"terms", "privacy", "security", "cookies", "refund"}.issubset(parser.ids)
     assert "/legal#terms" not in parser.hrefs
-    assert parser.hrefs.count("#terms") >= 1
-    assert parser.hrefs.count("#privacy") >= 1
-    assert parser.hrefs.count("#security") >= 1
-    assert legal_html.count('role="tab"') == 3
-    assert legal_html.count('role="tabpanel"') == 3
+    for anchor in ("#terms", "#privacy", "#security", "#cookies", "#refund"):
+        assert parser.hrefs.count(anchor) >= 1
+    assert legal_html.count('role="tab"') == 5
+    assert legal_html.count('role="tabpanel"') == 5
     assert 'role="tablist"' in legal_html
     assert 'id="tab-terms"' in legal_html
     assert 'aria-controls="privacy"' in legal_html
     assert 'data-legal-panel="security" hidden' in legal_html
+    assert 'data-legal-panel="cookies" hidden' in legal_html
+    assert 'data-legal-panel="refund" hidden' in legal_html
     assert parser.headings.count("h1") == 1
-    assert parser.headings.count("h2") == 3
+    assert parser.headings.count("h2") == 5
+    assert "INCLUDE ERROR" not in legal_html
+    assert 'data-business-profile' in legal_html
     assert "landing-page" not in legal_html
     assert 'class="app-container"' not in legal_html
     assert 'id="auth-overlay"' not in legal_html
@@ -123,10 +126,37 @@ def test_workspace_response_keeps_initial_route_preload(monkeypatch):
 def test_registration_and_google_onboarding_show_all_legal_links():
     auth_markup = (PROJECT_ROOT / "views" / "components" / "auth_overlay.html").read_text(encoding="utf-8")
 
-    for href in ("/legal#terms", "/legal#privacy", "/legal#security"):
+    for href in ("/legal#terms", "/legal#security", "/legal#cookies", "/legal#refund"):
         assert auth_markup.count(f'href="{href}"') == 2
-    assert "Bằng việc nhấn nút Đăng ký" in auth_markup
+    # The registration form also links privacy from its purpose notice.
+    assert auth_markup.count('href="/legal#privacy"') == 3
+    assert 'id="register-accept-legal" required' in auth_markup
+    assert '<label for="register-accept-legal">Tôi đã đọc, hiểu và đồng ý' in auth_markup
+    assert 'id="register-purpose-note"' in auth_markup
     assert "Với việc đăng nhập bằng Google" in auth_markup
+
+
+def test_legal_policy_version_matches_recorded_consent_version():
+    from backend.auth.legal_consent import LEGAL_DOCUMENTS, LEGAL_POLICY_VERSION
+
+    shell = (PROJECT_ROOT / "views" / "components" / "legal_page.html").read_text(encoding="utf-8")
+    notice = (PROJECT_ROOT / "frontend" / "shared" / "storageDisclosure.js").read_text(encoding="utf-8")
+    assert f'<time datetime="{LEGAL_POLICY_VERSION}">' in shell
+    assert f"<span data-legal-policy-version>{LEGAL_POLICY_VERSION}</span>" in shell
+    assert f'COOKIE_NOTICE_VERSION = "{LEGAL_POLICY_VERSION}"' in notice
+    for document in LEGAL_DOCUMENTS:
+        assert f'data-legal-tab="{document}"' in shell
+
+
+def test_public_footers_include_the_business_profile_block():
+    for component in ("landing_page.html", "legal_page.html"):
+        markup = (PROJECT_ROOT / "views" / "components" / component).read_text(encoding="utf-8")
+        assert "<!-- INCLUDE: views/components/business_profile_footer.html -->" in markup
+    block = (PROJECT_ROOT / "views" / "components" / "business_profile_footer.html").read_text(encoding="utf-8")
+    assert "data-business-profile" in block
+    # No invented identity: every unconfigured field shows a neutral placeholder.
+    assert re.findall(r"\b\d{10}\b", block) == []
+    assert block.count("Đang cập nhật") == 5
 
 
 def test_public_footer_links_to_legal_page():

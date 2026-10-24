@@ -608,3 +608,40 @@ html[data-bf-shell="workspace"] .legal-page {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Operator identity in the footer (ADR 0095). */
+.legal-footer-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-block: 16px;
+}
+
+.legal-footer-identity p {
+  margin: 0;
+}
+
+.legal-footer .business-profile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  max-width: 640px;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.6;
+}
+
+.legal-footer .business-profile-name {
+  flex-basis: 100%;
+}
+
+.legal-footer .business-profile a {
+  min-height: 0;
+  text-decoration: underline;
+}
+
+.legal-footer nav {
+  flex-wrap: wrap;
+}

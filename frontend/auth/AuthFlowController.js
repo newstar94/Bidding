@@ -51,8 +51,10 @@ export function resolveSessionRequestedRole({ previousUser, previousRole, sessio
   return sameAccount ? previousRole || null : null;
 }
 
-export function createRegistrationPayload({ username, password, name, email, turnstileToken = "" }) {
-  const payload = { username, password, name, email };
+export const LEGAL_CONSENT_REQUIRED_MESSAGE = "Vui lòng đánh dấu đồng ý với Điều khoản sử dụng và các chính sách trước khi đăng ký.";
+
+export function createRegistrationPayload({ username, password, name, email, acceptLegal = false, turnstileToken = "" }) {
+  const payload = { username, password, name, email, acceptLegal: acceptLegal === true };
   if (turnstileToken) payload.turnstileToken = turnstileToken;
   return payload;
 }
@@ -204,6 +206,7 @@ export function setupAuth() {
   const registerConfirmPasswordInput = document.getElementById("register-confirm-password");
   const registerConfirmPasswordError = document.getElementById("register-confirm-password-error");
   const registerUsernameInput = document.getElementById("register-username");
+  const registerAcceptLegalInput = document.getElementById("register-accept-legal");
   let resetToken = window.location.pathname === "/reset-password"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || ""
     : "";
@@ -518,6 +521,14 @@ export function setupAuth() {
       }
     };
     registerUsernameInput.addEventListener("input", syncUsernameValidity);
+    registerAcceptLegalInput?.addEventListener("change", () => {
+      if (registerAcceptLegalInput.checked) setValidationError(registerAcceptLegalInput, "");
+    });
+    formRegister.addEventListener("reset", () => {
+      queueMicrotask(() => {
+        if (registerAcceptLegalInput) setValidationError(registerAcceptLegalInput, "");
+      });
+    });
     registerUsernameInput.addEventListener("blur", syncUsernameValidity);
     formRegister.addEventListener("reset", () => {
       queueMicrotask(() => {
@@ -732,6 +743,11 @@ export function setupAuth() {
       registerConfirmPasswordInput?.focus();
       return;
     }
+    if (registerAcceptLegalInput && !registerAcceptLegalInput.checked) {
+      setValidationError(registerAcceptLegalInput, LEGAL_CONSENT_REQUIRED_MESSAGE);
+      focusInvalidControl(registerAcceptLegalInput);
+      return;
+    }
     try {
       const challenge = await requireTurnstileToken("register");
       if (challenge.enabled && !challenge.token) {
@@ -747,6 +763,7 @@ export function setupAuth() {
             password,
             name: fullname,
             email,
+            acceptLegal: registerAcceptLegalInput?.checked === true,
             turnstileToken: challenge.token
           }))
         });

@@ -31,6 +31,11 @@ from backend.auth.identity import (
     normalize_username,
 )
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
+from backend.auth.legal_consent import (
+    CONSENT_METHOD_REGISTRATION_CHECKBOX,
+    LEGAL_CONSENT_REQUIRED_MESSAGE,
+    record_legal_consent,
+)
 from backend.auth.password_reset_service import (
     InvalidResetToken,
     create_password_reset,
@@ -118,7 +123,7 @@ def _database_write_unavailable_response():
     response.headers["Retry-After"] = "1"
     return response
 
-def _create_unverified_account(*, username, password_hash, name, role, email, code):
+def _create_unverified_account(*, username, password_hash, name, role, email, code, request=None):
     """Registration transaction (database write lane); returns a rejection or None."""
     conn = database.get_connection()
     try:
@@ -181,6 +186,12 @@ def _create_unverified_account(*, username, password_hash, name, role, email, co
             )
             clear_rate_limit_buckets(cursor, _otp_failure_bucket(reclaim_id))
             ensure_personal_word_workspace(cursor, reclaim_id)
+            record_legal_consent(
+                cursor,
+                user_id=reclaim_id,
+                method=CONSENT_METHOD_REGISTRATION_CHECKBOX,
+                request=request,
+            )
             conn.commit()
             return None
 
@@ -194,6 +205,12 @@ def _create_unverified_account(*, username, password_hash, name, role, email, co
             )
         )
         ensure_personal_word_workspace(cursor, user_uuid)
+        record_legal_consent(
+            cursor,
+            user_id=user_uuid,
+            method=CONSENT_METHOD_REGISTRATION_CHECKBOX,
+            request=request,
+        )
         conn.commit()
         return None
     except BaseException:
@@ -220,9 +237,15 @@ async def register_api(request):
             "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
             "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
             "turnstileToken": {"type": "string", "max_length": 2048},
+            "acceptLegal": {"type": "boolean", "required": True},
         })
         if invalid:
             return invalid
+        if data.get("acceptLegal") is not True:
+            return JSONResponse(
+                {"error": LEGAL_CONSENT_REQUIRED_MESSAGE, "code": "LEGAL_CONSENT_REQUIRED"},
+                status_code=400,
+            )
         challenge_error = await enforce_turnstile(
             request,
             data,
@@ -280,6 +303,7 @@ async def register_api(request):
             role=role,
             email=email,
             code=code,
+            request=request,
         )
         if rejection is not None:
             return rejection

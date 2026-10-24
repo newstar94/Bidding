@@ -1,4 +1,5 @@
 import * as Auth from "./AuthController.js";
+import { installCookieNotice } from "../shared/storageDisclosure.js";
 const STORAGE_KEYS = {
   CHUDAUTU: "bf_chudautu",
   NHATHAU: "bf_nhathau",
@@ -79,5 +80,6 @@ ${message}`);
   Object.assign(controller, Auth);
   setAppController(controller);
   controller.setupAuth();
+  installCookieNotice(document);
 }
 import { setAppController } from "../app/controllerRef.js";

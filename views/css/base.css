@@ -296,3 +296,71 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Public-page cookie notice (ADR 0095). */
+.bf-storage-disclosure {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.bf-storage-disclosure-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.bf-storage-disclosure-text a {
+  color: var(--brand-strong);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.bf-storage-disclosure-accept {
+  flex: none;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--surface);
+  background: var(--brand-strong);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bf-storage-disclosure-accept:hover {
+  background: var(--role-manager-strong);
+}
+
+.bf-storage-disclosure-accept:focus-visible,
+.bf-storage-disclosure-text a:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .bf-storage-disclosure {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media print {
+  .bf-storage-disclosure {
+    display: none;
+  }
+}

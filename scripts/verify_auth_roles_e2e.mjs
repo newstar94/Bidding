@@ -901,6 +901,7 @@ try {
       password,
       name: "Registered E2E",
       email: registerEmail,
+      acceptLegal: true,
       ...registrationChallenge,
     },
   });

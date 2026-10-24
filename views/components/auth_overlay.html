@@ -98,7 +98,7 @@
             </div>
             <div id="google-signin-status" class="google-signin-status" role="status" aria-live="polite" hidden></div>
 
-            <p class="auth-legal-consent auth-legal-consent-oauth">Với việc đăng nhập bằng Google, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a>.</p>
+            <p class="auth-legal-consent auth-legal-consent-oauth">Với việc đăng nhập bằng Google, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a>, <a href="/legal#security">Chính sách bảo mật</a>, <a href="/legal#cookies">Chính sách cookie</a> và <a href="/legal#refund">Chính sách hoàn tiền</a>.</p>
 
             <div class="auth-footer-links">
                 <a href="#" id="link-show-register" class="auth-mobile-switch-link">Đăng ký tài khoản</a>
@@ -113,6 +113,7 @@
         <form id="form-auth-register" class="auth-form-pane bf-s-65d1f1c3d7" novalidate>
             <h3 class="auth-title" id="auth-register-title">Đăng ký thành viên</h3>
             <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
+            <p class="auth-purpose-note" id="register-purpose-note">Tên đăng nhập, họ tên và email chỉ được dùng để tạo tài khoản, gửi mã xác thực, thông báo bảo mật và hỗ trợ bạn. Xem <a href="/legal#privacy">Chính sách quyền riêng tư</a>.</p>
             <div id="register-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
             <div id="register-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -179,7 +180,12 @@
                 <p id="register-confirm-password-error" class="auth-field-error" role="status"
                     aria-live="polite" hidden></p>
             </div>
-            <p class="auth-legal-consent">Bằng việc nhấn nút Đăng ký, bạn xác nhận đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a> và <a href="/legal#security">Chính sách bảo mật</a> của chúng tôi.</p>
+            <div class="form-group auth-legal-consent auth-legal-consent-check">
+                <input type="checkbox" id="register-accept-legal" required
+                    aria-describedby="register-accept-legal-error register-error">
+                <label for="register-accept-legal">Tôi đã đọc, hiểu và đồng ý với <a href="/legal#terms">Điều khoản sử dụng</a>, <a href="/legal#privacy">Chính sách quyền riêng tư</a>, <a href="/legal#security">Chính sách bảo mật</a>, <a href="/legal#cookies">Chính sách cookie</a> và <a href="/legal#refund">Chính sách hoàn tiền</a>.</label>
+                <p id="register-accept-legal-error" class="auth-field-error" role="status" aria-live="polite" hidden></p>
+            </div>
 
             <div class="auth-turnstile" data-turnstile-action="register" hidden>
                 <div id="turnstile-register-widget" class="auth-turnstile-widget"></div>

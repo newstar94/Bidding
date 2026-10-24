@@ -82,6 +82,12 @@ def auth_db(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_service, "_get_rate_limit_database", lambda: database)
     monkeypatch.setattr(otp_routes, "database", database)
     monkeypatch.setattr(otp_routes, "ensure_personal_word_workspace", lambda *_args: None)
+    database.consents = []
+    monkeypatch.setattr(
+        otp_routes,
+        "record_legal_consent",
+        lambda _cursor, **kwargs: database.consents.append(kwargs),
+    )
     return database
 
 
@@ -203,6 +209,10 @@ def test_abandoned_unverified_registration_can_be_reclaimed(auth_db):
     rows = connection.execute("SELECT id, mat_khau, ho_ten FROM tai_khoan").fetchall()
     connection.close()
     assert [tuple(row) for row in rows] == [("u-1", "new-hash", "Owner")]
+    # The reclaimed account belongs to a new registrant, who consents anew.
+    assert [(entry["user_id"], entry["method"]) for entry in auth_db.consents] == [
+        ("u-1", "registration_checkbox"),
+    ]
 
 
 def test_recent_unverified_registration_still_conflicts(auth_db):
@@ -212,6 +222,7 @@ def test_recent_unverified_registration_still_conflicts(auth_db):
         email="other@example.com", code="654321",
     )
     assert rejection.status_code == 409
+    assert auth_db.consents == []
 
 
 # --------------------------------------------------------------------------

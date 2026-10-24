@@ -12,7 +12,7 @@ test("admin router recognizes every required deep link", () => {
   const required = [
     "/admin", "/admin/analytics", "/admin/organizations", "/admin/organization-verifications", "/admin/users",
     "/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments",
-    "/admin/settings", "/admin/holidays", "/admin/environment", "/admin/audit", "/admin/health",
+    "/admin/settings", "/admin/holidays", "/admin/business-profile", "/admin/environment", "/admin/audit", "/admin/health",
     "/admin/security", "/admin/system/jobs", "/admin/system/sync", "/admin/system/version",
   ];
   assert.deepEqual(ADMIN_ROUTES.map(([path]) => path), required);
@@ -45,7 +45,7 @@ test("admin information architecture groups every route exactly once", () => {
     "/admin/analytics",
     "/admin/organizations", "/admin/organization-verifications", "/admin/users",
     "/admin/plans", "/admin/subscriptions", "/admin/invoices", "/admin/payments",
-    "/admin/settings", "/admin/holidays", "/admin/system/jobs", "/admin/system/sync",
+    "/admin/settings", "/admin/holidays", "/admin/business-profile", "/admin/system/jobs", "/admin/system/sync",
     "/admin/audit", "/admin/security",
     "/admin/environment", "/admin/health", "/admin/system/version",
   ]);

@@ -16,6 +16,7 @@ function assertAdminPath(path, method = "GET") {
   const platformPath = verb === "GET" && /^\/api\/admin(?:\/|$)/u.test(value);
   const approvedEnvironmentUpdate = verb === "POST" && value === "/api/admin/environment";
   const approvedHolidayUpdate = verb === "POST" && value === "/api/admin/holidays";
+  const approvedBusinessProfileUpdate = verb === "POST" && value === "/api/admin/business-profile";
   const approvedVerificationReview = verb === "POST"
     && /^\/api\/admin\/organization-verifications\/[A-Za-z0-9-]{8,64}\/(?:approve|reject)$/u.test(value);
   const approvedJobRetry = verb === "POST"
@@ -43,7 +44,7 @@ function assertAdminPath(path, method = "GET") {
     && value === "/api/organizations/subscription";
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
   const approvedActiveRoleTransition = verb === "POST" && value === "/api/auth/active-role";
-  const approved = platformPath || approvedEnvironmentUpdate || approvedHolidayUpdate || approvedVerificationReview || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
+  const approved = platformPath || approvedEnvironmentUpdate || approvedHolidayUpdate || approvedBusinessProfileUpdate || approvedVerificationReview || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
     || commercialDraftItem || commercialDraftArchive || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
     || approvedUserAccessSettings

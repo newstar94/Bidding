@@ -1031,6 +1031,7 @@ from backend.procurement_import.routes import procurement_import_routes
 from backend.procurement_lookup.routes import procurement_lookup_routes
 from backend.deadlines.routes import deadline_routes
 from backend.holidays.routes import holiday_admin_routes
+from backend.business_profile.routes import business_profile_routes
 from backend.api.org_invitations import organization_invitation_routes
 from backend.api.org_verification import organization_verification_routes
 
@@ -1368,6 +1369,7 @@ routes = [
     *procurement_lookup_routes(Route),
     *deadline_routes(Route),
     *holiday_admin_routes(Route),
+    *business_profile_routes(Route),
     *organization_invitation_routes(Route),
     *organization_verification_routes(Route),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET", "POST"]),

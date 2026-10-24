@@ -21,8 +21,8 @@
             <div class="legal-container legal-hero-inner">
                 <p class="legal-eyebrow"><span aria-hidden="true"></span>Thông tin pháp lý BiddingFlow</p>
                 <h1 id="legal-page-title">Điều khoản và chính sách</h1>
-                <p class="legal-lead">Thông tin về điều kiện sử dụng, cách dữ liệu được xử lý và các biện pháp bảo mật đang áp dụng cho nền tảng quản lý đấu thầu BiddingFlow.</p>
-                <p class="legal-updated"><i data-lucide="calendar-days" aria-hidden="true"></i><strong>Cập nhật gần nhất:</strong> <time datetime="2026-10-07">07/10/2026</time></p>
+                <p class="legal-lead">Thông tin về điều kiện sử dụng, cách dữ liệu được xử lý, cookie, hoàn tiền và các biện pháp bảo mật đang áp dụng cho nền tảng quản lý đấu thầu BiddingFlow.</p>
+                <p class="legal-updated"><i data-lucide="calendar-days" aria-hidden="true"></i><strong>Cập nhật gần nhất:</strong> <time datetime="2026-10-24">24/10/2026</time> · <strong>Phiên bản:</strong> <span data-legal-policy-version>2026-10-24</span></p>
             </div>
         </section>
 
@@ -38,6 +38,12 @@
                     <button class="legal-tab" id="tab-security" type="button" role="tab" aria-selected="false" aria-controls="security" tabindex="-1" data-legal-tab="security">
                         <span class="legal-tab-copy"><strong>Chính sách bảo mật</strong></span>
                     </button>
+                    <button class="legal-tab" id="tab-cookies" type="button" role="tab" aria-selected="false" aria-controls="cookies" tabindex="-1" data-legal-tab="cookies">
+                        <span class="legal-tab-copy"><strong>Chính sách cookie</strong></span>
+                    </button>
+                    <button class="legal-tab" id="tab-refund" type="button" role="tab" aria-selected="false" aria-controls="refund" tabindex="-1" data-legal-tab="refund">
+                        <span class="legal-tab-copy"><strong>Chính sách hoàn tiền</strong></span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -47,6 +53,8 @@
                 <!-- INCLUDE: views/legal/terms.html -->
                 <!-- INCLUDE: views/legal/privacy.html -->
                 <!-- INCLUDE: views/legal/security.html -->
+                <!-- INCLUDE: views/legal/cookies.html -->
+                <!-- INCLUDE: views/legal/refund.html -->
             </article>
             <p class="legal-document-note"><i data-lucide="info" aria-hidden="true"></i>Nội dung áp dụng cho phiên bản hiện tại của BiddingFlow.</p>
         </div>
@@ -54,11 +62,16 @@
 
     <footer class="legal-footer">
         <div class="legal-container legal-footer-inner">
-            <p>© <span data-legal-year>2026</span> BiddingFlow.</p>
+            <div class="legal-footer-identity">
+                <p>© <span data-legal-year>2026</span> BiddingFlow.</p>
+                <!-- INCLUDE: views/components/business_profile_footer.html -->
+            </div>
             <nav aria-label="Liên kết pháp lý">
                 <a href="#terms">Điều khoản sử dụng</a>
                 <a href="#privacy">Quyền riêng tư</a>
                 <a href="#security">Bảo mật</a>
+                <a href="#cookies">Cookie</a>
+                <a href="#refund">Hoàn tiền</a>
             </nav>
         </div>
     </footer>

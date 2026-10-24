@@ -10,7 +10,7 @@ import pytest
 from cryptography.fernet import Fernet
 from starlette.requests import Request
 
-from backend.auth import auth_helper, auth_routes, auth_service, google_auth_routes
+from backend.auth import auth_helper, auth_routes, auth_service, google_auth_routes, legal_consent
 from backend.auth.email_delivery_service import _decrypt
 from backend.auth.password_reset_service import (
     InvalidResetToken,
@@ -164,6 +164,7 @@ def auth_database(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_service, "_get_rate_limit_database", lambda: database)
     monkeypatch.setattr(auth_routes, "log_audit", audit)
     monkeypatch.setattr(google_auth_routes, "log_audit", audit)
+    monkeypatch.setattr(legal_consent, "log_audit", audit)
     monkeypatch.setattr(auth_routes, "log_error", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(google_auth_routes, "log_error", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(auth_routes, "disconnect_user_websockets", lambda *_args: None)
@@ -304,6 +305,9 @@ def test_google_new_account_still_gets_password_setup_and_session(auth_database)
     assert json.loads(response.body)["password_setup_queued"] is True
     assert _setup_token_from_outbox(auth_database)
     assert session_invalid_reason(load_session_user(auth_database, _response_token(response))) is None
+    assert {"action": "legal.consent_accepted", "user_id": account["id"]} in auth_database.rows(
+        "SELECT action, user_id FROM audit_events"
+    )
 
 
 def test_google_promotion_setup_delivery_uses_matching_canonical_email(auth_database):
