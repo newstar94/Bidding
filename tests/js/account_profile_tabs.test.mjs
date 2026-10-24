@@ -24,6 +24,13 @@ async function fixture(callback, { subscriptionSummary = summary, failSummary = 
         response.end(`<!doctype html><html lang="vi"${trial ? ' data-trial-full-access="true"' : ""}><head><link rel="stylesheet" href="/views/css/app.css"><title>Tài khoản</title></head><body><main style="padding:32px;overflow:auto;height:100vh">${template.replace('class="tab-pane"', 'class="tab-pane active"')}</main></body></html>`);
         return;
       }
+      // ADR 0094 loads verification independently of the lazy billing tabs.
+      // Keep its response separate from billing payloads and request counts.
+      if (url.pathname === "/api/organizations/verification") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ status: "verified", method: "legacy", taxCode: null }));
+        return;
+      }
       if (url.pathname.startsWith("/api/")) {
         requests.push({ path: url.pathname, page: url.searchParams.get("page"), owner: request.headers["x-active-org"] });
         const failed = url.pathname.endsWith("account-summary") ? failSummary : failHistory;

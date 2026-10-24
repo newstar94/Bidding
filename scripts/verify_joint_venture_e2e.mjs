@@ -1165,6 +1165,10 @@ try {
     .then(async () => ({ type: "error", message: await page.locator("#modal-custom-dialog").innerText() }))
     .catch(() => null);
   await wordSelectionDialog.locator("[data-word-publication-confirm]").click();
+  // ADR 0092 requires the user's download choice after document generation.
+  const wordPreviewDialog = page.locator("dialog.bf-word-preview");
+  await wordPreviewDialog.waitFor({ state: "visible", timeout: 20_000 });
+  await wordPreviewDialog.getByRole("button", { name: "Tải xuống", exact: true }).click();
   const wordOutcome = await Promise.race([
     wordDownloadPromise,
     wordErrorPromise,
