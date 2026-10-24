@@ -698,7 +698,8 @@ test("production E2E harnesses do not import development source modules", () => 
 test("offline expert E2E verifies retained pending editor before intentional close and outbox retry", () => {
   const source = fs.readFileSync(path.join(scriptsRoot, "verify_offline_sync_e2e.mjs"), "utf8");
   assert.match(source, /async function assertPendingExpertEditor/u);
-  assert.match(source, /modalOpen:[\s\S]*classList\.contains\("active"\)/u);
+  assert.match(source, /const modalOpen = document\.getElementById\("modal-chuyengia"\)\?\.classList\.contains\("active"\) === true/u);
+  assert.match(source, /const snapshot = await page\.waitForFunction[\s\S]*!modalOpen[\s\S]*return \{\s*syncState: actualSyncState,\s*modalOpen,/u);
   assert.match(source, /Object\.entries\(expectedValues\)\.every/u);
   assert.match(source, /pendingFeedback\.length === 0[\s\S]*finalFeedback\.length > 0/u);
   assert.match(source, /new MutationObserver[\s\S]*toast-success[\s\S]*finalFeedback\.push/u);

@@ -61,6 +61,7 @@ test("view-permission specialist creates contractor with persisted stamp", async
     await page.locator("#login-username").fill(account.username);
     await page.locator("#login-password").fill(payload.password);
     await page.locator("#form-auth-login button[type='submit']").click();
+    await page.waitForURL("**/tong-quan", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#auth-overlay")).toBeHidden();
     await ready(page);
     await page.goto("/nha-thau", { waitUntil: "commit" });
@@ -172,6 +173,7 @@ test("view-permission specialist creates a plan through the breakdown form", asy
     await page.locator("#login-username").fill(account.username);
     await page.locator("#login-password").fill(payload.password);
     await page.locator("#form-auth-login button[type='submit']").click();
+    await page.waitForURL("**/tong-quan", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#auth-overlay")).toBeHidden();
     await ready(page);
     await page.goto("/ke-hoach", { waitUntil: "commit" });

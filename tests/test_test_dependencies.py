@@ -266,7 +266,7 @@ def test_python_ci_installs_hashed_locks_before_the_project_without_resolution()
     assert "--all-build-deps" in test_lock
     assert "--extra=test" in test_lock
     assert "pytest==9.1.1" in test_lock
-    assert "setuptools==83.0.0" in test_lock
+    assert "setuptools==84.1.0" in test_lock
 
     runtime_lock = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
     pinned_requirement = re.compile(r"^([a-z0-9][a-z0-9._-]*==[^\\s;]+)", re.MULTILINE)
