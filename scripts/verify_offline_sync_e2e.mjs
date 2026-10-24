@@ -81,22 +81,27 @@ async function armExpertSaveFeedback(page) {
 }
 
 async function assertPendingExpertEditor(page, expectedValues, syncState) {
-  await page.waitForFunction(({ expectedValues, syncState }) => (
-    document.getElementById("btn-force-sync")?.dataset?.syncState === syncState
-      && document.getElementById("modal-chuyengia")?.classList.contains("active")
-      && Object.entries(expectedValues).every(([id, value]) => document.getElementById(id)?.value === value)
-      && window.offlineExpertSaveFeedback?.pendingFeedback.length > 0
-  ), { expectedValues, syncState }, { timeout: 15_000 });
-  const pending = await page.evaluate((ids) => {
+  // Capture state and editor evidence in the same browser task. A subsequent
+  // queued sync can otherwise start between the wait and a separate read.
+  const snapshot = await page.waitForFunction(({ expectedValues, syncState }) => {
     const feedback = window.offlineExpertSaveFeedback;
+    const actualSyncState = document.getElementById("btn-force-sync")?.dataset?.syncState;
+    const modalOpen = document.getElementById("modal-chuyengia")?.classList.contains("active") === true;
+    const values = Object.fromEntries(Object.keys(expectedValues).map((id) => [id, document.getElementById(id)?.value]));
+    if (actualSyncState !== syncState || !modalOpen
+      || !Object.entries(expectedValues).every(([id, value]) => values[id] === value)
+      || !feedback?.pendingFeedback.length) return false;
     feedback?.observer.disconnect();
     return {
-      modalOpen: document.getElementById("modal-chuyengia")?.classList.contains("active") === true,
-      values: Object.fromEntries(ids.map((id) => [id, document.getElementById(id)?.value])),
+      syncState: actualSyncState,
+      modalOpen,
+      values,
       pendingFeedback: feedback?.pendingFeedback || [],
       finalFeedback: feedback?.finalFeedback || [],
     };
-  }, expertFormIds);
+  }, { expectedValues, syncState }, { timeout: 15_000 });
+  const pending = await snapshot.jsonValue();
+  await snapshot.dispose();
   if (!pending.modalOpen
     || !Object.entries(expectedValues).every(([id, value]) => pending.values[id] === value)
     || pending.pendingFeedback.length === 0
@@ -212,7 +217,7 @@ try {
   await page.locator("#form-chuyengia button[type='submit']").click();
   await interruptedRequestFailed;
   const interruptedPendingEditor = await assertPendingExpertEditor(page, interruptedValues, "transport-error");
-  const interruptedSyncState = await page.locator("#btn-force-sync").getAttribute("data-sync-state");
+  const interruptedSyncState = interruptedPendingEditor.syncState;
   if (interruptedSyncState !== "transport-error") {
     throw new Error(`Interrupted sync exposed an invalid UI state: ${interruptedSyncState || "missing"}`);
   }
