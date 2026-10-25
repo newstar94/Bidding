@@ -73,18 +73,27 @@ async function expectFilterModalToOpen(page, route, type, choiceField, dateField
   await expect(dialog).toHaveJSProperty("open", true);
   await expect(button).toHaveAttribute("aria-expanded", "true");
 
-  await dialog.locator(".business-filter-field-picker > summary").click();
+  const fieldPicker = dialog.locator(".business-filter-field-picker");
+  const fieldPickerTrigger = fieldPicker.locator(":scope > summary");
+  await fieldPickerTrigger.click();
   const choiceControl = dialog.locator(`[data-filter-field][value="${choiceField}:value"]`);
   await choiceControl.locator("..").locator("span").click();
   await expect(choiceControl).toBeChecked();
+  // The field picker is a floating multi-select menu. Close it before
+  // interacting with the condition underneath it, as a user would.
+  await fieldPickerTrigger.click();
+  await expect(fieldPicker).not.toHaveAttribute("open", "");
   const choices = dialog.locator('[data-filter-condition="0"]');
   await choices.locator("summary").click();
   await expect(choices.locator("[data-filter-option-list]")).toBeVisible();
   await expect(choices.getByRole("searchbox")).toBeVisible();
 
+  await fieldPickerTrigger.click();
   const dateControl = dialog.locator(`[data-filter-field][value="${dateField}:value"]`);
   await dateControl.locator("..").locator("span").click();
   await expect(dateControl).toBeChecked();
+  await fieldPickerTrigger.click();
+  await expect(fieldPicker).not.toHaveAttribute("open", "");
   const dateRange = dialog.locator('[data-filter-condition="1"]');
   await expect(dateRange.getByLabel("Từ ngày", { exact: true })).toBeVisible();
   await expect(dateRange.getByLabel("Đến ngày", { exact: true })).toBeVisible();
