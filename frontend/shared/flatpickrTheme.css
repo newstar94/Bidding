@@ -270,3 +270,20 @@
   background: var(--bg-card);
   color: var(--text-main);
 }
+.bf-range-footer[hidden] {
+  display: none !important;
+}
+.bf-range-footer button {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font: inherit;
+  font-size: .8rem;
+}
+.bf-range-footer button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}

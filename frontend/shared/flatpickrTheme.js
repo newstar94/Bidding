@@ -177,27 +177,69 @@ function rangeDates(from, to) {
   return ISO_DATE.test(from.value) ? [from.value, to.value].filter((value) => ISO_DATE.test(value)) : [];
 }
 
-// One date in a range picker is an open end ("từ ngày X trở đi"); show it as "X – …".
-function showOpenEnd(instance) {
-  if (instance.selectedDates.length === 1) {
-    instance.input.value = `${instance.formatDate(instance.selectedDates[0], instance.config.dateFormat)} – …`;
-  }
+const DATE_IN_TEXT = /(\d{4})-(\d{2})-(\d{2})|(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+
+// Reads "dd/mm/yyyy – dd/mm/yyyy", "dd/mm/yyyy – …" (from that day on) or "… – dd/mm/yyyy" (up to that day).
+// Returns null for text that has digits but no complete date, so a half-typed value never clears a filter.
+export function parseDateRangeText(text) {
+  const value = String(text || "");
+  const matches = [...value.matchAll(DATE_IN_TEXT)];
+  if (matches.length > 2 || (!matches.length && /\d/.test(value))) return null;
+  const dates = matches.map((m) => (m[1] ? [m[1], m[2], m[3]] : [m[6], m[5].padStart(2, "0"), m[4].padStart(2, "0")]).join("-"));
+  if (matches.length === 1 && /[–…-]/.test(value.slice(0, matches[0].index))) return ["", dates[0]];
+  dates.sort();
+  return [dates[0] || "", dates[1] || ""];
 }
 
-// One popup picks a "từ ngày – đến ngày" range into the two existing ISO fields.
-// One picked day means "from that day on"; picking the same day twice means just that day.
+// One popup picks a "từ ngày – đến ngày" range into the two existing ISO fields. Either end may stay
+// open: one picked day means "from that day on", and the footer can turn it into "up to that day".
+// Picking the same day twice means just that day.
 export function bindDateRangePicker(flatpickr, input, { from, to, calendarClass = "", ...config }) {
-  const iso = (date) => flatpickr.formatDate(date, "Y-m-d");
-  const write = (dates) => {
-    const values = [dates[0] ? iso(dates[0]) : "", dates[1] ? iso(dates[1]) : ""];
+  const shown = (value) => (ISO_DATE.test(value) ? flatpickr.formatDate(flatpickr.parseDate(value, "Y-m-d"), "d/m/Y") : "");
+  const text = () => {
+    const [start, end] = [shown(from.value), shown(to.value)];
+    return start && end ? `${start} – ${end}` : start ? `${start} – …` : end ? `… – ${end}` : "";
+  };
+  const display = () => { input.value = text(); };
+  const write = (values) => {
     [from, to].forEach((field, index) => {
       if (field.value === values[index]) return;
       field.value = values[index];
       for (const type of ["input", "change"]) field.dispatchEvent(new Event(type, { bubbles: true }));
     });
+    display();
   };
-  input._bfDateRange = { from, to };
-  return flatpickr(input, {
+  let instance;
+  let footer;
+  const sync = () => {
+    instance.setDate(rangeDates(from, to), false, "Y-m-d");
+    if (!ISO_DATE.test(from.value) && ISO_DATE.test(to.value)) instance.jumpToDate(to.value);
+    display();
+    if (footer) footer.hidden = instance.selectedDates.length !== 1;
+  };
+  const iso = (date) => flatpickr.formatDate(date, "Y-m-d");
+  // flatpickr would read "… – X" as a start date, so typed text is committed here instead.
+  const commitTyped = () => {
+    if (input.value === text()) return;
+    const values = parseDateRangeText(input.value);
+    if (values) write(values);
+    sync();
+  };
+  const host = input.parentElement;
+  host.addEventListener("blur", (event) => {
+    if (event.target !== input) return;
+    event.stopPropagation();
+    // Moving into the calendar (picking a day) is not a typed commit.
+    if (!instance.calendarContainer?.contains(event.relatedTarget)) commitTyped();
+  }, true);
+  host.addEventListener("keydown", (event) => {
+    if (event.target !== input || event.key !== "Enter") return;
+    event.stopPropagation();
+    commitTyped();
+    instance.close();
+  }, true);
+  input._bfDateRange = { from, to, sync: () => sync() };
+  instance = flatpickr(input, {
     ...config,
     mode: "range",
     allowInput: true,
@@ -210,29 +252,41 @@ export function bindDateRangePicker(flatpickr, input, { from, to, calendarClass 
       if (!/\d/.test(text)) return undefined;
       return flatpickr.parseDate(text, ISO_DATE.test(text) ? "Y-m-d" : format);
     },
-    onChange: (dates) => write(dates),
-    onValueUpdate: (_dates, _text, instance) => showOpenEnd(instance),
-    onReady: (_dates, _text, instance) => {
-      if (calendarClass) instance.calendarContainer.classList.add(calendarClass);
-      enhanceFlatpickrMonthYear(instance);
-      showOpenEnd(instance);
+    onChange: (dates) => {
+      write([dates[0] ? iso(dates[0]) : "", dates[1] ? iso(dates[1]) : ""]);
+      if (footer && footer.hidden !== (dates.length !== 1)) {
+        footer.hidden = dates.length !== 1;
+        if (instance?.isOpen) instance._positionCalendar();
+      }
+    },
+    // flatpickr closes before it reports the second pick, so re-read the fields afterwards.
+    onClose: () => queueMicrotask(sync),
+    onReady: (_dates, _text, self) => {
+      if (calendarClass) self.calendarContainer.classList.add(calendarClass);
+      enhanceFlatpickrMonthYear(self);
+      footer = document.createElement("div");
+      footer.className = "flatpickr-footer bf-range-footer";
+      footer.hidden = true;
+      for (const [label, until] of [["Từ ngày này trở đi", false], ["Đến ngày này", true]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          const day = self.selectedDates[0] ? iso(self.selectedDates[0]) : "";
+          write(until ? ["", day] : [day, ""]);
+          self.close();
+        });
+        footer.appendChild(button);
+      }
+      self.calendarContainer.appendChild(footer);
     },
   });
+  sync();
+  return instance;
 }
 
 // Re-reads the two fields after code (not the picker) changed them, e.g. an analytics preset.
 export function syncDateRangePicker(input) {
-  const range = input?._bfDateRange;
-  if (!range || !input._flatpickr) return;
-  input._flatpickr.setDate(rangeDates(range.from, range.to), false, "Y-m-d");
-  showOpenEnd(input._flatpickr);
-}
-
-// Typed fallback when the calendar asset is unavailable: "dd/mm/yyyy – dd/mm/yyyy", or one day meaning "from that day on".
-export function parseDateRangeText(text) {
-  const dates = [...String(text || "").matchAll(/(\d{4})-(\d{2})-(\d{2})|(\d{1,2})\/(\d{1,2})\/(\d{4})/g)]
-    .map((m) => (m[1] ? [m[1], m[2], m[3]] : [m[6], m[5].padStart(2, "0"), m[4].padStart(2, "0")]).join("-"))
-    .sort();
-  if (dates.length > 2) return null;
-  return [dates[0] || "", dates[1] || ""];
+  input?._bfDateRange?.sync();
 }

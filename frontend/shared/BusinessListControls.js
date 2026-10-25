@@ -187,7 +187,7 @@ function conditionMarkup(ui, condition, index) {
     const dateRangeLabels = date && Boolean(LIST_FILTER_OPERATORS[ui.type]);
     if (date) {
       // One popup picks both ends; the hidden min/max fields keep the draft's YYYY-MM-DD values.
-      control = `<div class="business-filter-range business-filter-range--date"><label for="${id}-range">${dateRangeLabels ? "Từ ngày – đến ngày" : "Khoảng"}<span class="business-filter-input"><i data-lucide="calendar" aria-hidden="true"></i><input id="${id}-range" data-filter-range="${index}" type="text" inputmode="numeric" maxlength="23" placeholder="dd/mm/yyyy – dd/mm/yyyy" title="Chọn một ngày để lọc từ ngày đó trở đi, hoặc chọn ngày bắt đầu rồi ngày kết thúc."></span></label>
+      control = `<div class="business-filter-range business-filter-range--date"><label for="${id}-range">${dateRangeLabels ? "Từ ngày – đến ngày" : "Khoảng"}<span class="business-filter-input"><i data-lucide="calendar" aria-hidden="true"></i><input id="${id}-range" data-filter-range="${index}" type="text" inputmode="numeric" maxlength="23" placeholder="dd/mm/yyyy – dd/mm/yyyy" title="Chọn ngày bắt đầu rồi ngày kết thúc. Chỉ chọn một ngày để lọc từ ngày đó trở đi hoặc đến ngày đó."></span></label>
         ${["min", "max"].map((bound) => `<input type="hidden" data-filter-index="${index}" data-filter-bound="${bound}" value="${esc(condition.value?.[bound] || "")}">`).join("")}</div>`;
     } else {
       control = `<div class="business-filter-range">
@@ -533,8 +533,8 @@ function bindPanel(ui) {
     if (event.key !== "Escape") return;
     event.preventDefault(); event.stopPropagation();
     const calendar = [...ui.panel.querySelectorAll("[data-filter-range]")].find((input) => input._flatpickr?.isOpen)?._flatpickr;
-    // flatpickr may already have closed itself when focus is on a day inside the calendar.
-    if (calendar || event.target.closest?.(".flatpickr-calendar")) { calendar?.close(); return; }
+    // flatpickr may already have closed and redrawn itself, detaching the focused day; the path still shows it.
+    if (calendar || event.composedPath().some((node) => node.classList?.contains("flatpickr-calendar"))) { calendar?.close(); return; }
     const details = event.target.closest("details[open]");
     if (details) { details.open = false; details.querySelector("summary")?.focus(); }
     else closePanel(ui);

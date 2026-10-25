@@ -96,7 +96,7 @@ function configureRangeInput(input) {
 
 // One visible "từ ngày – đến ngày" field; the hidden fields keep the form's from/to names and ISO values.
 export function adminDateRangeMarkup({ id, label, fromName, toName, fromValue = "", toValue = "", labelClass = "form-label", labelTag = "label" }) {
-  const field = `<input class="form-control bf-admin-date-range" id="${escapeHtml(id)}" type="text" inputmode="numeric" placeholder="dd/mm/yyyy – dd/mm/yyyy" title="Chọn một ngày để lọc từ ngày đó trở đi, hoặc chọn ngày bắt đầu rồi ngày kết thúc." aria-label="${escapeHtml(label)}" data-admin-range-from="${escapeHtml(fromName)}" data-admin-range-to="${escapeHtml(toName)}">`;
+  const field = `<input class="form-control bf-admin-date-range" id="${escapeHtml(id)}" type="text" inputmode="numeric" placeholder="dd/mm/yyyy – dd/mm/yyyy" title="Chọn ngày bắt đầu rồi ngày kết thúc. Chỉ chọn một ngày để lọc từ ngày đó trở đi hoặc đến ngày đó." aria-label="${escapeHtml(label)}" data-admin-range-from="${escapeHtml(fromName)}" data-admin-range-to="${escapeHtml(toName)}">`;
   const hidden = [[fromName, fromValue], [toName, toValue]]
     .map(([name, value]) => `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value || "")}">`).join("");
   return labelTag === "label"
