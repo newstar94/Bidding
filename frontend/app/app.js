@@ -10,6 +10,7 @@ import {
 } from "../shared/releaseDiagnostics.js";
 import { installAuthOverlayAccessibility } from "../auth/AuthUi.js";
 import { installOverflowTextAutoScroll } from "../shared/overflowTextAutoScroll.js";
+import { installMotionEnhancements } from "../shared/motionEnhancements.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { LUCIDE_SUBSET_URL } from "../shared/lucideSubsetVersion.js";
 import {
@@ -185,6 +186,7 @@ const bootstrapApplication = async () => {
   installAuthOverlayAccessibility();
   installSemanticAccessibility(document);
   installOverflowTextAutoScroll(document);
+  installMotionEnhancements(document);
   if (isLandingPath()) {
     const { bootstrapLandingPage } = await import("../landing/LandingPage.js");
     await bootstrapLandingPage(readSessionBootstrap());

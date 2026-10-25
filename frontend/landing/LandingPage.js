@@ -1,6 +1,7 @@
 const LOGIN_PATH = "/dang-nhap";
 const WORKSPACE_PATH = "/tong-quan";
 const LANDING_HISTORY_SCROLL_KEY = "bfLandingScrollY";
+const LANDING_COUNT_DURATION_MS = 900;
 let landingHistoryCaptureInstalled = false;
 let landingMotionCleanup = null;
 let cancelLandingScrollRestoration = null;
@@ -121,7 +122,44 @@ function installLandingMotion() {
     entries.forEach((entry) => entry.target.classList.toggle("is-active", entry.isIntersecting));
   }, { rootMargin: "-38% 0px -48% 0px", threshold: 0 });
   processItems.forEach((node) => processObserver.observe(node));
-  landingMotionCleanup = () => { revealObserver.disconnect(); processObserver.disconnect(); };
+  const countFrames = new Map();
+  const startCounting = (node) => {
+    const finalText = node.textContent;
+    const parsed = parseCountingText(finalText);
+    if (!parsed) return;
+    let startedAt = null;
+    const step = (timestamp) => {
+      startedAt ??= timestamp;
+      const progress = (timestamp - startedAt) / LANDING_COUNT_DURATION_MS;
+      if (progress >= 1) {
+        node.textContent = finalText;
+        countFrames.delete(node);
+        return;
+      }
+      node.textContent = `${countingNumberValue(parsed.target, progress)}${parsed.suffix}`;
+      countFrames.set(node, { frame: window.requestAnimationFrame(step), finalText });
+    };
+    node.textContent = `0${parsed.suffix}`;
+    countFrames.set(node, { frame: window.requestAnimationFrame(step), finalText });
+  };
+  const countObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      countObserver.unobserve(entry.target);
+      startCounting(entry.target);
+    });
+  }, { threshold: 0.4 });
+  root.querySelectorAll("[data-landing-count]").forEach((node) => countObserver.observe(node));
+  landingMotionCleanup = () => {
+    revealObserver.disconnect();
+    processObserver.disconnect();
+    countObserver.disconnect();
+    countFrames.forEach(({ frame, finalText }, node) => {
+      window.cancelAnimationFrame(frame);
+      node.textContent = finalText;
+    });
+    countFrames.clear();
+  };
 }
 
 function createLandingIcon(name) {
@@ -586,6 +624,7 @@ import { loadStyleOnce } from "../shared/externalAssets.js";
 import { loadBusinessProfile } from "../shared/businessProfile.js";
 import { installCookieNotice } from "../shared/storageDisclosure.js";
 import { createLandingSvgIcon, renderLandingIcons } from "./landingIcons.js";
+import { countingNumberValue, parseCountingText } from "../shared/motionEnhancements.js";
 import {
   COMMERCIAL_GROUPS,
   commercialGroupForOffer,

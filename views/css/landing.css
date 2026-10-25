@@ -2605,6 +2605,11 @@ html[data-bf-shell="landing"]:has(:target) .landing-footer {
   }
 }
 
+/* Counting numbers keep a stable width while they animate. */
+[data-landing-count] {
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-landing-reveal] { opacity: 1; transform: none; transition: none; }
   .landing-process-list li.is-active { transform: none; }

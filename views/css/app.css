@@ -7,4 +7,5 @@
 @import "./initial-route.css";
 @import "./generated-static-styles.css";
 @import "./ui-redesign.css";
+@import "./motion.css";
 @import "./runtime-styles.css";
