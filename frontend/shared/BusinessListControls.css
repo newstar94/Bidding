@@ -50,6 +50,7 @@ html:has(.business-list-filter-panel[open]), body:has(.business-list-filter-pane
 .business-filter-remove:hover { color: var(--danger); background: var(--surface); }
 .business-filter-range, .business-filter-text { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .business-filter-text { grid-template-columns: 112px minmax(0, 1fr); }
+.business-filter-range--date { grid-template-columns: minmax(0, 1fr); }
 .business-filter-range label { display: grid; gap: 4px; font-size: .72rem; color: var(--ink-muted); }
 .business-filter-input { position: relative; display: block; }
 .business-filter-input > svg { position: absolute; top: 50%; left: 10px; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none; }

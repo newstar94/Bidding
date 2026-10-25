@@ -6,6 +6,7 @@ import {
   renderAdminMarkup,
 } from "./AdminStateView.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { adminDateRangeMarkup } from "./AdminDate.js";
 
 const PAGE_SIZES = new Set([25, 50, 100]);
 
@@ -89,6 +90,12 @@ export function directoryBrowserQuery(state, config) {
 }
 
 function filterMarkup(filter, state) {
+  if (filter.rangeTo) {
+    return adminDateRangeMarkup({
+      id: `admin-directory-${filter.key}-range`, label: filter.rangeLabel, fromName: filter.key, toName: filter.rangeTo,
+      fromValue: state[filter.key], toValue: state[filter.rangeTo], labelClass: "form-label mb-0 bf-admin-date-filter", labelTag: "span",
+    });
+  }
   if (!Array.isArray(filter.options)) {
     const isDate = filter.type === "date";
     return `<label class="form-label mb-0${isDate ? " bf-admin-date-filter" : ""}"><span${isDate ? "" : " class=\"visually-hidden\""}>${escapeHtml(filter.label)}</span><input class="form-control${isDate ? " bf-admin-date-input" : ""}" name="${escapeHtml(filter.key)}" type="text" value="${escapeHtml(state[filter.key])}" maxlength="${escapeHtml(filter.maxLength || 200)}" placeholder="${escapeHtml(isDate ? "dd/mm/yyyy" : (filter.placeholder || filter.label))}" aria-label="${escapeHtml(filter.label)}"${isDate ? " inputmode=\"numeric\" data-admin-date-format=\"iso\"" : ""}></label>`;
@@ -102,7 +109,7 @@ function filterMarkup(filter, state) {
 function controlsMarkup(config, state) {
   const searchKey = config.searchQueryKey || "search";
   const searchControl = config.hideSearch ? "" : `<div class="col-12 col-lg"><label class="visually-hidden" for="admin-directory-search">Tìm kiếm</label><input id="admin-directory-search" class="form-control" type="search" name="${escapeHtml(searchKey)}" value="${escapeHtml(state[searchKey] || "")}" maxlength="100" placeholder="${escapeHtml(config.searchPlaceholder)}"></div>`;
-  return `<form class="card card-body mb-3" data-admin-directory-form role="search"><div class="row g-2 align-items-center">${searchControl}${config.filters.map((filter) => `<div class="col-6 col-lg-auto">${filterMarkup(filter, state)}</div>`).join("")}<div class="col-12 col-lg-auto"><button class="btn btn-primary w-100" type="submit">Áp dụng</button></div></div></form><div data-admin-directory-results aria-live="polite"></div>`;
+  return `<form class="card card-body mb-3" data-admin-directory-form role="search"><div class="row g-2 align-items-center">${searchControl}${config.filters.filter((filter) => !filter.rangeOf).map((filter) => `<div class="col-6 col-lg-auto">${filterMarkup(filter, state)}</div>`).join("")}<div class="col-12 col-lg-auto"><button class="btn btn-primary w-100" type="submit">Áp dụng</button></div></div></form><div data-admin-directory-results aria-live="polite"></div>`;
 }
 
 function sortHeader(column, state) {

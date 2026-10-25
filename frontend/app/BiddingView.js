@@ -3,6 +3,7 @@ import { getRuntimeStyle, setRuntimeStyle } from "../shared/runtimeStyles.js";
 import * as SystemUser from "../admin/SystemUserView.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { ensureFlatpickrLoaded } from "../shared/externalAssets.js";
+import { enhanceFlatpickrMonthYear, positionCalendarInDialog } from "../shared/flatpickrTheme.js";
 import { focusInvalidControl } from "./formStateUtils.js";
 import { validateForm as validateConfiguredForm } from "../shared/FormValidation.js";
 import { installPrototypeModules } from "./moduleRegistry.js";
@@ -530,169 +531,6 @@ export class BiddingView {
       });
       return;
     }
-    const setupPlugins = (instance) => {
-      const container2 = instance.calendarContainer;
-      let gridOverlay = container2.querySelector(".flatpickr-grid-overlay");
-      if (!gridOverlay) {
-        gridOverlay = document.createElement("div");
-        gridOverlay.className = "flatpickr-grid-overlay";
-        setRuntimeStyle(gridOverlay, "display", "none");
-        const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) {
-          container2.insertBefore(gridOverlay, innerContainer);
-        } else {
-          container2.appendChild(gridOverlay);
-        }
-      }
-      const showGrid = (type) => {
-        container2.classList.add("flatpickr-grid-open");
-        const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) setRuntimeStyle(innerContainer, "display", "none!important");
-        const timeContainer = container2.querySelector(".flatpickr-time");
-        if (timeContainer) setRuntimeStyle(timeContainer, "display", "none!important");
-        const prevMonth = container2.querySelector(".flatpickr-prev-month");
-        const nextMonth = container2.querySelector(".flatpickr-next-month");
-        if (prevMonth) setRuntimeStyle(prevMonth, "display", "none");
-        if (nextMonth) setRuntimeStyle(nextMonth, "display", "none");
-        setRuntimeStyle(gridOverlay, "display", "block");
-        gridOverlay.innerHTML = trustedHTML("");
-        if (type === "month") {
-          gridOverlay.className = "flatpickr-grid-overlay flatpickr-month-grid-mode";
-          const header = document.createElement("div");
-          header.className = "grid-header";
-          header.innerHTML = trustedHTML(`<span class="grid-title">Chọn Tháng</span>`);
-          gridOverlay.appendChild(header);
-          const grid = document.createElement("div");
-          grid.className = "flatpickr-month-grid";
-          for (let m = 0; m < 12; m++) {
-            const item = document.createElement("div");
-            item.className = `flatpickr-grid-item ${instance.currentMonth === m ? "active" : ""}`;
-            item.textContent = `Tháng ${m + 1}`;
-            item.onclick = (e) => {
-              e.stopPropagation();
-              instance.changeMonth(m, false);
-              hideGrid();
-            };
-            grid.appendChild(item);
-          }
-          gridOverlay.appendChild(grid);
-        } else if (type === "year") {
-          gridOverlay.className = "flatpickr-grid-overlay flatpickr-year-grid-mode";
-          const startYear = instance.currentYear - 5;
-          const header = document.createElement("div");
-          header.className = "grid-header";
-          const prevBtn = document.createElement("button");
-          prevBtn.type = "button";
-          prevBtn.className = "grid-nav-btn";
-          prevBtn.innerHTML = trustedHTML("&larr;");
-          prevBtn.onclick = (e) => {
-            e.stopPropagation();
-            instance.currentYear -= 10;
-            showGrid("year");
-          };
-          const title = document.createElement("span");
-          title.className = "grid-title";
-          title.textContent = `${startYear} - ${startYear + 11}`;
-          const nextBtn = document.createElement("button");
-          nextBtn.type = "button";
-          nextBtn.className = "grid-nav-btn";
-          nextBtn.innerHTML = trustedHTML("&rarr;");
-          nextBtn.onclick = (e) => {
-            e.stopPropagation();
-            instance.currentYear += 10;
-            showGrid("year");
-          };
-          header.appendChild(prevBtn);
-          header.appendChild(title);
-          header.appendChild(nextBtn);
-          gridOverlay.appendChild(header);
-          const grid = document.createElement("div");
-          grid.className = "flatpickr-year-grid";
-          for (let y = startYear; y < startYear + 12; y++) {
-            const item = document.createElement("div");
-            item.className = `flatpickr-grid-item flatpickr-year-grid-item ${instance.currentYear === y ? "active" : ""}`;
-            item.textContent = y;
-            item.onclick = (e) => {
-              e.stopPropagation();
-              instance.changeYear(y);
-              hideGrid();
-            };
-            grid.appendChild(item);
-          }
-          gridOverlay.appendChild(grid);
-        }
-      };
-      const hideGrid = () => {
-        container2.classList.remove("flatpickr-grid-open");
-        setRuntimeStyle(gridOverlay, "display", "none");
-        const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) setRuntimeStyle(innerContainer, "display", "");
-        const timeContainer = container2.querySelector(".flatpickr-time");
-        if (timeContainer) setRuntimeStyle(timeContainer, "display", "");
-        const prevMonth = container2.querySelector(".flatpickr-prev-month");
-        const nextMonth = container2.querySelector(".flatpickr-next-month");
-        if (prevMonth) setRuntimeStyle(prevMonth, "display", "");
-        if (nextMonth) setRuntimeStyle(nextMonth, "display", "");
-      };
-      const monthElement = container2.querySelector(".flatpickr-current-month");
-      if (monthElement) {
-        const curMonthSpan = monthElement.querySelector(".cur-month");
-        if (curMonthSpan) {
-          setRuntimeStyle(curMonthSpan, "cursor", "pointer");
-          curMonthSpan.onclick = (e) => {
-            e.stopPropagation();
-            if (getRuntimeStyle(gridOverlay, "display") === "block" && gridOverlay.classList.contains("flatpickr-month-grid-mode")) {
-              hideGrid();
-            } else {
-              showGrid("month");
-            }
-          };
-        }
-        const yearInputWrapper = monthElement.querySelector(".numInputWrapper");
-        if (yearInputWrapper) {
-          setRuntimeStyle(yearInputWrapper, "cursor", "pointer");
-          yearInputWrapper.onclick = (e) => {
-            e.stopPropagation();
-            if (getRuntimeStyle(gridOverlay, "display") === "block" && gridOverlay.classList.contains("flatpickr-year-grid-mode")) {
-              hideGrid();
-            } else {
-              showGrid("year");
-            }
-          };
-          const yearInput = yearInputWrapper.querySelector(".cur-year");
-          if (yearInput) {
-            setRuntimeStyle(yearInput, "pointerEvents", "none");
-          }
-        }
-      }
-      const formatHeaderMonth = () => {
-        setTimeout(() => {
-          const curMonthSpan = container2.querySelector(".cur-month");
-          if (curMonthSpan) {
-            curMonthSpan.textContent = `Tháng ${instance.currentMonth + 1}`;
-          }
-        }, 0);
-      };
-      formatHeaderMonth();
-      instance.config.onMonthChange.push(formatHeaderMonth);
-      instance.config.onOpen.push(formatHeaderMonth);
-      instance.config.onYearChange.push(formatHeaderMonth);
-      instance.config.onChange.push(formatHeaderMonth);
-      instance.config.onClose.push(() => {
-        hideGrid();
-      });
-    };
-    const positionCalendarInDialog = (instance) => {
-      const calendar = instance.calendarContainer;
-      const dialog = calendar.parentElement;
-      const anchor = (instance.altInput || instance._input).getBoundingClientRect();
-      const frame = dialog.getBoundingClientRect();
-      const { offsetHeight: height, offsetWidth: width } = calendar;
-      const top = anchor.bottom + 4 + height <= window.innerHeight || anchor.top - height - 4 < 0 ? anchor.bottom + 4 : anchor.top - height - 4;
-      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
-      setRuntimeStyle(calendar, "top", `${Math.round(top - frame.top - dialog.clientTop)}px`);
-      setRuntimeStyle(calendar, "left", `${Math.round(left - frame.left - dialog.clientLeft)}px`);
-    };
     setTimeout(() => {
       container.querySelectorAll("input.flatpickr-date").forEach((el) => {
         el.setAttribute("autocomplete", "off");
@@ -722,7 +560,7 @@ export class BiddingView {
           onReady: function(selectedDates, dateStr, instance) {
             const theme = el.dataset.flatpickrTheme;
             if (theme) instance.calendarContainer.classList.add(`flatpickr-calendar--${theme}`);
-            setupPlugins(instance);
+            enhanceFlatpickrMonthYear(instance);
           }
         });
       });
@@ -737,7 +575,7 @@ export class BiddingView {
           allowInput: true,
           locale: "vn",
           onReady: function(selectedDates, dateStr, instance) {
-            setupPlugins(instance);
+            enhanceFlatpickrMonthYear(instance);
           }
         });
       });

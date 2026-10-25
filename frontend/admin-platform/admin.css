@@ -222,10 +222,13 @@ body { min-height: 100vh; background: var(--bf-admin-canvas); }
 .bf-admin-select-list .bf-combobox-option:hover, .bf-admin-select-list .bf-combobox-option.highlighted { background: var(--bf-admin-surface-subtle); }
 .bf-admin-select-list .bf-combobox-option.selected { color: var(--bf-admin-brand-strong); background: var(--bf-admin-brand-soft); font-weight: 650; }
 .bf-admin-analytics-filter { overflow: visible; }
-.bf-admin-analytics-primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: .75rem; }
+.bf-admin-analytics-primary { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); align-items: end; gap: .75rem; }
 .bf-admin-analytics-primary > div { min-width: 0; }
 .bf-admin-analytics-primary .form-control, .bf-admin-analytics-primary .bf-combobox-input { min-height: 2.7rem; }
-.bf-admin-date-display { background-color: var(--bf-admin-surface); cursor: pointer; }
+.bf-admin-date-display, .bf-admin-date-range { background-color: var(--bf-admin-surface); cursor: pointer; }
+.bf-admin-date-range { min-width: 15rem; }
+/* Maps the shared calendar theme (frontend/shared/flatpickrTheme.css) onto admin tokens. */
+.flatpickr-calendar--admin { --text-main: var(--bf-admin-ink); --text-muted: var(--bf-admin-muted); --text-light: var(--bf-admin-muted); --bg-card: var(--bf-admin-surface); --bg-app: var(--bf-admin-surface-subtle); --surface: var(--bf-admin-surface); --neutral-soft: var(--bf-admin-surface-subtle); --border-color: var(--bf-admin-line); --primary: var(--bf-admin-brand); --primary-soft: var(--bf-admin-brand-soft); --font-primary: inherit; --radius-md: .6rem; --radius-sm: .4rem; --shadow-lg: 0 8px 24px color-mix(in srgb, var(--bf-admin-ink) 12%, transparent); --transition-fast: .15s ease; }
 .flatpickr-calendar--admin { z-index: 1070; border: 1px solid var(--bf-admin-line); border-radius: .6rem; box-shadow: 0 8px 24px color-mix(in srgb, var(--bf-admin-ink) 12%, transparent); font-family: inherit; }
 .bf-admin-skeleton { min-height: 12rem; padding: 1.5rem; background: var(--bf-admin-surface); border-radius: var(--tblr-border-radius-lg); }
 .bf-admin-skeleton .placeholder { display: block; height: 1.25rem; margin-bottom: 1.25rem; }

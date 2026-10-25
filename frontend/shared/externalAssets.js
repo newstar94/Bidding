@@ -1,4 +1,5 @@
 import { assertSafeStyleURL, trustedScriptURL } from "./trustedTypes.js";
+import { FLATPICKR_THEME_URL } from "./flatpickrTheme.js";
 
 const SCRIPT_LOADERS = /* @__PURE__ */ new Map();
 const STYLE_LOADERS = /* @__PURE__ */ new Map();
@@ -107,6 +108,7 @@ export function loadStyleOnce(href) {
   return promise;
 }
 export async function ensureFlatpickrLoaded() {
+  await loadStyleOnce(FLATPICKR_THEME_URL);
   await loadStyleOnce("/vendor/flatpickr/flatpickr.min.css?v=4");
   await loadScriptOnce("/vendor/flatpickr/flatpickr.min.js?v=4", "flatpickr");
   await loadScriptOnce("/vendor/flatpickr/l10n/vn.js?v=4");

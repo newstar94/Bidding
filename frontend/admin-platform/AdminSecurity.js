@@ -175,8 +175,8 @@ export const AUDIT_DIRECTORY = Object.freeze({
     { key: "organizationId", label: "Tổ chức", placeholder: "ID tổ chức" },
     { key: "result", label: "Kết quả", allLabel: "Mọi kết quả", options: [["success", "Thành công"], ["failure", "Thất bại"], ["unknown", "Unknown"]] },
     { key: "requestId", label: "Request ID", placeholder: "Request ID", maxLength: 128 },
-    { key: "from", label: "Từ ngày", type: "date" },
-    { key: "to", label: "Đến ngày", type: "date" },
+    { key: "from", label: "Từ ngày", type: "date", rangeTo: "to", rangeLabel: "Từ ngày – đến ngày" },
+    { key: "to", label: "Đến ngày", type: "date", rangeOf: "from" },
   ],
   columns: [
     { label: "Thời gian", sortKey: "created_at" },

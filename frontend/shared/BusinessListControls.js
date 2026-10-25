@@ -1,10 +1,11 @@
 import { trustedHTML } from "./trustedTypes.js";
 import { escapeHtml } from "./view_helpers.js";
 import { renderLucideIcons } from "./lucideIcons.js";
-import { loadStyleOnce } from "./externalAssets.js";
+import { ensureFlatpickrLoaded, loadStyleOnce } from "./externalAssets.js";
+import { bindDateRangePicker, parseDateRangeText, positionCalendarInDialog } from "./flatpickrTheme.js";
 import { deleteView, findView, listSavedViews, saveView } from "./BusinessListSavedViews.js";
 import { loadPaginatedRecords } from "./tableDataUtils.js";
-import { convertDMYToYMD, formatDate, getVersionLabel } from "./formatters.js";
+import { getVersionLabel } from "./formatters.js";
 import { isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { loadWorkspaceEmployees } from "./workspaceEmployeeLoader.js";
 import { businessListState } from "./BusinessListState.js";
@@ -184,16 +185,15 @@ function conditionMarkup(ui, condition, index) {
   if (condition.operator === "range") {
     const date = definition.kind !== "money";
     const dateRangeLabels = date && Boolean(LIST_FILTER_OPERATORS[ui.type]);
-    control = `<div class="business-filter-range">
-      ${["min", "max"].map((bound) => {
-        const value = condition.value?.[bound] || "";
-        // Dates stay YYYY-MM-DD in the draft but are shown and typed as dd/mm/yyyy through the app's flatpickr theme.
-        const input = date
-          ? `<input id="${id}-${bound}" class="flatpickr-date" data-filter-index="${index}" data-filter-bound="${bound}" data-filter-date type="text" inputmode="numeric" maxlength="10" placeholder="dd/mm/yyyy" value="${esc(value ? formatDate(value) : "")}">`
-          : `<input id="${id}-${bound}" data-filter-index="${index}" data-filter-bound="${bound}" type="text" inputmode="numeric" maxlength="19" placeholder="Không giới hạn" value="${esc(value)}">`;
-        const text = bound === "min" ? (dateRangeLabels ? "Từ ngày" : "Từ") : (dateRangeLabels ? "Đến ngày" : "Đến");
-        return `<label for="${id}-${bound}">${text}<span class="business-filter-input">${date ? '<i data-lucide="calendar" aria-hidden="true"></i>' : ""}${input}</span></label>`;
-      }).join("")}</div>`;
+    if (date) {
+      // One popup picks both ends; the hidden min/max fields keep the draft's YYYY-MM-DD values.
+      control = `<div class="business-filter-range business-filter-range--date"><label for="${id}-range">${dateRangeLabels ? "Từ ngày – đến ngày" : "Khoảng"}<span class="business-filter-input"><i data-lucide="calendar" aria-hidden="true"></i><input id="${id}-range" data-filter-range="${index}" type="text" inputmode="numeric" maxlength="23" placeholder="dd/mm/yyyy – dd/mm/yyyy" title="Chọn một ngày để lọc từ ngày đó trở đi, hoặc chọn ngày bắt đầu rồi ngày kết thúc."></span></label>
+        ${["min", "max"].map((bound) => `<input type="hidden" data-filter-index="${index}" data-filter-bound="${bound}" value="${esc(condition.value?.[bound] || "")}">`).join("")}</div>`;
+    } else {
+      control = `<div class="business-filter-range">
+      <label for="${id}-min">Từ<input id="${id}-min" data-filter-index="${index}" data-filter-bound="min" type="text" inputmode="numeric" maxlength="19" placeholder="Không giới hạn" value="${esc(condition.value?.min || "")}"></label>
+      <label for="${id}-max">Đến<input id="${id}-max" data-filter-index="${index}" data-filter-bound="max" type="text" inputmode="numeric" maxlength="19" placeholder="Không giới hạn" value="${esc(condition.value?.max || "")}"></label></div>`;
+    }
   } else if (condition.operator === "year") {
     control = `<label class="business-filter-hint" for="${id}-years">Có thể nhập nhiều năm, cách nhau bằng dấu phẩy</label>
       <input id="${id}-years" data-filter-index="${index}" data-filter-years type="text" inputmode="numeric" maxlength="512" placeholder="Ví dụ: 2025, 2026" value="${esc((Array.isArray(condition.value) ? condition.value : [condition.value]).join(", "))}">`;
@@ -227,12 +227,26 @@ function renderConditions(ui) {
     control.disabled = !control.checked && ui.draft.length >= 24;
   }
   renderLucideIcons(container);
-  ui.view.initFlatpickr?.(container);
+  void bindRangePickers(ui, container);
   showError(ui);
 }
 
 function destroyDatePickers(root) {
-  for (const input of root?.querySelectorAll("[data-filter-date]") || []) input._flatpickr?.destroy();
+  for (const input of root?.querySelectorAll("[data-filter-range]") || []) input._flatpickr?.destroy();
+}
+
+async function bindRangePickers(ui, root) {
+  if (!root.querySelector("[data-filter-range]")) return;
+  let flatpickr;
+  try { flatpickr = await ensureFlatpickrLoaded(); } catch { return; }
+  for (const input of root.querySelectorAll("[data-filter-range]")) {
+    if (!input.isConnected || input._flatpickr || !ui.panel.open) continue;
+    const field = input.closest("[data-filter-condition]");
+    bindDateRangePicker(flatpickr, input, {
+      from: field.querySelector('[data-filter-bound="min"]'), to: field.querySelector('[data-filter-bound="max"]'),
+      appendTo: ui.panel, position: positionCalendarInDialog,
+    });
+  }
 }
 
 function renderSavedViews(ui) {
@@ -468,10 +482,18 @@ function bindPanel(ui) {
       const query = searchText(target.value);
       for (const label of ui.panel.querySelectorAll("[data-field-choice-label]")) label.hidden = !label.dataset.fieldChoiceLabel.includes(query);
     }
+    if (target.matches("[data-filter-range]") && !target._flatpickr) {
+      const bounds = parseDateRangeText(target.value);
+      const field = target.closest("[data-filter-condition]");
+      if (bounds) ["min", "max"].forEach((bound, index) => {
+        const hidden = field.querySelector(`[data-filter-bound="${bound}"]`);
+        hidden.value = bounds[index];
+        hidden.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
     if (target.matches("[data-filter-index]")) {
       const condition = ui.draft[Number(target.dataset.filterIndex)];
-      if (target.hasAttribute("data-filter-date")) condition.value[target.dataset.filterBound] = convertDMYToYMD(target.value.trim());
-      else if (target.hasAttribute("data-filter-bound")) condition.value[target.dataset.filterBound] = target.value;
+      if (target.hasAttribute("data-filter-bound")) condition.value[target.dataset.filterBound] = target.value;
       else condition.value = target.hasAttribute("data-filter-years") ? target.value.split(/[,;\s]+/).filter(Boolean) : target.value;
       showError(ui);
     }
@@ -510,8 +532,9 @@ function bindPanel(ui) {
     }
     if (event.key !== "Escape") return;
     event.preventDefault(); event.stopPropagation();
-    const calendar = [...ui.panel.querySelectorAll("[data-filter-date]")].find((input) => input._flatpickr?.isOpen)?._flatpickr;
-    if (calendar) { calendar.close(); return; }
+    const calendar = [...ui.panel.querySelectorAll("[data-filter-range]")].find((input) => input._flatpickr?.isOpen)?._flatpickr;
+    // flatpickr may already have closed itself when focus is on a day inside the calendar.
+    if (calendar || event.target.closest?.(".flatpickr-calendar")) { calendar?.close(); return; }
     const details = event.target.closest("details[open]");
     if (details) { details.open = false; details.querySelector("summary")?.focus(); }
     else closePanel(ui);

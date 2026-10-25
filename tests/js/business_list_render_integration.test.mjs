@@ -7,6 +7,16 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const projectRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+// The one-popup range picker always orders its ends, so write an inverted range into its hidden fields.
+async function setDateBounds(panel, min, max) {
+  for (const [bound, value] of [["min", min], ["max", max]]) {
+    await panel.locator(`[data-filter-condition]:has([data-filter-range]) [data-filter-bound='${bound}']`).evaluate((input, next) => {
+      input.value = next;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, value);
+  }
+}
 const types = ["kehoach", "goithau", "hopdong"];
 
 test("three business list renderers apply filters and keep checkboxes aligned with displayed versions", async () => {
@@ -343,8 +353,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
     assert.equal(await planPanel.locator("[data-filter-value='0'][value='investor-a']").isChecked(), true);
     assert.equal(await planPanel.locator("[data-filter-value='0'][value='investor-b']").isChecked(), true);
     await planPanel.locator("[data-filter-options='0'] > summary").click();
-    await planPanel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-01");
-    await planPanel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-31");
+    await planPanel.getByLabel("Từ ngày – đến ngày", { exact: true }).fill("2026-10-01 – 2026-10-31");
     if (process.env.BF_PLAN_FILTER_SCREENSHOT) await page.screenshot({ path: process.env.BF_PLAN_FILTER_SCREENSHOT, fullPage: true });
     await planPanel.locator("[data-filter-action='apply']").click();
     await planPanel.waitFor({ state: "hidden" });
@@ -383,8 +392,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
     });
     await page.locator("#kehoach-table tbody [data-list-select-row]").check();
     await page.locator("[data-list-filter='kehoach']").click();
-    await planPanel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-31");
-    await planPanel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-01");
+    await setDateBounds(planPanel, "2026-10-31", "2026-10-01");
     await planPanel.locator("[data-filter-action='apply']").click();
     await planPanel.locator("[data-filter-error]").waitFor({ state: "visible" });
     assert.equal(await planPanel.isVisible(), true);
@@ -454,8 +462,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
       assert.equal(await contractPanel.locator(`[data-filter-value='${index}']:checked`).count(), 2);
       await contractPanel.locator(`[data-filter-options='${index}'] > summary`).click();
     }
-    await contractPanel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-01");
-    await contractPanel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-31");
+    await contractPanel.getByLabel("Từ ngày – đến ngày", { exact: true }).fill("2026-10-01 – 2026-10-31");
     if (process.env.BF_CONTRACT_FILTER_SCREENSHOT) await page.screenshot({ path: process.env.BF_CONTRACT_FILTER_SCREENSHOT, fullPage: true });
     await contractPanel.locator("[data-filter-action='apply']").click();
     await contractPanel.waitFor({ state: "hidden" });
@@ -490,8 +497,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
     });
     await page.locator("#hopdong-table tbody [data-list-select-row]").check();
     await page.locator("[data-list-filter='hopdong']").click();
-    await contractPanel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-31");
-    await contractPanel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-01");
+    await setDateBounds(contractPanel, "2026-10-31", "2026-10-01");
     await contractPanel.locator("[data-filter-action='apply']").click();
     await contractPanel.locator("[data-filter-error]").waitFor({ state: "visible" });
     assert.equal(await contractPanel.isVisible(), true);
@@ -571,8 +577,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
       assert.equal(await panel.locator(`[data-filter-value='${index}']:checked`).count(), 2);
       await panel.locator(`[data-filter-options='${index}'] > summary`).click();
     }
-    await panel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-01");
-    await panel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-31");
+    await panel.getByLabel("Từ ngày – đến ngày", { exact: true }).fill("2026-10-01 – 2026-10-31");
     if (process.env.BF_BUSINESS_LIST_DESKTOP_SCREENSHOT) await page.screenshot({ path: process.env.BF_BUSINESS_LIST_DESKTOP_SCREENSHOT, fullPage: true });
     await panel.locator("[data-filter-action='apply']").click();
     await panel.waitFor({ state: "hidden" });
@@ -618,8 +623,7 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
     });
     await page.locator("#goithau-table tbody [data-list-select-row]").check();
     await page.locator("[data-list-filter='goithau']").click();
-    await panel.getByLabel("Từ ngày", { exact: true }).fill("2026-10-31");
-    await panel.getByLabel("Đến ngày", { exact: true }).fill("2026-10-01");
+    await setDateBounds(panel, "2026-10-31", "2026-10-01");
     await panel.locator("[data-filter-action='apply']").click();
     await panel.locator("[data-filter-error]").waitFor({ state: "visible" });
     assert.equal(await panel.isVisible(), true);
@@ -642,8 +646,8 @@ test("three business list renderers apply filters and keep checkboxes aligned wi
     await panel.locator("[data-filter-action='cancel']").last().click();
     await page.locator("[data-list-filter='goithau']").click();
     assert.equal(await panel.locator("[data-filter-condition]").count(), 10, "Cancel must preserve the applied conditions");
-    await panel.getByLabel("Từ ngày", { exact: true }).fill("2026-11-01");
-    await panel.getByLabel("Từ ngày", { exact: true }).press("Escape");
+    await panel.getByLabel("Từ ngày – đến ngày", { exact: true }).fill("2026-11-01");
+    await panel.getByLabel("Từ ngày – đến ngày", { exact: true }).press("Escape");
     await panel.waitFor({ state: "hidden" });
     assert.equal(await page.locator("#goithau-table tbody [data-list-select-row]").count(), 2, "Escape cancels the current draft");
     await page.setViewportSize({ width: 390, height: 844 });

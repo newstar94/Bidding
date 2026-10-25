@@ -14,6 +14,18 @@ function formatDay(iso) {
   return `${WEEKDAYS[value.getDay()]}, ${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
 
+// Accepts one day or a range, as ISO (picker value) or dd/mm/yyyy (typed fallback).
+function rangeDays(text) {
+  const dates = [...String(text || "").matchAll(/(\d{4})-(\d{2})-(\d{2})|(\d{1,2})\/(\d{1,2})\/(\d{4})/g)]
+    .map((m) => m[1] ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : Date.UTC(+m[6], +m[5] - 1, +m[4]))
+    .filter(Number.isFinite);
+  if (!dates.length || dates.length > 2) return [];
+  const [start, end] = [Math.min(...dates), Math.max(...dates)];
+  const days = [];
+  for (let time = start; time <= end && days.length <= 366; time += 86400000) days.push(new Date(time).toISOString().slice(0, 10));
+  return days;
+}
+
 function dayList(year, kind, days) {
   if (!days.length) return `<p class="text-secondary small mb-2">Chưa có ngày nào.</p>`;
   return `<ul class="list-group list-group-flush mb-2">${days.map((iso) => `
@@ -31,13 +43,13 @@ function yearCard(year, entry) {
       <h4 class="h5">Ngày nghỉ lễ, Tết (${entry.holidays.length})</h4>
       ${dayList(year, "holidays", entry.holidays)}
       <form class="d-flex gap-2 mb-4" data-holiday-add="${escapeHtml(year)}|holidays">
-        <input class="form-control" type="date" name="day" min="${escapeHtml(year)}-01-01" max="${escapeHtml(year)}-12-31" required aria-label="Thêm ngày nghỉ năm ${escapeHtml(year)}">
+        <input class="form-control bf-admin-date-input" type="text" name="day" inputmode="numeric" placeholder="Chọn ngày hoặc khoảng ngày" data-admin-date-mode="range" data-admin-date-min="${escapeHtml(year)}-01-01" data-admin-date-max="${escapeHtml(year)}-12-31" aria-label="Thêm ngày nghỉ năm ${escapeHtml(year)}">
         <button class="btn btn-outline-primary" type="submit">Thêm ngày nghỉ</button>
       </form>
       <h4 class="h5">Ngày làm bù vào thứ Bảy/Chủ nhật (${entry.working_weekends.length})</h4>
       ${dayList(year, "working_weekends", entry.working_weekends)}
       <form class="d-flex gap-2" data-holiday-add="${escapeHtml(year)}|working_weekends">
-        <input class="form-control" type="date" name="day" min="${escapeHtml(year)}-01-01" max="${escapeHtml(year)}-12-31" required aria-label="Thêm ngày làm bù năm ${escapeHtml(year)}">
+        <input class="form-control bf-admin-date-input" type="text" name="day" inputmode="numeric" placeholder="Chọn ngày hoặc khoảng ngày" data-admin-date-mode="range" data-admin-date-min="${escapeHtml(year)}-01-01" data-admin-date-max="${escapeHtml(year)}-12-31" aria-label="Thêm ngày làm bù năm ${escapeHtml(year)}">
         <button class="btn btn-outline-primary" type="submit">Thêm ngày làm bù</button>
       </form>
     </div></section></div>`;
@@ -122,16 +134,21 @@ export async function renderAdminHolidays(container, { fetchImpl, signal } = {})
     if (form.matches("[data-holiday-add]")) {
       event.preventDefault();
       const [year, kind] = form.dataset.holidayAdd.split("|");
-      const day = String(form.elements.day.value || "");
-      if (!day.startsWith(`${year}-`)) { state.status = `Ngày phải thuộc năm ${year}.`; render(); return; }
-      const weekday = new Date(`${day}T00:00:00`).getDay();
-      if (kind === "working_weekends" && weekday !== 0 && weekday !== 6) {
-        state.status = "Ngày làm bù phải là thứ Bảy hoặc Chủ nhật."; render(); return;
+      let days = rangeDays(form.elements.day.value);
+      if (!days.length) { state.status = "Chọn một ngày hoặc một khoảng ngày."; render(); return; }
+      if (!days.every((day) => day.startsWith(`${year}-`))) { state.status = `Ngày phải thuộc năm ${year}.`; render(); return; }
+      let skipped = 0;
+      if (kind === "working_weekends") {
+        const weekends = days.filter((day) => [0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay()));
+        skipped = days.length - weekends.length;
+        days = weekends;
+        if (!days.length) { state.status = "Ngày làm bù phải là thứ Bảy hoặc Chủ nhật."; render(); return; }
       }
       change(() => {
         const entry = state.calendar[year];
-        entry[kind] = [...new Set([...entry[kind], day])].sort();
+        entry[kind] = [...new Set([...entry[kind], ...days])].sort();
       });
+      if (skipped) { state.status = `Đã thêm ${days.length} ngày cuối tuần; bỏ qua ${skipped} ngày thường. Có thay đổi chưa lưu.`; render(); }
     }
   });
   container.addEventListener("click", async (event) => {

@@ -241,8 +241,13 @@ test("an invalid range keeps the filter modal open and preserves applied filters
     await panel.locator(".business-filter-field-picker > summary").click();
     await panel.locator("[data-filter-field][value='thoiGianDangTai:value']").check();
     await panel.locator(".business-filter-field-picker > summary").click();
-    await panel.locator("[data-filter-index='1'][data-filter-bound='min']").fill("2026-10-31");
-    await panel.locator("[data-filter-index='1'][data-filter-bound='max']").fill("2026-10-01");
+    // The one-popup range picker always orders its ends, so write an inverted range into its hidden fields.
+    for (const [bound, value] of [["min", "2026-10-31"], ["max", "2026-10-01"]]) {
+      await panel.locator(`[data-filter-index='1'][data-filter-bound='${bound}']`).evaluate((input, next) => {
+        input.value = next;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+    }
     await panel.locator("[data-filter-action='apply']").click();
     await panel.locator("[data-filter-error]").waitFor({ state: "visible" });
     assert.equal(await panel.isVisible(), true);
