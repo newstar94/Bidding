@@ -682,6 +682,17 @@ export class BiddingView {
         hideGrid();
       });
     };
+    const positionCalendarInDialog = (instance) => {
+      const calendar = instance.calendarContainer;
+      const dialog = calendar.parentElement;
+      const anchor = (instance.altInput || instance._input).getBoundingClientRect();
+      const frame = dialog.getBoundingClientRect();
+      const { offsetHeight: height, offsetWidth: width } = calendar;
+      const top = anchor.bottom + 4 + height <= window.innerHeight || anchor.top - height - 4 < 0 ? anchor.bottom + 4 : anchor.top - height - 4;
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+      setRuntimeStyle(calendar, "top", `${Math.round(top - frame.top - dialog.clientTop)}px`);
+      setRuntimeStyle(calendar, "left", `${Math.round(left - frame.left - dialog.clientLeft)}px`);
+    };
     setTimeout(() => {
       container.querySelectorAll("input.flatpickr-date").forEach((el) => {
         el.setAttribute("autocomplete", "off");
@@ -692,7 +703,10 @@ export class BiddingView {
           .filter((name) => !["flatpickr-date", "flatpickr-datetime"].includes(name))
           .concat("flatpickr-input")
           .join(" ");
+        // A modal <dialog> sits in the top layer, so a calendar appended to body would be hidden behind it.
+        const dialog = el.closest("dialog");
         flatpickr(el, {
+          ...(dialog ? { appendTo: dialog, position: positionCalendarInDialog } : {}),
           dateFormat: storageFormat,
           // Native date inputs and deferred picker loading can leave an ISO
           // value in the control. Preserve its date instead of parsing as DMY.

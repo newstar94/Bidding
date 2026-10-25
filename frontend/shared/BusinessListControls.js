@@ -4,7 +4,7 @@ import { renderLucideIcons } from "./lucideIcons.js";
 import { loadStyleOnce } from "./externalAssets.js";
 import { deleteView, findView, listSavedViews, saveView } from "./BusinessListSavedViews.js";
 import { loadPaginatedRecords } from "./tableDataUtils.js";
-import { getVersionLabel } from "./formatters.js";
+import { convertDMYToYMD, formatDate, getVersionLabel } from "./formatters.js";
 import { isWorkspaceLeaseCurrent } from "../app/workspaceLease.js";
 import { loadWorkspaceEmployees } from "./workspaceEmployeeLoader.js";
 import { businessListState } from "./BusinessListState.js";
@@ -114,6 +114,7 @@ function closePanel(ui, restoreFocus = true) {
   ui.generation += 1;
   for (const timer of ui.searchTimers.values()) clearTimeout(timer);
   ui.searchTimers.clear();
+  destroyDatePickers(ui.panel);
   if (ui.panel.open) ui.panel.close();
   ui.panel.hidden = true;
   ui.draft = null;
@@ -184,8 +185,15 @@ function conditionMarkup(ui, condition, index) {
     const date = definition.kind !== "money";
     const dateRangeLabels = date && Boolean(LIST_FILTER_OPERATORS[ui.type]);
     control = `<div class="business-filter-range">
-      <label for="${id}-min">${dateRangeLabels ? "Từ ngày" : "Từ"}<input id="${id}-min" data-filter-index="${index}" data-filter-bound="min" type="${date ? "date" : "text"}" ${date ? 'min="0001-01-01" max="9999-12-31"' : 'inputmode="numeric" maxlength="19" placeholder="Không giới hạn"'} value="${esc(condition.value?.min || "")}"></label>
-      <label for="${id}-max">${dateRangeLabels ? "Đến ngày" : "Đến"}<input id="${id}-max" data-filter-index="${index}" data-filter-bound="max" type="${date ? "date" : "text"}" ${date ? 'min="0001-01-01" max="9999-12-31"' : 'inputmode="numeric" maxlength="19" placeholder="Không giới hạn"'} value="${esc(condition.value?.max || "")}"></label></div>`;
+      ${["min", "max"].map((bound) => {
+        const value = condition.value?.[bound] || "";
+        // Dates stay YYYY-MM-DD in the draft but are shown and typed as dd/mm/yyyy through the app's flatpickr theme.
+        const input = date
+          ? `<input id="${id}-${bound}" class="flatpickr-date" data-filter-index="${index}" data-filter-bound="${bound}" data-filter-date type="text" inputmode="numeric" maxlength="10" placeholder="dd/mm/yyyy" value="${esc(value ? formatDate(value) : "")}">`
+          : `<input id="${id}-${bound}" data-filter-index="${index}" data-filter-bound="${bound}" type="text" inputmode="numeric" maxlength="19" placeholder="Không giới hạn" value="${esc(value)}">`;
+        const text = bound === "min" ? (dateRangeLabels ? "Từ ngày" : "Từ") : (dateRangeLabels ? "Đến ngày" : "Đến");
+        return `<label for="${id}-${bound}">${text}<span class="business-filter-input">${date ? '<i data-lucide="calendar" aria-hidden="true"></i>' : ""}${input}</span></label>`;
+      }).join("")}</div>`;
   } else if (condition.operator === "year") {
     control = `<label class="business-filter-hint" for="${id}-years">Có thể nhập nhiều năm, cách nhau bằng dấu phẩy</label>
       <input id="${id}-years" data-filter-index="${index}" data-filter-years type="text" inputmode="numeric" maxlength="512" placeholder="Ví dụ: 2025, 2026" value="${esc((Array.isArray(condition.value) ? condition.value : [condition.value]).join(", "))}">`;
@@ -202,37 +210,46 @@ function conditionMarkup(ui, condition, index) {
         ${definition.kind === "reference" && ui.view.model.useServerSidePagination ? `<button type="button" class="btn btn-outline" data-filter-load-more="${index}" hidden>Xem thêm</button>` : ""}</div></details>`;
   }
   return `<fieldset class="business-filter-condition" data-filter-condition="${index}"><legend>${esc(label)}</legend>
-    <button type="button" class="business-filter-remove" data-filter-remove="${index}" aria-label="Bỏ điều kiện ${esc(label)}">×</button>${control}</fieldset>`;
+    <button type="button" class="business-filter-remove" data-filter-remove="${index}" aria-label="Bỏ điều kiện ${esc(label)}"><i data-lucide="x" aria-hidden="true"></i></button>${control}</fieldset>`;
 }
 
 function renderConditions(ui) {
   for (const timer of ui.searchTimers.values()) clearTimeout(timer);
   ui.searchTimers.clear();
   const container = ui.panel.querySelector("[data-filter-conditions]");
+  destroyDatePickers(container);
   container.innerHTML = trustedHTML(ui.draft.length ? ui.draft.map((condition, index) => conditionMarkup(ui, condition, index)).join("")
-    : '<div class="business-filter-empty"><strong>Chọn trường dữ liệu để bắt đầu</strong><span>Bạn có thể kết hợp nhiều trường trong cùng một bộ lọc.</span></div>');
+    : '<p class="business-filter-empty">Chưa có điều kiện nào. Chọn <strong>Thêm trường lọc</strong> để bắt đầu.</p>');
+  const logic = ui.panel.querySelector("[data-filter-logic]");
+  if (logic) logic.hidden = !ui.draft.length;
   for (const control of ui.panel.querySelectorAll("[data-filter-field]")) {
     control.checked = ui.draft.some((condition) => keyOf(condition) === control.value);
     control.disabled = !control.checked && ui.draft.length >= 24;
   }
   renderLucideIcons(container);
+  ui.view.initFlatpickr?.(container);
   showError(ui);
+}
+
+function destroyDatePickers(root) {
+  for (const input of root?.querySelectorAll("[data-filter-date]") || []) input._flatpickr?.destroy();
 }
 
 function renderSavedViews(ui) {
   const host = ui.panel.querySelector("[data-filter-saved]");
   if (!host) return;
   const views = listSavedViews(ui.view.model, ui.type);
-  const options = views.map((view) => `<option value="${esc(view.name)}">${esc(view.name)}</option>`).join("");
-  host.innerHTML = trustedHTML(`<label class="business-filter-saved-label">Chế độ xem đã lưu
-      <select data-filter-saved-select aria-label="Chọn chế độ xem đã lưu"${views.length ? "" : " disabled"}>
-        <option value="">${views.length ? "Chọn chế độ xem…" : "Chưa có chế độ xem nào"}</option>${options}</select></label>
-    <button type="button" class="btn btn-outline" data-filter-action="saved-apply"${views.length ? "" : " disabled"}>Dùng</button>
-    <button type="button" class="btn btn-outline" data-filter-action="saved-delete"${views.length ? "" : " disabled"} aria-label="Xóa chế độ xem đã chọn">Xóa</button>
-    <button type="button" class="btn btn-outline" data-filter-action="saved-save">Lưu điều kiện hiện tại</button>`);
+  const items = views.map((view) => `<div class="business-filter-menu-row">
+      <button type="button" class="business-filter-menu-item" data-filter-action="saved-apply" data-saved-view="${esc(view.name)}">${esc(view.name)}</button>
+      <button type="button" class="business-filter-menu-icon" data-filter-action="saved-delete" data-saved-view="${esc(view.name)}" aria-label="Xóa chế độ xem ${esc(view.name)}"><i data-lucide="trash-2" aria-hidden="true"></i></button></div>`).join("");
+  host.innerHTML = trustedHTML(`<summary class="btn btn-outline" aria-label="Chế độ xem đã lưu"><i data-lucide="bookmark" aria-hidden="true"></i><span>Chế độ xem</span>${views.length ? `<span class="business-filter-count">${views.length}</span>` : ""}<i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+    <div class="business-filter-menu">${items || '<p class="business-filter-hint">Chưa có chế độ xem nào.</p>'}
+      <button type="button" class="business-filter-menu-item business-filter-menu-save" data-filter-action="saved-save"><i data-lucide="save" aria-hidden="true"></i> Lưu bộ lọc hiện tại…</button></div>`);
+  renderLucideIcons(host);
 }
-async function handleSavedViewAction(ui, action) {
-  const selected = ui.panel.querySelector("[data-filter-saved-select]")?.value || "";
+async function handleSavedViewAction(ui, action, control) {
+  const selected = control?.dataset.savedView || "";
+  const menu = ui.panel.querySelector("[data-filter-saved]");
   if (action === "saved-apply") {
     const view = selected && findView(ui.view.model, ui.type, selected);
     if (!view) return showError(ui, "Chọn một chế độ xem để dùng.");
@@ -240,17 +257,20 @@ async function handleSavedViewAction(ui, action) {
     ui.generation += 1;
     showError(ui, "");
     renderConditions(ui);
+    if (menu) menu.open = false;
     return;
   }
   if (action === "saved-delete") {
     if (!selected) return showError(ui, "Chọn một chế độ xem để xóa.");
     deleteView(ui.view.model, ui.type, selected);
     renderSavedViews(ui);
+    menu?.querySelector(".business-filter-menu-item")?.focus();
     return;
   }
   if (action === "saved-save") {
     try {
       const conditions = normalizeBusinessListFilters(ui.type, ui.draft);
+      if (menu) menu.open = false;
       if (!conditions.length) return showError(ui, "Thêm ít nhất một điều kiện trước khi lưu.");
       const name = typeof ui.view.customPrompt === "function"
         ? await ui.view.customPrompt("Lưu chế độ xem", "Đặt tên cho bộ lọc này:", "")
@@ -269,17 +289,17 @@ function openPanel(ui) {
   ui.generation += 1;
   ui.draft = getBusinessListFilters(ui.view.model, ui.type);
   ui.options.clear();
-  ui.panel.innerHTML = trustedHTML(`<div class="business-filter-heading"><div><h3 id="${ui.type}-filter-title">Bộ lọc ${LABELS[ui.type]}</h3>
-    <p>Thỏa mãn tất cả trường đã chọn. Trong mỗi trường, chỉ cần khớp một giá trị. Lọc trên phiên bản hiện hành.</p></div>
-    <button type="button" class="btn btn-outline" data-filter-action="cancel" aria-label="Đóng bộ lọc">×</button></div>
-    <div class="business-filter-saved" data-filter-saved></div>
-    <div class="business-filter-body"><details class="business-filter-field-picker"><summary><i data-lucide="plus" aria-hidden="true"></i> Thêm trường lọc</summary>
+  destroyDatePickers(ui.panel);
+  ui.panel.innerHTML = trustedHTML(`<div class="business-filter-heading"><h3 id="${ui.type}-filter-title">Bộ lọc ${LABELS[ui.type]}</h3>
+    <details class="business-filter-saved business-filter-dropdown" data-filter-saved></details>
+    <button type="button" class="btn btn-outline business-filter-close" data-filter-action="cancel" aria-label="Đóng bộ lọc"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <div class="business-filter-body"><details class="business-filter-field-picker business-filter-dropdown"><summary><i data-lucide="plus" aria-hidden="true"></i> Thêm trường lọc<i data-lucide="chevron-down" aria-hidden="true"></i></summary>
       <div class="business-filter-field-body"><input type="search" data-filter-field-search placeholder="Tìm trường dữ liệu…" aria-label="Tìm trường dữ liệu">
         <div class="business-filter-field-list">${filterChoices(ui.type).map((choice) => `<label class="business-filter-option" data-field-choice-label="${esc(searchText(choice.label))}"><input type="checkbox" data-filter-field value="${esc(choice.id)}"><span>${esc(choice.label)}</span></label>`).join("")}</div></div></details>
+    <p class="business-filter-hint business-filter-logic" data-filter-logic hidden>Khớp tất cả điều kiện; trong mỗi trường chỉ cần khớp một giá trị. Lọc trên phiên bản hiện hành.</p>
     <div class="business-filter-conditions" data-filter-conditions></div>
     <p class="business-filter-error" data-filter-error role="alert" hidden></p></div>
-    <div class="business-filter-footer"><button type="button" class="btn btn-outline" data-filter-action="clear">Xóa điều kiện</button>
-      <span class="business-filter-hint">Chọn Áp dụng để cập nhật danh sách.</span><div>
+    <div class="business-filter-footer"><button type="button" class="btn btn-text" data-filter-action="clear">Xóa tất cả</button><div>
       <button type="button" class="btn btn-outline" data-filter-action="cancel">Hủy</button>
       <button type="button" class="btn btn-primary" data-filter-action="apply">Áp dụng</button></div></div>`);
   ui.panel.hidden = false;
@@ -288,7 +308,7 @@ function openPanel(ui) {
   if (!ui.panel.open) ui.panel.showModal();
   updateFilterButton(ui);
   renderLucideIcons(ui.panel);
-  ui.panel.querySelector("summary")?.focus();
+  ui.panel.querySelector(".business-filter-field-picker > summary")?.focus();
 }
 
 async function loadAssigneeOptions(ui, index) {
@@ -386,10 +406,15 @@ function bindPanel(ui) {
     const dismissBackdrop = backdropPointerDown && isOutsideDialog(event);
     backdropPointerDown = false;
     if (dismissBackdrop) { closePanel(ui); return; }
-    const action = event.target.closest("[data-filter-action]")?.dataset.filterAction;
+    // The field picker and saved-view menu float over the body, so they close like menus.
+    for (const dropdown of ui.panel.querySelectorAll(".business-filter-dropdown[open]")) {
+      if (!dropdown.contains(event.target)) dropdown.open = false;
+    }
+    const actionControl = event.target.closest("[data-filter-action]");
+    const action = actionControl?.dataset.filterAction;
     if (action === "cancel") closePanel(ui);
     if (action === "clear") { ui.draft = []; ui.generation += 1; renderConditions(ui); }
-    if (String(action || "").startsWith("saved-")) { await handleSavedViewAction(ui, action); return; }
+    if (String(action || "").startsWith("saved-")) { await handleSavedViewAction(ui, action, actionControl); return; }
     if (action === "apply") {
       try {
         const filters = normalizeBusinessListFilters(ui.type, ui.draft);
@@ -405,7 +430,7 @@ function bindPanel(ui) {
       }
     }
     const remove = event.target.closest("[data-filter-remove]");
-    if (remove) { ui.draft.splice(Number(remove.dataset.filterRemove), 1); ui.generation += 1; renderConditions(ui); ui.panel.querySelector("summary")?.focus(); }
+    if (remove) { ui.draft.splice(Number(remove.dataset.filterRemove), 1); ui.generation += 1; renderConditions(ui); ui.panel.querySelector(".business-filter-field-picker > summary")?.focus(); }
     const more = event.target.closest("[data-filter-load-more]");
     if (more) {
       const index = Number(more.dataset.filterLoadMore);
@@ -445,7 +470,8 @@ function bindPanel(ui) {
     }
     if (target.matches("[data-filter-index]")) {
       const condition = ui.draft[Number(target.dataset.filterIndex)];
-      if (target.hasAttribute("data-filter-bound")) condition.value[target.dataset.filterBound] = target.value;
+      if (target.hasAttribute("data-filter-date")) condition.value[target.dataset.filterBound] = convertDMYToYMD(target.value.trim());
+      else if (target.hasAttribute("data-filter-bound")) condition.value[target.dataset.filterBound] = target.value;
       else condition.value = target.hasAttribute("data-filter-years") ? target.value.split(/[,;\s]+/).filter(Boolean) : target.value;
       showError(ui);
     }
@@ -484,6 +510,8 @@ function bindPanel(ui) {
     }
     if (event.key !== "Escape") return;
     event.preventDefault(); event.stopPropagation();
+    const calendar = [...ui.panel.querySelectorAll("[data-filter-date]")].find((input) => input._flatpickr?.isOpen)?._flatpickr;
+    if (calendar) { calendar.close(); return; }
     const details = event.target.closest("details[open]");
     if (details) { details.open = false; details.querySelector("summary")?.focus(); }
     else closePanel(ui);
