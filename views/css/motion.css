@@ -103,9 +103,9 @@ details[open] > :not(summary) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bf-motion-tablist::after,
+  .bf-motion-tablist[data-bf-tab-motion="ready"]::after,
   .modal-overlay.active .modal-card {
-    transition: none !important;
+    transition: none;
   }
 
   .bf-motion-ripple,
