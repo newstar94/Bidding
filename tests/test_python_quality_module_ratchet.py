@@ -1,4 +1,9 @@
 from pathlib import Path
+import subprocess
+
+import pytest
+
+from scripts import check_python_quality as quality
 
 from scripts.check_python_quality import (
     find_duplicate_top_level_definitions,
@@ -34,3 +39,31 @@ def test_duplicate_top_level_definition_gate(tmp_path):
     )
     findings = find_duplicate_top_level_definitions([Path(tmp_path)])
     assert findings == [(duplicate, "repeated", 1, 4)]
+
+
+@pytest.mark.parametrize("status, output", [
+    (2, "[]"), (0, ""), (0, "not json"), (0, "{}"),
+    (0, '[{"code": "BLE001"}]'), (0, "[null]"),
+])
+def test_failed_measurement_does_not_report_stale_baselines(monkeypatch, capsys, status, output):
+    results = iter([
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], status, output, "fixture diagnostic"),
+    ])
+    monkeypatch.setattr(quality, "_run", lambda *args: next(results))
+    monkeypatch.setattr(quality, "find_duplicate_top_level_definitions", lambda paths: [])
+    assert quality.main() == 2
+    captured = capsys.readouterr()
+    assert "baseline was not evaluated" in captured.err
+    assert "fixture diagnostic" in captured.err
+    assert "stale" not in captured.err
+    assert "Python quality baseline" not in captured.out
+
+
+def test_valid_empty_measurement_is_evaluated(monkeypatch, tmp_path):
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text('{"BLE001": {}, "S608": {}}', encoding="utf-8")
+    monkeypatch.setattr(quality, "MODULE_BASELINE_PATH", baseline)
+    monkeypatch.setattr(quality, "_run", lambda *args: subprocess.CompletedProcess([], 0, "[]", ""))
+    monkeypatch.setattr(quality, "find_duplicate_top_level_definitions", lambda paths: [])
+    assert quality.main() == 0

@@ -128,7 +128,23 @@ def main():
         "json",
         "--exit-zero",
     )
-    findings = json.loads(measured.stdout or "[]")
+    if measured.returncode:
+        sys.stderr.write("Ruff measurement failed; baseline was not evaluated.\n")
+        sys.stderr.write(measured.stdout + measured.stderr)
+        return measured.returncode
+    try:
+        findings = json.loads(measured.stdout)
+        if not isinstance(findings, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("code"), str)
+            or not isinstance(item.get("filename"), str)
+            for item in findings
+        ):
+            raise ValueError("Expected an array of Ruff diagnostics")
+    except ValueError as error:
+        sys.stderr.write(f"Invalid Ruff measurement; baseline was not evaluated: {error}\n")
+        sys.stderr.write(measured.stderr)
+        return 2
     counts = Counter(item["code"] for item in findings)
     module_baseline = json.loads(MODULE_BASELINE_PATH.read_text(encoding="utf-8"))
     module_failures = validate_module_debt(findings, module_baseline)

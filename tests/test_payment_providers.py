@@ -217,11 +217,11 @@ def test_payos_default_transport_identifies_the_application(monkeypatch, operati
         def read(self, size):
             return raw[:size]
 
-    def urlopen(request, timeout):
+    def open_request(_opener, request, timeout):
         captured["request"] = request
         return Response()
 
-    monkeypatch.setattr("backend.billing.providers.base.urllib.request.urlopen", urlopen)
+    monkeypatch.setattr("backend.billing.providers.base.urllib.request.OpenerDirector.open", open_request)
     provider = PayOSPaymentProvider(PayOSCredentials("client", "api", KEY))
     if operation == "create":
         provider.create_payment({

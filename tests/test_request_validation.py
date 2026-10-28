@@ -9,7 +9,7 @@ import pytest
 from starlette.requests import Request
 
 from backend.shared import numeric_utils
-from backend.shared.request_validation import read_json_object
+from backend.shared.request_validation import read_json_object, validate_json_object
 
 
 @pytest.mark.parametrize("value", ["1e1000000000", "-1e1000000000"])
@@ -45,7 +45,7 @@ def _request(body):
     }, receive)
 
 
-@pytest.mark.parametrize("decoder_limit", ["integer", "syntax", "utf8"])
+@pytest.mark.parametrize("decoder_limit", ["integer", "syntax", "utf8", "nesting"])
 def test_json_decoder_resource_limits_return_existing_400_contract(decoder_limit):
     if decoder_limit == "integer":
         digit_limit = sys.get_int_max_str_digits()
@@ -54,6 +54,11 @@ def test_json_decoder_resource_limits_return_existing_400_contract(decoder_limit
         body = b'{"value":' + b"7" * (digit_limit + 1) + b"}"
     elif decoder_limit == "syntax":
         body = b'{"value":'
+    elif decoder_limit == "nesting":
+        # Python 3.14's C decoder can exceed the Python frame recursion limit.
+        # This remains below the existing 1 MiB request-body limit.
+        depth = max(20_000, sys.getrecursionlimit() + 100)
+        body = b'{"value":' + b"[" * depth + b"0" + b"]" * depth + b"}"
     else:
         body = b'{"value":"\xff"}'
 
@@ -68,3 +73,15 @@ def test_json_object_still_accepts_valid_financial_and_nested_fields():
     data, response = asyncio.run(read_json_object(_request(body)))
     assert data == json.loads(body)
     assert response is None
+
+
+@pytest.mark.parametrize("value, code", [(10**1000, "VALUE_TOO_LARGE"), (-(10**1000), "VALUE_TOO_SMALL")])
+def test_number_bounds_handle_large_json_integers_without_float_overflow(value, code):
+    errors = validate_json_object({"value": value}, {"value": {"type": "number", "min": 0, "max": 100}})
+    assert [error["code"] for error in errors] == [code]
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+def test_number_still_rejects_non_finite_floats_and_booleans(value):
+    errors = validate_json_object({"value": value}, {"value": {"type": "number"}})
+    assert [error["code"] for error in errors] == ["INVALID_NUMBER"]

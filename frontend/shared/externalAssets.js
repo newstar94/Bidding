@@ -4,6 +4,16 @@ import { FLATPICKR_THEME_URL } from "./flatpickrTheme.js";
 const SCRIPT_LOADERS = /* @__PURE__ */ new Map();
 const STYLE_LOADERS = /* @__PURE__ */ new Map();
 
+function cacheLoad(loaders, key, promise) {
+  // Rejection can occur synchronously, before the executor's promise is cached.
+  // Evict after settlement and never remove a newer retry for the same URL.
+  void promise.catch(() => {
+    if (loaders.get(key) === promise) loaders.delete(key);
+  });
+  loaders.set(key, promise);
+  return promise;
+}
+
 function assetError(message, node, loaders, key) {
   node.dataset.assetState = "error";
   node.remove?.();
@@ -61,8 +71,7 @@ export function loadScriptOnce(src, globalName) {
       document.head.appendChild(script);
     }
   });
-  SCRIPT_LOADERS.set(src, promise);
-  return promise;
+  return cacheLoad(SCRIPT_LOADERS, src, promise);
 }
 export function ensureXlsxLoaded() {
   return loadScriptOnce("/vendor/xlsx/xlsx.full.min.js?v=0.20.3", "XLSX");
@@ -104,13 +113,18 @@ export function loadStyleOnce(href) {
       document.head.appendChild(link);
     }
   });
-  STYLE_LOADERS.set(safeHref, promise);
-  return promise;
+  return cacheLoad(STYLE_LOADERS, safeHref, promise);
 }
 export async function ensureFlatpickrLoaded() {
-  await loadStyleOnce(FLATPICKR_THEME_URL);
-  await loadStyleOnce("/vendor/flatpickr/flatpickr.min.css?v=4");
-  await loadScriptOnce("/vendor/flatpickr/flatpickr.min.js?v=4", "flatpickr");
-  await loadScriptOnce("/vendor/flatpickr/l10n/vn.js?v=4");
-  return window.flatpickr;
+  // Preserve stylesheet order, but let independent styles and scripts download
+  // together. Only the locale depends on the main script having executed.
+  const [, , flatpickr] = await Promise.all([
+    loadStyleOnce(FLATPICKR_THEME_URL),
+    loadStyleOnce("/vendor/flatpickr/flatpickr.min.css?v=4"),
+    loadScriptOnce("/vendor/flatpickr/flatpickr.min.js?v=4", "flatpickr").then(async (runtime) => {
+      if (!runtime.l10ns?.vn) await loadScriptOnce("/vendor/flatpickr/l10n/vn.js?v=4");
+      return runtime;
+    }),
+  ]);
+  return flatpickr;
 }

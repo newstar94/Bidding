@@ -1,20 +1,11 @@
-import { loadScriptOnce, loadStyleOnce } from "../shared/externalAssets.js";
-import { bindDateRangePicker, enhanceFlatpickrMonthYear, FLATPICKR_THEME_URL, syncDateRangePicker } from "../shared/flatpickrTheme.js";
+import { ensureFlatpickrLoaded } from "../shared/externalAssets.js";
+import { bindDateRangePicker, enhanceFlatpickrMonthYear, syncDateRangePicker } from "../shared/flatpickrTheme.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-
-async function loadAdminFlatpickr() {
-  await loadStyleOnce(FLATPICKR_THEME_URL);
-  await loadStyleOnce("/vendor/flatpickr/flatpickr.min.css?v=4");
-  const flatpickr = globalThis.flatpickr
-    || await loadScriptOnce("/vendor/flatpickr/flatpickr.min.js?v=4", "flatpickr");
-  if (!flatpickr?.l10ns?.vn) await loadScriptOnce("/vendor/flatpickr/l10n/vn.js?v=4");
-  return flatpickr;
-}
 
 function configureDateInput(input) {
   if (!input?.isConnected || input._flatpickr || input.dataset.adminDateState === "binding") return;
   input.dataset.adminDateState = "binding";
-  void loadAdminFlatpickr().then((flatpickr) => {
+  void ensureFlatpickrLoaded().then((flatpickr) => {
     if (!input.isConnected || input._flatpickr) return;
     const label = input.id ? document.querySelector(`label[for="${input.id}"]`) : null;
     const wrapperLabel = input.closest("label");
@@ -84,7 +75,7 @@ function configureRangeInput(input) {
   const to = input.form?.elements.namedItem(input.dataset.adminRangeTo);
   if (!from || !to) return;
   input.dataset.adminDateState = "binding";
-  void loadAdminFlatpickr().then((flatpickr) => {
+  void ensureFlatpickrLoaded().then((flatpickr) => {
     if (!input.isConnected || input._flatpickr) return;
     bindDateRangePicker(flatpickr, input, { from, to, calendarClass: "flatpickr-calendar--admin" });
     input.dataset.adminDateState = "ready";

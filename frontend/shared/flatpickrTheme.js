@@ -7,6 +7,7 @@ export const FLATPICKR_THEME_URL = new URL("./flatpickrTheme.css?no-inline", imp
 // Click the month or year in the header to pick from a grid; the header reads "Tháng N".
 export function enhanceFlatpickrMonthYear(instance) {
   const container2 = instance.calendarContainer;
+  let yearPage = instance.currentYear;
   let gridOverlay = container2.querySelector(".flatpickr-grid-overlay");
   if (!gridOverlay) {
     gridOverlay = document.createElement("div");
@@ -40,7 +41,8 @@ export function enhanceFlatpickrMonthYear(instance) {
       const grid = document.createElement("div");
       grid.className = "flatpickr-month-grid";
       for (let m = 0; m < 12; m++) {
-        const item = document.createElement("div");
+        const item = document.createElement("button");
+        item.type = "button";
         item.className = `flatpickr-grid-item ${instance.currentMonth === m ? "active" : ""}`;
         item.textContent = `Tháng ${m + 1}`;
         item.onclick = (e) => {
@@ -53,16 +55,17 @@ export function enhanceFlatpickrMonthYear(instance) {
       gridOverlay.appendChild(grid);
     } else if (type === "year") {
       gridOverlay.className = "flatpickr-grid-overlay flatpickr-year-grid-mode";
-      const startYear = instance.currentYear - 5;
+      const startYear = yearPage - 5;
       const header = document.createElement("div");
       header.className = "grid-header";
       const prevBtn = document.createElement("button");
       prevBtn.type = "button";
+      prevBtn.setAttribute("aria-label", "Nhóm năm trước");
       prevBtn.className = "grid-nav-btn";
       prevBtn.innerHTML = trustedHTML("&larr;");
       prevBtn.onclick = (e) => {
         e.stopPropagation();
-        instance.currentYear -= 10;
+        yearPage -= 10;
         showGrid("year");
       };
       const title = document.createElement("span");
@@ -70,11 +73,12 @@ export function enhanceFlatpickrMonthYear(instance) {
       title.textContent = `${startYear} - ${startYear + 11}`;
       const nextBtn = document.createElement("button");
       nextBtn.type = "button";
+      nextBtn.setAttribute("aria-label", "Nhóm năm tiếp theo");
       nextBtn.className = "grid-nav-btn";
       nextBtn.innerHTML = trustedHTML("&rarr;");
       nextBtn.onclick = (e) => {
         e.stopPropagation();
-        instance.currentYear += 10;
+        yearPage += 10;
         showGrid("year");
       };
       header.appendChild(prevBtn);
@@ -84,7 +88,8 @@ export function enhanceFlatpickrMonthYear(instance) {
       const grid = document.createElement("div");
       grid.className = "flatpickr-year-grid";
       for (let y = startYear; y < startYear + 12; y++) {
-        const item = document.createElement("div");
+        const item = document.createElement("button");
+        item.type = "button";
         item.className = `flatpickr-grid-item flatpickr-year-grid-item ${instance.currentYear === y ? "active" : ""}`;
         item.textContent = y;
         item.onclick = (e) => {
@@ -131,6 +136,7 @@ export function enhanceFlatpickrMonthYear(instance) {
         if (getRuntimeStyle(gridOverlay, "display") === "block" && gridOverlay.classList.contains("flatpickr-year-grid-mode")) {
           hideGrid();
         } else {
+          yearPage = instance.currentYear;
           showGrid("year");
         }
       };
@@ -180,13 +186,21 @@ function rangeDates(from, to) {
 const DATE_IN_TEXT = /(\d{4})-(\d{2})-(\d{2})|(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
 
 // Reads "dd/mm/yyyy – dd/mm/yyyy", "dd/mm/yyyy – …" (from that day on) or "… – dd/mm/yyyy" (up to that day).
-// Returns null for text that has digits but no complete date, so a half-typed value never clears a filter.
+// Invalid or half-typed dates return null so they never clear an existing bound.
 export function parseDateRangeText(text) {
   const value = String(text || "");
   const matches = [...value.matchAll(DATE_IN_TEXT)];
-  if (matches.length > 2 || (!matches.length && /\d/.test(value))) return null;
+  // Reject partial dates and stray text instead of silently dropping a bound.
+  if (matches.length > 2 || /[^\s–—….\-]/u.test(value.replace(DATE_IN_TEXT, ""))) return null;
   const dates = matches.map((m) => (m[1] ? [m[1], m[2], m[3]] : [m[6], m[5].padStart(2, "0"), m[4].padStart(2, "0")]).join("-"));
-  if (matches.length === 1 && /[–…-]/.test(value.slice(0, matches[0].index))) return ["", dates[0]];
+  if (dates.some((iso) => {
+    const [year, month, day] = iso.split("-").map(Number);
+    const date = new Date(0);
+    date.setFullYear(year, month - 1, day);
+    return year < 1 || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day;
+  })) return null;
+  if (matches.length === 2 && !/^\s*[–—-]\s*$/u.test(value.slice(matches[0].index + matches[0][0].length, matches[1].index))) return null;
+  if (matches.length === 1 && /[–—…-]/.test(value.slice(0, matches[0].index))) return ["", dates[0]];
   dates.sort();
   return [dates[0] || "", dates[1] || ""];
 }
@@ -211,7 +225,9 @@ export function bindDateRangePicker(flatpickr, input, { from, to, calendarClass 
   };
   let instance;
   let footer;
+  let destroyed = false;
   const sync = () => {
+    if (destroyed) return;
     instance.setDate(rangeDates(from, to), false, "Y-m-d");
     if (!ISO_DATE.test(from.value) && ISO_DATE.test(to.value)) instance.jumpToDate(to.value);
     display();
@@ -226,18 +242,20 @@ export function bindDateRangePicker(flatpickr, input, { from, to, calendarClass 
     sync();
   };
   const host = input.parentElement;
-  host.addEventListener("blur", (event) => {
+  const onBlur = (event) => {
     if (event.target !== input) return;
     event.stopPropagation();
     // Moving into the calendar (picking a day) is not a typed commit.
     if (!instance.calendarContainer?.contains(event.relatedTarget)) commitTyped();
-  }, true);
-  host.addEventListener("keydown", (event) => {
+  };
+  const onKeyDown = (event) => {
     if (event.target !== input || event.key !== "Enter") return;
     event.stopPropagation();
     commitTyped();
     instance.close();
-  }, true);
+  };
+  host.addEventListener("blur", onBlur, true);
+  host.addEventListener("keydown", onKeyDown, true);
   input._bfDateRange = { from, to, sync: () => sync() };
   instance = flatpickr(input, {
     ...config,
@@ -261,6 +279,12 @@ export function bindDateRangePicker(flatpickr, input, { from, to, calendarClass 
     },
     // flatpickr closes before it reports the second pick, so re-read the fields afterwards.
     onClose: () => queueMicrotask(sync),
+    onDestroy: [() => {
+      destroyed = true;
+      host.removeEventListener("blur", onBlur, true);
+      host.removeEventListener("keydown", onKeyDown, true);
+      delete input._bfDateRange;
+    }, ...[].concat(config.onDestroy || [])],
     onReady: (_dates, _text, self) => {
       if (calendarClass) self.calendarContainer.classList.add(calendarClass);
       enhanceFlatpickrMonthYear(self);

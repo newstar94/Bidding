@@ -49,7 +49,7 @@ def validate_json_object(data, fields, *, allow_unknown=False):
             valid_type = (
                 isinstance(value, (int, float))
                 and not isinstance(value, bool)
-                and math.isfinite(value)
+                and (isinstance(value, int) or math.isfinite(value))
             )
         elif expected == "money":
             valid_type = parse_vnd_amount(value) is not None
@@ -99,9 +99,9 @@ async def read_json_object(request):
     """
     try:
         data = await request.json()
-    except ValueError:
-        # JSON syntax/UTF-8 failures and Python's integer digit limit all derive
-        # from ValueError and use the existing invalid-JSON response.
+    except (ValueError, RecursionError):
+        # Syntax, UTF-8, integer digit and nesting limits are invalid input,
+        # not server failures. Keep the existing invalid-JSON response.
         return None, error_response(
             request,
             "REQUEST_JSON_INVALID",

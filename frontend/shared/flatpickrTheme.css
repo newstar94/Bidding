@@ -139,11 +139,11 @@
 }
 .flatpickr-month-grid,
 .flatpickr-year-grid {
-  display: grid !important;
-  grid-template-columns: repeat(3, 1fr) !important;
-  gap: 8px !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .flatpickr-grid-overlay .flatpickr-grid-item {
   display: flex;
@@ -271,7 +271,7 @@
   color: var(--text-main);
 }
 .bf-range-footer[hidden] {
-  display: none !important;
+  display: none;
 }
 .bf-range-footer button {
   min-height: 36px;
