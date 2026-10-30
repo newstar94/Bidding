@@ -11,11 +11,21 @@ try {
   await page.evaluate(async () => {
     const module = await import("/frontend/admin-platform/AdminAnalytics.js");
     module.renderAdminAnalytics(document.querySelector("#admin-analytics"));
+    const { bindAdminDates } = await import("/frontend/admin-platform/AdminDate.js");
+    bindAdminDates(document.querySelector("#admin-analytics"));
   });
   await page.getByText("Đang trực tuyến").waitFor({ state: "visible" });
-  await page.locator("#admin-analytics-from").fill("2026-08-30");
-  await page.locator("#admin-analytics-to").fill("2026-08-30");
-  await page.locator("[data-admin-analytics-form]").press("Enter");
+  const range = page.locator("#admin-analytics-range[data-admin-date-state='ready']");
+  await range.fill("30/08/2026 – 30/08/2026");
+  await range.press("Tab");
+  const dashboardResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/admin/product-analytics/dashboard"
+      && url.searchParams.get("from") === "2026-08-30"
+      && url.searchParams.get("to") === "2026-08-30";
+  });
+  await page.getByRole("button", { name: "Áp dụng", exact: true }).click();
+  assert.equal((await dashboardResponse).status(), 200);
   await page.getByRole("cell", { name: "Kế hoạch", exact: true }).waitFor({ state: "visible" });
 
   await context.clearCookies();

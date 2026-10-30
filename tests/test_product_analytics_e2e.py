@@ -9,7 +9,8 @@ import subprocess
 from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.responses import FileResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 import uvicorn
 import pytest
 
@@ -87,7 +88,10 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
         )
 
         async def index(_request):
-            return HTMLResponse("<!doctype html><html lang='vi'><body><main id='admin-analytics'></main></body></html>")
+            return HTMLResponse("""<!doctype html><html lang="vi"><head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <link rel="stylesheet" href="/css/runtime-styles.css" data-runtime-styles>
+            </head><body><main id="admin-analytics"></main></body></html>""")
 
         async def usage_summary(request):
             if request.cookies.get("analytics_role") != "super_admin":
@@ -101,12 +105,6 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
                 "topFeatures": [{"feature": "plans", "label": "Kế hoạch", "count": 3}],
             })
 
-        async def frontend_javascript(request):
-            return FileResponse(
-                Path("frontend") / request.path_params["path"],
-                media_type="text/javascript",
-            )
-
         async def dependency_javascript(request):
             return FileResponse(
                 Path("node_modules") / request.path_params["path"],
@@ -115,7 +113,9 @@ def test_real_backend_browser_analytics_journey(monkeypatch):
 
         app = Starlette(routes=[
             Route("/", index),
-            Route("/frontend/{path:path}", frontend_javascript, methods=["GET"]),
+            Mount("/vendor", app=StaticFiles(directory="views/vendor")),
+            Mount("/css", app=StaticFiles(directory="views/css")),
+            Mount("/frontend", app=StaticFiles(directory="frontend")),
             Route("/node_modules/{path:path}", dependency_javascript, methods=["GET"]),
             Route("/api/admin/usage-analytics/summary", usage_summary),
             *analytics_routes.product_analytics_routes(Route),
