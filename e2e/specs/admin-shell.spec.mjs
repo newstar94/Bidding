@@ -522,13 +522,13 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
     }
   }
   await page.setViewportSize({ width: 1440, height: 950 });
-  await primaryFilterFields[2].evaluate((node) => node.scrollIntoView({ behavior: "instant", block: "center" }));
-  await primaryFilterFields[2].click();
+  await primaryFilterFields[1].evaluate((node) => node.scrollIntoView({ behavior: "instant", block: "center" }));
+  await primaryFilterFields[1].click();
   await page.keyboard.press("Home");
   await page.keyboard.press("Enter");
   await expect(page.locator('select[name="bucket"]')).toHaveValue("day");
   expect(await filterForm.evaluate((form) => new FormData(form).get("bucket"))).toBe("day");
-  await primaryFilterFields[2].click();
+  await primaryFilterFields[1].click();
   await page.screenshot({ path: testInfo.outputPath("analytics-dropdown-open.png") });
   await page.keyboard.press("Escape");
   expect(pageErrors).toEqual([]);
