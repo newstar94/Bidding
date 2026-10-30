@@ -72,7 +72,9 @@ async function login(page) {
 
 async function openOpening(page, { reload = false } = {}) {
   const packageId = page.__violationFixture.package.id;
-  if (reload) await page.reload({ waitUntil: "domcontentloaded" });
+  // The application readiness checks below cover the new document. Waiting
+  // for DOMContentLoaded can race Firefox's post-save navigation callbacks.
+  if (reload) await page.reload({ waitUntil: "commit" });
   await waitForApp(page);
   await page.waitForFunction(() => (
     document.getElementById("btn-force-sync")?.dataset.startupReconciliationPhase === "RECONCILED"

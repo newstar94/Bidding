@@ -45,7 +45,7 @@ def _request(body):
     }, receive)
 
 
-@pytest.mark.parametrize("decoder_limit", ["integer", "syntax", "utf8", "nesting"])
+@pytest.mark.parametrize("decoder_limit", ["integer", "syntax", "utf8"])
 def test_json_decoder_resource_limits_return_existing_400_contract(decoder_limit):
     if decoder_limit == "integer":
         digit_limit = sys.get_int_max_str_digits()
@@ -54,15 +54,26 @@ def test_json_decoder_resource_limits_return_existing_400_contract(decoder_limit
         body = b'{"value":' + b"7" * (digit_limit + 1) + b"}"
     elif decoder_limit == "syntax":
         body = b'{"value":'
-    elif decoder_limit == "nesting":
-        # Python 3.14's C decoder can exceed the Python frame recursion limit.
-        # This remains below the existing 1 MiB request-body limit.
-        depth = max(20_000, sys.getrecursionlimit() + 100)
-        body = b'{"value":' + b"[" * depth + b"0" + b"]" * depth + b"}"
     else:
         body = b'{"value":"\xff"}'
 
     data, response = asyncio.run(read_json_object(_request(body)))
+    assert data is None
+    assert response.status_code == 400
+    assert json.loads(response.body)["code"] == "REQUEST_JSON_INVALID"
+
+
+def test_json_decoder_recursion_error_returns_existing_400_contract(monkeypatch):
+    # CPython's C decoder stack limit varies by platform/build, independently
+    # of sys.getrecursionlimit(). Exercise the error seam without assuming a
+    # particular nesting depth is rejected on every supported runtime.
+    request = _request(b'{"value":[]}')
+
+    async def exhausted_decoder():
+        raise RecursionError("JSON decoder nesting limit exceeded")
+
+    monkeypatch.setattr(request, "json", exhausted_decoder)
+    data, response = asyncio.run(read_json_object(request))
     assert data is None
     assert response.status_code == 400
     assert json.loads(response.body)["code"] == "REQUEST_JSON_INVALID"

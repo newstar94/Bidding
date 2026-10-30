@@ -151,8 +151,11 @@ test("deep links preserve query state and back-forward navigation", async ({ con
   await expectAdminReady(page, "Người dùng");
   await expect(page.locator("#admin-directory-search")).toHaveValue("e2e-user");
   await expect(page.locator('input[name="createdFrom"]')).toHaveAttribute("type", "hidden");
-  await expect(page.locator('input.bf-admin-date-display[aria-label="Tạo từ ngày"]')).toHaveAttribute("type", "text");
-  await expect(page.locator('input.bf-admin-date-display[aria-label="Tạo từ ngày"]')).toHaveCount(1);
+  await expect(page.locator('input[name="createdTo"]')).toHaveAttribute("type", "hidden");
+  const createdRange = page.getByRole("textbox", { name: "Ngày tạo", exact: true });
+  await expect(createdRange).toHaveCount(1);
+  await expect(createdRange).toBeVisible();
+  await expect(createdRange).toHaveAttribute("data-admin-date-state", "ready");
   await expect(page.getByText("Người dùng kiểm thử", { exact: true })).toBeVisible();
   await expect(page.locator('[data-admin-link="/admin/users"]')).toHaveAttribute("aria-current", "page");
 
@@ -445,27 +448,26 @@ test("analytics renders bounded chart fallbacks and preserves filter query state
   await page.goto("/admin/analytics?preset=7d&view=overview", { waitUntil: "commit" });
   await expectAdminReady(page, "Phân tích");
   const primaryFilterFields = [
-    page.locator("input.bf-admin-date-display").nth(0),
-    page.locator("input.bf-admin-date-display").nth(1),
+    page.getByRole("textbox", { name: "Từ ngày – đến ngày", exact: true }),
     page.getByRole("combobox", { name: "Độ chi tiết" }),
     page.getByRole("combobox", { name: "Chế độ xem" }),
   ];
-  await expect(primaryFilterFields[0]).toHaveValue(/\d{2}\/\d{2}\/\d{4}/u);
+  await expect(primaryFilterFields[0]).toHaveValue(/^\d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}$/u);
   const filterTops = await Promise.all(primaryFilterFields.map(async (field) => (await field.boundingBox())?.y));
   expect(Math.max(...filterTops) - Math.min(...filterTops)).toBeLessThanOrEqual(4);
   const filterForm = page.locator("[data-admin-analytics-form]");
   const closedFormHeight = (await filterForm.boundingBox())?.height;
-  await primaryFilterFields[3].click();
+  await primaryFilterFields[2].click();
   await expect(page.locator("#admin-analytics-view-listbox")).toBeVisible();
   const openFormHeight = (await filterForm.boundingBox())?.height;
   expect(Math.abs(openFormHeight - closedFormHeight)).toBeLessThanOrEqual(2);
   await page.keyboard.press("Escape");
-  await primaryFilterFields[2].click();
+  await primaryFilterFields[1].click();
   await expect(page.locator("#admin-analytics-bucket-listbox")).toBeVisible();
   await page.locator("#admin-analytics-bucket-listbox").getByRole("option", { name: "Theo giờ", exact: true }).click();
   await expect(page.locator('select[name="bucket"]')).toHaveValue("hour");
   await expect(page.locator('select[name="bucket"]')).toBeHidden();
-  await expect(primaryFilterFields[2]).toHaveValue("Theo giờ");
+  await expect(primaryFilterFields[1]).toHaveValue("Theo giờ");
   expect(pageErrors).toEqual([]);
   await expect(page.getByText("Kế hoạch đã tạo", { exact: true })).toBeVisible();
   await expect(page.locator("#admin-chart-0")).toHaveText("Kế hoạch");

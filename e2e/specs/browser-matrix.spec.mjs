@@ -77,17 +77,24 @@ async function expectFilterModalToOpen(page, route, type, choiceField, dateField
   const choiceControl = dialog.locator(`[data-filter-field][value="${choiceField}:value"]`);
   await choiceControl.locator("..").locator("span").click();
   await expect(choiceControl).toBeChecked();
+  // The field picker supports multiple selections and stays open. Close it
+  // before interacting with conditions underneath its dropdown.
+  await dialog.locator(".business-filter-field-picker > summary").click();
   const choices = dialog.locator('[data-filter-condition="0"]');
   await choices.locator("summary").click();
   await expect(choices.locator("[data-filter-option-list]")).toBeVisible();
   await expect(choices.getByRole("searchbox")).toBeVisible();
+  await choices.locator("summary").click();
 
+  await dialog.locator(".business-filter-field-picker > summary").click();
   const dateControl = dialog.locator(`[data-filter-field][value="${dateField}:value"]`);
   await dateControl.locator("..").locator("span").click();
   await expect(dateControl).toBeChecked();
+  await dialog.locator(".business-filter-field-picker > summary").click();
   const dateRange = dialog.locator('[data-filter-condition="1"]');
-  await expect(dateRange.getByLabel("Từ ngày", { exact: true })).toBeVisible();
-  await expect(dateRange.getByLabel("Đến ngày", { exact: true })).toBeVisible();
+  await expect(dateRange.getByLabel("Từ ngày – đến ngày", { exact: true })).toBeVisible();
+  await expect(dateRange.locator('[data-filter-bound="min"]')).toHaveAttribute("type", "hidden");
+  await expect(dateRange.locator('[data-filter-bound="max"]')).toHaveAttribute("type", "hidden");
   await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(button).toHaveAttribute("aria-expanded", "false");
