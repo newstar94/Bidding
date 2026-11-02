@@ -1,4 +1,4 @@
-"""Regression tests for the 2026-10 review fixes and new deadline/holiday/preview features."""
+"""Regression tests for the 2026-10 review fixes and new holiday/preview features."""
 
 import asyncio
 import io
@@ -340,27 +340,6 @@ def test_holiday_store_validates_saves_and_reloads(tmp_path, monkeypatch):
     with pytest.raises(store.HolidayValidationError):
         store.save_holidays({"2027": {"working_weekends": ["2027-01-04"]}})  # a Monday
     assert store.calendar_coverage(saved, __import__("datetime").date(2027, 5, 1))["missingYears"] == [2028]
-
-
-# --------------------------------------------------------------------------
-# Deadline center
-# --------------------------------------------------------------------------
-
-def test_deadline_items_and_calendar_export():
-    from backend.deadlines.routes import build_deadline_calendar, normalize_deadline_item
-
-    item = normalize_deadline_item({
-        "targetType": "package", "id": "pkg-1", "maGoiThau": "IB2600000001",
-        "tenGoiThau": "Mua sắm, thiết bị; năm 2026", "alertKey": "closingSoon",
-        "deadline": "2026-11-03 09:00",
-    })
-    assert item["dueDate"] == "2026-11-03"
-    assert item["route"] == "/goi-thau-chi-tiet/pkg-1"
-    calendar = build_deadline_calendar([item], public_url="https://example.test", now=0)
-    assert "DTSTART;VALUE=DATE:20261103" in calendar
-    assert "SUMMARY:[IB2600000001] Sắp đóng thầu" in calendar
-    assert "Mua sắm\\, thiết bị\\; năm 2026" in calendar
-    assert all(len(line.encode("utf-8")) <= 75 for line in calendar.split("\r\n"))
 
 
 # --------------------------------------------------------------------------

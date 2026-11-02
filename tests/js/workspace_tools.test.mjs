@@ -2,10 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  bucketDeadline,
   foldText,
-  readReminders,
-  reminderFireAt,
   searchWorkspace,
 } from "../../frontend/app/WorkspaceTools.js";
 import { describeApiError, formatRetryAfter } from "../../frontend/shared/apiErrorText.js";
@@ -26,17 +23,6 @@ test("global search matches codes and Vietnamese names without diacritics", () =
   assert.equal(searchWorkspace(state, "IB2600000001")[0].score, 0);
   assert.equal(searchWorkspace(state, "dong a")[0].source.command, "showNhaThauDetails");
   assert.deepEqual(searchWorkspace(state, "  "), []);
-});
-
-test("deadline buckets and reminder fire times use local calendar days", () => {
-  const now = new Date(2026, 9, 22, 10, 0, 0);
-  assert.equal(bucketDeadline("2026-10-21", now), "overdue");
-  assert.equal(bucketDeadline("2026-10-22", now), "today");
-  assert.equal(bucketDeadline("2026-10-27", now), "week");
-  assert.equal(bucketDeadline("2026-12-01", now), "later");
-  assert.equal(reminderFireAt("2026-10-30", 3), new Date(2026, 9, 27, 8, 0, 0).getTime());
-  assert.equal(reminderFireAt("", 1), null);
-  assert.deepEqual(readReminders({ getItem: () => "not json" }, "k"), {});
 });
 
 test("API error text adds the wait time and support reference", () => {

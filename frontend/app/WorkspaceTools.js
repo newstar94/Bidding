@@ -3,14 +3,12 @@ import { loadStyleOnce } from "../shared/externalAssets.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 
 // Workspace productivity tools, loaded after the first interaction:
-// global search (Ctrl+K or "/"), keyboard shortcuts, the getting-started
-// checklist and the deadline & reminder center. Everything here reads data the
-// user already has in this workspace (or the authorized /api/deadlines
-// projection); nothing changes what a user may see.
+// global search (Ctrl+K or "/"), keyboard shortcuts and the getting-started
+// checklist. Everything here reads data the user already has in this
+// workspace; nothing changes what a user may see.
 
 const STYLESHEET_URL = new URL("./WorkspaceTools.css?no-inline", import.meta.url).pathname;
 const SEARCH_LIMIT = 30;
-const REMINDER_CHECK_MS = 60_000;
 
 const SEARCH_SOURCES = Object.freeze([
   { table: "goithau", label: "Gói thầu", code: "maGoiThau", name: "tenGoiThau", command: "showPackageDetails", icon: "package" },
@@ -195,7 +193,6 @@ const SHORTCUTS = Object.freeze([
   ["Ctrl + K", "Tìm kiếm nhanh mọi bản ghi"],
   ["/", "Tìm kiếm nhanh (khi không đang nhập liệu)"],
   ["Ctrl + S", "Lưu biểu mẫu đang mở"],
-  ["Shift + H", "Mở trung tâm hạn chót"],
   ["?", "Xem danh sách phím tắt"],
   ["Esc", "Đóng hộp thoại"],
 ]);
@@ -228,7 +225,7 @@ export function findActiveModalSaveButton(root = document) {
   return candidates[0] || null;
 }
 
-function installShortcuts({ search, shortcuts, deadlines }) {
+function installShortcuts({ search, shortcuts }) {
   document.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;
     const key = String(event.key || "").toLowerCase();
@@ -247,230 +244,11 @@ function installShortcuts({ search, shortcuts, deadlines }) {
     }
     if (mod || event.altKey || isEditableTarget(event.target) || document.querySelector("dialog[open]")) return;
     if (event.key === "/") { event.preventDefault(); search.open(); return; }
-    if (event.key === "?") { event.preventDefault(); shortcuts.open(); return; }
-    if (event.shiftKey && key === "h") { event.preventDefault(); deadlines.open(); }
+    if (event.key === "?") { event.preventDefault(); shortcuts.open(); }
   });
 }
 
-/* --------------------------- Deadline & reminders --------------------------- */
-
-function reminderStorageKey(controller) {
-  const scope = String(controller.model?.workspaceScope?.key || "").trim();
-  return scope ? `bf_deadline_reminders:${scope}` : "";
-}
-
-export function readReminders(storage, key) {
-  if (!key) return {};
-  try {
-    const parsed = JSON.parse(storage?.getItem(key) || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeReminders(storage, key, reminders) {
-  if (!key) return;
-  try { storage?.setItem(key, JSON.stringify(reminders)); } catch { /* per-browser convenience only */ }
-}
-
-/** Epoch ms at which a reminder with `leadDays` should fire for a due date. */
-export function reminderFireAt(dueDate, leadDays) {
-  const [year, month, day] = String(dueDate || "").split("-").map(Number);
-  if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day - Number(leadDays || 0), 8, 0, 0).getTime();
-}
-
-export function bucketDeadline(dueDate, now = new Date()) {
-  if (!dueDate) return "later";
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const [year, month, day] = dueDate.split("-").map(Number);
-  const due = new Date(year, month - 1, day).getTime();
-  if (due < today) return "overdue";
-  if (due === today) return "today";
-  if (due <= today + 7 * 86_400_000) return "week";
-  return "later";
-}
-
-const BUCKETS = Object.freeze([
-  ["overdue", "Quá hạn"],
-  ["today", "Hôm nay"],
-  ["week", "Trong 7 ngày tới"],
-  ["later", "Sau đó"],
-]);
-
-function formatDue(dueDate) {
-  if (!dueDate) return "Chưa có ngày";
-  const [year, month, day] = dueDate.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-async function downloadCalendar(controller) {
-  const response = await apiFetch("/api/deadlines/calendar.ics");
-  if (!response.ok) throw new Error("Không thể tạo tệp lịch.");
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "biddingflow-han-chot.ics";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  controller.view?.showToast?.("Đã tải lịch", "Mở tệp .ics để thêm hạn chót vào Google Calendar/Outlook (kèm nhắc trước 1 ngày).", "success");
-}
-
-function createDeadlineCenter(controller) {
-  const dialog = element("dialog", "bf-tools-dialog bf-deadline-dialog");
-  dialog.setAttribute("aria-labelledby", "bf-deadline-title");
-  const header = element("div", "bf-deadline-header");
-  const title = element("h2", "", "Hạn chót & nhắc việc");
-  title.id = "bf-deadline-title";
-  const actions = element("div", "bf-deadline-actions");
-  const calendarButton = element("button", "btn btn-outline", "Tải lịch (.ics)");
-  calendarButton.type = "button";
-  const notifyButton = element("button", "btn btn-outline", "Bật thông báo trình duyệt");
-  notifyButton.type = "button";
-  const closeButton = element("button", "btn btn-outline", "Đóng");
-  closeButton.type = "button";
-  actions.append(calendarButton, notifyButton, closeButton);
-  header.append(title, actions);
-  const status = element("p", "bf-deadline-status");
-  status.setAttribute("role", "status");
-  const body = element("div", "bf-deadline-body");
-  dialog.append(header, status, body);
-  document.body.append(dialog);
-
-  const storage = globalThis.localStorage;
-  let items = [];
-  let lastLoaded = 0;
-
-  const updateBadge = () => {
-    const badge = document.getElementById("bf-deadline-badge");
-    if (!badge) return;
-    const urgent = items.filter((item) => ["overdue", "today"].includes(bucketDeadline(item.dueDate))).length;
-    badge.textContent = String(urgent);
-    badge.hidden = urgent === 0;
-  };
-
-  const load = async ({ force = false } = {}) => {
-    if (!force && Date.now() - lastLoaded < 5 * 60_000) return items;
-    const response = await apiFetch("/api/deadlines");
-    if (!response.ok) throw new Error("Không thể tải danh sách hạn chót.");
-    const payload = await response.json();
-    items = Array.isArray(payload.items) ? payload.items : [];
-    lastLoaded = Date.now();
-    updateBadge();
-    return items;
-  };
-
-  const render = () => {
-    const reminders = readReminders(storage, reminderStorageKey(controller));
-    body.replaceChildren();
-    if (!items.length) {
-      body.append(element("p", "bf-deadline-empty", "Không có hạn chót nào cần chú ý. Danh sách gồm mốc đóng/mở thầu, báo cáo đánh giá, đăng tải kế hoạch và hạn hợp đồng bạn được phép xem."));
-      return;
-    }
-    for (const [bucket, label] of BUCKETS) {
-      const rows = items.filter((item) => bucketDeadline(item.dueDate) === bucket);
-      if (!rows.length) continue;
-      const section = element("section", `bf-deadline-group bf-deadline-${bucket}`);
-      section.append(element("h3", "", `${label} (${rows.length})`));
-      const list = element("ul", "bf-deadline-list");
-      for (const item of rows) {
-        const row = element("li", "bf-deadline-item");
-        const text = element("div", "bf-deadline-text");
-        text.append(element("strong", "", item.code ? `${item.code} – ${item.label}` : item.label));
-        text.append(element("span", "", [item.name, item.detail].filter(Boolean).join(" · ")));
-        text.append(element("small", "", `Hạn: ${formatDue(item.dueDate)}`));
-        const controls = element("div", "bf-deadline-controls");
-        const open = element("button", "btn btn-outline", "Mở");
-        open.type = "button";
-        open.addEventListener("click", () => {
-          dialog.close();
-          const command = { package: "showPackageDetails", plan: "showKeHoachDetails", contract: "showHopDongDetails" }[item.targetType];
-          if (command) controller.executeCommand?.(command, item.targetId);
-        });
-        const select = element("select", "bf-deadline-remind");
-        select.setAttribute("aria-label", `Nhắc việc cho ${item.code || item.label}`);
-        for (const [value, text_] of [["", "Không nhắc"], ["0", "Nhắc sáng ngày đến hạn"], ["1", "Nhắc trước 1 ngày"], ["3", "Nhắc trước 3 ngày"], ["7", "Nhắc trước 7 ngày"]]) {
-          const option = element("option", "", text_);
-          option.value = value;
-          select.append(option);
-        }
-        const existing = reminders[item.id];
-        select.value = existing ? String(existing.leadDays) : "";
-        select.disabled = !item.dueDate;
-        select.addEventListener("change", () => {
-          const key = reminderStorageKey(controller);
-          const next = readReminders(storage, key);
-          if (select.value === "") delete next[item.id];
-          else next[item.id] = { leadDays: Number(select.value), dueDate: item.dueDate, title: text.firstChild.textContent, firedFor: null };
-          writeReminders(storage, key, next);
-          status.textContent = select.value === "" ? "Đã tắt nhắc việc." : "Đã đặt nhắc việc trên trình duyệt này.";
-        });
-        controls.append(select, open);
-        row.append(text, controls);
-        list.append(row);
-      }
-      section.append(list);
-      body.append(section);
-    }
-  };
-
-  const checkReminders = () => {
-    const key = reminderStorageKey(controller);
-    const reminders = readReminders(storage, key);
-    const now = Date.now();
-    let changed = false;
-    for (const [id, reminder] of Object.entries(reminders)) {
-      const fireAt = reminderFireAt(reminder.dueDate, reminder.leadDays);
-      if (!fireAt || now < fireAt || reminder.firedFor === reminder.dueDate) continue;
-      reminder.firedFor = reminder.dueDate;
-      changed = true;
-      const message = `${reminder.title} – hạn ${formatDue(reminder.dueDate)}`;
-      controller.view?.showToast?.("Nhắc việc", message, "warning", { duration: 10_000 });
-      if (globalThis.Notification?.permission === "granted") {
-        try { new globalThis.Notification("BiddingFlow – Nhắc việc", { body: message, tag: `bf-${id}` }); } catch { /* optional */ }
-      }
-    }
-    if (changed) writeReminders(storage, key, reminders);
-  };
-
-  calendarButton.addEventListener("click", () => {
-    downloadCalendar(controller).catch((error) => { status.textContent = error.message; });
-  });
-  notifyButton.addEventListener("click", async () => {
-    if (!globalThis.Notification) { status.textContent = "Trình duyệt không hỗ trợ thông báo."; return; }
-    const permission = await globalThis.Notification.requestPermission();
-    status.textContent = permission === "granted"
-      ? "Đã bật thông báo. Nhắc việc sẽ hiện khi BiddingFlow đang mở."
-      : "Thông báo trình duyệt chưa được cho phép.";
-  });
-  closeButton.addEventListener("click", () => dialog.close());
-
-  setInterval(checkReminders, REMINDER_CHECK_MS);
-  setTimeout(checkReminders, 5_000);
-  void load().catch(() => {});
-
-  return {
-    async open() {
-      if (!dialog.open) dialog.showModal();
-      status.textContent = "Đang tải…";
-      try {
-        await load({ force: true });
-        status.textContent = `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN")}. Nhắc việc lưu trên trình duyệt này; tải tệp lịch để nhận nhắc trên điện thoại.`;
-      } catch (error) {
-        status.textContent = error.message;
-      }
-      render();
-    },
-    load,
-    get items() { return items; },
-  };
-}
-
-function installHeaderButtons({ search, deadlines }) {
+function installHeaderButtons({ search }) {
   const headerRight = document.querySelector(".app-header .header-right");
   if (!headerRight || headerRight.querySelector("[data-bf-tools]")) return;
   const searchButton = element("button", "bf-header-tool");
@@ -480,18 +258,7 @@ function installHeaderButtons({ search, deadlines }) {
   searchButton.title = "Tìm kiếm nhanh (Ctrl+K)";
   searchButton.append(icon("search"), element("span", "bf-header-tool-label", "Tìm kiếm"), element("kbd", "", "Ctrl K"));
   searchButton.addEventListener("click", () => search.open());
-  const deadlineButton = element("button", "bf-header-tool bf-header-tool-icon");
-  deadlineButton.type = "button";
-  deadlineButton.dataset.bfTools = "deadlines";
-  deadlineButton.setAttribute("aria-label", "Hạn chót & nhắc việc");
-  deadlineButton.title = "Hạn chót & nhắc việc (Shift+H)";
-  deadlineButton.append(icon("alarm-clock"));
-  const badge = element("span", "bf-header-tool-badge", "0");
-  badge.id = "bf-deadline-badge";
-  badge.hidden = true;
-  deadlineButton.append(badge);
-  deadlineButton.addEventListener("click", () => deadlines.open());
-  headerRight.prepend(searchButton, deadlineButton);
+  headerRight.prepend(searchButton);
   renderLucideIcons(headerRight);
 }
 
@@ -610,10 +377,9 @@ export async function installWorkspaceTools(controller) {
   await loadStyleOnce(STYLESHEET_URL).catch(() => {});
   const search = createSearchDialog(controller);
   const shortcuts = createShortcutDialog();
-  const deadlines = createDeadlineCenter(controller);
-  installShortcuts({ search, shortcuts, deadlines });
-  installHeaderButtons({ search, deadlines });
-  controller.workspaceTools = { search, shortcuts, deadlines };
+  installShortcuts({ search, shortcuts });
+  installHeaderButtons({ search });
+  controller.workspaceTools = { search, shortcuts };
   void showPendingInvitations();
   return controller.workspaceTools;
 }

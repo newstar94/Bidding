@@ -1,4 +1,4 @@
-/* Global search, shortcuts, deadline center and getting-started checklist. */
+/* Global search, shortcuts, invitations and getting-started checklist. */
 
 .bf-header-tool {
   display: inline-flex;
@@ -25,22 +25,6 @@
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface-subtle);
-}
-.bf-header-tool-icon { padding: 0 10px; }
-.bf-header-tool-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--danger);
-  color: var(--surface);
-  font-size: .7rem;
-  font-weight: 700;
-  line-height: 20px;
-  text-align: center;
 }
 .bf-header-tool { white-space: nowrap; }
 @media (max-width: 1600px) {
@@ -114,27 +98,8 @@
 .bf-shortcut-list dt { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; }
 .bf-shortcut-list dd { margin: 0; color: var(--ink-muted); }
 
-/* Only an open dialog may be laid out; a closed one must stay display: none. */
-.bf-deadline-dialog { width: min(860px, calc(100vw - 32px)); flex-direction: column; }
-.bf-deadline-dialog[open] { display: flex; }
-.bf-deadline-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--line);
-}
-.bf-deadline-header h2 { margin: 0; font-size: 1.1rem; }
-.bf-deadline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .bf-deadline-status { margin: 0; padding: 8px 20px; color: var(--ink-muted); font-size: .8rem; }
 .bf-deadline-body { padding: 4px 20px 20px; overflow-y: auto; }
-.bf-deadline-empty { color: var(--ink-muted); }
-.bf-deadline-group h3 { margin: 16px 0 8px; font-size: .9rem; }
-.bf-deadline-overdue h3 { color: var(--danger); }
-.bf-deadline-today h3 { color: var(--warning); }
-.bf-deadline-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .bf-deadline-item {
   display: flex;
   flex-wrap: wrap;
@@ -148,7 +113,6 @@
 .bf-deadline-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 320px; }
 .bf-deadline-text span, .bf-deadline-text small { color: var(--ink-muted); }
 .bf-deadline-controls { display: flex; gap: 8px; align-items: center; }
-.bf-deadline-remind { min-height: var(--touch-target-min, 44px); }
 
 .bf-invitation-dialog { padding: 0; }
 .bf-invitation-dialog h2 { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 1.05rem; }
