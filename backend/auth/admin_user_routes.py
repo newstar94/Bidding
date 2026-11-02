@@ -3,6 +3,7 @@ from collections import defaultdict
 
 from starlette.responses import JSONResponse
 
+from backend.db.db_helper import DatabaseError
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.access_policy import is_organization_manager
 from backend.shared.database_io import run_database_read, run_database_write
@@ -782,5 +783,85 @@ def _delete_user_sync(request):
 async def delete_user_api(request):
     try:
         return await run_database_write(_delete_user_sync, request)
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=True)
+
+
+def _reactivate_user_sync(request):
+    """Reverse an admin deactivation; data was preserved, sessions stay revoked."""
+    conn = None
+    try:
+        is_valid, role_or_err = verify_session(request, required_role='super_admin')
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
+        user_id = request.path_params.get('user_id')
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("BEGIN")
+        authority_valid, current_actor = verify_session_in_transaction(
+            cursor,
+            request,
+            required_role="super_admin",
+        )
+        if not authority_valid:
+            conn.rollback()
+            return JSONResponse({"error": current_actor}, status_code=403)
+        cursor.execute(
+            "SELECT trang_thai FROM tai_khoan WHERE id = ? FOR UPDATE",
+            (user_id,),
+        )
+        target = cursor.fetchone()
+        if not target:
+            conn.rollback()
+            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+        if str(target[0] or '').strip().lower() == 'active':
+            conn.commit()
+            return JSONResponse({
+                "success": True,
+                "code": "ACCOUNT_REACTIVATED",
+                "message": "Tài khoản đang hoạt động.",
+                "changed": False,
+            })
+        cursor.execute(
+            """UPDATE tai_khoan
+               SET trang_thai = 'active', updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND trang_thai = 'inactive'""",
+            (user_id,),
+        )
+        log_audit(
+            "admin.user_reactivated",
+            actor_user_id=current_actor.user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            cursor=cursor,
+            required=True,
+        )
+        conn.commit()
+        return JSONResponse({
+            "success": True,
+            "code": "ACCOUNT_REACTIVATED",
+            "message": "Tài khoản đã được kích hoạt lại.",
+            "changed": True,
+        })
+    except (DatabaseError, RuntimeError) as e:
+        # Required audit failures surface as RuntimeError (audit chain) or
+        # DatabaseError; either way the reactivation must not commit.
+        if conn:
+            conn.rollback()
+        log_error(e, "reactivate_user_api")
+        return JSONResponse(
+            {"error": "Đã xảy ra lỗi khi kích hoạt lại tài khoản."},
+            status_code=500,
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+async def reactivate_user_api(request):
+    try:
+        return await run_database_write(_reactivate_user_sync, request)
     except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _database_lane_unavailable_response(request, write=True)

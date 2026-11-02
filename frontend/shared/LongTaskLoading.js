@@ -71,8 +71,18 @@ function ensureOverlay(documentRef) {
   ));
 
   const steps = makeElement(documentRef, "ol", "app-long-task-loading-steps");
+  const cancel = makeElement(documentRef, "button", "btn btn-outline app-long-task-loading-cancel");
+  cancel.type = "button";
+  cancel.hidden = true;
+  cancel.addEventListener("click", () => {
+    const task = taskStack.at(-1);
+    if (!task?.onCancel || task.cancelRequested) return;
+    task.cancelRequested = true;
+    cancel.disabled = true;
+    task.onCancel();
+  });
   card.setAttribute("aria-labelledby", title.id);
-  card.append(header, progressTrack, steps);
+  card.append(header, progressTrack, steps, cancel);
   overlay.appendChild(card);
   documentRef.body.appendChild(overlay);
 
@@ -84,6 +94,7 @@ function ensureOverlay(documentRef) {
     detail,
     progressTrack,
     steps,
+    cancel,
     stepRefs: new Map(),
   };
   overlay._appLongTaskLoadingRefs = refs;
@@ -182,6 +193,11 @@ function renderTask(documentRef, refs, task) {
   refs.detail.textContent = task.detail;
   refs.detail.title = task.detail;
   refs.detail.hidden = !task.detail;
+  if (refs.cancel) {
+    refs.cancel.hidden = typeof task.onCancel !== "function";
+    refs.cancel.disabled = Boolean(task.cancelRequested);
+    refs.cancel.textContent = task.cancelLabel;
+  }
   configureSteps(documentRef, refs, task.stages);
   applyStage(refs, task.stages, task.stageKey, task.message);
 }
@@ -226,6 +242,8 @@ export async function beginLongTaskLoading({
   detail = "",
   minimumVisibleMs = MINIMUM_VISIBLE_MS,
   exitTransitionMs = EXIT_TRANSITION_MS,
+  onCancel = null,
+  cancelLabel = "Dừng",
 } = {}) {
   const documentRef = globalThis.document;
   if (!documentRef?.body) return NOOP_HANDLE;
@@ -243,6 +261,9 @@ export async function beginLongTaskLoading({
     message,
     shownAt: now(documentRef),
     closed: false,
+    onCancel: typeof onCancel === "function" ? onCancel : null,
+    cancelLabel: String(cancelLabel || "Dừng"),
+    cancelRequested: false,
   };
   if (taskStack.length === 0) {
     previousBodyBusy = documentRef.body.getAttribute("aria-busy");

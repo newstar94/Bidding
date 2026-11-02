@@ -2,7 +2,7 @@ import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { beginWordExportLoading } from "../documents/WordExportLoading.js";
 import { runWordPublicationExportJob } from "../documents/WordPublicationJob.js";
 
-function contractFilename(contractNumber) {
+export function contractFilename(contractNumber) {
   return `Hop_dong_${contractNumber || "LCNT"}.docx`;
 }
 

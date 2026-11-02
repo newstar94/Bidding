@@ -194,6 +194,91 @@ export async function executeOrganizationDirectoryAction(action, organization, v
   return payload === null ? { cancelled: true } : { payload };
 }
 
+// Each bulk item calls the same endpoint as its single-record action, so the
+// server applies the same guards (self, last admin, last manager, expiry).
+const BULK_DIRECTORY_ACTIONS = Object.freeze({
+  user: Object.freeze({
+    deactivate: {
+      confirm: (total) => `Ngừng hoạt động ${total} tài khoản? Các phiên đăng nhập của các tài khoản này sẽ bị thu hồi; dữ liệu được giữ nguyên.`,
+      done: "ngừng hoạt động",
+      mutate: (item, options) => deleteAdminJson(`/api/auth/users/${encodeURIComponent(item.id)}`, options),
+    },
+    reactivate: {
+      confirm: (total) => `Kích hoạt lại ${total} tài khoản? Người dùng cần đăng nhập lại; quyền và dữ liệu cũ được giữ nguyên.`,
+      done: "kích hoạt lại",
+      mutate: (item, options) => postAdminJson(`/api/auth/users/${encodeURIComponent(item.id)}/reactivate`, options),
+    },
+  }),
+  organization: Object.freeze({
+    lock: {
+      confirm: (total) => `Khóa đăng ký của ${total} tổ chức? Thành viên các tổ chức này sẽ không thể tiếp tục sử dụng gói dịch vụ.`,
+      done: "khóa đăng ký",
+      mutate: (item, options) => postAdminJson("/api/organizations/subscription", {
+        ...options, body: { organization_id: item.id, action: "lock" },
+      }),
+    },
+    unlock: {
+      confirm: (total) => `Mở khóa đăng ký của ${total} tổ chức? Tổ chức có gói đã hết hạn cần được gia hạn trước.`,
+      done: "mở khóa đăng ký",
+      mutate: (item, options) => postAdminJson("/api/organizations/subscription", {
+        ...options, body: { organization_id: item.id, action: "unlock" },
+      }),
+    },
+  }),
+});
+
+export async function executeDirectoryBulkAction(kind, action, items, {
+  fetchImpl,
+  signal,
+  confirmImpl = (message) => globalThis.confirm?.(message) === true,
+  requestPassword = () => requestAdminValue({
+    title: "Xác thực thao tác quản trị",
+    message: "Nhập lại mật khẩu để tiếp tục thao tác nhạy cảm.",
+    label: "Mật khẩu hiện tại",
+    type: "password",
+  }),
+  createIdempotencyKey = idempotencyKey,
+} = {}) {
+  const definition = BULK_DIRECTORY_ACTIONS[kind]?.[action];
+  if (!definition) throw new TypeError("Unsupported directory bulk action");
+  const targets = (Array.isArray(items) ? items : []).filter((item) => String(item?.id || "").trim());
+  if (!targets.length) return { cancelled: true };
+  const label = (item) => String(item?.name || item?.username || item?.email || item.id);
+  const preview = targets.slice(0, 20).map((item) => `• ${label(item)}`).join("\n");
+  const more = targets.length > 20 ? `\n… và ${targets.length - 20} bản ghi khác` : "";
+  if (!await confirmImpl(`${definition.confirm(targets.length)}\n\n${preview}${more}`)) return { cancelled: true };
+  let changed = 0;
+  let unchanged = 0;
+  let stopped = false;
+  const failures = [];
+  for (const item of targets) {
+    // One key per record keeps a re-authenticated retry idempotent.
+    const options = { fetchImpl, signal, idempotencyKey: createIdempotencyKey(action) };
+    try {
+      const payload = await runPrivilegedMutation(() => definition.mutate(item, options), {
+        fetchImpl, signal, requestPassword,
+      });
+      if (payload === null) {
+        stopped = true;
+        break;
+      }
+      if (payload?.changed === false) unchanged += 1;
+      else changed += 1;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      failures.push(`${label(item)}: ${error?.message || "Không thể thực hiện."}`);
+    }
+  }
+  const remaining = targets.length - changed - unchanged - failures.length;
+  const summary = [
+    `Đã ${definition.done} ${changed}/${targets.length} bản ghi.`,
+    unchanged ? `${unchanged} bản ghi đã ở trạng thái này.` : "",
+    remaining && stopped ? `Dừng do chưa xác thực lại; ${remaining} bản ghi chưa xử lý.` : "",
+    failures.length ? `Không xử lý được ${failures.length}: ${failures.join("; ")}` : "",
+  ].filter(Boolean).join(" ");
+  return { summary, changed, unchanged, failures, stopped };
+}
+
 export function userDetailMarkup(user) {
   const subscription = user?.subscription;
   const usage = user?.usage;
@@ -441,6 +526,11 @@ function bindDirectoryDetails(root, items, options, kind) {
 
 export const USER_DIRECTORY = Object.freeze({
   selectable: true,
+  bulkActions: [
+    { id: "deactivate", label: "Ngừng hoạt động", tone: "danger" },
+    { id: "reactivate", label: "Kích hoạt lại" },
+  ],
+  runBulkAction: (action, items, options) => executeDirectoryBulkAction("user", action, items, options),
   detailKind: "user",
   endpoint: "/api/admin/users",
   title: "Người dùng",
@@ -473,6 +563,11 @@ export const USER_DIRECTORY = Object.freeze({
 
 export const ORGANIZATION_DIRECTORY = Object.freeze({
   selectable: true,
+  bulkActions: [
+    { id: "lock", label: "Khóa đăng ký", tone: "danger" },
+    { id: "unlock", label: "Mở khóa đăng ký" },
+  ],
+  runBulkAction: (action, items, options) => executeDirectoryBulkAction("organization", action, items, options),
   detailKind: "organization",
   endpoint: "/api/admin/organizations",
   title: "Tổ chức",

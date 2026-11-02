@@ -27,6 +27,8 @@ const STYLESHEET_URL = new URL("./BusinessListControls.css?no-inline", import.me
 const LABELS = { kehoach: "kế hoạch", goithau: "gói thầu", hopdong: "hợp đồng" };
 const RENDERS = { kehoach: "renderKeHoachTable", goithau: "renderGoiThauTable", hopdong: "renderHopDongTable" };
 const VERSION_MAPS = { kehoach: "selectedPlanVersion", goithau: "selectedPackageVersion", hopdong: "selectedHopDongVersion" };
+const BULK_ASSIGN_TYPES = new Set(["goithau", "hopdong"]);
+const BULK_ACTIONS = new Set(["assign", "status", "word"]);
 const LEGACY_DATES = { kehoach: "ngayPheDuyet", goithau: "ngayQuyetDinh", hopdong: "ngayKy" };
 const LIST_FILTER_OPERATORS = {
   kehoach: new Map([["chuDauTuId", "in"], ["ngayPheDuyet", "range"]]),
@@ -564,7 +566,7 @@ export function refreshBusinessListSelection(view, type) {
   const selectedCount = page.filter((record) => isBusinessListRowSelected(view.model, type, record)).length;
   const ui = binding(view, type);
   if (ui?.pendingBulkDelete && !pendingDeleteScopeIsCurrent(ui)) ui.pendingBulkDelete = null;
-  const loading = Boolean(ui?.bulkDeleting || (ui?.loading && !ui?.pendingBulkDelete));
+  const loading = Boolean(ui?.bulkDeleting || ui?.bulkBusy || (ui?.loading && !ui?.pendingBulkDelete));
   for (const header of document.getElementById(`tab-${type}`)?.querySelectorAll("[data-list-select-page]") || []) {
     header.checked = page.length > 0 && selectedCount === page.length;
     header.indeterminate = selectedCount > 0 && selectedCount < page.length;
@@ -583,13 +585,30 @@ export function refreshBusinessListSelection(view, type) {
   bar.hidden = !descriptor.count && !ui?.pendingBulkDelete;
   // Selections span unloaded pages; the server checks ownership of every row.
   const allowDelete = true;
-  const signature = JSON.stringify([descriptor.mode, descriptor.count, descriptor.totalItems, selectedCount === page.length, page.length, loading, allowDelete, ui?.pendingBulkDelete?.count]);
+  const actions = ui?.pendingBulkDelete ? [] : bulkSelectionActions(view.model, type);
+  const signature = JSON.stringify([descriptor.mode, descriptor.count, descriptor.totalItems, selectedCount === page.length, page.length, loading, allowDelete, ui?.pendingBulkDelete?.count, actions]);
   if (bar.dataset.selectionSignature === signature) return;
   bar.dataset.selectionSignature = signature;
   bar.innerHTML = trustedHTML(`<strong>${ui?.pendingBulkDelete ? `Chưa xác định kết quả xóa ${ui.pendingBulkDelete.count.toLocaleString("vi-VN")} ${LABELS[type]}` : `Đã chọn ${descriptor.count.toLocaleString("vi-VN")} ${LABELS[type]}`}</strong>
     ${descriptor.mode === "query" ? '<span class="business-filter-hint">Theo kết quả của bộ lọc hiện tại</span>' : selectedCount === page.length && page.length && descriptor.totalItems > descriptor.count ? `<button type="button" class="btn btn-outline" data-list-selection-action="all" ${loading ? "disabled" : ""}>Chọn tất cả ${descriptor.totalItems.toLocaleString("vi-VN")} kết quả</button>` : '<span class="business-filter-hint">Lựa chọn được giữ khi chuyển trang.</span>'}
+    ${actions.map((action) => `<button type="button" class="btn btn-outline" data-list-selection-action="${action.id}" ${loading || action.disabled ? "disabled" : ""}${action.title ? ` title="${esc(action.title)}"` : ""}>${esc(action.label)}</button>`).join("")}
     ${allowDelete ? `<button type="button" class="btn btn-danger" data-list-selection-action="delete" ${loading ? "disabled" : ""}>${ui?.bulkDeleting ? "Đang xử lý…" : ui?.pendingBulkDelete ? "Kiểm tra kết quả xóa" : "Xóa dữ liệu đã chọn"}</button>` : ""}
-    <button type="button" class="btn btn-outline" data-list-selection-action="clear" ${ui?.bulkDeleting ? "disabled" : ""}>Bỏ chọn</button>`);
+    <button type="button" class="btn btn-outline" data-list-selection-action="clear" ${ui?.bulkDeleting || ui?.bulkBusy ? "disabled" : ""}>Bỏ chọn</button>`);
+}
+
+// Same visibility rules as the matching row controls: the assignee picker is
+// disabled for employees, contracts are edited by every role (the server checks
+// each row), and Word export follows the workspace entitlement.
+function bulkSelectionActions(model, type) {
+  const actions = [];
+  if (BULK_ASSIGN_TYPES.has(type) && model?.state?.activerole !== "employee") {
+    actions.push({ id: "assign", label: "Phân công phụ trách" });
+  }
+  if (type === "hopdong") actions.push({ id: "status", label: "Đổi trạng thái" });
+  const wordExportEnabled = Boolean(model?.state?.activeuser?.wordExportEnabled);
+  actions.push({ id: "word", label: "Xuất Word", disabled: !wordExportEnabled,
+    title: wordExportEnabled ? "" : "Cần gói trả phí đang hoạt động để xuất Word" });
+  return actions;
 }
 
 export function updateBusinessListSelection(view, type, page) {
@@ -634,7 +653,7 @@ export function ensureBusinessListControls(view, type) {
     bindPanel(ui);
     tab.addEventListener("change", (event) => {
       const target = event.target;
-      if (!hasCurrentScope(ui) || ui.loading || ui.bulkDeleting) return;
+      if (!hasCurrentScope(ui) || ui.loading || ui.bulkDeleting || ui.bulkBusy) return;
       if (target.matches("[data-list-select-page]")) selectBusinessListPage(view.model, type, displayedItems(view, type), target.checked);
       if (target.matches("[data-list-select-row]")) toggleBusinessListRow(view.model, type, { id: target.dataset.recordId, phienBan: target.dataset.version }, target.checked, target.dataset.rootId);
     });
@@ -646,7 +665,20 @@ export function ensureBusinessListControls(view, type) {
     tab.addEventListener("click", async (event) => {
       const action = event.target.closest("[data-list-selection-action]")?.dataset.listSelectionAction;
       if (action && !hasCurrentScope(ui) && !(action === "delete" && pendingDeleteScopeIsCurrent(ui))) return;
-      if (action && ui.bulkDeleting) return;
+      if (action && (ui.bulkDeleting || ui.bulkBusy)) return;
+      if (BULK_ACTIONS.has(action) && !ui.loading && !ui.pendingBulkDelete) {
+        ui.bulkBusy = true;
+        refreshBusinessListSelection(view, type);
+        try {
+          const { runSelectedBusinessListAction } = await import("./BusinessListBulkActions.js");
+          if (hasCurrentScope(ui)) await runSelectedBusinessListAction(view, type, action);
+        } catch (error) {
+          if (hasCurrentScope(ui)) view.showToast?.("Không thể thực hiện", error?.message || "Chưa mở được thao tác hàng loạt. Vui lòng thử lại.", "error");
+        } finally {
+          ui.bulkBusy = false;
+          if (hasCurrentScope(ui)) refreshBusinessListSelection(view, type);
+        }
+      }
       if (action === "delete" && (!ui.loading || ui.pendingBulkDelete)) {
         ui.bulkDeleting = true;
         refreshBusinessListSelection(view, type);

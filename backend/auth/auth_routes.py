@@ -1925,6 +1925,7 @@ async def privileged_reauth_api(request):
 from backend.auth.admin_user_routes import (
     delete_user_api as delete_user_api,
     list_users_api as list_users_api,
+    reactivate_user_api as reactivate_user_api,
     update_user_access_settings_api as update_user_access_settings_api,
 )
 

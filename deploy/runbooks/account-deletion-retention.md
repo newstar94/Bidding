@@ -26,6 +26,14 @@ Transaction dùng cùng advisory lock với sync/restore/bootstrap workspace cá
 nhân. Vì vậy một write đã chờ lock phải reauthorize sau deactivation và không
 được tiếp tục ghi.
 
+## Kích hoạt lại
+
+`POST /api/auth/users/{user_id}/reactivate` (giao diện "Kích hoạt lại" trong
+danh mục Người dùng, có thể chọn nhiều dòng) chuyển `inactive` về `active`, chỉ
+dành cho Super Admin đã xác thực lại mật khẩu, ghi audit
+`admin.user_reactivated`. Phiên cũ vẫn bị thu hồi; người dùng đăng nhập lại.
+Thao tác lặp lại trả `changed: false`. Xem ADR 0096.
+
 ## Xóa vật lý chưa được hỗ trợ
 
 Xóa vật lý, erasure và anonymization vẫn cần product owner, privacy/legal owner
@@ -41,7 +49,6 @@ Cho đến khi có workflow riêng được phê duyệt:
 
 ## Rollback và khôi phục
 
-Deactivation bảo toàn dữ liệu nên có thể khôi phục bằng một workflow
-reactivation có kiểm soát trong tương lai. Hiện chưa có reactivation surface
-cho người dùng cuối; nếu cần khôi phục khẩn cấp, phải có change ticket và audit
-riêng. Không rollback binary về hành vi xóa vật lý cũ.
+Deactivation bảo toàn dữ liệu nên Super Admin khôi phục tài khoản bằng thao
+tác Kích hoạt lại ở trên (có audit `admin.user_reactivated`), không khôi phục
+bằng SQL ad-hoc. Không rollback binary về hành vi xóa vật lý cũ.

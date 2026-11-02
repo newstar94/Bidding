@@ -40,6 +40,8 @@ function assertAdminPath(path, method = "GET") {
     && value === "/api/auth/users/access-settings";
   const approvedUserDeactivation = verb === "DELETE"
     && /^\/api\/auth\/users\/[^/?#]+$/u.test(value);
+  const approvedUserReactivation = verb === "POST"
+    && /^\/api\/auth\/users\/[^/?#]+\/reactivate$/u.test(value);
   const approvedOrganizationSubscription = verb === "POST"
     && value === "/api/organizations/subscription";
   const approvedReauthentication = verb === "POST" && value === "/api/auth/privileged-reauth";
@@ -47,7 +49,7 @@ function assertAdminPath(path, method = "GET") {
   const approved = platformPath || approvedEnvironmentUpdate || approvedHolidayUpdate || approvedBusinessProfileUpdate || approvedVerificationReview || approvedJobRetry || approvedCommercialPath || approvedCommercialCatalog || commercialDraftCollection
     || commercialDraftItem || commercialDraftArchive || commercialDraftCommand || commercialReleaseCommand
     || approvedBillingAction || approvedUserCommand || approvedUserDeactivation
-    || approvedUserAccessSettings
+    || approvedUserReactivation || approvedUserAccessSettings
     || approvedOrganizationSubscription || approvedReauthentication
     || approvedActiveRoleTransition;
   if (!approved || /[?#]/u.test(value)) {

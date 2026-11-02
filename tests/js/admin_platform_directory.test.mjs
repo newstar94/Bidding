@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createLatestAdminLoader, directoryBrowserQuery, directoryQuery, directoryResultsMarkup, readDirectoryState } from "../../frontend/admin-platform/AdminDirectory.js";
 import {
+  executeDirectoryBulkAction,
   executeOrganizationDirectoryAction,
   executeUserDirectoryAction,
   loadDirectoryDetail,
@@ -291,4 +292,92 @@ test("organization command retains one idempotency key across privileged reauthe
   assert.deepEqual(JSON.parse(requests.find((item) => item.url === "/api/auth/privileged-reauth").options.body), {
     password: "correct-password",
   });
+});
+
+const REAUTH_REQUIRED = "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm.";
+const json = (data, status = 200) => new Response(JSON.stringify(data), {
+  status, headers: { "Content-Type": "application/json" },
+});
+
+test("selectable directories render disabled bulk actions next to the selection status", () => {
+  const state = readDirectoryState(USER_DIRECTORY, "");
+  const markup = directoryResultsMarkup(USER_DIRECTORY, state, {
+    items: [{ id: "user-1", name: "Minh An", status: "active" }],
+    pagination: { page: 1, totalPages: 1, totalRows: 1 },
+  });
+  assert.match(markup, /data-admin-bulk-action="deactivate" disabled>Ngừng hoạt động</u);
+  assert.match(markup, /data-admin-bulk-action="reactivate" disabled>Kích hoạt lại</u);
+  assert.match(markup, /data-admin-bulk-result hidden/u);
+  const organizations = directoryResultsMarkup(ORGANIZATION_DIRECTORY, readDirectoryState(ORGANIZATION_DIRECTORY, ""), {
+    items: [{ id: "org-1", name: "An Bình" }], pagination: { page: 1, totalPages: 1, totalRows: 1 },
+  });
+  assert.match(organizations, /data-admin-bulk-action="lock"/u);
+  assert.match(organizations, /data-admin-bulk-action="unlock"/u);
+});
+
+test("bulk user reactivation reuses one step-up and continues past a rejected record", async () => {
+  const requests = [];
+  let prompts = 0;
+  let reauthenticated = false;
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, method: options.method });
+    if (url === "/api/auth/privileged-reauth") { reauthenticated = true; return json({ success: true }); }
+    if (!reauthenticated) return json({ error: REAUTH_REQUIRED }, 403);
+    if (url.includes("user-2")) return json({ error: "Người dùng không tồn tại." }, 404);
+    if (url.includes("user-3")) return json({ success: true, changed: false });
+    return json({ success: true, changed: true });
+  };
+  const result = await executeDirectoryBulkAction("user", "reactivate", [
+    { id: "user-1", name: "An" }, { id: "user-2", name: "Bình" }, { id: "user-3", name: "Chi" },
+  ], {
+    fetchImpl,
+    confirmImpl: async (message) => { assert.match(message, /Kích hoạt lại 3 tài khoản/u); return true; },
+    requestPassword: async () => { prompts += 1; return "secret"; },
+  });
+  assert.equal(prompts, 1);
+  assert.deepEqual(requests.filter((item) => item.method === "POST" && item.url !== "/api/auth/privileged-reauth").map((item) => item.url), [
+    "/api/auth/users/user-1/reactivate", "/api/auth/users/user-1/reactivate",
+    "/api/auth/users/user-2/reactivate", "/api/auth/users/user-3/reactivate",
+  ]);
+  assert.equal(result.changed, 1);
+  assert.equal(result.unchanged, 1);
+  assert.deepEqual(result.failures, ["Bình: Người dùng không tồn tại."]);
+  assert.match(result.summary, /Đã kích hoạt lại 1\/3 bản ghi/u);
+});
+
+test("bulk user deactivation calls the single-record endpoint and stops when step-up is cancelled", async () => {
+  const requests = [];
+  const result = await executeDirectoryBulkAction("user", "deactivate", [{ id: "user-1" }, { id: "user-2" }], {
+    fetchImpl: async (url, options) => { requests.push({ url, method: options.method }); return json({ error: REAUTH_REQUIRED }, 403); },
+    confirmImpl: async () => true,
+    requestPassword: async () => null,
+  });
+  assert.deepEqual(requests, [{ url: "/api/auth/users/user-1", method: "DELETE" }]);
+  assert.equal(result.stopped, true);
+  assert.match(result.summary, /2 bản ghi chưa xử lý/u);
+  const cancelled = await executeDirectoryBulkAction("user", "deactivate", [{ id: "user-1" }], {
+    fetchImpl: async () => { throw new Error("must not send"); }, confirmImpl: async () => false,
+  });
+  assert.equal(cancelled.cancelled, true);
+});
+
+test("bulk organization lock sends one idempotent subscription command per organization", async () => {
+  const bodies = [];
+  let key = 0;
+  const result = await executeDirectoryBulkAction("organization", "lock", [{ id: "org-1" }, { id: "org-2" }], {
+    fetchImpl: async (url, options) => {
+      if (url === "/api/organizations/subscription") {
+        bodies.push({ body: JSON.parse(options.body), key: new Headers(options.headers).get("Idempotency-Key") });
+      }
+      return json({ success: true, changed: true });
+    },
+    confirmImpl: async () => true,
+    createIdempotencyKey: (action) => `admin-org:${action}:${++key}`,
+  });
+  assert.deepEqual(bodies, [
+    { body: { organization_id: "org-1", action: "lock" }, key: "admin-org:lock:1" },
+    { body: { organization_id: "org-2", action: "lock" }, key: "admin-org:lock:2" },
+  ]);
+  assert.equal(result.changed, 2);
+  await assert.rejects(executeDirectoryBulkAction("organization", "renew", [{ id: "org-1" }], {}), TypeError);
 });

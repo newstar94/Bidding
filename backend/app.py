@@ -963,6 +963,7 @@ from backend.auth.auth_routes import (
     logout_api,
     list_users_api,
     delete_user_api,
+    reactivate_user_api,
     update_user_access_settings_api,
     update_user_role_api,
     update_user_metadata_api,
@@ -1447,6 +1448,7 @@ routes = [
         methods=["PUT"],
     ),
     Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
+    Route("/api/auth/users/{user_id}/reactivate", reactivate_user_api, methods=["POST"]),
 
 
     Route("/tong-quan", index, methods=["GET"]),

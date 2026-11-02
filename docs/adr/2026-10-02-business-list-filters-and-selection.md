@@ -25,6 +25,7 @@ Thay đổi trong modal là bản nháp. **Áp dụng** cập nhật danh sách 
 - Mỗi họ bản ghi được chọn tối đa một phiên bản. Chọn dòng giữ đúng phiên bản đang hiển thị. Nếu hiển thị phiên bản khác, bỏ lựa chọn họ bản ghi đó; người dùng chọn lại phiên bản mong muốn.
 - Chọn toàn bộ dùng phiên bản hiện hành của các kết quả chưa xem và những phiên bản đã chọn rõ ràng. Mô tả lựa chọn là đầu vào cho thao tác hàng loạt; không phải bằng chứng về quyền hay ảnh chụp bất biến của dữ liệu.
 - Theo yêu cầu tiếp theo của chủ sản phẩm, bổ sung **Xóa dữ liệu đã chọn** trong cả ba danh sách. Danh sách, phiên bản, quyền và trạng thái được xác minh lại với máy chủ trước khi thực hiện.
+- Các thao tác Phân công phụ trách, Đổi trạng thái hợp đồng và Xuất Word trên dòng đã chọn được mô tả trong ADR 0096.
 
 ## Xóa dữ liệu đã chọn
 

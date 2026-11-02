@@ -2707,6 +2707,15 @@ textarea[disabled] {
   list-style: none;
 }
 
+.app-long-task-loading-cancel {
+  display: block;
+  margin: var(--space-5) auto 0;
+}
+
+.app-long-task-loading-cancel[hidden] {
+  display: none;
+}
+
 .app-long-task-loading-step {
   display: flex;
   align-items: center;

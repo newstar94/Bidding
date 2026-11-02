@@ -42,6 +42,10 @@ function selected(value, expected) {
   return value === expected ? " selected" : "";
 }
 
+function selectionKeyOf(config, item) {
+  return String(config.selectionKey?.(item) ?? item?.id ?? item?.publicId ?? item?.sessionId ?? "").trim();
+}
+
 function normalizeState(config, values = {}) {
   const page = Math.max(1, Number.parseInt(values.page, 10) || 1);
   const requestedSize = Number.parseInt(values.pageSize, 10) || 25;
@@ -140,13 +144,16 @@ export function directoryResultsMarkup(config, state, payload) {
   const rows = items.map((item, index) => {
     const markup = config.rowMarkup(item, index);
     if (!config.selectable) return markup;
-    const recordId = String(config.selectionKey?.(item) ?? item?.id ?? item?.publicId ?? item?.sessionId ?? "").trim();
+    const recordId = selectionKeyOf(config, item);
     if (!recordId) return markup;
     const control = `<td><input class="form-check-input" type="checkbox" data-admin-select-row="${escapeHtml(recordId)}" aria-label="Chọn bản ghi ${escapeHtml(recordId)}"></td>`;
     return markup.replace(/^(<tr[^>]*>)/u, `$1${control}`);
   }).join("");
+  const bulkButtons = (config.bulkActions || []).map((action) => (
+    `<button class="btn btn-sm btn-outline-${action.tone === "danger" ? "danger" : "primary"}" type="button" data-admin-bulk-action="${escapeHtml(action.id)}" disabled>${escapeHtml(action.label)}</button>`
+  )).join("");
   const selectionStatus = config.selectable
-    ? '<div class="card-header py-2"><span class="text-secondary" data-admin-selection-status aria-live="polite">Chưa chọn bản ghi</span></div>'
+    ? `<div class="card-header py-2 d-flex flex-wrap align-items-center gap-2"><span class="text-secondary" data-admin-selection-status aria-live="polite">Chưa chọn bản ghi</span>${bulkButtons ? `<div class="btn-list ms-auto">${bulkButtons}</div>` : ""}<div class="w-100 small" role="status" aria-live="polite" data-admin-bulk-result hidden></div></div>`
     : "";
   return `${summary}<section class="card" aria-label="${escapeHtml(config.title)}">${selectionStatus}<div class="table-responsive"><table class="table table-vcenter card-table bf-admin-directory-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>${paginationMarkup(payload.pagination)}</section>`;
 }
@@ -166,7 +173,11 @@ function writeBrowserQuery(state, config, { push = false } = {}) {
 export function renderAdminDirectory(container, config, options = {}) {
   const { fetchImpl, signal } = options;
   let state = readDirectoryState(config);
-  const selectedIds = new Set();
+  // Selection survives paging and sorting of one result set; a new filter or
+  // search starts a new set, so earlier picks can no longer be hidden in it.
+  const selectedItems = new Map();
+  let bulkResult = "";
+  let bulkRunning = false;
   const loader = createLatestAdminLoader();
   renderAdminMarkup(container, controlsMarkup(config, state));
   const results = container.querySelector("[data-admin-directory-results]");
@@ -177,31 +188,66 @@ export function renderAdminDirectory(container, config, options = {}) {
 
   const bindResultActions = () => {
     const selectionStatus = results.querySelector("[data-admin-selection-status]");
+    const bulkStatus = results.querySelector("[data-admin-bulk-result]");
+    const bulkButtons = Array.from(results.querySelectorAll("[data-admin-bulk-action]"));
     const selectAll = results.querySelector("[data-admin-select-all]");
     const rowSelectors = Array.from(results.querySelectorAll("[data-admin-select-row]"));
+    const pageItems = new Map((currentPayload?.items || []).map((item) => [selectionKeyOf(config, item), item]));
+    const toggle = (control, checked) => {
+      const id = control.dataset.adminSelectRow;
+      if (checked && pageItems.has(id)) selectedItems.set(id, pageItems.get(id));
+      else selectedItems.delete(id);
+    };
     const updateSelection = () => {
-      rowSelectors.forEach((control) => { control.checked = selectedIds.has(control.dataset.adminSelectRow); });
+      rowSelectors.forEach((control) => { control.checked = selectedItems.has(control.dataset.adminSelectRow); });
       const selectedOnPage = rowSelectors.filter((control) => control.checked).length;
       if (selectAll) {
         selectAll.checked = rowSelectors.length > 0 && selectedOnPage === rowSelectors.length;
         selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < rowSelectors.length;
       }
-      if (selectionStatus) selectionStatus.textContent = selectedIds.size
-        ? `Đã chọn ${selectedIds.size} bản ghi`
+      if (selectionStatus) selectionStatus.textContent = selectedItems.size
+        ? `Đã chọn ${selectedItems.size} bản ghi`
         : "Chưa chọn bản ghi";
+      bulkButtons.forEach((button) => { button.disabled = bulkRunning || selectedItems.size === 0; });
+      if (bulkStatus) {
+        bulkStatus.textContent = bulkResult;
+        bulkStatus.hidden = !bulkResult;
+      }
     };
     rowSelectors.forEach((control) => control.addEventListener("change", () => {
-      if (control.checked) selectedIds.add(control.dataset.adminSelectRow);
-      else selectedIds.delete(control.dataset.adminSelectRow);
+      toggle(control, control.checked);
+      bulkResult = "";
       updateSelection();
     }));
     selectAll?.addEventListener("change", () => {
-      rowSelectors.forEach((control) => {
-        if (selectAll.checked) selectedIds.add(control.dataset.adminSelectRow);
-        else selectedIds.delete(control.dataset.adminSelectRow);
-      });
+      rowSelectors.forEach((control) => toggle(control, selectAll.checked));
+      bulkResult = "";
       updateSelection();
     });
+    bulkButtons.forEach((button) => button.addEventListener("click", async () => {
+      if (bulkRunning || !selectedItems.size || typeof config.runBulkAction !== "function") return;
+      bulkRunning = true;
+      bulkResult = "";
+      updateSelection();
+      if (selectionStatus) selectionStatus.textContent = "Đang xử lý…";
+      try {
+        const outcome = await config.runBulkAction(button.dataset.adminBulkAction, [...selectedItems.values()], {
+          ...options, fetchImpl, signal,
+        });
+        if (outcome?.cancelled) {
+          bulkResult = "Đã hủy thao tác.";
+          return;
+        }
+        bulkResult = outcome?.summary || "";
+        selectedItems.clear();
+        await load();
+      } catch (error) {
+        bulkResult = error?.message || "Không thể thực hiện thao tác hàng loạt.";
+      } finally {
+        bulkRunning = false;
+        if (results.contains(button)) updateSelection();
+      }
+    }));
     updateSelection();
     results.querySelectorAll("[data-admin-sort]").forEach((button) => button.addEventListener("click", () => {
       state = normalizeState(config, { ...state, page: 1, sortBy: button.dataset.adminSort, sortDir: button.dataset.adminSortDir });
@@ -244,6 +290,8 @@ export function renderAdminDirectory(container, config, options = {}) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     state = normalizeState(config, { ...state, ...values, page: 1, detail: "" });
+    selectedItems.clear();
+    bulkResult = "";
     void load();
   });
   signal?.addEventListener?.("abort", () => loader.cancel(), { once: true });

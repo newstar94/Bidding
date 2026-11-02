@@ -70,6 +70,8 @@ html:has(.business-list-filter-panel[open]), body:has(.business-list-filter-pane
 
 .business-list-selection-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; border: 1px solid var(--line-strong); background: var(--brand-soft); border-radius: var(--radius-md); margin-bottom: 12px; font-size: .8rem; }
 .business-list-selection-bar > button:last-child { margin-left: auto; }
+.business-list-bulk-dialog { display: grid; gap: 14px; margin: 0 0 16px; text-align: left; }
+.business-list-bulk-dialog .form-group { margin: 0; }
 .data-table th.business-list-selection-column, .data-table td.business-list-selection-cell { width: 48px; min-width: 48px; max-width: 48px; padding: 0 2px; text-align: center; }
 .business-list-checkbox-target { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .data-table tr.business-list-row-selected > td { background: var(--brand-soft); }
