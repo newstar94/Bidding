@@ -74,11 +74,14 @@ def _legacy_hash(password):
     return f"pbkdf2_sha256$100000${salt}${digest}"
 
 
-def _request(data, *, token=None, ip="192.0.2.1"):
+def _request(data, *, token=None, ip="192.0.2.1", cookies=None):
     body = json.dumps(data).encode()
     headers = [(b"content-type", b"application/json")]
+    jar = dict(cookies or {})
     if token:
-        headers.append((b"cookie", f"session_token={token}".encode()))
+        jar["session_token"] = token
+    if jar:
+        headers.append((b"cookie", "; ".join(f"{k}={v}" for k, v in jar.items()).encode()))
 
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
@@ -93,13 +96,20 @@ def _request(data, *, token=None, ip="192.0.2.1"):
     )
 
 
-def _response_token(response):
+def _response_cookie(response, name):
     for header in response.headers.getlist("set-cookie"):
         cookie = SimpleCookie()
         cookie.load(header)
-        if "session_token" in cookie:
-            return cookie["session_token"].value
-    raise AssertionError("Session cookie is missing")
+        if name in cookie:
+            return cookie[name]
+    return None
+
+
+def _response_token(response):
+    cookie = _response_cookie(response, "session_token")
+    if cookie is None:
+        raise AssertionError("Session cookie is missing")
+    return cookie.value
 
 
 @pytest.fixture
@@ -294,20 +304,144 @@ def test_google_verified_account_keeps_existing_password_and_recovery(auth_datab
     assert existing_reset["token"]
 
 
-def test_google_new_account_still_gets_password_setup_and_session(auth_database):
-    response = asyncio.run(google_auth_routes.google_login_api(_request({"credential": "google-proof"})))
+def _google_login(payload=None):
+    return asyncio.run(google_auth_routes.google_login_api(
+        _request(payload or {"credential": "google-proof"})
+    ))
+
+
+def _google_register(payload, pending):
+    cookies = {google_auth_routes.GOOGLE_PENDING_COOKIE: pending} if pending else None
+    return asyncio.run(google_auth_routes.google_register_api(_request(payload, cookies=cookies)))
+
+
+def _assert_nothing_created(database):
+    assert database.rows("SELECT * FROM tai_khoan") == []
+    assert database.rows("SELECT * FROM dinh_danh_ngoai") == []
+    assert database.rows("SELECT * FROM email_delivery_status") == []
+    assert database.rows("SELECT * FROM audit_events") == []
+
+
+def test_google_new_identity_is_held_pending_without_creating_anything(auth_database):
+    response = _google_login()
 
     assert response.status_code == 200
+    payload = json.loads(response.body)
+    assert payload["pending_registration"] is True
+    assert payload["needs_username"] is True
+    assert payload["suggested_username"] == "suggested"
+    assert payload["email"] == "owner@example.test"
+    assert "id" not in payload
+    assert _response_cookie(response, "session_token") is None
+    pending = _response_cookie(response, google_auth_routes.GOOGLE_PENDING_COOKIE)
+    assert pending is not None
+    assert pending["httponly"] is True
+    assert pending["samesite"].lower() == "strict"
+    assert pending["path"] == google_auth_routes.GOOGLE_PENDING_COOKIE_PATH
+    assert int(pending["max-age"]) == google_auth_routes.GOOGLE_PENDING_TTL_SECONDS
+    assert "owner@example.test" not in pending.value, "the pending identity is encrypted"
+    _assert_nothing_created(auth_database)
+
+
+def test_google_registration_creates_account_with_username_and_consent(auth_database, monkeypatch):
+    methods = []
+    original_record = google_auth_routes.record_legal_consent
+
+    def record(cursor, **kwargs):
+        methods.append(kwargs["method"])
+        return original_record(cursor, **kwargs)
+
+    monkeypatch.setattr(google_auth_routes, "record_legal_consent", record)
+    pending = _response_cookie(_google_login(), google_auth_routes.GOOGLE_PENDING_COOKIE).value
+
+    response = _google_register({"username": "owner_new", "acceptLegal": True}, pending)
+
+    assert response.status_code == 200
+    payload = json.loads(response.body)
+    assert payload["is_new_account"] is True
+    assert payload["needs_username"] is False
+    assert payload["username"] == "owner_new"
+    assert payload["password_setup_queued"] is True
     account = auth_database.rows("SELECT * FROM tai_khoan")[0]
+    assert account["ten_dang_nhap"] == "owner_new"
+    assert account["username_da_dat"] == 1
     assert account["da_xac_minh"] == 1
     assert account["mat_khau"] == "!google-external-only!"
-    assert json.loads(response.body)["is_new_account"] is True
-    assert json.loads(response.body)["password_setup_queued"] is True
+    assert len(auth_database.rows("SELECT * FROM dinh_danh_ngoai")) == 1
     assert _setup_token_from_outbox(auth_database)
     assert session_invalid_reason(load_session_user(auth_database, _response_token(response))) is None
     assert {"action": "legal.consent_accepted", "user_id": account["id"]} in auth_database.rows(
         "SELECT action, user_id FROM audit_events"
     )
+    assert methods == ["google_registration_checkbox"]
+    cleared = _response_cookie(response, google_auth_routes.GOOGLE_PENDING_COOKIE)
+    assert cleared is not None and int(cleared["max-age"]) == 0
+
+    replay = _google_register({"username": "owner_other", "acceptLegal": True}, pending)
+    assert replay.status_code == 409
+    assert json.loads(replay.body)["code"] == "GOOGLE_ACCOUNT_EXISTS"
+    assert len(auth_database.rows("SELECT * FROM tai_khoan")) == 1
+
+
+@pytest.mark.parametrize("payload, status", [
+    ({"username": "owner_new", "acceptLegal": False}, 400),
+    ({"username": "owner_new"}, 400),
+    ({"username": "owner_new", "acceptLegal": "true"}, 400),
+])
+def test_google_registration_requires_explicit_legal_consent(auth_database, payload, status):
+    pending = _response_cookie(_google_login(), google_auth_routes.GOOGLE_PENDING_COOKIE).value
+
+    response = _google_register(payload, pending)
+
+    assert response.status_code == status
+    if payload.get("acceptLegal") is False:
+        assert json.loads(response.body)["code"] == "LEGAL_CONSENT_REQUIRED"
+    _assert_nothing_created(auth_database)
+
+
+@pytest.mark.parametrize("pending", [None, "forged-token"])
+def test_google_registration_rejects_missing_or_forged_pending_identity(auth_database, pending):
+    response = _google_register({"username": "owner_new", "acceptLegal": True}, pending)
+
+    assert response.status_code == 400
+    assert json.loads(response.body)["code"] == "GOOGLE_REGISTRATION_EXPIRED"
+    _assert_nothing_created(auth_database)
+
+
+def test_google_registration_rejects_expired_pending_identity(auth_database, monkeypatch):
+    pending = _response_cookie(_google_login(), google_auth_routes.GOOGLE_PENDING_COOKIE).value
+    monkeypatch.setattr(google_auth_routes, "GOOGLE_PENDING_TTL_SECONDS", -1)
+
+    response = _google_register({"username": "owner_new", "acceptLegal": True}, pending)
+
+    assert response.status_code == 400
+    assert json.loads(response.body)["code"] == "GOOGLE_REGISTRATION_EXPIRED"
+    _assert_nothing_created(auth_database)
+
+
+def test_google_registration_rejects_taken_username(auth_database):
+    _add_account(auth_database, user_id="taken_name")
+    pending = _response_cookie(_google_login(), google_auth_routes.GOOGLE_PENDING_COOKIE).value
+
+    response = _google_register({"username": "taken_name", "acceptLegal": True}, pending)
+
+    assert response.status_code == 409
+    assert [row["id"] for row in auth_database.rows("SELECT id FROM tai_khoan")] == ["taken_name"]
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_google_existing_account_signs_in_without_legal_consent(auth_database, linked):
+    _add_account(auth_database, linked=linked)
+
+    response = _google_login()
+
+    assert response.status_code == 200
+    payload = json.loads(response.body)
+    assert payload["is_new_account"] is False
+    assert "pending_registration" not in payload
+    assert "legal.consent_accepted" not in {
+        row["action"] for row in auth_database.rows("SELECT action FROM audit_events")
+    }
 
 
 def test_google_promotion_setup_delivery_uses_matching_canonical_email(auth_database):

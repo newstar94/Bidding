@@ -25,6 +25,7 @@ Chủ sản phẩm quyết định:
    - Form có checkbox `#register-accept-legal` kèm liên kết tới cả năm tài liệu, và đoạn khai báo mục đích `#register-purpose-note`.
 4. **Bằng chứng đồng ý nằm trong audit log.** Sự kiện `legal.consent_accepted` được ghi bằng `log_audit(..., cursor=cursor, required=True)` trong cùng transaction tạo tài khoản (gồm cả trường hợp tái sử dụng tài khoản bỏ dở). Metadata gồm `policyVersion`, `documents`, `method`; IP và `requestId` do audit log tự ghi. Vì vậy không có tài khoản nào thiếu bằng chứng. Bằng chứng được hưởng chuỗi HMAC chống sửa và chính sách lưu giữ của audit, và không cần bảng hay migration mới.
 5. **Tài khoản mới tạo qua Google** ghi cùng sự kiện với `method = google_sign_in_notice`. Nút Google nằm cạnh thông báo đồng ý (clickwrap). Người dùng cũ cũng đăng nhập qua nút này, nên không dùng checkbox ở đây.
+   - **Đã được thay thế bởi ADR 0097 (2026-11-02):** tài khoản Google mới chỉ được tạo ở bước "Đặt tên đăng nhập" sau khi tích checkbox `#google-accept-legal`; bằng chứng mới dùng `method = google_registration_checkbox`.
 6. **Thông tin doanh nghiệp:**
    - Lưu ở file `BIDDING_DATA_DIR/business_profile.json` (ghi đè bằng `BUSINESS_PROFILE_FILE`). File được ghi nguyên tử và đọc lại theo chữ ký file, giống `holidays.json`.
    - Các trường: tên doanh nghiệp, MST, giấy ĐKKD, người đại diện, địa chỉ, điện thoại, email. Tất cả đều tùy chọn và được kiểm tra định dạng.

@@ -126,14 +126,25 @@ def test_workspace_response_keeps_initial_route_preload(monkeypatch):
 def test_registration_and_google_onboarding_show_all_legal_links():
     auth_markup = (PROJECT_ROOT / "views" / "components" / "auth_overlay.html").read_text(encoding="utf-8")
 
+    # Both consent checkboxes link the legal hub once instead of listing
+    # every policy; the purpose notice still links privacy directly.
     for href in ("/legal#terms", "/legal#security", "/legal#cookies", "/legal#refund"):
-        assert auth_markup.count(f'href="{href}"') == 2
-    # The registration form also links privacy from its purpose notice.
-    assert auth_markup.count('href="/legal#privacy"') == 3
+        assert auth_markup.count(f'href="{href}"') == 0
+    assert auth_markup.count('href="/legal#privacy"') == 1
     assert 'id="register-accept-legal" required' in auth_markup
-    assert '<label for="register-accept-legal">Tôi đã đọc, hiểu và đồng ý' in auth_markup
+    assert (
+        '<label for="register-accept-legal">Tôi đã đọc, hiểu và đồng ý với '
+        '<a href="/legal" target="_blank" rel="noopener">Điều khoản và Chính sách của chúng tôi</a>.</label>'
+    ) in auth_markup
     assert 'id="register-purpose-note"' in auth_markup
-    assert "Với việc đăng nhập bằng Google" in auth_markup
+    # ADR 0097: Google account creation uses an explicit checkbox, not an
+    # implied-consent notice.
+    assert "Với việc đăng nhập bằng Google" not in auth_markup
+    # The Google step links the legal hub once instead of listing every policy.
+    assert (
+        '<label for="google-accept-legal">Tôi đã đọc, hiểu và đồng ý với '
+        '<a href="/legal" target="_blank" rel="noopener">Điều khoản và Chính sách của chúng tôi</a>.</label>'
+    ) in auth_markup
 
 
 def test_legal_policy_version_matches_recorded_consent_version():

@@ -132,7 +132,6 @@ export function showGoogleAuthPending({
       "position:fixed",
       "inset:0",
       "z-index:99998",
-      "display:flex",
       "align-items:center",
       "justify-content:center",
       "background:rgba(15,23,42,0.72)",
@@ -152,6 +151,8 @@ export function showGoogleAuthPending({
   const detailElement = pending.querySelector("[data-google-auth-pending-detail]");
   if (titleElement) titleElement.textContent = title;
   if (detailElement) detailElement.textContent = detail;
+  // Visibility is owned by this single "display" declaration; the base
+  // cssText above must not repeat it or a later rule would override "none".
   setRuntimeStyle(pending, "display", "flex");
 }
 export function hideGoogleAuthPending() {

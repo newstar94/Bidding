@@ -1437,8 +1437,8 @@ html[data-bf-shell="landing"]:has(:target) .landing-footer {
 .landing-access-list > div {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 16px 18px;
   border: 1px solid var(--landing-literal-glass-line);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.07);
@@ -1446,35 +1446,38 @@ html[data-bf-shell="landing"]:has(:target) .landing-footer {
 
 .landing-access-list > div > span {
   display: grid;
-  width: 38px;
-  height: 38px;
+  flex: none;
+  width: 44px;
+  height: 44px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 10px;
   color: #d6e0ff;
   background: rgba(105, 133, 238, 0.27);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .landing-access-list p {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   margin: 0;
 }
 
 .landing-access-list p b {
   color: var(--landing-surface);
-  font-size: 11px;
+  font-size: 15px;
 }
 
 .landing-access-list p small {
   color: #aebbd0;
-  font-size: 8px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .landing-access-list svg {
-  width: 18px;
-  height: 18px;
+  flex: none;
+  width: 20px;
+  height: 20px;
   margin-left: auto;
   color: #59d4a8;
 }
@@ -4160,6 +4163,10 @@ html[data-bf-shell="landing"] body {
   color: #bdc8da;
 }
 
+.landing-feature.landing-feature-dark h3 {
+  color: var(--landing-surface);
+}
+
 .landing-footer .landing-brand-copy strong,
 .landing-footer .landing-brand-copy small,
 .landing-footer p,
@@ -4432,5 +4439,342 @@ html[data-bf-shell="landing"] body {
   .landing-footer .business-profile {
     justify-content: flex-start;
     text-align: left;
+  }
+}
+
+/* Continuous flow and parallax.
+ * Presentation only: the sections read as one current instead of separate
+ * blocks. Every seam is a static wave of the neighbouring band's colour, a
+ * data thread runs through the desktop gutter and depth layers move at
+ * different speeds while scrolling. Motion animates transform and opacity
+ * through scroll-driven timelines only; without support, or under reduced
+ * motion, the static composition and the IntersectionObserver reveal stay.
+ * Wave fills repeat the literal band colours (canvas, white, pricing sky)
+ * because SVG data URIs cannot read custom properties. Solid shapes are used
+ * instead of colour gradients so deferred and fully rendered bands rasterise
+ * identically. */
+.landing-page {
+  --landing-flow-thread-color: color-mix(in srgb, var(--landing-blue) 62%, transparent);
+  --landing-flow-wave-height: clamp(2.75rem, 6.5vw, 6rem);
+  --landing-flow-wave-canvas-top: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23f8fafc' d='M0 0H1440V22C1290 4 1150 6 990 34S700 92 470 78 120 40 0 58Z'/%3E%3C/svg%3E");
+  --landing-flow-wave-paper-top: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23fff' d='M0 0H1440V22C1290 4 1150 6 990 34S700 92 470 78 120 40 0 58Z'/%3E%3C/svg%3E");
+  --landing-flow-wave-paper-top-alt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23fff' d='M1440 0H0V22C150 4 290 6 450 34S740 92 970 78 1320 40 1440 58Z'/%3E%3C/svg%3E");
+  --landing-flow-wave-sky-top-alt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23eef3fb' d='M1440 0H0V22C150 4 290 6 450 34S740 92 970 78 1320 40 1440 58Z'/%3E%3C/svg%3E");
+  --landing-flow-wave-paper-bottom: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23fff' d='M0 96V40C170 20 330 18 520 40S860 92 1080 76 1340 30 1440 44V96Z'/%3E%3C/svg%3E");
+  --landing-flow-wave-paper-bottom-alt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 96' preserveAspectRatio='none'%3E%3Cpath fill='%23fff' d='M1440 96V40C1270 20 1110 18 920 40S580 92 360 76 100 30 0 44V96Z'/%3E%3C/svg%3E");
+}
+
+.landing-section {
+  position: relative;
+}
+
+.landing-solutions,
+.landing-roles {
+  isolation: isolate;
+}
+
+/* Clip decoration without creating a scroll container: scroll-driven
+ * timelines inside these bands must follow the page scroller. */
+.landing-proof,
+.landing-solutions,
+.landing-roles,
+.landing-pricing,
+.landing-final-cta {
+  overflow: clip;
+}
+
+.landing-process,
+.landing-pricing,
+.landing-footer {
+  border-color: transparent;
+}
+
+.landing-proof::after,
+.landing-process::after,
+.landing-pricing::after,
+.landing-final-cta::after {
+  position: absolute;
+  inset: 0;
+  background-position: top, bottom;
+  background-repeat: no-repeat;
+  background-size: 100% var(--landing-flow-wave-height);
+  content: "";
+  pointer-events: none;
+}
+
+.landing-proof::after {
+  background-image: var(--landing-flow-wave-canvas-top), var(--landing-flow-wave-paper-bottom);
+}
+
+.landing-process::after {
+  background-image: var(--landing-flow-wave-paper-top), var(--landing-flow-wave-paper-bottom);
+}
+
+.landing-pricing::after {
+  background-image: var(--landing-flow-wave-paper-top-alt);
+}
+
+.landing-final-cta::after {
+  background-image: var(--landing-flow-wave-sky-top-alt), var(--landing-flow-wave-paper-bottom-alt);
+}
+
+/* Without the commercial band the call to action follows the white roles band. */
+html[data-trial-full-access="true"] .landing-final-cta::after {
+  background-image: var(--landing-flow-wave-paper-top-alt), var(--landing-flow-wave-paper-bottom-alt);
+}
+
+/* The hero panel and ring dissolve before the seam, so the wave below
+ * reads as the same current re-forming rather than a second block. */
+.landing-hero::before {
+  mask-image: linear-gradient(180deg, black 58%, transparent);
+}
+
+.landing-hero::after {
+  mask-image: linear-gradient(180deg, black 18%, transparent 52%);
+}
+
+/* One data thread runs from the hero source to the final call to action. */
+.landing-flow-thread {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: max(0.875rem, calc((100% - 1240px) / 4));
+  width: 2px;
+  pointer-events: none;
+  view-timeline: --landing-flow-thread block;
+}
+
+.landing-flow-thread::before {
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  background: var(--landing-flow-thread-color);
+  content: "";
+  transform-origin: top;
+}
+
+.landing-flow-thread::after {
+  position: absolute;
+  top: var(--landing-flow-station, 8.25rem);
+  left: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin: -0.375rem 0 0 -0.375rem;
+  border: 2px solid var(--landing-blue);
+  border-radius: 50%;
+  background: var(--landing-flow-station-fill, var(--landing-literal-white));
+  box-shadow: 0 0 0 0.3rem color-mix(in srgb, var(--landing-blue) 16%, transparent);
+  content: "";
+}
+
+.landing-hero .landing-flow-thread {
+  top: 6.5rem;
+  --landing-flow-station: 0px;
+}
+
+.landing-proof .landing-flow-thread {
+  --landing-flow-station: clamp(5.5rem, 9vw, 8.5rem);
+}
+
+.landing-final-cta .landing-flow-thread {
+  bottom: 42%;
+  --landing-flow-station: 7rem;
+}
+
+.landing-proof .landing-flow-thread,
+.landing-final-cta .landing-flow-thread {
+  --landing-flow-station-fill: var(--landing-cobalt-950);
+}
+
+@media (max-width: 1024px) {
+  .landing-flow-thread {
+    display: none;
+  }
+}
+
+@keyframes landing-flow-rise {
+  from {
+    opacity: 0;
+    translate: 0 var(--landing-flow-rise, 3rem);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes landing-flow-draw {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes landing-flow-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes landing-flow-station {
+  from {
+    opacity: 0.3;
+    transform: scale(0.45);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes landing-flow-depth {
+  to { translate: 0 var(--landing-flow-depth, 0px); }
+}
+
+@keyframes landing-flow-drift {
+  from { translate: 0 calc(var(--landing-flow-drift, 0px) * -1); }
+  to { translate: 0 var(--landing-flow-drift, 0px); }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .landing-hero,
+    .landing-proof,
+    .landing-section,
+    .landing-final-cta {
+      view-timeline: --landing-flow-section block;
+    }
+
+    /* Below the hero, content surfaces with the reader's scroll position. The
+     * hero keeps its existing time-based reveal so first paint is unchanged. */
+    :where(.landing-page main > section:not(.landing-hero)) [data-landing-reveal] {
+      transform: none;
+      animation: landing-flow-rise linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 38vh;
+    }
+
+    :where(.landing-feature-grid) > [data-landing-reveal]:nth-child(even),
+    :where(.landing-role-cards) > [data-landing-reveal]:nth-child(even) {
+      animation-range: cover 4vh cover 44vh;
+    }
+
+    .landing-flow-thread::before {
+      animation: landing-flow-draw linear both;
+      animation-timeline: --landing-flow-thread;
+      animation-range: cover 40vh cover calc(100% - 60vh);
+    }
+
+    .landing-flow-thread::after {
+      animation: landing-flow-station ease-out both;
+      animation-timeline: --landing-flow-thread;
+      animation-range:
+        cover calc(40vh + var(--landing-flow-station, 8.25rem) - 3rem)
+        cover calc(40vh + var(--landing-flow-station, 8.25rem));
+    }
+
+    /* The process rail fills as the journey crosses the viewport. */
+    .landing-process-list {
+      view-timeline: --landing-flow-process block;
+    }
+
+    .landing-process-list::after {
+      position: absolute;
+      top: 78.5px;
+      right: 10%;
+      left: 10%;
+      height: 2px;
+      border-radius: 1px;
+      background: linear-gradient(90deg, var(--landing-blue), var(--landing-literal-teal));
+      content: "";
+      transform-origin: left;
+      animation: landing-flow-fill linear both;
+      animation-timeline: --landing-flow-process;
+      animation-range: contain 0% contain 70%;
+    }
+
+    @media (min-width: 769px) {
+      /* Background layers trail the reader and foreground signals lead. */
+      .landing-hero::before,
+      .landing-hero::after,
+      .landing-product-window,
+      .landing-stage-signal {
+        animation: landing-flow-depth linear both;
+        animation-timeline: --landing-flow-section;
+        animation-range: exit-crossing 0% exit-crossing 100%;
+      }
+
+      .landing-hero::before { --landing-flow-depth: 6rem; }
+      .landing-hero::after { --landing-flow-depth: 4rem; }
+      .landing-product-window { --landing-flow-depth: 3rem; }
+      .landing-stage-signal-deadline { --landing-flow-depth: -4.5rem; }
+      .landing-stage-signal-flow { --landing-flow-depth: -7rem; }
+
+      /* Depth glows exist only while they can drift behind their band;
+       * the static composition stays solid colour. */
+      .landing-proof::before,
+      .landing-solutions::before,
+      .landing-roles::before {
+        position: absolute;
+        z-index: -1;
+        inset: 0;
+        content: "";
+        pointer-events: none;
+      }
+
+      .landing-proof::before {
+        background:
+          radial-gradient(34rem 22rem at 84% 26%, color-mix(in srgb, var(--landing-blue) 28%, transparent), transparent 72%),
+          radial-gradient(26rem 20rem at 6% 80%, color-mix(in srgb, var(--landing-literal-teal) 14%, transparent), transparent 72%);
+      }
+
+      .landing-solutions::before {
+        background:
+          radial-gradient(40rem 26rem at 96% 26%, color-mix(in srgb, var(--landing-blue) 7%, transparent), transparent 70%),
+          radial-gradient(30rem 24rem at 2% 72%, color-mix(in srgb, var(--landing-literal-teal) 5%, transparent), transparent 70%);
+      }
+
+      .landing-roles::before {
+        background: radial-gradient(36rem 26rem at 4% 50%, color-mix(in srgb, var(--landing-blue) 6%, transparent), transparent 70%);
+      }
+
+      .landing-proof::before,
+      .landing-solutions::before,
+      .landing-roles::before,
+      .landing-final-cta::before,
+      .landing-cta-visual {
+        animation: landing-flow-drift linear both;
+        animation-timeline: --landing-flow-section;
+        animation-range: cover 0% cover 100%;
+      }
+
+      .landing-proof::before { --landing-flow-drift: 4rem; }
+      .landing-solutions::before,
+      .landing-roles::before { --landing-flow-drift: 5rem; }
+      .landing-final-cta::before { --landing-flow-drift: 5rem; }
+      .landing-cta-visual { --landing-flow-drift: -2.5rem; }
+    }
+
+    @media (max-width: 1024px) and (min-width: 769px) {
+      .landing-hero::before { --landing-flow-depth: 2.5rem; }
+    }
+
+    @media (max-width: 768px) {
+      .landing-page {
+        --landing-flow-rise: 1.25rem;
+      }
+
+      .landing-process-list::after {
+        top: 54px;
+        right: auto;
+        bottom: 54px;
+        left: 54.5px;
+        width: 2px;
+        height: auto;
+        background: linear-gradient(180deg, var(--landing-blue), var(--landing-literal-teal));
+        transform-origin: top;
+        animation-name: landing-flow-draw;
+      }
+    }
   }
 }

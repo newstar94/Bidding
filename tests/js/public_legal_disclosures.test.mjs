@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 import {
@@ -16,6 +17,7 @@ import {
   readBusinessProfileForm,
 } from "../../frontend/admin-platform/AdminBusinessProfile.js";
 import { createRegistrationPayload } from "../../frontend/auth/AuthFlowController.js";
+import { createGoogleRegistrationPayload } from "../../frontend/auth/GoogleAuthController.js";
 
 class FakeElement {
   constructor(tagName, dataset = {}) {
@@ -181,4 +183,29 @@ test("registration payload carries an explicit boolean legal consent", () => {
   assert.equal(createRegistrationPayload({ username: "a", password: "b", name: "c", email: "d" }).acceptLegal, false);
   assert.equal(createRegistrationPayload({ username: "a", password: "b", name: "c", email: "d", acceptLegal: "yes" }).acceptLegal, false);
   assert.equal(createRegistrationPayload({ username: "a", password: "b", name: "c", email: "d", acceptLegal: true }).acceptLegal, true);
+});
+
+test("Google registration payload carries an explicit boolean legal consent", () => {
+  assert.deepEqual(createGoogleRegistrationPayload("owner_new"), { username: "owner_new", acceptLegal: false });
+  assert.equal(createGoogleRegistrationPayload("owner_new", "yes").acceptLegal, false);
+  assert.equal(createGoogleRegistrationPayload("owner_new", true).acceptLegal, true);
+});
+
+test("every registration path asks for an unticked, labelled consent checkbox", () => {
+  const markup = fs.readFileSync(new URL("../../views/components/auth_overlay.html", import.meta.url), "utf8");
+  assert.doesNotMatch(markup, /Với việc đăng nhập bằng Google, bạn xác nhận/u, "no implied consent notice remains");
+  for (const id of ["register-accept-legal", "google-accept-legal"]) {
+    const input = markup.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`, "u"))?.[0];
+    assert.ok(input, `${id} exists`);
+    assert.match(input, /type="checkbox"/u);
+    assert.doesNotMatch(input, /\schecked\b/u, `${id} starts unticked`);
+    assert.match(input, new RegExp(`aria-describedby="[^"]*${id}-error`, "u"));
+    assert.match(markup, new RegExp(`<label for="${id}">[^]*?href="/legal(?:#terms)?"[^]*?</label>`, "u"));
+    assert.match(markup, new RegExp(`id="${id}-error" class="auth-field-error"[^>]*hidden`, "u"));
+  }
+  const loginForm = markup.match(/<form id="form-auth-login"[^]*?<\/form>/u)[0];
+  assert.doesNotMatch(loginForm, /type="checkbox"[^>]*accept-legal/u, "signing in never asks for consent");
+  const usernameModal = markup.slice(markup.indexOf('id="modal-set-username-overlay"'));
+  assert.match(usernameModal, /id="set-username-legal-group"[^>]*hidden/u, "consent shows only for a new Google account");
+  assert.ok(usernameModal.indexOf('id="google-accept-legal"') < usernameModal.indexOf('id="btn-set-username-submit"'));
 });

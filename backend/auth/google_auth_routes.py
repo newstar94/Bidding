@@ -1,4 +1,7 @@
 from backend.db.db_helper import IntegrityError
+import base64
+import hashlib
+import hmac
 import os
 import json
 import uuid
@@ -8,6 +11,7 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 
+from cryptography.fernet import Fernet, InvalidToken
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
 
@@ -34,12 +38,14 @@ from backend.auth.identity import (
     conflict_payload,
     identity_conflict_code,
     normalize_email,
+    normalize_username,
 )
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import replace_user_session
 from backend.auth.legal_consent import (
-    CONSENT_METHOD_GOOGLE_SIGN_IN_NOTICE,
+    CONSENT_METHOD_GOOGLE_REGISTRATION_CHECKBOX,
+    LEGAL_CONSENT_REQUIRED_MESSAGE,
     record_legal_consent,
 )
 from backend.auth.email_delivery_service import (
@@ -58,6 +64,48 @@ from backend.auth.password_reset_service import create_password_setup_token
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
+# ADR 0097: a Google identity without an account is only held, encrypted, in
+# a short-lived cookie until the user picks a username and ticks consent.
+GOOGLE_PENDING_COOKIE = "bf_google_pending"
+GOOGLE_PENDING_COOKIE_PATH = "/api/auth/google-register"
+GOOGLE_PENDING_TTL_SECONDS = 15 * 60
+GOOGLE_REGISTRATION_EXPIRED_MESSAGE = (
+    "Phiên tạo tài khoản bằng Google đã hết hạn. Vui lòng bấm lại nút Google."
+)
+
+
+def _pending_registration_cipher():
+    key = str(os.environ.get("EMAIL_OUTBOX_ENCRYPTION_KEY", "")).strip()
+    if not key:
+        raise RuntimeError("EMAIL_OUTBOX_ENCRYPTION_KEY is required for Google registration.")
+    # Derive a purpose-bound key so this cookie never decrypts outbox rows.
+    derived = hmac.new(
+        key.encode("ascii"), b"bf-google-pending-registration-v1", hashlib.sha256
+    ).digest()
+    return Fernet(base64.urlsafe_b64encode(derived))
+
+
+def seal_pending_registration(identity):
+    payload = json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
+    return _pending_registration_cipher().encrypt(payload.encode("utf-8")).decode("ascii")
+
+
+def open_pending_registration(token):
+    if not token:
+        return None
+    try:
+        raw = _pending_registration_cipher().decrypt(
+            token.encode("ascii"), ttl=GOOGLE_PENDING_TTL_SECONDS
+        )
+        identity = json.loads(raw)
+    except (InvalidToken, UnicodeError, ValueError):
+        return None
+    if not isinstance(identity, dict) or not all(
+        isinstance(identity.get(key), str) for key in ("google_id", "email", "name", "picture")
+    ):
+        return None
+    return identity
+
 
 async def _rate_limit_decision(*args, **kwargs):
     try:
@@ -74,7 +122,7 @@ async def _rate_limit_decision(*args, **kwargs):
 _GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
 
 
-from backend.auth.username_validator import generate_suggested_username
+from backend.auth.username_validator import generate_suggested_username, validate_username
 from backend.shared.safe_http import open_allowlisted_https
 
 
@@ -229,11 +277,15 @@ def _google_link_notice_email(display_name, email, reset_link):
     return subject, body
 
 
-def _complete_google_login(request, *, google_id, email, name, picture, ip, rate_key):
+def _complete_google_login(
+    request, *, google_id, email, name, picture, ip, rate_key, new_username=None,
+):
     """Account resolution, session issue and audit for Google login.
 
-    Runs on the database write lane. Returns a rejection ``JSONResponse`` or a
-    dict with the committed login outcome.
+    Runs on the database write lane. Returns a rejection ``JSONResponse``, a
+    ``{"pending_registration": ...}`` dict when the identity has no account
+    yet, or a dict with the committed login outcome. ``new_username`` is set
+    only by the consented registration step and creates the account.
     """
     created_new_account = False
     password_setup_delivery_id = None
@@ -320,15 +372,52 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
             account_linked = False
 
 
+        if user and new_username is not None:
+            # The identity gained an account after the pending step began.
+            conn.rollback()
+            return JSONResponse(
+                {
+                    "error": "Email Google này đã có tài khoản. Vui lòng bấm lại nút Google để đăng nhập.",
+                    "code": "GOOGLE_ACCOUNT_EXISTS",
+                },
+                status_code=409,
+            )
+
+        if not user and new_username is None:
+            # ADR 0097: nothing is created until the user chooses a username
+            # and explicitly accepts the legal documents.
+            suggested_username = generate_suggested_username(name, email, cursor)
+            conn.rollback()
+            return {
+                "pending_registration": {
+                    "google_id": google_id,
+                    "email": email,
+                    "name": name,
+                    "picture": picture,
+                },
+                "suggested_username": suggested_username,
+            }
+
         if not user:
+            cursor.execute(
+                "SELECT 1 FROM tai_khoan WHERE username_norm = ?",
+                (new_username,),
+            )
+            if cursor.fetchone():
+                conn.rollback()
+                return JSONResponse(
+                    {"error": "Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên khác."},
+                    status_code=409,
+                )
             new_id = generate_record_id("tai_khoan")
             cursor.execute(
                 """INSERT INTO tai_khoan
                    (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
                     email, email_norm, anh_dai_dien, da_xac_minh,
                     registration_verified_at, username_da_dat)
-                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, ?, 0)""",
-                (new_id, "!google-external-only!", name, email, email, picture, int(time.time())),
+                   VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, 1, ?, 1)""",
+                (new_id, new_username, new_username, "!google-external-only!", name,
+                 email, email, picture, int(time.time())),
             )
             ensure_personal_word_workspace(cursor, new_id)
             cursor.execute(
@@ -347,16 +436,14 @@ def _complete_google_login(request, *, google_id, email, name, picture, ip, rate
                 target_type="tai_khoan",
                 target_id=new_id,
                 request=request,
-                metadata={"email": email, "username": None},
+                metadata={"email": email, "username": new_username},
                 cursor=cursor,
                 required=True,
             )
-            # The Google button sits next to the clickwrap notice; a returning
-            # user signs in through the same button, so it is not a checkbox.
             record_legal_consent(
                 cursor,
                 user_id=new_id,
-                method=CONSENT_METHOD_GOOGLE_SIGN_IN_NOTICE,
+                method=CONSENT_METHOD_GOOGLE_REGISTRATION_CHECKBOX,
                 request=request,
             )
 
@@ -508,12 +595,80 @@ async def _log_audit_off_event_loop(*args, **kwargs):
         return log_audit(*args, **kwargs)
 
 
+def _google_login_success_response(request, login):
+    """Session cookie, queued emails and payload for a committed Google login."""
+    bg_tasks = None
+    user = login["user"]
+    password_setup_delivery_id = login["password_setup_delivery_id"]
+    access_payload = login["access_payload"]
+    disconnect_user_websockets(user["id"])
+
+    # The durable outbox worker already retries pending deliveries. Run the
+    # first attempt after the response as well, so Google login is never held
+    # open by the SMTP timeout.
+    password_setup_queued = bool(password_setup_delivery_id)
+    for delivery_id in (password_setup_delivery_id, login.get("link_notice_delivery_id")):
+        if not delivery_id:
+            continue
+        if bg_tasks is None:
+            bg_tasks = BackgroundTasks()
+        bg_tasks.add_task(deliver_email_once, database, delivery_id)
+
+    response = JSONResponse({
+        "success": True,
+        "id": user["id"],
+        "username": user["ten_dang_nhap"],
+        "name": user["ho_ten"],
+        **access_payload,
+        "email": user["email"],
+        "avatar": user.get("anh_dai_dien") or "",
+        "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+        "needs_username": login["needs_username"],
+        "suggested_username": login["suggested_username"],
+        "account_linked": login["account_linked"],
+        "is_new_account": login["created_new_account"],
+        "temporary_password_sent": False,
+        "temporary_password_queued": False,
+        "password_setup_queued": password_setup_queued,
+    }, background=bg_tasks)
+    cookie_max_age = SESSION_EXPIRY_HOURS * 3600
+    response.set_cookie(
+        "session_token", login["session_token"],
+        httponly=True, secure=session_cookie_secure(request), samesite="lax", path="/", max_age=cookie_max_age,
+    )
+    response.delete_cookie("username", path="/")
+    return response
+
+
+def _google_write_failure_response(exc, context):
+    if isinstance(exc, BlockingIOBusyError):
+        response = JSONResponse(
+            {
+                "error": "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
+                "code": "DATABASE_WRITE_QUEUE_FULL",
+            },
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+    if isinstance(exc, IntegrityError):
+        conflict_code = identity_conflict_code(exc)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(exc, f"{context}_integrity")
+        return JSONResponse(
+            {"error": "Không thể liên kết tài khoản do xung đột dữ liệu."},
+            status_code=409,
+        )
+    log_error(exc, context)
+    return JSONResponse(
+        {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},
+        status_code=500,
+    )
+
+
 async def google_login_api(request):
 
-    bg_tasks = None
-    password_setup_delivery_id = None
-    password_setup_queued = False
-    created_new_account = False
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
@@ -598,86 +753,92 @@ async def google_login_api(request):
         )
         if isinstance(login, JSONResponse):
             return login
-        user = login["user"]
-        account_linked = login["account_linked"]
-        created_new_account = login["created_new_account"]
-        password_setup_delivery_id = login["password_setup_delivery_id"]
-        access_payload = login["access_payload"]
-        session_token = login["session_token"]
-        needs_username = login["needs_username"]
-        suggested_username = login["suggested_username"]
-        disconnect_user_websockets(user["id"])
-
-        if password_setup_delivery_id:
-            # The durable outbox worker already retries pending deliveries. Run
-            # the first attempt after the response as well, so Google login is
-            # never held open by the SMTP timeout.
-            password_setup_queued = True
-
-        if password_setup_queued:
-            if bg_tasks is None:
-                bg_tasks = BackgroundTasks()
-            bg_tasks.add_task(
-                deliver_email_once,
-                database,
-                password_setup_delivery_id,
+        if "pending_registration" in login:
+            identity = login["pending_registration"]
+            response = JSONResponse({
+                "success": True,
+                "pending_registration": True,
+                "needs_username": True,
+                "suggested_username": login["suggested_username"],
+                "name": identity["name"],
+                "email": identity["email"],
+                "avatar": identity["picture"],
+            })
+            response.set_cookie(
+                GOOGLE_PENDING_COOKIE,
+                seal_pending_registration(identity),
+                httponly=True,
+                secure=session_cookie_secure(request),
+                samesite="strict",
+                path=GOOGLE_PENDING_COOKIE_PATH,
+                max_age=GOOGLE_PENDING_TTL_SECONDS,
             )
-        if login.get("link_notice_delivery_id"):
-            if bg_tasks is None:
-                bg_tasks = BackgroundTasks()
-            bg_tasks.add_task(
-                deliver_email_once,
-                database,
-                login["link_notice_delivery_id"],
-            )
+            return response
+        return _google_login_success_response(request, login)
 
-        response = JSONResponse({
-            "success": True,
-            "id": user["id"],
-            "username": user["ten_dang_nhap"],
-            "name": user["ho_ten"],
-            **access_payload,
-            "email": user["email"],
-            "avatar": user.get("anh_dai_dien") or "",
-            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
-            "needs_username": needs_username,
-            "suggested_username": suggested_username,
-            "account_linked": account_linked,
-            "is_new_account": created_new_account,
-            "temporary_password_sent": False,
-            "temporary_password_queued": False,
-            "password_setup_queued": password_setup_queued,
-        }, background=bg_tasks)
-        cookie_max_age = SESSION_EXPIRY_HOURS * 3600
-        response.set_cookie(
-            "session_token", session_token,
-            httponly=True, secure=session_cookie_secure(request), samesite="lax", path="/", max_age=cookie_max_age,
-        )
-        response.delete_cookie("username", path="/")
-        return response
-
-    except BlockingIOBusyError:
-        response = JSONResponse(
-            {
-                "error": "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
-                "code": "DATABASE_WRITE_QUEUE_FULL",
-            },
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-    except IntegrityError as e:
-        conflict_code = identity_conflict_code(e)
-        if conflict_code:
-            return JSONResponse(conflict_payload(conflict_code), status_code=409)
-        log_error(e, "google_login_api_integrity")
-        return JSONResponse(
-            {"error": "Không thể liên kết tài khoản do xung đột dữ liệu."},
-            status_code=409,
-        )
     except Exception as e:
-        log_error(e, "google_login_api")
-        return JSONResponse(
-            {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},
-            status_code=500,
+        return _google_write_failure_response(e, "google_login_api")
+
+
+async def google_register_api(request):
+    """Create the account held by the pending Google step (ADR 0097)."""
+
+    try:
+        ip = get_client_ip(request)
+        rate_key = f"google_register:{ip}"
+        register_limit = await _rate_limit_decision(
+            rate_key, consume_attempt=True
         )
+        if not register_limit.allowed:
+            return rate_limit_response("Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau.", register_limit)
+
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+            "acceptLegal": {"type": "boolean", "required": True},
+        })
+        if invalid:
+            return invalid
+        if data.get("acceptLegal") is not True:
+            return JSONResponse(
+                {"error": LEGAL_CONSENT_REQUIRED_MESSAGE, "code": "LEGAL_CONSENT_REQUIRED"},
+                status_code=400,
+            )
+
+        identity = open_pending_registration(request.cookies.get(GOOGLE_PENDING_COOKIE))
+        if identity is None:
+            response = JSONResponse(
+                {"error": GOOGLE_REGISTRATION_EXPIRED_MESSAGE, "code": "GOOGLE_REGISTRATION_EXPIRED"},
+                status_code=400,
+            )
+            response.delete_cookie(GOOGLE_PENDING_COOKIE, path=GOOGLE_PENDING_COOKIE_PATH)
+            return response
+
+        new_username = normalize_username(data.get("username"))
+        valid, reason = validate_username(new_username)
+        if not valid:
+            return JSONResponse({"error": reason}, status_code=400)
+
+        login = await run_database_write(
+            _complete_google_login,
+            request,
+            google_id=identity["google_id"],
+            email=identity["email"],
+            name=identity["name"],
+            picture=identity["picture"],
+            ip=ip,
+            rate_key=rate_key,
+            new_username=new_username,
+        )
+        if isinstance(login, JSONResponse):
+            if login.status_code == 409 and b"GOOGLE_ACCOUNT_EXISTS" in login.body:
+                login.delete_cookie(GOOGLE_PENDING_COOKIE, path=GOOGLE_PENDING_COOKIE_PATH)
+            return login
+        response = _google_login_success_response(request, login)
+        response.delete_cookie(GOOGLE_PENDING_COOKIE, path=GOOGLE_PENDING_COOKIE_PATH)
+        return response
+
+    except Exception as e:
+        return _google_write_failure_response(e, "google_register_api")

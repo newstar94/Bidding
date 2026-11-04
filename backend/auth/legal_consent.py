@@ -15,6 +15,9 @@ LEGAL_POLICY_VERSION = "2026-10-24"
 LEGAL_DOCUMENTS = ("terms", "privacy", "security", "cookies", "refund")
 
 CONSENT_METHOD_REGISTRATION_CHECKBOX = "registration_checkbox"
+CONSENT_METHOD_GOOGLE_REGISTRATION_CHECKBOX = "google_registration_checkbox"
+# Historical value: Google accounts created before ADR 0097 consented through
+# a clickwrap notice. New evidence never uses it.
 CONSENT_METHOD_GOOGLE_SIGN_IN_NOTICE = "google_sign_in_notice"
 
 LEGAL_CONSENT_REQUIRED_MESSAGE = (

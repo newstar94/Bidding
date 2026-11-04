@@ -31,6 +31,29 @@ function auditMarkup(items) {
   return `<ul class="list-group list-group-flush">${items.map((item) => `<li class="list-group-item px-0"><strong>${text(item.action)}</strong><div class="small text-secondary">${formatDate(item.createdAt)} · ${text(item.targetType)} · ${text(item.targetId)}</div></li>`).join("")}</ul>`;
 }
 
+const LEGAL_CONSENT_METHOD_LABELS = {
+  registration_checkbox: "Tích ô đồng ý khi đăng ký bằng mật khẩu",
+  google_registration_checkbox: "Tích ô đồng ý khi tạo tài khoản bằng Google",
+  google_sign_in_notice: "Thông báo khi đăng nhập bằng Google (trước ADR 0097)",
+};
+const LEGAL_DOCUMENT_LABELS = {
+  terms: "Điều khoản sử dụng",
+  privacy: "Quyền riêng tư",
+  security: "Bảo mật",
+  cookies: "Cookie",
+  refund: "Hoàn tiền",
+};
+
+// ADR 0097: the recorded IP stays in the audit log and is not shown here.
+export function legalConsentMarkup(consent) {
+  if (!consent) return '<p class="text-secondary">Chưa có bằng chứng đồng ý. Tài khoản có thể được tạo trước khi hệ thống ghi nhận đồng ý.</p>';
+  const method = LEGAL_CONSENT_METHOD_LABELS[consent.method] || consent.method;
+  const documents = Array.isArray(consent.documents) && consent.documents.length
+    ? consent.documents.map((item) => text(LEGAL_DOCUMENT_LABELS[item] || item)).join(", ")
+    : "N/A";
+  return `<dl class="row mb-0"><dt class="col-4">Ngày đồng ý</dt><dd class="col-8">${formatDate(consent.acceptedAt)}</dd><dt class="col-4">Phiên bản chính sách</dt><dd class="col-8">${text(consent.policyVersion)}</dd><dt class="col-4">Hình thức</dt><dd class="col-8">${text(method)}</dd><dt class="col-4">Tài liệu</dt><dd class="col-8">${documents}</dd></dl>`;
+}
+
 function sessionActivityMarkup(items) {
   if (!Array.isArray(items) || items.length === 0) return '<p class="text-secondary">Chưa có hoạt động đăng nhập.</p>';
   return `<ul class="list-group list-group-flush">${items.map((item) => {
@@ -282,7 +305,7 @@ export async function executeDirectoryBulkAction(kind, action, items, {
 export function userDetailMarkup(user) {
   const subscription = user?.subscription;
   const usage = user?.usage;
-  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(user?.links)}<dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Hoạt động gần nhất</dt><dd class="col-8">${formatDate(user?.lastActiveAt)}</dd><dt class="col-4">Phiên hoạt động</dt><dd class="col-8">${Number.isFinite(user?.activeSessionCount) ? escapeHtml(user.activeSessionCount) : "N/A"}</dd><dt class="col-4">Gói dịch vụ</dt><dd class="col-8">${text(subscription?.packageId)}</dd><dt class="col-4">Trạng thái đăng ký</dt><dd class="col-8">${text(subscription?.status)}</dd><dt class="col-4">Bắt đầu đăng ký</dt><dd class="col-8">${formatDate(subscription?.startsAt)}</dd><dt class="col-4">Hết hạn đăng ký</dt><dd class="col-8">${formatDate(subscription?.expiresAt)}</dd><dt class="col-4">Sự kiện sử dụng</dt><dd class="col-8">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-4">Sử dụng gần nhất</dt><dd class="col-8">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Tổ chức và vai trò (${Number.isFinite(user?.organizationCount) ? escapeHtml(user.organizationCount) : "N/A"})</h3>${membershipsMarkup(user?.organizations)}</section><section class="mb-4"><h3 class="h4">Hoạt động đăng nhập</h3>${sessionActivityMarkup(user?.recentSessions)}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(user?.recentAudit)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form>${accessSettingsMarkup(user)}${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
+  return `<div class="offcanvas-header"><div><div class="text-secondary small">Tài khoản ${text(user?.id)}</div><h2 class="offcanvas-title">${text(user?.name)}</h2></div><button class="btn-close" type="button" aria-label="Đóng" data-admin-close-detail></button></div><div class="offcanvas-body">${linksMarkup(user?.links)}<dl class="row"><dt class="col-4">Tên đăng nhập</dt><dd class="col-8">${text(user?.username)}</dd><dt class="col-4">Email</dt><dd class="col-8">${text(user?.email)}</dd><dt class="col-4">Trạng thái</dt><dd class="col-8">${text(user?.status)}</dd><dt class="col-4">Hoạt động gần nhất</dt><dd class="col-8">${formatDate(user?.lastActiveAt)}</dd><dt class="col-4">Phiên hoạt động</dt><dd class="col-8">${Number.isFinite(user?.activeSessionCount) ? escapeHtml(user.activeSessionCount) : "N/A"}</dd><dt class="col-4">Gói dịch vụ</dt><dd class="col-8">${text(subscription?.packageId)}</dd><dt class="col-4">Trạng thái đăng ký</dt><dd class="col-8">${text(subscription?.status)}</dd><dt class="col-4">Bắt đầu đăng ký</dt><dd class="col-8">${formatDate(subscription?.startsAt)}</dd><dt class="col-4">Hết hạn đăng ký</dt><dd class="col-8">${formatDate(subscription?.expiresAt)}</dd><dt class="col-4">Sự kiện sử dụng</dt><dd class="col-8">${Number.isFinite(usage?.eventCount) ? escapeHtml(usage.eventCount) : "N/A"}</dd><dt class="col-4">Sử dụng gần nhất</dt><dd class="col-8">${formatDate(usage?.lastSeenAt)}</dd><dt class="col-4">Ngày tạo</dt><dd class="col-8">${formatDate(user?.createdAt)}</dd><dt class="col-4">Cập nhật</dt><dd class="col-8">${formatDate(user?.updatedAt)}</dd></dl><section class="mb-4"><h3 class="h4">Đồng ý điều khoản</h3>${legalConsentMarkup(user?.legalConsent)}</section><section class="mb-4"><h3 class="h4">Tổ chức và vai trò (${Number.isFinite(user?.organizationCount) ? escapeHtml(user.organizationCount) : "N/A"})</h3>${membershipsMarkup(user?.organizations)}</section><section class="mb-4"><h3 class="h4">Hoạt động đăng nhập</h3>${sessionActivityMarkup(user?.recentSessions)}</section><section class="mb-4"><h3 class="h4">Hoạt động gần đây</h3>${auditMarkup(user?.recentAudit)}</section><form data-admin-user-form="name" class="mb-3"><label class="form-label">Tên hiển thị<input class="form-control" name="value" value="${text(user?.name, "")}" required maxlength="200"></label><button class="btn btn-outline-primary" type="submit">Cập nhật tên</button></form>${accessSettingsMarkup(user)}${user?.status === "active" ? '<button class="btn btn-outline-danger" type="button" data-admin-user-action="deactivate">Ngừng hoạt động tài khoản</button>' : ""}<div class="mt-3" role="status" aria-live="polite" data-admin-detail-status></div></div>`;
 }
 
 export function organizationDetailMarkup(organization) {

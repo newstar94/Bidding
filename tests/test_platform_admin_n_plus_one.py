@@ -87,6 +87,8 @@ class _TracingCursor:
             return _Result(row={"count": self.scale})
         if "FROM auth_sessions session" in sql and "COUNT(*) AS count" in sql:
             return _Result(row={"count": self.scale})
+        if "action = 'legal.consent_accepted'" in sql:
+            return _Result(row=None)
         if "FROM audit_log" in sql and "ORDER BY created_at DESC" in sql:
             return _Result(rows=[self._detail_audit(index) for index in range(min(self.scale, 10))])
         if "FROM thanh_vien_to_chuc membership" in sql and "MAX(session.last_seen_at)" in sql:
@@ -420,7 +422,7 @@ def test_platform_admin_global_search_uses_four_bounded_queries_at_scale(monkeyp
 @pytest.mark.parametrize(
     ("kind", "operation", "collection_key", "query_budget"),
     (
-        ("user", platform_directory_routes._user_detail, "organizations", 7),
+        ("user", platform_directory_routes._user_detail, "organizations", 8),
         ("organization", platform_directory_routes._organization_detail, "users", 6),
     ),
 )

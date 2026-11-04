@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from starlette.applications import Starlette
@@ -119,7 +120,9 @@ def _database():
             action TEXT NOT NULL,
             target_type TEXT,
             target_id TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            metadata_json TEXT,
+            ip_address TEXT
         );
         CREATE TABLE billing_orders (
             id TEXT PRIMARY KEY,
@@ -197,7 +200,7 @@ def _database():
         (("user-2", "org-a", 4, 240), ("user-2", "org-b", 6, 250)),
     )
     connection.executemany(
-        "INSERT INTO audit_log VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO audit_log (id, actor_user_id, organization_id, action, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             (1, "user-2", "org-a", "user.updated", "user", "user-2", "2026-02-02"),
             (2, "admin-1", "org-a", "subscription.changed", "organization", "org-a", "2026-02-03"),
@@ -509,7 +512,7 @@ def test_user_detail_returns_bounded_activity_subscription_usage_and_encoded_lin
             )
         for index in range(20):
             connection.execute(
-                "INSERT INTO audit_log VALUES (?, 'user-2', 'org-a', ?, 'user', 'user-2', ?)",
+                "INSERT INTO audit_log (id, actor_user_id, organization_id, action, target_type, target_id, created_at) VALUES (?, 'user-2', 'org-a', ?, 'user', 'user-2', ?)",
                 (100 + index, f"user.event.{index}", f"2026-03-{index + 1:02d}"),
             )
         connection.commit()
@@ -558,6 +561,7 @@ def test_user_detail_returns_bounded_activity_subscription_usage_and_encoded_lin
             },
         ]
         assert len(user["recentAudit"]) == 10
+        assert user["legalConsent"] is None
         assert payload["limits"] == {"organizations": 20, "sessions": 10, "audit": 10}
     finally:
         connection.close()
@@ -654,5 +658,38 @@ def test_detail_routes_keep_unexpected_database_errors_private(monkeypatch):
         assert organization.status_code == 500
         assert "private database detail" not in user.text
         assert "private database detail" not in organization.text
+    finally:
+        connection.close()
+
+
+def test_user_detail_shows_latest_legal_consent_without_ip(monkeypatch):
+    connection = _database()
+    try:
+        insert = (
+            "INSERT INTO audit_log (id, actor_user_id, organization_id, action, target_type, "
+            "target_id, created_at, metadata_json, ip_address) "
+            "VALUES (?, 'user-2', NULL, 'legal.consent_accepted', 'tai_khoan', 'user-2', ?, ?, '203.0.113.7')"
+        )
+        connection.execute(insert, (500, "2026-01-01", json.dumps({
+            "policyVersion": "2025-01-01", "documents": ["terms"], "method": "google_sign_in_notice",
+        })))
+        connection.execute(insert, (501, "2026-10-25", json.dumps({
+            "policyVersion": "2026-10-24",
+            "documents": ["terms", "privacy", "security", "cookies", "refund"],
+            "method": "google_registration_checkbox",
+        })))
+        connection.commit()
+        client, _calls = _client(monkeypatch, connection)
+        with client:
+            response = client.get("/api/admin/users/user-2")
+
+        assert response.status_code == 200
+        assert response.json()["user"]["legalConsent"] == {
+            "acceptedAt": "2026-10-25",
+            "policyVersion": "2026-10-24",
+            "method": "google_registration_checkbox",
+            "documents": ["terms", "privacy", "security", "cookies", "refund"],
+        }
+        assert "203.0.113.7" not in response.text
     finally:
         connection.close()

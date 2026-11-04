@@ -1,5 +1,6 @@
 # Dynamic SQL fragments come only from fixed allowlists; request values stay bound.
 # ruff: noqa: S608
+import json
 import math
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -644,6 +645,27 @@ def _subscription(row, prefix=""):
     }
 
 
+def _legal_consent_item(row):
+    """Latest consent evidence (ADR 0095/0097) without the recorded IP."""
+    if not row:
+        return None
+    metadata = row["metadata_json"]
+    if isinstance(metadata, (str, bytes)):
+        try:
+            metadata = json.loads(metadata)
+        except ValueError:
+            metadata = None
+    if not isinstance(metadata, dict):
+        metadata = {}
+    documents = metadata.get("documents")
+    return {
+        "acceptedAt": _json_value(row["created_at"]),
+        "policyVersion": metadata.get("policyVersion"),
+        "method": metadata.get("method"),
+        "documents": [str(item) for item in documents] if isinstance(documents, list) else [],
+    }
+
+
 def _audit_items(rows):
     return [
         {
@@ -757,6 +779,14 @@ def _user_detail(request):
                 ORDER BY created_at DESC, id DESC LIMIT ?""",
             (user_id, user_id, _DETAIL_AUDIT_LIMIT),
         ).fetchall()
+        legal_consent = cursor.execute(
+            """SELECT metadata_json, created_at
+                 FROM audit_log
+                WHERE action = 'legal.consent_accepted'
+                  AND target_type = 'tai_khoan' AND target_id = ?
+                ORDER BY created_at DESC, id DESC LIMIT 1""",
+            (user_id,),
+        ).fetchone()
         available_packages = cursor.execute(
             """SELECT id, ten_goi AS name FROM goi_dich_vu
                WHERE trang_thai = 'active'
@@ -776,6 +806,7 @@ def _user_detail(request):
             "subscription": _subscription(row),
             "organizations": [_user_membership_detail(item, now) for item in memberships],
             "organizationCount": membership_total,
+            "legalConsent": _legal_consent_item(legal_consent),
             "availablePackages": [
                 {"id": item["id"], "name": item["name"]}
                 for item in available_packages

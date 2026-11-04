@@ -974,7 +974,7 @@ from backend.auth.auth_routes import (
     set_username_api
 )
 from backend.auth.auth_routes import build_session_bootstrap
-from backend.auth.google_auth_routes import google_login_api
+from backend.auth.google_auth_routes import google_login_api, google_register_api
 from backend.sync.api import (
     sync_websocket_endpoint,
     sync_http_routes,
@@ -1415,6 +1415,7 @@ routes = [
     Route("/api/auth/resend-code", resend_code_api, methods=["POST"]),
     Route("/api/auth/login", login_api, methods=["POST"]),
     Route("/api/auth/google-login", google_login_api, methods=["POST"]),
+    Route("/api/auth/google-register", google_register_api, methods=["POST"]),
     Route("/api/auth/set-username", set_username_api, methods=["POST"]),
     Route("/api/auth/check-session", check_session_api, methods=["POST"]),
     Route("/api/auth/active-role", set_active_role_api, methods=["POST"]),

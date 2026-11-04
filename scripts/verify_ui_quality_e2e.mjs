@@ -44,14 +44,14 @@ try {
       }).map((element) => `${element.tagName.toLowerCase()}#${element.id}`);
       const submit = document.querySelector('#form-auth-login button[type="submit"]');
       const google = document.querySelector("#google-signin-btn-container");
-      const oauthConsent = document.querySelector(".auth-legal-consent-oauth");
+      const belowGoogle = document.querySelector("#form-auth-login .auth-footer-links");
       let googleAlignment = null;
       let googleVerticalLayout = null;
       if (google) {
         const googleSurface = google.querySelector("iframe, [role='button'], .google-signin-launch");
         const containerRectBeforeProbe = google.getBoundingClientRect();
         const surfaceRect = googleSurface?.getBoundingClientRect();
-        const consentRect = oauthConsent?.getBoundingClientRect();
+        const belowRect = belowGoogle?.getBoundingClientRect();
         googleVerticalLayout = {
           clippedTop: surfaceRect
             ? Math.max(0, containerRectBeforeProbe.top - surfaceRect.top)
@@ -59,8 +59,8 @@ try {
           clippedBottom: surfaceRect
             ? Math.max(0, surfaceRect.bottom - containerRectBeforeProbe.bottom)
             : null,
-          consentGap: consentRect
-            ? consentRect.top - containerRectBeforeProbe.bottom
+          belowGap: belowRect
+            ? belowRect.top - containerRectBeforeProbe.bottom
             : null,
         };
         const originalChildren = [...google.childNodes];
@@ -131,7 +131,7 @@ try {
       !metrics.googleVerticalLayout
       || metrics.googleVerticalLayout.clippedTop > 0.5
       || metrics.googleVerticalLayout.clippedBottom > 0.5
-      || metrics.googleVerticalLayout.consentGap < 12
+      || metrics.googleVerticalLayout.belowGap < 12
     ) {
       throw new Error(`${viewport.name}: Google sign-in is clipped or crowded ${JSON.stringify(metrics.googleVerticalLayout)}`);
     }

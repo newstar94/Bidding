@@ -6,6 +6,7 @@ import {
   executeDirectoryBulkAction,
   executeOrganizationDirectoryAction,
   executeUserDirectoryAction,
+  legalConsentMarkup,
   loadDirectoryDetail,
   organizationDetailMarkup,
   ORGANIZATION_DIRECTORY,
@@ -380,4 +381,22 @@ test("bulk organization lock sends one idempotent subscription command per organ
   ]);
   assert.equal(result.changed, 2);
   await assert.rejects(executeDirectoryBulkAction("organization", "renew", [{ id: "org-1" }], {}), TypeError);
+});
+
+test("user detail shows recorded legal consent without the IP address", () => {
+  const consent = {
+    acceptedAt: "2026-10-25T08:00:00Z",
+    policyVersion: "2026-10-24",
+    method: "google_registration_checkbox",
+    documents: ["terms", "privacy", "<script>"],
+  };
+  const markup = legalConsentMarkup(consent);
+  assert.match(markup, /Phiên bản chính sách<\/dt><dd class="col-8">2026-10-24/u);
+  assert.match(markup, /Tích ô đồng ý khi tạo tài khoản bằng Google/u);
+  assert.match(markup, /Điều khoản sử dụng, Quyền riêng tư, &lt;script&gt;/u);
+  assert.doesNotMatch(markup, /<script>/u);
+  assert.match(legalConsentMarkup(null), /Chưa có bằng chứng đồng ý/u);
+  const detail = userDetailMarkup({ id: "user-2", name: "Bravo", legalConsent: consent });
+  assert.match(detail, /<h3 class="h4">Đồng ý điều khoản<\/h3>/u);
+  assert.doesNotMatch(detail, /IP/u);
 });

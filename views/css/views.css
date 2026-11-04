@@ -1863,8 +1863,23 @@ table th {
 .auth-turnstile + .btn-auth-submit {
   margin-top: 12px;
 }
-.auth-legal-consent-oauth {
-  margin-top: 14px;
+.auth-legal-consent-check[hidden] {
+  display: none;
+}
+.auth-legal-consent-check.auth-legal-consent-centered {
+  grid-template-columns: auto minmax(0, max-content);
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.auth-legal-consent-check.auth-legal-consent-centered label {
+  text-align: center;
+}
+.auth-username-back {
+  width: 100%;
+  margin-top: 8px;
+}
+.auth-username-back[hidden] {
+  display: none;
 }
 .google-signin-container {
   display: flex;

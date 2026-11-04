@@ -3,6 +3,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import {
+  LEGAL_CONSENT_REQUIRED_MESSAGE,
   initializeInteractiveLoginModel,
   startInteractivePostLoginServices,
 } from "./AuthFlowController.js";
@@ -24,6 +25,8 @@ import {
   showGoogleSignInState
 } from "./AuthUi.js";
 import { readPendingCheckoutIntent } from "../commercial-policy/pendingCheckout.js";
+import { focusInvalidControl } from "../app/formStateUtils.js";
+import { setValidationError } from "../shared/FormValidation.js";
 
 export const GOOGLE_WORKSPACE_INIT_TIMEOUT_MS = 15000;
 
@@ -47,6 +50,17 @@ export function runGoogleWorkspaceStepWithTimeout(task, timeoutMs = GOOGLE_WORKS
       .then((value) => finish(resolve, value), (error) => finish(reject, error));
   });
 }
+
+// ADR 0097: a Google identity without an account is created only from the
+// username step, together with the explicit legal consent.
+export function createGoogleRegistrationPayload(username, acceptLegal = false) {
+  return { username, acceptLegal: acceptLegal === true };
+}
+
+const GOOGLE_REGISTRATION_RESTART_CODES = new Set([
+  "GOOGLE_REGISTRATION_EXPIRED",
+  "GOOGLE_ACCOUNT_EXISTS",
+]);
 
 export function createGoogleIdentityOptions(clientId, callback) {
   return {
@@ -177,18 +191,59 @@ export function setupGoogleSignIn() {
       setAuthFlowInProgress(false);
     }
   };
-  this._showSetUsernameModal = (activeRole, onSuccess, suggestedUsername = "", accountLinked = false) => {
+  this._showSetUsernameModal = (
+    activeRole,
+    onSuccess,
+    suggestedUsername = "",
+    accountLinked = false,
+    registration = null,
+  ) => {
     const modalOverlay = document.getElementById("modal-set-username-overlay");
     const input = document.getElementById("input-set-username");
     const errorDiv = document.getElementById("set-username-error");
     const submitBtn = document.getElementById("btn-set-username-submit");
     if (!modalOverlay || !input || !submitBtn) return;
+    const consentGroup = document.getElementById("set-username-legal-group");
+    const acceptLegalInput = document.getElementById("google-accept-legal");
+    const backBtn = document.getElementById("btn-set-username-back");
+    const submitLabel = registration ? "Tạo tài khoản" : "Xác nhận tên đăng nhập";
     const btnSpan = resetSetUsernameButton(submitBtn);
+    if (btnSpan) btnSpan.textContent = submitLabel;
     setRuntimeStyle(submitBtn, "opacity", "1");
     let isSubmitting = false;
+    if (consentGroup) consentGroup.hidden = !registration;
+    if (acceptLegalInput) {
+      acceptLegalInput.checked = false;
+      setValidationError(acceptLegalInput, "");
+      acceptLegalInput.onchange = () => {
+        if (acceptLegalInput.checked) setValidationError(acceptLegalInput, "");
+      };
+    }
+    const closeRegistration = () => {
+      setRuntimeStyle(modalOverlay, "display", "none");
+      if (consentGroup) consentGroup.hidden = true;
+      if (backBtn) backBtn.hidden = true;
+    };
+    if (backBtn) {
+      backBtn.hidden = !registration;
+      backBtn.onclick = registration
+        ? () => {
+          closeRegistration();
+          registration.onCancel?.("");
+        }
+        : null;
+    }
     const descEl = modalOverlay.querySelector("[data-username-modal-desc]");
     if (descEl) {
-      if (accountLinked) {
+      if (registration) {
+        const email = document.createElement("strong");
+        email.textContent = registration.email || "";
+        descEl.replaceChildren(
+          "Email Google ",
+          email,
+          " chưa có tài khoản BiddingFlow. Đặt tên đăng nhập và đồng ý với các điều khoản để tạo tài khoản.",
+        );
+      } else if (accountLinked) {
         descEl.innerHTML = trustedHTML('Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>');
       } else {
         descEl.innerHTML = trustedHTML('Tài khoản của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.');
@@ -236,12 +291,28 @@ export function setupGoogleSignIn() {
         }
         return;
       }
+      if (registration && !acceptLegalInput?.checked) {
+        if (acceptLegalInput) {
+          setValidationError(acceptLegalInput, LEGAL_CONSENT_REQUIRED_MESSAGE);
+          focusInvalidControl(acceptLegalInput);
+        }
+        return;
+      }
       isSubmitting = true;
       submitBtn.disabled = true;
       setRuntimeStyle(submitBtn, "opacity", "0.7");
-      if (btnSpan) btnSpan.textContent = "Đang lưu...";
+      if (btnSpan) btnSpan.textContent = registration ? "Đang tạo tài khoản..." : "Đang lưu...";
       if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
       try {
+        if (registration) {
+          const created = await postJson(
+            "/api/auth/google-register",
+            createGoogleRegistrationPayload(username, acceptLegalInput?.checked),
+          );
+          closeRegistration();
+          await onSuccess(created);
+          return;
+        }
         const result = await postJson("/api/auth/set-username", { username });
         if (this.model?.state?.activeuser) {
           this.model.state.activeuser.username = result.username;
@@ -251,15 +322,27 @@ export function setupGoogleSignIn() {
         setRuntimeStyle(modalOverlay, "display", "none");
       } catch (err) {
         isSubmitting = false;
+        submitBtn.disabled = false;
+        setRuntimeStyle(submitBtn, "opacity", "1");
+        if (btnSpan) btnSpan.textContent = submitLabel;
+        if (registration && err instanceof ApiError) {
+          if (err.code === "LEGAL_CONSENT_REQUIRED" && acceptLegalInput) {
+            setValidationError(acceptLegalInput, err.message);
+            focusInvalidControl(acceptLegalInput);
+            return;
+          }
+          if (GOOGLE_REGISTRATION_RESTART_CODES.has(err.code)) {
+            closeRegistration();
+            registration.onCancel?.(err.message);
+            return;
+          }
+        }
         if (errorDiv) {
           errorDiv.textContent = err instanceof ApiError
             ? err.message
             : "Lỗi kết nối. Vui lòng thử lại.";
           setRuntimeStyle(errorDiv, "display", "block");
         }
-        submitBtn.disabled = false;
-        setRuntimeStyle(submitBtn, "opacity", "1");
-        if (btnSpan) btnSpan.textContent = "Xác nhận tên đăng nhập";
       }
     };
     submitBtn.onclick = _doSubmit;
@@ -270,45 +353,30 @@ export function setupGoogleSignIn() {
       }
     };
   };
-  const handleGoogleResponse = async (response) => {
-    if (!response || !response.credential) return;
-    setAuthFlowInProgress(true);
+  const showGoogleLoginError = (message) => {
+    setAuthSessionActive(false);
+    setAuthFlowInProgress(false);
+    hideGoogleAuthPending();
     const errorDiv = document.getElementById("login-error");
-    if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
-    hideAuthOverlay();
-    showGoogleAuthPending();
-    const showGoogleLoginError = (message) => {
-      setAuthSessionActive(false);
-      setAuthFlowInProgress(false);
-      hideGoogleAuthPending();
-      const overlay = document.getElementById("auth-overlay");
-      const appContainer = document.querySelector(".app-container");
-      if (overlay) setRuntimeStyle(overlay, "display", "flex");
-      if (appContainer) setRuntimeStyle(appContainer, "filter", "blur(10px)");
-      const formLogin = document.getElementById("form-auth-login");
-      const formRegister = document.getElementById("form-auth-register");
-      const formForgot = document.getElementById("form-auth-forgot");
-      const formVerify = document.getElementById("form-auth-verify");
-      if (formLogin) setRuntimeStyle(formLogin, "display", "block");
-      if (formRegister) setRuntimeStyle(formRegister, "display", "none");
-      if (formForgot) setRuntimeStyle(formForgot, "display", "none");
-      if (formVerify) setRuntimeStyle(formVerify, "display", "none");
-      if (errorDiv) {
-        errorDiv.textContent = message;
-        setRuntimeStyle(errorDiv, "display", "block");
-      }
-    };
+    const overlay = document.getElementById("auth-overlay");
+    const appContainer = document.querySelector(".app-container");
+    if (overlay) setRuntimeStyle(overlay, "display", "flex");
+    if (appContainer) setRuntimeStyle(appContainer, "filter", "blur(10px)");
+    const formLogin = document.getElementById("form-auth-login");
+    const formRegister = document.getElementById("form-auth-register");
+    const formForgot = document.getElementById("form-auth-forgot");
+    const formVerify = document.getElementById("form-auth-verify");
+    if (formLogin) setRuntimeStyle(formLogin, "display", "block");
+    if (formRegister) setRuntimeStyle(formRegister, "display", "none");
+    if (formForgot) setRuntimeStyle(formForgot, "display", "none");
+    if (formVerify) setRuntimeStyle(formVerify, "display", "none");
+    if (errorDiv && message) {
+      errorDiv.textContent = message;
+      setRuntimeStyle(errorDiv, "display", "block");
+    }
+  };
+  const completeGoogleLogin = async (data) => {
     try {
-      const res = await apiFetch("/api/auth/google-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: response.credential })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showGoogleLoginError(data.error || "Dang nhap Google that bai!");
-        return;
-      }
       showGoogleAuthPending({
         title: "Đăng nhập Google thành công",
         detail: "Đang tải không gian làm việc..."
@@ -339,6 +407,47 @@ export function setupGoogleSignIn() {
       }
       showGoogleLoginError("Lỗi kết nối Google: " + err.message);
     }
+  };
+  const handleGoogleResponse = async (response) => {
+    if (!response || !response.credential) return;
+    setAuthFlowInProgress(true);
+    const errorDiv = document.getElementById("login-error");
+    if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
+    hideAuthOverlay();
+    showGoogleAuthPending();
+    let data;
+    try {
+      const res = await apiFetch("/api/auth/google-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: response.credential })
+      });
+      data = await res.json();
+      if (!res.ok) {
+        showGoogleLoginError(data.error || "Dang nhap Google that bai!");
+        return;
+      }
+    } catch (err) {
+      showGoogleLoginError("Lỗi kết nối Google: " + err.message);
+      return;
+    }
+    if (data.pending_registration) {
+      // ADR 0097: no account exists yet; it is created from the username step
+      // once the user explicitly accepts the legal documents.
+      hideGoogleAuthPending();
+      this._showSetUsernameModal(
+        "employee",
+        (created) => completeGoogleLogin(created),
+        data.suggested_username || "",
+        false,
+        {
+          email: data.email || "",
+          onCancel: (message) => showGoogleLoginError(message),
+        },
+      );
+      return;
+    }
+    await completeGoogleLogin(data);
   };
   try {
     container.replaceChildren();
