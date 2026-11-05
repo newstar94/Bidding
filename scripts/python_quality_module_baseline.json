@@ -6,7 +6,7 @@
     "backend/auth/auth_routes.py": 15,
     "backend/auth/auth_service.py": 1,
     "backend/auth/email_delivery_service.py": 2,
-    "backend/auth/google_auth_routes.py": 2,
+    "backend/auth/google_auth_routes.py": 3,
     "backend/auth/otp_routes.py": 5,
     "backend/documents/custom_exporter.py": 2,
     "backend/documents/document_worker.py": 2,
