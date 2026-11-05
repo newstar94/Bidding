@@ -309,6 +309,8 @@ test("plans view renders real release versions, status and draft revisions", () 
   assert.match(markup, /2026[.]09/u);
   assert.match(markup, /2026[.]10/u);
   assert.match(markup, /validated/u);
+  assert.match(markup, /Đã kiểm tra/u, "draft status is shown with a readable label");
+  assert.match(markup, /Thử nội bộ · Toàn hệ thống/u, "release mode and scope are readable");
   assert.match(markup, />7</u);
   assert.match(markup, /Chưa dừng bán/u);
   assert.match(markup, /Không bán/u);
@@ -575,4 +577,62 @@ test("structured draft serialization rejects malformed advanced JSON and integer
     violationCheckEnabled: field("", false), salesState: field("sellable"),
   };
   assert.throws(() => serializeDraftDocument(draftRoot({}, [values]), original), /Giá trước thuế phải là số nguyên/u);
+});
+
+function tieredPackage(tier, period, overrides = {}) {
+  return {
+    code: `${tier}.internal.${period}`, tier, variant: "internal", ownerKind: tier === "personal" ? "account" : "organization",
+    memberQuota: 5, includedProcurementQuota: 0,
+    price: { period, currency: "VND", subtotal: period === "yearly" ? 20000 : 2000, tax: 0, total: period === "yearly" ? 20000 : 2000 },
+    exportCapabilities: { "document.export.word": true }, violationCheckEnabled: false,
+    salesState: "sellable", display: { name: `Gói ${tier}`, visibility: "public", benefits: [] },
+    ...overrides,
+  };
+}
+
+test("published list summarises the applied release with readable mode, sales count and homepage state", () => {
+  const currentCatalog = {
+    releaseId: "release-live", releaseChecksum: "checksum", currency: "VND", creditPacks: [], quotaWarnings: [],
+    offers: [
+      tieredPackage("gold", "yearly", { display: { name: "Vàng", recommended: true, benefits: [] } }),
+      tieredPackage("gold", "monthly", { salesState: "non_sellable" }),
+      tieredPackage("silver", "yearly", { display: { name: "Bạc", visibility: "hidden", benefits: [] } }),
+    ],
+  };
+  const currentRelease = { id: "release-live", versionLabel: "release-42", mode: "production", scopeKey: "global", effectiveFrom: 1789000000, nonSellable: false };
+  const confirmed = plansMarkup({ currentRelease, currentCatalog, drafts: [] }, { catalog: currentCatalog });
+  assert.match(confirmed, /bf-admin-release-strip/u);
+  assert.match(confirmed, /data-mode="production">Công khai<\/span>/u);
+  assert.match(confirmed, /release-42/u);
+  assert.match(confirmed, /<strong>2<\/strong>\/3 kỳ/u);
+  assert.match(confirmed, /Đang hiển thị bảng giá/u);
+  assert.equal((confirmed.match(/data-admin-published-rollout(?!-)/gu) || []).length, 1);
+  assert.match(confirmed, /class="bf-admin-tier-chip" data-tier="gold">Vàng/u);
+  assert.match(confirmed, /★ Đề xuất/u);
+  assert.match(confirmed, /Ẩn khỏi bảng giá/u);
+  assert.match(confirmed, /data-sales-state="non_sellable"/u);
+  const unconfirmed = plansMarkup({ currentRelease, currentCatalog, drafts: [] }, { catalog: { ...currentCatalog, releaseId: "older" } });
+  assert.match(unconfirmed, /Chưa hiển thị/u);
+  assert.doesNotMatch(unconfirmed, /Đang hiển thị bảng giá/u);
+});
+
+test("package editor shows one continuous form with a period switch and no read-only identity inputs", () => {
+  const document = { taxInvoice: { taxInclusive: true, taxBasisPoints: 0, rounding: "ceil" }, offers: [
+    tieredPackage("gold", "yearly"), tieredPackage("silver", "yearly"), tieredPackage("gold", "monthly"),
+  ] };
+  const markup = draftEditorMarkup({ id: "draft-tiers", revision: 2, document }, null, { selectedIndex: 0 });
+  assert.match(markup, /data-admin-editor-period="2" aria-pressed="false">Hàng tháng/u);
+  assert.match(markup, /data-admin-editor-period="0" aria-pressed="true">Hàng năm/u);
+  assert.match(markup, /bf-admin-composer-subtitle[\s\S]*data-tier="gold">Vàng[\s\S]*Cơ bản · Tổ chức/u);
+  for (const removed of ["variant", "tier", "ownerKind", "price.period", "code", "price.currency"]) {
+    assert.doesNotMatch(markup, new RegExp(`data-admin-offer-field="${removed.replace(".", "[.]")}"`, "u"));
+  }
+  assert.match(markup, /bf-admin-offer-facts[\s\S]*Mã gói<\/dt><dd>gold[.]internal[.]yearly/u);
+  for (const field of ["display.name", "price.subtotal", "price.tax", "price.total", "memberQuota", "includedProcurementQuota", "salesState", "display.visibility", "display.recommended", "display.benefits", "display.order"]) {
+    assert.match(markup, new RegExp(`data-admin-offer-field="${field.replace(".", "[.]")}"`, "u"), field);
+  }
+  assert.match(markup, /role="switch" data-admin-offer-field="display[.]recommended"/u);
+  assert.match(markup, /4[.] Trình bày &amp; trạng thái bán/u);
+  const missingMonth = draftEditorMarkup({ id: "draft-year", revision: 1, document: { offers: [tieredPackage("gold", "yearly")] } }, null, { selectedIndex: 0 });
+  assert.match(missingMonth, /data-admin-editor-period="" aria-pressed="false" disabled[^>]*>Hàng tháng/u);
 });

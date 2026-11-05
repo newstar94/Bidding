@@ -4778,3 +4778,280 @@ html[data-trial-full-access="true"] .landing-final-cta::after {
     }
   }
 }
+
+/* Tiered pricing cards (ADR 0098). The level only changes presentation and is
+ * derived from the published offer tier; content and order stay authoritative. */
+.landing-commercial-tier {
+  --landing-tier-accent: var(--landing-blue);
+  --landing-tier-ink: var(--landing-cobalt-950);
+  --landing-tier-soft: var(--landing-cobalt-100);
+  --landing-tier-head: var(--landing-literal-white);
+  position: relative;
+  border: 1px solid var(--landing-literal-card-line);
+  border-top: 4px solid var(--landing-tier-accent);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px var(--landing-literal-shadow-soft), 0 14px 34px -22px var(--landing-literal-shadow-soft);
+  transition: box-shadow 180ms ease;
+}
+
+.landing-commercial-tier:hover {
+  border-color: color-mix(in srgb, var(--landing-tier-accent) 45%, var(--landing-literal-card-line));
+  box-shadow: 0 2px 4px var(--landing-literal-shadow-soft), 0 22px 44px -24px color-mix(in srgb, var(--landing-tier-accent) 45%, transparent);
+}
+
+.landing-commercial-tier[data-pricing-tier="personal"] {
+  --landing-tier-accent: var(--landing-literal-teal);
+  --landing-tier-ink: color-mix(in srgb, var(--landing-literal-teal) 68%, black);
+  --landing-tier-soft: color-mix(in srgb, var(--landing-literal-teal) 9%, white);
+}
+
+.landing-commercial-tier[data-pricing-tier="silver"] {
+  --landing-tier-accent: var(--landing-literal-slate);
+  --landing-tier-ink: var(--landing-literal-slate-strong);
+  --landing-tier-soft: color-mix(in srgb, var(--landing-literal-slate) 10%, white);
+}
+
+.landing-commercial-tier[data-pricing-tier="gold"] {
+  --landing-tier-accent: var(--landing-literal-preview-amber);
+  --landing-tier-ink: color-mix(in srgb, var(--landing-literal-preview-amber) 66%, black);
+  --landing-tier-soft: color-mix(in srgb, var(--landing-literal-preview-amber) 10%, white);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] {
+  --landing-tier-accent: var(--landing-literal-violet);
+  --landing-tier-ink: color-mix(in srgb, var(--landing-literal-violet) 62%, black);
+  --landing-tier-soft: color-mix(in srgb, var(--landing-literal-violet) 9%, white);
+}
+
+.landing-commercial-tier .landing-commercial-tier-head {
+  gap: .6rem;
+  padding: 1.15rem 1.15rem 0;
+  background: linear-gradient(180deg, var(--landing-tier-soft), var(--landing-literal-white) 88%);
+}
+
+.landing-commercial-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+}
+
+.landing-commercial-tier-mark {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: .7rem;
+  color: var(--landing-literal-white);
+  background: var(--landing-tier-accent);
+  box-shadow: 0 8px 18px -10px var(--landing-tier-accent);
+}
+
+.landing-commercial-tier-mark svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.landing-commercial-tier-head .landing-commercial-audience-label {
+  color: var(--landing-tier-ink);
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.landing-commercial-level {
+  display: inline-flex;
+  gap: .2rem;
+  margin-left: auto;
+}
+
+.landing-commercial-level > i {
+  width: .4rem;
+  height: .95rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--landing-tier-accent) 18%, white);
+}
+
+.landing-commercial-level > i:nth-child(2) { height: 1.1rem; }
+.landing-commercial-level > i:nth-child(3) { height: 1.25rem; }
+.landing-commercial-level > i:nth-child(4) { height: 1.4rem; }
+.landing-commercial-level { align-items: flex-end; }
+.landing-commercial-level > i.is-on { background: var(--landing-tier-accent); }
+
+.landing-commercial-tier-head .landing-commercial-title h3 {
+  color: var(--landing-tier-ink);
+  font-size: 1.5rem;
+}
+
+.landing-commercial-tier .landing-commercial-price strong {
+  color: var(--landing-tier-ink);
+  font-size: 1.75rem;
+  letter-spacing: -.03em;
+}
+
+.landing-commercial-tier .landing-pricing-periods button.is-active {
+  color: var(--landing-literal-white);
+  background: var(--landing-tier-ink);
+}
+
+.landing-commercial-option ul.landing-commercial-benefits {
+  display: grid;
+  gap: .55rem;
+  margin: 1.1rem 0 1.4rem;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-commercial-benefits > li {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  margin: 0;
+  color: var(--landing-ink);
+  font-size: .9rem;
+  line-height: 1.5;
+}
+
+.landing-commercial-benefits > li + li { margin-top: 0; }
+
+.landing-benefit-mark {
+  display: inline-grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-top: .15rem;
+  border-radius: 50%;
+  color: var(--landing-tier-ink);
+  background: var(--landing-tier-soft);
+}
+
+.landing-benefit-mark svg {
+  width: .75rem;
+  height: .75rem;
+  stroke-width: 3;
+}
+
+.landing-commercial-benefits > li.is-excluded {
+  color: var(--landing-muted);
+}
+
+.landing-commercial-benefits > li.is-excluded .landing-benefit-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--landing-literal-soft-line);
+}
+
+.landing-commercial-benefits > li.is-excluded .landing-benefit-mark::after {
+  width: .45rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--landing-literal-subtle);
+  content: "";
+}
+
+.landing-commercial-tier .landing-commercial-option .landing-button {
+  min-height: 3rem;
+  border-radius: .75rem;
+  font-size: .95rem;
+}
+
+.landing-commercial-tier .landing-commercial-option .landing-button-secondary {
+  border: 1.5px solid var(--landing-tier-ink);
+  color: var(--landing-tier-ink);
+  background: var(--landing-literal-white);
+}
+
+.landing-commercial-tier .landing-commercial-option .landing-button-secondary:hover {
+  color: var(--landing-literal-white);
+  background: var(--landing-tier-ink);
+}
+
+/* Premium top tier: darker header so the step to the largest plan is obvious. */
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-head {
+  padding-bottom: .85rem;
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--landing-literal-violet) 45%, transparent), transparent 62%),
+    linear-gradient(160deg, var(--landing-cobalt-950), var(--landing-cobalt-900));
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-head .landing-commercial-title h3,
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-head .landing-commercial-audience-label {
+  color: var(--landing-literal-white);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-head .landing-commercial-subtitle {
+  color: var(--landing-literal-white-strong);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-level > i {
+  background: var(--landing-literal-glass-line);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-level > i.is-on {
+  background: color-mix(in srgb, var(--landing-literal-violet) 55%, white);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-mark {
+  color: var(--landing-cobalt-950);
+  background: var(--landing-literal-white);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-pricing-periods {
+  border-color: var(--landing-literal-glass-line);
+  background: var(--landing-literal-glass-line);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-pricing-periods button {
+  color: var(--landing-literal-white-strong);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-pricing-periods button.is-active {
+  color: var(--landing-cobalt-950);
+  background: var(--landing-literal-white);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-pricing-periods button:disabled {
+  color: var(--landing-literal-white-strong);
+}
+
+.landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-option {
+  padding-top: 1.1rem;
+}
+
+/* Recommended plan: chosen by Admin through display.recommended. There is no
+ * text label; the emphasis uses the card's own tier colour so tiers stay
+ * distinct even when several plans in one group are recommended. */
+.landing-commercial-tier.is-recommended {
+  border-color: var(--landing-tier-accent);
+  border-top-color: var(--landing-tier-accent);
+  box-shadow: 0 0 0 2px var(--landing-tier-accent), 0 26px 50px -24px color-mix(in srgb, var(--landing-tier-accent) 60%, transparent);
+}
+
+.landing-commercial-tier.is-recommended:hover {
+  border-color: var(--landing-tier-accent);
+  box-shadow: 0 0 0 2px var(--landing-tier-accent), 0 30px 56px -24px color-mix(in srgb, var(--landing-tier-accent) 70%, transparent);
+}
+
+.landing-commercial-tier.is-recommended .landing-commercial-option .landing-button-primary {
+  min-height: 3.25rem;
+  font-size: 1rem;
+  background: var(--landing-tier-ink);
+  box-shadow: 0 12px 28px -12px var(--landing-tier-accent);
+}
+
+.landing-commercial-tier.is-recommended .landing-commercial-option .landing-button-primary:hover {
+  background: color-mix(in srgb, var(--landing-tier-ink) 82%, black);
+  box-shadow: 0 15px 32px -12px var(--landing-tier-accent);
+}
+
+@media (max-width: 560px) {
+  .landing-commercial-tier .landing-commercial-tier-head { padding: 1rem 1rem 0; }
+  .landing-commercial-tier[data-pricing-tier="diamond"] .landing-commercial-tier-head { padding-bottom: .85rem; }
+  .landing-commercial-tier .landing-commercial-option { padding-inline: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-commercial-tier { transition: none; }
+}

@@ -17,7 +17,7 @@
 - Tám offer năm, mã SKU cũ, giá, hạn mức, quyền lợi và `policies.baseTerm` tiếp tục hoạt động như trước.
 - Tối đa 16 offer: ma trận năm bắt buộc hiện hành và tối đa tám offer tháng tùy chọn. Khóa duy nhất của validator là quy mô + biến thể + chu kỳ. Giá/quota chưa nhập không thể xuất bản.
 - Tính lợi ích Kết nối riêng theo từng chu kỳ, giữ nguyên công thức và ngưỡng hiện hành.
-- Tên, mô tả, badge, variant label, period label và quyền lợi vẫn đến từ release. Offer không thuộc hai nhóm hoặc chu kỳ chuẩn vẫn được trình bày trong khu vực gói khác, không bị mất.
+- Tên, mô tả, badge, variant label, period label và quyền lợi vẫn đến từ release. (Sửa đổi 2026-11-05, ADR 0098 §6: thẻ giá landing không hiển thị badge; trang Gói và thanh toán trong ứng dụng vẫn hiển thị.) Offer không thuộc hai nhóm hoặc chu kỳ chuẩn vẫn được trình bày trong khu vực gói khác, không bị mất.
 - Kỳ tháng chưa có offer đang bán của thẻ được khóa với thông báo rõ ngay trong thẻ. Chuyển chu kỳ một thẻ không đổi các thẻ khác. Nhóm trống có trạng thái trống; không giữ các thẻ của lựa chọn trước.
 
 ## Migration strategy

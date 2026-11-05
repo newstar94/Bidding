@@ -19,6 +19,51 @@ function pricingGroupLabel(group, offer) {
   return offer?.display?.variantLabel || COMMERCIAL_GROUPS[group]?.label || "Gói dịch vụ";
 }
 
+// Presentation only: the visual level follows the offer's existing tier code.
+// Prices, rights and order always come from the published catalog.
+const PRICING_TIER_PRESENTATION = Object.freeze({
+  personal: { level: 1, icon: "user-round" },
+  silver: { level: 2, icon: "users-round" },
+  gold: { level: 3, icon: "briefcase-business" },
+  diamond: { level: 4, icon: "building-2" },
+});
+const PRICING_LEVEL_COUNT = 4;
+const PRICING_PERIOD_TEXT = Object.freeze({ monthly: "Hàng tháng", yearly: "Hàng năm" });
+
+function pricingTierPresentation(offer) {
+  const tier = Object.hasOwn(PRICING_TIER_PRESENTATION, offer?.tier) ? offer.tier : "custom";
+  return { tier, ...(PRICING_TIER_PRESENTATION[tier] || { level: 0, icon: "layers-3" }) };
+}
+
+function createPricingEyebrow(offer) {
+  const { level, icon } = pricingTierPresentation(offer);
+  const eyebrow = document.createElement("div");
+  eyebrow.className = "landing-commercial-eyebrow";
+  const mark = document.createElement("i");
+  mark.className = "landing-commercial-tier-mark";
+  mark.append(createLandingIcon(icon));
+  eyebrow.append(mark);
+  const audienceText = offer?.ownerKind === "account" ? "Cá nhân" : offer?.ownerKind === "organization" ? "Tổ chức" : "";
+  if (audienceText) {
+    const audience = document.createElement("small");
+    audience.className = "landing-commercial-audience-label";
+    audience.textContent = audienceText;
+    eyebrow.append(audience);
+  }
+  if (level > 0) {
+    const meter = document.createElement("i");
+    meter.className = "landing-commercial-level";
+    meter.setAttribute("aria-hidden", "true");
+    for (let step = 1; step <= PRICING_LEVEL_COUNT; step += 1) {
+      const bar = document.createElement("i");
+      if (step <= level) bar.className = "is-on";
+      meter.append(bar);
+    }
+    eyebrow.append(meter);
+  }
+  return eyebrow;
+}
+
 function applySessionAwareLinks(session) {
   const signedIn = session?.valid === true;
   pricingState.sessionValid = signedIn;
@@ -172,7 +217,12 @@ function createCheckoutAction({ offer, creditPack, period = "" }) {
   const code = (offer || creditPack).code;
   const destination = pricingState.sessionValid ? "/goi-va-thanh-toan" : LOGIN_PATH;
   action.href = `${destination}?checkout=${encodeURIComponent(code)}${period ? `&period=${encodeURIComponent(period)}` : ""}`;
-  action.textContent = creditPack ? "Mua lượt" : "Bắt đầu";
+  action.textContent = creditPack ? "Mua lượt" : "Mua gói";
+  if (offer) {
+    const name = presentCommercialOffer(offer).name;
+    const periodText = PRICING_PERIOD_TEXT[period] || "";
+    action.setAttribute("aria-label", `Mua gói ${name}${periodText ? ` · ${periodText}` : ""}`);
+  }
   action.append(createLandingIcon("arrow-right"));
   action.addEventListener("click", (event) => {
     if (!pricingState.sessionValid) return;
@@ -233,14 +283,23 @@ function createCommercialOption(offer, group, selectionCard = null) {
   price.append(amount, period);
 
   const benefits = document.createElement("ul");
+  benefits.className = "landing-commercial-benefits";
   presented.details.forEach(detail => {
     const item = document.createElement("li");
-    item.append(document.createTextNode(detail.label));
+    const included = commercialDetailIncluded(detail);
+    item.className = included ? "is-included" : "is-excluded";
+    const mark = document.createElement("i");
+    mark.className = "landing-benefit-mark";
+    mark.setAttribute("aria-hidden", "true");
+    if (included) mark.append(createLandingIcon("check"));
+    const copy = document.createElement("span");
+    copy.append(document.createTextNode(detail.label));
     if (detail.value !== undefined) {
       const value = document.createElement("strong");
       value.textContent = detail.value;
-      item.append(document.createTextNode(": "), value);
+      copy.append(document.createTextNode(": "), value);
     }
+    item.append(mark, copy);
     benefits.append(item);
   });
 
@@ -299,11 +358,14 @@ function renderCommercialOffers(offers = []) {
   pricingGrid.dataset.offerCount = String(visibleOffers.length);
   const createCard = (offer, selectionCard = null) => {
       const presented = presentCommercialOffer(offer);
+      const tierPresentation = pricingTierPresentation(offer);
       const card = document.createElement("article");
       card.className = `landing-commercial-tier${presented.recommended ? " is-recommended" : ""}`;
       card.dataset.commercialOfferCode = presented.code;
       card.dataset.commercialGroup = commercialGroupForOffer(offer);
       card.dataset.pricingAudience = offer.ownerKind;
+      card.dataset.pricingTier = tierPresentation.tier;
+      if (tierPresentation.level) card.dataset.pricingLevel = String(tierPresentation.level);
       if (selectionCard) {
         card.dataset.pricingCard = selectionCard.key;
         card.id = `landing-offer-${encodeURIComponent(selectionCard.key)}`;
@@ -312,18 +374,16 @@ function renderCommercialOffers(offers = []) {
       const header = document.createElement("div");
       header.className = "landing-commercial-tier-head";
       const title = document.createElement("span");
+      title.className = "landing-commercial-title";
       const heading = document.createElement("h3");
       heading.textContent = presented.name;
       const subtitle = document.createElement("p");
       subtitle.className = "landing-commercial-subtitle";
       subtitle.textContent = `${pricingGroupLabel(commercialGroupForOffer(offer), offer)} · ${presented.code}`;
       title.append(heading, subtitle);
-      header.append(title);
-      if (presented.badge || presented.recommended) {
-        const badge = document.createElement("b");
-        badge.textContent = presented.badge || "Gói đề xuất";
-        header.append(badge);
-      }
+      // Product owner (2026-11-05): landing cards show no "Đề xuất" label or
+      // display.badge text; a recommended plan keeps only its visual emphasis.
+      header.append(createPricingEyebrow(offer), title);
       if (selectionCard) {
         const periods = document.createElement("div");
         periods.className = "landing-pricing-periods";
@@ -616,6 +676,7 @@ export async function bootstrapLandingPage(session = { valid: false }) {
 import { APP_DEBUG } from "../app/appConfig.js";
 import {
   classifyPublicCommercialResponse,
+  commercialDetailIncluded,
   formatCommercialMoney,
   presentCommercialOffer,
   visibleOffersForOwner,

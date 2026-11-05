@@ -14,11 +14,21 @@ const EXPORT_LABELS = Object.freeze({
   "document.export.award_result_excel": "Xuất kết quả lựa chọn nhà thầu",
 });
 
+const NO_AUTOMATIC_DATA_LABEL = "Không lấy dữ liệu tự động";
+const EXCLUDED_DETAIL_VALUES = new Set(["Không", "Chưa cấu hình"]);
+
+// Presentation only: whether a detail row states an included right. The row
+// text itself (label and Có/Không value) is always rendered unchanged.
+export function commercialDetailIncluded(detail) {
+  if (detail?.value === undefined) return detail?.label !== NO_AUTOMATIC_DATA_LABEL;
+  return !EXCLUDED_DETAIL_VALUES.has(detail.value);
+}
+
 export function commercialOfferDetails(offer) {
   const integer = value => Number.isSafeInteger(value) ? value.toLocaleString("vi-VN") : "Chưa cấu hình";
   return [
     { label: "Hạn mức thành viên", value: integer(offer?.memberQuota) },
-    offer?.variant === "internal" ? { label: "Không lấy dữ liệu tự động" }
+    offer?.variant === "internal" ? { label: NO_AUTOMATIC_DATA_LABEL }
       : { label: "Lượt lấy dữ liệu tự động kèm theo", value: integer(offer?.includedProcurementQuota) },
     { label: "Kiểm tra vi phạm nhà thầu", value: offer?.violationCheckEnabled === true ? "Có" : "Không" },
     ...Object.entries(EXPORT_LABELS).map(([key, label]) => ({ label, value: offer?.exportCapabilities === null ? "Chưa cấu hình" : offer?.exportCapabilities?.[key] === true ? "Có" : "Không" })),

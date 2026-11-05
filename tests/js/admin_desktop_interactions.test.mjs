@@ -1429,3 +1429,48 @@ test("saving a stored monthly base fills the missing term without reentering the
     assert.match(await page.locator('[data-admin-package-live-preview]').textContent(), /399[.]000/u);
   });
 });
+
+test("package editor keeps all sections visible, jumps by section and switches period from the toolbar", async () => {
+  const source = draft("draft-a");
+  source.document.taxInvoice = { taxInclusive: true, taxBasisPoints: 0, rounding: "ceil" };
+  source.document.offers = [
+    { ...structuredClone(offer), price: { ...offer.price, total: 2000, subtotal: 2000, monthlyBaseAmount: 200 }, display: { name: "Vàng năm", benefits: [] } },
+    { ...structuredClone(offer), code: "gold.internal.monthly", salesState: "non_sellable", price: { ...offer.price, period: "monthly", total: 200, subtotal: 200, monthlyBaseAmount: 200 }, display: { name: "Vàng tháng", benefits: [] } },
+  ];
+  let saved;
+  interceptApi = async entry => {
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "GET") return { payload: source };
+    if (entry.path === "/api/commercial/drafts/draft-a" && entry.method === "PATCH") { saved = entry.body.document; return incompleteCandidate(); }
+    return null;
+  };
+  await withPage("/admin/plans", async page => {
+    await openDraft(page);
+    await page.locator('[data-admin-package-edit="0"]').first().click();
+    const year = page.locator('[data-admin-offer-editor][data-offer-index="0"]');
+    for (const section of ["identity", "commercial", "entitlements", "presentation"]) {
+      assert.equal(await year.locator(`[data-admin-package-section="${section}"]`).isVisible(), true, section);
+    }
+    await page.locator('[data-admin-package-step="3"]').click();
+    await page.waitForFunction(() => {
+      const box = document.querySelector('[data-admin-package-pane="0"] [data-admin-package-section="presentation"]').getBoundingClientRect();
+      return box.top >= 0 && box.top < innerHeight / 2;
+    });
+    assert.equal(await page.locator('[data-admin-package-step="3"]').getAttribute("aria-pressed"), "true");
+    const monthSwitch = page.locator('[data-admin-editor-period="1"]');
+    assert.equal(await monthSwitch.getAttribute("aria-pressed"), "false");
+    await monthSwitch.click();
+    assert.equal(await monthSwitch.getAttribute("aria-pressed"), "true");
+    const month = page.locator('[data-admin-offer-editor][data-offer-index="1"]');
+    assert.equal(await month.locator('[data-admin-offer-field="display.name"]').inputValue(), "Vàng tháng");
+    assert.equal(await year.isVisible(), false);
+    await chooseManagedOption(page, '[data-admin-offer-editor][data-offer-index="1"] [data-admin-offer-field="salesState"]', "sellable");
+    await page.locator('[data-admin-package-live-preview] [data-admin-package-period="0"]').click();
+    assert.equal(await page.locator('[data-admin-editor-period="0"]').getAttribute("aria-pressed"), "true");
+    await page.locator('[data-admin-plan-action="save"]').click();
+    await waitForCandidateRejection(page);
+    assert.equal(saved.offers[0].salesState, "sellable");
+    assert.equal(saved.offers[1].salesState, "sellable");
+    assert.equal(saved.offers[1].display.name, "Vàng tháng");
+    assert.equal(saved.offers[0].price.total, 2000);
+  });
+});
