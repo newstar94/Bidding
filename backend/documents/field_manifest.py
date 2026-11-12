@@ -6,6 +6,30 @@ from backend.timeline.word_fields import (
     TIMELINE_CONTEXT_LABELS,
     TIMELINE_DATE_CONTEXT_KEYS,
 )
+from backend.documents.consultant_context import (
+    APPRAISAL_CONSULTANT_ROOT,
+    PREPARATION_CONSULTANT_ROOT,
+)
+
+
+def _consultant_labels(firm):
+    """ADR 0043 labels for one consultant firm group."""
+
+    return {
+        "ten_nha_thau": f"Tên {firm}",
+        "ten_viet_tat": f"Tên viết tắt {firm}",
+        "ma_so_thue": f"Mã số thuế {firm}",
+        "nguoi_dai_dien": f"Người đại diện {firm}",
+        "chuc_vu_dai_dien": f"Chức vụ người đại diện {firm}",
+        "danh_xung": f"Danh xưng người đại diện {firm}",
+        "dia_chi": f"Địa chỉ {firm}",
+        "so_dien_thoai": f"Số điện thoại {firm}",
+        "email": f"Email {firm}",
+        "so_tai_khoan": f"Số tài khoản {firm}",
+        "noi_mo_tai_khoan": f"Nơi mở tài khoản {firm}",
+        "ma_ngan_hang": f"Mã ngân hàng (Citad) {firm}",
+        "anh_dau": f"Ảnh dấu {firm}",
+    }
 
 
 DATE_ONLY_COLUMNS = {
@@ -231,6 +255,8 @@ FIELD_LABELS_BY_TABLE = {
         "so_qd_chi_dinh": "Số quyết định chỉ định thầu",
         "ngay_qd_chi_dinh": "Ngày quyết định chỉ định thầu",
     },
+    PREPARATION_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn lập"),
+    APPRAISAL_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn thẩm định"),
     "tai_khoan": {
         "ten_dang_nhap": "Tên đăng nhập hệ thống",
         "ho_ten": "Họ tên tài khoản",

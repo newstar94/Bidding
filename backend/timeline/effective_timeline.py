@@ -112,6 +112,16 @@ def _contract_kind(contract):
     return ""
 
 
+def consultant_contract_kind(contract):
+    """Return ``preparation`` (TVL), ``appraisal`` (TVT) or ``""``.
+
+    Word exports (ADR 0043) reuse this classification so the consultant firm
+    printed in a document is the one the Tiến độ tab already evaluates.
+    """
+
+    return _contract_kind(contract)
+
+
 def _has_appointment_decision(contract):
     flag = _first(contract, ("coQdChiDinh", "co_qd_chi_dinh"))
     if flag != "":

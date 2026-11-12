@@ -67,12 +67,25 @@ CONTRACTS = [
     {'id': 'hd2', 'ten_hop_dong': 'HĐ thẩm định', 'so_hop_dong': '02/2026/HĐTĐ', 'ngay_ky': '2026-03-03', 'gia_tri': 2000000,
      'loai_hop_dong': 'Trọn gói', 'thoi_gian_thuc_hien': '15 ngày', 'phan_loai': 'Thẩm định', 'so_qd_chi_dinh': '11/QĐ',
      'ngay_qd_chi_dinh': '2026-03-02', 'ngay_thanh_ly': None}]
+# ADR 0043: đơn vị tư vấn lập / thẩm định (nhà thầu của hợp đồng tư vấn)
+TVL = {'ten_nha_thau': 'Công ty CP Tư vấn HCP', 'ten_viet_tat': 'HCP', 'ma_so_thue': '0109876543',
+       'nguoi_dai_dien': 'Nguyễn Văn Tư', 'chuc_vu_dai_dien': 'Giám đốc', 'danh_xung': 'Ông',
+       'dia_chi': 'Số 10 Láng Hạ, Đống Đa, Hà Nội', 'so_dien_thoai': '0243123456', 'email': 'tv@hcp.vn',
+       'so_tai_khoan': '1234567890', 'noi_mo_tai_khoan': 'BIDV Hà Thành', 'ma_ngan_hang': '01202001',
+       'anh_dau': 'IMG'}
+TVT = {'ten_nha_thau': 'Công ty TNHH Thẩm định Kinh Bắc', 'ten_viet_tat': 'TĐKB', 'ma_so_thue': '2300123456',
+       'nguoi_dai_dien': 'Lê Thị Thẩm', 'chuc_vu_dai_dien': 'Giám đốc', 'danh_xung': 'Bà',
+       'dia_chi': 'Số 5 Lý Thái Tổ, phường Kinh Bắc, tỉnh Bắc Ninh', 'so_dien_thoai': '0222333444',
+       'email': 'td@kb.vn', 'so_tai_khoan': '0987654321', 'noi_mo_tai_khoan': 'Vietinbank Bắc Ninh',
+       'ma_ngan_hang': '01201001', 'anh_dau': 'IMG'}
 LOT = {'ma_phan_lo': 'L1', 'ten_phan_lo': 'Lô 1', 'gia_tri_phan_lo': 100000000, 'ten_nha_thau_trung': 'Công ty TNHH Một',
        'gia_trung_thau': '99.000.000', 'ds_ten_nha_thau_tham_du': 'Công ty TNHH Một', 'ly_do_khong_trung': ''}
 WINLOT = {'nha_thau_id': 'x', 'ma_nha_thau': 'vn1', 'ten_nha_thau': 'Công ty TNHH Một', 'so_phan_lo_trung': 1,
           'tong_gia_tri_trung_thau': '99.000.000', 'ds_phan_lo': [LOT]}
 
-SOURCES = {'chu_dau_tu': 'chu_dau_tu', 'ke_hoach_lcnt': 'ke_hoach', 'goi_thau': 'goi_thau'}
+SOURCES = {'chu_dau_tu': 'chu_dau_tu', 'ke_hoach_lcnt': 'ke_hoach', 'goi_thau': 'goi_thau',
+           'don_vi_tu_van_lap': 'don_vi_tu_van_lap', 'don_vi_tu_van_tham': 'don_vi_tu_van_tham'}
+IMAGE_PREFIXES = ('anh_chu_ky', 'anh_chung_chi', 'anh_dau')
 LIST_SOURCES = {'to_chuyen_gia': 'to_chuyen_gia', 'to_tham_dinh': 'to_tham_dinh', 'hop_dong_list': 'hop_dong_list',
                 'goi_thau_trong_ke_hoach': 'goi_thau_trong_ke_hoach', 'thong_tin_mo_thau': 'nha_thau',
                 'ds_nha_thau_tham_du': 'ds_nha_thau_tham_du', 'ds_nha_thau_trung_thau': 'ds_nha_thau_trung_thau',
@@ -105,7 +118,8 @@ def build_context(plan):
                'hop_dong_list': copy.deepcopy(CONTRACTS), 'to_chuc': {'ten_to_chuc': 'Công ty HCP'}, 'user': {}, 'goi_dich_vu': {},
                'investor_name': CDT['ten_chu_dau_tu'], 'investor_address': CDT['dia_chi'],
                'current_time': '2026-11-11T22:33:00+07:00', 'today': '2026-11-11', 'tong_so_nha_thau_tham_du': 2,
-               'so_nha_thau_trung_thau': 1}
+               'so_nha_thau_trung_thau': 1,
+               'don_vi_tu_van_lap': dict(TVL), 'don_vi_tu_van_tham': dict(TVT)}
     # ADR 0042 timeline milestone scalars (moc_so_* / moc_ngay_*)
     plan_section = {'chung_thu_tdg', 'qd_tl_to', 'ttr_dt', 'qd_dt', 'ttr_kh', 'qd_kh', 'ttr_dt_kh', 'qd_dt_kh'}
     for v in VARS:
@@ -196,7 +210,7 @@ def render(path, plan):
     def imgs(d):
         if isinstance(d, dict):
             for k, v in list(d.items()):
-                if k in ('anh_chu_ky', 'anh_chung_chi', 'anh_dau') and v == 'IMG':
+                if k.startswith(IMAGE_PREFIXES) and v == 'IMG':
                     d[k] = InlineImage(doc, tiny_png(), width=Inches(1.0))
                 else:
                     imgs(v)

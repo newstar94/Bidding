@@ -1,5 +1,10 @@
 import hashlib
 
+from .consultant_context import (
+    APPRAISAL_CONSULTANT_ROOT,
+    CONSULTANT_FIELDS,
+    PREPARATION_CONSULTANT_ROOT,
+)
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
 from backend.timeline.word_fields import TIMELINE_WORD_CONTEXT_MAPPINGS
@@ -9,7 +14,33 @@ from backend.shared.workspace_scope import (
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 17
+WORD_DEFAULT_MAPPINGS_VERSION = 18
+
+# ADR 0043: consultant firm variables, e.g. ``ten_tvl`` / ``ten_tvt``.
+_CONSULTANT_NAME_SUFFIXES = {
+    PREPARATION_CONSULTANT_ROOT: "tvl",
+    APPRAISAL_CONSULTANT_ROOT: "tvt",
+}
+_CONSULTANT_NAME_STEMS = {
+    "ten_nha_thau": "ten",
+    "ten_viet_tat": "ten_tat",
+    "ma_so_thue": "mst",
+    "nguoi_dai_dien": "dai_dien",
+    "chuc_vu_dai_dien": "chuc_vu_dai_dien",
+    "danh_xung": "danh_xung",
+    "dia_chi": "dia_chi",
+    "so_dien_thoai": "sdt",
+    "email": "email",
+    "so_tai_khoan": "stk",
+    "noi_mo_tai_khoan": "noi_mo_tk",
+    "ma_ngan_hang": "ma_ngan_hang",
+    "anh_dau": "anh_dau",
+}
+_CONSULTANT_NAME_OVERRIDES = {
+    (root, column): f"{_CONSULTANT_NAME_STEMS[column]}_{suffix}"
+    for root, suffix in _CONSULTANT_NAME_SUFFIXES.items()
+    for column in CONSULTANT_FIELDS
+}
 
 
 WORD_SINGLE_SOURCES = {
@@ -194,6 +225,8 @@ WORD_SINGLE_SOURCES = {
         "so_qd_chi_dinh",
         "ngay_qd_chi_dinh",
     ],
+    PREPARATION_CONSULTANT_ROOT: list(CONSULTANT_FIELDS),
+    APPRAISAL_CONSULTANT_ROOT: list(CONSULTANT_FIELDS),
     "tai_khoan": [
         "ten_dang_nhap",
         "ho_ten",
@@ -225,6 +258,8 @@ WORD_SINGLE_PREFIXES = {
     "thong_tin_mo_thau": "mt",
     "chuyen_gia": "cg",
     "hop_dong": "hd",
+    PREPARATION_CONSULTANT_ROOT: "tvl",
+    APPRAISAL_CONSULTANT_ROOT: "tvt",
     "tai_khoan": "tk",
     "to_chuc": "tc",
     "goi_dich_vu": "gdv",
@@ -401,6 +436,8 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("goi_dich_vu", "gia_ca"): "gia_goi_dv",
     ("goi_dich_vu", "han_muc_nhan_su"): "han_muc_nhan_su_dv",
     ("goi_dich_vu", "mo_ta"): "mo_ta_goi_dv",
+
+    **_CONSULTANT_NAME_OVERRIDES,
 }
 
 

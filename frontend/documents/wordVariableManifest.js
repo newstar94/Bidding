@@ -1409,6 +1409,8 @@ export const WORD_SOURCE_TABLE_LABELS = Object.freeze({
   goi_thau: "Gói thầu",
   nha_thau: "Nhà thầu",
   hop_dong: "Hợp đồng",
+  don_vi_tu_van_lap: "Đơn vị tư vấn lập",
+  don_vi_tu_van_tham: "Đơn vị tư vấn thẩm định",
   chuyen_gia: "Chuyên gia",
   thong_tin_mo_thau: "Thông tin mở thầu",
   tai_khoan: "Tài khoản cá nhân",
@@ -2652,6 +2654,188 @@ export const DEFAULT_WORD_VARIABLES = [
     "name": "ngay_qd_chi_dinh",
     "sourceColumn": "ngay_qd_chi_dinh",
     "sourceTable": "hop_dong"
+  },
+  {
+    "format": "text",
+    "label": "Tên đơn vị tư vấn lập",
+    "name": "ten_tvl",
+    "sourceColumn": "ten_nha_thau",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Tên viết tắt đơn vị tư vấn lập",
+    "name": "ten_tat_tvl",
+    "sourceColumn": "ten_viet_tat",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Mã số thuế đơn vị tư vấn lập",
+    "name": "mst_tvl",
+    "sourceColumn": "ma_so_thue",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Người đại diện đơn vị tư vấn lập",
+    "name": "dai_dien_tvl",
+    "sourceColumn": "nguoi_dai_dien",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Chức vụ người đại diện đơn vị tư vấn lập",
+    "name": "chuc_vu_dai_dien_tvl",
+    "sourceColumn": "chuc_vu_dai_dien",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Danh xưng người đại diện đơn vị tư vấn lập",
+    "name": "danh_xung_tvl",
+    "sourceColumn": "danh_xung",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Địa chỉ đơn vị tư vấn lập",
+    "name": "dia_chi_tvl",
+    "sourceColumn": "dia_chi",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Số điện thoại đơn vị tư vấn lập",
+    "name": "sdt_tvl",
+    "sourceColumn": "so_dien_thoai",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Email đơn vị tư vấn lập",
+    "name": "email_tvl",
+    "sourceColumn": "email",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Số tài khoản đơn vị tư vấn lập",
+    "name": "stk_tvl",
+    "sourceColumn": "so_tai_khoan",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Nơi mở tài khoản đơn vị tư vấn lập",
+    "name": "noi_mo_tk_tvl",
+    "sourceColumn": "noi_mo_tai_khoan",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Mã ngân hàng (Citad) đơn vị tư vấn lập",
+    "name": "ma_ngan_hang_tvl",
+    "sourceColumn": "ma_ngan_hang",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Ảnh dấu đơn vị tư vấn lập",
+    "name": "anh_dau_tvl",
+    "sourceColumn": "anh_dau",
+    "sourceTable": "don_vi_tu_van_lap"
+  },
+  {
+    "format": "text",
+    "label": "Tên đơn vị tư vấn thẩm định",
+    "name": "ten_tvt",
+    "sourceColumn": "ten_nha_thau",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Tên viết tắt đơn vị tư vấn thẩm định",
+    "name": "ten_tat_tvt",
+    "sourceColumn": "ten_viet_tat",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Mã số thuế đơn vị tư vấn thẩm định",
+    "name": "mst_tvt",
+    "sourceColumn": "ma_so_thue",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Người đại diện đơn vị tư vấn thẩm định",
+    "name": "dai_dien_tvt",
+    "sourceColumn": "nguoi_dai_dien",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Chức vụ người đại diện đơn vị tư vấn thẩm định",
+    "name": "chuc_vu_dai_dien_tvt",
+    "sourceColumn": "chuc_vu_dai_dien",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Danh xưng người đại diện đơn vị tư vấn thẩm định",
+    "name": "danh_xung_tvt",
+    "sourceColumn": "danh_xung",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Địa chỉ đơn vị tư vấn thẩm định",
+    "name": "dia_chi_tvt",
+    "sourceColumn": "dia_chi",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Số điện thoại đơn vị tư vấn thẩm định",
+    "name": "sdt_tvt",
+    "sourceColumn": "so_dien_thoai",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Email đơn vị tư vấn thẩm định",
+    "name": "email_tvt",
+    "sourceColumn": "email",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Số tài khoản đơn vị tư vấn thẩm định",
+    "name": "stk_tvt",
+    "sourceColumn": "so_tai_khoan",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Nơi mở tài khoản đơn vị tư vấn thẩm định",
+    "name": "noi_mo_tk_tvt",
+    "sourceColumn": "noi_mo_tai_khoan",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Mã ngân hàng (Citad) đơn vị tư vấn thẩm định",
+    "name": "ma_ngan_hang_tvt",
+    "sourceColumn": "ma_ngan_hang",
+    "sourceTable": "don_vi_tu_van_tham"
+  },
+  {
+    "format": "text",
+    "label": "Ảnh dấu đơn vị tư vấn thẩm định",
+    "name": "anh_dau_tvt",
+    "sourceColumn": "anh_dau",
+    "sourceTable": "don_vi_tu_van_tham"
   },
   {
     "format": "text",

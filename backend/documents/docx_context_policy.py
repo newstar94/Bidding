@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Mapping
 
+from backend.documents.consultant_context import (
+    CONSULTANT_FIELDS,
+    CONSULTANT_ROOTS,
+)
 from backend.documents.field_manifest import field_format
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
 from backend.timeline.word_fields import TIMELINE_CONTEXT_KEYS
@@ -29,6 +33,8 @@ _SAFE_ROOT_RE = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
 
 _IMAGE_SOURCE_FIELDS = {
     ("nha_thau", "anh_dau"): "nha_thau",
+    # ADR 0043: a consultant firm is a contractor record.
+    **{(root, "anh_dau"): "nha_thau" for root in CONSULTANT_ROOTS},
     ("chuyen_gia", "anh_chung_chi"): "chuyen_gia",
     ("chuyen_gia", "anh_chu_ky"): "chuyen_gia",
 }
@@ -244,6 +250,8 @@ _EXPERT_FIELDS = frozenset(
 _CONTRACT_FIELDS = frozenset(
     _word_fields("hop_dong") | {"id", "goi_thau_ids"}
 )
+# ADR 0043: preparation/appraisal consultant firm of the package.
+_CONSULTANT_FIELDS = frozenset(CONSULTANT_FIELDS)
 _USER_FIELDS = frozenset(
     {
         "ten_dang_nhap",
@@ -284,6 +292,7 @@ ENTITY_SPECS = {
     "bid": EntitySpec(_BID_FIELDS, {"thanh_vien_lien_danh": "member"}),
     "expert": EntitySpec(_EXPERT_FIELDS),
     "contract": EntitySpec(_CONTRACT_FIELDS, {"goi_thau_ids": "scalar_list"}),
+    "consultant": EntitySpec(_CONSULTANT_FIELDS),
     "user": EntitySpec(_USER_FIELDS),
     "organization": EntitySpec(frozenset(_word_fields("to_chuc"))),
     "service_package": EntitySpec(frozenset(_word_fields("goi_dich_vu"))),
@@ -408,6 +417,9 @@ REPORT_ROOT_SPECS = {
     # context and are exposed as a list without changing the primary report
     # investor or bidder bindings.
     "hop_dong_list": "contract_list",
+    # ADR 0043: consultant firms of the package's current linked contracts.
+    # Field-level capability gates (bank account, seal) still apply.
+    **{key: "consultant" for key in CONSULTANT_ROOTS},
     **{
         key: "detailed_evaluation_row_list"
         for key in _DETAILED_EVALUATION_ROW_ROOTS
@@ -458,6 +470,7 @@ _SOURCE_FIELDS = {
     "chu_dau_tu": ENTITY_SPECS["investor"].fields,
     "hop_dong": _CONTRACT_FIELDS,
     "hop_dong_list": _CONTRACT_FIELDS,
+    **{key: _CONSULTANT_FIELDS for key in CONSULTANT_ROOTS},
     "tai_khoan": _USER_FIELDS,
     "to_chuc": ENTITY_SPECS["organization"].fields,
     "goi_dich_vu": ENTITY_SPECS["service_package"].fields,
@@ -537,6 +550,7 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "chu_dau_tu": "investor",
     "hop_dong": "contract",
     "hop_dong_list": "contract",
+    **{key: "consultant" for key in CONSULTANT_ROOTS},
     "tai_khoan": "user",
     "to_chuc": "organization",
     "goi_dich_vu": "service_package",

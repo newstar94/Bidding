@@ -276,6 +276,9 @@ export function setupWordTemplatesEvents() {
       { value: "so_qd_chi_dinh", label: "Số quyết định chỉ định thầu" },
       { value: "ngay_qd_chi_dinh", label: "Ngày quyết định chỉ định thầu" }
     ],
+    // ADR 0043: columns are filled from DEFAULT_WORD_VARIABLES below.
+    "don_vi_tu_van_lap": [],
+    "don_vi_tu_van_tham": [],
     "chuyen_gia": [
       { value: "phien_ban", label: "Phiên bản dữ liệu" },
       { value: "ho_ten", label: "Họ tên chuyên gia" },

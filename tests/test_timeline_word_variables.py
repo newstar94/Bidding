@@ -124,7 +124,8 @@ def test_every_single_milestone_has_one_number_and_one_date_default_variable():
     defaults = _timeline_defaults()
     names = [row["ten_bien"] for row in defaults]
 
-    assert WORD_DEFAULT_MAPPINGS_VERSION == 17
+    # v17 introduced the milestone variables; later catalogs (ADR 0043) add more.
+    assert WORD_DEFAULT_MAPPINGS_VERSION >= 17
     assert set(MILESTONE_WORD_SLUGS) == set(singles)
     assert len(defaults) == 2 * len(singles)
     assert len(set(names)) == len(names)

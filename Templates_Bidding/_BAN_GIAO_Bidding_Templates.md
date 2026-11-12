@@ -111,6 +111,26 @@ Chạy bằng Python 3, cần python-docx, docxtpl, openpyxl. Đường dẫn tr
 - `template_security.py`: bản sao từ Bidding.
 - Kiểm tra file Word hợp lệ: dùng `validate.py` của skill docx, chạy với `--original` là mẫu gốc.
 
+## 5b. ADR 0043: biến đơn vị tư vấn (đang làm dở, chưa commit)
+
+Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin đơn vị": số, ngày, giá hợp đồng tư vấn giữ nguyên như mẫu đang làm.
+
+**Đã xong**
+- Hai khóa gốc mới: `don_vi_tu_van_lap` và `don_vi_tu_van_tham`.
+- 26 biến hệ thống: `ten_tvl`, `ten_tat_tvl`, `mst_tvl`, `dai_dien_tvl`, `chuc_vu_dai_dien_tvl`, `danh_xung_tvl`, `dia_chi_tvl`, `sdt_tvl`, `email_tvl`, `stk_tvl`, `noi_mo_tk_tvl`, `ma_ngan_hang_tvl`, `anh_dau_tvl`, cùng bộ `_tvt` tương ứng.
+- Danh mục biến mặc định v18.
+- Mã: `backend/documents/consultant_context.py` (mới), `docx_service`, `docx_context_policy`, `docx_mapping_service`, `word_defaults`, `field_manifest`, `effective_timeline` (thêm `consultant_contract_kind`), `wordVariableManifest.js` (đã sinh lại), `WordIntegration.js`, `views/tabs/tab_bieumau.html`.
+- ADR: `docs/adr/0043-consultant-firm-word-variables.md`.
+- Test: `tests/test_consultant_word_variables.py` (mới) đạt cùng `test_timeline_word_variables.py` và `test_word_variable_labels.py`, tổng 30 test.
+- Công cụ: `mapping.py` có `CONSULTANT_ROOT` và suy luận "Địa danh TVL/TVT" từ địa chỉ đơn vị; `render_test.py` có dữ liệu giả lập TVL/TVT; `vars.json` đã sinh lại (349 biến).
+
+**Còn lại**
+1. Chạy `convert.py` (dùng `python -X utf8` trên Windows) từ thư mục mẫu NĐ30 vào một thư mục tạm.
+2. Chạy `render_test.py` trên thư mục tạm đó.
+3. Nếu ổn, chép kết quả vào `Templates_Bidding`, rồi chạy `build_xlsx.py`.
+4. Chạy toàn bộ test Word. Test cần PostgreSQL sẽ lỗi nếu Bidding/cơ sở dữ liệu chưa bật.
+5. Commit, rồi khởi động lại Bidding.
+
 ## 6. Việc còn mở (chờ chủ sản phẩm quyết)
 
 1. Đưa thông tin đơn vị tư vấn ra Word (465 chỗ). Phải sửa code và tuân thủ AGENTS.md.

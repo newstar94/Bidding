@@ -459,3 +459,50 @@ INFER_PREV = {'Chứng thư thẩm định': _chung_thu}
 ROOT.pop('Ngày thư chấp thuận', None)
 for _k in list(TIMELINE_ROOT) + list(FORCE_SHORT) + ['Chứng thư thẩm định', 'Ngày thư chấp thuận']:
     UNMAPPED.pop(_k, None)
+
+
+# ---------------------------------------------------------------------------
+# ADR 0043 (Bidding): thông tin đơn vị tư vấn lập / thẩm định -> biến *_tvl / *_tvt
+# Nguồn: nhà thầu của hợp đồng phân loại "Tư vấn" / "Thẩm định" gắn với gói thầu.
+# ---------------------------------------------------------------------------
+# mã trong tên placeholder -> (hậu tố biến, khóa gốc Bidding, placeholder tên đơn vị)
+_CONSULTANT = {
+    'TVL': ('tvl', 'don_vi_tu_van_lap.', 'Tư vấn lập'),
+    'TVT': ('tvt', 'don_vi_tu_van_tham.', 'Tư vấn thẩm'),
+}
+# phần đầu placeholder -> (gốc tên biến, trường nhà thầu)
+_CONSULTANT_ITEMS = {
+    'Chức vụ': ('chuc_vu_dai_dien', 'chuc_vu_dai_dien'),
+    'Danh xưng': ('danh_xung', 'danh_xung'),
+    'Đại diện': ('dai_dien', 'nguoi_dai_dien'),
+    'Địa chỉ': ('dia_chi', 'dia_chi'),
+    'Điện thoại': ('sdt', 'so_dien_thoai'),
+    'Mã số thuế': ('mst', 'ma_so_thue'),
+    'Tài khoản': ('stk', 'so_tai_khoan'),
+    'Ngân hàng': ('noi_mo_tk', 'noi_mo_tai_khoan'),
+    'Citad': ('ma_ngan_hang', 'ma_ngan_hang'),
+    'Dấu': ('anh_dau', 'anh_dau'),
+}
+CONSULTANT_ROOT = {}
+for _code, (_suffix, _path, _name_ph) in _CONSULTANT.items():
+    CONSULTANT_ROOT[_name_ph] = ('ten_' + _suffix, _path + 'ten_nha_thau', 'text')
+    for _label, (_stem, _field) in _CONSULTANT_ITEMS.items():
+        CONSULTANT_ROOT['%s %s' % (_label, _code)] = ('%s_%s' % (_stem, _suffix), _path + _field, 'text')
+ROOT.update(CONSULTANT_ROOT)
+
+
+def _dia_danh(address_path, marker):
+    """Tỉnh/thành phố tìm thấy trong một địa chỉ; không thấy thì giữ [[marker]]."""
+    return lambda short: (
+        "{%% for dd in [%s] if dd[0] in (%s|lower) %%}{%% if loop.first %%}{{ dd[1] }}{%% endif %%}"
+        "{%% else %%}[[%s]]{%% endfor %%}"
+        % (','.join("('%s','%s')" % kv for kv in _PROV), _d(address_path), marker))
+
+
+# Địa danh của đơn vị tư vấn: suy từ địa chỉ đơn vị (như Địa danh của chủ đầu tư)
+INFER.update({
+    'Địa danh TVL': _dia_danh('don_vi_tu_van_lap.dia_chi', 'Địa danh TVL'),
+    'Địa danh TVT': _dia_danh('don_vi_tu_van_tham.dia_chi', 'Địa danh TVT'),
+})
+for _k in list(CONSULTANT_ROOT) + ['Địa danh TVL', 'Địa danh TVT']:
+    UNMAPPED.pop(_k, None)

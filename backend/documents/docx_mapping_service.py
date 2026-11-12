@@ -47,6 +47,8 @@ def apply_custom_mappings(context, mappings_rows):
         'chu_dau_tu': ['chu_dau_tu'],
         'hop_dong': ['hop_dong'],
         'hop_dong_list': ['hop_dong_list'],
+        'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
+        'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],
         'tai_khoan': ['user'],
         'to_chuc': ['to_chuc'],
         'goi_dich_vu': ['goi_dich_vu'],
@@ -201,6 +203,9 @@ def apply_custom_mappings(context, mappings_rows):
                 'chu_dau_tu': ['chu_dau_tu'],
                 'hop_dong': ['hop_dong'],
                 'hop_dong_list': ['hop_dong_list'],
+                # ADR 0043: consultant firm roots of package exports.
+                'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
+                'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],
                 'tai_khoan': ['user'],
                 'to_chuc': ['to_chuc'],
                 'goi_dich_vu': ['goi_dich_vu']

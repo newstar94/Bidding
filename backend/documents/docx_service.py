@@ -16,6 +16,7 @@ from backend.documents.timeline_context_service import (
     load_plan_timeline_word_context,
     load_timeline_word_context,
 )
+from backend.documents.consultant_context import load_consultant_word_context
 from backend.documents.plan_basis_context import (
     materialize_plan_basis_items,
     resolve_plan_basis_rows,
@@ -625,6 +626,11 @@ def _build_report_context_snapshot(
         to_tham_dinh = []
 
     timeline_word_values = load_timeline_word_context(cursor, org_name, package_id)
+    # ADR 0043: consultant firms come from the package's current linked
+    # contracts, independent of the contract selected for contract exports.
+    consultant_word_values = load_consultant_word_context(
+        cursor, org_name, contract_list
+    )
     conn.close()
 
     now = vietnam_now()
@@ -651,6 +657,7 @@ def _build_report_context_snapshot(
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat(),
         **timeline_word_values,
+        **consultant_word_values,
     }
     unified_context.update(build_detailed_evaluation_context(pkg, bids))
     return (
