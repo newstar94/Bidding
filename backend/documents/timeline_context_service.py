@@ -19,6 +19,12 @@ from backend.timeline.effective_timeline import (
     assign_timeline_display_codes,
     build_effective_timeline,
 )
+from backend.timeline.word_fields import (
+    PLAN_SECTION_MILESTONE_KEYS,
+    merge_first_filled,
+    milestone_values_from_rows,
+    timeline_word_context,
+)
 from backend.versioning.relation_policy import load_contracts_for_package_lineage
 
 
@@ -131,6 +137,77 @@ def _project_item(item):
     return value
 
 
+def _load_package_and_plan(cursor, organization_id, package_id):
+    package = _row_dict(cursor.execute(
+        "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
+        (organization_id, package_id),
+    ).fetchone())
+    if not package:
+        return {}, {}
+    plan = _row_dict(cursor.execute(
+        "SELECT * FROM ke_hoach_lcnt WHERE organization_id = ? AND id = ?",
+        (organization_id, package.get("ke_hoach_id")),
+    ).fetchone())
+    return package, plan
+
+
+def _load_saved_rows(cursor, organization_id, package_id):
+    return [
+        _row_dict(row)
+        for row in cursor.execute(
+            "SELECT * FROM goi_thau_moc_tien_do WHERE organization_id = ? AND goi_thau_id = ? ORDER BY sort_order, ma_moc, id",
+            (organization_id, package_id),
+        ).fetchall()
+    ]
+
+
+def load_effective_timeline_rows(cursor, organization_id, package_id):
+    """Evaluate one package timeline with the caller's tenant-scoped cursor."""
+
+    package, plan = _load_package_and_plan(cursor, organization_id, package_id)
+    if not package:
+        return []
+    saved_rows = _load_saved_rows(cursor, organization_id, package_id)
+    related = _load_related(cursor, organization_id, package_id)
+    related["plan"] = plan
+    return build_effective_timeline(package, related, saved_rows)
+
+
+def load_timeline_word_context(cursor, organization_id, package_id):
+    """Return the ADR 0042 milestone scalars for one package Word export."""
+
+    rows = load_effective_timeline_rows(cursor, organization_id, package_id)
+    return timeline_word_context(milestone_values_from_rows(rows))
+
+
+def _package_order(package):
+    return (str(package.get("created_at") or ""), str(package.get("id") or ""))
+
+
+def load_plan_timeline_word_context(cursor, organization_id, packages):
+    """Return plan-section milestone scalars for a plan Word export.
+
+    Plan-level milestones are stored per package.  The first package of the
+    plan (oldest first, then ID) that has a number or a date for a milestone
+    supplies that milestone; package-specific sections stay empty.
+    """
+
+    values = [
+        milestone_values_from_rows(
+            load_effective_timeline_rows(cursor, organization_id, package["id"]),
+            PLAN_SECTION_MILESTONE_KEYS,
+        )
+        for package in sorted(
+            (
+                item for item in packages or ()
+                if isinstance(item, dict) and item.get("id")
+            ),
+            key=_package_order,
+        )
+    ]
+    return timeline_word_context(merge_first_filled(values))
+
+
 def build_timeline_context(package_id, user_id, organization_id):
     """Return a complete, presentation-ready effective timeline context."""
 
@@ -138,16 +215,9 @@ def build_timeline_context(package_id, user_id, organization_id):
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        package = _row_dict(cursor.execute(
-            "SELECT * FROM goi_thau WHERE organization_id = ? AND id = ?",
-            (organization_id, package_id),
-        ).fetchone())
+        package, plan = _load_package_and_plan(cursor, organization_id, package_id)
         if not package:
             raise ValueError("Không tìm thấy gói thầu trong tổ chức hiện hành.")
-        plan = _row_dict(cursor.execute(
-            "SELECT * FROM ke_hoach_lcnt WHERE organization_id = ? AND id = ?",
-            (organization_id, package.get("ke_hoach_id")),
-        ).fetchone())
         investor = _row_dict(cursor.execute(
             "SELECT * FROM chu_dau_tu WHERE organization_id = ? AND id = ?",
             (organization_id, plan.get("chu_dau_tu_id")),
@@ -155,13 +225,7 @@ def build_timeline_context(package_id, user_id, organization_id):
         organization = _row_dict(cursor.execute(
             "SELECT * FROM to_chuc WHERE id = ?", (organization_id,)
         ).fetchone())
-        saved_rows = [
-            _row_dict(row)
-            for row in cursor.execute(
-                "SELECT * FROM goi_thau_moc_tien_do WHERE organization_id = ? AND goi_thau_id = ? ORDER BY sort_order, ma_moc, id",
-                (organization_id, package_id),
-            ).fetchall()
-        ]
+        saved_rows = _load_saved_rows(cursor, organization_id, package_id)
         related = _load_related(cursor, organization_id, package_id)
         related["plan"] = plan
     finally:

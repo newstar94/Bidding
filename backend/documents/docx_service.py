@@ -12,6 +12,10 @@ from backend.documents.detailed_evaluation_context import (
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 from backend.shared.date_utils import vietnam_now
 from backend.versioning.relation_policy import load_contracts_for_package_lineage
+from backend.documents.timeline_context_service import (
+    load_plan_timeline_word_context,
+    load_timeline_word_context,
+)
 from backend.documents.plan_basis_context import (
     materialize_plan_basis_items,
     resolve_plan_basis_rows,
@@ -408,6 +412,9 @@ def _build_plan_context_snapshot(
     for gt in goi_thau_list:
         extract_evaluation_dates(gt)
         clear_competitive_quotation_appraisal(gt)
+    timeline_word_values = load_plan_timeline_word_context(
+        cursor, org_name, goi_thau_list
+    )
     conn.close()
 
     now = vietnam_now()
@@ -424,7 +431,8 @@ def _build_plan_context_snapshot(
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
         'current_time': now.isoformat(timespec='seconds'),
-        'today': now.date().isoformat()
+        'today': now.date().isoformat(),
+        **timeline_word_values,
     }
     projected_context = project_docx_context(
             "plan",
@@ -616,6 +624,7 @@ def _build_report_context_snapshot(
     if is_competitive_quotation_package(pkg):
         to_tham_dinh = []
 
+    timeline_word_values = load_timeline_word_context(cursor, org_name, package_id)
     conn.close()
 
     now = vietnam_now()
@@ -640,7 +649,8 @@ def _build_report_context_snapshot(
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
         'current_time': now.isoformat(timespec='seconds'),
-        'today': now.date().isoformat()
+        'today': now.date().isoformat(),
+        **timeline_word_values,
     }
     unified_context.update(build_detailed_evaluation_context(pkg, bids))
     return (

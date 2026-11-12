@@ -101,11 +101,23 @@ def resolve_word_mappings(cursor, scope_id, *, include_disabled=False):
     """Return effective system, overridden, and custom mappings for one scope."""
 
     overrides = _load_overrides(cursor, scope_id)
+    customs = _load_custom_mappings(cursor, scope_id)
+    # A catalog upgrade may add a default whose name a scope already uses for
+    # its own variable.  The scope-owned variable keeps winning (it is applied
+    # last at render time) and the default is not listed twice (ADR 0042).
+    custom_names = {str(custom["ten_bien"]).casefold() for custom in customs}
     effective = []
     for default in _catalog():
         override = overrides.get(default["mapping_key"])
         disabled = bool(override and override.get("disabled"))
         if disabled and not include_disabled:
+            continue
+        effective_name = (
+            override.get("ten_bien_override")
+            if override and override.get("ten_bien_override") is not None
+            else default["ten_bien"]
+        )
+        if str(effective_name).casefold() in custom_names:
             continue
         mapping = {
             "id": _system_mapping_id(default["mapping_key"]),
@@ -135,7 +147,7 @@ def resolve_word_mappings(cursor, scope_id, *, include_disabled=False):
             mapping["base_version"] = override.get("base_version") or WORD_DEFAULT_MAPPINGS_VERSION
         effective.append(mapping)
 
-    for custom in _load_custom_mappings(cursor, scope_id):
+    for custom in customs:
         custom.update({
             "mapping_key": None,
             "origin": "custom",

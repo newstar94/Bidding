@@ -1,0 +1,4692 @@
+{
+ "report": {
+  "Chủ quản CĐT": {
+   "root": 26
+  },
+  "Tên CĐTH": {
+   "root": 72
+  },
+  "Địa danh": {
+   "infer": 66
+  },
+  "Ngày gửi giấy mời TVL": {
+   "root": 1
+  },
+  "Tên gói thầu": {
+   "root": 289
+  },
+  "Tên KHLCNT": {
+   "root": 245
+  },
+  "Tư vấn lập": {
+   "unmapped": 94
+  },
+  "Số QĐPDKH": {
+   "root": 54
+  },
+  "Ngày PDKH": {
+   "root": 54
+  },
+  "Tên CĐT": {
+   "root": 327
+  },
+  "Phê duyệt": {
+   "infer": 44
+  },
+  "Ngày đơn xin TVL": {
+   "root": 2
+  },
+  "Địa chỉ": {
+   "root": 30
+  },
+  "Chức vụH": {
+   "root": 20
+  },
+  "Đại diện": {
+   "root": 43
+  },
+  "Tư vấn lậpH": {
+   "unmapped": 31
+  },
+  "Địa danh TVL": {
+   "unmapped": 22
+  },
+  "Chức vụ TVLH": {
+   "unmapped": 25
+  },
+  "Đại diện TVL": {
+   "unmapped": 22
+  },
+  "Ngày ký BBHT TVL": {
+   "root": 2
+  },
+  "Tài khoản": {
+   "root": 13
+  },
+  "Ngân hàng": {
+   "root": 13
+  },
+  "Danh xưng": {
+   "root": 13
+  },
+  "Chức vụ": {
+   "root": 13
+  },
+  "Điện thoại": {
+   "root": 13
+  },
+  "Mã số thuế CĐT": {
+   "root": 13
+  },
+  "Danh xưng TVL": {
+   "unmapped": 5
+  },
+  "Chức vụ TVL": {
+   "unmapped": 5
+  },
+  "Địa chỉ TVL": {
+   "unmapped": 7
+  },
+  "Điện thoại TVL": {
+   "unmapped": 5
+  },
+  "Tài khoản TVL": {
+   "unmapped": 7
+  },
+  "Ngân hàng TVL": {
+   "unmapped": 7
+  },
+  "Citad TVL": {
+   "unmapped": 7
+  },
+  "Mã số thuế TVL": {
+   "unmapped": 5
+  },
+  "Đơn vị trình của CĐTH": {
+   "root": 22
+  },
+  "Ngày trình TVL": {
+   "root": 2
+  },
+  "Ký QĐ": {
+   "root": 38
+  },
+  "Đơn vị trình của CĐT": {
+   "root": 94
+  },
+  "Giá TVL": {
+   "contract": 33
+  },
+  "Bằng chữ Giá TVL": {
+   "contract": 7
+  },
+  "Thời gian TVL": {
+   "contract": 3
+  },
+  "Nguồn vốn": {
+   "root": 31,
+   "root-native": 6
+  },
+  "Số QĐTVL": {
+   "contract": 2
+  },
+  "Ngày ký QĐTVL": {
+   "contract": 2
+  },
+  "Ký QĐH": {
+   "root": 29
+  },
+  "Số HĐ TVL": {
+   "contract": 27
+  },
+  "Ngày ký HĐTVL": {
+   "contract": 23
+  },
+  "Số QĐ thành lập TVL": {
+   "root": 28
+  },
+  "Ngày thành lập TVL": {
+   "root": 38
+  },
+  "Họ và tên TVL": {
+   "row-item": 21,
+   "repeat-item": 12
+  },
+  "Vai trò TVL": {
+   "row-item": 21
+  },
+  "Dấu TVL": {
+   "unmapped": 7
+  },
+  "Số HĐTVT": {
+   "contract": 27
+  },
+  "Ngày ký HĐTVT": {
+   "contract": 24
+  },
+  "Tư vấn thẩm": {
+   "unmapped": 65
+  },
+  "Ngày QĐ E-HSMT": {
+   "root": 31
+  },
+  "Ngày phê duyệt KQ": {
+   "root": 19
+  },
+  "Giá TVT": {
+   "contract": 33
+  },
+  "Bằng chữ Giá TVT": {
+   "contract": 7
+  },
+  "Năm": {
+   "year": 10
+  },
+  "Tư vấn thẩmH": {
+   "unmapped": 24
+  },
+  "Địa danh TVT": {
+   "unmapped": 31
+  },
+  "Tài khoản TVT": {
+   "unmapped": 7
+  },
+  "Ngân hàng TVT": {
+   "unmapped": 7
+  },
+  "Citad TVT": {
+   "unmapped": 7
+  },
+  "Chức vụ TVTH": {
+   "unmapped": 19
+  },
+  "Đại diện TVT": {
+   "unmapped": 18
+  },
+  "Danh xưng TVT": {
+   "unmapped": 5
+  },
+  "Chức vụ TVT": {
+   "unmapped": 5
+  },
+  "Địa chỉ TVT": {
+   "unmapped": 12
+  },
+  "Điện thoại TVT": {
+   "unmapped": 5
+  },
+  "Mã số thuế TVT": {
+   "unmapped": 5
+  },
+  "Số TBMT": {
+   "root": 23
+  },
+  "Năm BCĐG": {
+   "year": 6
+  },
+  "Số BCĐG": {
+   "root": 18
+  },
+  "Ngày trình BCĐG": {
+   "root": 19
+  },
+  "Mã KHLCNT": {
+   "root": 10
+  },
+  "Ngày đăng KHLCNT": {
+   "root": 14
+  },
+  " Thời gian đăng TBMT": {
+   "root": 22
+  },
+  "Giá gói thầu": {
+   "root": 14
+  },
+  "Thời gian tổ chức": {
+   "root": 7
+  },
+  "Thời gian bắt đầu": {
+   "root": 11
+  },
+  "Hình thức": {
+   "root": 14
+  },
+  "Phương thức": {
+   "root": 11
+  },
+  "Loại hợp đồng": {
+   "root": 17
+  },
+  "Thời gian thực hiện": {
+   "root": 14
+  },
+  "Số QĐ E-HSMT": {
+   "root": 21
+  },
+  "Nhiệm vụ BCĐG": {
+   "row-item": 6
+  },
+  "Tên nhà thầu": {
+   "row-item": 28,
+   "root": 33
+  },
+  "Giá trị phần lô": {
+   "root-native": 7
+  },
+  "Giá dự thầu": {
+   "row-item": 8,
+   "inline ds_nt_trung": 1
+  },
+  "Giảm giá tổng": {
+   "row-item": 7
+  },
+  "Giá dự thầu sau hiệu chỉnh, giảm giá": {
+   "row-item": 9
+  },
+  "Tính hợp lệ": {
+   "row-item": 8
+  },
+  "Lý do không đạt tư cách hợp lệ": {
+   "row-item": 3
+  },
+  "Tính hợp lệ-Làm rõ": {
+   "row-item": 3
+  },
+  "Nhà thầu hợp lệ": {
+   "row-item": 2
+  },
+  "Năng lực kinh nghiệm": {
+   "row-item": 7
+  },
+  "Lý do không đạt năng lực, kinh nghiệm": {
+   "row-item": 3
+  },
+  "Năng lực kinh nghiệm - Làm rõ": {
+   "row-item": 3
+  },
+  "Nhà thầu đạt năng lực, kinh nghiệm": {
+   "row-item": 2
+  },
+  "Kỹ thuật": {
+   "row-item": 3
+  },
+  "Lý do không đạt kỹ thuật": {
+   "row-item": 3
+  },
+  "Kỹ thuật - Làm rõ": {
+   "row-item": 3
+  },
+  "Nhà thầu đạt kỹ thuật": {
+   "row-item": 7
+  },
+  "Giá dự thầu đạt kỹ thuật tổng": {
+   "row-item": 2
+  },
+  "Giảm giá đạt kỹ thuật tổng": {
+   "row-item": 2
+  },
+  "Giá dự thầu đạt kỹ thuật sau giảm giá tổng": {
+   "row-item": 4
+  },
+  "Giá trị ưu đãi tổng": {
+   "unmapped": 2
+  },
+  "Giá đánh giá đạt kỹ thuật tổng": {
+   "row-item": 3
+  },
+  "Xếp hạng": {
+   "row-item": 8
+  },
+  "Đóng thầuS": {
+   "root": 9
+  },
+  "Ngày trình BCĐGS": {
+   "root": 8
+  },
+  "Nhà thầu xếp hạng 1": {
+   "inline ds_nt_trung": 7,
+   "row-item": 16,
+   "repeat-item": 4
+  },
+  "MST Nhà thầu": {
+   "row-item": 9
+  },
+  "Giá dự thầu xếp hạng 1 tổng": {
+   "row-item": 5
+  },
+  "Giá dự thầu xếp hạng 1 tổng sau giảm giá": {
+   "row-item": 13,
+   "inline ds_nt_trung": 2,
+   "repeat-item": 2
+  },
+  "Thời gian thực hiện HĐ": {
+   "root-native": 16,
+   "root": 9
+  },
+  "Chữ ký TVL": {
+   "row-item": 7
+  },
+  "REPEAT:TCG": {
+   "loop to_chuyen_gia": 6
+  },
+  "Số CCCD TVL": {
+   "repeat-item": 6
+  },
+  "Số CC TVL": {
+   "repeat-item": 6
+  },
+  "Nơi cấp TVL": {
+   "repeat-item": 6
+  },
+  "Ngày cấp TVL": {
+   "repeat-item": 6
+  },
+  "ENDREPEAT": {
+   "endfor": 15
+  },
+  "Ảnh TVL": {
+   "inline ds_to_chuyen_gia": 6
+  },
+  "REPEAT:Dự thầu|REQUIRE:Nhà thầu xếp hạng 1": {
+   "loop ds_nha_thau_trung_thau": 4
+  },
+  "Ngày thư mời ĐCTL": {
+   "root": 5
+  },
+  "Ngày đối chiếu": {
+   "root": 10
+  },
+  "Tên dự toán/dự án": {
+   "root": 40
+  },
+  "Số BBĐC": {
+   "root": 5
+  },
+  "Tên gói thầu KHLCNT": {
+   "root": 25,
+   "row-item": 29
+  },
+  "Ngày trình DT": {
+   "root": 8
+  },
+  "Số QĐ thành lập tổ": {
+   "infer": 6
+  },
+  "Ngày thành lập tổ": {
+   "infer": 6
+  },
+  "TÊN CĐTH": {
+   "root": 2
+  },
+  "Ngày thư mời thương thảo": {
+   "root": 2
+  },
+  "Ngày thương thảo": {
+   "root": 10
+  },
+  "Tên nhà thầuH": {
+   "root": 2
+  },
+  "Danh xưng NT": {
+   "root": 2
+  },
+  "Đại diện NT": {
+   "root": 2
+  },
+  "Chức vụ NT": {
+   "root": 2
+  },
+  "Địa chỉ NT": {
+   "root": 2
+  },
+  "Điện thoại NT": {
+   "root": 2
+  },
+  "Tài khoản NT": {
+   "root": 2
+  },
+  "Ngân hàng NT": {
+   "root": 2
+  },
+  "Mã số thuế NT": {
+   "root": 2
+  },
+  "Thời gian thực hiện gói thầu KHLCNT": {
+   "root": 12,
+   "row-item": 8
+  },
+  "Giá gói thầu KHLCNT": {
+   "root": 8,
+   "row-item": 16
+  },
+  "Bằng chữ Giá gói thầu KHLCNT": {
+   "root": 6
+  },
+  "Loại hợp đồng KHLCNT": {
+   "root": 8,
+   "row-item": 8
+  },
+  "Ngày tờ trình KQ": {
+   "infer": 4
+  },
+  "Nguồn vốn KHLCNT": {
+   "root": 4,
+   "row-item": 8
+  },
+  "Thời gian tổ chức KHLCNT": {
+   "root": 2,
+   "row-item": 8
+  },
+  "Thời gian bắt đầu tổ chức LCNT": {
+   "root": 2,
+   "row-item": 8
+  },
+  "Số QĐ kết quả": {
+   "root": 2
+  },
+  "Số BC TC": {
+   "root": 1
+  },
+  "Ngày BC TC": {
+   "root": 1
+  },
+  "Số QĐ KT": {
+   "root": 2
+  },
+  "Ngày QĐ KTS": {
+   "root": 1
+  },
+  "Giá dự thầu sau hiệu chỉnh, giảm giá tổng": {
+   "row-item": 4,
+   "inline ds_nt_trung": 3
+  },
+  "Ngày BC TCS": {
+   "root": 1
+  },
+  "Tên gói thầu BS": {
+   "infer": 2
+  },
+  "Cơ quan ký QĐKHLCNT": {
+   "root": 1
+  },
+  "Tên KHLCNTBS": {
+   "infer": 2
+  },
+  "Năm BCTĐ KQLCNT": {
+   "year": 6
+  },
+  "Số BCTĐ KQ": {
+   "root": 6
+  },
+  "Ngày BCTĐKQ": {
+   "root": 6
+  },
+  "Đóng thầu": {
+   "root": 12
+  },
+  "Số QĐ thành lập TVT": {
+   "root": 11
+  },
+  "Ngày thành lập TVT": {
+   "root": 21
+  },
+  "Họ và tên TVT": {
+   "row-item": 16,
+   "repeat-item": 10
+  },
+  "Vai trò TVT": {
+   "row-item": 16
+  },
+  "Nhiệm vụ TĐ KQ": {
+   "row-item": 4
+  },
+  "Mở thầu": {
+   "root": 4
+  },
+  "Chữ ký TVT": {
+   "row-item": 5
+  },
+  "Dấu TVT": {
+   "unmapped": 6
+  },
+  "REPEAT: TTĐ": {
+   "loop to_tham_dinh": 3
+  },
+  "Số CCCD TVT": {
+   "repeat-item": 5
+  },
+  "Ngày CCCD TVT": {
+   "repeat-item": 5
+  },
+  "Nơi CCCD TVT": {
+   "repeat-item": 5
+  },
+  "Ảnh TVT": {
+   "inline ds_to_tham_dinh": 5
+  },
+  "Số QĐ KQ": {
+   "root": 7
+  },
+  "Ngày thư chấp thuận": {
+   "infer": 3
+  },
+  "Ngày hoàn thiện hợp đồng": {
+   "root": 3
+  },
+  "Bảo đảm thực hiện hợp đồng": {
+   "unmapped": 2
+  },
+  "Ngày cuối hoàn thiện": {
+   "unmapped": 3
+  },
+  "Nhà thầu": {
+   "inline ds_nt_trung": 2,
+   "row-item": 3
+  },
+  "Giá dự thầu sau giảm giá, ưu đãi": {
+   "inline ds_nt_trung": 1,
+   "row-item": 1
+  },
+  "Mã số thuế": {
+   "row-item": 1
+  },
+  "Giá dự thầu tổng": {
+   "row-item": 3
+  },
+  "Đơn vị trình kế hoạch": {
+   "root": 2
+  },
+  "STT TVL": {
+   "loop.index": 1
+  },
+  "Tên phần lô": {
+   "row-item": 12
+  },
+  "Nhà thầu tham dự": {
+   "row-item": 6
+  },
+  "Giá trị giảm": {
+   "row-item": 2
+  },
+  "Giá dự thầu sau giảm": {
+   "row-item": 1
+  },
+  "Ngày đóng thầu": {
+   "root": 1
+  },
+  "Giá trị gói thầu": {
+   "root-native": 1
+  },
+  "Tiến độ": {
+   "root-native": 2
+  },
+  "Họ và tên Tổ trưởng TV": {
+   "row-item": 2,
+   "leader": 2
+  },
+  "Họ và tên Tổ viên TV": {
+   "leader": 4
+  },
+  "Số CCCD Tổ trưởng TV": {
+   "leader": 1
+  },
+  "Số CC Tổ trưởng TV": {
+   "leader": 1
+  },
+  "Ngày cấp Tổ trưởng TV": {
+   "leader": 1
+  },
+  "Số CCCD Tổ viên TV": {
+   "leader": 1
+  },
+  "Số CC Tổ viên TV": {
+   "leader": 1
+  },
+  "Ngày cấp Tổ viên TV": {
+   "leader": 1
+  },
+  "Nhà thầu đối chiếu": {
+   "row-item": 5
+  },
+  "Chủ quản CĐTH": {
+   "root": 4
+  },
+  "Ngày trình KH": {
+   "root": 14
+  },
+  "Giá trị TMĐT": {
+   "root": 21
+  },
+  "Đã thực hiện": {
+   "row-item": 8
+  },
+  "Giá trị đã thực hiện": {
+   "row-item": 8,
+   "infer": 5
+  },
+  "Không áp dụng": {
+   "row-item": 12
+  },
+  "Giá không áp dụng": {
+   "row-item": 12
+  },
+  "Giá trị đã thực hiện tổng": {
+   "infer": 4
+  },
+  "Giá tổng dự toán": {
+   "infer": 9
+  },
+  "Chứng thư thẩm định": {
+   "infer": 5
+  },
+  "Đơn vị thực hiện": {
+   "row-item": 2
+  },
+  "Văn bản phê duyệt": {
+   "row-item": 2
+  },
+  "Giá không áp dụng tổng": {
+   "infer": 8
+  },
+  "Hình thức KHLCNT": {
+   "row-item": 12
+  },
+  "Áp dụng Hình thức KHLCNT": {
+   "infer": 4
+  },
+  "Áp dụng Phương thức KHLCNT": {
+   "infer": 4
+  },
+  "Áp dụng Loại hợp đồng KHLCNT": {
+   "infer": 4
+  },
+  "Giá tổng gói thầu": {
+   "infer": 12
+  },
+  "STT": {
+   "loop.index": 8
+  },
+  "Tên CĐT KHLCNT": {
+   "root-native": 8
+  },
+  "Phương thức KHLCNT": {
+   "row-item": 8
+  },
+  "Số QĐ DT": {
+   "root": 12
+  },
+  "Ngày phê duyệt DT": {
+   "root": 12
+  },
+  "Nhà thầu đạt năng lực, kinh nghiệm V2": {
+   "row-item": 3
+  },
+  "Điểm kỹ thuật": {
+   "row-item": 3
+  },
+  "Nhà thầu đạt kỹ thuật V2": {
+   "row-item": 5
+  },
+  "Năm TĐKT": {
+   "year": 2
+  },
+  "Số BCTĐ KT": {
+   "root": 2
+  },
+  "Ngày BCTĐ KT": {
+   "root": 2
+  },
+  "Ngày QĐ KT": {
+   "root": 1
+  },
+  "Số phần tham dự": {
+   "unmapped": 6
+  },
+  "Giá phần lô tham dự tổng": {
+   "unmapped": 2
+  },
+  "Nhà thầu hợp lệ V2": {
+   "row-item": 1
+  },
+  "Số phần đạt": {
+   "unmapped": 5
+  },
+  "Số phần không đạt": {
+   "unmapped": 1
+  },
+  "Mã phần lô": {
+   "row-item": 2
+  },
+  "Ưu đãi": {
+   "unmapped": 1
+  },
+  "Giá đánh giá": {
+   "row-item": 1
+  },
+  "Số phần xếp hạng 1": {
+   "unmapped": 4,
+   "row-item": 2
+  },
+  "Nhà thầu xếp hạng 2 trở đi": {
+   "row-item": 2
+  },
+  "Giá phần lô tham dự đạt xếp hạng 1 tổng": {
+   "unmapped": 2
+  },
+  "Phương thứcH": {
+   "root": 2
+  },
+  "Năm HSMT": {
+   "year": 1
+  },
+  "Số tờ trình HSMT": {
+   "root": 1
+  },
+  "Ngày trình E-HSMT": {
+   "root": 3
+  },
+  "Nhiệm vụ HSMT": {
+   "row-item": 1
+  },
+  "Năm BCTĐ HSMT": {
+   "year": 1
+  },
+  "Số thẩm định E-HSMT": {
+   "root": 2
+  },
+  "Ngày thẩm định E-HSMT": {
+   "root": 3
+  },
+  "Nhiệm vụ TĐ HSMT": {
+   "row-item": 1
+  },
+  "REPEAT:TTĐ": {
+   "loop to_tham_dinh": 2
+  },
+  "Nhà thầu không trúng": {
+   "row-item": 1
+  },
+  "Phần lô tham dự": {
+   "row-item": 1
+  },
+  "Ngày gửi giấy mời TVT": {
+   "root": 1
+  },
+  "Ngày đơn xin TVT": {
+   "root": 2
+  },
+  "Thời gian TVT": {
+   "contract": 4
+  },
+  "Ngày trình TVT": {
+   "root": 2
+  },
+  "Số QĐTVT": {
+   "contract": 2
+  },
+  "Ngày ký QĐTVT": {
+   "contract": 2
+  },
+  "Ngày thư mời xác nhận năng lực": {
+   "root": 1
+  },
+  "Ngày báo cáo": {
+   "unmapped": 2
+  }
+ },
+ "unmapped": {
+  "Tư vấn lập": [
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Tư vấn lậpH": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Địa danh TVL": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Chức vụ TVLH": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Đại diện TVL": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Danh xưng TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Chức vụ TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Địa chỉ TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Điện thoại TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Tài khoản TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Ngân hàng TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Citad TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Mã số thuế TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Dấu TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Tư vấn thẩm": [
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Tư vấn thẩmH": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Địa danh TVT": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Tài khoản TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Ngân hàng TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Citad TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Chức vụ TVTH": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Đại diện TVT": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Danh xưng TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Chức vụ TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Địa chỉ TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Điện thoại TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Mã số thuế TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Giá trị ưu đãi tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Dấu TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Bảo đảm thực hiện hợp đồng": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Ngày cuối hoàn thiện": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Số phần tham dự": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Giá phần lô tham dự tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx"
+  ],
+  "Số phần đạt": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số phần không đạt": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Ưu đãi": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Số phần xếp hạng 1": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Giá phần lô tham dự đạt xếp hạng 1 tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx"
+  ],
+  "Ngày báo cáo": [
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx"
+  ]
+ },
+ "issues": [],
+ "samples": {
+  "Chủ quản CĐT": {
+   "{cq_chu_quan}": 26
+  },
+  "Tên CĐTH": {
+   "{ten_cdt} [IN HOA]": 72
+  },
+  "Địa danh": {
+   "{% for dd in [('hà nội','Hà Nội'),(' huế','Huế'),('lai châu','Lai Châu'),('điện biên','Điện Biên'),('sơn la','Sơn La'),('lạng sơn','Lạng Sơn'),('quảng ninh','Quảng Ninh'),('thanh hóa','Thanh Hóa'),('thanh hoá','Thanh Hóa'),('nghệ an','Nghệ An'),('hà tĩnh','Hà Tĩnh'),('cao bằng','Cao Bằng'),('tuyên quang','Tuyên Quang'),('lào cai','Lào Cai'),('thái nguyên','Thái Nguyên'),('phú thọ','Phú Thọ'),('bắc ninh','Bắc Ninh'),('hưng yên','Hưng Yên'),('hải phòng','Hải Phòng'),('ninh bình','Ninh Bình'),('quảng trị','Quảng Trị'),('đà nẵng','Đà Nẵng'),('quảng ngãi','Quảng Ngãi'),('gia lai','Gia Lai'),('khánh hòa','Khánh Hòa'),('khánh hoà','Khánh Hòa'),('lâm đồng','Lâm Đồng'),('đắk lắk','Đắk Lắk'),('đắc lắc','Đắk Lắk'),('hồ chí minh','Thành phố Hồ Chí Minh'),('đồng nai','Đồng Nai'),('tây ninh','Tây Ninh'),('cần thơ','Cần Thơ'),('vĩnh long','Vĩnh Long'),('đồng tháp','Đồng Tháp'),('cà mau','Cà Mau'),('an giang','An Giang'),('hà giang','Tuyên Quang'),('yên bái','Lào Cai'),('bắc kạn','Thái Nguyên'),('bắc cạn','Thái Nguyên'),('vĩnh phúc','Phú Thọ'),('hòa bình','Phú Thọ'),('hoà bình','Phú Thọ'),('bắc giang','Bắc Ninh'),('thái bình','Hưng Yên'),('hải dương','Hải Phòng'),('hà nam','Ninh Bình'),('nam định','Ninh Bình'),('quảng bình','Quảng Trị'),('quảng nam','Đà Nẵng'),('kon tum','Quảng Ngãi'),('bình định','Gia Lai'),('ninh thuận','Khánh Hòa'),('đắk nông','Lâm Đồng'),('đắc nông','Lâm Đồng'),('bình thuận','Lâm Đồng'),('phú yên','Đắk Lắk'),('bình dương','Thành phố Hồ Chí Minh'),('vũng tàu','Thành phố Hồ Chí Minh'),('bình phước','Đồng Nai'),('long an','Tây Ninh'),('sóc trăng','Cần Thơ'),('hậu giang','Cần Thơ'),('bến tre','Vĩnh Long'),('trà vinh','Vĩnh Long'),('tiền giang','Đồng Tháp'),('bạc liêu','Cà Mau'),('kiên giang','An Giang')] if dd[0] in (chu_dau_tu.dia_chi|default('', true)|lower) %}{% if loop.first %}{{ dd[1] }}{% endif %}{% else %}[[Địa danh]]{% endfor %}": 66
+  },
+  "Ngày gửi giấy mời TVL": {
+   "{ngay_thu_moi_tvl}": 1
+  },
+  "Tên gói thầu": {
+   "{ten_gt}": 289
+  },
+  "Tên KHLCNT": {
+   "{ten_kh}": 245
+  },
+  "Số QĐPDKH": {
+   "{qd_phe_duyet_kh}": 54
+  },
+  "Ngày PDKH": {
+   "{ngay_phe_duyet_kh}": 54
+  },
+  "Tên CĐT": {
+   "{ten_cdt}": 327
+  },
+  "Phê duyệt": {
+   "{% if ke_hoach.phe_duyet|default('', true)|trim %}{{ ke_hoach.phe_duyet|lower|trim }}{% elif (ke_hoach.ngay_phe_duyet_du_toan|default('', true) and ke_hoach.ngay_phe_duyet_du_toan|default('', true) != ke_hoach.ngay_phe_duyet|default('', true)) or (ke_hoach.so_qd_phe_duyet_du_toan|default('', true)|trim and ke_hoach.so_qd_phe_duyet_du_toan|default('', true)|trim != ke_hoach.quyet_dinh_phe_duyet|default('', true)|trim) %}kế hoạch{% elif 'toán' in (ke_hoach.loai_hinh_mua_sam|default('', true)|lower) %}dự toán và kế hoạch{% else %}kế hoạch{% endif %}": 44
+  },
+  "Ngày đơn xin TVL": {
+   "{ngay_don_xin_tvl}": 2
+  },
+  "Địa chỉ": {
+   "{dia_chi_cdt}": 30
+  },
+  "Chức vụH": {
+   "{chuc_vu_dai_dien_cdt} [IN HOA]": 20
+  },
+  "Đại diện": {
+   "{dai_dien_cdt}": 43
+  },
+  "Ngày ký BBHT TVL": {
+   "{ngay_bbht_tvl}": 1,
+   "{ngay_bbht_tvt}": 1
+  },
+  "Tài khoản": {
+   "{stk_cdt}": 13
+  },
+  "Ngân hàng": {
+   "{noi_mo_tk_cdt}": 13
+  },
+  "Danh xưng": {
+   "{danh_xung_cdt}": 13
+  },
+  "Chức vụ": {
+   "{chuc_vu_dai_dien_cdt}": 13
+  },
+  "Điện thoại": {
+   "{sdt_cdt}": 13
+  },
+  "Mã số thuế CĐT": {
+   "{mst_cdt}": 13
+  },
+  "Đơn vị trình của CĐTH": {
+   "{don_vi_trinh_cdt} [IN HOA]": 22
+  },
+  "Ngày trình TVL": {
+   "{ngay_ttr_chi_dinh_tvl}": 2
+  },
+  "Ký QĐ": {
+   "{chuc_vu_nguoi_dung_dau_cdt}": 38
+  },
+  "Đơn vị trình của CĐT": {
+   "{don_vi_trinh_cdt}": 94
+  },
+  "Giá TVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.gia_tri|default('', true) }}{% endfor %}": 33
+  },
+  "Bằng chữ Giá TVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.bangchu_gia_tri|default('', true) }}{% endfor %}": 7
+  },
+  "Thời gian TVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.thoi_gian_thuc_hien|default('', true) }}{% endfor %}": 3
+  },
+  "Nguồn vốn": {
+   "{gt_nguon_von}": 15,
+   "{{ goi_thau.nguon_von|default('', true) }}": 6,
+   "{kh_nguon_von}": 16
+  },
+  "Số QĐTVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.so_qd_chi_dinh|default('', true) }}{% endfor %}": 2
+  },
+  "Ngày ký QĐTVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.ngay_qd_chi_dinh|default('', true) }}{% endfor %}": 2
+  },
+  "Ký QĐH": {
+   "{chuc_vu_nguoi_dung_dau_cdt} [IN HOA]": 29
+  },
+  "Số HĐ TVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.so_hop_dong|default('', true) }}{% endfor %}": 27
+  },
+  "Ngày ký HĐTVL": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.ngay_ky|default('', true) }}{% endfor %}": 23
+  },
+  "Số QĐ thành lập TVL": {
+   "{so_qd_tl_tcg}": 28
+  },
+  "Ngày thành lập TVL": {
+   "{ngay_qd_tl_tcg}": 38
+  },
+  "Họ và tên TVL": {
+   "{ho_ten}": 21,
+   "{{ cg.ho_ten|default('', true) }}": 12
+  },
+  "Vai trò TVL": {
+   "{chuc_vu}": 21
+  },
+  "Số HĐTVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.so_hop_dong|default('', true) }}{% endfor %}": 27
+  },
+  "Ngày ký HĐTVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.ngay_ky|default('', true) }}{% endfor %}": 24
+  },
+  "Ngày QĐ E-HSMT": {
+   "{ngay_qd_hsmt}": 31
+  },
+  "Ngày phê duyệt KQ": {
+   "{ngay_qd_kq}": 19
+  },
+  "Giá TVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.gia_tri|default('', true) }}{% endfor %}": 33
+  },
+  "Bằng chữ Giá TVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.bangchu_gia_tri|default('', true) }}{% endfor %}": 7
+  },
+  "Năm": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 10
+  },
+  "Số TBMT": {
+   "{ma_gt}": 23
+  },
+  "Năm BCĐG": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 6
+  },
+  "Số BCĐG": {
+   "{so_bcdg}": 18
+  },
+  "Ngày trình BCĐG": {
+   "{ngay_bcdg}": 19
+  },
+  "Mã KHLCNT": {
+   "{ma_kh}": 10
+  },
+  "Ngày đăng KHLCNT": {
+   "{tg_dang_tai_kh}": 14
+  },
+  " Thời gian đăng TBMT": {
+   "{tg_dang_tai_tbmt}": 22
+  },
+  "Giá gói thầu": {
+   "{gia_gt}": 14
+  },
+  "Thời gian tổ chức": {
+   "{tg_to_chuc_lcnt}": 7
+  },
+  "Thời gian bắt đầu": {
+   "{tg_bat_dau_lcnt}": 11
+  },
+  "Hình thức": {
+   "{hinh_thuc_lcnt}": 14
+  },
+  "Phương thức": {
+   "{phuong_thuc_lcnt}": 11
+  },
+  "Loại hợp đồng": {
+   "{loai_hd_gt}": 17
+  },
+  "Thời gian thực hiện": {
+   "{tg_thuc_hien_gt}": 14
+  },
+  "Số QĐ E-HSMT": {
+   "{so_qd_hsmt}": 21
+  },
+  "Nhiệm vụ BCĐG": {
+   "{cong_viec}": 6
+  },
+  "Tên nhà thầu": {
+   "{ten_nha_thau}": 14,
+   "{{ nt.ten_nha_thau|default('', true) }}": 14,
+   "{ten_nt}": 33
+  },
+  "Giá trị phần lô": {
+   "{{ goi_thau.gia_goi_thau|default('', true) }}": 7
+  },
+  "Giá dự thầu": {
+   "{gia_du_thau}": 8,
+   "{#ds_nt_trung}{gia_du_thau}{/ds_nt_trung}": 1
+  },
+  "Giảm giá tổng": {
+   "{ty_le_giam_gia}": 7
+  },
+  "Giá dự thầu sau hiệu chỉnh, giảm giá": {
+   "{gia_sau_giam_gia}": 7,
+   "{gia_trung_thau}": 2
+  },
+  "Tính hợp lệ": {
+   "{danh_gia_hop_le}": 8
+  },
+  "Lý do không đạt tư cách hợp lệ": {
+   "{{ nt.nguyen_nhan_khong_dat_hop_le|default('', true) }}": 3
+  },
+  "Tính hợp lệ-Làm rõ": {
+   "{{ nt.lam_ro_hop_le|default('', true) }}": 3
+  },
+  "Nhà thầu hợp lệ": {
+   "{ten_nha_thau}": 2
+  },
+  "Năng lực kinh nghiệm": {
+   "{danh_gia_nang_luc}": 7
+  },
+  "Lý do không đạt năng lực, kinh nghiệm": {
+   "{{ nt.nguyen_nhan_khong_dat_nang_luc|default('', true) }}": 3
+  },
+  "Năng lực kinh nghiệm - Làm rõ": {
+   "{{ nt.lam_ro_nang_luc|default('', true) }}": 3
+  },
+  "Nhà thầu đạt năng lực, kinh nghiệm": {
+   "{ten_nha_thau}": 2
+  },
+  "Kỹ thuật": {
+   "{danh_gia_ky_thuat}": 3
+  },
+  "Lý do không đạt kỹ thuật": {
+   "{{ nt.nguyen_nhan_khong_dat_ky_thuat|default('', true) }}": 3
+  },
+  "Kỹ thuật - Làm rõ": {
+   "{{ nt.lam_ro_ky_thuat|default('', true) }}": 3
+  },
+  "Nhà thầu đạt kỹ thuật": {
+   "{ten_nha_thau}": 7
+  },
+  "Giá dự thầu đạt kỹ thuật tổng": {
+   "{gia_du_thau}": 2
+  },
+  "Giảm giá đạt kỹ thuật tổng": {
+   "{ty_le_giam_gia}": 2
+  },
+  "Giá dự thầu đạt kỹ thuật sau giảm giá tổng": {
+   "{gia_sau_giam_gia}": 4
+  },
+  "Giá đánh giá đạt kỹ thuật tổng": {
+   "{gia_xep_hang}": 3
+  },
+  "Xếp hạng": {
+   "{danh_gia_tai_chinh}": 8
+  },
+  "Đóng thầuS": {
+   "{S_tg_dong_thau}": 9
+  },
+  "Ngày trình BCĐGS": {
+   "{S_ngay_bcdg}": 8
+  },
+  "Nhà thầu xếp hạng 1": {
+   "{#ds_nt_trung}{ten_nha_thau}{/ds_nt_trung}": 7,
+   "{ten_nha_thau}": 16,
+   "{{ nt.ten_nha_thau|default('', true) }}": 4
+  },
+  "MST Nhà thầu": {
+   "{ma_so_thue}": 9
+  },
+  "Giá dự thầu xếp hạng 1 tổng": {
+   "{gia_du_thau}": 5
+  },
+  "Giá dự thầu xếp hạng 1 tổng sau giảm giá": {
+   "{gia_sau_giam_gia}": 11,
+   "{#ds_nt_trung}{gia_sau_giam_gia}{/ds_nt_trung}": 2,
+   "{{ nt.gia_sau_giam_gia|default('', true) }}": 2,
+   "{tong_gia_tri_trung_thau}": 2
+  },
+  "Thời gian thực hiện HĐ": {
+   "{{ goi_thau.thoi_gian_hop_dong|default('', true) }}": 16,
+   "{tg_hop_dong}": 9
+  },
+  "Chữ ký TVL": {
+   "{anh_chu_ky}": 7
+  },
+  "REPEAT:TCG": {
+   "{% for cg in to_chuyen_gia %}": 6
+  },
+  "Số CCCD TVL": {
+   "{{ cg.so_cccd|default('', true) }}": 6
+  },
+  "Số CC TVL": {
+   "{{ cg.so_chung_chi|default('', true) }}": 6
+  },
+  "Nơi cấp TVL": {
+   "{{ cg.don_vi_cap_chung_chi|default('', true) }}": 6
+  },
+  "Ngày cấp TVL": {
+   "{{ cg.S_ngay_cap_chung_chi|default('', true) }}": 6
+  },
+  "ENDREPEAT": {
+   "{% endfor %}": 15
+  },
+  "Ảnh TVL": {
+   "{#ds_to_chuyen_gia}{anh_chung_chi}{/ds_to_chuyen_gia}": 6
+  },
+  "REPEAT:Dự thầu|REQUIRE:Nhà thầu xếp hạng 1": {
+   "{% for nt in ds_nha_thau_trung_thau %}": 4
+  },
+  "Ngày thư mời ĐCTL": {
+   "{ngay_moi_doi_chieu}": 5
+  },
+  "Ngày đối chiếu": {
+   "{ngay_doi_chieu}": 10
+  },
+  "Tên dự toán/dự án": {
+   "{ten_du_an_du_toan}": 40
+  },
+  "Số BBĐC": {
+   "{so_bbdc}": 5
+  },
+  "Tên gói thầu KHLCNT": {
+   "{ten_gt}": 25,
+   "{ten_goi_thau}": 29
+  },
+  "Ngày trình DT": {
+   "{S_ngay_trinh_du_toan}": 1,
+   "{ngay_trinh_du_toan}": 7
+  },
+  "Số QĐ thành lập tổ": {
+   "{% if so_qd_tl_to|default('', true) %}{{ so_qd_tl_to|default('', true) }}{% else %}.../QĐ-{{ chu_dau_tu.ten_viet_tat|default('', true) }}{% endif %}": 6
+  },
+  "Ngày thành lập tổ": {
+   "{% if ngay_qd_tl_to|default('', true) %}{{ ngay_qd_tl_to|default('', true) }}{% else %}{% if ke_hoach.ngay_trinh_du_toan|default('', true) %}{{ ke_hoach.ngay_trinh_du_toan|default('', true) }}{% else %}{{ ke_hoach.ngay_trinh_ke_hoach|default('', true) }}{% endif %}{% endif %}": 6
+  },
+  "TÊN CĐTH": {
+   "{ten_cdt} [IN HOA]": 2
+  },
+  "Ngày thư mời thương thảo": {
+   "{ngay_moi_doi_chieu}": 2
+  },
+  "Ngày thương thảo": {
+   "{ngay_doi_chieu}": 10
+  },
+  "Tên nhà thầuH": {
+   "{ten_nt} [IN HOA]": 2
+  },
+  "Danh xưng NT": {
+   "{danh_xung_nt}": 2
+  },
+  "Đại diện NT": {
+   "{dai_dien_nt}": 2
+  },
+  "Chức vụ NT": {
+   "{chuc_vu_dai_dien_nt}": 2
+  },
+  "Địa chỉ NT": {
+   "{dia_chi_nt}": 2
+  },
+  "Điện thoại NT": {
+   "{sdt_nt}": 2
+  },
+  "Tài khoản NT": {
+   "{stk_nt}": 2
+  },
+  "Ngân hàng NT": {
+   "{noi_mo_tk_nt}": 2
+  },
+  "Mã số thuế NT": {
+   "{mst_nt}": 2
+  },
+  "Thời gian thực hiện gói thầu KHLCNT": {
+   "{tg_thuc_hien_gt}": 12,
+   "{thoi_gian_thuc_hien}": 8
+  },
+  "Giá gói thầu KHLCNT": {
+   "{gia_gt}": 8,
+   "{gia_goi_thau}": 16
+  },
+  "Bằng chữ Giá gói thầu KHLCNT": {
+   "{bangchu_gia_gt}": 6
+  },
+  "Loại hợp đồng KHLCNT": {
+   "{loai_hd_gt}": 8,
+   "{loai_hop_dong}": 8
+  },
+  "Ngày tờ trình KQ": {
+   "{% if goi_thau.ngay_quyet_dinh_ket_qua|default('', true) %}{{ goi_thau.ngay_quyet_dinh_ket_qua|default('', true) }}{% else %}{{ goi_thau.ngay_doi_chieu|default('', true) }}{% endif %}": 4
+  },
+  "Nguồn vốn KHLCNT": {
+   "{gt_nguon_von}": 4,
+   "{nguon_von}": 8
+  },
+  "Thời gian tổ chức KHLCNT": {
+   "{tg_to_chuc_lcnt}": 2,
+   "{thoi_gian_to_chuc}": 8
+  },
+  "Thời gian bắt đầu tổ chức LCNT": {
+   "{tg_bat_dau_lcnt}": 2,
+   "{thoi_gian_bat_dau_to_chuc}": 8
+  },
+  "Số QĐ kết quả": {
+   "{so_qd_kq}": 2
+  },
+  "Số BC TC": {
+   "{so_bcdg_tc}": 1
+  },
+  "Ngày BC TC": {
+   "{ngay_bcdg_tc}": 1
+  },
+  "Số QĐ KT": {
+   "{so_qd_kt}": 2
+  },
+  "Ngày QĐ KTS": {
+   "{S_ngay_qd_kt}": 1
+  },
+  "Giá dự thầu sau hiệu chỉnh, giảm giá tổng": {
+   "{gia_sau_giam_gia}": 4,
+   "{#ds_nt_trung}{gia_sau_giam_gia}{/ds_nt_trung}": 3
+  },
+  "Ngày BC TCS": {
+   "{S_ngay_bcdg_tc}": 1
+  },
+  "Tên gói thầu BS": {
+   "": 2
+  },
+  "Cơ quan ký QĐKHLCNT": {
+   "{ten_cdt}": 1
+  },
+  "Tên KHLCNTBS": {
+   "": 2
+  },
+  "Năm BCTĐ KQLCNT": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 6
+  },
+  "Số BCTĐ KQ": {
+   "{so_bctd_kq}": 6
+  },
+  "Ngày BCTĐKQ": {
+   "{ngay_bctd_kq}": 6
+  },
+  "Đóng thầu": {
+   "{tg_dong_thau}": 12
+  },
+  "Số QĐ thành lập TVT": {
+   "{so_qd_tl_ttd}": 11
+  },
+  "Ngày thành lập TVT": {
+   "{ngay_qd_tl_ttd}": 21
+  },
+  "Họ và tên TVT": {
+   "{ho_ten}": 16,
+   "{{ td.ho_ten|default('', true) }}": 10
+  },
+  "Vai trò TVT": {
+   "{chuc_vu}": 16
+  },
+  "Nhiệm vụ TĐ KQ": {
+   "{cong_viec}": 4
+  },
+  "Mở thầu": {
+   "{tg_mo_thau}": 4
+  },
+  "Chữ ký TVT": {
+   "{anh_chu_ky}": 5
+  },
+  "REPEAT: TTĐ": {
+   "{% for td in to_tham_dinh %}": 3
+  },
+  "Số CCCD TVT": {
+   "{{ td.so_cccd|default('', true) }}": 5
+  },
+  "Ngày CCCD TVT": {
+   "{{ td.S_ngay_cap_cccd|default('', true) }}": 5
+  },
+  "Nơi CCCD TVT": {
+   "{{ td.noi_cap_cccd|default('', true) }}": 5
+  },
+  "Ảnh TVT": {
+   "{#ds_to_tham_dinh}{anh_chung_chi}{/ds_to_tham_dinh}": 5
+  },
+  "Số QĐ KQ": {
+   "{so_qd_kq}": 7
+  },
+  "Ngày thư chấp thuận": {
+   "{% if ngay_thu_chap_thuan|default('', true) %}{{ ngay_thu_chap_thuan|default('', true) }}{% else %}{{ goi_thau.ngay_quyet_dinh_ket_qua|default('', true) }}{% endif %}": 3
+  },
+  "Ngày hoàn thiện hợp đồng": {
+   "{S_ngay_bbht_hd}": 3
+  },
+  "Nhà thầu": {
+   "{#ds_nt_trung}{ten_nha_thau}{/ds_nt_trung}": 2,
+   "{ten_nha_thau}": 3
+  },
+  "Giá dự thầu sau giảm giá, ưu đãi": {
+   "{#ds_nt_trung}{gia_xep_hang}{/ds_nt_trung}": 1,
+   "{gia_xep_hang}": 1
+  },
+  "Mã số thuế": {
+   "{ma_so_thue}": 1
+  },
+  "Giá dự thầu tổng": {
+   "{gia_du_thau}": 3
+  },
+  "Đơn vị trình kế hoạch": {
+   "{don_vi_trinh_cdt}": 2
+  },
+  "STT TVL": {
+   "{{ loop.index }}": 1
+  },
+  "Tên phần lô": {
+   "{ten_phan_lo}": 12
+  },
+  "Nhà thầu tham dự": {
+   "{ten_nha_thau}": 2,
+   "{{ nt.ten_nha_thau|default('', true) }}": 4
+  },
+  "Giá trị giảm": {
+   "{ty_le_giam_gia}": 2
+  },
+  "Giá dự thầu sau giảm": {
+   "{gia_sau_giam_gia}": 1
+  },
+  "Ngày đóng thầu": {
+   "{S_tg_dong_thau}": 1
+  },
+  "Giá trị gói thầu": {
+   "{{ goi_thau.gia_goi_thau|default('', true) }}": 1
+  },
+  "Tiến độ": {
+   "{{ goi_thau.thoi_gian_thuc_hien|default('', true) }}": 2
+  },
+  "Họ và tên Tổ trưởng TV": {
+   "{ho_ten}": 2,
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim == 'Tổ trưởng' %}{{ cg.ho_ten|default('', true) }}{% endfor %}": 2
+  },
+  "Họ và tên Tổ viên TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim != 'Tổ trưởng' %}{{ cg.ho_ten|default('', true) }}{% endfor %}": 4
+  },
+  "Số CCCD Tổ trưởng TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim == 'Tổ trưởng' %}{{ cg.so_cccd|default('', true) }}{% endfor %}": 1
+  },
+  "Số CC Tổ trưởng TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim == 'Tổ trưởng' %}{{ cg.so_chung_chi|default('', true) }}{% endfor %}": 1
+  },
+  "Ngày cấp Tổ trưởng TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim == 'Tổ trưởng' %}{{ cg.S_ngay_cap_chung_chi|default('', true) }}{% endfor %}": 1
+  },
+  "Số CCCD Tổ viên TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim != 'Tổ trưởng' %}{{ cg.so_cccd|default('', true) }}{% endfor %}": 1
+  },
+  "Số CC Tổ viên TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim != 'Tổ trưởng' %}{{ cg.so_chung_chi|default('', true) }}{% endfor %}": 1
+  },
+  "Ngày cấp Tổ viên TV": {
+   "{% for cg in to_chuyen_gia if cg.chuc_vu|trim != 'Tổ trưởng' %}{{ cg.S_ngay_cap_chung_chi|default('', true) }}{% endfor %}": 1
+  },
+  "Nhà thầu đối chiếu": {
+   "{ten_nha_thau_trung}": 4,
+   "{ten_nha_thau}": 1
+  },
+  "Chủ quản CĐTH": {
+   "{cq_chu_quan} [IN HOA]": 4
+  },
+  "Ngày trình KH": {
+   "{ngay_trinh_kh}": 14
+  },
+  "Giá trị TMĐT": {
+   "{tong_muc_dau_tu_du_toan}": 21
+  },
+  "Đã thực hiện": {
+   "{ten_cong_viec}": 8
+  },
+  "Giá trị đã thực hiện": {
+   "{gia_tri}": 8,
+   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá trị đã thực hiện tổng]]{% endif %}{% else %}0{% endfor %}": 5
+  },
+  "Không áp dụng": {
+   "{ten_cong_viec}": 12
+  },
+  "Giá không áp dụng": {
+   "{gia_tri}": 12
+  },
+  "Giá trị đã thực hiện tổng": {
+   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá trị đã thực hiện tổng]]{% endif %}{% else %}0{% endfor %}": 4
+  },
+  "Giá tổng dự toán": {
+   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.first %}[[Giá tổng dự toán]]{% endif %}{% else %}{{ ke_hoach.tong_muc_dau_tu|default('', true) }}{% endfor %}": 9
+  },
+  "Chứng thư thẩm định": {
+   "{% if so_chung_thu_tdg|default('', true) or ngay_chung_thu_tdg|default('', true) %}{% if so_chung_thu_tdg|default('', true) %}số {{ so_chung_thu_tdg|default('', true) }}{% endif %}{% if so_chung_thu_tdg|default('', true) and ngay_chung_thu_tdg|default('', true) %} {% endif %}{% if ngay_chung_thu_tdg|default('', true) %}ngày {{ S_ngay_chung_thu_tdg|default('', true) }}{% endif %}{% else %}[[Chứng thư thẩm định]]{% endif %}": 4,
+   "{% if so_chung_thu_tdg|default('', true) or ngay_chung_thu_tdg|default('', true) %}{% if so_chung_thu_tdg|default('', true) %}{{ so_chung_thu_tdg|default('', true) }}{% endif %}{% if so_chung_thu_tdg|default('', true) and ngay_chung_thu_tdg|default('', true) %} {% endif %}{% if ngay_chung_thu_tdg|default('', true) %}ngày {{ S_ngay_chung_thu_tdg|default('', true) }}{% endif %}{% else %}[[Chứng thư thẩm định]]{% endif %}": 1
+  },
+  "Đơn vị thực hiện": {
+   "{don_vi_thuc_hien}": 2
+  },
+  "Văn bản phê duyệt": {
+   "{van_ban_phe_duyet}": 2
+  },
+  "Giá không áp dụng tổng": {
+   "{% for x in ke_hoach.cv_khong_ap_dung %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá không áp dụng tổng]]{% endif %}{% else %}0{% endfor %}": 8
+  },
+  "Hình thức KHLCNT": {
+   "{hinh_thuc_lua_chon}": 12
+  },
+  "Áp dụng Hình thức KHLCNT": {
+   "{% if (item.hinh_thuc_lua_chon|default('', true)|lower|trim) == 'chỉ định thầu rút gọn' %}áp dụng Khoản 4 Điều 78 và Khoản 2 Điều 80 Nghị định 214/2025/NĐ-CP ngày 04/08/2025 được sửa đổi, bổ sung bởi Nghị định số 349/2026/NĐ-CP ngày 09/9/2026;{% else %}[[Áp dụng Hình thức KHLCNT]]{% endif %}": 4
+  },
+  "Áp dụng Phương thức KHLCNT": {
+   "{% if (item.phuong_thuc_lua_chon|default('', true)|lower|trim) in ['', 'không có', 'không áp dụng'] %}Không có phương thức lựa chọn nhà thầu{% else %}[[Áp dụng Phương thức KHLCNT]]{% endif %}": 4
+  },
+  "Áp dụng Loại hợp đồng KHLCNT": {
+   "{% if 'đơn giá cố định' in (item.loai_hop_dong|default('', true)|lower) %}Tại thời điểm lựa chọn nhà thầu bản chất công việc đã xác định được rõ ràng nhưng chưa xác định được chính xác số lượng, khối lượng công việc thực tế phải hoàn thành. Giá hợp đồng ban đầu dựa trên số lượng, khối lượng công việc, đơn giá cố định theo hợp đồng và chi phí dự phòng cho số lượng, khối lượng công việc có thể phát sinh được xác định theo quy định pháp luật vì vậy áp dụng hợp đồng theo đơn giá cố định cho gói thầu căn cứ theo Khoản 2, Điều 64 của Luật đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023{% else %}[[Áp dụng Loại hợp đồng KHLCNT]]{% endif %}": 4
+  },
+  "Giá tổng gói thầu": {
+   "{% for x in goi_thau_trong_ke_hoach %}{% if loop.length == 1 %}{{ x.gia_goi_thau|default('', true) }}{% elif loop.first %}[[Giá tổng gói thầu]]{% endif %}{% else %}0{% endfor %}": 12
+  },
+  "STT": {
+   "{{ loop.index }}": 8
+  },
+  "Tên CĐT KHLCNT": {
+   "{{ chu_dau_tu.ten_chu_dau_tu|default('', true) }}": 8
+  },
+  "Phương thức KHLCNT": {
+   "{phuong_thuc_lua_chon}": 8
+  },
+  "Số QĐ DT": {
+   "{so_qd_du_toan}": 12
+  },
+  "Ngày phê duyệt DT": {
+   "{ngay_phe_duyet_du_toan}": 12
+  },
+  "Nhà thầu đạt năng lực, kinh nghiệm V2": {
+   "{ten_nha_thau}": 3
+  },
+  "Điểm kỹ thuật": {
+   "{diem_danh_gia}": 3
+  },
+  "Nhà thầu đạt kỹ thuật V2": {
+   "{ten_nha_thau}": 5
+  },
+  "Năm TĐKT": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 2
+  },
+  "Số BCTĐ KT": {
+   "{so_bctd_kt}": 2
+  },
+  "Ngày BCTĐ KT": {
+   "{ngay_bctd_kt}": 2
+  },
+  "Ngày QĐ KT": {
+   "{ngay_qd_kt}": 1
+  },
+  "Nhà thầu hợp lệ V2": {
+   "{ten_nha_thau}": 1
+  },
+  "Mã phần lô": {
+   "{ma_phan_lo}": 2
+  },
+  "Giá đánh giá": {
+   "{gia_xep_hang}": 1
+  },
+  "Nhà thầu xếp hạng 2 trở đi": {
+   "{ten_nha_thau}": 2
+  },
+  "Số phần xếp hạng 1": {
+   "{so_phan_lo_trung}": 2
+  },
+  "Phương thứcH": {
+   "{phuong_thuc_lcnt} [IN HOA]": 2
+  },
+  "Năm HSMT": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 1
+  },
+  "Số tờ trình HSMT": {
+   "{so_ttr_hsmt}": 1
+  },
+  "Ngày trình E-HSMT": {
+   "{ngay_trinh_hsmt}": 3
+  },
+  "Nhiệm vụ HSMT": {
+   "{cong_viec}": 1
+  },
+  "Năm BCTĐ HSMT": {
+   "{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }}": 1
+  },
+  "Số thẩm định E-HSMT": {
+   "{so_bc_tham_dinh_hsmt}": 2
+  },
+  "Ngày thẩm định E-HSMT": {
+   "{ngay_bc_tham_dinh_hsmt}": 3
+  },
+  "Nhiệm vụ TĐ HSMT": {
+   "{cong_viec}": 1
+  },
+  "REPEAT:TTĐ": {
+   "{% for td in to_tham_dinh %}": 2
+  },
+  "Nhà thầu không trúng": {
+   "{ten_nha_thau}": 1
+  },
+  "Phần lô tham dự": {
+   "{ten_phan_lo}": 1
+  },
+  "Ngày gửi giấy mời TVT": {
+   "{ngay_thu_moi_tvt}": 1
+  },
+  "Ngày đơn xin TVT": {
+   "{ngay_don_xin_tvt}": 2
+  },
+  "Thời gian TVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.thoi_gian_thuc_hien|default('', true) }}{% endfor %}": 4
+  },
+  "Ngày trình TVT": {
+   "{ngay_ttr_chi_dinh_tvt}": 2
+  },
+  "Số QĐTVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.so_qd_chi_dinh|default('', true) }}{% endfor %}": 2
+  },
+  "Ngày ký QĐTVT": {
+   "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'thẩm định' %}{{ hd.ngay_qd_chi_dinh|default('', true) }}{% endfor %}": 2
+  },
+  "Ngày thư mời xác nhận năng lực": {
+   "{ngay_phe_duyet_kh}": 1
+  }
+ },
+ "files": {
+  "Chủ quản CĐT": [
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Tên CĐTH": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Địa danh": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Ngày gửi giấy mời TVL": [
+   "3. TVLB1/2.1. Giấy mời TVL.docx"
+  ],
+  "Tên gói thầu": [
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Tên KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Tư vấn lập": [
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Số QĐPDKH": [
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Ngày PDKH": [
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Tên CĐT": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Phê duyệt": [
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Ngày đơn xin TVL": [
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx"
+  ],
+  "Địa chỉ": [
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Chức vụH": [
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Đại diện": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.1. Giấy mời TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Tư vấn lậpH": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Địa danh TVL": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Chức vụ TVLH": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Đại diện TVL": [
+   "3. TVLB1/2.2. Đơn xin nhận thầu TVL.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Ngày ký BBHT TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx"
+  ],
+  "Tài khoản": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Ngân hàng": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Danh xưng": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Chức vụ": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Điện thoại": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Mã số thuế CĐT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Danh xưng TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Chức vụ TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Địa chỉ TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Điện thoại TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Tài khoản TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Ngân hàng TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Citad TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Mã số thuế TVL": [
+   "3. TVLB1/2.3. BBHT HĐ TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx"
+  ],
+  "Đơn vị trình của CĐTH": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx"
+  ],
+  "Ngày trình TVL": [
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx"
+  ],
+  "Ký QĐ": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx"
+  ],
+  "Đơn vị trình của CĐT": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Giá TVL": [
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx"
+  ],
+  "Bằng chữ Giá TVL": [
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx"
+  ],
+  "Thời gian TVL": [
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx"
+  ],
+  "Nguồn vốn": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "3. TVLB1/2.4. Tờ trình phê duyệt TVL.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số QĐTVL": [
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx"
+  ],
+  "Ngày ký QĐTVL": [
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "3. TVLB1/2.6. Hợp đồng TVL.docx"
+  ],
+  "Ký QĐH": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "3. TVLB1/2.5. QĐ chỉ định TVL.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Số HĐ TVL": [
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Ngày ký HĐTVL": [
+   "3. TVLB1/2.6. Hợp đồng TVL.docx",
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Số QĐ thành lập TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày thành lập TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Họ và tên TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Vai trò TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Dấu TVL": [
+   "3. TVLB1/2.7. QĐ TL TCG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Số HĐTVT": [
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày ký HĐTVT": [
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Tư vấn thẩm": [
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Ngày QĐ E-HSMT": [
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.8. BBNT EHSMT.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Ngày phê duyệt KQ": [
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.9. BBNT BCĐG.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Giá TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx"
+  ],
+  "Bằng chữ Giá TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx"
+  ],
+  "Năm": [
+   "4. TVLB2/2.10. Mẫu 03a TVL.docx",
+   "4. TVLB2/2.10. Mẫu 08a TVL.docx",
+   "4. TVLB2/2.11. Đề nghị TT TVL.docx",
+   "4. TVLB2/2.12. Thanh lý HĐ TVL.docx",
+   "6. TVTB2/3.10. Mẫu 03a TVTĐ.docx",
+   "6. TVTB2/3.10. Mẫu 08a TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx"
+  ],
+  "Tư vấn thẩmH": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Địa danh TVT": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Tài khoản TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Ngân hàng TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Citad TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Chức vụ TVTH": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Đại diện TVT": [
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx",
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "6. TVTB2/3.11. Đề nghị TT TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Danh xưng TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Chức vụ TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Địa chỉ TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Điện thoại TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Mã số thuế TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx",
+   "6. TVTB2/3.12. Thanh lý HĐ TVTĐ.docx",
+   "6. TVTB2/3.8. BBNT BCTĐ HSMT.docx",
+   "6. TVTB2/3.9. BBNT BCTĐ KQLCNT.docx"
+  ],
+  "Số TBMT": [
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Năm BCĐG": [
+   "8. BCĐG PLQT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG PLQT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT1/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG QT2/5.1.0. Bìa BCĐG.docx",
+   "8. BCĐG TVB1/5.1.0. Bìa BCĐG KT.docx",
+   "8. BCĐG TVB2/5.4.0. Bìa BCĐG TC.docx"
+  ],
+  "Số BCĐG": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Ngày trình BCĐG": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Mã KHLCNT": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày đăng KHLCNT": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  " Thời gian đăng TBMT": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Giá gói thầu": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Thời gian tổ chức": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx"
+  ],
+  "Thời gian bắt đầu": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Hình thức": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Phương thức": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Loại hợp đồng": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Thời gian thực hiện": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Số QĐ E-HSMT": [
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Nhiệm vụ BCĐG": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx"
+  ],
+  "Tên nhà thầu": [
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Giá trị phần lô": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Giá dự thầu": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Giảm giá tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx"
+  ],
+  "Giá dự thầu sau hiệu chỉnh, giảm giá": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Tính hợp lệ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Lý do không đạt tư cách hợp lệ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Tính hợp lệ-Làm rõ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Nhà thầu hợp lệ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Năng lực kinh nghiệm": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Lý do không đạt năng lực, kinh nghiệm": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Năng lực kinh nghiệm - Làm rõ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Nhà thầu đạt năng lực, kinh nghiệm": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Kỹ thuật": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Lý do không đạt kỹ thuật": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Kỹ thuật - Làm rõ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Nhà thầu đạt kỹ thuật": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Giá dự thầu đạt kỹ thuật tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Giảm giá đạt kỹ thuật tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Giá dự thầu đạt kỹ thuật sau giảm giá tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Giá trị ưu đãi tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Giá đánh giá đạt kỹ thuật tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx"
+  ],
+  "Xếp hạng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Đóng thầuS": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày trình BCĐGS": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Nhà thầu xếp hạng 1": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "MST Nhà thầu": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Giá dự thầu xếp hạng 1 tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Giá dự thầu xếp hạng 1 tổng sau giảm giá": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Thời gian thực hiện HĐ": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Chữ ký TVL": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "REPEAT:TCG": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Số CCCD TVL": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Số CC TVL": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Nơi cấp TVL": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Ngày cấp TVL": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "ENDREPEAT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Ảnh TVL": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG QT1/5.1.1. BCĐG HSDT QT1.docx",
+   "8. BCĐG QT2/5.1.1. BCĐG HSDT QT2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "REPEAT:Dự thầu|REQUIRE:Nhà thầu xếp hạng 1": [
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Ngày thư mời ĐCTL": [
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx"
+  ],
+  "Ngày đối chiếu": [
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB2/5.5. Thư mời đối chiếu tài liệu và thương thảo HĐ.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx"
+  ],
+  "Tên dự toán/dự án": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx",
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số BBĐC": [
+   "8. BCĐG PLQT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG PLQT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT1/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG QT2/5.3. BBĐC tài liệu.docx",
+   "8. BCĐG TVB2/5.6. BBĐC tài liệu.docx"
+  ],
+  "Tên gói thầu KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Ngày trình DT": [
+   "10. KQCĐ KXN/2.0. Giay moi bao gia.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx"
+  ],
+  "Số QĐ thành lập tổ": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx"
+  ],
+  "Ngày thành lập tổ": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "10. KQCĐ KXN/2.0.2. BB xet BG.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx"
+  ],
+  "TÊN CĐTH": [
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx"
+  ],
+  "Ngày thư mời thương thảo": [
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx"
+  ],
+  "Ngày thương thảo": [
+   "10. KQCĐ KXN/2.1. Moi thuong thao.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.3. Moi thuong thao.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx"
+  ],
+  "Tên nhà thầuH": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Danh xưng NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Đại diện NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Chức vụ NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Địa chỉ NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Điện thoại NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Tài khoản NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Ngân hàng NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Mã số thuế NT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx"
+  ],
+  "Thời gian thực hiện gói thầu KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Giá gói thầu KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Bằng chữ Giá gói thầu KHLCNT": [
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx"
+  ],
+  "Loại hợp đồng KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.2. BB Thuong thao hoan thien HD.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.4. BB Thuong thao hoan thien HD.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Ngày tờ trình KQ": [
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx"
+  ],
+  "Nguồn vốn KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Thời gian tổ chức KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Thời gian bắt đầu tổ chức LCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "10. KQCĐ KXN/2.3. To trinh phe duyet ket qua.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KQCĐ CXN/2.5. To trinh phe duyet ket qua.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Số QĐ kết quả": [
+   "10. KQCĐ KXN/2.4. QD phe duyet ket qua.docx",
+   "11. KQCĐ CXN/2.6. QD phe duyet ket qua.docx"
+  ],
+  "Số BC TC": [
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Ngày BC TC": [
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Số QĐ KT": [
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Ngày QĐ KTS": [
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Giá dự thầu sau hiệu chỉnh, giảm giá tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày BC TCS": [
+   "8. BCĐG TVB2/5.4.1. BCĐG HSĐXTC.docx"
+  ],
+  "Tên gói thầu BS": [
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Cơ quan ký QĐKHLCNT": [
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Tên KHLCNTBS": [
+   "8. BCĐG TVB2/5.7. BB Thương thảo HĐ.docx"
+  ],
+  "Năm BCTĐ KQLCNT": [
+   "9. KQLCNT PL/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.0. Bìa BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số BCTĐ KQ": [
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Ngày BCTĐKQ": [
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Đóng thầu": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số QĐ thành lập TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày thành lập TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Họ và tên TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Vai trò TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Nhiệm vụ TĐ KQ": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Mở thầu": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Chữ ký TVT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Dấu TVT": [
+   "5. TVTB1/3.7. QĐ TL TTĐ.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "REPEAT: TTĐ": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số CCCD TVT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ngày CCCD TVT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Nơi CCCD TVT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ảnh TVT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT TV/5.8.1. BCTĐ KQLCNT.docx",
+   "9. KQLCNT/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số QĐ KQ": [
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.5. QĐ Phê duyệt KQLCNT.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.8. BB hoàn thiện HĐ.docx"
+  ],
+  "Ngày thư chấp thuận": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Ngày hoàn thiện hợp đồng": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Bảo đảm thực hiện hợp đồng": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Ngày cuối hoàn thiện": [
+   "9. KQLCNT PL/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
+   "9. KQLCNT/5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Nhà thầu": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Giá dự thầu sau giảm giá, ưu đãi": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "9. KQLCNT TV/5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx"
+  ],
+  "Mã số thuế": [
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Giá dự thầu tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Đơn vị trình kế hoạch": [
+   "9. KQLCNT TV/5.9. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "STT TVL": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Tên phần lô": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx"
+  ],
+  "Nhà thầu tham dự": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Giá trị giảm": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Giá dự thầu sau giảm": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Ngày đóng thầu": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Giá trị gói thầu": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Tiến độ": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Họ và tên Tổ trưởng TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Họ và tên Tổ viên TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Số CCCD Tổ trưởng TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Số CC Tổ trưởng TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Ngày cấp Tổ trưởng TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Số CCCD Tổ viên TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Số CC Tổ viên TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Ngày cấp Tổ viên TV": [
+   "8. BCĐG PLQT2/5.1.1. BCĐG HSDT PLQT2.docx"
+  ],
+  "Nhà thầu đối chiếu": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG PLQT1/5.2. Thư mời đối chiếu tài liệu.docx",
+   "8. BCĐG PLQT2/5.2. Thư mời đối chiếu tài liệu.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Chủ quản CĐTH": [
+   "1. KHLCNT Chung/1.1. QĐ Thành lập tổ.docx",
+   "11. KHLCNT CĐT Chung/1.1. QĐ Thành lập tổ.docx",
+   "12. KHLCNT CĐT Rieng/1.1. QĐ Thành lập tổ.docx",
+   "2. KHLCNT Rieng/1.1. QĐ Thành lập tổ.docx"
+  ],
+  "Ngày trình KH": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Giá trị TMĐT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Đã thực hiện": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá trị đã thực hiện": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Không áp dụng": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá không áp dụng": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.2. Tờ trình dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá trị đã thực hiện tổng": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá tổng dự toán": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Chứng thư thẩm định": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.2. Tờ trình dự toán.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx"
+  ],
+  "Đơn vị thực hiện": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Văn bản phê duyệt": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá không áp dụng tổng": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Hình thức KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Áp dụng Hình thức KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Áp dụng Phương thức KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Áp dụng Loại hợp đồng KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx"
+  ],
+  "Giá tổng gói thầu": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "STT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Tên CĐT KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Phương thức KHLCNT": [
+   "1. KHLCNT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "1. KHLCNT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.2. Tờ trình DT + KHLCNT.docx",
+   "11. KHLCNT CĐT Chung/1.3. QĐ phê duyệt DT + KHLCNT.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Số QĐ DT": [
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Ngày phê duyệt DT": [
+   "12. KHLCNT CĐT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "12. KHLCNT CĐT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "12. KHLCNT CĐT Rieng/1.5. QĐ phê duyệt kế hoạch.docx",
+   "2. KHLCNT Rieng/1.3. QĐ phê duyệt dự toán.docx",
+   "2. KHLCNT Rieng/1.4. Tờ trình kế hoạch.docx",
+   "2. KHLCNT Rieng/1.5. QĐ phê duyệt kế hoạch.docx"
+  ],
+  "Nhà thầu đạt năng lực, kinh nghiệm V2": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx"
+  ],
+  "Điểm kỹ thuật": [
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx"
+  ],
+  "Nhà thầu đạt kỹ thuật V2": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "8. BCĐG TVB1/5.1.1. BCĐG HSĐXKT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx"
+  ],
+  "Năm TĐKT": [
+   "8. BCĐG TVB1/5.2.0. Bìa BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx"
+  ],
+  "Số BCTĐ KT": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx"
+  ],
+  "Ngày BCTĐ KT": [
+   "8. BCĐG TVB1/5.2.1. BCTĐ KT.docx",
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx"
+  ],
+  "Ngày QĐ KT": [
+   "8. BCĐG TVB1/5.3. QĐPD KT.docx"
+  ],
+  "Số phần tham dự": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Giá phần lô tham dự tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx"
+  ],
+  "Nhà thầu hợp lệ V2": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Số phần đạt": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Số phần không đạt": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Mã phần lô": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Ưu đãi": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Giá đánh giá": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx"
+  ],
+  "Số phần xếp hạng 1": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Nhà thầu xếp hạng 2 trở đi": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx"
+  ],
+  "Giá phần lô tham dự đạt xếp hạng 1 tổng": [
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1 V2.docx",
+   "8. BCĐG PLQT1/5.1.1. BCĐG HSDT PLQT1.docx"
+  ],
+  "Phương thứcH": [
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx",
+   "7. HSMT/4.1.1. Bìa lót E-HSMT.docx"
+  ],
+  "Năm HSMT": [
+   "7. HSMT/4.1.0. Bìa E-HSMT.docx"
+  ],
+  "Số tờ trình HSMT": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx"
+  ],
+  "Ngày trình E-HSMT": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx",
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx"
+  ],
+  "Nhiệm vụ HSMT": [
+   "7. HSMT/4.2. Tờ trình phê duyệt E-HSMT.docx"
+  ],
+  "Năm BCTĐ HSMT": [
+   "7. HSMT/4.3.0. Bìa BCTĐ E-HSMT.docx"
+  ],
+  "Số thẩm định E-HSMT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx"
+  ],
+  "Ngày thẩm định E-HSMT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "7. HSMT/4.4. QĐ phê duyệt E-HSMT.docx"
+  ],
+  "Nhiệm vụ TĐ HSMT": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx"
+  ],
+  "REPEAT:TTĐ": [
+   "7. HSMT/4.3.1 BCTĐ E-HSMT.docx",
+   "9. KQLCNT PL/5.4.1. BCTĐ KQLCNT.docx"
+  ],
+  "Nhà thầu không trúng": [
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Phần lô tham dự": [
+   "9. KQLCNT PL/5.5. QĐ Phê duyệt KQLCNT.docx"
+  ],
+  "Ngày gửi giấy mời TVT": [
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx"
+  ],
+  "Ngày đơn xin TVT": [
+   "5. TVTB1/3.1. Giấy mời TVTĐ.docx",
+   "5. TVTB1/3.2. Đơn xin nhận thầu TVTĐ.docx"
+  ],
+  "Thời gian TVT": [
+   "5. TVTB1/3.3. BBHT HĐ TVTĐ.docx",
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx"
+  ],
+  "Ngày trình TVT": [
+   "5. TVTB1/3.4. Tờ trình phê duyệt TVTĐ.docx",
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx"
+  ],
+  "Số QĐTVT": [
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx"
+  ],
+  "Ngày ký QĐTVT": [
+   "5. TVTB1/3.5. QĐ chỉ định TVTĐ.docx",
+   "5. TVTB1/3.6. HĐ TVTĐ.docx"
+  ],
+  "Ngày thư mời xác nhận năng lực": [
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx"
+  ],
+  "Ngày báo cáo": [
+   "11. KQCĐ CXN/2.1. Giay moi xac nhan nang luc.docx",
+   "11. KQCĐ CXN/2.2. Bao cao tu cach hop le.docx"
+  ]
+ }
+}

@@ -121,10 +121,11 @@ def test_selected_source_creates_only_custom_visible_alias():
     assert "ds_can_cu_lap_ke_hoach" in manifest["custom_root_keys"]
 
 
-def test_default_mapping_catalog_exposes_one_selected_basis_loop_at_v16():
+def test_default_mapping_catalog_exposes_one_selected_basis_loop_since_v16():
     defaults = build_default_word_mappings()
     matches = [row for row in defaults if row["source_table"] == "ke_hoach_can_cu"]
-    assert WORD_DEFAULT_MAPPINGS_VERSION == 16
+    # v16 introduced the loop; v17 (ADR 0042) only added timeline scalars.
+    assert WORD_DEFAULT_MAPPINGS_VERSION >= 16
     assert [(row["ten_bien"], row["mapping_key"]) for row in matches] == [
         ("ds_can_cu_lap_ke_hoach", "list:ke_hoach_can_cu")
     ]

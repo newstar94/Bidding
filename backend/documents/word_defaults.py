@@ -2,13 +2,14 @@ import hashlib
 
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
+from backend.timeline.word_fields import TIMELINE_WORD_CONTEXT_MAPPINGS
 from backend.shared.workspace_scope import (
     lock_personal_workspace_mutations,
     personal_scope_id,
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 16
+WORD_DEFAULT_MAPPINGS_VERSION = 17
 
 
 WORD_SINGLE_SOURCES = {
@@ -453,6 +454,8 @@ WORD_CONTEXT_MAPPINGS = [
     ("so_nt_khong_dat", "so_nha_thau_khong_dat", "Số nhà thầu không đạt"),
     ("so_nt_dat_khong_hang_1", "so_nha_thau_dat_khong_xep_hang_1", "Số nhà thầu đạt nhưng không xếp hạng 1"),
     ("so_nt_khong_danh_gia", "so_nha_thau_khong_duoc_danh_gia", "Số nhà thầu không được đánh giá"),
+    # ADR 0042: số/ngày văn bản của từng mốc trên tab Tiến độ.
+    *TIMELINE_WORD_CONTEXT_MAPPINGS,
 ]
 
 
@@ -501,10 +504,11 @@ def build_default_word_mappings():
 
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
         mappings.append({
-                "mapping_key": f"context:{source_table}",
+            "mapping_key": f"context:{source_table}",
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,
+            "format": field_format(source_table),
             "mo_ta": f"Thực thể động mặc định từ schema hệ thống: {mo_ta}",
         })
 
@@ -517,6 +521,12 @@ def build_default_word_mappings():
             "mo_ta": f"Danh sách mặc định từ schema hệ thống: {mo_ta}",
         })
 
+    seen_names = set()
+    for mapping in mappings:
+        name = mapping["ten_bien"].casefold()
+        if name in seen_names:
+            raise RuntimeError(f"Duplicate default Word variable: {mapping['ten_bien']}")
+        seen_names.add(name)
     return mappings
 
 

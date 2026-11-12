@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from backend.documents.field_manifest import field_format
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
+from backend.timeline.word_fields import TIMELINE_CONTEXT_KEYS
 from backend.shared.media_helper import (
     managed_image_path_matches_tenant,
     normalize_managed_image_path,
@@ -342,6 +343,10 @@ _REPORT_DERIVED_SCALARS = {
     "so_phan_lo_co_nha_thau_trung",
     "so_phan_lo_tham_du_khong_trung",
 }
+# ADR 0042: number/date scalars of each non-repeatable timeline milestone.
+# Package exports carry the package's effective timeline; plan exports carry
+# only the plan-section milestones and leave the others empty.
+_TIMELINE_MILESTONE_SCALARS = set(TIMELINE_CONTEXT_KEYS)
 _REPORT_BID_LIST_ROOTS = {
     "nha_thau",
     "ds_nha_thau_tham_du",
@@ -377,7 +382,7 @@ PLAN_ROOT_SPECS = {
     "goi_thau": "package_list",
     "goi_thau_trong_ke_hoach": "package_list",
     "chu_dau_tu": "investor",
-    **{key: "scalar" for key in _COMMON_SCALAR_ROOTS},
+    **{key: "scalar" for key in _COMMON_SCALAR_ROOTS | _TIMELINE_MILESTONE_SCALARS},
 }
 REPORT_ROOT_SPECS = {
     "goi_thau": "package",
@@ -407,7 +412,12 @@ REPORT_ROOT_SPECS = {
         key: "detailed_evaluation_row_list"
         for key in _DETAILED_EVALUATION_ROW_ROOTS
     },
-    **{key: "scalar" for key in _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS},
+    **{
+        key: "scalar"
+        for key in _COMMON_SCALAR_ROOTS
+        | _REPORT_DERIVED_SCALARS
+        | _TIMELINE_MILESTONE_SCALARS
+    },
 }
 CONTRACT_ROOT_SPECS = {
     **REPORT_ROOT_SPECS,
@@ -492,7 +502,9 @@ _LIST_ONLY_SOURCES = {
     "ke_hoach_can_cu",
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
-_CONTEXT_SOURCE_FIELDS = _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS
+_CONTEXT_SOURCE_FIELDS = (
+    _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS | _TIMELINE_MILESTONE_SCALARS
+)
 _PLAN_MAPPING_SOURCES = {
     "ke_hoach_lcnt",
     "ke_hoach_versions",

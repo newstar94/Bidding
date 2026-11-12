@@ -2809,6 +2809,678 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
+    "label": "Tiến độ – Số văn bản: Chứng thư thẩm định giá, Báo giá (KHLCNT + dự toán)",
+    "name": "so_chung_thu_tdg",
+    "sourceColumn": "moc_so_chung_thu_tdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Chứng thư thẩm định giá, Báo giá (KHLCNT + dự toán)",
+    "name": "ngay_chung_thu_tdg",
+    "sourceColumn": "moc_ngay_chung_thu_tdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ thành lập tổ (KHLCNT + dự toán)",
+    "name": "so_qd_tl_to",
+    "sourceColumn": "moc_so_qd_tl_to",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ thành lập tổ (KHLCNT + dự toán)",
+    "name": "ngay_qd_tl_to",
+    "sourceColumn": "moc_ngay_qd_tl_to",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình dự toán (KHLCNT + dự toán)",
+    "name": "so_ttr_dt",
+    "sourceColumn": "moc_so_ttr_dt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình dự toán (KHLCNT + dự toán)",
+    "name": "ngay_ttr_dt",
+    "sourceColumn": "moc_ngay_ttr_dt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt dự toán (KHLCNT + dự toán)",
+    "name": "so_qd_dt",
+    "sourceColumn": "moc_so_qd_dt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt dự toán (KHLCNT + dự toán)",
+    "name": "ngay_qd_dt",
+    "sourceColumn": "moc_ngay_qd_dt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình kế hoạch (KHLCNT + dự toán)",
+    "name": "so_ttr_kh",
+    "sourceColumn": "moc_so_ttr_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình kế hoạch (KHLCNT + dự toán)",
+    "name": "ngay_ttr_kh",
+    "sourceColumn": "moc_ngay_ttr_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt kế hoạch (KHLCNT + dự toán)",
+    "name": "so_qd_kh",
+    "sourceColumn": "moc_so_qd_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt kế hoạch (KHLCNT + dự toán)",
+    "name": "ngay_qd_kh",
+    "sourceColumn": "moc_ngay_qd_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình kế hoạch + Dự toán (KHLCNT + dự toán)",
+    "name": "so_ttr_dt_kh",
+    "sourceColumn": "moc_so_ttr_dt_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình kế hoạch + Dự toán (KHLCNT + dự toán)",
+    "name": "ngay_ttr_dt_kh",
+    "sourceColumn": "moc_ngay_ttr_dt_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt dự toán + kế hoạch (KHLCNT + dự toán)",
+    "name": "so_qd_dt_kh",
+    "sourceColumn": "moc_so_qd_dt_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt dự toán + kế hoạch (KHLCNT + dự toán)",
+    "name": "ngay_qd_dt_kh",
+    "sourceColumn": "moc_ngay_qd_dt_kh",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thư mời (Tư vấn lập)",
+    "name": "so_thu_moi_tvl",
+    "sourceColumn": "moc_so_thu_moi_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thư mời (Tư vấn lập)",
+    "name": "ngay_thu_moi_tvl",
+    "sourceColumn": "moc_ngay_thu_moi_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Đơn xin nhận thầu (Tư vấn lập)",
+    "name": "so_don_xin_tvl",
+    "sourceColumn": "moc_so_don_xin_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Đơn xin nhận thầu (Tư vấn lập)",
+    "name": "ngay_don_xin_tvl",
+    "sourceColumn": "moc_ngay_don_xin_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Biên bản hoàn thiện hợp đồng (Tư vấn lập)",
+    "name": "so_bbht_tvl",
+    "sourceColumn": "moc_so_bbht_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Biên bản hoàn thiện hợp đồng (Tư vấn lập)",
+    "name": "ngay_bbht_tvl",
+    "sourceColumn": "moc_ngay_bbht_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình phê duyệt chỉ định TVL (Tư vấn lập)",
+    "name": "so_ttr_chi_dinh_tvl",
+    "sourceColumn": "moc_so_ttr_chi_dinh_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình phê duyệt chỉ định TVL (Tư vấn lập)",
+    "name": "ngay_ttr_chi_dinh_tvl",
+    "sourceColumn": "moc_ngay_ttr_chi_dinh_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ chỉ định TVL (Tư vấn lập)",
+    "name": "so_qd_chi_dinh_tvl",
+    "sourceColumn": "moc_so_qd_chi_dinh_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ chỉ định TVL (Tư vấn lập)",
+    "name": "ngay_qd_chi_dinh_tvl",
+    "sourceColumn": "moc_ngay_qd_chi_dinh_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Hợp đồng TVL (Tư vấn lập)",
+    "name": "so_hd_tvl",
+    "sourceColumn": "moc_so_hd_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Hợp đồng TVL (Tư vấn lập)",
+    "name": "ngay_hd_tvl",
+    "sourceColumn": "moc_ngay_hd_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ thành lập TCG (Tư vấn lập)",
+    "name": "so_qd_tl_tcg",
+    "sourceColumn": "moc_so_qd_tl_tcg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ thành lập TCG (Tư vấn lập)",
+    "name": "ngay_qd_tl_tcg",
+    "sourceColumn": "moc_ngay_qd_tl_tcg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BBNT E-HSMT (Tư vấn lập)",
+    "name": "so_bbnt_hsmt",
+    "sourceColumn": "moc_so_bbnt_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BBNT E-HSMT (Tư vấn lập)",
+    "name": "ngay_bbnt_hsmt",
+    "sourceColumn": "moc_ngay_bbnt_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BBNT BCĐG (Tư vấn lập)",
+    "name": "so_bbnt_bcdg",
+    "sourceColumn": "moc_so_bbnt_bcdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BBNT BCĐG (Tư vấn lập)",
+    "name": "ngay_bbnt_bcdg",
+    "sourceColumn": "moc_ngay_bbnt_bcdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Xác định KL hoàn thành (Tư vấn lập)",
+    "name": "so_kl_ht_tvl",
+    "sourceColumn": "moc_so_kl_ht_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Xác định KL hoàn thành (Tư vấn lập)",
+    "name": "ngay_kl_ht_tvl",
+    "sourceColumn": "moc_ngay_kl_ht_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Đề nghị thanh toán (Tư vấn lập)",
+    "name": "so_de_nghi_tt_tvl",
+    "sourceColumn": "moc_so_de_nghi_tt_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Đề nghị thanh toán (Tư vấn lập)",
+    "name": "ngay_de_nghi_tt_tvl",
+    "sourceColumn": "moc_ngay_de_nghi_tt_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thanh lý HĐ (Tư vấn lập)",
+    "name": "so_thanh_ly_tvl",
+    "sourceColumn": "moc_so_thanh_ly_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thanh lý HĐ (Tư vấn lập)",
+    "name": "ngay_thanh_ly_tvl",
+    "sourceColumn": "moc_ngay_thanh_ly_tvl",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thư mời (Tư vấn thẩm)",
+    "name": "so_thu_moi_tvt",
+    "sourceColumn": "moc_so_thu_moi_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thư mời (Tư vấn thẩm)",
+    "name": "ngay_thu_moi_tvt",
+    "sourceColumn": "moc_ngay_thu_moi_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Đơn xin nhận thầu (Tư vấn thẩm)",
+    "name": "so_don_xin_tvt",
+    "sourceColumn": "moc_so_don_xin_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Đơn xin nhận thầu (Tư vấn thẩm)",
+    "name": "ngay_don_xin_tvt",
+    "sourceColumn": "moc_ngay_don_xin_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Biên bản hoàn thiện hợp đồng (Tư vấn thẩm)",
+    "name": "so_bbht_tvt",
+    "sourceColumn": "moc_so_bbht_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Biên bản hoàn thiện hợp đồng (Tư vấn thẩm)",
+    "name": "ngay_bbht_tvt",
+    "sourceColumn": "moc_ngay_bbht_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình phê duyệt chỉ định TVT (Tư vấn thẩm)",
+    "name": "so_ttr_chi_dinh_tvt",
+    "sourceColumn": "moc_so_ttr_chi_dinh_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình phê duyệt chỉ định TVT (Tư vấn thẩm)",
+    "name": "ngay_ttr_chi_dinh_tvt",
+    "sourceColumn": "moc_ngay_ttr_chi_dinh_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ chỉ định TVT (Tư vấn thẩm)",
+    "name": "so_qd_chi_dinh_tvt",
+    "sourceColumn": "moc_so_qd_chi_dinh_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ chỉ định TVT (Tư vấn thẩm)",
+    "name": "ngay_qd_chi_dinh_tvt",
+    "sourceColumn": "moc_ngay_qd_chi_dinh_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Hợp đồng TVT (Tư vấn thẩm)",
+    "name": "so_hd_tvt",
+    "sourceColumn": "moc_so_hd_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Hợp đồng TVT (Tư vấn thẩm)",
+    "name": "ngay_hd_tvt",
+    "sourceColumn": "moc_ngay_hd_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ thành lập TTĐ (Tư vấn thẩm)",
+    "name": "so_qd_tl_ttd",
+    "sourceColumn": "moc_so_qd_tl_ttd",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ thành lập TTĐ (Tư vấn thẩm)",
+    "name": "ngay_qd_tl_ttd",
+    "sourceColumn": "moc_ngay_qd_tl_ttd",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BBNT BCTĐ E-HSMT (Tư vấn thẩm)",
+    "name": "so_bbnt_bctd_hsmt",
+    "sourceColumn": "moc_so_bbnt_bctd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BBNT BCTĐ E-HSMT (Tư vấn thẩm)",
+    "name": "ngay_bbnt_bctd_hsmt",
+    "sourceColumn": "moc_ngay_bbnt_bctd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BBNT BCTĐ KQLCNT (Tư vấn thẩm)",
+    "name": "so_bbnt_bctd_kq",
+    "sourceColumn": "moc_so_bbnt_bctd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BBNT BCTĐ KQLCNT (Tư vấn thẩm)",
+    "name": "ngay_bbnt_bctd_kq",
+    "sourceColumn": "moc_ngay_bbnt_bctd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Xác định KL hoàn thành (Tư vấn thẩm)",
+    "name": "so_kl_ht_tvt",
+    "sourceColumn": "moc_so_kl_ht_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Xác định KL hoàn thành (Tư vấn thẩm)",
+    "name": "ngay_kl_ht_tvt",
+    "sourceColumn": "moc_ngay_kl_ht_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Đề nghị thanh toán (Tư vấn thẩm)",
+    "name": "so_de_nghi_tt_tvt",
+    "sourceColumn": "moc_so_de_nghi_tt_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Đề nghị thanh toán (Tư vấn thẩm)",
+    "name": "ngay_de_nghi_tt_tvt",
+    "sourceColumn": "moc_ngay_de_nghi_tt_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thanh lý HĐ (Tư vấn thẩm)",
+    "name": "so_thanh_ly_tvt",
+    "sourceColumn": "moc_so_thanh_ly_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thanh lý HĐ (Tư vấn thẩm)",
+    "name": "ngay_thanh_ly_tvt",
+    "sourceColumn": "moc_ngay_thanh_ly_tvt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Tờ trình E-HSMT (E-HSMT)",
+    "name": "so_ttr_pd_hsmt",
+    "sourceColumn": "moc_so_ttr_pd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Tờ trình E-HSMT (E-HSMT)",
+    "name": "ngay_ttr_pd_hsmt",
+    "sourceColumn": "moc_ngay_ttr_pd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Báo cáo thẩm định E-HSMT (E-HSMT)",
+    "name": "so_bctd_hsmt",
+    "sourceColumn": "moc_so_bctd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Báo cáo thẩm định E-HSMT (E-HSMT)",
+    "name": "ngay_bctd_hsmt",
+    "sourceColumn": "moc_ngay_bctd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt E-HSMT (E-HSMT)",
+    "name": "so_qd_pd_hsmt",
+    "sourceColumn": "moc_so_qd_pd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt E-HSMT (E-HSMT)",
+    "name": "ngay_qd_pd_hsmt",
+    "sourceColumn": "moc_ngay_qd_pd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BB Đóng mở thầu (Kết quả LCNT)",
+    "name": "so_bb_mo_thau",
+    "sourceColumn": "moc_so_bb_mo_thau",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BB Đóng mở thầu (Kết quả LCNT)",
+    "name": "ngay_bb_mo_thau",
+    "sourceColumn": "moc_ngay_bb_mo_thau",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Báo cáo đánh giá E-HSDT (E-HSĐXKT) (Kết quả LCNT)",
+    "name": "so_bcdg",
+    "sourceColumn": "moc_so_bcdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Báo cáo đánh giá E-HSDT (E-HSĐXKT) (Kết quả LCNT)",
+    "name": "ngay_bcdg",
+    "sourceColumn": "moc_ngay_bcdg",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Báo cáo thẩm định nhà thầu đạt kỹ thuật (Kết quả LCNT)",
+    "name": "so_bctd_kt",
+    "sourceColumn": "moc_so_bctd_kt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Báo cáo thẩm định nhà thầu đạt kỹ thuật (Kết quả LCNT)",
+    "name": "ngay_bctd_kt",
+    "sourceColumn": "moc_ngay_bctd_kt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Quyết định phê duyệt nhà thầu đạt kỹ thuật (Kết quả LCNT)",
+    "name": "so_qd_kt",
+    "sourceColumn": "moc_so_qd_kt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Quyết định phê duyệt nhà thầu đạt kỹ thuật (Kết quả LCNT)",
+    "name": "ngay_qd_kt",
+    "sourceColumn": "moc_ngay_qd_kt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BB Mở Tài chính (Kết quả LCNT)",
+    "name": "so_bb_mo_tc",
+    "sourceColumn": "moc_so_bb_mo_tc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BB Mở Tài chính (Kết quả LCNT)",
+    "name": "ngay_bb_mo_tc",
+    "sourceColumn": "moc_ngay_bb_mo_tc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Báo cáo đánh giá E-HSĐXTC (Kết quả LCNT)",
+    "name": "so_bcdg_tc",
+    "sourceColumn": "moc_so_bcdg_tc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Báo cáo đánh giá E-HSĐXTC (Kết quả LCNT)",
+    "name": "ngay_bcdg_tc",
+    "sourceColumn": "moc_ngay_bcdg_tc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thư mời đối chiếu tài liệu (Kết quả LCNT)",
+    "name": "so_thu_moi_dc",
+    "sourceColumn": "moc_so_thu_moi_dc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thư mời đối chiếu tài liệu (Kết quả LCNT)",
+    "name": "ngay_thu_moi_dc",
+    "sourceColumn": "moc_ngay_thu_moi_dc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BB đối chiếu tài liệu (Kết quả LCNT)",
+    "name": "so_bbdc",
+    "sourceColumn": "moc_so_bbdc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BB đối chiếu tài liệu (Kết quả LCNT)",
+    "name": "ngay_bbdc",
+    "sourceColumn": "moc_ngay_bbdc",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thương thảo hợp đồng (Kết quả LCNT)",
+    "name": "so_bb_thuong_thao",
+    "sourceColumn": "moc_so_bb_thuong_thao",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thương thảo hợp đồng (Kết quả LCNT)",
+    "name": "ngay_bb_thuong_thao",
+    "sourceColumn": "moc_ngay_bb_thuong_thao",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Báo cáo thẩm định KQLCNT (Kết quả LCNT)",
+    "name": "so_bctd_kq",
+    "sourceColumn": "moc_so_bctd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Báo cáo thẩm định KQLCNT (Kết quả LCNT)",
+    "name": "ngay_bctd_kq",
+    "sourceColumn": "moc_ngay_bctd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Phê duyệt KQLCNT (Kết quả LCNT)",
+    "name": "so_qd_pd_kq",
+    "sourceColumn": "moc_so_qd_pd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Phê duyệt KQLCNT (Kết quả LCNT)",
+    "name": "ngay_qd_pd_kq",
+    "sourceColumn": "moc_ngay_qd_pd_kq",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: Thư chấp thuận và trao hợp đồng (Kết quả LCNT)",
+    "name": "so_thu_chap_thuan",
+    "sourceColumn": "moc_so_thu_chap_thuan",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: Thư chấp thuận và trao hợp đồng (Kết quả LCNT)",
+    "name": "ngay_thu_chap_thuan",
+    "sourceColumn": "moc_ngay_thu_chap_thuan",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: BB hoàn thiện hợp đồng (Kết quả LCNT)",
+    "name": "so_bbht_hd",
+    "sourceColumn": "moc_so_bbht_hd",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: BB hoàn thiện hợp đồng (Kết quả LCNT)",
+    "name": "ngay_bbht_hd",
+    "sourceColumn": "moc_ngay_bbht_hd",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
     "label": "Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT",
     "name": "ds_can_cu_lap_ke_hoach",
     "sourceColumn": "",

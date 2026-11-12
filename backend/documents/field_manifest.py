@@ -2,6 +2,10 @@
 
 from backend.shared.date_utils import DATETIME_COLUMNS
 from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.timeline.word_fields import (
+    TIMELINE_CONTEXT_LABELS,
+    TIMELINE_DATE_CONTEXT_KEYS,
+)
 
 
 DATE_ONLY_COLUMNS = {
@@ -256,6 +260,7 @@ FIELD_LABELS_BY_TABLE = {
         "so_nha_thau_khong_dat": "Số nhà thầu không đạt",
         "so_nha_thau_dat_khong_xep_hang_1": "Số nhà thầu đạt nhưng không xếp hạng 1",
         "so_nha_thau_khong_duoc_danh_gia": "Số nhà thầu không được đánh giá",
+        **TIMELINE_CONTEXT_LABELS,
     },
 }
 
@@ -287,7 +292,7 @@ def _base_type(sql_type):
 def field_format(column_name):
     if column_name in DATETIME_COLUMNS:
         return "datetime"
-    if column_name in DATE_ONLY_COLUMNS:
+    if column_name in DATE_ONLY_COLUMNS or column_name in TIMELINE_DATE_CONTEXT_KEYS:
         return "date"
     if column_name in CURRENCY_COLUMNS:
         return "currency"

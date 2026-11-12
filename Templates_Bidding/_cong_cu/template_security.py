@@ -1,0 +1,268 @@
+"""Restricted Jinja environment and template policy for DOCX rendering."""
+
+from __future__ import annotations
+
+import html
+import io
+import re
+import zipfile
+from collections.abc import Iterable
+
+from jinja2 import StrictUndefined
+from jinja2 import nodes
+from jinja2.defaults import DEFAULT_FILTERS
+from jinja2.sandbox import SandboxedEnvironment
+
+
+ALLOWED_FILTERS = {
+    "capitalize",
+    "default",
+    "first",
+    "float",
+    "int",
+    "join",
+    "last",
+    "length",
+    "list",
+    "lower",
+    "replace",
+    "reverse",
+    "round",
+    "sort",
+    "string",
+    "title",
+    "trim",
+    "upper",
+}
+ALLOWED_STATEMENT_TAGS = {"for", "endfor", "if", "elif", "else", "endif"}
+
+_STATEMENT_PATTERN = re.compile(r"{%\s*(.*?)\s*%}", re.DOTALL)
+_EXPRESSION_PATTERN = re.compile(r"{{\s*(.*?)\s*}}", re.DOTALL)
+_XML_TAG_PATTERN = re.compile(r"<[^>]+>")
+
+_FORBIDDEN_EXPRESSION_NODES = (
+    nodes.Add,
+    nodes.Assign,
+    nodes.AssignBlock,
+    nodes.Block,
+    nodes.Call,
+    nodes.CallBlock,
+    nodes.Concat,
+    nodes.Div,
+    nodes.EnvironmentAttribute,
+    nodes.ExprStmt,
+    nodes.Extends,
+    nodes.FilterBlock,
+    nodes.FloorDiv,
+    nodes.FromImport,
+    nodes.Import,
+    nodes.Include,
+    nodes.InternalName,
+    nodes.Macro,
+    nodes.MarkSafe,
+    nodes.MarkSafeIfAutoescape,
+    nodes.Mod,
+    nodes.Mul,
+    nodes.OverlayScope,
+    nodes.Pow,
+    nodes.Scope,
+    nodes.Sub,
+    nodes.With,
+)
+
+
+def _validate_expression_source(expression: str) -> None:
+    if not expression:
+        raise ValueError("Mẫu Word chứa biểu thức trống.")
+    try:
+        parsed = create_template_environment().parse("{{ " + expression + " }}")
+    except Exception as exc:
+        raise ValueError("Mẫu Word chứa biểu thức không hợp lệ.") from exc
+
+    for node in parsed.find_all(nodes.Node):
+        if isinstance(node, _FORBIDDEN_EXPRESSION_NODES):
+            raise ValueError(
+                "Mẫu Word chỉ hỗ trợ placeholder, bộ lọc cho phép, "
+                "vòng lặp và điều kiện đơn giản."
+            )
+        if isinstance(node, nodes.Filter) and node.name not in ALLOWED_FILTERS:
+            raise ValueError(
+                f"Mẫu Word chứa bộ lọc không được hỗ trợ: {node.name}."
+            )
+        if isinstance(node, nodes.Getattr) and node.attr.startswith("_"):
+            raise ValueError("Mẫu Word không được truy cập thuộc tính riêng tư.")
+        if isinstance(node, nodes.Getitem):
+            argument = node.arg
+            if not isinstance(argument, nodes.Const) or not isinstance(
+                argument.value, (str, int)
+            ):
+                raise ValueError(
+                    "Mẫu Word chỉ hỗ trợ chỉ mục cố định trong placeholder."
+                )
+            if isinstance(argument.value, str) and argument.value.startswith("_"):
+                raise ValueError("Mẫu Word không được truy cập khóa dữ liệu riêng tư.")
+
+
+def create_template_environment() -> SandboxedEnvironment:
+    """Return a fresh, minimal Jinja sandbox for a single render."""
+
+    environment = SandboxedEnvironment(
+        undefined=StrictUndefined,
+        # DOCX placeholders are embedded directly in WordprocessingML XML.
+        # Escape scalar values so persisted text cannot terminate an XML node
+        # or inject markup during rendering.
+        autoescape=True,
+    )
+    environment.globals.clear()
+    environment.tests.clear()
+    environment.filters.clear()
+    environment.filters.update(
+        {name: DEFAULT_FILTERS[name] for name in ALLOWED_FILTERS}
+    )
+    return environment
+
+
+def validate_template_statements(xml_parts: Iterable[str]) -> None:
+    """Reject content outside the small placeholder/loop/condition grammar.
+
+    Business templates need row loops and simple conditions, so the accepted
+    language is intentionally a little wider than plain placeholders. Function
+    calls, assignments, imports, macros and arithmetic are rejected before the
+    document reaches docxtpl/Jinja.
+    """
+
+    for xml in xml_parts:
+        for statement in _STATEMENT_PATTERN.findall(xml):
+            plain_statement = html.unescape(_XML_TAG_PATTERN.sub("", statement)).strip()
+            tag = plain_statement.split(None, 1)[0].lower() if plain_statement else ""
+            # docxtpl supports paragraph/row/cell/run prefixes, e.g. ``{%tr for ...%}``.
+            if tag in {"p", "tr", "tc", "r"}:
+                remainder = plain_statement[len(tag):].strip()
+                plain_statement = remainder
+                tag = remainder.split(None, 1)[0].lower() if remainder else ""
+            if tag not in ALLOWED_STATEMENT_TAGS:
+                raise ValueError(
+                    f"Mẫu Word chứa thẻ điều khiển không được hỗ trợ: {tag or 'trống'}."
+                )
+            remainder = plain_statement[len(tag):].strip()
+            if tag == "for":
+                match = re.fullmatch(
+                    r"([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*)"
+                    r"\s+in\s+(.+)",
+                    remainder,
+                    flags=re.DOTALL,
+                )
+                if not match:
+                    raise ValueError("Mẫu Word chứa vòng lặp không hợp lệ.")
+                _validate_expression_source(match.group(2).strip())
+            elif tag in {"if", "elif"}:
+                _validate_expression_source(remainder)
+            elif remainder:
+                raise ValueError(
+                    f"Thẻ {tag} trong mẫu Word không được chứa biểu thức."
+                )
+
+        for expression in _EXPRESSION_PATTERN.findall(xml):
+            plain_expression = html.unescape(
+                _XML_TAG_PATTERN.sub("", expression)
+            ).strip()
+            _validate_expression_source(plain_expression)
+
+
+def _expression_root_names(expression: str) -> set[str]:
+    parsed = create_template_environment().parse("{{ " + expression + " }}")
+    return {
+        node.name
+        for node in parsed.find_all(nodes.Name)
+        if getattr(node, "ctx", None) == "load"
+    }
+
+
+def validate_template_root_keys(
+    xml_parts: Iterable[str], allowed_root_keys: Iterable[str]
+) -> None:
+    """Reject template references outside the exact context manifest.
+
+    Loop target names are local variables, while the iterable and condition
+    expressions must still originate from an allowlisted context root.
+    """
+    allowed = {str(key) for key in allowed_root_keys}
+    referenced = extract_template_root_keys(xml_parts)
+    unknown = sorted(referenced - allowed)
+    if unknown:
+        raise ValueError(
+            "Mẫu Word tham chiếu khóa ngữ cảnh không được phép: "
+            + ", ".join(unknown[:10])
+        )
+
+
+def extract_template_root_keys(xml_parts: Iterable[str]) -> set[str]:
+    """Return external context roots while excluding loop-local identifiers."""
+
+    parts = list(xml_parts)
+    local_names = {"loop"}
+    expressions = []
+
+    for xml in parts:
+        for statement in _STATEMENT_PATTERN.findall(xml):
+            plain = html.unescape(_XML_TAG_PATTERN.sub("", statement)).strip()
+            tag = plain.split(None, 1)[0].lower() if plain else ""
+            if tag in {"p", "tr", "tc", "r"}:
+                plain = plain[len(tag):].strip()
+                tag = plain.split(None, 1)[0].lower() if plain else ""
+            remainder = plain[len(tag):].strip()
+            if tag == "for":
+                match = re.fullmatch(
+                    r"([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*)"
+                    r"\s+in\s+(.+)",
+                    remainder,
+                    flags=re.DOTALL,
+                )
+                if match:
+                    local_names.update(
+                        name.strip() for name in match.group(1).split(",")
+                    )
+                    expressions.append(match.group(2).strip())
+            elif tag in {"if", "elif"}:
+                expressions.append(remainder)
+
+        for expression in _EXPRESSION_PATTERN.findall(xml):
+            expressions.append(
+                html.unescape(_XML_TAG_PATTERN.sub("", expression)).strip()
+            )
+
+    referenced = set()
+    for expression in expressions:
+        if expression:
+            referenced.update(_expression_root_names(expression))
+    return referenced - local_names
+
+
+def extract_docx_template_root_keys(content: bytes) -> set[str]:
+    """Validate and extract context roots from every Word XML part."""
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        parts = []
+        try:
+            for name in archive.namelist():
+                if name.startswith("word/") and name.lower().endswith(".xml"):
+                    parts.append(archive.read(name).decode("utf-8", errors="strict"))
+        except UnicodeDecodeError as exc:
+            raise ValueError("Mẫu Word chứa XML không đúng mã hóa UTF-8.") from exc
+    validate_template_statements(parts)
+    return extract_template_root_keys(parts)
+
+
+def validate_docx_template_statements(content: bytes) -> None:
+    """Validate Jinja statement tags in all Word XML parts of a DOCX archive."""
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        xml_parts = (
+            archive.read(name).decode("utf-8", errors="strict")
+            for name in archive.namelist()
+            if name.startswith("word/") and name.lower().endswith(".xml")
+        )
+        try:
+            validate_template_statements(xml_parts)
+        except UnicodeDecodeError as exc:
+            raise ValueError("Mẫu Word chứa XML không đúng mã hóa UTF-8.") from exc

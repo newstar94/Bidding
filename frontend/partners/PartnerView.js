@@ -8,6 +8,7 @@ import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
 import { canManageWorkspaceWordVariables } from "../auth/accessContext.js";
 import {
+  DEFAULT_WORD_VARIABLES,
   FIELD_METADATA_BY_TABLE,
   getWordColumnLabel,
   getWordSourceTableLabel,
@@ -148,14 +149,21 @@ export function renderDictionary(group) {
     }
     return normTbl;
   };
+  const getDefaultVariable = (tbl, col) => DEFAULT_WORD_VARIABLES.find(
+    (item) => item.sourceTable === tbl && item.sourceColumn === col,
+  );
   const getColumnFormat = (tbl, col) => (
-    FIELD_METADATA_BY_TABLE[normalizeSourceTable(tbl)]?.[col]?.format || "text"
+    FIELD_METADATA_BY_TABLE[normalizeSourceTable(tbl)]?.[col]?.format
+    || getDefaultVariable(tbl, col)?.format
+    || "text"
   );
   const getColumnLabel = (tbl, col) => {
     if (!col || col === "*") return "Toàn bộ bảng (Biến danh sách)";
     const normTbl = normalizeSourceTable(tbl);
     const manifestLabel = getWordColumnLabel(normTbl, col);
     if (manifestLabel !== col) return manifestLabel;
+    const defaultLabel = getDefaultVariable(tbl, col)?.label;
+    if (defaultLabel) return defaultLabel;
     const cols = {
       "chu_dau_tu": {
         "ten_chu_dau_tu": "Tên chủ đầu tư",
