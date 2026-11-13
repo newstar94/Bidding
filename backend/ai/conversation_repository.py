@@ -281,7 +281,7 @@ def cleanup_expired_conversations(
 ) -> int:
     """Soft-delete conversations idle for more than ``retention_days`` days.
 
-    Called by the retention cleanup loop in ``backend.lifecycle`` (ADR 0044).
+    Called by the retention cleanup loop in ``backend.lifecycle`` (ADR 0101).
     Each batch commits on its own so a large backlog never holds long row
     locks. Messages stay attached to the soft-deleted conversation, exactly
     like a user delete; ``updated_at`` keeps the last activity time.
