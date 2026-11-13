@@ -13,6 +13,7 @@ from datetime import datetime
 from backend.documents.docx_context_policy import project_docx_context
 from backend.shared.date_utils import vietnam_now, vietnam_today
 from backend.shared.helpers import database
+from backend.sync.deadline_alerts import timeline_row_is_overdue
 from backend.timeline.effective_timeline import (
     CATALOG,
     TIMELINE_TEMPLATE_VERSION,
@@ -131,13 +132,8 @@ def _project_item(item):
     value.update({
         "display_date": _display_date(date),
         "is_planned_date": bool(not value.get("ngay_thuc_te") and value.get("ngay_du_kien")),
-        "is_overdue": bool(
-            value.get("applicability") == "APPLICABLE"
-            and value.get("ngay_du_kien")
-            and not value.get("ngay_thuc_te")
-            and value.get("trang_thai") not in {"DONE", "NOT_APPLICABLE"}
-            and _date_only(value.get("ngay_du_kien")) < vietnam_today().isoformat()
-        ),
+        # One overdue rule for Word exports and the dashboard alert (ADR 0103).
+        "is_overdue": timeline_row_is_overdue(value, vietnam_today()),
     })
     return value
 

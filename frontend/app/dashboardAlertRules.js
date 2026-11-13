@@ -3,6 +3,9 @@ import { resolvePackageResultStatus } from "../packages/lotEvaluationScope.js";
 import { parseEvaluationMetadataForDisplay } from "../packages/evaluationMetadata.js";
 
 const CONTRACT_EXPIRY_WARNING_DAYS = 10;
+// ADR 0103 — keep equal to BID_VALIDITY_WARNING_DAYS in backend/sync/deadline_alerts.py.
+export const BID_VALIDITY_WARNING_DAYS = 7;
+const BID_VALIDITY_STATUSES = new Set(["Đã mở thầu", "Đang chấm thầu", "Đã có kết quả một phần"]);
 export const ALERT_META = {
   closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
   closingSoon: { label: "Sắp đóng thầu", detail: "Trong 7 ngày tới", icon: "clock-3", tone: "amber" },
@@ -11,7 +14,9 @@ export const ALERT_META = {
   contractExpired: { label: "Hợp đồng đã hết hạn", detail: "Chưa hoàn tất nghĩa vụ hợp đồng", icon: "file-warning", tone: "red" },
   contractExpiring: { label: "Hợp đồng sắp hết hạn", detail: `Trong ${CONTRACT_EXPIRY_WARNING_DAYS} ngày tới`, icon: "file-clock", tone: "amber" },
   planPublishingWarning: { label: "Cần đăng tải kế hoạch", detail: "Đã qua 3 ngày làm việc", icon: "megaphone", tone: "amber" },
-  planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" }
+  planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" },
+  bidValidityExpiring: { label: "Hiệu lực HSDT sắp hết", detail: `Còn tối đa ${BID_VALIDITY_WARNING_DAYS} ngày hoặc đã hết`, icon: "shield-alert", tone: "red" },
+  milestoneOverdue: { label: "Mốc tiến độ quá hạn", detail: "Đã qua ngày dự kiến, chưa có ngày thực tế", icon: "alarm-clock", tone: "amber" }
 };
 const ALERT_DEADLINE_SOURCE = Object.freeze({
   closingToday: "Thời gian đóng thầu",
@@ -22,6 +27,8 @@ const ALERT_DEADLINE_SOURCE = Object.freeze({
   contractExpiring: "Ngày ký và thời hạn hợp đồng",
   planPublishingWarning: "Ngày phê duyệt và lịch ngày làm việc",
   planPublishingOverdue: "Ngày phê duyệt và lịch ngày làm việc",
+  bidValidityExpiring: "Thời điểm đóng thầu và số ngày hiệu lực HSDT/bảo đảm dự thầu",
+  milestoneOverdue: "Ngày dự kiến trên tab Tiến độ",
 });
 const ALERT_NEXT_STEP = Object.freeze({
   closingToday: "Kiểm tra mốc đóng thầu và mở hồ sơ gói thầu",
@@ -32,8 +39,10 @@ const ALERT_NEXT_STEP = Object.freeze({
   contractExpiring: "Mở hợp đồng để rà soát thời hạn",
   planPublishingWarning: "Mở kế hoạch để kiểm tra việc đăng tải",
   planPublishingOverdue: "Mở kế hoạch để xử lý việc đăng tải quá hạn",
+  bidValidityExpiring: "Mở gói thầu để xem xét yêu cầu gia hạn hiệu lực",
+  milestoneOverdue: "Mở gói thầu để cập nhật tiến độ",
 });
-const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "closingToday", "delayedEvaluation", "contractExpiring", "planPublishingWarning", "closingSoon"];
+const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "bidValidityExpiring", "closingToday", "delayedEvaluation", "milestoneOverdue", "contractExpiring", "planPublishingWarning", "closingSoon"];
 function parseDashboardDate(value) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -201,6 +210,76 @@ export function deriveContractExpiryAlerts(contracts = [], now = new Date(), war
       alertKey,
       deadline: deadline.toISOString(),
       alertDetail: missingSteps.join(" · ")
+    });
+  });
+  return { counts, items };
+}
+
+function positiveDays(value) {
+  const days = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isFinite(days) && days > 0 ? days : 0;
+}
+
+function calendarDate(value) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function latestClosingDate(pkg) {
+  const candidates = [pkg.thoiGianDongThau, ...(Array.isArray(pkg.giaHanList) ? pkg.giaHanList : [])
+    .filter((item) => !item?.archivedAt && !item?.deletedAt)
+    .map((item) => item?.thoiGianDongThau)]
+    .map(parseDashboardDate)
+    .filter(Boolean);
+  if (!candidates.length) return null;
+  return new Date(Math.max(...candidates.map((value) => value.getTime())));
+}
+
+// The closing day counts as day one: N days cover the closing day and N - 1 more.
+export function validityLastDay(closingAt, days) {
+  const count = positiveDays(days);
+  if (!closingAt || !count) return null;
+  const result = calendarDate(closingAt);
+  result.setDate(result.getDate() + count - 1);
+  return result;
+}
+
+function bidValidityDetail(daysLeft) {
+  if (daysLeft < 0) return `Đã hết hiệu lực ${Math.abs(daysLeft)} ngày`;
+  if (daysLeft === 0) return "Hết hiệu lực trong hôm nay";
+  return `Còn ${daysLeft} ngày hiệu lực`;
+}
+
+function isoCalendarDate(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+// ADR 0103 — browser copy of backend/sync/deadline_alerts.bid_validity_alert.
+export function deriveBidValidityAlerts(packages = [], now = new Date(), warningDays = BID_VALIDITY_WARNING_DAYS) {
+  const counts = { bidValidityExpiring: 0 };
+  const items = [];
+  const today = calendarDate(now);
+  const warningLimit = new Date(today);
+  warningLimit.setDate(warningLimit.getDate() + warningDays);
+  packages.forEach((pkg) => {
+    if (!BID_VALIDITY_STATUSES.has(resolvePackageResultStatus(pkg))) return;
+    const closing = latestClosingDate(pkg);
+    const deadlines = [
+      validityLastDay(closing, pkg.hieuLucHsdt),
+      validityLastDay(closing, pkg.hieuLucDamBaoDuThau),
+    ].filter(Boolean);
+    if (!deadlines.length) return;
+    const deadline = new Date(Math.min(...deadlines.map((value) => value.getTime())));
+    if (deadline > warningLimit) return;
+    const daysLeft = Math.round((deadline - today) / 86400000);
+    counts.bidValidityExpiring++;
+    items.push({
+      targetType: "package",
+      id: pkg.id,
+      maGoiThau: pkg.maGoiThau || "",
+      tenGoiThau: pkg.tenGoiThau || "",
+      deadline: isoCalendarDate(deadline),
+      alertKey: "bidValidityExpiring",
+      alertDetail: bidValidityDetail(daysLeft),
     });
   });
   return { counts, items };

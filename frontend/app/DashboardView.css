@@ -309,6 +309,46 @@
   min-width: 0;
   overflow: hidden;
 }
+.dashboard-staff-card {
+  margin-bottom: 18px;
+}
+.dashboard-staff-table .dashboard-staff-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dashboard-staff-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--touch-target-min);
+  justify-content: center;
+}
+.dashboard-staff-name small {
+  color: var(--ink-muted);
+}
+.dashboard-staff-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dashboard-staff-link strong {
+  color: var(--primary);
+}
+.dashboard-staff-link:hover strong {
+  text-decoration: underline;
+}
+.dashboard-staff-table .dashboard-staff-alerts {
+  color: var(--danger);
+  font-weight: 700;
+}
+.dashboard-staff-unassigned td {
+  color: var(--ink-muted);
+}
 .dashboard-status-card .card-body {
   display: flex;
   align-items: center;

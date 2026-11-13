@@ -85,6 +85,33 @@
         </section>
     </div>
 
+    <section class="dashboard-card dashboard-staff-card" id="dashboard-staff-card" aria-labelledby="dashboard-staff-title" hidden>
+        <div class="card-header">
+            <div class="dashboard-card-title-group">
+                <h3 class="card-title" id="dashboard-staff-title">Điều phối nhân sự</h3>
+                <span class="dashboard-count-badge" id="dashboard-staff-count">0 người</span>
+            </div>
+            <span class="dashboard-card-note">Gói thầu chưa có kết quả, hợp đồng đang thực hiện và cảnh báo của người được phân công</span>
+        </div>
+        <div class="card-body overflow-x dashboard-table-body">
+            <table class="data-table dashboard-staff-table" data-density="compact" aria-label="Khối lượng công việc theo người phụ trách">
+                <thead>
+                    <tr>
+                        <th>Người phụ trách</th>
+                        <th class="dashboard-staff-number">Gói đang xử lý</th>
+                        <th class="dashboard-staff-number">Chuẩn bị</th>
+                        <th class="dashboard-staff-number">Mời thầu</th>
+                        <th class="dashboard-staff-number">Mở/đánh giá</th>
+                        <th class="dashboard-staff-number">HĐ đang thực hiện</th>
+                        <th class="dashboard-staff-number">Cảnh báo</th>
+                        <th>Hạn sớm nhất</th>
+                    </tr>
+                </thead>
+                <tbody id="dashboard-staff-rows"></tbody>
+            </table>
+        </div>
+    </section>
+
     <div class="dashboard-section-heading">
         <div>
             <span class="dashboard-section-kicker" id="dashboard-overview-kicker">Phạm vi được phân công</span>

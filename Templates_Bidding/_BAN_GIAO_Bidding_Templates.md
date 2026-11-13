@@ -1,6 +1,6 @@
 # Bàn giao: phần mềm Bidding và xử lý mẫu Word
 
-Cập nhật: 12/11/2026. Mở cuộc trò chuyện mới, đính kèm file này và nói: "Đọc file bàn giao rồi làm tiếp phần Bidding/mẫu Word".
+Cập nhật: 13/11/2026. Mở cuộc trò chuyện mới, đính kèm file này và nói: "Đọc file bàn giao rồi làm tiếp phần Bidding/mẫu Word".
 
 ## 1. Thư mục trên máy
 
@@ -81,18 +81,18 @@ Mỗi mốc không lặp trên tab Tiến độ (48 mốc) có hai biến hệ t
 ## 4. Trạng thái 101 mẫu trong `Templates_Bidding`
 
 - Cả 101 mẫu đều kết xuất được qua bản mô phỏng pipeline Bidding và là file Word hợp lệ.
-- **495 chỗ còn để `[[...]]`:**
-  - 465 chỗ: thông tin đơn vị tư vấn lập/thẩm (TVL/TVT): Tư vấn lập/thẩm (kể cả bản in hoa), đại diện, chức vụ, danh xưng, địa chỉ, địa danh, điện thoại, mã số thuế, tài khoản, ngân hàng, Citad, dấu. Bidding có dữ liệu này qua hợp đồng phân loại "Tư vấn"/"Thẩm định" (`hop_dong.nha_thau_id` → `nha_thau`) nhưng chưa đưa ra Word.
+- **30 chỗ còn để `[[...]]`** (13/11/2026: 465 chỗ TVL/TVT đã chuyển sang biến ADR 0100, xem mục 5b):
   - 3 chỗ: Ưu đãi, Giá trị ưu đãi tổng. Có cột cộng ưu đãi nhưng không phải trường Word.
   - 5 chỗ: không có dữ liệu. Gồm "Ngày cuối hoàn thiện" (3) và "Ngày báo cáo" trong mẫu KQCĐ CXN (2).
   - 22 chỗ: cần tính toán. Gồm "Bảo đảm thực hiện hợp đồng" (làm được bằng biến tính toán: tỷ lệ × giá) và các số liệu theo từng nhà thầu: Số phần tham dự/đạt/không đạt/xếp hạng 1, Giá phần lô tham dự (đạt xếp hạng 1) tổng.
-- **121 chỗ chỉ hiện `[[...]]` khi thiếu dữ liệu:**
+- **175 chỗ chỉ hiện `[[...]]` khi thiếu dữ liệu:**
   - Địa danh (66): khi địa chỉ chủ đầu tư không có tỉnh.
+  - Địa danh TVL (23) / TVT (31): khi địa chỉ đơn vị tư vấn không có tỉnh.
   - Các dòng tổng (38): khi bảng có từ 2 dòng trở lên.
   - Áp dụng Hình thức/Phương thức/Loại hợp đồng (12): ngoài 3 trường hợp đã biết.
   - Chứng thư thẩm định (5): khi mốc chưa có số và ngày.
 - **Lưu ý trong mẫu:**
-  - `8. BCĐG PLQT2/5.1.1` có tên "Ngô Anh Tuấn" gõ sẵn ở 3 chỗ.
+  - ~~`8. BCĐG PLQT2/5.1.1` có tên "Ngô Anh Tuấn" gõ sẵn ở 3 chỗ.~~ Đã bỏ trong mẫu gốc ngày 13/11/2026 và đã chuyển lại.
   - `8. BCĐG TVB2/5.4.1` có dòng "Hà Nội, [[Ngày thành lập TVL]]". Có lẽ phải là ngày báo cáo tài chính, nhưng hiện vẫn lấy ngày thành lập tổ chuyên gia.
   - `5. TVTB1/3.3` dùng nhầm biến "Ngày ký BBHT TVL"; đã cho lấy mốc biên bản hoàn thiện của tư vấn thẩm.
 
@@ -123,17 +123,21 @@ Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin 
 - Test: `tests/test_consultant_word_variables.py` (mới) đạt cùng `test_timeline_word_variables.py` và `test_word_variable_labels.py`, tổng 30 test.
 - Công cụ: `mapping.py` có `CONSULTANT_ROOT` và suy luận "Địa danh TVL/TVT" từ địa chỉ đơn vị; `render_test.py` có dữ liệu giả lập TVL/TVT.
 
+**Chuyển lại mẫu (xong 13/11/2026)**
+1. `convert.py` chạy từ 20 thư mục mẫu NĐ30 (bỏ `_Backup_truoc_format`, `Pictures`) vào thư mục tạm: 101 file, 0 lỗi.
+2. `render_test.py`: 101/101 đạt, cả trên thư mục tạm lẫn `Templates_Bidding` sau khi chép. Giá trị giả lập TVL/TVT hiện đủ, không còn `[[...TVL/TVT]]`.
+3. Chỉ chép 57 mẫu có nội dung thay đổi. 44 mẫu còn lại giống hệt từng phần bên trong nên giữ bản cũ. So sánh văn bản: 55 mẫu chỉ khác ở chỗ TVL/TVT; `8. BCĐG PLQT2/5.1.1` khác thêm do mẫu gốc vừa sửa; `4. TVLB2/2.8` và PLQT2 có phần đầu trang được Word đổi tên khi lưu (cấu trúc trang không đổi). `build_xlsx.py` đã chạy: sheet "Chưa có dữ liệu" còn 10 dòng.
+4. Không chạy test Word: không đổi mã, và không test nào đọc `Templates_Bidding`.
+
 **Còn lại**
-1. Chạy `convert.py` từ thư mục mẫu NĐ30 vào một thư mục tạm.
-2. Chạy `render_test.py` trên thư mục tạm đó.
-3. Nếu ổn, chép kết quả vào `Templates_Bidding`, rồi chạy `build_xlsx.py`.
-4. Chạy toàn bộ test Word. Test cần PostgreSQL sẽ lỗi nếu Bidding/cơ sở dữ liệu chưa bật.
-5. Khởi động lại Bidding.
+1. Khởi động lại Bidding nếu chưa nạp mã ADR 0100.
+2. Tải lại 57 mẫu đã đổi lên "Biểu mẫu Word" của từng không gian làm việc (ứng dụng không đọc trực tiếp thư mục này). Danh sách: `git status -- Templates_Bidding`.
+3. Xuất thử một gói thầu có hợp đồng phân loại "Tư vấn" và "Thẩm định" để kiểm tra dữ liệu thật.
 
 ## 6. Việc còn mở (chờ chủ sản phẩm quyết)
 
-1. ~~Đưa thông tin đơn vị tư vấn ra Word (465 chỗ).~~ Phần code xong theo ADR 0100; còn chuyển lại mẫu (mục 5b).
-2. Xóa tên "Ngô Anh Tuấn" gõ sẵn trong mẫu PLQT2.
+1. ~~Đưa thông tin đơn vị tư vấn ra Word (465 chỗ).~~ Xong: code theo ADR 0100, mẫu chuyển lại ngày 13/11/2026 (mục 5b).
+2. ~~Xóa tên "Ngô Anh Tuấn" gõ sẵn trong mẫu PLQT2.~~ Xong ngày 13/11/2026.
 3. Nếu đơn vị dùng phần mềm luôn là đơn vị tư vấn lập thì ánh xạ `[[Tư vấn lập]]` → `{ten_to_chuc}`.
 4. Chuyển thư mục mẫu ra `D:\Templates_Bidding`.
 5. Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"; xem lại cách lấy các số liệu theo từng nhà thầu (đếm và cộng theo phần lô).

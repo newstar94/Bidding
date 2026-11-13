@@ -5,6 +5,7 @@ import { renderLucideIcons } from "../shared/lucideIcons.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { loadWorkspaceEmployees } from "../shared/workspaceEmployeeLoader.js";
 import { isTrialFullAccess } from "../commercial-policy/trialMode.js";
 import {
   CANONICAL_SAVE_STATUS,
@@ -1075,6 +1076,18 @@ export async function editEmployee(id) {
 
 export async function viewEmployee(id) {
   if (!this.view.renderEmployeeDetail) return;
+  const employeeId = String(id || "");
+  const known = (list) => (list || []).some((item) => String(item.id) === employeeId);
+  // The dashboard staff board (ADR 0104) can open a member before the
+  // background employee load finishes; load once instead of opening empty.
+  if (!known(this.model.state.employees) && !known(this.model.state.formerEmployees)) {
+    try {
+      await loadWorkspaceEmployees(this.model);
+    } catch {
+      return;
+    }
+    if (!known(this.model.state.employees)) return;
+  }
   if (!document.getElementById("modal-manager-employee-detail")) {
     await this.ensureLazyModal?.("modal-manager-employee-detail");
   }

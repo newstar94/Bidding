@@ -2,6 +2,7 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
+import { registerCommandArgs } from "../shared/commandArgs.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { isTrialFullAccess } from "../commercial-policy/trialMode.js";
@@ -24,6 +25,7 @@ import {
   ALERT_META,
   ALERT_NEXT_STEP,
   dashboardAlertMatches,
+  deriveBidValidityAlerts,
   deriveContractExpiryAlerts,
   deriveDashboardAlerts,
   derivePlanPublishingAlerts,
@@ -200,7 +202,13 @@ function buildLocalDashboardData(view) {
   const packageAlerts = deriveDashboardAlerts(packages);
   const planAlerts = derivePlanPublishingAlerts(plans);
   const contractAlerts = deriveContractExpiryAlerts(contracts);
-  const alertItems = selectDashboardActionItems([...packageAlerts.items, ...planAlerts.items, ...contractAlerts.items]);
+  const validityAlerts = deriveBidValidityAlerts(packages);
+  const alertItems = selectDashboardActionItems([
+    ...packageAlerts.items,
+    ...validityAlerts.items,
+    ...planAlerts.items,
+    ...contractAlerts.items,
+  ]);
   return {
     counts: {
       kehoach: plans.length,
@@ -220,7 +228,7 @@ function buildLocalDashboardData(view) {
     totalContractValue: model.sumVND(contracts.map((contract) => contract.giaTri || 0)),
     recentPackages: [...packages].reverse().slice(0, 4),
     alerts: {
-      counts: { ...packageAlerts.counts, ...planAlerts.counts, ...contractAlerts.counts },
+      counts: { ...packageAlerts.counts, ...validityAlerts.counts, ...planAlerts.counts, ...contractAlerts.counts },
       items: alertItems
     }
   };
@@ -246,7 +254,8 @@ function buildServerDashboardData(view, summary) {
       counts: { ...Object.fromEntries(Object.keys(ALERT_META).map((key) => [key, 0])), ...(summary.alertCounts || {}) },
       items: Array.isArray(summary.alertItems) ? summary.alertItems : []
     },
-    evaluationDelayDays: Number(summary.evaluationDelayDays || 7)
+    evaluationDelayDays: Number(summary.evaluationDelayDays || 7),
+    staffWorkload: summary.staffWorkload || null
   };
 }
 
@@ -373,6 +382,64 @@ function renderDashboardAlerts(alerts) {
   tbody.innerHTML = trustedHTML(buildDashboardActionRows(alerts));
 }
 
+const STAFF_ROLE_LABELS = Object.freeze({
+  owner: "Quản lý cao nhất",
+  manager: "Quản lý",
+  employee: "Chuyên viên",
+});
+
+function staffDeadline(value) {
+  const date = parseDashboardDate(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function staffNumberCells(row) {
+  const alerts = Number(row.alerts || 0);
+  return `
+        <td class="dashboard-staff-number">${Number(row.activePackages || 0)}</td>
+        <td class="dashboard-staff-number">${Number(row.preparing || 0)}</td>
+        <td class="dashboard-staff-number">${Number(row.inviting || 0)}</td>
+        <td class="dashboard-staff-number">${Number(row.evaluating || 0)}</td>
+        <td class="dashboard-staff-number">${row.activeContracts === undefined ? "—" : Number(row.activeContracts || 0)}</td>
+        <td class="dashboard-staff-number${alerts ? " dashboard-staff-alerts" : ""}">${alerts}</td>
+        <td>${escapeHtml(staffDeadline(row.earliestDeadline))}</td>`;
+}
+
+// ADR 0104 — manager-only staff coordination board built by the server summary.
+export function buildStaffWorkloadRows(workload) {
+  const rows = Array.isArray(workload?.rows) ? workload.rows : [];
+  const unassigned = workload?.unassigned || {};
+  const memberRows = rows.map((row) => {
+    const name = String(row.name || "").trim() || "Chưa có tên";
+    const role = STAFF_ROLE_LABELS[row.role] || STAFF_ROLE_LABELS.employee;
+    const argsKey = registerCommandArgs([String(row.userId || "")]);
+    return `
+      <tr>
+        <td><button type="button" class="dashboard-staff-name dashboard-staff-link" data-bf-action="call" data-fn="viewEmployee" data-arg-key="${argsKey}" aria-label="Xem công việc được giao của ${safeAttr(name)}"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(role)}</small></button></td>${staffNumberCells(row)}
+      </tr>`;
+  });
+  if (Number(unassigned.activePackages || 0) > 0) {
+    memberRows.push(`
+      <tr class="dashboard-staff-unassigned">
+        <td><span class="dashboard-staff-name"><strong>Chưa phân công</strong><small>Gói thầu chưa có người phụ trách</small></span></td>${staffNumberCells({ ...unassigned, activeContracts: undefined })}
+      </tr>`);
+  }
+  return memberRows.join("");
+}
+
+function renderStaffWorkload(workload) {
+  const card = document.getElementById("dashboard-staff-card");
+  if (!card) return;
+  const rows = Array.isArray(workload?.rows) ? workload.rows : [];
+  // A one-person workspace has nothing to coordinate.
+  card.hidden = rows.length < 2;
+  if (card.hidden) return;
+  setText("dashboard-staff-count", `${rows.length} người`);
+  const tbody = document.getElementById("dashboard-staff-rows");
+  if (tbody) tbody.innerHTML = trustedHTML(buildStaffWorkloadRows(workload));
+}
+
 function renderRecentPackages(view, packages) {
   const tbody = document.querySelector("#recent-packages-table tbody");
   if (!tbody) return;
@@ -407,6 +474,7 @@ function renderDashboardSnapshot(view, data) {
   renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts, PLAN_STATUS_COLORS);
   renderContractSummary(data.contractStatusCounts, data.contractValues, data.contractStatusCatalog);
   renderDashboardAlerts(data.alerts);
+  renderStaffWorkload(data.staffWorkload);
   renderPackageDonut(data.packageStatusCounts);
   renderRecentPackages(view, data.recentPackages);
 }

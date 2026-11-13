@@ -4,6 +4,7 @@ import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml, htmlIcon, safeAttr } from "../shared/view_helpers.js";
 import {
   ALERT_META,
+  deriveBidValidityAlerts,
   deriveContractExpiryAlerts,
   deriveDashboardAlerts,
   derivePlanPublishingAlerts,
@@ -71,6 +72,7 @@ function rawWorkAlerts(controller) {
   const contracts = model.getFilteredHopDong?.() || [];
   return selectDashboardActionItems([
     ...deriveDashboardAlerts(packages).items,
+    ...deriveBidValidityAlerts(packages).items,
     ...derivePlanPublishingAlerts(plans).items,
     ...deriveContractExpiryAlerts(contracts).items
   ]);

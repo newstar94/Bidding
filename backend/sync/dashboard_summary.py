@@ -15,6 +15,14 @@ from backend.documents.docx_formula_service import (
 )
 from backend.shared.date_utils import vietnam_today
 from backend.shared.sql_identifiers import sql_identifier
+from backend.sync.deadline_alerts import (
+    bid_validity_alert,
+    bid_validity_detail,
+    calendar_day,
+    latest_closing_datetime,
+    milestone_overdue_detail,
+    overdue_milestones,
+)
 
 # Tables whose latest snapshot rows are counted by build_dashboard_summary.
 _DASHBOARD_LATEST_TABLES = frozenset({
@@ -33,17 +41,24 @@ PLAN_STATUS_LABELS = ("Chưa triển khai", "Đang thực hiện", "Hoàn thành
 ALERT_COUNT_KEYS = (
     "closingToday", "closingSoon", "overdueOpening", "delayedEvaluation",
     "contractExpired", "contractExpiring", "planPublishingWarning", "planPublishingOverdue",
+    "bidValidityExpiring", "milestoneOverdue",
 )
 ALERT_PRIORITY = {
     "overdueOpening": 0,
     "contractExpired": 1,
     "planPublishingOverdue": 2,
-    "closingToday": 3,
-    "delayedEvaluation": 4,
-    "contractExpiring": 5,
-    "planPublishingWarning": 6,
-    "closingSoon": 7,
+    "bidValidityExpiring": 3,
+    "closingToday": 4,
+    "delayedEvaluation": 5,
+    "milestoneOverdue": 6,
+    "contractExpiring": 7,
+    "planPublishingWarning": 8,
+    "closingSoon": 9,
 }
+# ADR 0103: a package can carry these alerts in addition to its status alert.
+# Only this many packages with stored overdue-looking milestones are evaluated
+# per dashboard build; the count is flagged as partial beyond the cap.
+MILESTONE_ALERT_CANDIDATE_LIMIT = 200
 
 
 def _parse_iso_date(value):
@@ -231,6 +246,221 @@ def _effective_package_rows_sql(latest_packages_sql):
     """
 
 
+def _bid_validity_alert_items(cursor, visible_packages_sql, package_params, today):
+    """ADR 0103: bids or bid securities whose validity ends within 7 days."""
+
+    cursor.execute(f"""
+        WITH visible_packages AS ({visible_packages_sql})
+        SELECT vp.id, vp.ma_goi_thau, vp.ten_goi_thau, vp.effective_status,
+               vp.thoi_gian_dong_thau, vp.hieu_luc_hsdt, vp.hieu_luc_dam_bao_du_thau,
+               (
+                   SELECT MAX(extension.thoi_gian_dong_thau)
+                   FROM goi_thau_gia_han extension
+                   WHERE extension.organization_id = vp.organization_id
+                     AND extension.goi_thau_id = vp.id
+               ) AS latest_extension_closing
+        FROM visible_packages vp
+        WHERE vp.effective_status IN ('OPENED', 'EVALUATING', 'PARTIALLY_AWARDED')
+          AND (COALESCE(vp.hieu_luc_hsdt, 0) > 0 OR COALESCE(vp.hieu_luc_dam_bao_du_thau, 0) > 0)
+    """, tuple(package_params))
+    items = []
+    for row in cursor.fetchall():
+        closing = latest_closing_datetime(row[4], (row[7],))
+        result = bid_validity_alert(row[3], closing, row[5], row[6], today)
+        if result is None:
+            continue
+        deadline, days_left = result
+        items.append({
+            "targetType": "package",
+            "id": str(row[0] or ""),
+            "maGoiThau": str(row[1] or ""),
+            "tenGoiThau": str(row[2] or ""),
+            "deadline": deadline.isoformat(),
+            "alertKey": "bidValidityExpiring",
+            "alertDetail": bid_validity_detail(days_left),
+        })
+    return items
+
+
+def _milestone_overdue_alert_items(cursor, organization_id, visible_packages_sql, package_params, today):
+    """ADR 0103: timeline milestones past their planned date without an actual date.
+
+    Stored rows only pre-select candidates; each candidate is confirmed with the
+    same effective-timeline evaluation the Timeline tab and Word export use, so
+    automatic milestones whose date comes from other records are not flagged.
+    """
+
+    from backend.documents.timeline_context_service import load_effective_timeline_rows
+
+    cursor.execute(f"""
+        WITH visible_packages AS ({visible_packages_sql})
+        SELECT vp.id, vp.ma_goi_thau, vp.ten_goi_thau
+        FROM visible_packages vp
+        JOIN goi_thau_moc_tien_do milestone
+          ON milestone.organization_id = vp.organization_id
+         AND milestone.goi_thau_id = vp.id
+        WHERE vp.effective_status <> 'CANCELLED'
+          AND milestone.ngay_du_kien IS NOT NULL
+          AND milestone.ngay_du_kien < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+          AND COALESCE(milestone.trang_thai, 'PENDING') NOT IN ('DONE', 'NOT_APPLICABLE')
+        GROUP BY vp.id, vp.ma_goi_thau, vp.ten_goi_thau
+        ORDER BY MAX(milestone.ngay_du_kien) DESC, vp.id
+        LIMIT ?
+    """, (*package_params, MILESTONE_ALERT_CANDIDATE_LIMIT + 1))
+    candidates = cursor.fetchall()
+    partial = len(candidates) > MILESTONE_ALERT_CANDIDATE_LIMIT
+    items = []
+    for row in candidates[:MILESTONE_ALERT_CANDIDATE_LIMIT]:
+        package_id = str(row[0] or "")
+        overdue = overdue_milestones(
+            load_effective_timeline_rows(cursor, organization_id, package_id),
+            today,
+        )
+        if not overdue:
+            continue
+        items.append({
+            "targetType": "package",
+            "id": package_id,
+            "maGoiThau": str(row[1] or ""),
+            "tenGoiThau": str(row[2] or ""),
+            "deadline": str(overdue[0].get("ngay_du_kien") or "")[:10],
+            "alertKey": "milestoneOverdue",
+            "alertDetail": milestone_overdue_detail(overdue),
+        })
+    return items, partial
+
+
+# ADR 0104: staff coordination board for managers.
+STAFF_STAGE_BY_STATUS = {
+    "PREPARING": "preparing",
+    "INVITED": "inviting",
+    "OPENED": "evaluating",
+    "EVALUATING": "evaluating",
+    "PARTIALLY_AWARDED": "evaluating",
+}
+PACKAGE_STATUS_ALERT_KEYS = frozenset({"overdueOpening", "closingToday", "delayedEvaluation", "closingSoon"})
+_STAFF_TARGET_TYPES = {"goithau": "package", "hopdong": "contract", "kehoach": "plan"}
+
+
+def _empty_workload():
+    return {
+        "activePackages": 0,
+        "preparing": 0,
+        "inviting": 0,
+        "evaluating": 0,
+        "activeContracts": 0,
+        "alerts": 0,
+        "earliestDeadline": "",
+    }
+
+
+def _add_alert(workload, deadline):
+    workload["alerts"] += 1
+    day = calendar_day(deadline)
+    if day and (not workload["earliestDeadline"] or day < workload["earliestDeadline"]):
+        workload["earliestDeadline"] = day
+
+
+def _staff_workload(
+    cursor,
+    organization_id,
+    visible_packages_sql,
+    package_params,
+    status_alert_case_sql,
+    other_alert_items,
+    latest_contracts_sql=None,
+):
+    """Open work and alerts per active member, plus packages nobody is assigned to.
+
+    Called only for managers, who already read every record and assignment of
+    the organization; the board adds no record or field the manager cannot see.
+    """
+
+    cursor.execute("""
+        SELECT tk.id,
+               COALESCE(NULLIF(trim(tvtc.ten_nhan_su), ''), NULLIF(trim(tk.ho_ten), ''),
+                        tk.ten_dang_nhap, tk.email) AS display_name,
+               tvtc.vai_tro_trong_to_chuc,
+               CASE WHEN tc.owner_user_id = tk.id THEN 1 ELSE 0 END AS is_owner
+        FROM thanh_vien_to_chuc tvtc
+        JOIN tai_khoan tk ON tk.id = tvtc.user_id
+        JOIN to_chuc tc ON tc.id = tvtc.organization_id
+        WHERE tvtc.organization_id = ?
+          AND tk.trang_thai = 'active'
+          AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
+    """, (organization_id,))
+    members = {}
+    for row in cursor.fetchall():
+        user_id = str(row[0] or "")
+        if not user_id:
+            continue
+        role = "owner" if int(row[3] or 0) else ("manager" if row[2] == "manager" else "employee")
+        members[user_id] = {"userId": user_id, "name": str(row[1] or ""), "role": role, **_empty_workload()}
+
+    cursor.execute("""
+        SELECT id_nhan_vien, loai_doi_tuong, id_muc_tieu
+        FROM phan_cong_nhan_su
+        WHERE organization_id = ?
+          AND loai_doi_tuong IN ('goithau', 'hopdong', 'kehoach')
+    """, (organization_id,))
+    assignees = {}
+    for row in cursor.fetchall():
+        user_id = str(row[0] or "")
+        if user_id not in members:
+            continue
+        target = (_STAFF_TARGET_TYPES[str(row[1])], str(row[2] or ""))
+        assignees.setdefault(target, set()).add(user_id)
+
+    unassigned = _empty_workload()
+    cursor.execute(f"""
+        WITH visible_packages AS ({visible_packages_sql})
+        SELECT vp.id, vp.effective_status, {status_alert_case_sql} AS alert_key,
+               vp.thoi_gian_dong_thau, vp.thoi_gian_mo_thau
+        FROM visible_packages vp
+        WHERE COALESCE(vp.effective_status, '') NOT IN ('AWARDED', 'CANCELLED')
+    """, tuple(package_params))
+    for row in cursor.fetchall():
+        package_id = str(row[0] or "")
+        owners = [members[user_id] for user_id in assignees.get(("package", package_id), ())]
+        targets = owners or [unassigned]
+        stage = STAFF_STAGE_BY_STATUS.get(str(row[1] or "").upper())
+        alert_key = str(row[2] or "")
+        for workload in targets:
+            workload["activePackages"] += 1
+            if stage:
+                workload[stage] += 1
+            if alert_key:
+                _add_alert(workload, row[4] if alert_key == "delayedEvaluation" else row[3])
+
+    if latest_contracts_sql:
+        cursor.execute(f"""
+            SELECT hd.id
+            FROM ({latest_contracts_sql}) hd
+            WHERE hd.ngay_thanh_ly IS NULL
+              AND hd.trang_thai_hop_dong IN (?, ?)
+        """, (organization_id, "ACTIVE", CONTRACT_STATUS_LABELS["ACTIVE"]))
+        for row in cursor.fetchall():
+            for user_id in assignees.get(("contract", str(row[0] or "")), ()):
+                members[user_id]["activeContracts"] += 1
+
+    for item in other_alert_items:
+        if item.get("alertKey") in PACKAGE_STATUS_ALERT_KEYS:
+            continue  # counted from the full package query above
+        target = (str(item.get("targetType") or ""), str(item.get("id") or ""))
+        owners = assignees.get(target)
+        if owners:
+            for user_id in owners:
+                _add_alert(members[user_id], item.get("deadline"))
+        elif target[0] == "package":
+            _add_alert(unassigned, item.get("deadline"))
+
+    rows = sorted(
+        members.values(),
+        key=lambda row: (-row["alerts"], -row["activePackages"], -row["activeContracts"], row["name"].casefold()),
+    )
+    return {"rows": rows, "unassigned": unassigned}
+
+
 def package_alert_conditions(alias="vp"):
     """Keep dashboard counts and package-list drilldowns on one definition."""
     return {
@@ -304,6 +534,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert
     alert_counts = {key: 0 for key in ALERT_COUNT_KEYS}
     alert_items = []
     recent_packages = []
+    milestone_alert_partial = False
 
     simple_count_specs = []
     for payload_key, table_name in [
@@ -500,17 +731,19 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert
         for row in cursor.fetchall():
             alert_counts[str(row[0])] = int(row[1] or 0)
 
-        cursor.execute(f"""
-            WITH visible_packages AS ({visible_packages_sql}),
-            alert_packages AS (
-                SELECT vp.*,
+        status_alert_case_sql = f"""
                        CASE
                            WHEN {alert_conditions["overdueOpening"]} THEN 'overdueOpening'
                            WHEN {alert_conditions["closingToday"]} THEN 'closingToday'
                            WHEN {alert_conditions["delayedEvaluation"]} THEN 'delayedEvaluation'
                            WHEN {alert_conditions["closingSoon"]} THEN 'closingSoon'
                            ELSE ''
-                       END AS alert_key
+                       END"""
+        cursor.execute(f"""
+            WITH visible_packages AS ({visible_packages_sql}),
+            alert_packages AS (
+                SELECT vp.*,
+                       {status_alert_case_sql} AS alert_key
                 FROM visible_packages vp
             )
             SELECT *
@@ -537,6 +770,19 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert
                 else item.get("thoiGianDongThau")
             ) or ""
             alert_items.append(item)
+
+        today = vietnam_today()
+        validity_items = _bid_validity_alert_items(
+            cursor, visible_packages_sql, package_params, today
+        )
+        alert_counts["bidValidityExpiring"] = len(validity_items)
+        alert_items.extend(validity_items)
+
+        milestone_items, milestone_alert_partial = _milestone_overdue_alert_items(
+            cursor, organization_id, visible_packages_sql, package_params, today
+        )
+        alert_counts["milestoneOverdue"] = len(milestone_items)
+        alert_items.extend(milestone_items)
 
     if can("hopdong", "hop_dong"):
         latest_contracts_sql = latest_cte("hop_dong")
@@ -641,6 +887,18 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert
         counts["assignedHopdong"] = int(assigned_row[0] or 0)
         counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)
 
+    staff_workload = None
+    if manager and can("goithau", "goi_thau"):
+        staff_workload = _staff_workload(
+            cursor,
+            organization_id,
+            visible_packages_sql,
+            package_params,
+            status_alert_case_sql,
+            alert_items,
+            latest_cte("hop_dong") if can("hopdong", "hop_dong") else None,
+        )
+
     alert_items = _select_alert_items(alert_items, limit=alert_limit)
 
     return {
@@ -656,4 +914,6 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id, *, alert
         "alertCounts": alert_counts,
         "alertItems": alert_items,
         "evaluationDelayDays": EVALUATION_REPORT_DELAY_DAYS,
+        "milestoneAlertPartial": milestone_alert_partial,
+        "staffWorkload": staff_workload,
     }
