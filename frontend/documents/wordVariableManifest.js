@@ -3679,6 +3679,34 @@ export const DEFAULT_WORD_VARIABLES = [
     "sourceTable": "__context__"
   },
   {
+    "format": "currency",
+    "label": "Tổng giá các gói thầu hiện hành của kế hoạch",
+    "name": "tong_gia_gt_kh",
+    "sourceColumn": "tong_gia_goi_thau_ke_hoach",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "currency",
+    "label": "Tổng giá trị phần công việc đã thực hiện",
+    "name": "tong_gia_tri_da_th",
+    "sourceColumn": "tong_gia_tri_cv_da_thuc_hien",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "currency",
+    "label": "Tổng giá trị phần công việc không áp dụng hình thức LCNT",
+    "name": "tong_gia_tri_khong_ad",
+    "sourceColumn": "tong_gia_tri_cv_khong_ap_dung",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "currency",
+    "label": "Tổng mức đầu tư/dự toán trừ giá trị phần công việc đã thực hiện",
+    "name": "tmdt_tru_da_th",
+    "sourceColumn": "tong_muc_dau_tu_tru_da_thuc_hien",
+    "sourceTable": "__context__"
+  },
+  {
     "format": "text",
     "label": "Danh sách căn cứ được chọn khi xuất Kế hoạch LCNT",
     "name": "ds_can_cu_lap_ke_hoach",

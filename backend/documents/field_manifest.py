@@ -10,6 +10,10 @@ from backend.timeline.ehsmt_decisions import (
     EHSMT_DECISION_FIELD_LABELS,
     EHSMT_DECISION_LIST_ROOT,
 )
+from backend.documents.computed_word_values import (
+    PLAN_TOTAL_CONTEXT_KEYS,
+    PLAN_TOTAL_LABELS,
+)
 from backend.documents.consultant_context import (
     APPRAISAL_CONSULTANT_ROOT,
     PREPARATION_CONSULTANT_ROOT,
@@ -65,6 +69,8 @@ CURRENCY_COLUMNS = {
     "gia_tri_uoc_tinh",
     "gia_trung_thau",
     "tong_muc_dau_tu",
+    # ADR 0105: plan totals computed for Word exports.
+    *PLAN_TOTAL_CONTEXT_KEYS,
 }
 
 FIELD_LABELS_BY_TABLE = {
@@ -292,6 +298,7 @@ FIELD_LABELS_BY_TABLE = {
         "so_nha_thau_dat_khong_xep_hang_1": "Số nhà thầu đạt nhưng không xếp hạng 1",
         "so_nha_thau_khong_duoc_danh_gia": "Số nhà thầu không được đánh giá",
         **TIMELINE_CONTEXT_LABELS,
+        **PLAN_TOTAL_LABELS,
     },
 }
 

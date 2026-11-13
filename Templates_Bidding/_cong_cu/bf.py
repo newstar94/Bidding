@@ -12,6 +12,11 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from backend.documents import template_security  # noqa: E402
+from backend.documents.computed_word_values import (  # noqa: E402
+    PERFORMANCE_SECURITY_FIELD,
+    performance_security_amount,
+    plan_total_context,
+)
 from backend.documents.custom_exporter import (  # noqa: E402
     enrich_context_with_lowercase_keys,
     enrich_context_with_words,
@@ -28,6 +33,9 @@ from scripts.generate_word_variable_manifest import (  # noqa: E402
 
 __all__ = [
     "COLUMN_LITERAL_CONTEXT",
+    "PERFORMANCE_SECURITY_FIELD",
+    "performance_security_amount",
+    "plan_total_context",
     "enrich_context_with_lowercase_keys",
     "enrich_context_with_words",
     "field_metadata",

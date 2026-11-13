@@ -17,6 +17,7 @@ from backend.documents.timeline_context_service import (
     load_timeline_word_context,
 )
 from backend.documents.consultant_context import load_consultant_word_context
+from backend.documents.computed_word_values import plan_total_context
 from backend.documents.plan_basis_context import (
     materialize_plan_basis_items,
     resolve_plan_basis_rows,
@@ -434,6 +435,8 @@ def _build_plan_context_snapshot(
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat(),
         **timeline_word_values,
+        # ADR 0105: totals the template language cannot add up itself.
+        **plan_total_context(plan, goi_thau_list),
     }
     projected_context = project_docx_context(
             "plan",

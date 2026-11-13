@@ -119,6 +119,16 @@ def build_context(plan):
                'current_time': '2026-11-11T22:33:00+07:00', 'today': '2026-11-11', 'tong_so_nha_thau_tham_du': 2,
                'so_nha_thau_trung_thau': 1,
                'don_vi_tu_van_lap': dict(TVL), 'don_vi_tu_van_tham': dict(TVT)}
+    # ADR 0105: totals and performance-security amount computed by the backend
+    if plan:
+        ctx.update(bf.plan_total_context(ctx['ke_hoach'], ctx['goi_thau_trong_ke_hoach']))
+    else:
+        for key in ('nha_thau', 'ds_nha_thau_tham_du', 'ds_nha_thau_trung_thau',
+                    'ds_nha_thau_truot_thau', 'ds_nha_thau_dat_khong_xep_hang_1'):
+            for item in ctx[key]:
+                amount = bf.performance_security_amount(
+                    ctx['goi_thau'].get('ty_le_bao_dam_hop_dong'), item.get('gia_sau_giam_gia'))
+                item[bf.PERFORMANCE_SECURITY_FIELD] = f'{amount:,}'.replace(',', '.') if amount else ''
     # ADR 0099 timeline milestone scalars (moc_so_* / moc_ngay_*)
     plan_section = {'chung_thu_tdg', 'qd_tl_to', 'ttr_dt', 'qd_dt', 'ttr_kh', 'qd_kh', 'ttr_dt_kh', 'qd_dt_kh'}
     for v in VARS:

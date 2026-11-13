@@ -8,13 +8,14 @@ from .consultant_context import (
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
 from backend.timeline.word_fields import TIMELINE_WORD_CONTEXT_MAPPINGS
+from backend.documents.computed_word_values import PLAN_TOTAL_WORD_MAPPINGS
 from backend.shared.workspace_scope import (
     lock_personal_workspace_mutations,
     personal_scope_id,
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 19
+WORD_DEFAULT_MAPPINGS_VERSION = 20
 
 # ADR 0100: consultant firm variables, e.g. ``ten_tvl`` / ``ten_tvt``.
 _CONSULTANT_NAME_SUFFIXES = {
@@ -495,6 +496,8 @@ WORD_CONTEXT_MAPPINGS = [
     ("so_nt_khong_danh_gia", "so_nha_thau_khong_duoc_danh_gia", "Số nhà thầu không được đánh giá"),
     # ADR 0099: số/ngày văn bản của từng mốc trên tab Tiến độ.
     *TIMELINE_WORD_CONTEXT_MAPPINGS,
+    # ADR 0105: tổng của kế hoạch mà mẫu Word không tự cộng được.
+    *PLAN_TOTAL_WORD_MAPPINGS,
 ]
 
 

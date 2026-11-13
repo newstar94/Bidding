@@ -791,7 +791,7 @@
    "root": 3
   },
   "Bảo đảm thực hiện hợp đồng": {
-   "unmapped": 2
+   "repeat-item": 2
   },
   "Ngày cuối hoàn thiện": {
    "unmapped": 3
@@ -846,10 +846,6 @@
   "Giá trị ưu đãi tổng": [
    "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx",
    "8. BCĐG QT1\\5.1.1. BCĐG HSDT QT1.docx"
-  ],
-  "Bảo đảm thực hiện hợp đồng": [
-   "9. KQLCNT PL\\5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
-   "9. KQLCNT\\5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
   ],
   "Ngày cuối hoàn thiện": [
    "9. KQLCNT PL\\5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
@@ -914,7 +910,7 @@
   },
   "Giá trị đã thực hiện": {
    "{gia_tri}": 8,
-   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá trị đã thực hiện tổng]]{% endif %}{% else %}0{% endfor %}": 5
+   "{{ tong_gia_tri_da_th|default('', true) }}": 5
   },
   "Không áp dụng": {
    "{ten_cong_viec}": 12
@@ -923,10 +919,10 @@
    "{gia_tri}": 12
   },
   "Giá trị đã thực hiện tổng": {
-   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá trị đã thực hiện tổng]]{% endif %}{% else %}0{% endfor %}": 4
+   "{{ tong_gia_tri_da_th|default('', true) }}": 4
   },
   "Giá tổng dự toán": {
-   "{% for x in ke_hoach.cv_da_thuc_hien %}{% if loop.first %}[[Giá tổng dự toán]]{% endif %}{% else %}{{ ke_hoach.tong_muc_dau_tu|default('', true) }}{% endfor %}": 9
+   "{{ tmdt_tru_da_th|default('', true) }}": 9
   },
   "Nguồn vốn": {
    "{kh_nguon_von}": 16,
@@ -944,7 +940,7 @@
    "{van_ban_phe_duyet}": 2
   },
   "Giá không áp dụng tổng": {
-   "{% for x in ke_hoach.cv_khong_ap_dung %}{% if loop.length == 1 %}{{ x.gia_tri|default('', true) }}{% elif loop.first %}[[Giá không áp dụng tổng]]{% endif %}{% else %}0{% endfor %}": 8
+   "{{ tong_gia_tri_khong_ad|default('', true) }}": 8
   },
   "Hình thức KHLCNT": {
    "{hinh_thuc_lua_chon}": 12
@@ -959,7 +955,7 @@
    "{% if 'đơn giá cố định' in (item.loai_hop_dong|default('', true)|lower) %}Tại thời điểm lựa chọn nhà thầu bản chất công việc đã xác định được rõ ràng nhưng chưa xác định được chính xác số lượng, khối lượng công việc thực tế phải hoàn thành. Giá hợp đồng ban đầu dựa trên số lượng, khối lượng công việc, đơn giá cố định theo hợp đồng và chi phí dự phòng cho số lượng, khối lượng công việc có thể phát sinh được xác định theo quy định pháp luật vì vậy áp dụng hợp đồng theo đơn giá cố định cho gói thầu căn cứ theo Khoản 2, Điều 64 của Luật đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023{% else %}[[Áp dụng Loại hợp đồng KHLCNT]]{% endif %}": 4
   },
   "Giá tổng gói thầu": {
-   "{% for x in goi_thau_trong_ke_hoach %}{% if loop.length == 1 %}{{ x.gia_goi_thau|default('', true) }}{% elif loop.first %}[[Giá tổng gói thầu]]{% endif %}{% else %}0{% endfor %}": 12
+   "{{ tong_gia_gt_kh|default('', true) }}": 12
   },
   "Tên dự toán/dự án": {
    "{ten_du_an_du_toan}": 40
@@ -1632,6 +1628,9 @@
   },
   "Ngày hoàn thiện hợp đồng": {
    "{S_ngay_bbht_hd}": 3
+  },
+  "Bảo đảm thực hiện hợp đồng": {
+   "{{ nt.gia_tri_bao_dam_thuc_hien_hd|default('', true) }}": 2
   },
   "Nhà thầu không trúng": {
    "{ten_nha_thau}": 1

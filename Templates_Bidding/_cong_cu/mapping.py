@@ -319,7 +319,18 @@ def _date_pick(first, second, short):
             % (_d(s(first)), _d(s(first)), _d(s(second))))
 
 
+# ADR 0105 (Bidding): tổng tính sẵn ở máy chủ, mẫu không tự cộng được.
+_TOTAL_VARIABLES = {
+    ('goi_thau_trong_ke_hoach', 'gia_goi_thau'): 'tong_gia_gt_kh',
+    ('ke_hoach.cv_da_thuc_hien', 'gia_tri'): 'tong_gia_tri_da_th',
+    ('ke_hoach.cv_khong_ap_dung', 'gia_tri'): 'tong_gia_tri_khong_ad',
+}
+
+
 def _total(lst, field, marker):
+    variable = _TOTAL_VARIABLES.get((lst, field))
+    if variable:
+        return "{{ %s|default('', true) }}" % variable
     return ("{%% for x in %s %%}{%% if loop.length == 1 %%}{{ x.%s|default('', true) }}"
             "{%% elif loop.first %%}[[%s]]{%% endif %%}{%% else %%}0{%% endfor %%}" % (lst, field, marker))
 
@@ -347,9 +358,8 @@ INFER = {
     'Giá tổng gói thầu': lambda short: _total('goi_thau_trong_ke_hoach', 'gia_goi_thau', 'Giá tổng gói thầu'),
     'Giá không áp dụng tổng': lambda short: _total('ke_hoach.cv_khong_ap_dung', 'gia_tri', 'Giá không áp dụng tổng'),
     'Giá trị đã thực hiện tổng': lambda short: _total('ke_hoach.cv_da_thuc_hien', 'gia_tri', 'Giá trị đã thực hiện tổng'),
-    'Giá tổng dự toán': lambda short: (
-        "{%% for x in ke_hoach.cv_da_thuc_hien %%}{%% if loop.first %%}[[Giá tổng dự toán]]{%% endif %%}"
-        "{%% else %%}{{ %s }}{%% endfor %%}" % _d('ke_hoach.tong_muc_dau_tu')),
+    # Tổng mức đầu tư/dự toán trừ phần đã thực hiện (ADR 0105, tính sẵn ở máy chủ)
+    'Giá tổng dự toán': lambda short: "{{ tmdt_tru_da_th|default('', true) }}",
     # phần bổ sung tên: không có dữ liệu -> để trống
     'Tên gói thầu BS': lambda short: '',
     'Tên KHLCNTBS': lambda short: '',
@@ -506,3 +516,11 @@ INFER.update({
 })
 for _k in list(CONSULTANT_ROOT) + ['Địa danh TVL', 'Địa danh TVT']:
     UNMAPPED.pop(_k, None)
+
+
+# ---------------------------------------------------------------------------
+# ADR 0105 (Bidding): số tiền bảo đảm thực hiện hợp đồng của từng nhà thầu
+# = tỷ lệ bảo đảm của gói × giá sau giảm giá (giá hợp đồng in trong thư chấp thuận).
+# ---------------------------------------------------------------------------
+BID_ITEMS['Bảo đảm thực hiện hợp đồng'] = 'gia_tri_bao_dam_thuc_hien_hd'
+UNMAPPED.pop('Bảo đảm thực hiện hợp đồng', None)

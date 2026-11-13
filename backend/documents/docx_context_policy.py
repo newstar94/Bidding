@@ -16,6 +16,10 @@ from backend.documents.consultant_context import (
     CONSULTANT_FIELDS,
     CONSULTANT_ROOTS,
 )
+from backend.documents.computed_word_values import (
+    PERFORMANCE_SECURITY_FIELD,
+    PLAN_TOTAL_CONTEXT_KEYS,
+)
 from backend.documents.field_manifest import field_format
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
 from backend.timeline.ehsmt_decisions import (
@@ -246,6 +250,8 @@ _BID_FIELDS = frozenset(
         "thanh_vien_lien_danh",
         "gia_trung_thau",
         "thoi_gian_hop_dong",
+        # ADR 0105: performance-security amount derived from this bid's price.
+        PERFORMANCE_SECURITY_FIELD,
     }
 )
 _EXPERT_FIELDS = frozenset(
@@ -398,7 +404,13 @@ PLAN_ROOT_SPECS = {
     "goi_thau": "package_list",
     "goi_thau_trong_ke_hoach": "package_list",
     "chu_dau_tu": "investor",
-    **{key: "scalar" for key in _COMMON_SCALAR_ROOTS | _TIMELINE_MILESTONE_SCALARS},
+    **{
+        key: "scalar"
+        for key in _COMMON_SCALAR_ROOTS
+        | _TIMELINE_MILESTONE_SCALARS
+        # ADR 0105: plan work-part and package totals.
+        | PLAN_TOTAL_CONTEXT_KEYS
+    },
 }
 REPORT_ROOT_SPECS = {
     "goi_thau": "package",
@@ -526,7 +538,10 @@ _LIST_ONLY_SOURCES = {
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
 _CONTEXT_SOURCE_FIELDS = (
-    _COMMON_SCALAR_ROOTS | _REPORT_DERIVED_SCALARS | _TIMELINE_MILESTONE_SCALARS
+    _COMMON_SCALAR_ROOTS
+    | _REPORT_DERIVED_SCALARS
+    | _TIMELINE_MILESTONE_SCALARS
+    | PLAN_TOTAL_CONTEXT_KEYS
 )
 _PLAN_MAPPING_SOURCES = {
     "ke_hoach_lcnt",

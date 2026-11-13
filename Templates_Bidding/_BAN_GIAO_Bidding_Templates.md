@@ -81,14 +81,14 @@ Mỗi mốc không lặp trên tab Tiến độ (48 mốc) có hai biến hệ t
 ## 4. Trạng thái 101 mẫu trong `Templates_Bidding`
 
 - Cả 101 mẫu đều kết xuất được qua bản mô phỏng pipeline Bidding và là file Word hợp lệ.
-- **30 chỗ còn để `[[...]]`** (13/11/2026: 465 chỗ TVL/TVT đã chuyển sang biến ADR 0100, xem mục 5b):
+- **28 chỗ còn để `[[...]]`** (13/11/2026: 465 chỗ TVL/TVT theo ADR 0100; 14/11/2026: "Bảo đảm thực hiện hợp đồng" theo ADR 0105, xem mục 5c):
   - 3 chỗ: Ưu đãi, Giá trị ưu đãi tổng. Có cột cộng ưu đãi nhưng không phải trường Word.
   - 5 chỗ: không có dữ liệu. Gồm "Ngày cuối hoàn thiện" (3) và "Ngày báo cáo" trong mẫu KQCĐ CXN (2).
-  - 22 chỗ: cần tính toán. Gồm "Bảo đảm thực hiện hợp đồng" (làm được bằng biến tính toán: tỷ lệ × giá) và các số liệu theo từng nhà thầu: Số phần tham dự/đạt/không đạt/xếp hạng 1, Giá phần lô tham dự (đạt xếp hạng 1) tổng.
-- **175 chỗ chỉ hiện `[[...]]` khi thiếu dữ liệu:**
+  - 20 chỗ: số liệu theo từng nhà thầu trong mẫu phân lô: Số phần tham dự/đạt/không đạt/xếp hạng 1, Giá phần lô tham dự (đạt xếp hạng 1) tổng. `ds_nt_tham_du` có một dòng cho mỗi cặp nhà thầu–phần lô, nên cần danh sách mới gộp theo nhà thầu.
+- **137 chỗ chỉ hiện `[[...]]` khi thiếu dữ liệu:**
   - Địa danh (66): khi địa chỉ chủ đầu tư không có tỉnh.
   - Địa danh TVL (23) / TVT (31): khi địa chỉ đơn vị tư vấn không có tỉnh.
-  - Các dòng tổng (38): khi bảng có từ 2 dòng trở lên.
+  - ~~Các dòng tổng (38)~~: nay dùng biến tổng tính sẵn (ADR 0105).
   - Áp dụng Hình thức/Phương thức/Loại hợp đồng (12): ngoài 3 trường hợp đã biết.
   - Chứng thư thẩm định (5): khi mốc chưa có số và ngày.
 - **Lưu ý trong mẫu:**
@@ -134,12 +134,19 @@ Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin 
 2. Tải lại 57 mẫu đã đổi lên "Biểu mẫu Word" của từng không gian làm việc (ứng dụng không đọc trực tiếp thư mục này). Danh sách: `git status -- Templates_Bidding`.
 3. Xuất thử một gói thầu có hợp đồng phân loại "Tư vấn" và "Thẩm định" để kiểm tra dữ liệu thật.
 
+## 5c. ADR 0105: tổng kế hoạch và bảo đảm thực hiện hợp đồng (14/11/2026, chưa commit)
+
+- Biến mới (danh mục v20, định dạng tiền, có `bangchu_`): `tong_gia_gt_kh`, `tong_gia_tri_da_th`, `tong_gia_tri_khong_ad`, `tmdt_tru_da_th` (chỉ mẫu Kế hoạch). Trường dòng nhà thầu `gia_tri_bao_dam_thuc_hien_hd` = tỷ lệ bảo đảm × giá sau giảm giá, dùng trong Thư chấp thuận: `{{ nt.gia_tri_bao_dam_thuc_hien_hd }}`.
+- Mã: `backend/documents/computed_word_values.py` (mới), `docx_service`, `docx_bid_context_service`, `docx_context_policy`, `field_manifest`, `word_defaults`, `wordVariableManifest.js` (sinh lại). Test: `tests/test_computed_word_values.py`.
+- Công cụ: `mapping.py` (`_total` dùng biến tổng, `Giá tổng dự toán` → `tmdt_tru_da_th`, `Bảo đảm thực hiện hợp đồng` trong `BID_ITEMS`), `bf.py` và `render_test.py` tính giá trị giả lập bằng chính hàm backend.
+- Chuyển lại mẫu: chỉ 12 mẫu đổi (10 mẫu Kế hoạch, 2 Thư chấp thuận), so sánh văn bản xác nhận chỉ đổi đúng các chỗ trên; `render_test.py` 101/101. Cần tải lại 12 mẫu này lên "Biểu mẫu Word" sau khi khởi động lại Bidding.
+
 ## 6. Việc còn mở (chờ chủ sản phẩm quyết)
 
 1. ~~Đưa thông tin đơn vị tư vấn ra Word (465 chỗ).~~ Xong: code theo ADR 0100, mẫu chuyển lại ngày 13/11/2026 (mục 5b).
 2. ~~Xóa tên "Ngô Anh Tuấn" gõ sẵn trong mẫu PLQT2.~~ Xong ngày 13/11/2026.
 3. Nếu đơn vị dùng phần mềm luôn là đơn vị tư vấn lập thì ánh xạ `[[Tư vấn lập]]` → `{ten_to_chuc}`.
 4. Chuyển thư mục mẫu ra `D:\Templates_Bidding`.
-5. Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"; xem lại cách lấy các số liệu theo từng nhà thầu (đếm và cộng theo phần lô).
+5. ~~Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"~~ (xong, ADR 0105). Còn: số liệu theo từng nhà thầu trong mẫu phân lô (đếm và cộng theo phần lô), chốt nghĩa "đạt"/"xếp hạng nhất"; nguồn giá trị ưu đãi; nơi nhập "Ngày cuối hoàn thiện" và "Ngày báo cáo".
 6. ~~Commit git các thay đổi code~~ (đã commit `a01a5a0f`, `e36129e5`); còn khởi động lại Bidding.
 7. Lần chạy test để lại 6 thư mục `data\document-worker-temp\job-*`. Bidding tự dọn sau 1 giờ.

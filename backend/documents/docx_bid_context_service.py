@@ -1,5 +1,9 @@
 """Build bidder/result lists and lot summaries for Word contexts."""
 
+from backend.documents.computed_word_values import (
+    PERFORMANCE_SECURITY_FIELD,
+    performance_security_amount,
+)
 from backend.shared.helpers import VietnameseFloat
 
 def _ensure_list(value):
@@ -130,9 +134,22 @@ def _collect_lot_winner_keys(context):
     return winner_keys
 
 
+def _add_performance_security(bids, pkg):
+    """ADR 0105: rate x the price the acceptance letter prints for this bid."""
+
+    rate = pkg.get('ty_le_bao_dam_hop_dong') if isinstance(pkg, dict) else None
+    for bid in bids:
+        price = bid.get('_gia_sau_giam_gia_raw')
+        if price in (None, ''):
+            price = bid.get('_gia_du_thau_raw')
+        amount = performance_security_amount(rate, price)
+        bid[PERFORMANCE_SECURITY_FIELD] = _money_text(amount) if amount else ''
+
+
 def enrich_context_with_filtered_bidders(context):
     bids = [_bid_display_item(b) for b in _ensure_list(context.get('nha_thau')) if isinstance(b, dict)]
     pkg = context.get('goi_thau', {})
+    _add_performance_security(bids, pkg)
     lot_winner_keys = _collect_lot_winner_keys(context)
 
     winning_bids = []
