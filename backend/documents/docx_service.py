@@ -626,7 +626,7 @@ def _build_report_context_snapshot(
         to_tham_dinh = []
 
     timeline_word_values = load_timeline_word_context(cursor, org_name, package_id)
-    # ADR 0043: consultant firms come from the package's current linked
+    # ADR 0100: consultant firms come from the package's current linked
     # contracts, independent of the contract selected for contract exports.
     consultant_word_values = load_consultant_word_context(
         cursor, org_name, contract_list

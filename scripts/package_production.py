@@ -26,12 +26,7 @@ from scripts.env_utils import load_env
 
 RUNTIME_DIRECTORIES = {
     "backend": lambda path: path.suffix in {".py", ".mjs"}
-    or path.name == "postgres_schema_contract.json"
-    or (
-        path.suffix == ".json"
-        and "word_standardizer" in path.parts
-        and "rules" in path.parts
-    ),
+    or path.name == "postgres_schema_contract.json",
     "shared": lambda path: path.suffix == ".json",
     "dist": lambda path: path.is_file(),
     "views": lambda path: path.is_file(),

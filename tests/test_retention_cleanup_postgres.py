@@ -280,6 +280,8 @@ def retention_database(monkeypatch):
         monkeypatch.setattr(lifecycle, "fail_stale_email_deliveries", lambda *_: 0)
         monkeypatch.setattr(lifecycle, "purge_expired_durable_document_jobs", lambda *_: 0)
         monkeypatch.setattr(lifecycle, "reconcile_asset_journal", lambda *_: 0)
+        # Covered by tests/test_ai_conversation_retention.py (ADR 0101).
+        monkeypatch.setattr(lifecycle, "expire_idle_ai_conversations", lambda *_: 0)
 
         yield _CleanupDatabase(observed_connection), observed_connection, raw_connection
     finally:

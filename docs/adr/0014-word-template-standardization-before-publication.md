@@ -1,6 +1,6 @@
 # ADR 0014 — Chuẩn hóa thể thức Word tự động khi xuất bản
 
-- Trạng thái: Bị thay thế một phần bởi ADR 0033
+- Trạng thái: Đã gỡ bỏ (2026-11-12). Trước đó bị thay thế một phần bởi ADR 0033
 - Ngày: 2026-08-24
 - Phạm vi: `render_docx`, Word standardizer, `WordTemplateCatalog` và mọi luồng xuất DOCX
 
@@ -215,3 +215,16 @@ advisory lock và CAS hiện hữu không đổi.
 - production package chứa versioned rule/policy assets, automatic apply
   idempotent, và golden DOCX được render/kiểm tra mọi trang thay đổi trước khi mở
   rộng mutation allowlist hoặc thêm layout fix.
+
+## Cập nhật 2026-11-12: gỡ bộ chuẩn hóa
+
+- ADR 0033 đã bỏ chuẩn hóa tự động khi xuất Word. Từ đó bộ chuẩn hóa chỉ còn được gọi qua API vòng đời biểu mẫu (xem trước bản chuẩn hóa, tạo bản nháp chuẩn hóa).
+- API này bị thôi mount ngày 2026-09-19 và bị xóa ngày 2026-11-12 (ADR 0010, mục cập nhật). Bộ chuẩn hóa vì vậy không còn đường gọi.
+- Chủ sản phẩm duyệt xóa ngày 2026-11-12. Phần đã xóa:
+  - `backend/documents/word_standardizer/` (engine và `rules/*.json`), cùng mục package-data và quy tắc đóng gói tương ứng;
+  - tác vụ worker `standardize_docx` và bộ ghi sự kiện `document.word_standardization` của document worker;
+  - `WordTemplateCatalog.get_standardization_candidate`, `create_standardized_draft`, `WordTemplateCatalogRepository.find_standardized_version`;
+  - tham số và nhánh báo cáo chuẩn hóa của `TemplatePreflight`;
+  - các test chỉ kiểm tra những phần trên.
+- Không đổi hành vi xuất Word. Các phiên bản catalog cũ có `action = STANDARDIZE`, và báo cáo preflight cũ có khóa `standardization`, vẫn đọc được như dữ liệu thường.
+- Muốn dùng lại thì khôi phục từ lịch sử git.

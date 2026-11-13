@@ -1404,6 +1404,7 @@ export const WORD_SOURCE_TABLE_LABELS = Object.freeze({
   ke_hoach_versions: "Danh sách phiên bản của kế hoạch LCNT",
   goi_thau_trong_ke_hoach: "Danh sách gói thầu trong kế hoạch",
   goi_thau_versions: "Danh sách phiên bản của gói thầu",
+  qd_hsmt_list: "QĐ phê duyệt E-HSMT gốc và các lần điều chỉnh",
   chu_dau_tu: "Chủ đầu tư",
   ke_hoach_lcnt: "Kế hoạch LCNT",
   goi_thau: "Gói thầu",
@@ -3469,16 +3470,30 @@ export const DEFAULT_WORD_VARIABLES = [
   },
   {
     "format": "text",
-    "label": "Tiến độ – Số văn bản: QĐ phê duyệt E-HSMT (E-HSMT)",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt E-HSMT gốc (E-HSMT)",
     "name": "so_qd_pd_hsmt",
     "sourceColumn": "moc_so_qd_pd_hsmt",
     "sourceTable": "__context__"
   },
   {
     "format": "date",
-    "label": "Tiến độ – Ngày: QĐ phê duyệt E-HSMT (E-HSMT)",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt E-HSMT gốc (E-HSMT)",
     "name": "ngay_qd_pd_hsmt",
     "sourceColumn": "moc_ngay_qd_pd_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "text",
+    "label": "Tiến độ – Số văn bản: QĐ phê duyệt điều chỉnh E-HSMT, lần mới nhất (E-HSMT)",
+    "name": "so_qd_dc_hsmt",
+    "sourceColumn": "moc_so_qd_dc_hsmt",
+    "sourceTable": "__context__"
+  },
+  {
+    "format": "date",
+    "label": "Tiến độ – Ngày: QĐ phê duyệt điều chỉnh E-HSMT, lần mới nhất (E-HSMT)",
+    "name": "ngay_qd_dc_hsmt",
+    "sourceColumn": "moc_ngay_qd_dc_hsmt",
     "sourceTable": "__context__"
   },
   {
@@ -3718,6 +3733,13 @@ export const DEFAULT_WORD_VARIABLES = [
     "name": "ds_hop_dong",
     "sourceColumn": "",
     "sourceTable": "hop_dong_list"
+  },
+  {
+    "format": "text",
+    "label": "QĐ phê duyệt E-HSMT gốc và các lần điều chỉnh",
+    "name": "ds_qd_hsmt",
+    "sourceColumn": "",
+    "sourceTable": "qd_hsmt_list"
   },
   {
     "format": "text",

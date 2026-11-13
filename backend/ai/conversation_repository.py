@@ -273,15 +273,47 @@ def remove_feedback(context: AiRequestContext, message_id: str) -> None:
         connection.close()
 
 
-def cleanup_expired_conversations(retention_days: int) -> int:
-    connection = database.get_connection()
+def cleanup_expired_conversations(
+    retention_days: int,
+    *,
+    db=None,
+    batch_size: int = 1000,
+) -> int:
+    """Soft-delete conversations idle for more than ``retention_days`` days.
+
+    Called by the retention cleanup loop in ``backend.lifecycle`` (ADR 0044).
+    Each batch commits on its own so a large backlog never holds long row
+    locks. Messages stay attached to the soft-deleted conversation, exactly
+    like a user delete; ``updated_at`` keeps the last activity time.
+    """
+
+    connection = (db or database).get_connection()
+    days = max(1, int(retention_days))
+    limit = max(1, int(batch_size))
+    total = 0
     try:
-        result = connection.execute(
-            """UPDATE ai_conversations SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP
-               WHERE status = 'active' AND updated_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')""",
-            (max(1, int(retention_days)),),
-        )
-        connection.commit()
-        return int(result.rowcount or 0)
+        while True:
+            result = connection.execute(
+                """WITH expired AS (
+                       SELECT organization_id, id
+                         FROM ai_conversations
+                        WHERE status = 'active'
+                          AND updated_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')
+                        ORDER BY updated_at
+                        LIMIT ?
+                        FOR UPDATE SKIP LOCKED
+                   )
+                   UPDATE ai_conversations AS conversation
+                      SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP
+                     FROM expired
+                    WHERE conversation.organization_id = expired.organization_id
+                      AND conversation.id = expired.id""",
+                (days, limit),
+            )
+            connection.commit()
+            updated = int(result.rowcount or 0)
+            total += updated
+            if updated < limit:
+                return total
     finally:
         connection.close()

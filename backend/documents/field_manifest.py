@@ -6,6 +6,10 @@ from backend.timeline.word_fields import (
     TIMELINE_CONTEXT_LABELS,
     TIMELINE_DATE_CONTEXT_KEYS,
 )
+from backend.timeline.ehsmt_decisions import (
+    EHSMT_DECISION_FIELD_LABELS,
+    EHSMT_DECISION_LIST_ROOT,
+)
 from backend.documents.consultant_context import (
     APPRAISAL_CONSULTANT_ROOT,
     PREPARATION_CONSULTANT_ROOT,
@@ -13,7 +17,7 @@ from backend.documents.consultant_context import (
 
 
 def _consultant_labels(firm):
-    """ADR 0043 labels for one consultant firm group."""
+    """ADR 0100 labels for one consultant firm group."""
 
     return {
         "ten_nha_thau": f"Tên {firm}",
@@ -257,6 +261,7 @@ FIELD_LABELS_BY_TABLE = {
     },
     PREPARATION_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn lập"),
     APPRAISAL_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn thẩm định"),
+    EHSMT_DECISION_LIST_ROOT: dict(EHSMT_DECISION_FIELD_LABELS),
     "tai_khoan": {
         "ten_dang_nhap": "Tên đăng nhập hệ thống",
         "ho_ten": "Họ tên tài khoản",

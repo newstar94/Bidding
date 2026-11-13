@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """Render converted templates through a replica of BiddingFlow's DOCX pipeline with mock data."""
-import copy, io, json, os, re, sys, zipfile, traceback
-import os
+import copy, io, json, os, re, sys, zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, HERE)
 import bf
-import template_security as ts
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Inches
 
-VARS = json.load(open(os.path.join(HERE, 'vars.json')))
+ts = bf.template_security
+VARS = bf.word_variables()
 PLAN_FOLDERS = {'1. KHLCNT Chung', '2. KHLCNT Rieng', '11. KHLCNT CĐT Chung', '12. KHLCNT CĐT Rieng'}
 
 # ---------------------------------------------------------------- mock entities
@@ -67,7 +66,7 @@ CONTRACTS = [
     {'id': 'hd2', 'ten_hop_dong': 'HĐ thẩm định', 'so_hop_dong': '02/2026/HĐTĐ', 'ngay_ky': '2026-03-03', 'gia_tri': 2000000,
      'loai_hop_dong': 'Trọn gói', 'thoi_gian_thuc_hien': '15 ngày', 'phan_loai': 'Thẩm định', 'so_qd_chi_dinh': '11/QĐ',
      'ngay_qd_chi_dinh': '2026-03-02', 'ngay_thanh_ly': None}]
-# ADR 0043: đơn vị tư vấn lập / thẩm định (nhà thầu của hợp đồng tư vấn)
+# ADR 0100: đơn vị tư vấn lập / thẩm định (nhà thầu của hợp đồng tư vấn)
 TVL = {'ten_nha_thau': 'Công ty CP Tư vấn HCP', 'ten_viet_tat': 'HCP', 'ma_so_thue': '0109876543',
        'nguoi_dai_dien': 'Nguyễn Văn Tư', 'chuc_vu_dai_dien': 'Giám đốc', 'danh_xung': 'Ông',
        'dia_chi': 'Số 10 Láng Hạ, Đống Đa, Hà Nội', 'so_dien_thoai': '0243123456', 'email': 'tv@hcp.vn',
@@ -120,7 +119,7 @@ def build_context(plan):
                'current_time': '2026-11-11T22:33:00+07:00', 'today': '2026-11-11', 'tong_so_nha_thau_tham_du': 2,
                'so_nha_thau_trung_thau': 1,
                'don_vi_tu_van_lap': dict(TVL), 'don_vi_tu_van_tham': dict(TVT)}
-    # ADR 0042 timeline milestone scalars (moc_so_* / moc_ngay_*)
+    # ADR 0099 timeline milestone scalars (moc_so_* / moc_ngay_*)
     plan_section = {'chung_thu_tdg', 'qd_tl_to', 'ttr_dt', 'qd_dt', 'ttr_kh', 'qd_kh', 'ttr_dt_kh', 'qd_dt_kh'}
     for v in VARS:
         col = v['sourceColumn']
@@ -134,7 +133,6 @@ def build_context(plan):
             ctx[col] = '2026-10-05'
         else:
             ctx[col] = '%s/QĐ-MOC' % slug.upper()
-    root_specs = set(ctx)
     money, dates, datetimes = set(), set(), set()
     for v in VARS:
         name, table, col, fmt = v['name'], v['sourceTable'], v['sourceColumn'], v['format']
@@ -193,7 +191,8 @@ def render(path, plan):
                 if isinstance(item, dict): valid_vars.update(item.keys())
         elif isinstance(val, dict):
             valid_vars.update(val.keys())
-    src = open(path, 'rb').read()
+    with open(path, 'rb') as fh:
+        src = fh.read()
     out = io.BytesIO(); parts = []
     with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
         for it in zin.infolist():
@@ -232,21 +231,24 @@ def doc_text(data):
 if __name__ == '__main__':
     root, outdir = sys.argv[1], sys.argv[2]
     results = {}
-    for dp, dn, fn in os.walk(root):
+    for dp, _dirs, fn in os.walk(root):
         for f in sorted(fn):
             if not f.endswith('.docx'): continue
             p = os.path.join(dp, f); rel = os.path.relpath(p, root); folder = rel.split(os.sep)[0]
             try:
                 data = render(p, folder in PLAN_FOLDERS)
                 o = os.path.join(outdir, rel); os.makedirs(os.path.dirname(o), exist_ok=True)
-                open(o, 'wb').write(data)
+                with open(o, 'wb') as fh:
+                    fh.write(data)
                 txt = doc_text(data)
                 bad = re.findall(r'\{[^}\n]{0,40}\}?|\{\{|\{%', txt)
                 results[rel] = {'ok': True, 'braces': bad[:5], 'None': txt.count('None'),
                                 'unmapped': len(re.findall(r'\[\[', txt))}
             except Exception as e:
                 results[rel] = {'ok': False, 'error': repr(e)[:300]}
-    json.dump(results, open(os.path.join(HERE, 'results.json'), 'w'), ensure_ascii=False, indent=1)
+    # Next to the rendered output, not in the repo: it is a per-run artifact.
+    with open(os.path.join(outdir, 'results.json'), 'w', encoding='utf-8') as fh:
+        json.dump(results, fh, ensure_ascii=False, indent=1)
     ok = sum(1 for r in results.values() if r['ok'])
     print('rendered OK', ok, '/', len(results))
     for k, r in results.items():

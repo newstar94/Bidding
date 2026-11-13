@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Convert ND30 templates ([[...]] placeholders) into BiddingFlow Word templates."""
 import copy
-import os
-HERE = os.path.dirname(os.path.abspath(__file__))
 import json
 import os
 import re
@@ -14,6 +12,8 @@ from lxml import etree
 
 from mapping import *  # noqa
 from mapping import _total
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 NS = {'w': W}
@@ -323,7 +323,6 @@ def row_list(names, ctx):
 # ------------------------------------------------------------------ main conversion
 def convert_xml(root, folder, relname):
     ctx = Ctx(folder)
-    body = root.find(q('body'))
     paras = list(root.iter(q('p')))
     pidx = {id(p): i for i, p in enumerate(paras)}
 
@@ -455,7 +454,7 @@ def convert_xml(root, folder, relname):
         # build inline loops: contiguous same-list spans
         if inline:
             spans = []
-            for m, (lst, key, native_in_span), caps in inline:
+            for m, (lst, key, _native), caps in inline:
                 if spans and spans[-1]['list'] == lst:
                     spans[-1]['items'].append((m, key, caps))
                 else:
@@ -482,7 +481,7 @@ def convert_xml(root, folder, relname):
 
         for m in matches:
             FILES[m.group(1)].add(relname)
-        for s, e, out, caps, mapped in plan:
+        for s, e, out, caps, _mapped in plan:
             SAMPLES[text[s + 2:e - 2]][out + (' [IN HOA]' if caps else '')] += 1
         for s, e, out, caps, mapped in sorted(plan, key=lambda x: -x[0]):
             replace_range(p, s, e, out, caps=caps, mapped=mapped)
@@ -607,7 +606,6 @@ def resolve(name, raw, prev, ctx, sc, rinfo, relname):
         return None
 
     in_app_loop = bool(rinfo and rinfo[0] not in ('TOTAL', 'DELETE'))
-    group_hint = rinfo[0] if in_app_loop else None
 
     # REPEAT scope (native loop var)
     if sc:
@@ -696,7 +694,7 @@ def convert_file(src, dst, folder, relname):
 if __name__ == '__main__':
     src_root, dst_root = sys.argv[1], sys.argv[2]
     n = 0
-    for dp, dn, fn in os.walk(src_root):
+    for dp, _dirs, fn in os.walk(src_root):
         for f in sorted(fn):
             if not f.endswith('.docx'):
                 continue
@@ -704,12 +702,13 @@ if __name__ == '__main__':
             folder = rel.split(os.sep)[0]
             convert_file(os.path.join(dp, f), os.path.join(dst_root, rel), folder, rel)
             n += 1
-    json.dump({'report': {k: dict(v) for k, v in REPORT.items()},
-               'unmapped': {k: sorted(v) for k, v in UNMAPPED_SEEN.items()},
-               'issues': ISSUES,
-               'samples': {k: dict(v) for k, v in SAMPLES.items()},
-               'files': {k: sorted(v) for k, v in FILES.items()}}, open(os.path.join(HERE, 'convert_report.json'), 'w'),
-              ensure_ascii=False, indent=1)
+    with open(os.path.join(HERE, 'convert_report.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'report': {k: dict(v) for k, v in REPORT.items()},
+                   'unmapped': {k: sorted(v) for k, v in UNMAPPED_SEEN.items()},
+                   'issues': ISSUES,
+                   'samples': {k: dict(v) for k, v in SAMPLES.items()},
+                   'files': {k: sorted(v) for k, v in FILES.items()}}, fh,
+                  ensure_ascii=False, indent=1)
     print('converted', n, 'issues', len(ISSUES))
     for i in ISSUES:
         print(' -', i)

@@ -8,18 +8,20 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, HERE)
+import bf
 from mapping import UNMAPPED
 
-R = json.load(open(os.path.join(HERE, 'convert_report.json')))
-VARS = {v['name']: v for v in json.load(open(os.path.join(HERE, 'vars.json')))}
-META = json.load(open(os.path.join(HERE, 'meta.json')))
+with open(os.path.join(HERE, 'convert_report.json'), encoding='utf-8') as fh:
+    R = json.load(fh)
+VARS = {v['name']: v for v in bf.word_variables()}
+META = bf.field_metadata()
 COL_LABEL = {}
 PRIORITY = ['thong_tin_mo_thau', 'nha_thau', 'chuyen_gia', 'hop_dong', 'goi_thau', 'ke_hoach_lcnt', 'chu_dau_tu']
 for tbl in PRIORITY:
     for v in VARS.values():
         if v['sourceTable'] == tbl and v['sourceColumn']:
             COL_LABEL.setdefault(v['sourceColumn'], v['label'].replace(' mở thầu', ''))
-for tbl, cols in META.items():
+for cols in META.values():
     for c, d in cols.items():
         COL_LABEL.setdefault(c, d.get('label', c))
 COL_LABEL.update({'gia_xep_hang': 'Giá xếp hạng', 'gia_de_nghi_trung_thau': 'Giá đề nghị trúng thầu',
@@ -229,7 +231,7 @@ guide = [
     ['Hợp đồng tư vấn', "{% for hd in hop_dong_list if hd.phan_loai|lower|trim == 'tư vấn' %}{{ hd.so_hop_dong|default('', true) }}{% endfor %} — lấy hợp đồng có Phân loại \"Tư vấn\" (\"thẩm định\" cho tư vấn thẩm định). Cần nhập hợp đồng và phân loại trong BiddingFlow."],
     ['Năm', '{{ current_time[0] }}{{ current_time[1] }}{{ current_time[2] }}{{ current_time[3] }} → năm tại thời điểm xuất.'],
     ['Chữ in hoa', 'Các placeholder đuôi H (ví dụ [[Tên CĐTH]]) được thay bằng biến thường và đặt định dạng All caps trên chữ, kết quả xuất ra vẫn in hoa.'],
-    ['Số/ngày theo Tiến độ', '{so_<mốc>} và {ngay_<mốc>} (ví dụ {so_bcdg}, {ngay_qd_tl_tcg}, {S_ngay_bcdg}) lấy số văn bản và ngày của mốc trên tab Tiến độ gói thầu: ngày thực tế, chưa có thì ngày dự kiến; mốc không áp dụng thì để trống. Cần bản BiddingFlow có ADR 0042 (biến mặc định v17).'],
+    ['Số/ngày theo Tiến độ', '{so_<mốc>} và {ngay_<mốc>} (ví dụ {so_bcdg}, {ngay_qd_tl_tcg}, {S_ngay_bcdg}) lấy số văn bản và ngày của mốc trên tab Tiến độ gói thầu: ngày thực tế, chưa có thì ngày dự kiến; mốc không áp dụng thì để trống. Cần bản BiddingFlow có ADR 0099 (biến mặc định v17).'],
     ['Giá trị suy luận', 'Các mục ghi "SUY LUẬN" ở trang "Đã thay" được tính từ dữ liệu Bidding theo quy tắc (địa chỉ CĐT → địa danh; số/ngày QĐ dự toán → "kế hoạch" hay "dự toán và kế hoạch"; các ngày theo quy tắc của file Excel cũ…). Trường hợp quy tắc không áp dụng được thì vẫn hiện [[...]] để điền tay.'],
     ['Placeholder còn lại', 'Giữ nguyên [[...]] màu đỏ (xem trang "Chưa có dữ liệu") để điền tay sau khi xuất. Biến đã thay được bỏ màu đỏ.'],
     ['Gán biểu mẫu', 'Tải các file lên mục Biểu mẫu Word, rồi gán đúng chức năng: KHLCNT → Kế hoạch LCNT; 3/4. TVLB1-2 → Tư vấn lập Bước 1-2; 5/6. TVTB1-2 → Tư vấn thẩm định Bước 1-2; 8. BCĐG → Báo cáo đánh giá; 9. KQLCNT → Báo cáo thẩm định, KQLCNT; 10/11. KQCĐ → Kết quả lựa chọn nhà thầu.'],

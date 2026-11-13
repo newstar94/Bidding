@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 from psycopg import Error as PostgresError
 from psycopg import sql
 
+from backend.ai.configuration import get_ai_config
+from backend.ai.conversation_repository import cleanup_expired_conversations
 from backend.auth.email_delivery_service import (
     fail_stale_email_deliveries,
     run_email_delivery_worker,
@@ -197,6 +199,20 @@ def _purge_tombstone_batches(conn, retention_days, batch_size):
         conn.commit()
 
 
+def expire_idle_ai_conversations(database):
+    """Soft-delete AI conversations idle past AI_CONVERSATION_RETENTION_DAYS.
+
+    ADR 0101: the AI runbook promises this retention; it runs in the same
+    leader-only sweep and batch size as the other retention cleanups.
+    """
+
+    return cleanup_expired_conversations(
+        get_ai_config().conversation_retention_days,
+        db=database,
+        batch_size=_retention_batch_size(),
+    )
+
+
 def _purge_retained_rows(database):
     conn = None
     retention_lock_acquired = False
@@ -291,6 +307,7 @@ def _purge_retained_rows(database):
         fail_stale_email_deliveries(database)
         purge_expired_durable_document_jobs(database)
         reconcile_asset_journal(database)
+        expire_idle_ai_conversations(database)
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
     finally:

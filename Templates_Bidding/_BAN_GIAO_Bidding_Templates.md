@@ -37,7 +37,7 @@ Cập nhật: 12/11/2026. Mở cuộc trò chuyện mới, đính kèm file này
 - **Biến tính toán** (`__computed__`) chỉ tính được trên giá trị gốc: số học, ngày, if(). Không cộng dồn được trên danh sách.
 - **Nhãn sai:** trường `ke_hoach.phe_duyet` chứa "Kế hoạch" hoặc "Dự toán và kế hoạch", nhưng nhãn trong từ điển biến ghi nhầm là "Họ tên người phê duyệt".
 
-## 3. Thay đổi mã Bidding (ADR 0042, **chưa commit git**, cần khởi động lại Bidding)
+## 3. Thay đổi mã Bidding (ADR 0099, đã commit `a01a5a0f`, cần khởi động lại Bidding)
 
 Mỗi mốc không lặp trên tab Tiến độ (48 mốc) có hai biến hệ thống: `{so_<mốc>}` (số văn bản) và `{ngay_<mốc>}` (ngày; dạng ngắn `{S_ngay_<mốc>}`).
 
@@ -68,7 +68,7 @@ Mỗi mốc không lặp trên tab Tiến độ (48 mốc) có hai biến hệ t
 - `backend/documents/word_mapping_registry.py`
 - `frontend/documents/wordVariableManifest.js` (sinh lại bằng `python scripts/generate_word_variable_manifest.py`)
 - `frontend/partners/PartnerView.js`
-- `docs/adr/0042-timeline-milestone-word-variables.md`
+- `docs/adr/0099-timeline-milestone-word-variables.md`
 - `tests/test_timeline_word_variables.py` (mới)
 - `tests/test_plan_basis_word_context.py`
 
@@ -105,13 +105,12 @@ Chạy bằng Python 3, cần python-docx, docxtpl, openpyxl. Đường dẫn tr
   - INFER/INFER_PREV: suy luận và giá trị dự phòng.
   - TIMELINE_ROOT, FOLDER_ROOT: biến tiến độ.
 - `convert.py <thư mục mẫu NĐ30> <thư mục đích>`: chuyển mẫu và ghi `convert_report.json`.
-- `build_xlsx.py <file.xlsx>`: dựng bảng đối chiếu từ `convert_report.json` và `vars.json`.
-- `render_test.py <thư mục đã chuyển> <thư mục kết xuất>`: kết xuất thử với ngữ cảnh giả lập; kiểm tra không còn ngoặc `{}` và chữ "None".
-- `vars.json`: danh sách `DEFAULT_WORD_VARIABLES` lấy từ `frontend/documents/wordVariableManifest.js`. Cần lấy lại mỗi khi catalog biến trong Bidding thay đổi.
-- `template_security.py`: bản sao từ Bidding.
+- `build_xlsx.py <file.xlsx>`: dựng bảng đối chiếu từ `convert_report.json` và danh mục biến hiện hành của Bidding.
+- `render_test.py <thư mục đã chuyển> <thư mục kết xuất>`: kết xuất thử với ngữ cảnh giả lập; kiểm tra không còn ngoặc `{}` và chữ "None". Kết quả từng file ghi vào `<thư mục kết xuất>/results.json`.
+- `bf.py`: cầu nối tới backend trong cùng repo. Các công cụ dùng trực tiếp pipeline DOCX, `template_security` và danh mục biến (`build_frontend_defaults`, `build_frontend_field_metadata`) của Bidding. Không còn bản sao `vars.json`, `meta.json`, `template_security.py`, nên không phải sinh lại khi catalog biến thay đổi.
 - Kiểm tra file Word hợp lệ: dùng `validate.py` của skill docx, chạy với `--original` là mẫu gốc.
 
-## 5b. ADR 0043: biến đơn vị tư vấn (đang làm dở, chưa commit)
+## 5b. ADR 0100: biến đơn vị tư vấn (code đã commit `e36129e5`)
 
 Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin đơn vị": số, ngày, giá hợp đồng tư vấn giữ nguyên như mẫu đang làm.
 
@@ -120,23 +119,23 @@ Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin 
 - 26 biến hệ thống: `ten_tvl`, `ten_tat_tvl`, `mst_tvl`, `dai_dien_tvl`, `chuc_vu_dai_dien_tvl`, `danh_xung_tvl`, `dia_chi_tvl`, `sdt_tvl`, `email_tvl`, `stk_tvl`, `noi_mo_tk_tvl`, `ma_ngan_hang_tvl`, `anh_dau_tvl`, cùng bộ `_tvt` tương ứng.
 - Danh mục biến mặc định v18.
 - Mã: `backend/documents/consultant_context.py` (mới), `docx_service`, `docx_context_policy`, `docx_mapping_service`, `word_defaults`, `field_manifest`, `effective_timeline` (thêm `consultant_contract_kind`), `wordVariableManifest.js` (đã sinh lại), `WordIntegration.js`, `views/tabs/tab_bieumau.html`.
-- ADR: `docs/adr/0043-consultant-firm-word-variables.md`.
+- ADR: `docs/adr/0100-consultant-firm-word-variables.md`.
 - Test: `tests/test_consultant_word_variables.py` (mới) đạt cùng `test_timeline_word_variables.py` và `test_word_variable_labels.py`, tổng 30 test.
-- Công cụ: `mapping.py` có `CONSULTANT_ROOT` và suy luận "Địa danh TVL/TVT" từ địa chỉ đơn vị; `render_test.py` có dữ liệu giả lập TVL/TVT; `vars.json` đã sinh lại (349 biến).
+- Công cụ: `mapping.py` có `CONSULTANT_ROOT` và suy luận "Địa danh TVL/TVT" từ địa chỉ đơn vị; `render_test.py` có dữ liệu giả lập TVL/TVT.
 
 **Còn lại**
-1. Chạy `convert.py` (dùng `python -X utf8` trên Windows) từ thư mục mẫu NĐ30 vào một thư mục tạm.
+1. Chạy `convert.py` từ thư mục mẫu NĐ30 vào một thư mục tạm.
 2. Chạy `render_test.py` trên thư mục tạm đó.
 3. Nếu ổn, chép kết quả vào `Templates_Bidding`, rồi chạy `build_xlsx.py`.
 4. Chạy toàn bộ test Word. Test cần PostgreSQL sẽ lỗi nếu Bidding/cơ sở dữ liệu chưa bật.
-5. Commit, rồi khởi động lại Bidding.
+5. Khởi động lại Bidding.
 
 ## 6. Việc còn mở (chờ chủ sản phẩm quyết)
 
-1. Đưa thông tin đơn vị tư vấn ra Word (465 chỗ). Phải sửa code và tuân thủ AGENTS.md.
+1. ~~Đưa thông tin đơn vị tư vấn ra Word (465 chỗ).~~ Phần code xong theo ADR 0100; còn chuyển lại mẫu (mục 5b).
 2. Xóa tên "Ngô Anh Tuấn" gõ sẵn trong mẫu PLQT2.
 3. Nếu đơn vị dùng phần mềm luôn là đơn vị tư vấn lập thì ánh xạ `[[Tư vấn lập]]` → `{ten_to_chuc}`.
 4. Chuyển thư mục mẫu ra `D:\Templates_Bidding`.
 5. Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"; xem lại cách lấy các số liệu theo từng nhà thầu (đếm và cộng theo phần lô).
-6. Commit git các thay đổi code và khởi động lại Bidding.
+6. ~~Commit git các thay đổi code~~ (đã commit `a01a5a0f`, `e36129e5`); còn khởi động lại Bidding.
 7. Lần chạy test để lại 6 thư mục `data\document-worker-temp\job-*`. Bidding tự dọn sau 1 giờ.

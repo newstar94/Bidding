@@ -1,4 +1,4 @@
-# ADR 0042 — Biến Word cho số/ngày văn bản theo mốc tiến độ
+# ADR 0099 — Biến Word cho số/ngày văn bản theo mốc tiến độ
 
 - Trạng thái: Chấp nhận (chủ sản phẩm yêu cầu ngày 2026-11-12)
 - Ngày: 2026-11-12
@@ -71,3 +71,7 @@ duy nhất, định dạng/nhãn, hợp đồng ánh xạ cho plan và các lo�
 một túi loại mốc kỹ thuật, quy tắc chọn gói thầu cho xuất kế hoạch, và kết xuất
 thực tế số/ngày/`S_` qua manifest đã niêm phong; phạm vi mới có sẵn biến và
 đổi tên/ẩn/khôi phục được; biến tự tạo trùng tên vẫn thắng và không bị liệt kê đôi.
+
+## Cập nhật 2026-11-13 (ADR 0102)
+
+`so_qd_pd_hsmt` và `ngay_qd_pd_hsmt` không còn lấy theo phiên bản gói thầu đang xuất. Hai biến này luôn lấy QĐ phê duyệt E-HSMT gốc, tức phiên bản đầu của dòng gói thầu. Các mốc khác giữ nguyên quy tắc của ADR này.

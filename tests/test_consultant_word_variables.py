@@ -1,4 +1,4 @@
-"""ADR 0043: consultant firm (TVL/TVT) as Word variables of package exports."""
+"""ADR 0100: consultant firm (TVL/TVT) as Word variables of package exports."""
 
 import sqlite3
 from pathlib import Path
@@ -93,8 +93,11 @@ def _database():
         ("foreign", "other-org", "Công ty tổ chức khác", "", "", "", "", "", "",
          "", "", "999", "", "", ""),
     ]
-    placeholders = ", ".join("?" for _ in range(2 + len(CONSULTANT_FIELDS)))
-    connection.executemany(f"INSERT INTO nha_thau VALUES ({placeholders})", rows)
+    assert all(len(row) == 2 + len(CONSULTANT_FIELDS) for row in rows)
+    connection.executemany(
+        "INSERT INTO nha_thau VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
     return connection
 
 

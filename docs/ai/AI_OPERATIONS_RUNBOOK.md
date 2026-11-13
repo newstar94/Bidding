@@ -18,7 +18,7 @@ Kiểm tra `AI_PROVIDER_UNAVAILABLE`, `AI_PROVIDER_TIMEOUT`, `AI_RATE_LIMITED`, 
 
 ## Dữ liệu/audit
 
-Conversation được soft delete và cleanup theo retention. Audit không chứa prompt/raw result. Khi rotate key, thay secret ở backend secret store, không sửa database/frontend.
+Conversation được soft delete và cleanup theo retention: vòng dọn 30 phút/lần xóa mềm hội thoại không hoạt động quá `AI_CONVERSATION_RETENTION_DAYS` ngày (ADR 0101). Audit không chứa prompt/raw result. Khi rotate key, thay secret ở backend secret store, không sửa database/frontend.
 
 ## Rollback
 

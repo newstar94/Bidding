@@ -1165,8 +1165,6 @@ def translate_docx_template(
     template_content=None,
 ):
 
-    global _TRANSLATED_DOCXTPL_CACHE
-
     using_content_override = template_content is not None
     mtime = None if using_content_override else os.path.getmtime(template_path)
 

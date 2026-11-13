@@ -1,4 +1,4 @@
-# ADR 0043 — Biến Word cho thông tin đơn vị tư vấn lập/thẩm định
+# ADR 0100 — Biến Word cho thông tin đơn vị tư vấn lập/thẩm định
 
 - Trạng thái: Chấp nhận (chủ sản phẩm duyệt ngày 2026-11-12, phương án "Chỉ thông tin đơn vị")
 - Ngày: 2026-11-12
@@ -48,7 +48,7 @@ ngữ cảnh Word chỉ có `hop_dong_list` (thông tin hợp đồng), không c
    Mỗi biến có nhãn tiếng Việt riêng. Biến xuất hiện trong từ điển biến Word. Người
    dùng có thể chọn hai nhóm này ở ô "Thực thể" để tạo biến mới hoặc đổi nguồn.
    Người dùng cũng có thể đổi tên, ẩn và khôi phục biến như các biến mặc định
-   khác. Quy tắc trùng tên của ADR 0042 mục 7 vẫn áp dụng.
+   khác. Quy tắc trùng tên của ADR 0099 mục 7 vẫn áp dụng.
 5. Số, ngày và giá trị của hợp đồng tư vấn giữ nguyên cách mẫu đang lấy. Mẫu Kế
    hoạch không nhận hai khóa này: ánh xạ nguồn tư vấn bị từ chối với
    `document_type="plan"`.

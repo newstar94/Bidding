@@ -47,6 +47,7 @@ def apply_custom_mappings(context, mappings_rows):
         'chu_dau_tu': ['chu_dau_tu'],
         'hop_dong': ['hop_dong'],
         'hop_dong_list': ['hop_dong_list'],
+        'qd_hsmt_list': ['qd_hsmt_list'],
         'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
         'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],
         'tai_khoan': ['user'],
@@ -203,7 +204,9 @@ def apply_custom_mappings(context, mappings_rows):
                 'chu_dau_tu': ['chu_dau_tu'],
                 'hop_dong': ['hop_dong'],
                 'hop_dong_list': ['hop_dong_list'],
-                # ADR 0043: consultant firm roots of package exports.
+                # ADR 0102: E-HSMT approval/adjustment decisions.
+                'qd_hsmt_list': ['qd_hsmt_list'],
+                # ADR 0100: consultant firm roots of package exports.
                 'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
                 'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],
                 'tai_khoan': ['user'],

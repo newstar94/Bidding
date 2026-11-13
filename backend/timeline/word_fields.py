@@ -1,6 +1,6 @@
 """Word scalar variables projected from the effective package timeline.
 
-ADR 0042: every non-repeatable milestone of ``shared/timeline_rules.json``
+ADR 0099: every non-repeatable milestone of ``shared/timeline_rules.json``
 gets one document-number and one document-date context key.  Values come from
 the same effective-timeline evaluator used by the Tiến độ tab, so manual rows,
 automatically sourced rows and applicability rules stay identical.  This module
@@ -82,7 +82,18 @@ _SECTION_LABELS = {
     "SELECTION_RESULT": "Kết quả LCNT",
 }
 
+# ADR 0102: a repeatable milestone may expose its latest applicable instance
+# as one number/date pair.  The E-HSMT adjustment decision is the only one.
+LATEST_INSTANCE_WORD_SLUGS = {
+    "E_HSMT_ADJUSTMENT_APPROVAL": "qd_dc_hsmt",
+}
+
+# ADR 0102: these milestones always describe the first version of the package
+# lineage (the original decision), even when a later version is exported.
+ORIGINAL_VERSION_MILESTONE_KEYS = ("E_HSMT_APPROVAL",)
+
 _DEFINITIONS = {item["milestoneKey"]: item for item in CATALOG["milestones"]}
+_WORD_SLUGS = {**MILESTONE_WORD_SLUGS, **LATEST_INSTANCE_WORD_SLUGS}
 
 
 def _validate_catalog():
@@ -95,7 +106,17 @@ def _validate_catalog():
         raise RuntimeError(
             f"Timeline Word slugs out of sync: missing={missing} unknown={unknown}"
         )
-    if len(set(MILESTONE_WORD_SLUGS.values())) != len(MILESTONE_WORD_SLUGS):
+    not_repeatable = sorted(
+        key for key in LATEST_INSTANCE_WORD_SLUGS
+        if not _DEFINITIONS.get(key, {}).get("repeatable")
+    )
+    if not_repeatable:
+        raise RuntimeError(
+            f"Latest-instance Word slugs need repeatable milestones: {not_repeatable}"
+        )
+    if not set(ORIGINAL_VERSION_MILESTONE_KEYS) <= set(MILESTONE_WORD_SLUGS):
+        raise RuntimeError("Original-version milestones must have Word slugs.")
+    if len(set(_WORD_SLUGS.values())) != len(_WORD_SLUGS):
         raise RuntimeError("Timeline Word slugs must be unique.")
 
 
@@ -103,16 +124,20 @@ _validate_catalog()
 
 
 def number_context_key(milestone_key):
-    return f"{CONTEXT_NUMBER_PREFIX}{MILESTONE_WORD_SLUGS[milestone_key]}"
+    return f"{CONTEXT_NUMBER_PREFIX}{_WORD_SLUGS[milestone_key]}"
 
 
 def date_context_key(milestone_key):
-    return f"{CONTEXT_DATE_PREFIX}{MILESTONE_WORD_SLUGS[milestone_key]}"
+    return f"{CONTEXT_DATE_PREFIX}{_WORD_SLUGS[milestone_key]}"
 
 
 def _title(milestone_key):
     definition = _DEFINITIONS[milestone_key]
     title = " ".join(str(definition.get("title") or milestone_key).split())
+    if milestone_key in LATEST_INSTANCE_WORD_SLUGS:
+        title = f"{title}, lần mới nhất"
+    elif milestone_key in ORIGINAL_VERSION_MILESTONE_KEYS:
+        title = f"{title} gốc"
     section = _SECTION_LABELS.get(
         definition["sectionKey"],
         SECTION_BY_KEY[definition["sectionKey"]]["title"],
@@ -120,31 +145,33 @@ def _title(milestone_key):
     return f"{title} ({section})"
 
 
-def _ordered_milestone_keys():
+def _ordered_keys(slugs):
     return [
         item["milestoneKey"]
         for item in CATALOG["milestones"]
-        if item["milestoneKey"] in MILESTONE_WORD_SLUGS
+        if item["milestoneKey"] in slugs
     ]
 
 
-TIMELINE_MILESTONE_KEYS = tuple(_ordered_milestone_keys())
+TIMELINE_MILESTONE_KEYS = tuple(_ordered_keys(MILESTONE_WORD_SLUGS))
+TIMELINE_LATEST_INSTANCE_KEYS = tuple(_ordered_keys(LATEST_INSTANCE_WORD_SLUGS))
+_ALL_WORD_KEYS = tuple(_ordered_keys(_WORD_SLUGS))
 PLAN_SECTION_MILESTONE_KEYS = frozenset(
     key for key in TIMELINE_MILESTONE_KEYS
     if _DEFINITIONS[key]["sectionKey"] == PLAN_SECTION_KEY
 )
 TIMELINE_NUMBER_CONTEXT_KEYS = frozenset(
-    number_context_key(key) for key in TIMELINE_MILESTONE_KEYS
+    number_context_key(key) for key in _ALL_WORD_KEYS
 )
 TIMELINE_DATE_CONTEXT_KEYS = frozenset(
-    date_context_key(key) for key in TIMELINE_MILESTONE_KEYS
+    date_context_key(key) for key in _ALL_WORD_KEYS
 )
 TIMELINE_CONTEXT_KEYS = TIMELINE_NUMBER_CONTEXT_KEYS | TIMELINE_DATE_CONTEXT_KEYS
 
 TIMELINE_CONTEXT_LABELS = {}
 TIMELINE_WORD_CONTEXT_MAPPINGS = []
-for _key in TIMELINE_MILESTONE_KEYS:
-    _slug = MILESTONE_WORD_SLUGS[_key]
+for _key in _ALL_WORD_KEYS:
+    _slug = _WORD_SLUGS[_key]
     _number_label = f"Tiến độ – Số văn bản: {_title(_key)}"
     _date_label = f"Tiến độ – Ngày: {_title(_key)}"
     TIMELINE_CONTEXT_LABELS[number_context_key(_key)] = _number_label
@@ -171,23 +198,38 @@ def _row_value(row):
 def milestone_values_from_rows(rows, milestone_keys=None):
     """Return ``{milestone_key: (number, date)}`` for applicable rows.
 
-    Only rows the official timeline export would print are used: applicable,
-    non-repeatable catalog milestones.  Dates are ISO ``YYYY-MM-DD`` strings;
-    the actual date wins over the planned date.
+    Only rows the official timeline export would print are used.  A
+    non-repeatable milestone takes its single row; a latest-instance milestone
+    (ADR 0102) takes its last applicable row in timeline order.  Dates are ISO
+    ``YYYY-MM-DD`` strings; the actual date wins over the planned date.
     """
 
-    allowed = set(TIMELINE_MILESTONE_KEYS if milestone_keys is None else milestone_keys)
+    if milestone_keys is None:
+        singles = set(TIMELINE_MILESTONE_KEYS)
+        latest = set(TIMELINE_LATEST_INSTANCE_KEYS)
+    else:
+        singles = set(milestone_keys) & set(TIMELINE_MILESTONE_KEYS)
+        latest = set(milestone_keys) & set(TIMELINE_LATEST_INSTANCE_KEYS)
     values = {}
     for row in rows or ():
         key = row.get("milestone_key")
-        if (
-            key not in allowed
-            or row.get("is_repeatable")
-            or row.get("applicability") != "APPLICABLE"
-        ):
+        if row.get("applicability") != "APPLICABLE":
             continue
-        values.setdefault(key, _row_value(row))
+        if row.get("is_repeatable"):
+            if key in latest:
+                values[key] = _row_value(row)
+        elif key in singles:
+            values.setdefault(key, _row_value(row))
     return values
+
+
+def with_original_version_values(values, original_values):
+    """Replace original-decision milestones with the first version's values."""
+
+    merged = dict(values or {})
+    for key in ORIGINAL_VERSION_MILESTONE_KEYS:
+        merged[key] = (original_values or {}).get(key, ("", ""))
+    return merged
 
 
 def timeline_word_context(values=None):
@@ -195,7 +237,7 @@ def timeline_word_context(values=None):
 
     values = values or {}
     context = {}
-    for key in TIMELINE_MILESTONE_KEYS:
+    for key in _ALL_WORD_KEYS:
         number, date = values.get(key, ("", ""))
         context[number_context_key(key)] = number or ""
         context[date_context_key(key)] = date or ""

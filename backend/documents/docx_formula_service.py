@@ -313,5 +313,5 @@ def apply_computed_mappings(context, mappings_rows):
         if not pending or not progressed:
             break
 
-    for ten_bien, formula in pending.items():
+    for ten_bien in pending:
         context[ten_bien] = '-- Lỗi công thức: vòng lặp hoặc thiếu biến nguồn'

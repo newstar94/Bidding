@@ -18,6 +18,10 @@ from backend.documents.consultant_context import (
 )
 from backend.documents.field_manifest import field_format
 from backend.documents.word_defaults import WORD_SINGLE_SOURCES
+from backend.timeline.ehsmt_decisions import (
+    EHSMT_DECISION_FIELDS,
+    EHSMT_DECISION_LIST_ROOT,
+)
 from backend.timeline.word_fields import TIMELINE_CONTEXT_KEYS
 from backend.shared.media_helper import (
     managed_image_path_matches_tenant,
@@ -33,7 +37,7 @@ _SAFE_ROOT_RE = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
 
 _IMAGE_SOURCE_FIELDS = {
     ("nha_thau", "anh_dau"): "nha_thau",
-    # ADR 0043: a consultant firm is a contractor record.
+    # ADR 0100: a consultant firm is a contractor record.
     **{(root, "anh_dau"): "nha_thau" for root in CONSULTANT_ROOTS},
     ("chuyen_gia", "anh_chung_chi"): "chuyen_gia",
     ("chuyen_gia", "anh_chu_ky"): "chuyen_gia",
@@ -250,8 +254,10 @@ _EXPERT_FIELDS = frozenset(
 _CONTRACT_FIELDS = frozenset(
     _word_fields("hop_dong") | {"id", "goi_thau_ids"}
 )
-# ADR 0043: preparation/appraisal consultant firm of the package.
+# ADR 0100: preparation/appraisal consultant firm of the package.
 _CONSULTANT_FIELDS = frozenset(CONSULTANT_FIELDS)
+# ADR 0102: original E-HSMT approval followed by its adjustment decisions.
+_EHSMT_DECISION_FIELDS = frozenset(EHSMT_DECISION_FIELDS)
 _USER_FIELDS = frozenset(
     {
         "ten_dang_nhap",
@@ -293,6 +299,7 @@ ENTITY_SPECS = {
     "expert": EntitySpec(_EXPERT_FIELDS),
     "contract": EntitySpec(_CONTRACT_FIELDS, {"goi_thau_ids": "scalar_list"}),
     "consultant": EntitySpec(_CONSULTANT_FIELDS),
+    "ehsmt_decision": EntitySpec(_EHSMT_DECISION_FIELDS),
     "user": EntitySpec(_USER_FIELDS),
     "organization": EntitySpec(frozenset(_word_fields("to_chuc"))),
     "service_package": EntitySpec(frozenset(_word_fields("goi_dich_vu"))),
@@ -352,7 +359,7 @@ _REPORT_DERIVED_SCALARS = {
     "so_phan_lo_co_nha_thau_trung",
     "so_phan_lo_tham_du_khong_trung",
 }
-# ADR 0042: number/date scalars of each non-repeatable timeline milestone.
+# ADR 0099: number/date scalars of each non-repeatable timeline milestone.
 # Package exports carry the package's effective timeline; plan exports carry
 # only the plan-section milestones and leave the others empty.
 _TIMELINE_MILESTONE_SCALARS = set(TIMELINE_CONTEXT_KEYS)
@@ -417,7 +424,8 @@ REPORT_ROOT_SPECS = {
     # context and are exposed as a list without changing the primary report
     # investor or bidder bindings.
     "hop_dong_list": "contract_list",
-    # ADR 0043: consultant firms of the package's current linked contracts.
+    EHSMT_DECISION_LIST_ROOT: "ehsmt_decision_list",
+    # ADR 0100: consultant firms of the package's current linked contracts.
     # Field-level capability gates (bank account, seal) still apply.
     **{key: "consultant" for key in CONSULTANT_ROOTS},
     **{
@@ -470,6 +478,7 @@ _SOURCE_FIELDS = {
     "chu_dau_tu": ENTITY_SPECS["investor"].fields,
     "hop_dong": _CONTRACT_FIELDS,
     "hop_dong_list": _CONTRACT_FIELDS,
+    EHSMT_DECISION_LIST_ROOT: _EHSMT_DECISION_FIELDS,
     **{key: _CONSULTANT_FIELDS for key in CONSULTANT_ROOTS},
     "tai_khoan": _USER_FIELDS,
     "to_chuc": ENTITY_SPECS["organization"].fields,
@@ -512,6 +521,7 @@ _LIST_ONLY_SOURCES = {
     "ds_phan_lo_co_nha_thau_tham_du_khong_trung",
     "detailed_evaluation_reports",
     "hop_dong_list",
+    EHSMT_DECISION_LIST_ROOT,
     "ke_hoach_can_cu",
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
@@ -550,6 +560,7 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "chu_dau_tu": "investor",
     "hop_dong": "contract",
     "hop_dong_list": "contract",
+    EHSMT_DECISION_LIST_ROOT: "ehsmt_decision",
     **{key: "consultant" for key in CONSULTANT_ROOTS},
     "tai_khoan": "user",
     "to_chuc": "organization",

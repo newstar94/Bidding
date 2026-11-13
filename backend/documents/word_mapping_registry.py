@@ -104,7 +104,7 @@ def resolve_word_mappings(cursor, scope_id, *, include_disabled=False):
     customs = _load_custom_mappings(cursor, scope_id)
     # A catalog upgrade may add a default whose name a scope already uses for
     # its own variable.  The scope-owned variable keeps winning (it is applied
-    # last at render time) and the default is not listed twice (ADR 0042).
+    # last at render time) and the default is not listed twice (ADR 0099).
     custom_names = {str(custom["ten_bien"]).casefold() for custom in customs}
     effective = []
     for default in _catalog():

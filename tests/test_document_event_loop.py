@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 
 from backend.documents import document_job_routes, document_worker, package_document_routes
-from backend.documents.template_catalog import routes as catalog_routes
 from backend.shared import database_io
 from backend.shared.async_io import _BlockingIOPool
 
@@ -536,30 +535,3 @@ def test_package_document_list_rejects_full_bounded_database_lane(monkeypatch):
     finally:
         pool._executor.shutdown(wait=True)
 
-
-def test_catalog_word_preview_waits_for_required_audit_off_event_loop(monkeypatch):
-    started, release = Event(), Event()
-    prepared = {"role": SimpleNamespace(user_id="user-1"), "organizationId": "org-1",
-                "recordType": "goi_thau", "recordId": "package-1", "mode": "record",
-                "documentType": "report", "recordRowVersion": 1,
-                "version": {"content": b"template", "sha256": "a" * 64, "versionNo": 1},
-                "context": {}, "manifest": {}}
-
-    async def payload():
-        return {"mode": "record", "documentType": "report", "recordId": "package-1"}
-
-    async def render(*_args, **_kwargs):
-        return b"output"
-
-    def audit(*_args, **kwargs):
-        assert kwargs["required"] is True
-        started.set()
-        release.wait(0.3)
-
-    monkeypatch.setattr(catalog_routes, "catalog_enabled", lambda: True)
-    monkeypatch.setattr(catalog_routes, "_prepare_catalog_preview", lambda *_: prepared)
-    monkeypatch.setattr(catalog_routes, "run_document_job_async", render)
-    monkeypatch.setattr(catalog_routes, "log_audit", audit)
-    request = SimpleNamespace(path_params={"version_id": "version-1"}, json=payload)
-    response = asyncio.run(_assert_responsive(catalog_routes.preview_catalog_version_api(request), started, release))
-    assert response.status_code == 200

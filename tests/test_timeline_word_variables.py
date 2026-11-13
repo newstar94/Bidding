@@ -1,4 +1,4 @@
-"""ADR 0042: timeline milestone numbers/dates as Word variables."""
+"""ADR 0099: timeline milestone numbers/dates as Word variables."""
 
 import sqlite3
 
@@ -28,11 +28,13 @@ from backend.documents.word_mapping_registry import (
     save_word_mapping,
 )
 from backend.timeline.effective_timeline import CATALOG
+from backend.timeline.ehsmt_decisions import EHSMT_DECISION_LIST_ROOT
 from backend.timeline.word_fields import (
     MILESTONE_WORD_SLUGS,
     PLAN_SECTION_MILESTONE_KEYS,
     TIMELINE_CONTEXT_KEYS,
     TIMELINE_DATE_CONTEXT_KEYS,
+    TIMELINE_LATEST_INSTANCE_KEYS,
     date_context_key,
     milestone_values_from_rows,
     number_context_key,
@@ -63,7 +65,8 @@ def _cursor():
         CREATE TABLE goi_thau (
             id TEXT, organization_id TEXT, ke_hoach_id TEXT,
             hinh_thuc_lua_chon TEXT, phuong_thuc_lua_chon TEXT,
-            linh_vuc TEXT, created_at TEXT
+            linh_vuc TEXT, created_at TEXT,
+            id_goc TEXT, phien_ban TEXT, archived_at TEXT
         );
         CREATE TABLE ke_hoach_lcnt (
             id TEXT, organization_id TEXT, phe_duyet TEXT,
@@ -81,7 +84,7 @@ def _cursor():
         "INSERT INTO ke_hoach_lcnt VALUES ('plan-1', 'org', 'Kế hoạch', '12/QĐ-UBND', '2026-03-05')"
     )
     connection.executemany(
-        "INSERT INTO goi_thau VALUES (?, 'org', 'plan-1', 'Đấu thầu rộng rãi', 'Một giai đoạn một túi hồ sơ', 'Hàng hóa', ?)",
+        "INSERT INTO goi_thau VALUES (?, 'org', 'plan-1', 'Đấu thầu rộng rãi', 'Một giai đoạn một túi hồ sơ', 'Hàng hóa', ?, NULL, '00', NULL)",
         [("pkg-1", "2026-01-02"), ("pkg-2", "2025-12-01")],
     )
     rows = [
@@ -124,10 +127,11 @@ def test_every_single_milestone_has_one_number_and_one_date_default_variable():
     defaults = _timeline_defaults()
     names = [row["ten_bien"] for row in defaults]
 
-    # v17 introduced the milestone variables; later catalogs (ADR 0043) add more.
+    # v17 introduced the milestone variables; later catalogs (ADR 0100) add
+    # more, and ADR 0102 adds the latest E-HSMT adjustment pair.
     assert WORD_DEFAULT_MAPPINGS_VERSION >= 17
     assert set(MILESTONE_WORD_SLUGS) == set(singles)
-    assert len(defaults) == 2 * len(singles)
+    assert len(defaults) == 2 * (len(singles) + len(TIMELINE_LATEST_INSTANCE_KEYS))
     assert len(set(names)) == len(names)
     assert {row["source_column"] for row in defaults} == TIMELINE_CONTEXT_KEYS
     for row in defaults:
@@ -178,7 +182,7 @@ def test_only_applicable_single_rows_project_and_actual_date_wins():
 def test_package_context_uses_the_effective_timeline(cursor):
     context = timeline_context_service.load_timeline_word_context(cursor, "org", "pkg-1")
 
-    assert set(context) == TIMELINE_CONTEXT_KEYS
+    assert set(context) == TIMELINE_CONTEXT_KEYS | {EHSMT_DECISION_LIST_ROOT}
     assert context["moc_so_qd_tl_tcg"] == "05/QĐ-TCG"
     assert context["moc_ngay_qd_tl_tcg"] == "2026-03-11"
     assert context["moc_so_bcdg"] == "BC-01"
@@ -193,6 +197,7 @@ def test_package_context_uses_the_effective_timeline(cursor):
 
 def test_unknown_package_yields_empty_values_not_errors(cursor):
     context = timeline_context_service.load_timeline_word_context(cursor, "org", "missing")
+    assert context.pop(EHSMT_DECISION_LIST_ROOT) == []
     assert set(context) == TIMELINE_CONTEXT_KEYS
     assert set(context.values()) == {""}
 

@@ -29,9 +29,8 @@ def validate_tool_arguments(mode: str, name: str, arguments: object) -> dict:
     schema = definition.get("parameters") or {}
     properties = schema.get("properties") or {}
     unknown = set(arguments) - set(properties)
-    if unknown or not schema.get("additionalProperties") is False:
-        if unknown:
-            raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "Tool arguments chứa trường không được hỗ trợ.")
+    if unknown:
+        raise ai_error("AI_TOOL_INVALID_ARGUMENTS", "Tool arguments chứa trường không được hỗ trợ.")
     for field in schema.get("required", []):
         if field not in arguments:
             raise ai_error("AI_TOOL_INVALID_ARGUMENTS", f"Thiếu tham số tool: {field}.")

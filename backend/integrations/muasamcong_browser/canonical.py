@@ -1554,7 +1554,7 @@ def normalize_opening_bundle(raw_bundle: dict, *, notice_no: str, revision_id: s
     )
     lots = []
     seen_lots = set()
-    for index, row in enumerate(lot_rows):
+    for row in lot_rows:
         if not isinstance(row, dict):
             continue
         lot_no = lot_scope(row)

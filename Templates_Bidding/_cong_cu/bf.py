@@ -1,45 +1,40 @@
-"""Extracted BiddingFlow DOCX rendering pipeline (pure functions) for offline verification."""
-import ast, re, os
-from datetime import datetime
-SRC = '/mnt/user-data/uploads/Bidding/backend/documents/custom_exporter.py'
-WANT = {'number_to_vietnamese_words', 'enrich_context_with_lowercase_keys', 'enrich_context_with_words',
-        'normalize_date_str', 'is_datetime_field_name', 'format_vietnamese_datetime', 'SmartDate',
-        'format_context_dates', 'translate_xml_tags', 'replace_placeholders_with_empty',
-        'format_context_money_values', 'DATETIME_FIELD_NAMES'}
-MONEY_COLUMNS = {("ke_hoach_lcnt", "tong_muc_dau_tu"), ("ke_hoach_cong_viec", "gia_tri"), ("goi_thau", "gia_goi_thau"),
-    ("goi_thau", "gia_trung_thau"), ("goi_thau", "gia_tri_dam_bao_du_thau"), ("goi_thau_phan_lo", "gia_tri_phan_lo"),
-    ("goi_thau_phan_lo", "bao_dam_du_thau"), ("goi_thau_phan_lo", "gia_trung_thau"), ("hop_dong", "gia_tri"),
-    ("thong_tin_mo_thau", "gia_du_thau"), ("thong_tin_mo_thau", "gia_sau_giam_gia"), ("thong_tin_mo_thau", "tong_gia_tri_cong_uu_dai"),
-    ("thong_tin_mo_thau", "gia_so_sanh_sau_uu_dai"), ("thong_tin_mo_thau", "gia_danh_gia_sau_uu_dai"), ("thong_tin_mo_thau", "gia_tri_dam_bao"),
-    ("ket_qua_danh_gia_nha_thau", "gia_xep_hang"), ("ket_qua_danh_gia_nha_thau", "gia_de_nghi_trung_thau"), ("goi_dich_vu", "gia_ca")}
+"""Live BiddingFlow pieces shared by the template tools.
 
-class VietnameseFloat(float):
-    def __str__(self):
-        v = float(self)
-        if v == int(v):
-            return f"{int(v):,}".replace(',', '.')
-        return f"{v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+The tools live inside the BiddingFlow repository, so they import the real
+DOCX pipeline, template policy and variable catalog instead of keeping copies
+that drift whenever the backend changes.
+"""
+import os
+import sys
 
-def format_short_vietnamese_month(month):
-    m = int(month); return f"{m:02d}" if m in {1, 2} else str(m)
-def format_short_vietnamese_date(day, month, year):
-    return f"{int(day):02d}/{format_short_vietnamese_month(month)}/{int(year):04d}"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-ns = {'re': re, 'datetime': datetime, 'VietnameseFloat': VietnameseFloat,
-      'format_short_vietnamese_date': format_short_vietnamese_date,
-      'format_short_vietnamese_month': format_short_vietnamese_month,
-      '_DOCX_MONEY_FIELD_NAMES': frozenset(c for _t, c in MONEY_COLUMNS),
-      'DOCX_INTERNAL_EMPTY_LIST': 'docx_internal_empty_list',
-      'DOCX_INTERNAL_EMPTY_VALUE': 'docx_internal_empty_value'}
-tree = ast.parse(open(SRC, encoding='utf-8').read())
-nodes = []
-for n in tree.body:
-    name = getattr(n, 'name', None)
-    if isinstance(n, ast.Assign):
-        name = n.targets[0].id if isinstance(n.targets[0], ast.Name) else None
-    if name in WANT:
-        nodes.append(n)
-exec(compile(ast.Module(body=nodes, type_ignores=[]), SRC, 'exec'), ns)
-globals().update({k: ns[k] for k in WANT})
-COLUMN_LITERAL_CONTEXT = {"docx_column_literal_open_brace": "{", "docx_column_literal_close_brace": "}",
-                          'docx_internal_empty_list': (), 'docx_internal_empty_value': ""}
+from backend.documents import template_security  # noqa: E402
+from backend.documents.custom_exporter import (  # noqa: E402
+    enrich_context_with_lowercase_keys,
+    enrich_context_with_words,
+    format_context_dates,
+    format_context_money_values,
+    replace_placeholders_with_empty,
+    translate_xml_tags,
+)
+from backend.documents.docx_column_loop import COLUMN_LITERAL_CONTEXT  # noqa: E402
+from scripts.generate_word_variable_manifest import (  # noqa: E402
+    build_frontend_defaults as word_variables,
+    build_frontend_field_metadata as field_metadata,
+)
+
+__all__ = [
+    "COLUMN_LITERAL_CONTEXT",
+    "enrich_context_with_lowercase_keys",
+    "enrich_context_with_words",
+    "field_metadata",
+    "format_context_dates",
+    "format_context_money_values",
+    "replace_placeholders_with_empty",
+    "template_security",
+    "translate_xml_tags",
+    "word_variables",
+]

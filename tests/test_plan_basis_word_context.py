@@ -18,7 +18,6 @@ from backend.documents.word_defaults import (
     WORD_DEFAULT_MAPPINGS_VERSION,
     build_default_word_mappings,
 )
-from backend.documents.template_catalog.routes import _sample_preview_context
 
 
 def _cursor():
@@ -124,38 +123,68 @@ def test_selected_source_creates_only_custom_visible_alias():
 def test_default_mapping_catalog_exposes_one_selected_basis_loop_since_v16():
     defaults = build_default_word_mappings()
     matches = [row for row in defaults if row["source_table"] == "ke_hoach_can_cu"]
-    # v16 introduced the loop; v17 (ADR 0042) only added timeline scalars.
+    # v16 introduced the loop; v17 (ADR 0099) only added timeline scalars.
     assert WORD_DEFAULT_MAPPINGS_VERSION >= 16
     assert [(row["ten_bien"], row["mapping_key"]) for row in matches] == [
         ("ds_can_cu_lap_ke_hoach", "list:ke_hoach_can_cu")
     ]
 
 
-def test_sample_preview_materializes_the_visible_plan_basis_alias():
+_SAMPLE_BASIS_ROW = {
+    "stt": 1,
+    "noi_dung_goc": (
+        "Căn cứ Quyết định số 123/QĐ ngày 11/11/2025 của UBND xã ABC "
+        "về việc phê duyệt dự toán"
+    ),
+    "ten_can_cu": "Quyết định về việc phê duyệt dự toán",
+    "ten_van_ban": "Quyết định",
+    "so_van_ban": "123/QĐ",
+    "ngay_ban_hanh": "2025-11-11",
+    "S_ngay_ban_hanh": "11/11/2025",
+    "don_vi_ban_hanh": "UBND xã ABC",
+    "trich_yeu": "phê duyệt dự toán",
+    "cum_so_van_ban": " số 123/QĐ",
+    "cum_ngay_ban_hanh": " ngày 11/11/2025",
+    "cum_don_vi_ban_hanh": " của UBND xã ABC",
+    "cum_trich_yeu": " về việc phê duyệt dự toán",
+    "parse_status": "PARSED",
+}
+
+
+def _sample_plan_context():
+    plan = {
+        "id": "sample-plan", "ma_ke_hoach": "KH-MAU-01",
+        "ten_ke_hoach": "Kế hoạch lựa chọn nhà thầu mẫu",
+        "phien_ban": 1, "row_version": 1,
+    }
+    package = {
+        "id": "sample-package", "ma_goi_thau": "GT-MAU-01",
+        "ten_goi_thau": "Gói thầu mẫu", "phien_ban": 1, "row_version": 1,
+    }
+    return {
+        "ke_hoach": plan,
+        "ke_hoach_versions": [plan],
+        "goi_thau": [package],
+        "goi_thau_trong_ke_hoach": [package],
+        "goi_thau_versions": [package],
+        "ke_hoach_can_cu": [dict(_SAMPLE_BASIS_ROW)],
+        "user": {"ho_ten": "Người dùng mẫu"},
+        "to_chuc": {"ten_to_chuc": "Đơn vị mẫu"},
+        "chu_dau_tu": {"ten_chu_dau_tu": "Chủ đầu tư mẫu"},
+        "investor_name": "Chủ đầu tư mẫu",
+        "investor_address": "Địa chỉ mẫu",
+        "current_time": "2026-08-24T09:00:00+07:00",
+        "today": "2026-08-24",
+    }
+
+
+def test_plan_context_materializes_the_visible_plan_basis_alias():
     mappings = [
         ("ds_can_cu_lap_ke_hoach", "ke_hoach_can_cu", ""),
     ]
-    context = _sample_preview_context("plan")
+    context = _sample_plan_context()
 
     apply_custom_mappings(context, mappings)
     sealed, _manifest = seal_docx_context("plan", context, mappings)
 
-    assert sealed["ds_can_cu_lap_ke_hoach"] == [{
-        "stt": 1,
-        "noi_dung_goc": (
-            "Căn cứ Quyết định số 123/QĐ ngày 11/11/2025 của UBND xã ABC "
-            "về việc phê duyệt dự toán"
-        ),
-        "ten_can_cu": "Quyết định về việc phê duyệt dự toán",
-        "ten_van_ban": "Quyết định",
-        "so_van_ban": "123/QĐ",
-        "ngay_ban_hanh": "2025-11-11",
-        "S_ngay_ban_hanh": "11/11/2025",
-        "don_vi_ban_hanh": "UBND xã ABC",
-        "trich_yeu": "phê duyệt dự toán",
-        "cum_so_van_ban": " số 123/QĐ",
-        "cum_ngay_ban_hanh": " ngày 11/11/2025",
-        "cum_don_vi_ban_hanh": " của UBND xã ABC",
-        "cum_trich_yeu": " về việc phê duyệt dự toán",
-        "parse_status": "PARSED",
-    }]
+    assert sealed["ds_can_cu_lap_ke_hoach"] == [_SAMPLE_BASIS_ROW]

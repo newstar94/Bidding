@@ -25,7 +25,6 @@ from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
 from backend.shared.async_io import run_owned_task
 from backend.documents.document_ipc import (
     DocumentIpcError,
-    WORKER_EVENT_PREFIX,
     read_job_manifest,
     read_result,
     write_job_manifest,
@@ -43,7 +42,6 @@ from backend.observability.recording import (
 )
 from backend.shared.idle_backoff import idle_poll_backoff_from_env
 from backend.shared.audit_chain import insert_audit_row
-from backend.shared.logging_utils import log_structured_event
 from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
     validate_document_job_policy_snapshot,
@@ -77,60 +75,6 @@ class DocumentWorkerBusyError(DocumentWorkerError):
 
 class DocumentWorkerTimeoutError(DocumentWorkerError):
     """A document job exceeded its configured deadline."""
-
-
-_WORKER_EVENT_FIELDS = frozenset({
-    "mode",
-    "status",
-    "effectiveProfile",
-    "detectedDocumentType",
-    "documentTypeConfidence",
-    "documentTypeConflictCount",
-    "plannedRuleCount",
-    "plannedTargetCount",
-    "storyPartCount",
-    "storyXmlBytes",
-    "stylesXmlBytes",
-    "paragraphCount",
-    "runCount",
-    "styleCount",
-    "preservation",
-    "engineVersion",
-    "policyVersion",
-})
-
-
-def _record_worker_events(output: bytes) -> None:
-    """Record only code-owned, low-cardinality events from the sandbox."""
-
-    prefix = WORKER_EVENT_PREFIX.encode("ascii")
-    for line in bytes(output or b"").splitlines():
-        if not line.startswith(prefix) or len(line) > 16 * 1024:
-            continue
-        try:
-            event = json.loads(line[len(prefix):].decode("ascii"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        if (
-            not isinstance(event, dict)
-            or event.get("event") != "document.word_standardization"
-            or not isinstance(event.get("fields"), dict)
-        ):
-            continue
-        fields = {
-            key: value
-            for key, value in event["fields"].items()
-            if key in _WORKER_EVENT_FIELDS
-            and isinstance(value, (bool, int, float, str))
-        }
-        try:
-            log_structured_event(
-                "document.word_standardization",
-                fields=fields,
-                nonblocking=True,
-            )
-        except Exception:  # noqa: BLE001 - observability cannot fail an export
-            continue
 
 
 _semaphore_guard = threading.Lock()
@@ -505,8 +449,7 @@ def run_document_job(
                     raise DocumentWorkerError(
                         "Không thể áp dụng giới hạn tài nguyên cho tác vụ tài liệu."
                     ) from exc
-                _stdout, _stderr = process.communicate(timeout=timeout)
-                _record_worker_events(_stdout)
+                process.communicate(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
                 _terminate_process(process)
                 raise DocumentWorkerTimeoutError(
@@ -604,8 +547,7 @@ def _run_staged_document_job(
                 raise DocumentWorkerError(
                     "Không thể áp dụng giới hạn tài nguyên cho tác vụ tài liệu."
                 ) from exc
-            stdout, _stderr = process.communicate(timeout=timeout)
-            _record_worker_events(stdout)
+            process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             _terminate_process(process)
             outcome = "timed_out"

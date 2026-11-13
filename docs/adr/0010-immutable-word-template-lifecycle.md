@@ -17,3 +17,12 @@ Inventory file/hash/config hiện hữu thành initial logical template/version 
 ## Regression seams
 
 Immutable published bytes, stale CAS, one published head, restore-as-draft, preflight pinning, assignment follow/rename/no-orphan, legacy parity, retention, audit rollback, exact artifact provenance, record authorization và Word action-only entitlement.
+
+## Cập nhật 2026-11-12: gỡ API và giao diện vòng đời
+
+- Ngày 2026-09-19 (commit `5c603f7a`), chủ sản phẩm đã gỡ giao diện "Vòng đời biểu mẫu Word" (`WordTemplateCatalog.js/.css`) và thôi mount các route `/api/word-template-catalog/*`.
+- Ngày 2026-11-12, chủ sản phẩm duyệt xóa phần còn sót: `backend/documents/template_catalog/routes.py`, khối HTML ẩn `#word-template-catalog-card` trong `views/tabs/tab_bieumau.html` và các test chỉ kiểm tra các route đó.
+- Không đổi hành vi: các route đã không còn truy cập được từ 2026-09-19. Phần còn dùng khi xuất Word vẫn giữ nguyên, cùng test của chúng:
+  - `service`, `repository`, `storage`, `preflight`;
+  - `compatibility` (`catalog_enabled`, chế độ cutover, alias projection, janitor retention).
+- Khi chưa có API, không có cách tạo hay phát hành phiên bản catalog mới từ ứng dụng. Muốn bật lại tính năng thì khôi phục từ lịch sử git và mount lại route.

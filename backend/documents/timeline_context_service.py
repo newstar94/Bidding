@@ -19,11 +19,16 @@ from backend.timeline.effective_timeline import (
     assign_timeline_display_codes,
     build_effective_timeline,
 )
+from backend.timeline.ehsmt_decisions import (
+    EHSMT_DECISION_LIST_ROOT,
+    build_ehsmt_decisions,
+)
 from backend.timeline.word_fields import (
     PLAN_SECTION_MILESTONE_KEYS,
     merge_first_filled,
     milestone_values_from_rows,
     timeline_word_context,
+    with_original_version_values,
 )
 from backend.versioning.relation_policy import load_contracts_for_package_lineage
 
@@ -161,23 +166,80 @@ def _load_saved_rows(cursor, organization_id, package_id):
     ]
 
 
-def load_effective_timeline_rows(cursor, organization_id, package_id):
-    """Evaluate one package timeline with the caller's tenant-scoped cursor."""
-
+def _evaluate_timeline(cursor, organization_id, package_id):
     package, plan = _load_package_and_plan(cursor, organization_id, package_id)
     if not package:
-        return []
+        return {}, [], {}
     saved_rows = _load_saved_rows(cursor, organization_id, package_id)
     related = _load_related(cursor, organization_id, package_id)
     related["plan"] = plan
-    return build_effective_timeline(package, related, saved_rows)
+    return package, build_effective_timeline(package, related, saved_rows), related
+
+
+def load_effective_timeline_rows(cursor, organization_id, package_id):
+    """Evaluate one package timeline with the caller's tenant-scoped cursor."""
+
+    return _evaluate_timeline(cursor, organization_id, package_id)[1]
+
+
+def _version_order(package):
+    version = str(package.get("phien_ban") or "").strip()
+    return (
+        (0, int(version)) if version.isdigit() else (1, 0),
+        str(package.get("created_at") or ""),
+        str(package.get("id") or ""),
+    )
+
+
+def _first_lineage_package_id(cursor, organization_id, package):
+    """Return the first live version of the package's lineage (ADR 0102)."""
+
+    package_id = str(package.get("id") or "")
+    root_id = str(package.get("id_goc") or "").strip() or package_id
+    versions = [
+        _row_dict(row)
+        for row in cursor.execute(
+            """SELECT id, phien_ban, created_at FROM goi_thau
+                WHERE organization_id = ? AND archived_at IS NULL
+                  AND (id = ? OR id_goc = ?)""",
+            (organization_id, root_id, root_id),
+        ).fetchall()
+    ]
+    if not versions:
+        return package_id
+    return str(min(versions, key=_version_order)["id"])
 
 
 def load_timeline_word_context(cursor, organization_id, package_id):
-    """Return the ADR 0042 milestone scalars for one package Word export."""
+    """Return the timeline-derived Word values of one package export.
 
-    rows = load_effective_timeline_rows(cursor, organization_id, package_id)
-    return timeline_word_context(milestone_values_from_rows(rows))
+    ADR 0099 milestone scalars come from the exported version's effective
+    timeline.  ADR 0102: the E-HSMT approval scalars and the first item of
+    ``qd_hsmt_list`` come from the first version of the lineage, and the list
+    continues with every applicable adjustment decision of the exported
+    version.
+    """
+
+    package, rows, related = _evaluate_timeline(cursor, organization_id, package_id)
+    original_rows = rows
+    if package:
+        first_id = _first_lineage_package_id(cursor, organization_id, package)
+        if first_id != str(package_id):
+            original_rows = load_effective_timeline_rows(
+                cursor, organization_id, first_id
+            )
+    values = with_original_version_values(
+        milestone_values_from_rows(rows),
+        milestone_values_from_rows(original_rows),
+    )
+    return {
+        **timeline_word_context(values),
+        EHSMT_DECISION_LIST_ROOT: build_ehsmt_decisions(
+            original_rows,
+            rows,
+            related.get("ehsmtAdjustments") or [],
+        ),
+    }
 
 
 def _package_order(package):

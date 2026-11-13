@@ -162,24 +162,6 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         validate_docx_template_statements(sanitized)
         return sanitized
 
-    if operation == "standardize_docx":
-        from backend.documents.word_standardizer import process_docx
-
-        mode = str(payload.get("mode") or "audit").strip().casefold()
-        result = process_docx(
-            _payload_content(payload),
-            profile=str(payload.get("profile") or "sector_template"),
-            mode=mode,
-            expected_analysis_hash=payload.get("expectedAnalysisHash"),
-        )
-        if mode == "apply_fix":
-            if not isinstance(result.content, bytes):
-                raise ValueError("Tác vụ chuẩn hóa Word không tạo được tệp kết quả.")
-            if len(result.content) > MAX_OUTPUT_BYTES:
-                raise ValueError("Tệp Word chuẩn hóa vượt quá giới hạn kích thước.")
-            return result.content
-        return result.report
-
     if operation == "validate_ooxml":
         from backend.documents.archive_validation import validate_ooxml_archive
 

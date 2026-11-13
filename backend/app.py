@@ -754,7 +754,6 @@ def _initial_route_preload_tag(html_content):
 
 async def index(request, *, not_found=False):
     """Return the compiled application shell with browser ETag caching."""
-    global _index_response_cache
     if IS_PRODUCTION and _index_response_cache is not None:
         html_content, etag = _index_response_cache
     else:

@@ -382,7 +382,7 @@ for _k in list(INFER) + list(INFER_PKG) + ['Ngày thư mời xác nhận năng l
 
 
 # ---------------------------------------------------------------------------
-# ADR 0042 (Bidding): số/ngày văn bản theo mốc tiến độ -> biến so_* / ngay_*
+# ADR 0099 (Bidding): số/ngày văn bản theo mốc tiến độ -> biến so_* / ngay_*
 # ---------------------------------------------------------------------------
 def _td(kind, slug):
     name = '%s_%s' % (kind, slug)
@@ -462,7 +462,7 @@ for _k in list(TIMELINE_ROOT) + list(FORCE_SHORT) + ['Chứng thư thẩm địn
 
 
 # ---------------------------------------------------------------------------
-# ADR 0043 (Bidding): thông tin đơn vị tư vấn lập / thẩm định -> biến *_tvl / *_tvt
+# ADR 0100 (Bidding): thông tin đơn vị tư vấn lập / thẩm định -> biến *_tvl / *_tvt
 # Nguồn: nhà thầu của hợp đồng phân loại "Tư vấn" / "Thẩm định" gắn với gói thầu.
 # ---------------------------------------------------------------------------
 # mã trong tên placeholder -> (hậu tố biến, khóa gốc Bidding, placeholder tên đơn vị)

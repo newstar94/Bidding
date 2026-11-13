@@ -1679,7 +1679,7 @@ def _dashboard_procurement_section(cursor, view, end, normalized, paid_item, que
                 target["revenueVnd"] += int(pack.get("gross_revenue_vnd") or 0)
                 target["unusedCredits"] += int(pack.get("unused_credits") or 0)
             small_pack_signals = []
-            for workspace_id, dates in purchase_dates.items():
+            for workspace_id in purchase_dates:
                 workspace_pack_rows = [pack for pack in pack_rows if str(pack["analytics_workspace_id"]) == workspace_id]
                 for pack_size in sorted({int(pack["pack_size"]) for pack in workspace_pack_rows}):
                     pack_dates = []

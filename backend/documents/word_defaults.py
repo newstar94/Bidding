@@ -14,9 +14,9 @@ from backend.shared.workspace_scope import (
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 18
+WORD_DEFAULT_MAPPINGS_VERSION = 19
 
-# ADR 0043: consultant firm variables, e.g. ``ten_tvl`` / ``ten_tvt``.
+# ADR 0100: consultant firm variables, e.g. ``ten_tvl`` / ``ten_tvt``.
 _CONSULTANT_NAME_SUFFIXES = {
     PREPARATION_CONSULTANT_ROOT: "tvl",
     APPRAISAL_CONSULTANT_ROOT: "tvt",
@@ -450,6 +450,8 @@ WORD_LIST_MAPPINGS = [
     ("ds_to_tham_dinh", "to_tham_dinh", "Tổ thẩm định của gói thầu"),
     ("ds_mo_thau", "thong_tin_mo_thau", "Danh sách thông tin mở thầu"),
     ("ds_hop_dong", "hop_dong_list", "Danh sách hợp đồng hiện hành liên kết với gói thầu"),
+    # ADR 0102: QĐ phê duyệt E-HSMT gốc, rồi các lần điều chỉnh.
+    ("ds_qd_hsmt", "qd_hsmt_list", "QĐ phê duyệt E-HSMT gốc và các lần điều chỉnh"),
     ("ds_bao_cao_dgct", "detailed_evaluation_reports", "Báo cáo đánh giá chi tiết theo nhà thầu và vòng"),
     ("ds_dgct", "detailed_evaluation_rows", "Tất cả dòng đánh giá chi tiết"),
     ("ds_dgct_hop_le", "detailed_evaluation_validity_rows", "Đánh giá chi tiết tính hợp lệ"),
@@ -491,7 +493,7 @@ WORD_CONTEXT_MAPPINGS = [
     ("so_nt_khong_dat", "so_nha_thau_khong_dat", "Số nhà thầu không đạt"),
     ("so_nt_dat_khong_hang_1", "so_nha_thau_dat_khong_xep_hang_1", "Số nhà thầu đạt nhưng không xếp hạng 1"),
     ("so_nt_khong_danh_gia", "so_nha_thau_khong_duoc_danh_gia", "Số nhà thầu không được đánh giá"),
-    # ADR 0042: số/ngày văn bản của từng mốc trên tab Tiến độ.
+    # ADR 0099: số/ngày văn bản của từng mốc trên tab Tiến độ.
     *TIMELINE_WORD_CONTEXT_MAPPINGS,
 ]
 
