@@ -1,0 +1,12 @@
+{
+    "active_template": "jv_result_template_jv-e2e-1788810652301.docx",
+    "enabled_templates": [
+        "jv_result_template_jv-e2e-1788810652301.docx"
+    ],
+    "revision": 2,
+    "template_assignments": {
+        "award_result_appraisal_report": [
+            "jv_result_template_jv-e2e-1788810652301.docx"
+        ]
+    }
+}

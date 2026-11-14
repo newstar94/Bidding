@@ -1,0 +1,16 @@
+{
+    "active_template": "",
+    "enabled_templates": [],
+    "revision": 21,
+    "template_assignments": {
+        "award_result_appraisal_report": [
+            "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+        ],
+        "consultant_evaluation_step_1": [
+            "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+        ],
+        "procurement_plan": [
+            "BiddingFlow_Mau_Kiem_Thu_Xuat_Word.docx"
+        ]
+    }
+}
