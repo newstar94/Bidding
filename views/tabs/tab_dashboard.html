@@ -1,4 +1,52 @@
 <section class="tab-pane active dashboard-operations" id="tab-dashboard">
+    <div class="dashboard-hero-grid">
+        <section class="dashboard-welcome" aria-labelledby="dashboard-welcome-title">
+            <div class="dashboard-welcome-copy">
+                <h2 id="dashboard-welcome-title">Chào bạn!</h2>
+                <p id="dashboard-welcome-summary">Đang tổng hợp công việc cần xử lý.</p>
+                <button type="button" class="btn dashboard-welcome-action" id="btn-dashboard-welcome-action">
+                    Xem việc cần xử lý <i data-lucide="arrow-right" aria-hidden="true"></i>
+                </button>
+            </div>
+            <svg class="dashboard-welcome-art" viewBox="0 0 270 210" aria-hidden="true" focusable="false">
+                <ellipse class="dw-shadow" cx="135" cy="196" rx="110" ry="9"></ellipse>
+                <rect class="dw-sheet-back" x="74" y="20" width="128" height="160" rx="14" transform="rotate(8 138 100)"></rect>
+                <rect class="dw-sheet" x="52" y="16" width="132" height="168" rx="14"></rect>
+                <rect class="dw-accent" x="68" y="34" width="52" height="8" rx="4"></rect>
+                <rect class="dw-line" x="68" y="50" width="98" height="6" rx="3"></rect>
+                <rect class="dw-line" x="68" y="62" width="76" height="6" rx="3"></rect>
+                <rect class="dw-line" x="68" y="82" width="100" height="1.5"></rect>
+                <rect class="dw-line-strong" x="68" y="92" width="30" height="6" rx="3"></rect>
+                <rect class="dw-line-soft" x="108" y="92" width="58" height="6" rx="3"></rect>
+                <rect class="dw-line-strong" x="68" y="106" width="30" height="6" rx="3"></rect>
+                <rect class="dw-line-soft" x="108" y="106" width="44" height="6" rx="3"></rect>
+                <rect class="dw-line-strong" x="68" y="120" width="30" height="6" rx="3"></rect>
+                <rect class="dw-line-soft" x="108" y="120" width="52" height="6" rx="3"></rect>
+                <rect class="dw-accent-soft" x="68" y="146" width="44" height="18" rx="6"></rect>
+                <circle class="dw-accent" cx="176" cy="150" r="30"></circle>
+                <path class="dw-check" d="M163 150 l9 9 l17 -18"></path>
+                <g transform="translate(186 34)">
+                    <rect class="dw-sheet" width="66" height="70" rx="14"></rect>
+                    <rect class="dw-danger" width="66" height="22" rx="14"></rect>
+                    <rect class="dw-danger" y="12" width="66" height="10"></rect>
+                    <text class="dw-day" id="dashboard-welcome-day" x="33" y="56" text-anchor="middle">1</text>
+                </g>
+                <circle class="dw-warning" cx="40" cy="58" r="6"></circle>
+                <circle class="dw-accent-light" cx="246" cy="132" r="4"></circle>
+                <circle class="dw-info" cx="30" cy="150" r="3"></circle>
+            </svg>
+        </section>
+        <section class="dashboard-card dashboard-upcoming-card" aria-labelledby="dashboard-upcoming-title">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title" id="dashboard-upcoming-title">Mốc trong 7 ngày tới</h3>
+                    <span class="dashboard-card-note">Từ các việc cần xử lý trong phạm vi được giao</span>
+                </div>
+            </div>
+            <ol class="dashboard-upcoming-list" id="dashboard-upcoming-list"></ol>
+        </section>
+    </div>
+
     <div class="dashboard-section-heading dashboard-section-heading-alerts">
         <div>
             <span class="dashboard-section-kicker" id="dashboard-alerts-kicker">Cần xử lý hôm nay</span>
@@ -58,29 +106,21 @@
             </div>
         </section>
 
-        <section class="dashboard-card recent-activity" aria-labelledby="dashboard-recent-title">
+        <section class="dashboard-card dashboard-status-card card-primary" aria-labelledby="dashboard-status-title">
             <div class="card-header">
-                <h3 class="card-title" id="dashboard-recent-title">Gói thầu được giao mới cập nhật</h3>
-                <button class="btn btn-outline btn-sm" id="btn-view-all-packages" type="button">Xem tất cả</button>
+                <h3 class="card-title" id="dashboard-status-title">Cơ cấu trạng thái gói thầu</h3>
+                <i data-lucide="pie-chart" class="text-muted"></i>
             </div>
-            <div class="card-body dashboard-table-body">
-                <table class="data-table dashboard-recent-table" id="recent-packages-table" data-density="compact">
-                    <colgroup>
-                        <col class="dashboard-recent-code-column">
-                        <col class="dashboard-recent-name-column">
-                        <col class="dashboard-recent-price-column">
-                        <col class="dashboard-recent-status-column">
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th>Mã gói thầu</th>
-                            <th>Tên gói thầu</th>
-                            <th>Giá gói thầu</th>
-                            <th>Trạng thái</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <div class="card-body">
+                <div class="status-summary-wrapper">
+                    <div class="status-donut-chart" role="img" aria-label="Biểu đồ cơ cấu trạng thái gói thầu">
+                        <div class="donut-inner">
+                            <span class="donut-total" id="donut-total-count">0</span>
+                            <span class="donut-label">Gói thầu</span>
+                        </div>
+                    </div>
+                    <div class="status-legend-list" id="status-legend-list"></div>
+                </div>
             </div>
         </section>
     </div>
@@ -144,21 +184,21 @@
             <div class="dashboard-metric-breakdown dashboard-contract-breakdown" id="contract-summary-breakdown" role="group" aria-label="Số lượng và giá trị hợp đồng theo trạng thái"></div>
         </article>
 
-        <section class="dashboard-card dashboard-status-card card-primary" aria-labelledby="dashboard-status-title">
+        <section class="dashboard-card recent-activity dashboard-recent-card" aria-labelledby="dashboard-recent-title">
             <div class="card-header">
-                <h3 class="card-title" id="dashboard-status-title">Cơ cấu trạng thái gói thầu</h3>
-                <i data-lucide="pie-chart" class="text-muted"></i>
+                <h3 class="card-title" id="dashboard-recent-title">Gói thầu được giao mới cập nhật</h3>
+                <button class="btn btn-text btn-sm" id="btn-view-all-packages" type="button">Xem tất cả</button>
             </div>
-            <div class="card-body">
-                <div class="status-summary-wrapper">
-                    <div class="status-donut-chart" role="img" aria-label="Biểu đồ cơ cấu trạng thái gói thầu">
-                        <div class="donut-inner">
-                            <span class="donut-total" id="donut-total-count">0</span>
-                            <span class="donut-label">Gói thầu</span>
-                        </div>
-                    </div>
-                    <div class="status-legend-list" id="status-legend-list"></div>
-                </div>
+            <div class="card-body dashboard-recent-body">
+                <table class="data-table dashboard-recent-table dashboard-recent-list" id="recent-packages-table" data-density="compact">
+                    <thead class="dashboard-visually-hidden">
+                        <tr>
+                            <th>Gói thầu</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </section>
     </div>

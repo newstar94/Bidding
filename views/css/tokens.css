@@ -1,30 +1,36 @@
-/* Hallmark · macrostructure: Workbench · tone: utilitarian · anchor hue: cobalt
+/* Hallmark · macrostructure: Workbench · tone: utilitarian · anchor hue: green (Minimal preset)
  * pre-emit critique: P5 H5 E5 S5 R5 V5 · design-system: design.md
  */
 :root {
-  --color-paper: oklch(98.1% 0.012 250);
-  --color-paper-2: oklch(96.6% 0.018 250);
+  --color-paper: #ffffff;
+  --color-paper-2: #f4f6f8;
   --color-surface: oklch(100% 0 0);
   --color-surface-raised: oklch(100% 0 0);
-  --color-ink: oklch(22% 0.035 255);
-  --color-muted: oklch(43% 0.045 255);
-  --color-subtle: oklch(51% 0.04 255);
-  --color-rule: oklch(89% 0.028 250);
-  --color-rule-strong: oklch(82% 0.04 250);
-  --color-accent: oklch(53% 0.205 263);
-  --color-accent-strong: oklch(45% 0.19 263);
-  --color-accent-soft: oklch(95.4% 0.028 263);
-  --color-accent-ink: oklch(98.5% 0.008 250);
-  --color-focus: oklch(62% 0.21 263);
-  --color-success: oklch(50% 0.12 165);
-  --color-warning: oklch(55.3% 0.195 38.402);
-  --color-danger: oklch(52% 0.18 25);
-  --color-danger-soft: oklch(96.5% 0.025 25);
-  --color-scrim: oklch(22% 0.035 255 / 0.42);
+  --color-ink: #1c252e;
+  --color-muted: #637381;
+  --color-subtle: #637381;
+  --color-rule: rgba(145, 158, 171, 0.2);
+  --color-rule-strong: rgba(145, 158, 171, 0.32);
+  --color-accent: #00a76f;
+  --color-accent-strong: #007867;
+  --color-accent-soft: #ebf8f4;
+  --color-accent-ink: #ffffff;
+  --color-focus: #00a76f;
+  --color-success: #0e7a4b;
+  --color-warning: #9a5b00;
+  --color-danger: #b71d18;
+  --color-danger-soft: #ffe4de;
+  /* Vivid status mains for tints and data marks only, never for text. */
+  --color-success-main: #22c55e;
+  --color-warning-main: #ffab00;
+  --color-danger-main: #ff5630;
+  --color-scrim: rgba(28, 37, 46, 0.48);
 
   --font-display: "Plus Jakarta Sans", sans-serif;
   --font-body: "Plus Jakarta Sans", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  /* Workspace typeface (Minimal UI direction); public pages keep Plus Jakarta Sans. */
+  --font-workspace: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -51,27 +57,31 @@
   --dur-long: 320ms;
 
   --radius-input: 0.5rem;
-  --radius-card: 0.75rem;
+  --radius-card: 1rem;
   --radius-dialog: 1rem;
+  --radius-label: 0.375rem;
   --radius-pill: 999px;
-  --shadow-surface: 0 1px 2px oklch(22% 0.035 255 / 0.05);
-  --shadow-dialog: 0 24px 60px oklch(22% 0.035 255 / 0.16);
+  /* Minimal card elevation: hairline ambient plus a soft drop. */
+  --shadow-surface: 0 0 2px 0 rgba(145, 158, 171, 0.2), 0 12px 24px -4px rgba(145, 158, 171, 0.12);
+  --shadow-dialog: -24px 24px 64px -8px rgba(145, 158, 171, 0.24);
 
-  --shell-sidebar-width: 15.5rem;
-  --shell-header-height: 4rem;
+  --shell-sidebar-width: 17.5rem;
+  --shell-header-height: 4.5rem;
   --control-height: 2.75rem;
 
   /* Component tokens */
-  --button-bg: var(--color-accent);
-  --button-fg: var(--color-accent-ink);
-  --button-hover-bg: var(--color-accent-strong);
+  --button-bg: var(--color-ink);
+  --button-fg: var(--color-surface);
+  --button-hover-bg: color-mix(in srgb, var(--color-ink) 82%, var(--color-surface));
   --button-radius: var(--radius-input);
   --input-bg: var(--color-surface);
-  --input-border: var(--color-rule);
+  --input-border: var(--color-rule-strong);
   --input-focus-ring: var(--color-focus);
   --card-bg: var(--color-surface);
-  --card-border: var(--color-rule);
+  --card-border: transparent;
   --card-radius: var(--radius-card);
+  --card-shadow: var(--shadow-surface);
+  --row-hover: color-mix(in srgb, var(--color-paper-2) 64%, transparent);
 
   /* Finite overlay scale */
   --z-base: 0;

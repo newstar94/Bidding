@@ -92,6 +92,10 @@ LIST_SOURCES = {'to_chuyen_gia': 'to_chuyen_gia', 'to_tham_dinh': 'to_tham_dinh'
                 'ds_nha_thau_dat_khong_xep_hang_1': 'ds_nha_thau_dat_khong_xep_hang_1',
                 'ds_nha_thau_khong_duoc_danh_gia': 'ds_nha_thau_khong_duoc_danh_gia',
                 'ds_nha_thau_trung_theo_phan_lo': 'ds_nha_thau_trung_theo_phan_lo', 'ds_phan_lo': 'ds_phan_lo',
+                # ADR 0106: per-contractor summaries
+                'ds_nha_thau_tong_hop': 'ds_nha_thau_tong_hop',
+                'ds_nha_thau_tong_hop_dat_ky_thuat': 'ds_nha_thau_tong_hop_dat_ky_thuat',
+                'ds_nha_thau_tong_hop_xep_hang_1': 'ds_nha_thau_tong_hop_xep_hang_1',
                 'ds_phan_lo_co_nha_thau_tham_du': 'ds_phan_lo_co_nha_thau_tham_du',
                 'ds_phan_lo_khong_co_nha_thau_tham_du': 'ds_phan_lo_khong_co_nha_thau_tham_du',
                 'ds_phan_lo_co_nha_thau_trung': 'ds_phan_lo_co_nha_thau_trung',
@@ -129,6 +133,9 @@ def build_context(plan):
                 amount = bf.performance_security_amount(
                     ctx['goi_thau'].get('ty_le_bao_dam_hop_dong'), item.get('gia_sau_giam_gia'))
                 item[bf.PERFORMANCE_SECURITY_FIELD] = f'{amount:,}'.replace(',', '.') if amount else ''
+                item.setdefault('tong_gia_tri_cong_uu_dai', '1.500.000')
+        # ADR 0106: per-contractor summaries built by the backend
+        ctx.update(bf.build_contractor_summaries(ctx['nha_thau'], ctx['goi_thau']))
     # ADR 0099 timeline milestone scalars (moc_so_* / moc_ngay_*)
     plan_section = {'chung_thu_tdg', 'qd_tl_to', 'ttr_dt', 'qd_dt', 'ttr_kh', 'qd_kh', 'ttr_dt_kh', 'qd_dt_kh'}
     for v in VARS:
@@ -143,6 +150,10 @@ def build_context(plan):
             ctx[col] = '2026-10-05'
         else:
             ctx[col] = '%s/QĐ-MOC' % slug.upper()
+    # ADR 0106: deadlines are workspace result variables; simulate a configured
+    # workspace (computed dates print as dd/m/yyyy)
+    if not plan:
+        ctx.update({'ngay_han_hoan_thien_hd': '09/4/2026', 'ngay_han_xac_nhan_nl': '15/3/2026'})
     money, dates, datetimes = set(), set(), set()
     for v in VARS:
         name, table, col, fmt = v['name'], v['sourceTable'], v['sourceColumn'], v['format']

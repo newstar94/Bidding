@@ -3950,5 +3950,26 @@ export const DEFAULT_WORD_VARIABLES = [
     "name": "ds_cv_chua_du_dk",
     "sourceColumn": "",
     "sourceTable": "cv_chua_du_dieu_kien"
+  },
+  {
+    "format": "text",
+    "label": "Tổng hợp theo nhà thầu: mọi nhà thầu tham dự, mỗi nhà thầu một dòng",
+    "name": "ds_nt_tong_hop",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_tong_hop"
+  },
+  {
+    "format": "text",
+    "label": "Tổng hợp theo nhà thầu: nhà thầu có ít nhất một phần lô đạt kỹ thuật",
+    "name": "ds_nt_tong_hop_dat_kt",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_tong_hop_dat_ky_thuat"
+  },
+  {
+    "format": "text",
+    "label": "Tổng hợp theo nhà thầu: nhà thầu có ít nhất một phần lô xếp hạng 1",
+    "name": "ds_nt_tong_hop_hang_1",
+    "sourceColumn": "",
+    "sourceTable": "ds_nha_thau_tong_hop_xep_hang_1"
   }
 ];

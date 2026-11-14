@@ -98,6 +98,7 @@ function timelineState(view) {
     workspaceToken,
     package: null,
     initialPackage: null,
+    lineagePackages: [],
     plan: null,
     rows: [],
     lineageRows: [],
@@ -126,6 +127,7 @@ export function resetTimelineSession(view) {
     clearTimeout(state.packageSearchTimer);
     state.package = null;
     state.initialPackage = null;
+    state.lineagePackages = [];
     state.plan = null;
     state.rows = [];
     state.lineageRows = [];
@@ -175,7 +177,10 @@ function findPlan(view, packageRecord) {
 }
 
 function timelineRuleContext(state) {
-  return { initialPackage: state?.initialPackage || state?.package || null };
+  return {
+    initialPackage: state?.initialPackage || state?.package || null,
+    lineagePackages: Array.isArray(state?.lineagePackages) ? state.lineagePackages : [],
+  };
 }
 
 export function timelinePlanProgressStatus(planId, packages = []) {
@@ -522,7 +527,10 @@ function statusOptions(current) {
 }
 
 function timelineMilestoneKey(row) {
-  return String(row?.milestoneKey || row?.maMoc || "").trim();
+  const milestoneKey = String(row?.milestoneKey || row?.maMoc || "").trim();
+  const instanceKey = String(row?.instanceKey || "").trim();
+  // Repeatable milestones (e.g. each E-HSMT adjustment) keep separate date history.
+  return milestoneKey && instanceKey ? `${milestoneKey}::${instanceKey}` : milestoneKey;
 }
 
 function timelineDateRecords(row) {
@@ -793,6 +801,7 @@ async function selectPackage(view, packageId) {
   if (!packageId) {
     state.package = null;
     state.initialPackage = null;
+    state.lineagePackages = [];
     state.plan = null;
     state.rows = [];
     state.lineageRows = [];
@@ -817,6 +826,7 @@ async function selectPackage(view, packageId) {
     // Other plan snapshots remain history, never replacement edit targets.
     const pkg = requestedPackage;
     state.package = pkg;
+    state.lineagePackages = lineagePackages;
     const initialReference = timelineInitialPackageReference(lineagePackages, pkg) || pkg;
     state.initialPackage = lineagePackages.find(
       (version) => String(version.id) === String(initialReference.id),

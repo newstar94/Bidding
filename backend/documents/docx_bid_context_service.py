@@ -1,9 +1,17 @@
 """Build bidder/result lists and lot summaries for Word contexts."""
 
+from decimal import Decimal
+
 from backend.documents.computed_word_values import (
+    CONTRACTOR_SUMMARY_RANK_1_ROOT,
+    CONTRACTOR_SUMMARY_ROOT,
+    CONTRACTOR_SUMMARY_TECHNICAL_ROOT,
     PERFORMANCE_SECURITY_FIELD,
+    parse_amount,
     performance_security_amount,
 )
+
+PREFERENCE_FIELD = 'tong_gia_tri_cong_uu_dai'
 from backend.shared.helpers import VietnameseFloat
 
 def _ensure_list(value):
@@ -119,6 +127,8 @@ def _bid_display_item(bid):
     item['_gia_sau_giam_gia_raw'] = item.get('gia_sau_giam_gia')
     item['gia_du_thau'] = _money_text(item.get('gia_du_thau'))
     item['gia_sau_giam_gia'] = _money_text(item.get('gia_sau_giam_gia'))
+    # ADR 0106: preference added in the goods evaluation; "0" when none.
+    item[PREFERENCE_FIELD] = _money_text(item.get(PREFERENCE_FIELD)) or '0'
     item['ly_do_truot'] = item.get('ly_do_truot') or item.get('nguyen_nhan_khong_dat_tai_chinh') or ''
     return item
 
@@ -146,9 +156,142 @@ def _add_performance_security(bids, pkg):
         bid[PERFORMANCE_SECURITY_FIELD] = _money_text(amount) if amount else ''
 
 
+def _criterion(bid, field):
+    return _normalize_vietnamese_text(bid.get(field))
+
+
+def _passes_capacity(bid):
+    return _criterion(bid, 'danh_gia_nang_luc') == 'dat'
+
+
+def _fails_capacity(bid):
+    return 'khong dat' in _criterion(bid, 'danh_gia_nang_luc')
+
+
+def _passes_technical(bid):
+    technical = _criterion(bid, 'danh_gia_ky_thuat')
+    if technical == 'dat':
+        return True
+    if not technical or 'khong dat' in technical:
+        return False
+    # Score-based methods store a score; the bid conclusion says whether it passed.
+    return _is_passed_bid(bid)
+
+
+def _aggregate_assessment(values):
+    texts = [_as_text(value) for value in values]
+    filled = [text for text in texts if text]
+    if not filled:
+        return ''
+    distinct = list(dict.fromkeys(filled))
+    if len(distinct) == 1 and len(filled) == len(texts):
+        return distinct[0]
+    passed = sum(1 for text in texts if _normalize_vietnamese_text(text) == 'dat')
+    return f'Đạt {passed}/{len(texts)} phần lô'
+
+
+def _whole_money(total, *, zero='' ):
+    amount = int(total)
+    return _money_text(amount) if amount else zero
+
+
+def build_contractor_summaries(bids, package):
+    """ADR 0106: one row per contractor across the lots it bid for.
+
+    "Đạt kỹ thuật" counts lots whose technical assessment passed (score-based
+    methods fall back to the bid conclusion); "đạt/không đạt năng lực" counts
+    the capacity assessment; "xếp hạng 1" counts lots ranked first.
+    """
+
+    package = package if isinstance(package, dict) else {}
+    lots = {}
+    for lot in _ensure_list(package.get('phan_lo_list')) + _ensure_list(package.get('awarded_phan_lo_list')):
+        if isinstance(lot, dict) and _as_text(lot.get('ma_phan_lo')):
+            lots.setdefault(_as_text(lot.get('ma_phan_lo')), lot)
+    groups = {}
+    for index, bid in enumerate(bid for bid in _ensure_list(bids) if isinstance(bid, dict)):
+        key = _bid_identity_key(bid) or f'row-{index}'
+        group = groups.setdefault(key, {'first': bid, 'rows': {}})
+        lot_key = _as_text(bid.get('ma_phan_lo')) or f'row-{index}'
+        group['rows'].setdefault(lot_key, bid)
+
+    summaries = []
+    for group in groups.values():
+        first = group['first']
+        rows = list(group['rows'].values())
+        totals = {name: Decimal(0) for name in (
+            'lot', 'bid', 'discount', 'after', 'preference', 'evaluated',
+            'bid_tech', 'discount_tech', 'after_tech', 'preference_tech', 'evaluated_tech',
+            'lot_rank', 'bid_rank', 'discount_rank', 'after_rank',
+        )}
+        counts = {'capacity': 0, 'capacity_failed': 0, 'technical': 0, 'rank_1': 0}
+        for bid in rows:
+            code = _as_text(bid.get('ma_phan_lo'))
+            lot_value = parse_amount((lots.get(code) or {}).get('gia_tri_phan_lo')) if code else parse_amount(package.get('gia_goi_thau'))
+            price = parse_amount(bid.get('gia_du_thau'))
+            after = parse_amount(bid.get('gia_sau_giam_gia'))
+            after = after if after is not None else price
+            discount = price - after if price is not None and after is not None and price > after else Decimal(0)
+            values = {
+                'lot': lot_value or Decimal(0),
+                'bid': price or Decimal(0),
+                'discount': discount,
+                'after': after or Decimal(0),
+                'preference': parse_amount(bid.get(PREFERENCE_FIELD)) or Decimal(0),
+                'evaluated': parse_amount(bid.get('gia_xep_hang')) or Decimal(0),
+            }
+            for name in ('lot', 'bid', 'discount', 'after', 'preference', 'evaluated'):
+                totals[name] += values[name]
+            counts['capacity'] += _passes_capacity(bid)
+            counts['capacity_failed'] += _fails_capacity(bid)
+            if _passes_technical(bid):
+                counts['technical'] += 1
+                for name in ('bid', 'discount', 'after', 'preference', 'evaluated'):
+                    totals[f'{name}_tech'] += values[name]
+            if _is_rank_1(bid.get('danh_gia_tai_chinh')):
+                counts['rank_1'] += 1
+                for name in ('lot', 'bid', 'discount', 'after'):
+                    totals[f'{name}_rank'] += values[name]
+        summaries.append({
+            'nha_thau_id': _as_text(first.get('nha_thau_id')),
+            'ten_nha_thau': first.get('ten_nha_thau') or first.get('ten_nha_thau_mt') or '',
+            'ma_nha_thau': first.get('ma_nha_thau') or first.get('ma_dinh_danh') or '',
+            'ma_so_thue': first.get('ma_so_thue') or '',
+            'danh_gia_hop_le': _aggregate_assessment([bid.get('danh_gia_hop_le') for bid in rows]),
+            'danh_gia_nang_luc': _aggregate_assessment([bid.get('danh_gia_nang_luc') for bid in rows]),
+            'so_phan_tham_du': len(rows),
+            'so_phan_dat_nang_luc': counts['capacity'],
+            'so_phan_khong_dat_nang_luc': counts['capacity_failed'],
+            'so_phan_dat_ky_thuat': counts['technical'],
+            'so_phan_xep_hang_1': counts['rank_1'],
+            'tong_gia_phan_lo': _whole_money(totals['lot']),
+            'tong_gia_du_thau': _whole_money(totals['bid']),
+            'tong_gia_tri_giam_gia': _whole_money(totals['discount'], zero='0'),
+            'tong_gia_sau_giam_gia': _whole_money(totals['after']),
+            'tong_gia_tri_uu_dai': _whole_money(totals['preference'], zero='0'),
+            'tong_gia_danh_gia': _whole_money(totals['evaluated']),
+            'tong_gia_du_thau_dat_ky_thuat': _whole_money(totals['bid_tech']),
+            'tong_gia_tri_giam_gia_dat_ky_thuat': _whole_money(totals['discount_tech'], zero='0'),
+            'tong_gia_sau_giam_gia_dat_ky_thuat': _whole_money(totals['after_tech']),
+            'tong_gia_tri_uu_dai_dat_ky_thuat': _whole_money(totals['preference_tech'], zero='0'),
+            'tong_gia_danh_gia_dat_ky_thuat': _whole_money(totals['evaluated_tech']),
+            'tong_gia_phan_lo_xep_hang_1': _whole_money(totals['lot_rank']),
+            'tong_gia_du_thau_xep_hang_1': _whole_money(totals['bid_rank']),
+            'tong_gia_tri_giam_gia_xep_hang_1': _whole_money(totals['discount_rank'], zero='0'),
+            'tong_gia_sau_giam_gia_xep_hang_1': _whole_money(totals['after_rank']),
+        })
+    return {
+        CONTRACTOR_SUMMARY_ROOT: summaries,
+        CONTRACTOR_SUMMARY_TECHNICAL_ROOT: [row for row in summaries if row['so_phan_dat_ky_thuat']],
+        CONTRACTOR_SUMMARY_RANK_1_ROOT: [row for row in summaries if row['so_phan_xep_hang_1']],
+    }
+
+
 def enrich_context_with_filtered_bidders(context):
-    bids = [_bid_display_item(b) for b in _ensure_list(context.get('nha_thau')) if isinstance(b, dict)]
+    raw_bids = [b for b in _ensure_list(context.get('nha_thau')) if isinstance(b, dict)]
+    bids = [_bid_display_item(b) for b in raw_bids]
     pkg = context.get('goi_thau', {})
+    context.update(build_contractor_summaries(raw_bids, pkg))
     _add_performance_security(bids, pkg)
     lot_winner_keys = _collect_lot_winner_keys(context)
 

@@ -6,6 +6,7 @@ import { workspaceDataStoreFor } from "../app/WorkspaceDataStore.js";
 import { trustedHTML } from "../shared/trustedTypes.js";
 import { buildBidderGoodsMappingModalMarkup } from "./bidderGoodsMappingPresentation.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { applyAutomaticEvaluationPrices } from "./bidEvaluationPriceDefaults.js";
 import { TABLE_PAGE_SIZE } from "../shared/TablePagination.js";
 import {
   downloadBidderGoodsTemplate,
@@ -248,7 +249,6 @@ export function buildBidderGoodsPanelState(controller, detailedState) {
     preferenceCalculation = rows.length ? calculateBidderGoodsPreference(rows, {
       discountRatePercent: String(bid?.tyLeGiamGia ?? 0),
       scopeAfterDiscount: bid?.giaSauGiamGia ?? null,
-      evaluationBase: bid?.giaXepHang ?? null,
     }) : null;
   } catch {
     preferenceCalculation = null;
@@ -326,7 +326,6 @@ export function applyBidderGoodsUnitPriceInput(
     previewRow = calculateBidderGoodsPreference(calculationRows, {
       discountRatePercent: String(detailedState.bid?.tyLeGiamGia ?? 0),
       scopeAfterDiscount: detailedState.bid?.giaSauGiamGia ?? null,
-      evaluationBase: detailedState.bid?.giaXepHang ?? null,
     }).lines.find((row) => String(row.id) === String(rowId)) || previewRow;
   } catch {
     // The row-level derived total remains usable even when preference inputs are incomplete.
@@ -862,7 +861,6 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
       calculation = calculateBidderGoodsPreference(rows, {
         discountRatePercent: String(detailedState.bid.tyLeGiamGia ?? 0),
         scopeAfterDiscount: detailedState.bid.giaSauGiamGia ?? null,
-        evaluationBase: detailedState.bid.giaXepHang ?? null,
       });
     } catch (error) {
       await controller.view.customAlert("Chưa thể tính ưu đãi", error.message, "alert-triangle");
@@ -912,6 +910,8 @@ export async function saveBidderGoods(controller, detailedState, { official = fa
       trangThaiTinhUuDai: "ready",
       uuDaiTinhLuc: new Date().toISOString(),
     });
+    // ADR 0107: automatic ranking price follows the new preference surcharge.
+    applyAutomaticEvaluationPrices(detailedState.bid, detailedState.pkg);
   }
   await controller.model.markRecordDirty?.(
     "hanghoaduthaunhathau",

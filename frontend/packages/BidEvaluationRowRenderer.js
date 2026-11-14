@@ -15,7 +15,13 @@ import { updateRowConclusion } from "./bidEvaluationActions.js";
 import {
   isProposedAwardPriceBelowHalf,
 } from "./bidEvaluationLowPriceRules.js";
-import { buildEvaluationPriceCells } from "./BidEvaluationPriceCells.js";
+import { buildEvaluationPriceCells, PRICE_ADJUSTMENT_FIELDS } from "./BidEvaluationPriceCells.js";
+import {
+  defaultProposedAwardPrice,
+  defaultRankingPrice,
+  formatSignedMoneyInput,
+  parseSignedMoney,
+} from "./bidEvaluationPriceDefaults.js";
 import {
   requiresTechnicalScoreInput,
   validateTechnicalScore,
@@ -255,17 +261,55 @@ function bindDurationInputs(row) {
   });
 }
 
-function bindFinancialInputs({ row, model, onRankingChange }) {
+// The bid as currently entered on the row (price, discount and ADR 0107 adjustments).
+function rowDraftBid(row, bid, model) {
+  const draftBid = { ...bid };
+  const bidPrice = row.querySelector(".mt-gia-du-thau");
+  const discount = row.querySelector(".mt-ty-le-giam-gia");
+  if (bidPrice) draftBid.giaDuThau = model.parseVND(bidPrice.value || "");
+  if (discount) draftBid.tyLeGiamGia = parseVietnameseNumber(discount.value || "0") || 0;
+  if (bidPrice || discount) {
+    const base = Number(draftBid.giaDuThau || 0);
+    const rate = Number(draftBid.tyLeGiamGia || 0);
+    draftBid.giaSauGiamGia = Number.isFinite(base) ? Math.round(base * (1 - rate / 100)) : null;
+  }
+  PRICE_ADJUSTMENT_FIELDS.forEach(({ field, className }) => {
+    const input = row.querySelector(`.${className}`);
+    if (input) {
+      const amount = parseSignedMoney(input.value);
+      draftBid[field] = amount === null ? null : amount.toString();
+    }
+  });
+  return draftBid;
+}
+
+function refreshAutoEvaluationPrices({ row, pkg, bid, model }) {
+  const draftBid = rowDraftBid(row, bid, model);
+  const targets = [
+    [row.querySelector(".mt-gia-xep-hang"), defaultRankingPrice(draftBid, pkg)],
+    [row.querySelector(".mt-gia-de-nghi-trung-thau"), defaultProposedAwardPrice(draftBid)],
+  ];
+  targets.forEach(([input, fallback]) => {
+    if (!input || input.dataset?.priceAuto !== "true") return;
+    input.value = fallback.value ? model.formatVND(fallback.value) || "" : "";
+    if (fallback.label) input.setAttribute?.("title", `${fallback.label}. Có thể nhập giá khác.`);
+  });
+  updateLowPriceWarning({ row, pkg, bid, model });
+}
+
+function bindFinancialInputs({ row, pkg, bid, model, onRankingChange }) {
   const bidPrice = row.querySelector(".mt-gia-du-thau");
   const discount = row.querySelector(".mt-ty-le-giam-gia");
   const security = row.querySelector(".mt-gia-tri-dam-bao");
   const recalculate = () => {
     const baseValue = model.parseVND(bidPrice?.value || "");
     const discountValue = parseVietnameseNumber(discount?.value || "0") || 0;
+    const discountedValue = baseValue * (1 - discountValue / 100);
     const discountedPrice = row.querySelector(".mt-gia-sau-giam-gia");
     if (discountedPrice) {
-      discountedPrice.value = model.formatVND(baseValue * (1 - discountValue / 100)) || "";
+      discountedPrice.value = model.formatVND(discountedValue) || "";
     }
+    refreshAutoEvaluationPrices({ row, pkg, bid, model });
     onRankingChange(row);
   };
   if (bidPrice) {
@@ -294,13 +338,33 @@ function updateLowPriceWarning({ row, pkg, bid, model }) {
 function bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange }) {
   const rankingPrice = row.querySelector(".mt-gia-xep-hang");
   const proposedAwardPrice = row.querySelector(".mt-gia-de-nghi-trung-thau");
+  const markManual = (input) => {
+    if (!input.dataset) return;
+    input.dataset.priceAuto = "false";
+    input.removeAttribute?.("title");
+  };
+  PRICE_ADJUSTMENT_FIELDS.forEach(({ className }) => {
+    const input = row.querySelector(`.${className}`);
+    if (!input) return;
+    bindCurrencyElement(input, (value) => formatSignedMoneyInput(value, (amount) => model.formatVND(amount)));
+    input.addEventListener("input", () => {
+      refreshAutoEvaluationPrices({ row, pkg, bid, model });
+      onRankingChange(row);
+    });
+  });
+  // Draft recovery restores values without input events; it calls this hook.
+  row.__bfRefreshEvaluationPrices = () => refreshAutoEvaluationPrices({ row, pkg, bid, model });
   if (rankingPrice) {
     bindCurrencyElement(rankingPrice, (value) => model.formatVND(value));
-    rankingPrice.addEventListener("input", () => onRankingChange(row));
+    rankingPrice.addEventListener("input", () => {
+      markManual(rankingPrice);
+      onRankingChange(row);
+    });
   }
   if (proposedAwardPrice) {
     bindCurrencyElement(proposedAwardPrice, (value) => model.formatVND(value));
     proposedAwardPrice.addEventListener("input", () => {
+      markManual(proposedAwardPrice);
       updateLowPriceWarning({ row, pkg, bid, model });
       onRankingChange(row);
     });
@@ -448,7 +512,7 @@ function appendBidEvaluationRow({
   if (!rowReadOnly) {
     bindEvaluationInputs(row, onRankingChange);
     bindRequiredTechnicalScore(row, pkg);
-    bindFinancialInputs({ row, model, onRankingChange });
+    bindFinancialInputs({ row, pkg, bid, model, onRankingChange });
     bindEvaluationPriceInputs({ row, pkg, bid, model, onRankingChange });
   }
   bindDurationInputs(row);

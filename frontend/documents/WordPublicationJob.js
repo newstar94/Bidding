@@ -63,9 +63,11 @@ function jobErrorMessage(code, fallback = "") {
   return messages[code] || fallback || "Không thể hoàn tất yêu cầu xuất Word.";
 }
 
-function exportJobError(code, fallback = "") {
+function exportJobError(code, fallback = "", data = null) {
   const error = new Error(jobErrorMessage(code, fallback));
   error.code = code;
+  // ADR 0106: keep server details (e.g. missing result variables) for callers.
+  if (data && typeof data === "object") error.data = data;
   return error;
 }
 
@@ -138,7 +140,7 @@ export async function runWordPublicationExportJob({
     });
   } catch (error) {
     const code = jobErrorCode(error);
-    throw exportJobError(code, error instanceof Error ? error.message : String(error));
+    throw exportJobError(code, error instanceof Error ? error.message : String(error), error?.data);
   }
   assertJobResponse(created);
 

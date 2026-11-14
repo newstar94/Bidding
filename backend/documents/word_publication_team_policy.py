@@ -61,8 +61,8 @@ def _target_content(target) -> bytes:
     return Path(path).read_bytes()
 
 
-def referenced_team_roots(template_selection, mappings=()) -> set[str]:
-    """Return team context roots actually referenced by selected templates."""
+def selected_template_contents(template_selection) -> list[bytes]:
+    """DOCX bytes of every selected template (path, content or a list of them)."""
 
     if isinstance(template_selection, list):
         targets = template_selection
@@ -70,11 +70,22 @@ def referenced_team_roots(template_selection, mappings=()) -> set[str]:
         targets = [template_selection]
     else:
         targets = [{"path": template_selection}]
+    return [_target_content(target) for target in targets]
+
+
+def referenced_root_keys(template_selection) -> set[str]:
+    """Return every Jinja context root referenced by the selected templates."""
+
     referenced_roots = set()
-    for target in targets:
-        referenced_roots.update(
-            extract_docx_template_root_keys(_target_content(target))
-        )
+    for content in selected_template_contents(template_selection):
+        referenced_roots.update(extract_docx_template_root_keys(content))
+    return referenced_roots
+
+
+def referenced_team_roots(template_selection, mappings=()) -> set[str]:
+    """Return team context roots actually referenced by selected templates."""
+
+    referenced_roots = referenced_root_keys(template_selection)
 
     aliases_by_team = {team: {team} for team in TEAM_SPECS}
     for mapping in mappings or ():

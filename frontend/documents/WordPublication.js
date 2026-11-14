@@ -1,4 +1,8 @@
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
+import {
+  presentRequiredVariablesWarning,
+  requiredVariablesWarning,
+} from "./requiredWordVariables.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
 import {
@@ -596,6 +600,11 @@ async function exportWordPublicationDocument(
     );
     return true;
   } catch (error) {
+    const requiredWarning = requiredVariablesWarning(error);
+    if (requiredWarning) {
+      await presentRequiredVariablesWarning(controller, requiredWarning);
+      return false;
+    }
     const isTeamWarning = isWordPublicationTeamWarning(error);
     await controller.view?.customAlert?.(
       isTeamWarning ? "Cảnh báo thiếu thông tin tổ" : "Không thể xuất Word",

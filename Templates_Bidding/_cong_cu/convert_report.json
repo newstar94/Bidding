@@ -227,7 +227,7 @@
    "root": 1
   },
   "Ngày báo cáo": {
-   "unmapped": 2
+   "root": 2
   },
   "Số QĐ DT": {
    "root": 12
@@ -517,10 +517,10 @@
    "row-item": 6
   },
   "Số phần tham dự": {
-   "unmapped": 6
+   "row-item": 6
   },
   "Giá phần lô tham dự tổng": {
-   "unmapped": 2
+   "row-item": 2
   },
   "Giá dự thầu tổng": {
    "row-item": 3
@@ -557,10 +557,10 @@
    "row-item": 3
   },
   "Số phần đạt": {
-   "unmapped": 5
+   "row-item": 5
   },
   "Số phần không đạt": {
-   "unmapped": 1
+   "row-item": 1
   },
   "Tên phần lô": {
    "row-item": 12
@@ -591,7 +591,7 @@
    "row-item": 9
   },
   "Ưu đãi": {
-   "unmapped": 1
+   "row-item": 1
   },
   "Giá đánh giá": {
    "row-item": 1
@@ -600,8 +600,7 @@
    "row-item": 8
   },
   "Số phần xếp hạng 1": {
-   "unmapped": 4,
-   "row-item": 2
+   "row-item": 6
   },
   "Giá dự thầu xếp hạng 1 tổng sau giảm giá": {
    "row-item": 13,
@@ -629,7 +628,7 @@
    "row-item": 9
   },
   "Giá phần lô tham dự đạt xếp hạng 1 tổng": {
-   "unmapped": 2
+   "row-item": 2
   },
   "Giá dự thầu xếp hạng 1 tổng": {
    "row-item": 5
@@ -675,7 +674,7 @@
    "row-item": 4
   },
   "Giá trị ưu đãi tổng": {
-   "unmapped": 2
+   "row-item": 2
   },
   "Giá đánh giá đạt kỹ thuật tổng": {
    "row-item": 3
@@ -794,7 +793,7 @@
    "repeat-item": 2
   },
   "Ngày cuối hoàn thiện": {
-   "unmapped": 3
+   "root": 3
   },
   "Nhà thầu không trúng": {
    "row-item": 1
@@ -809,50 +808,7 @@
    "root": 2
   }
  },
- "unmapped": {
-  "Ngày báo cáo": [
-   "11. KQCĐ CXN\\2.1. Giay moi xac nhan nang luc.docx",
-   "11. KQCĐ CXN\\2.2. Bao cao tu cach hop le.docx"
-  ],
-  "Số phần tham dự": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx",
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx",
-   "9. KQLCNT PL\\5.4.1. BCTĐ KQLCNT.docx"
-  ],
-  "Giá phần lô tham dự tổng": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx",
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx"
-  ],
-  "Số phần đạt": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx",
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx",
-   "9. KQLCNT PL\\5.4.1. BCTĐ KQLCNT.docx"
-  ],
-  "Số phần không đạt": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx"
-  ],
-  "Ưu đãi": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx"
-  ],
-  "Số phần xếp hạng 1": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx",
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx",
-   "9. KQLCNT PL\\5.4.1. BCTĐ KQLCNT.docx"
-  ],
-  "Giá phần lô tham dự đạt xếp hạng 1 tổng": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1 V2.docx",
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx"
-  ],
-  "Giá trị ưu đãi tổng": [
-   "8. BCĐG PLQT1\\5.1.1. BCĐG HSDT PLQT1.docx",
-   "8. BCĐG QT1\\5.1.1. BCĐG HSDT QT1.docx"
-  ],
-  "Ngày cuối hoàn thiện": [
-   "9. KQLCNT PL\\5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx",
-   "9. KQLCNT TV\\5.10. Thư chấp thuận EHSDT và trao hợp đồng.docx",
-   "9. KQLCNT\\5.6. Thư chấp thuận EHSDT và trao hợp đồng.docx"
-  ]
- },
+ "unmapped": {},
  "issues": [],
  "samples": {
   "Chủ quản CĐTH": {
@@ -1084,6 +1040,10 @@
   },
   "Ngày thư mời xác nhận năng lực": {
    "{ngay_phe_duyet_kh}": 1
+  },
+  "Ngày báo cáo": {
+   "{ngay_han_xac_nhan_nl}": 1,
+   "ngày {ngay_han_xac_nhan_nl}": 1
   },
   "Số QĐ DT": {
    "{so_qd_du_toan}": 12
@@ -1373,14 +1333,24 @@
   "Nhiệm vụ BCĐG": {
    "{cong_viec}": 6
   },
+  "Số phần tham dự": {
+   "{so_phan_tham_du}": 6
+  },
+  "Giá phần lô tham dự tổng": {
+   "{tong_gia_phan_lo}": 2
+  },
   "Giá dự thầu tổng": {
-   "{gia_du_thau}": 3
+   "{tong_gia_du_thau}": 2,
+   "{gia_du_thau}": 1
   },
   "Giảm giá tổng": {
-   "{ty_le_giam_gia}": 7
+   "{tong_gia_tri_giam_gia}": 2,
+   "{tong_gia_tri_giam_gia_xep_hang_1}": 2,
+   "{ty_le_giam_gia}": 3
   },
   "Giá dự thầu sau hiệu chỉnh, giảm giá tổng": {
-   "{gia_sau_giam_gia}": 4,
+   "{tong_gia_sau_giam_gia}": 2,
+   "{gia_sau_giam_gia}": 2,
    "{#ds_nt_trung}{gia_sau_giam_gia}{/ds_nt_trung}": 3
   },
   "Tính hợp lệ": {
@@ -1406,6 +1376,13 @@
   },
   "Nhà thầu đạt năng lực, kinh nghiệm V2": {
    "{ten_nha_thau}": 3
+  },
+  "Số phần đạt": {
+   "{so_phan_dat_nang_luc}": 1,
+   "{so_phan_dat_ky_thuat}": 4
+  },
+  "Số phần không đạt": {
+   "{so_phan_khong_dat_nang_luc}": 1
   },
   "Tên phần lô": {
    "{ten_phan_lo}": 12
@@ -1437,15 +1414,23 @@
    "{gia_sau_giam_gia}": 7,
    "{gia_trung_thau}": 2
   },
+  "Ưu đãi": {
+   "{tong_gia_tri_cong_uu_dai}": 1
+  },
   "Giá đánh giá": {
    "{gia_xep_hang}": 1
   },
   "Xếp hạng": {
    "{danh_gia_tai_chinh}": 8
   },
+  "Số phần xếp hạng 1": {
+   "{so_phan_xep_hang_1}": 4,
+   "{so_phan_lo_trung}": 2
+  },
   "Giá dự thầu xếp hạng 1 tổng sau giảm giá": {
-   "{gia_sau_giam_gia}": 11,
+   "{tong_gia_sau_giam_gia_xep_hang_1}": 5,
    "{tong_gia_tri_trung_thau}": 2,
+   "{gia_sau_giam_gia}": 6,
    "{#ds_nt_trung}{gia_sau_giam_gia}{/ds_nt_trung}": 2,
    "{{ nt.gia_sau_giam_gia|default('', true) }}": 2
   },
@@ -1467,14 +1452,15 @@
    "{#ds_nt_trung}{ten_nha_thau}{/ds_nt_trung}": 7,
    "{{ nt.ten_nha_thau|default('', true) }}": 4
   },
-  "Số phần xếp hạng 1": {
-   "{so_phan_lo_trung}": 2
-  },
   "MST Nhà thầu": {
    "{ma_so_thue}": 9
   },
+  "Giá phần lô tham dự đạt xếp hạng 1 tổng": {
+   "{tong_gia_phan_lo_xep_hang_1}": 2
+  },
   "Giá dự thầu xếp hạng 1 tổng": {
-   "{gia_du_thau}": 5
+   "{tong_gia_du_thau_xep_hang_1}": 2,
+   "{gia_du_thau}": 3
   },
   "Thời gian thực hiện HĐ": {
    "{{ goi_thau.thoi_gian_hop_dong|default('', true) }}": 16,
@@ -1508,16 +1494,24 @@
    "{danh_gia_ky_thuat}": 3
   },
   "Giá dự thầu đạt kỹ thuật tổng": {
-   "{gia_du_thau}": 2
+   "{tong_gia_du_thau_dat_ky_thuat}": 1,
+   "{gia_du_thau}": 1
   },
   "Giảm giá đạt kỹ thuật tổng": {
-   "{ty_le_giam_gia}": 2
+   "{tong_gia_tri_giam_gia_dat_ky_thuat}": 1,
+   "{ty_le_giam_gia}": 1
   },
   "Giá dự thầu đạt kỹ thuật sau giảm giá tổng": {
-   "{gia_sau_giam_gia}": 4
+   "{tong_gia_sau_giam_gia_dat_ky_thuat}": 1,
+   "{gia_sau_giam_gia}": 3
+  },
+  "Giá trị ưu đãi tổng": {
+   "{tong_gia_tri_uu_dai_dat_ky_thuat}": 1,
+   "{tong_gia_tri_cong_uu_dai}": 1
   },
   "Giá đánh giá đạt kỹ thuật tổng": {
-   "{gia_xep_hang}": 3
+   "{tong_gia_danh_gia_dat_ky_thuat}": 1,
+   "{gia_xep_hang}": 2
   },
   "Nhà thầu đạt kỹ thuật V2": {
    "{ten_nha_thau}": 5
@@ -1631,6 +1625,9 @@
   },
   "Bảo đảm thực hiện hợp đồng": {
    "{{ nt.gia_tri_bao_dam_thuc_hien_hd|default('', true) }}": 2
+  },
+  "Ngày cuối hoàn thiện": {
+   "ngày {ngay_han_hoan_thien_hd}": 3
   },
   "Nhà thầu không trúng": {
    "{ten_nha_thau}": 1

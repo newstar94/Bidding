@@ -106,6 +106,35 @@ def test_sync_contract_persists_both_bid_evaluation_prices():
     assert 1150000 in cursor.params
 
 
+def test_evaluation_upsert_persists_signed_price_adjustments_and_manual_flags():
+    cursor = _CaptureCursor()
+    save_bid_evaluation_result(
+        cursor,
+        "bid-1",
+        {
+            "goiThauId": "gt-1",
+            "giaTriSuaLoi": "-20000",
+            "giaTriHieuChinhSaiLech": "30000",
+            "giaTriQuyDoi": "15000",
+            "giaXepHangNhapTay": True,
+            "giaDeNghiTrungThauNhapTay": False,
+        },
+        "org-1",
+        "organization",
+        5,
+        "2026-11-14 09:00:00",
+    )
+    for column in (
+        "gia_tri_sua_loi", "gia_tri_hieu_chinh_sai_lech", "gia_tri_quy_doi",
+        "gia_xep_hang_nhap_tay", "gia_de_nghi_trung_thau_nhap_tay",
+    ):
+        assert f"{column}=CASE WHEN ?" in cursor.sql
+    assert cursor.sql.count("?") == len(cursor.params)
+    values = cursor.params[:30]
+    assert -20000 in values and 30000 in values and 15000 in values
+    assert values.count(1) >= 1 and values.count(0) >= 1
+
+
 def test_evaluation_upsert_uses_field_presence_for_partial_draft_updates():
     cursor = _CaptureCursor()
     save_bid_evaluation_result(
@@ -118,7 +147,8 @@ def test_evaluation_upsert_uses_field_presence_for_partial_draft_updates():
         "2026-08-19 09:00:00",
     )
 
-    presence_flags = cursor.params[25:]
+    # 30 value columns precede the per-field presence flags.
+    presence_flags = cursor.params[30:]
     assert presence_flags[0] is True
     assert all(flag is False for flag in presence_flags[1:])
     assert "danh_gia_nang_luc=CASE WHEN ?" in cursor.sql

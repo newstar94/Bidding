@@ -43,7 +43,7 @@
 .bf-s-0e55741611{font-size:0.9rem}
 .bf-s-0f88141c20{width:16px}
 .bf-s-106d10c68d{width: 48px;height: 48px;margin: 0 auto 16px;color: var(--warning)}
-.bf-s-115a326dbb{margin-bottom: 24px;border: 1px solid var(--border-color);border-radius: var(--radius-lg);background: var(--bg-card);overflow: hidden;visibility: hidden}
+.bf-s-115a326dbb{margin-bottom: 24px;border: 1px solid transparent;border-radius: var(--radius-lg);background: var(--bg-card);overflow: hidden;visibility: hidden}
 .bf-s-1249e0db6b{width:52px;display:inline-block;padding:2px;height:22px;font-size:.8rem;border-radius:4px;border:1px solid var(--border-color,#ccc);background:var(--bg-card);color:var(--text-main);text-align-last:center;cursor:pointer;margin:0;outline:none;vertical-align:middle}
 .bf-s-129f96b45a{display: flex;background: var(--neutral-soft);border-bottom: 1px solid var(--border-color);padding: 0 16px}
 .bf-s-12e0dbebf7{font-weight: 700;color: var(--primary)}
@@ -161,7 +161,7 @@
 .bf-s-456836f1dd{font-size:0.8rem;font-weight:600;background:rgba(245,158,11,0.1);color:#b45309;border:1px solid rgba(245,158,11,0.2)}
 .bf-s-45a963221a{text-align: center;padding: 16px;color: var(--text-muted);font-weight: 600}
 .bf-s-46e9ba44f5{font-size:0.82rem;color:var(--primary);font-weight:700;background:var(--primary-soft);padding:3px 6px;border-radius:4px;margin-bottom: 2px}
-.bf-s-4749e65682{margin: 0;font-size: 1.25rem;font-weight: 800;color: var(--text-main)}
+.bf-s-4749e65682{margin: 0;font-size: 1.5rem;font-weight: 700;color: var(--text-main)}
 .bf-s-47ccf7196d{width:100%;margin-bottom: 12px;display: flex;justify-content: center;align-items: center;gap: 8px}
 .bf-s-47f5184954{width: 14px;height: 14px;margin-right: 2px}
 .bf-s-48e4421941{display: flex;justify-content: space-between;align-items: center;margin-bottom: 12px}
@@ -206,7 +206,7 @@
 .bf-s-59a153378a{font-size: 0.95rem;color: var(--text-light);line-height: 1.6;white-space: pre-line;margin-bottom: 24px;text-align: left;background: var(--bg-app);padding: 16px;border-radius: var(--radius-md);border: 1px solid var(--border-color)}
 .bf-s-5a83b4877e{padding: 6px 12px;font-size: 0.82rem;font-weight: 600;display: inline-flex;align-items: center;gap: 4px;height: 32px}
 .bf-s-5af3dfe0e6{padding: 10px 14px;font-weight: 600;color: var(--text-main)}
-.bf-s-5b174e34f6{font-size: 0.85rem;padding: 4px 10px;background: rgba(59, 130, 246, 0.08);border: 1px solid rgba(59, 130, 246, 0.15);color: var(--primary);border-radius: 4px;font-weight: 700;margin: 0;display: inline-flex;align-items: center;height: 28px;box-sizing: border-box}
+.bf-s-5b174e34f6{font-size: 0.85rem;padding: 4px 10px;background: var(--surface-subtle);border: 1px solid transparent;color: var(--text-muted);border-radius: 6px;font-weight: 700;margin: 0;display: inline-flex;align-items: center;height: 28px;box-sizing: border-box}
 .bf-s-5b811194e5{flex:1;height:1px;background:var(--border-color)}
 .bf-s-5d398becec{font-weight: 700;color: var(--primary);border-bottom: 1px solid rgba(59, 130, 246, 0.2);padding-bottom: 4px;margin-bottom: 12px}
 .bf-s-5d8a94e715{max-width: 480px;width: 90%;padding: 24px;text-align: center;position: relative;overflow: visible}
@@ -418,7 +418,7 @@
 .bf-s-b8fdafabf2{background: var(--neutral-soft);border: 1px solid var(--border-color);color: var(--text-main);font-size: 0.8rem;padding: 4px 8px;display: flex;align-items: center;gap: 4px;border-radius: var(--radius-sm);cursor: pointer}
 .bf-s-b9575b8c87{width: 50px;text-align: center}
 .bf-s-b9a1c49b6b{border: none;background: none;display: flex;align-items: center;gap: 10px}
-.bf-s-b9d70c9b32{padding: 20px 24px;border-bottom: 1px solid var(--border-color);background: rgba(59, 130, 246, 0.02);display: flex;justify-content: space-between;align-items: center;flex-wrap: wrap;gap: 16px}
+.bf-s-b9d70c9b32{padding: 24px;border-bottom: 1px dashed var(--border-color);background: transparent;display: flex;justify-content: space-between;align-items: center;flex-wrap: wrap;gap: 16px}
 .bf-s-ba57334b44{margin-bottom: 24px;background-color: var(--neutral-soft);padding: 16px;border-radius: var(--radius-md);border: 1px solid var(--border-color);display: flex;align-items: center;justify-content: space-between;gap: 16px;flex-wrap: wrap}
 .bf-s-baaa3b5617{background: var(--neutral-soft);border-bottom: 1px solid var(--border-color)}
 .bf-s-babf71b769{width:12px;height:12px}

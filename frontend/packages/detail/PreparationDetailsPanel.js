@@ -13,6 +13,33 @@ import {
   resolveLinkedPlanSnapshot,
   resolvePackagePlanApprovals,
 } from "./packagePlanApprovals.js";
+import {
+  renderPackageBiddersCard,
+  renderPackageOverviewRail,
+} from "./PackageOverviewRail.js";
+
+function renderPreparationOverview(view, gt, assigneeLabels) {
+  const model = view.model;
+  const bids = (model?.state?.thongtinmothau || []).filter(
+    (bid) => String(bid?.goiThauId || "") === String(gt.id),
+  );
+  const hasDocumentsTab = Boolean(document.querySelector(
+    '#detail-workflow-tabs-header [data-workflow-tab="documents"]',
+  ));
+  return {
+    bidders: renderPackageBiddersCard({ model, bids, formatCurrency: (value) => model.formatCurrency(value) }),
+    rail: renderPackageOverviewRail({ assignees: assigneeLabels, hasDocumentsTab }),
+  };
+}
+
+function bindPreparationOverview(contentWrapper) {
+  contentWrapper.querySelectorAll("[data-package-open-tab]").forEach((button) => {
+    button.onclick = () => {
+      const tabId = button.getAttribute("data-package-open-tab");
+      document.querySelector(`#detail-workflow-tabs-header [data-workflow-tab="${tabId}"]`)?.click();
+    };
+  });
+}
 
 function renderPlanApprovalRows(view, gt, khObj) {
   const approvals = resolvePackagePlanApprovals(view.model, gt);
@@ -50,7 +77,10 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
         const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : "Không rõ";
         const tenKhStr = khObj ? khObj.tenKeHoach : "Không rõ";
         const assigneeLabels = assigneeLabelsForTarget(view.model, gt.id, "goithau");
+        const overview = renderPreparationOverview(view, gt, assigneeLabels);
         contentWrapper.innerHTML = trustedHTML(`
+                  <div class="package-overview-layout">
+                  <div class="package-overview-main">
                     <div class="bf-s-95f6f7a8cf">
                         <!-- Cột 1: Thông tin chung -->
                         <div class="card package-info-card">
@@ -304,6 +334,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                             </div>
                         </div>
                         ` : ""}
+                  ${overview.bidders}
                      ${view._inPlaceEditMode ? `
                         <div class="bf-s-404d922254">
                             <button id="btn-cancel-inplace" class="btn btn-outline bf-s-62c1ff7ddc">Hủy</button>
@@ -318,8 +349,12 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                             </div>
                         ` : ""}
                     `}
+                  </div>
+                  ${overview.rail}
+                  </div>
                 `);
         view.createIconsScoped?.(contentWrapper);
+        bindPreparationOverview(contentWrapper);
         const btnEditBottom = document.getElementById("btn-edit-goithau-bottom");
         if (btnEditBottom) {
           btnEditBottom.onclick = () => {

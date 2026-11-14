@@ -17,6 +17,8 @@ from backend.documents.consultant_context import (
     CONSULTANT_ROOTS,
 )
 from backend.documents.computed_word_values import (
+    CONTRACTOR_SUMMARY_FIELDS,
+    CONTRACTOR_SUMMARY_ROOTS,
     PERFORMANCE_SECURITY_FIELD,
     PLAN_TOTAL_CONTEXT_KEYS,
 )
@@ -252,6 +254,8 @@ _BID_FIELDS = frozenset(
         "thoi_gian_hop_dong",
         # ADR 0105: performance-security amount derived from this bid's price.
         PERFORMANCE_SECURITY_FIELD,
+        # ADR 0106: preference added in the goods evaluation of this bid.
+        "tong_gia_tri_cong_uu_dai",
     }
 )
 _EXPERT_FIELDS = frozenset(
@@ -306,6 +310,8 @@ ENTITY_SPECS = {
     "contract": EntitySpec(_CONTRACT_FIELDS, {"goi_thau_ids": "scalar_list"}),
     "consultant": EntitySpec(_CONSULTANT_FIELDS),
     "ehsmt_decision": EntitySpec(_EHSMT_DECISION_FIELDS),
+    # ADR 0106: one row per contractor across its lots.
+    "contractor_summary": EntitySpec(CONTRACTOR_SUMMARY_FIELDS),
     "user": EntitySpec(_USER_FIELDS),
     "organization": EntitySpec(frozenset(_word_fields("to_chuc"))),
     "service_package": EntitySpec(frozenset(_word_fields("goi_dich_vu"))),
@@ -437,6 +443,7 @@ REPORT_ROOT_SPECS = {
     # investor or bidder bindings.
     "hop_dong_list": "contract_list",
     EHSMT_DECISION_LIST_ROOT: "ehsmt_decision_list",
+    **{key: "contractor_summary_list" for key in CONTRACTOR_SUMMARY_ROOTS},
     # ADR 0100: consultant firms of the package's current linked contracts.
     # Field-level capability gates (bank account, seal) still apply.
     **{key: "consultant" for key in CONSULTANT_ROOTS},
@@ -491,6 +498,7 @@ _SOURCE_FIELDS = {
     "hop_dong": _CONTRACT_FIELDS,
     "hop_dong_list": _CONTRACT_FIELDS,
     EHSMT_DECISION_LIST_ROOT: _EHSMT_DECISION_FIELDS,
+    **{key: CONTRACTOR_SUMMARY_FIELDS for key in CONTRACTOR_SUMMARY_ROOTS},
     **{key: _CONSULTANT_FIELDS for key in CONSULTANT_ROOTS},
     "tai_khoan": _USER_FIELDS,
     "to_chuc": ENTITY_SPECS["organization"].fields,
@@ -534,6 +542,7 @@ _LIST_ONLY_SOURCES = {
     "detailed_evaluation_reports",
     "hop_dong_list",
     EHSMT_DECISION_LIST_ROOT,
+    *CONTRACTOR_SUMMARY_ROOTS,
     "ke_hoach_can_cu",
     *_DETAILED_EVALUATION_ROW_ROOTS,
 }
@@ -576,6 +585,7 @@ _MAPPING_LIST_ENTITY_BY_SOURCE = {
     "hop_dong": "contract",
     "hop_dong_list": "contract",
     EHSMT_DECISION_LIST_ROOT: "ehsmt_decision",
+    **{key: "contractor_summary" for key in CONTRACTOR_SUMMARY_ROOTS},
     **{key: "consultant" for key in CONSULTANT_ROOTS},
     "tai_khoan": "user",
     "to_chuc": "organization",

@@ -524,3 +524,81 @@ for _k in list(CONSULTANT_ROOT) + ['Địa danh TVL', 'Địa danh TVT']:
 # ---------------------------------------------------------------------------
 BID_ITEMS['Bảo đảm thực hiện hợp đồng'] = 'gia_tri_bao_dam_thuc_hien_hd'
 UNMAPPED.pop('Bảo đảm thực hiện hợp đồng', None)
+
+
+# ---------------------------------------------------------------------------
+# ADR 0106 (Bidding): hạn trong thư (biến kết quả của không gian làm việc), giá trị ưu đãi,
+# và bảng tổng hợp theo từng nhà thầu (cộng dồn qua các phần lô) cho mẫu phân lô.
+# ---------------------------------------------------------------------------
+# Hạn trong thư là biến kết quả mỗi không gian làm việc tự đặt công thức (ADR 0106);
+# công thức trả về ngày dạng dd/m/yyyy, mẫu tự thêm chữ "ngày" khi câu chưa có.
+ROOT['Ngày cuối hoàn thiện'] = ('ngay_han_hoan_thien_hd', 'ngay_han_hoan_thien_hd', 'computeddate')
+FOLDER_ROOT[('11. KQCĐ CXN', 'Ngày báo cáo')] = ('ngay_han_xac_nhan_nl', 'ngay_han_xac_nhan_nl', 'computeddate')
+BID_ITEMS['Ưu đãi'] = 'tong_gia_tri_cong_uu_dai'
+BID_ITEMS['Giá trị ưu đãi tổng'] = 'tong_gia_tri_cong_uu_dai'
+
+# group -> (app alias list, native root, loop variable)
+GROUPS.update({
+    'NTSUM': ('ds_nt_tong_hop', 'ds_nha_thau_tong_hop', 'nt'),
+    'NTSUMNL': ('ds_nt_tong_hop', 'ds_nha_thau_tong_hop', 'nt'),
+    'NTSUMKT': ('ds_nt_tong_hop_dat_kt', 'ds_nha_thau_tong_hop_dat_ky_thuat', 'nt'),
+    'NTSUMH1': ('ds_nt_tong_hop_hang_1', 'ds_nha_thau_tong_hop_xep_hang_1', 'nt'),
+})
+# Placeholders that turn a bidder row of a lot folder into a per-contractor row.
+NTSUM_TRIGGERS = {
+    'Số phần tham dự', 'Số phần đạt', 'Số phần không đạt', 'Số phần xếp hạng 1',
+    'Giá phần lô tham dự tổng', 'Giá phần lô tham dự đạt xếp hạng 1 tổng', 'Giá trị ưu đãi tổng',
+}
+_NTSUM_NAME = {name: 'ten_nha_thau' for name in (
+    'Tên nhà thầu', 'Nhà thầu', 'Nhà thầu tham dự', 'Nhà thầu hợp lệ', 'Nhà thầu hợp lệ V2',
+    'Nhà thầu đạt năng lực, kinh nghiệm', 'Nhà thầu đạt năng lực, kinh nghiệm V2',
+    'Nhà thầu đạt kỹ thuật', 'Nhà thầu đạt kỹ thuật V2', 'Nhà thầu xếp hạng 1')}
+_NTSUM_BASE = {
+    **_NTSUM_NAME,
+    'MST Nhà thầu': 'ma_so_thue', 'Mã số thuế': 'ma_so_thue',
+    'Tính hợp lệ': 'danh_gia_hop_le', 'Năng lực kinh nghiệm': 'danh_gia_nang_luc',
+    'Số phần tham dự': 'so_phan_tham_du',
+    'Số phần đạt': 'so_phan_dat_ky_thuat',
+    'Số phần xếp hạng 1': 'so_phan_xep_hang_1',
+    'Giá phần lô tham dự tổng': 'tong_gia_phan_lo',
+    'Giá phần lô tham dự đạt xếp hạng 1 tổng': 'tong_gia_phan_lo_xep_hang_1',
+    'Giá dự thầu tổng': 'tong_gia_du_thau',
+    'Giảm giá tổng': 'tong_gia_tri_giam_gia',
+    'Giá dự thầu sau hiệu chỉnh, giảm giá tổng': 'tong_gia_sau_giam_gia',
+    'Giá trị ưu đãi tổng': 'tong_gia_tri_uu_dai',
+    'Giá đánh giá': 'tong_gia_danh_gia', 'Giá dự thầu sau giảm giá, ưu đãi': 'tong_gia_danh_gia',
+    'Giá dự thầu đạt kỹ thuật tổng': 'tong_gia_du_thau_dat_ky_thuat',
+    'Giảm giá đạt kỹ thuật tổng': 'tong_gia_tri_giam_gia_dat_ky_thuat',
+    'Giá dự thầu đạt kỹ thuật sau giảm giá tổng': 'tong_gia_sau_giam_gia_dat_ky_thuat',
+    'Giá đánh giá đạt kỹ thuật tổng': 'tong_gia_danh_gia_dat_ky_thuat',
+    'Giá dự thầu xếp hạng 1 tổng': 'tong_gia_du_thau_xep_hang_1',
+    'Giá dự thầu xếp hạng 1 tổng sau giảm giá': 'tong_gia_sau_giam_gia_xep_hang_1',
+}
+NTSUM_ITEMS = {
+    'NTSUM': dict(_NTSUM_BASE),
+    # Bảng "đạt năng lực, kinh nghiệm": Đạt/Không đạt theo năng lực.
+    'NTSUMNL': {**_NTSUM_BASE, 'Số phần đạt': 'so_phan_dat_nang_luc',
+                'Số phần không đạt': 'so_phan_khong_dat_nang_luc'},
+    # Bảng giá của các phần lô đạt kỹ thuật.
+    'NTSUMKT': {**_NTSUM_BASE, 'Giá trị ưu đãi tổng': 'tong_gia_tri_uu_dai_dat_ky_thuat'},
+    # Bảng nhà thầu xếp hạng 1: giảm giá của các phần lô xếp hạng 1.
+    'NTSUMH1': {**_NTSUM_BASE, 'Giảm giá tổng': 'tong_gia_tri_giam_gia_xep_hang_1'},
+}
+
+
+def ntsum_group(names):
+    """Per-contractor group of a lot-folder row, chosen by its name column."""
+    s = set(names)
+    if 'Nhà thầu đạt kỹ thuật' in s:
+        return 'NTSUMKT'
+    if 'Nhà thầu xếp hạng 1' in s:
+        return 'NTSUMH1'
+    if s & {'Nhà thầu đạt năng lực, kinh nghiệm', 'Nhà thầu đạt năng lực, kinh nghiệm V2'}:
+        return 'NTSUMNL'
+    return 'NTSUM'
+
+
+for _k in ('Ngày cuối hoàn thiện', 'Ngày báo cáo', 'Ưu đãi', 'Giá trị ưu đãi tổng',
+           'Số phần tham dự', 'Số phần đạt', 'Số phần không đạt', 'Số phần xếp hạng 1',
+           'Giá phần lô tham dự tổng', 'Giá phần lô tham dự đạt xếp hạng 1 tổng'):
+    UNMAPPED.pop(_k, None)

@@ -14,6 +14,22 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+## Public Sans
+
+The signed-in workspace uses the Public Sans typeface (latin and Vietnamese
+WOFF2 subsets from Google Fonts, vendored in `views/vendor/fonts/`).
+Copyright 2015 The Public Sans Project Authors. Licensed under the SIL Open
+Font License 1.1; the full license is in `views/vendor/fonts/OFL-public-sans.txt`.
+
+## Minimal UI (design reference)
+
+The workspace presentation layer (`views/css/tokens.css`,
+`views/css/variables.css`, `views/css/ui-redesign.css` and route stylesheets)
+re-implements the visual language of Minimal UI (https://minimals.cc) in
+plain CSS: palette, soft card elevation, dashed table rules, soft status
+labels and summary widgets. No Minimal UI source code, React components,
+illustrations, icons or other assets are bundled.
+
 ## Animate UI (design reference)
 
 The presentation motion layer (`views/css/motion.css`,

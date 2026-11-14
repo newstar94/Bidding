@@ -28,6 +28,7 @@ from backend.documents.routes_docx import (
 from backend.documents.word_publication_team_policy import (
     WordPublicationTeamWarning,
 )
+from backend.documents.required_word_variables import WordRequiredVariablesMissing
 from backend.documents.document_job_policy import (
     DocumentJobAuthorizationError,
     build_document_job_policy,
@@ -45,6 +46,7 @@ from backend.documents.plan_basis_context import (
 )
 from backend.documents.export_policy_registry import governed_export
 from backend.shared.access_policy import can_read_record
+from backend.shared.document_access_policy import can_manage_word_config
 from backend.shared.client_ip import get_client_ip
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
@@ -159,6 +161,25 @@ def _prepare_render_job(
         "template_count": len(templates),
         "artifact_provenance": provenances or None,
     }
+
+
+def _can_configure_word_variables(role, organization_id):
+    connection = database.get_connection()
+    try:
+        return can_manage_word_config(
+            connection.cursor(), role, role.user_id, organization_id
+        )
+    finally:
+        connection.close()
+
+
+async def _required_variables_response(request, role, organization_id, missing):
+    """ADR 0106: tell who can fix it; managers configure, others ask a manager."""
+
+    can_configure = await run_database_read(
+        _can_configure_word_variables, role, organization_id,
+    )
+    return JSONResponse(missing.payload(can_configure), status_code=422)
 
 
 def _create_record_access(request, role, record_type, record_id):
@@ -389,6 +410,8 @@ async def create_package_export_job_api(request):
             "error": str(warning),
             "missingTeams": list(warning.missing_teams),
         }, status_code=422)
+    except WordRequiredVariablesMissing as missing:
+        return await _required_variables_response(request, role, organization_id, missing)
     snapshot_error = await run_database_read(
         _ensure_export_snapshot_unchanged,
         organization_id,
@@ -462,6 +485,8 @@ async def create_plan_export_job_api(request):
         )
     except PlanBasisSelectionError as error:
         return _error(str(error), 400)
+    except WordRequiredVariablesMissing as missing:
+        return await _required_variables_response(request, role, organization_id, missing)
     snapshot_error = await run_database_read(
         _ensure_export_snapshot_unchanged,
         organization_id,

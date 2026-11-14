@@ -1,31 +1,35 @@
-
 <section class="tab-pane" id="tab-goithau-detail">
     <div class="card bf-s-115a326dbb" id="detail-workflow-card"
        >
         <div class="card-header bf-s-b9d70c9b32"
            >
-            <div class="bf-s-bd53bc7485">
-                <div class="bf-s-0a8a14e03e">
-                    <div class="bf-s-bbf072f32c">
-                        <span id="detail-workflow-code" class="detail-code bf-s-5b174e34f6"
-                           >--</span>
-                        <span id="detail-workflow-version-separator" class="bf-s-62c6ee1d45">-</span>
-                        <select id="detail-workflow-version-select" class="page-version-select bf-s-65d1f1c3d7">
-                        </select>
+            <div class="package-detail-heading">
+                <button type="button" class="package-detail-back" data-bf-action="switch-tab" data-tab="goithau"
+                    aria-label="Quay lại danh sách gói thầu" title="Quay lại danh sách">
+                    <i data-lucide="arrow-left" aria-hidden="true"></i>
+                </button>
+                <div class="bf-s-bd53bc7485">
+                    <div class="package-detail-title-row">
+                        <h3 id="detail-workflow-title"
+                            class="bf-s-4749e65682">
+                            Tên gói thầu</h3>
+                        <span id="detail-workflow-status-badge" class="bf-s-9241c6321b">--</span>
                     </div>
-                    <span id="detail-workflow-status-badge" class="bf-s-9241c6321b">--</span>
+                    <div class="bf-s-0a8a14e03e package-detail-meta">
+                        <div class="bf-s-bbf072f32c">
+                            <span id="detail-workflow-code" class="detail-code bf-s-5b174e34f6"
+                               >--</span>
+                            <span id="detail-workflow-version-separator" class="bf-s-62c6ee1d45">-</span>
+                            <select id="detail-workflow-version-select" class="page-version-select bf-s-65d1f1c3d7">
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <h3 id="detail-workflow-title"
-                    class="bf-s-4749e65682">
-                    Tên gói thầu</h3>
             </div>
             <div id="detail-workflow-actions" class="bf-s-ea34a9fdaf">
-                <button class="btn btn-outline bf-s-884f09ff2f" data-bf-action="switch-tab" data-tab="goithau"
-                   >
-                    <i data-lucide="arrow-left" class="bf-s-c1f1f4a417"></i> Quay lại danh sách
-                </button>
             </div>
         </div>
+        <section id="detail-workflow-progress" class="package-detail-progress" aria-label="Tiến độ gói thầu"></section>
 
         <div class="card-body bf-s-3edb22cde1">
 

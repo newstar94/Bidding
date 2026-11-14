@@ -60,6 +60,11 @@ const VIRTUAL_FIELDS_BY_TABLE = {
     "giaXepHang",
     "giaDeNghiTrungThau",
     "chapThuanGiaDeNghiTrungThauDuoi50",
+    "giaTriSuaLoi",
+    "giaTriHieuChinhSaiLech",
+    "giaTriQuyDoi",
+    "giaXepHangNhapTay",
+    "giaDeNghiTrungThauNhapTay",
     "danhGiaKetLuan",
     "diemDanhGia",
     "lyDoTruot",
@@ -74,7 +79,10 @@ const VIRTUAL_FIELDS_BY_TABLE = {
 };
 
 const BIGINT_SAFE_DECIMAL_FIELDS_BY_TABLE = {
-  thong_tin_mo_thau: new Set(["giaXepHang", "giaDeNghiTrungThau"])
+  thong_tin_mo_thau: new Set([
+    "giaXepHang", "giaDeNghiTrungThau",
+    "giaTriSuaLoi", "giaTriHieuChinhSaiLech", "giaTriQuyDoi",
+  ])
 };
 
 function serializePlanBases(value) {

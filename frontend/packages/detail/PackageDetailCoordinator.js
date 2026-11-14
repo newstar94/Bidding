@@ -7,6 +7,8 @@ import { renderWorkflowActions } from "./WorkflowActions.js";
 import { getAppController } from "../../app/controllerRef.js";
 import { clearDetailedEvaluationNavigation } from "../detailedEvaluationNavigation.js";
 import { packageWorkspaceFor } from "./PackageWorkspaceState.js";
+import { resolvePackagePlanApprovals } from "./packagePlanApprovals.js";
+import { buildPackageMilestones, renderPackageProgressStepper } from "./PackageOverviewRail.js";
 
 export async function confirmPackageDetailNavigation(view, {
   message = "Bạn đang có nội dung chưa lưu. Bạn có muốn bỏ thay đổi để chuyển bước không?",
@@ -89,6 +91,26 @@ function renderVersionSelector(view, detail) {
   };
 }
 
+/** Horizontal progress stepper under the package title (shown on every step). */
+export function renderPackageDetailProgress(view, detail) {
+  const container = document.getElementById("detail-workflow-progress");
+  if (!container) return;
+  const model = view?.model;
+  const status = detail?.effectiveStatus || detail?.pkg?.trangThai || "";
+  const milestones = buildPackageMilestones({
+    pkg: detail?.pkg,
+    approvals: resolvePackagePlanApprovals(model, detail?.pkg),
+    status,
+  });
+  container.innerHTML = trustedHTML(renderPackageProgressStepper({
+    milestones,
+    cancelled: status === "Hủy thầu",
+    formatDate: (value) => model?.formatDate?.(value) ?? value,
+    formatDateTime: (value) => model?.formatDateWithTime?.(value) ?? value,
+  }));
+  view?.createIconsScoped?.(container);
+}
+
 export function bindPackageDetailChrome(view, detail) {
   const code = document.getElementById("detail-workflow-code");
   const badge = document.getElementById("detail-workflow-status-badge");
@@ -96,6 +118,7 @@ export function bindPackageDetailChrome(view, detail) {
   if (code) code.innerText = detail.pkg.maGoiThau || "Gói thầu";
   if (badge) badge.innerHTML = trustedHTML(view.getStatusBadge(detail.effectiveStatus));
   if (title) title.innerText = detail.pkg.tenGoiThau || "Chưa nhập tên";
+  renderPackageDetailProgress(view, detail);
 
   const actions = document.getElementById("detail-workflow-actions");
   renderWorkflowActions(actions, {

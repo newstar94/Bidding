@@ -8,14 +8,17 @@ from .consultant_context import (
 from .field_manifest import build_field_manifest, field_format, field_label
 from .schema_contract import json_key_for_column
 from backend.timeline.word_fields import TIMELINE_WORD_CONTEXT_MAPPINGS
-from backend.documents.computed_word_values import PLAN_TOTAL_WORD_MAPPINGS
+from backend.documents.computed_word_values import (
+    CONTRACTOR_SUMMARY_LIST_MAPPINGS,
+    PLAN_TOTAL_WORD_MAPPINGS,
+)
 from backend.shared.workspace_scope import (
     lock_personal_workspace_mutations,
     personal_scope_id,
 )
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 20
+WORD_DEFAULT_MAPPINGS_VERSION = 22
 
 # ADR 0100: consultant firm variables, e.g. ``ten_tvl`` / ``ten_tvt``.
 _CONSULTANT_NAME_SUFFIXES = {
@@ -479,6 +482,8 @@ WORD_LIST_MAPPINGS = [
     ("ds_cv_da_thuc_hien", "cv_da_thuc_hien", "Danh sách công việc đã thực hiện"),
     ("ds_cv_khong_ap_dung", "cv_khong_ap_dung", "Danh sách công việc không áp dụng LCNT"),
     ("ds_cv_chua_du_dk", "cv_chua_du_dieu_kien", "Danh sách công việc chưa đủ điều kiện LCNT"),
+    # ADR 0106: một dòng cho mỗi nhà thầu, cộng dồn qua các phần lô.
+    *CONTRACTOR_SUMMARY_LIST_MAPPINGS,
 ]
 
 

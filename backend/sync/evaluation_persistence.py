@@ -5,7 +5,7 @@ should use the two persistence entry points exposed by this module.
 """
 
 from backend.shared.date_utils import normalize_date_value
-from backend.shared.numeric_utils import parse_vnd_amount
+from backend.shared.numeric_utils import parse_signed_vnd_amount, parse_vnd_amount
 from backend.shared.text_utils import clean_id, safe_float
 from backend.sync.evaluation_metadata import (
     dump_evaluation_metadata,
@@ -234,6 +234,11 @@ def save_bid_evaluation_result(
         "giaXepHang",
         "giaDeNghiTrungThau",
         "chapThuanGiaDeNghiTrungThauDuoi50",
+        "giaTriSuaLoi",
+        "giaTriHieuChinhSaiLech",
+        "giaTriQuyDoi",
+        "giaXepHangNhapTay",
+        "giaDeNghiTrungThauNhapTay",
         "danhGiaKetLuan",
         "diemDanhGia",
         "lyDoTruot",
@@ -267,12 +272,14 @@ def save_bid_evaluation_result(
             danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
             danh_gia_tai_chinh, gia_xep_hang, gia_de_nghi_trung_thau,
             chap_thuan_gia_de_nghi_trung_thau_duoi_50,
+            gia_tri_sua_loi, gia_tri_hieu_chinh_sai_lech, gia_tri_quy_doi,
+            gia_xep_hang_nhap_tay, gia_de_nghi_trung_thau_nhap_tay,
             danh_gia_ket_luan, diem, ly_do_loai,
             lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
             nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc,
             nguyen_nhan_khong_dat_ky_thuat,
             danh_gia_luc, sync_version, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, thong_tin_mo_thau_id) DO UPDATE SET
             danh_gia_hop_le=CASE WHEN ? THEN excluded.danh_gia_hop_le ELSE ket_qua_danh_gia_nha_thau.danh_gia_hop_le END,
             danh_gia_nang_luc=CASE WHEN ? THEN excluded.danh_gia_nang_luc ELSE ket_qua_danh_gia_nha_thau.danh_gia_nang_luc END,
@@ -281,6 +288,11 @@ def save_bid_evaluation_result(
             gia_xep_hang=CASE WHEN ? THEN excluded.gia_xep_hang ELSE ket_qua_danh_gia_nha_thau.gia_xep_hang END,
             gia_de_nghi_trung_thau=CASE WHEN ? THEN excluded.gia_de_nghi_trung_thau ELSE ket_qua_danh_gia_nha_thau.gia_de_nghi_trung_thau END,
             chap_thuan_gia_de_nghi_trung_thau_duoi_50=CASE WHEN ? THEN excluded.chap_thuan_gia_de_nghi_trung_thau_duoi_50 ELSE ket_qua_danh_gia_nha_thau.chap_thuan_gia_de_nghi_trung_thau_duoi_50 END,
+            gia_tri_sua_loi=CASE WHEN ? THEN excluded.gia_tri_sua_loi ELSE ket_qua_danh_gia_nha_thau.gia_tri_sua_loi END,
+            gia_tri_hieu_chinh_sai_lech=CASE WHEN ? THEN excluded.gia_tri_hieu_chinh_sai_lech ELSE ket_qua_danh_gia_nha_thau.gia_tri_hieu_chinh_sai_lech END,
+            gia_tri_quy_doi=CASE WHEN ? THEN excluded.gia_tri_quy_doi ELSE ket_qua_danh_gia_nha_thau.gia_tri_quy_doi END,
+            gia_xep_hang_nhap_tay=CASE WHEN ? THEN excluded.gia_xep_hang_nhap_tay ELSE ket_qua_danh_gia_nha_thau.gia_xep_hang_nhap_tay END,
+            gia_de_nghi_trung_thau_nhap_tay=CASE WHEN ? THEN excluded.gia_de_nghi_trung_thau_nhap_tay ELSE ket_qua_danh_gia_nha_thau.gia_de_nghi_trung_thau_nhap_tay END,
             danh_gia_ket_luan=CASE WHEN ? THEN excluded.danh_gia_ket_luan ELSE ket_qua_danh_gia_nha_thau.danh_gia_ket_luan END,
             diem=CASE WHEN ? THEN excluded.diem ELSE ket_qua_danh_gia_nha_thau.diem END,
             ly_do_loai=CASE WHEN ? THEN excluded.ly_do_loai ELSE ket_qua_danh_gia_nha_thau.ly_do_loai END,
@@ -306,6 +318,11 @@ def save_bid_evaluation_result(
             parse_vnd_amount(item.get("giaXepHang")),
             parse_vnd_amount(item.get("giaDeNghiTrungThau")),
             _optional_boolean(item.get("chapThuanGiaDeNghiTrungThauDuoi50")),
+            parse_signed_vnd_amount(item.get("giaTriSuaLoi")),
+            parse_signed_vnd_amount(item.get("giaTriHieuChinhSaiLech")),
+            parse_signed_vnd_amount(item.get("giaTriQuyDoi")),
+            _optional_boolean(item.get("giaXepHangNhapTay")),
+            _optional_boolean(item.get("giaDeNghiTrungThauNhapTay")),
             item.get("danhGiaKetLuan") or "",
             safe_float(item.get("diemDanhGia")),
             exclusion_reason,
@@ -326,6 +343,11 @@ def save_bid_evaluation_result(
             "giaXepHang" in item,
             "giaDeNghiTrungThau" in item,
             "chapThuanGiaDeNghiTrungThauDuoi50" in item,
+            "giaTriSuaLoi" in item,
+            "giaTriHieuChinhSaiLech" in item,
+            "giaTriQuyDoi" in item,
+            "giaXepHangNhapTay" in item,
+            "giaDeNghiTrungThauNhapTay" in item,
             "danhGiaKetLuan" in item,
             "diemDanhGia" in item,
             any(key in item for key in exclusion_reason_keys),

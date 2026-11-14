@@ -1,4 +1,5 @@
 import { isCombinedTechnicalPriceMethod } from "./technicalEvaluationMethod.js";
+import { usesDeltaG } from "./bidEvaluationPriceDefaults.js";
 
 function cell(label, className) {
   return `<th class="${className}">${label}</th>`;
@@ -8,7 +9,14 @@ function buildHeader(caseType, {
   isConsulting,
   isCombinedMethod,
   showCombinedScore,
+  showDeltaG,
 }) {
+  // ADR 0107: adjustments sit between "Giá sau giảm" and "Giá xếp hạng".
+  const adjustmentHeaders = (className) => [
+    cell("Giá trị sửa lỗi", className),
+    cell("Giá trị hiệu chỉnh sai lệch", className),
+    ...(showDeltaG ? [cell("Giá trị quy đổi ΔG", className)] : []),
+  ];
   const combinedScore = showCombinedScore
     ? [cell("Điểm tổng hợp", "bf-s-415b5d64b8")]
     : [];
@@ -73,6 +81,7 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-ae54075f01"),
       cell("Tỷ lệ %", "bf-s-415b5d64b8"),
       cell("Giá sau giảm", "bf-s-ae54075f01"),
+      ...adjustmentHeaders("bf-s-ae54075f01"),
       cell("Giá xếp hạng", "bf-s-ae54075f01"),
       cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-ae54075f01")] : []),
@@ -89,6 +98,7 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-3faf34a5d2"),
       cell("Tỷ lệ %", "bf-s-aed34ad439"),
       cell("Giá sau giảm", "bf-s-3faf34a5d2"),
+      ...adjustmentHeaders("bf-s-3faf34a5d2"),
       cell("Giá xếp hạng", "bf-s-ae54075f01"),
       cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       ...(isConsulting ? [cell("Hiệu lực E-HSĐXTC", "bf-s-8523765ec6")] : []),
@@ -103,6 +113,7 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-8523765ec6"),
       cell("Tỷ lệ %", "bf-s-6a7768ee0d"),
       cell("Giá sau giảm", "bf-s-8523765ec6"),
+      ...adjustmentHeaders("bf-s-8523765ec6"),
       cell("Giá xếp hạng", "bf-s-ae54075f01"),
       cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Hiệu lực E-HSDT", "bf-s-415b5d64b8"),
@@ -129,6 +140,7 @@ function buildHeader(caseType, {
       cell("Giá dự thầu", "bf-s-b258c3e162"),
       cell("Tỷ lệ %", "bf-s-6a7768ee0d"),
       cell("Giá sau giảm", "bf-s-b258c3e162"),
+      ...adjustmentHeaders("bf-s-b258c3e162"),
       cell("Giá xếp hạng", "bf-s-ae54075f01"),
       cell("Giá đề nghị trúng thầu", "bf-s-ae54075f01"),
       cell("Hiệu lực E-HSDT", "bf-s-aed34ad439"),
@@ -192,10 +204,12 @@ export function buildBidEvaluationTablePresentation({
     isCombinedMethod,
     showCombinedScore,
     title: baseTitle,
+    showDeltaG: usesDeltaG(pkg),
     headerHtml: buildHeader(caseType, {
       isConsulting,
       isCombinedMethod,
       showCombinedScore,
+      showDeltaG: usesDeltaG(pkg),
     }),
   };
 }

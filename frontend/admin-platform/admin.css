@@ -19,22 +19,22 @@
 
 :root {
   /* Keep the platform console on the same semantic palette as BiddingFlow. */
-  --bf-admin-canvas: #f5f8fc;
+  --bf-admin-canvas: #ffffff;
   --bf-admin-surface: #ffffff;
-  --bf-admin-surface-subtle: #f0f5fb;
-  --bf-admin-ink: #111a2c;
-  --bf-admin-muted: #40506a;
-  --bf-admin-line: #dce5f0;
-  --bf-admin-line-strong: #c7d5e5;
-  --bf-admin-brand: #3157e8;
-  --bf-admin-brand-strong: #2446c7;
-  --bf-admin-brand-soft: #edf2ff;
+  --bf-admin-surface-subtle: #f4f6f8;
+  --bf-admin-ink: #1c252e;
+  --bf-admin-muted: #637381;
+  --bf-admin-line: rgba(145, 158, 171, 0.2);
+  --bf-admin-line-strong: rgba(145, 158, 171, 0.32);
+  --bf-admin-brand: #007867;
+  --bf-admin-brand-strong: #004b50;
+  --bf-admin-brand-soft: #ebf8f4;
   --bf-admin-brand-line: #b9c8fb;
   --bf-admin-sidebar-accent: #a8c0ff;
   --bf-admin-sidebar: #182433;
-  --bf-admin-success: #0f766e;
-  --bf-admin-warning: #c2410c;
-  --bf-admin-danger: #c73543;
+  --bf-admin-success: #0e7a4b;
+  --bf-admin-warning: #9a5b00;
+  --bf-admin-danger: #b71d18;
 
   --tblr-font-sans-serif: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --tblr-body-font-family: var(--tblr-font-sans-serif);

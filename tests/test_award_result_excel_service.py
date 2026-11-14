@@ -633,8 +633,8 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         CREATE TABLE dot_xu_ly_phan_lo_chi_tiet (organization_id TEXT, lot_id TEXT, batch_id TEXT, current_stage TEXT, outcome TEXT);
         CREATE TABLE dot_xu_ly_phan_lo (organization_id TEXT, id TEXT, sequence_no INTEGER);
         CREATE TABLE nha_thau (id TEXT, organization_id TEXT, ten_nha_thau TEXT, ma_nha_thau TEXT, ma_so_thue TEXT);
-        CREATE TABLE thong_tin_mo_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, nha_thau_id TEXT, ma_phan_lo TEXT, ma_dinh_danh TEXT, ten_nha_thau TEXT, gia_du_thau INTEGER, gia_sau_giam_gia INTEGER, gia_danh_gia_sau_uu_dai INTEGER, thoi_gian_thuc_hien TEXT, archived_at TEXT);
-        CREATE TABLE ket_qua_danh_gia_nha_thau (organization_id TEXT, thong_tin_mo_thau_id TEXT, diem REAL, ly_do_loai TEXT, danh_gia_ket_luan TEXT);
+        CREATE TABLE thong_tin_mo_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, nha_thau_id TEXT, ma_phan_lo TEXT, ma_dinh_danh TEXT, ten_nha_thau TEXT, gia_du_thau INTEGER, gia_sau_giam_gia INTEGER, gia_danh_gia_sau_uu_dai INTEGER, thoi_gian_thuc_hien TEXT, archived_at TEXT, ty_le_giam_gia REAL);
+        CREATE TABLE ket_qua_danh_gia_nha_thau (organization_id TEXT, thong_tin_mo_thau_id TEXT, gia_xep_hang INTEGER, diem REAL, ly_do_loai TEXT, danh_gia_ket_luan TEXT, gia_tri_sua_loi INTEGER, gia_tri_hieu_chinh_sai_lech INTEGER);
         CREATE TABLE goi_thau_hang_hoa (id TEXT, organization_id TEXT, goi_thau_id TEXT, ma_hang_hoa TEXT, ten_hang_hoa TEXT, don_vi_tinh TEXT);
         CREATE TABLE hang_hoa_du_thau_nha_thau (id TEXT, organization_id TEXT, goi_thau_id TEXT, thong_tin_mo_thau_id TEXT, khoi_luong REAL, don_gia_du_thau INTEGER, gia_tri_co_so_sau_giam_gia INTEGER, goi_thau_hang_hoa_id TEXT, stt_nguon TEXT, danh_muc_hang_hoa TEXT, don_vi_tinh TEXT, mapping_status TEXT, sort_order INTEGER, is_draft INTEGER);
         INSERT INTO goi_thau VALUES ('pkg','org','IB-01','Thuốc','Có','AWARDED',NULL,1014000,NULL,NULL,NULL,1,'QD-01','2026-08-04');
@@ -642,8 +642,8 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         INSERT INTO dot_xu_ly_phan_lo VALUES ('org','batch',1);
         INSERT INTO dot_xu_ly_phan_lo_chi_tiet VALUES ('org','lot','batch','RESULT_APPROVED','AWARDED');
         INSERT INTO nha_thau VALUES ('bidder','org','Nhà thầu 01','vn001','001');
-        INSERT INTO thong_tin_mo_thau VALUES ('opening','org','pkg','bidder','THUOC-01','vn001','Nhà thầu 01',1014000,1014000,NULL,'220 ngày',NULL);
-        INSERT INTO ket_qua_danh_gia_nha_thau VALUES ('org','opening',NULL,NULL,'Đạt');
+        INSERT INTO thong_tin_mo_thau VALUES ('opening','org','pkg','bidder','THUOC-01','vn001','Nhà thầu 01',1014000,1014000,999999999,'220 ngày',NULL,0);
+        INSERT INTO ket_qua_danh_gia_nha_thau VALUES ('org','opening',1090000,NULL,NULL,'Đạt',NULL,NULL);
         INSERT INTO goi_thau_hang_hoa VALUES ('requirement','org','pkg','TH-01','Atropin sulfat','Ống');
         INSERT INTO goi_thau_hang_hoa VALUES ('requirement-2','org','pkg','TH-02','Natri clorid','Chai');
         INSERT INTO hang_hoa_du_thau_nha_thau VALUES ('goods','org','pkg','opening',1300,780,1014000,'requirement','1','Atropin sulfat','Ống','matched',1,0);
@@ -661,6 +661,8 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         assert record.award_quantity == 1_300
         assert record.award_unit_price == 780
         assert record.award_price == 1_014_000
+        # "Giá đánh giá" is the ranking price, never the legacy base-plus-preference value.
+        assert record.evaluated_price == 1_090_000
         assert record.goods_item_id == "requirement"
         assert record.goods_sequence == "1"
         assert dataset["blockingErrors"] == []
@@ -684,6 +686,29 @@ def test_medicine_dataset_uses_official_lot_and_bidder_goods_without_n_plus_one(
         )["editPath"] == "/packages/pkg/award-result"
         connection.execute(
             "UPDATE goi_thau SET so_quyet_dinh_ket_qua = 'QD-01'"
+        )
+
+        # ADR 0107: with error correction / deviation adjustment the corrected
+        # price is G = (bid price + corrections) × (1 − discount rate).
+        connection.execute("UPDATE goi_thau SET is_thuoc = 0")
+        connection.execute(
+            "UPDATE thong_tin_mo_thau SET gia_du_thau = 1000000, ty_le_giam_gia = 10"
+        )
+        connection.execute(
+            """UPDATE ket_qua_danh_gia_nha_thau
+               SET gia_tri_sua_loi = 20000, gia_tri_hieu_chinh_sai_lech = 30000"""
+        )
+        corrected = service.load_award_result_dataset(
+            "pkg", "org", database_obj=_Database(connection)
+        )
+        assert corrected["records"][0].corrected_price == 945_000
+        connection.execute("UPDATE goi_thau SET is_thuoc = 1")
+        connection.execute(
+            "UPDATE thong_tin_mo_thau SET gia_du_thau = 1014000, ty_le_giam_gia = 0"
+        )
+        connection.execute(
+            """UPDATE ket_qua_danh_gia_nha_thau
+               SET gia_tri_sua_loi = NULL, gia_tri_hieu_chinh_sai_lech = NULL"""
         )
 
         connection.execute(

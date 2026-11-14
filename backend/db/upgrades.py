@@ -824,6 +824,15 @@ def _upgrade_to_v21_add_low_proposed_award_price_acceptance(cursor, context):
     )
 
 
+BID_PRICE_ADJUSTMENT_COLUMNS = (
+    "gia_tri_sua_loi",
+    "gia_tri_hieu_chinh_sai_lech",
+    "gia_tri_quy_doi",
+    "gia_xep_hang_nhap_tay",
+    "gia_de_nghi_trung_thau_nhap_tay",
+)
+
+
 def _upgrade_to_v22_add_package_goods(cursor, context):
     """Add normalized requested-goods rows for goods procurement packages."""
 
@@ -4061,6 +4070,28 @@ def _upgrade_to_v103_add_tax_code_verification(cursor, context):
     cursor.execute("DROP INDEX IF EXISTS uq_to_chuc_ma_so_thue")
     context.assert_foreign_key_integrity(cursor)
 
+
+def _upgrade_to_v104_add_bid_price_adjustments(cursor, context):
+    """ADR 0107: persist error correction, deviation adjustment and ΔG per bid.
+
+    The two flags record whether the ranking/proposed award price was typed by
+    the user (kept) or derived automatically (recomputed). Existing rows keep
+    NULL, which the application treats with the legacy heuristic.
+    """
+    from backend.db.postgres_schema import postgres_column_definition
+    from backend.db.schema import SCHEMA_DINH_NGHIA
+
+    del context
+    columns = SCHEMA_DINH_NGHIA["ket_qua_danh_gia_nha_thau"]["columns"]
+    for column_name in BID_PRICE_ADJUSTMENT_COLUMNS:
+        definition = postgres_column_definition(
+            "ket_qua_danh_gia_nha_thau", column_name, columns[column_name],
+        )
+        cursor.execute(
+            f"ALTER TABLE ket_qua_danh_gia_nha_thau ADD COLUMN IF NOT EXISTS {column_name} {definition}"
+        )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
@@ -4516,6 +4547,7 @@ UPGRADES = (
     DatabaseUpgrade(101, "add_procurement_monitor", _upgrade_to_v101_add_procurement_monitor),
     DatabaseUpgrade(102, "add_organization_invitations", _upgrade_to_v102_add_organization_invitations),
     DatabaseUpgrade(103, "add_tax_code_verification", _upgrade_to_v103_add_tax_code_verification),
+    DatabaseUpgrade(104, "add_bid_price_adjustments", _upgrade_to_v104_add_bid_price_adjustments),
 )
 
 
@@ -4542,7 +4574,7 @@ DB_SCHEMA_VERSION = (
 # V101 persists scheduled procurement checks, leases and notification baselines.
 # V102 adds consent-based organization invitations (ADR 0093).
 # V103 adds tax-code verification; only verified tax codes stay unique (ADR 0094).
-DB_RUNTIME_MIN_SCHEMA_VERSION = 103
+DB_RUNTIME_MIN_SCHEMA_VERSION = 104
 DB_RUNTIME_MAX_SCHEMA_VERSION = DB_SCHEMA_VERSION
 
 

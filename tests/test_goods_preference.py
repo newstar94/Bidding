@@ -139,3 +139,31 @@ def test_backend_derives_group_result_from_persisted_required_leaf_rows():
         cursor, "org-1", "round-1", "report-1", "validity"
     ) == ""
     connection.close()
+
+
+
+def test_legacy_evaluated_price_mirrors_the_price_after_preference():
+    lines = [
+        {"id": "a", "khoiLuong": 1, "thanhTienDuThau": 600_000_000, "maUuDai": 3},
+        {"id": "b", "khoiLuong": 1, "thanhTienDuThau": 400_000_000, "maUuDai": 0},
+    ]
+    results = [
+        calculate_goods_preference(lines, discount_rate=10, scope_after_discount=900_000_000)
+        for _ in range(3)
+    ]
+    for result in results:
+        assert result["tongGiaTriCongUuDai"] == 36_000_000
+        assert result["giaSoSanhSauUuDai"] == 936_000_000
+        # ADR 0107: no "base + surcharge" any more, so recalculation never adds it twice.
+        assert result["giaDanhGiaSauUuDai"] == 936_000_000
+
+
+def test_corrected_bid_price_applies_the_discount_rate_to_the_corrected_price():
+    from backend.domain.bid_price import corrected_bid_price, has_price_correction
+
+    # ADR 0107: G = (1.000 + 20 + 30) × (1 − 10%) = 945 (triệu).
+    assert corrected_bid_price(1_000_000_000, 20_000_000, 30_000_000, 10) == 945_000_000
+    assert corrected_bid_price(1_000_000_000, -50_000_000, None, "0") == 950_000_000
+    assert corrected_bid_price(None, 1, 1, 0) is None
+    assert has_price_correction("0", None) is False
+    assert has_price_correction(None, "-1") is True

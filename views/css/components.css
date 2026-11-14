@@ -635,8 +635,8 @@
 .badge-status-partial,
 .badge-status-complete,
 .badge-status-cancelled {
-  border: 1px solid color-mix(in srgb, var(--status-color) 28%, var(--border-color));
-  background-color: color-mix(in srgb, var(--status-color) 12%, var(--bg-card));
+  border: 1px solid transparent;
+  background-color: color-mix(in srgb, var(--status-color) 16%, var(--bg-card));
   /* Keep the semantic hue vivid while giving the compact 12px badge text
      enough contrast against its light status tint. */
   color: color-mix(in srgb, var(--status-color) 52%, var(--ink));

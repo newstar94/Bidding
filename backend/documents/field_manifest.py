@@ -11,6 +11,8 @@ from backend.timeline.ehsmt_decisions import (
     EHSMT_DECISION_LIST_ROOT,
 )
 from backend.documents.computed_word_values import (
+    CONTRACTOR_SUMMARY_FIELD_LABELS,
+    CONTRACTOR_SUMMARY_ROOTS,
     PLAN_TOTAL_CONTEXT_KEYS,
     PLAN_TOTAL_LABELS,
 )
@@ -268,6 +270,7 @@ FIELD_LABELS_BY_TABLE = {
     PREPARATION_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn lập"),
     APPRAISAL_CONSULTANT_ROOT: _consultant_labels("đơn vị tư vấn thẩm định"),
     EHSMT_DECISION_LIST_ROOT: dict(EHSMT_DECISION_FIELD_LABELS),
+    **{root: dict(CONTRACTOR_SUMMARY_FIELD_LABELS) for root in CONTRACTOR_SUMMARY_ROOTS},
     "tai_khoan": {
         "ten_dang_nhap": "Tên đăng nhập hệ thống",
         "ho_ten": "Họ tên tài khoản",

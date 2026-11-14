@@ -41,6 +41,17 @@ MONEY_COLUMNS = frozenset({
     ("thong_tin_mo_thau", "gia_tri_dam_bao"),
     ("ket_qua_danh_gia_nha_thau", "gia_xep_hang"),
     ("ket_qua_danh_gia_nha_thau", "gia_de_nghi_trung_thau"),
+    # Signed amounts (ADR 0107): corrections and ΔG may reduce the price.
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_sua_loi"),
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_hieu_chinh_sai_lech"),
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_quy_doi"),
+})
+
+# Money columns that may hold negative amounts.
+SIGNED_MONEY_COLUMNS = frozenset({
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_sua_loi"),
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_hieu_chinh_sai_lech"),
+    ("ket_qua_danh_gia_nha_thau", "gia_tri_quy_doi"),
 })
 
 
@@ -2576,6 +2587,11 @@ SCHEMA_DINH_NGHIA = {
             "gia_xep_hang": "INTEGER CHECK(gia_xep_hang IS NULL OR (typeof(gia_xep_hang) = 'integer' AND gia_xep_hang >= 0))",
             "gia_de_nghi_trung_thau": "INTEGER CHECK(gia_de_nghi_trung_thau IS NULL OR (typeof(gia_de_nghi_trung_thau) = 'integer' AND gia_de_nghi_trung_thau >= 0))",
             "chap_thuan_gia_de_nghi_trung_thau_duoi_50": "INTEGER CHECK(chap_thuan_gia_de_nghi_trung_thau_duoi_50 IS NULL OR (typeof(chap_thuan_gia_de_nghi_trung_thau_duoi_50) = 'integer' AND chap_thuan_gia_de_nghi_trung_thau_duoi_50 IN (0, 1)))",
+            "gia_tri_sua_loi": "INTEGER",
+            "gia_tri_hieu_chinh_sai_lech": "INTEGER",
+            "gia_tri_quy_doi": "INTEGER",
+            "gia_xep_hang_nhap_tay": "INTEGER CHECK(gia_xep_hang_nhap_tay IS NULL OR (typeof(gia_xep_hang_nhap_tay) = 'integer' AND gia_xep_hang_nhap_tay IN (0, 1)))",
+            "gia_de_nghi_trung_thau_nhap_tay": "INTEGER CHECK(gia_de_nghi_trung_thau_nhap_tay IS NULL OR (typeof(gia_de_nghi_trung_thau_nhap_tay) = 'integer' AND gia_de_nghi_trung_thau_nhap_tay IN (0, 1)))",
             "danh_gia_ket_luan": "TEXT",
             "diem": "REAL CHECK(diem IS NULL OR (diem >= 0 AND diem = round(diem, 4)))",
             "ly_do_loai": "TEXT",

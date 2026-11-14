@@ -1,4 +1,5 @@
 import { trustedHTML } from "../shared/trustedTypes.js";
+import { renderDashboardHero } from "./DashboardHero.js";
 import { loadStyleOnce } from "../shared/externalAssets.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
@@ -273,26 +274,41 @@ export function shouldUseServerDashboardSummary(summary, scopedPackages = []) {
     && recentPackageCount > 0;
 }
 
-function renderMetricBreakdown(containerId, counts, colors, formatter = (value) => String(value)) {
+function renderMetricBreakdown(containerId, counts, colors, formatter = (value) => String(value), { bars = false } = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  container.innerHTML = trustedHTML(Object.entries(counts || {}).map(([status, value]) => `
+  const total = Object.values(counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  container.classList.toggle("has-bars", bars);
+  container.innerHTML = trustedHTML(Object.entries(counts || {}).map(([status, value]) => {
+    const color = colors?.[status] || DASHBOARD_STATUS_COLORS.neutral;
+    const share = total ? Math.round(Number(value || 0) / total * 1000) / 10 : 0;
+    return `
     <div class="dashboard-metric-row">
-      <span><i class="dashboard-status-dot" style="background-color: ${colors?.[status] || DASHBOARD_STATUS_COLORS.neutral};"></i>${escapeHtml(status)}</span>
+      <span><i class="dashboard-status-dot" style="background-color: ${color};"></i>${escapeHtml(status)}</span>
       <strong>${escapeHtml(formatter(value))}</strong>
+      ${bars ? `<span class="dashboard-metric-bar" aria-hidden="true"><i style="width: ${share}%; background-color: ${color};"></i></span>` : ""}
     </div>
-  `).join(""));
+  `;
+  }).join(""));
 }
 
 function renderContractSummary(counts, values, catalog = []) {
   const container = document.getElementById("contract-summary-breakdown");
   if (!container) return;
   const statuses = [...new Set([...Object.keys(counts || {}), ...Object.keys(values || {})])];
-  container.innerHTML = trustedHTML(statuses.map((status) => {
+  const colorOf = (status) => {
+    const configuredColor = catalog.find((item) => item?.name === status)?.color;
+    return /^#[0-9a-fA-F]{6}$/.test(String(configuredColor || "")) ? configuredColor : "#64748B";
+  };
+  const segments = statuses
+    .filter((status) => Number(counts?.[status] || 0) > 0)
+    .map((status) => `<i style="flex-grow: ${Number(counts[status])}; background-color: ${colorOf(status)};"></i>`)
+    .join("");
+  const shareBar = segments ? `<div class="dashboard-contract-bar" aria-hidden="true">${segments}</div>` : "";
+  container.innerHTML = trustedHTML(shareBar + statuses.map((status) => {
     const count = Number(counts?.[status] || 0);
     const formattedValue = compactCurrency(values?.[status] || 0);
-    const configuredColor = catalog.find((item) => item?.name === status)?.color;
-    const color = /^#[0-9a-fA-F]{6}$/.test(String(configuredColor || "")) ? configuredColor : "#64748B";
+    const color = colorOf(status);
     return `
       <div class="dashboard-contract-row" role="group" aria-label="${safeAttr(`${status}: ${count} hợp đồng, ${formattedValue}`)}">
         <span class="dashboard-contract-status"><i class="dashboard-status-dot" style="background-color: ${color};"></i>${escapeHtml(status)}</span>
@@ -355,11 +371,12 @@ export function buildDashboardActionRows(alerts = {}) {
       package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, fallbackCode: "Chưa có mã gói thầu", name: item.tenGoiThau || "Gói thầu" }
     }[targetType];
     const targetIdentity = targetMeta.code || targetMeta.fallbackCode;
+    const targetIcon = { plan: "file-text", contract: "file-check-2", package: "briefcase" }[targetType];
     const deadlineSource = ALERT_DEADLINE_SOURCE[item.alertKey] || "Dữ liệu thời hạn hiện có";
     const nextStep = ALERT_NEXT_STEP[item.alertKey] || "Mở hồ sơ để xem bước tiếp theo";
     return `
       <tr class="dashboard-task-row">
-        <td class="dashboard-task-object-cell"><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell" aria-label="Mở ${safeAttr(targetMeta.label)} ${safeAttr(targetIdentity)}"><span class="dashboard-object-code">${escapeHtml(targetIdentity)}</span><small title="${safeAttr(targetMeta.name)}">${escapeHtml(targetMeta.name)}</small></a></td>
+        <td class="dashboard-task-object-cell"><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell" aria-label="Mở ${safeAttr(targetMeta.label)} ${safeAttr(targetIdentity)}"><span class="dashboard-object-icon object-${targetType}" aria-hidden="true"><i data-lucide="${targetIcon}"></i></span><span class="dashboard-object-code">${escapeHtml(targetIdentity)}</span><small title="${safeAttr(targetMeta.name)}">${escapeHtml(targetMeta.name)}</small></a></td>
         <td class="dashboard-task-content-cell"><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small><small class="dashboard-action-source">Mốc lấy từ: ${escapeHtml(deadlineSource)}</small><button type="button" class="dashboard-task-next-step" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}">${escapeHtml(nextStep)}</button></td>
         <td class="dashboard-task-deadline-cell"><span class="dashboard-deadline deadline-${meta.tone}" title="${safeAttr(`Hạn/mốc theo ${deadlineSource}`)}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
       </tr>
@@ -444,14 +461,15 @@ function renderRecentPackages(view, packages) {
   const tbody = document.querySelector("#recent-packages-table tbody");
   if (!tbody) return;
   if (!packages.length) {
-    tbody.innerHTML = trustedHTML(renderEmptyRow(4, "Chưa có gói thầu nào", "inbox"));
+    tbody.innerHTML = trustedHTML(renderEmptyRow(2, "Chưa có gói thầu nào", "inbox"));
     return;
   }
   tbody.innerHTML = trustedHTML(packages.map((pkg) => `
     <tr>
-      <td class="dashboard-recent-code-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-code">${escapeHtml(pkg.maGoiThau || "")}</a></td>
-      <td class="dashboard-recent-name-cell"><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-name" title="${safeAttr(pkg.tenGoiThau || "")}">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
-      <td class="dashboard-recent-price-cell">${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
+      <td class="dashboard-recent-main-cell">
+        <a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="dashboard-recent-link dashboard-recent-name" title="${safeAttr(pkg.tenGoiThau || "")}">${escapeHtml(pkg.tenGoiThau || "")}</a>
+        <small class="dashboard-recent-meta">${escapeHtml([pkg.maGoiThau, compactCurrency(pkg.giaGoiThau || 0)].filter(Boolean).join(" · "))}</small>
+      </td>
       <td class="dashboard-recent-status-cell">${view.getStatusBadge(resolvePackageResultStatus(pkg))}</td>
     </tr>
   `).join(""));
@@ -471,9 +489,12 @@ function renderDashboardSnapshot(view, data) {
   if (data.evaluationDelayDays) {
     setText("dashboard-evaluation-rule", `Báo cáo đánh giá được cảnh báo khi quá ${data.evaluationDelayDays} ngày sau mở thầu.`);
   }
-  renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts, PLAN_STATUS_COLORS);
+  renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts, PLAN_STATUS_COLORS, undefined, { bars: true });
   renderContractSummary(data.contractStatusCounts, data.contractValues, data.contractStatusCatalog);
   renderDashboardAlerts(data.alerts);
+  renderDashboardHero(data.alerts, {
+    displayName: document.getElementById("header-profile-name")?.textContent || "",
+  });
   renderStaffWorkload(data.staffWorkload);
   renderPackageDonut(data.packageStatusCounts);
   renderRecentPackages(view, data.recentPackages);

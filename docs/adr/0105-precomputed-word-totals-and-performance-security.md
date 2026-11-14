@@ -1,7 +1,7 @@
 # ADR 0105: Tổng kế hoạch và số tiền bảo đảm thực hiện hợp đồng tính sẵn cho Word
 
 - Ngày: 2026-11-14
-- Trạng thái: Chủ sản phẩm chọn triển khai (mục 2H, 2026-11-13). Hai điểm là mặc định đề xuất, chờ chủ sản phẩm xác nhận: số tiền bảo đảm = tỷ lệ × giá sau giảm giá (giá hợp đồng in trong thư chấp thuận), làm tròn nửa lên đến đồng; "Giá tổng dự toán" = tổng mức đầu tư/dự toán − tổng phần công việc đã thực hiện (đúng công thức in trong mẫu).
+- Trạng thái: Chấp nhận. Chủ sản phẩm chọn triển khai (mục 2H, 2026-11-13) và xác nhận ngày 2026-11-14: số tiền bảo đảm = tỷ lệ × giá sau giảm giá (giá hợp đồng in trong thư chấp thuận), làm tròn nửa lên đến đồng; "Giá tổng dự toán" = tổng mức đầu tư/dự toán − tổng phần công việc đã thực hiện (đúng công thức in trong mẫu).
 - Phạm vi: `backend/documents/computed_word_values.py` (mới), `docx_service.py`, `docx_bid_context_service.py`, `docx_context_policy.py`, `field_manifest.py`, `word_defaults.py` (danh mục v20), `frontend/documents/wordVariableManifest.js` (sinh lại), công cụ `Templates_Bidding/_cong_cu`
 - Liên quan: ADR 0099, ADR 0100, ADR 0102
 

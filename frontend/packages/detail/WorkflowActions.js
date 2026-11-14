@@ -2,14 +2,8 @@ import { trustedHTML } from "../../shared/trustedTypes.js";
 import { buttonMarkup } from "../../shared/Button.js";
 export function renderWorkflowActions(container, { canCancel = false, onCancel } = {}) {
   if (!container) return;
+  // The back action lives beside the title (tab_goithau_detail.html).
   container.innerHTML = trustedHTML(`
-    ${buttonMarkup({
-      variant: "outline",
-      icon: "arrow-left",
-      label: "Quay lại danh sách",
-      className: "bf-s-884f09ff2f",
-      attributes: { "data-bf-action": "switch-tab", "data-tab": "goithau" },
-    })}
     ${canCancel ? buttonMarkup({
       id: "btn-workflow-cancel-package",
       variant: "danger",

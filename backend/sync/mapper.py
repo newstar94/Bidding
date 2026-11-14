@@ -1211,6 +1211,11 @@ def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, n
         ("gia_xep_hang", "giaXepHang"),
         ("gia_de_nghi_trung_thau", "giaDeNghiTrungThau"),
         ("chap_thuan_gia_de_nghi_trung_thau_duoi_50", "chapThuanGiaDeNghiTrungThauDuoi50"),
+        ("gia_tri_sua_loi", "giaTriSuaLoi"),
+        ("gia_tri_hieu_chinh_sai_lech", "giaTriHieuChinhSaiLech"),
+        ("gia_tri_quy_doi", "giaTriQuyDoi"),
+        ("gia_xep_hang_nhap_tay", "giaXepHangNhapTay"),
+        ("gia_de_nghi_trung_thau_nhap_tay", "giaDeNghiTrungThauNhapTay"),
         ("danh_gia_ket_luan", "danhGiaKetLuan"),
         ("diem", "diemDanhGia"),
         ("ly_do_loai", "lyDoTruot"),
@@ -1230,7 +1235,11 @@ def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, n
             value = row.get(snake_key)
             if ("ket_qua_danh_gia_nha_thau", snake_key) in MONEY_COLUMNS:
                 value = money_json_value(value)
-            elif snake_key == "chap_thuan_gia_de_nghi_trung_thau_duoi_50" and value is not None:
+            elif snake_key in {
+                "chap_thuan_gia_de_nghi_trung_thau_duoi_50",
+                "gia_xep_hang_nhap_tay",
+                "gia_de_nghi_trung_thau_nhap_tay",
+            } and value is not None:
                 value = bool(value)
             item[camel_key if naming == "camel" else snake_key] = value
 

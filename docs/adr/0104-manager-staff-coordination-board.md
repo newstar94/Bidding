@@ -1,7 +1,7 @@
 # ADR 0104: Bảng điều phối nhân sự cho quản lý
 
 - Ngày: 2026-11-14
-- Trạng thái: Chủ sản phẩm chọn triển khai (2026-11-13). Hai điểm là mặc định đề xuất, chờ chủ sản phẩm xác nhận: gói giao cho nhiều người được tính cho từng người; gói Đã có kết quả và Hủy thầu không tính là việc đang xử lý.
+- Trạng thái: Chấp nhận. Chủ sản phẩm chọn triển khai (2026-11-13) và xác nhận ngày 2026-11-14: gói giao cho nhiều người được tính cho từng người; gói Đã có kết quả và Hủy thầu không tính là việc đang xử lý.
 - Phạm vi: `backend/sync/dashboard_summary.py` (`_staff_workload`), `views/tabs/tab_dashboard.html`, `frontend/app/DashboardView.js`, `DashboardView.css`, `frontend/admin/AdminUserController.js` (`viewEmployee`)
 
 ## Bối cảnh

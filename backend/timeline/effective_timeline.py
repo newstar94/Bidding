@@ -167,6 +167,30 @@ def _sequence_number(record):
         return 0
 
 
+def _version_sequence(record):
+    try:
+        return int(_first(record, ("phienBan", "phien_ban")) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _lineage_version_adjustments(package_data, lineage_packages):
+    """Each earlier package version carries one E-HSMT adjustment of its own."""
+    current_id = str(_first(package_data, ("id",)) or "")
+    current_sequence = _version_sequence(package_data)
+    if not isinstance(lineage_packages, list) or current_sequence <= 1:
+        return []
+    by_sequence = {}
+    for version in lineage_packages:
+        sequence = _version_sequence(version)
+        version_id = str(_first(version, ("id",)) or "")
+        if not version_id or version_id == current_id or not 0 < sequence < current_sequence:
+            continue
+        by_sequence.setdefault(sequence, version)
+    adjustments = (_version_ehsmt_adjustment(version) for version in by_sequence.values())
+    return [adjustment for adjustment in adjustments if adjustment]
+
+
 def _related(package_data, related_entities):
     related = dict(related_entities or {})
     contracts = _active(related.get("contracts") or related.get("hopDong") or [])
@@ -188,6 +212,14 @@ def _related(package_data, related_entities):
     inferred_adjustments = list(raw_adjustments)
     if version_adjustment and not has_version_adjustment:
         inferred_adjustments.append(version_adjustment)
+    for adjustment in _lineage_version_adjustments(package_data, related.get("lineagePackages")):
+        exists = any(
+            str(_first(item, ("id",)) or "") == adjustment["id"]
+            or _sequence_number(item) == adjustment["sequence"]
+            for item in inferred_adjustments
+        )
+        if not exists:
+            inferred_adjustments.append(adjustment)
     related.update({
         "contracts": contracts,
         "preparationContract": next((item for item in contracts if _contract_kind(item) == "preparation"), {}),

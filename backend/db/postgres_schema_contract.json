@@ -4343,7 +4343,7 @@
     }
   },
   "postgresMajor": 17,
-  "schemaVersion": 103,
+  "schemaVersion": 104,
   "tables": {
     "account_subscriptions": {
       "columns": {
@@ -17619,12 +17619,47 @@
           "notNull": false,
           "type": "bigint"
         },
+        "gia_de_nghi_trung_thau_nhap_tay": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "smallint"
+        },
+        "gia_tri_hieu_chinh_sai_lech": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "bigint"
+        },
+        "gia_tri_quy_doi": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "bigint"
+        },
+        "gia_tri_sua_loi": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "bigint"
+        },
         "gia_xep_hang": {
           "default": null,
           "generated": "",
           "identity": "",
           "notNull": false,
           "type": "bigint"
+        },
+        "gia_xep_hang_nhap_tay": {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "notNull": false,
+          "type": "smallint"
         },
         "goi_thau_id": {
           "default": null,
@@ -17782,9 +17817,23 @@
           "kind": "c",
           "validated": true
         },
+        "ket_qua_danh_gia_nha_thau_gia_de_nghi_trung_thau_nhap_tay_check": {
+          "deferrable": false,
+          "definition": "CHECK (gia_de_nghi_trung_thau_nhap_tay IS NULL OR (gia_de_nghi_trung_thau_nhap_tay = ANY (ARRAY[0, 1])))",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
         "ket_qua_danh_gia_nha_thau_gia_xep_hang_check": {
           "deferrable": false,
           "definition": "CHECK (gia_xep_hang IS NULL OR gia_xep_hang >= 0)",
+          "initiallyDeferred": false,
+          "kind": "c",
+          "validated": true
+        },
+        "ket_qua_danh_gia_nha_thau_gia_xep_hang_nhap_tay_check": {
+          "deferrable": false,
+          "definition": "CHECK (gia_xep_hang_nhap_tay IS NULL OR (gia_xep_hang_nhap_tay = ANY (ARRAY[0, 1])))",
           "initiallyDeferred": false,
           "kind": "c",
           "validated": true

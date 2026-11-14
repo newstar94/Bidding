@@ -575,3 +575,47 @@ test("hidden saved entries are retained", () => {
   const merged = mergeSavedTimelineEntries([hidden], active);
   assert.equal(merged.some((row) => row.id === "hidden"), true);
 });
+
+test("a later package version keeps every earlier E-HSMT adjustment as its own row", () => {
+  const original = { ...base, id: "pkg-v00", rootId: "pkg-root", phienBan: "00", soQuyetDinh: "100/QĐ", ngayQuyetDinh: "2026-10-01" };
+  const revision01 = { ...original, id: "pkg-v01", phienBan: "01", soQuyetDinh: "410-QĐ/VPTU", ngayQuyetDinh: "2026-11-05" };
+  const revision02 = { ...original, id: "pkg-v02", phienBan: "02", soQuyetDinh: "440-QĐ/VPTU", ngayQuyetDinh: "2026-11-09" };
+  const lineagePackages = [original, revision01, revision02];
+  const context = { plan: { pheDuyet: "Kế hoạch" }, initialPackage: original, lineagePackages };
+
+  const currentRows = buildEffectiveTimeline(revision02, context, []);
+  const adjustments = currentRows.filter((row) => row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL");
+  assert.deepEqual(adjustments.map((row) => [row.title, row.soVanBan, row.ngayThucTe]), [
+    ["QĐ phê duyệt điều chỉnh E-HSMT lần 1", "410-QĐ/VPTU", "2026-11-05"],
+    ["QĐ phê duyệt điều chỉnh E-HSMT lần 2", "440-QĐ/VPTU", "2026-11-09"],
+  ]);
+
+  const presentation = buildTimelineLineagePresentation(currentRows, [
+    { packageId: original.id, rows: buildEffectiveTimeline(original, context, []) },
+    { packageId: revision01.id, rows: buildEffectiveTimeline(revision01, context, []) },
+    { packageId: revision02.id, rows: currentRows },
+  ]);
+  const presentedAdjustments = presentation.rows.filter((row) => row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL");
+  assert.equal(presentedAdjustments.length, 2);
+  assert.ok(presentedAdjustments.every((row) => !row.isHistorical));
+  assert.deepEqual(
+    presentation.dateHistoryByMilestone["E_HSMT_ADJUSTMENT_APPROVAL::package-version:pkg-v02"],
+    [{ field: "ngayThucTe", value: "2026-11-09" }],
+  );
+});
+
+test("an archived earlier adjustment stays hidden in later versions", () => {
+  const revision01 = { ...base, id: "pkg-v01", phienBan: "01", soQuyetDinh: "01/QĐ", ngayQuyetDinh: "2026-11-05" };
+  const revision02 = {
+    ...base, id: "pkg-v02", phienBan: "02", soQuyetDinh: "02/QĐ", ngayQuyetDinh: "2026-11-09",
+    ehsmtAdjustments: [{ id: "package-version:pkg-v01", sequence: 1, archivedAt: "2026-11-10" }],
+  };
+  const rows = buildEffectiveTimeline(revision02, {
+    plan: { pheDuyet: "Kế hoạch" },
+    lineagePackages: [revision01, revision02],
+  }, []);
+  assert.deepEqual(
+    rows.filter((row) => row.milestoneKey === "E_HSMT_ADJUSTMENT_APPROVAL").map((row) => row.instanceKey),
+    ["package-version:pkg-v02"],
+  );
+});

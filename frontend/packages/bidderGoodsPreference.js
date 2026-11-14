@@ -71,7 +71,6 @@ export function calculateBidderGoodsPreference(lines, {
   discountRateBp = 0,
   discountRatePercent = null,
   scopeAfterDiscount = null,
-  evaluationBase = null,
 } = {}) {
   if (!Array.isArray(lines) || lines.length === 0) throw new RangeError("Chưa có hàng hóa để tính ưu đãi.");
   const normalized = lines.map((line) => {
@@ -148,8 +147,9 @@ export function calculateBidderGoodsPreference(lines, {
     heSoUuDaiCaoNhatBp: maximum,
     tongGiaTriCongUuDai: totalSurcharge.toString(),
     giaSoSanhSauUuDai: comparison.toString(),
-    giaDanhGiaSauUuDai: evaluationBase == null
-      ? null : (money(evaluationBase, "Giá đánh giá nền") + totalSurcharge).toString(),
+    // Legacy field kept for compatibility; ADR 0107 makes giá xếp hạng the single
+    // evaluated price, so this only mirrors the price after discount and preference.
+    giaDanhGiaSauUuDai: comparison.toString(),
     trangThaiTinhUuDai: "ready",
   };
 }

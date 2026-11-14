@@ -1,6 +1,7 @@
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { beginWordExportLoading } from "../documents/WordExportLoading.js";
 import { runWordPublicationExportJob } from "../documents/WordPublicationJob.js";
+import { requiredVariablesWarning } from "../documents/requiredWordVariables.js";
 
 export function contractFilename(contractNumber) {
   return `Hop_dong_${contractNumber || "LCNT"}.docx`;
@@ -49,6 +50,8 @@ export async function exportContractWordInBackground({
           : null,
       });
     } catch (error) {
+      // ADR 0106: the reason (missing result variable) must reach the person.
+      if (requiredVariablesWarning(error)) throw error;
       const wrapped = new Error("Không thể xuất hợp đồng", { cause: error });
       wrapped.code = error?.code;
       wrapped.status = error?.status;

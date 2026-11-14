@@ -219,6 +219,10 @@ def root_spec(name, ctx):
 
 def root_expr(spec, prev, native, force_short=False):
     alias, path, fmt = spec
+    if fmt == 'computeddate':
+        # Workspace result variable printing "dd/m/yyyy": add "ngày" when missing.
+        expr = nat(path) if native else '{%s}' % alias
+        return (expr if wants_short(prev) else 'ngày ' + expr), ('root-native' if native else 'root')
     short = fmt in ('date', 'datetime', 'textdate') and (force_short or wants_short(prev))
     if short:
         if native or fmt == 'textdate':
@@ -280,6 +284,8 @@ def item_of(name, ctx, group_hint=None):
         return 'WINLOT', WINLOT_ITEMS[name]
     if group_hint == 'LOT' and name in LOT_ITEMS:
         return 'LOT', LOT_ITEMS[name]
+    if group_hint in NTSUM_ITEMS and name in NTSUM_ITEMS[group_hint]:
+        return group_hint, NTSUM_ITEMS[group_hint][name]
     if name in BID_ITEMS:
         return 'BID', BID_ITEMS[name]
     return None
@@ -307,6 +313,10 @@ def row_list(names, ctx):
             return 'LOTWIN', GROUPS['LOTWIN'][0]
         if 'Số phần xếp hạng 1' in s and 'Nhà thầu xếp hạng 1' in s:
             return 'WINLOT', GROUPS['WINLOT'][0]
+        # ADR 0106: per-contractor rows (one row per contractor across its lots)
+        if s & NTSUM_TRIGGERS:
+            group = ntsum_group(names)
+            return group, GROUPS[group][0]
         if not (s & set(BID_DRIVERS)) and 'Tên phần lô' in s:
             return 'LOT', GROUPS['LOT'][0]
     filt = [n for n in names if n in REASON_FIELDS or n in LAMRO_FIELDS]

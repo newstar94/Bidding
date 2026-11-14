@@ -17,6 +17,7 @@ from backend.documents.computed_word_values import (  # noqa: E402
     performance_security_amount,
     plan_total_context,
 )
+from backend.documents.docx_bid_context_service import build_contractor_summaries  # noqa: E402
 from backend.documents.custom_exporter import (  # noqa: E402
     enrich_context_with_lowercase_keys,
     enrich_context_with_words,
@@ -34,6 +35,7 @@ from scripts.generate_word_variable_manifest import (  # noqa: E402
 __all__ = [
     "COLUMN_LITERAL_CONTEXT",
     "PERFORMANCE_SECURITY_FIELD",
+    "build_contractor_summaries",
     "performance_security_amount",
     "plan_total_context",
     "enrich_context_with_lowercase_keys",

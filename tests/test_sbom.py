@@ -83,11 +83,11 @@ def test_vendor_manifest_is_merged_into_cyclonedx_with_file_hashes_and_licenses(
         component for component in components.values() if component.get("type") == "file"
     ]
 
-    assert len(vendor_parents) == len(manifest["assets"]) == 4
+    assert len(vendor_parents) == len(manifest["assets"]) == 5
     assert len(vendor_files) == sum(
         len(asset["files"]) for asset in manifest["assets"]
-    ) == 8
-    assert len(document["dependencies"][0]["dependsOn"]) == 4
+    ) == 11
+    assert len(document["dependencies"][0]["dependsOn"]) == 5
 
     for parent in vendor_parents:
         assert parent["version"]

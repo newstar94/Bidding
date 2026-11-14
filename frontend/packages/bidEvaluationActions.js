@@ -35,6 +35,7 @@ import {
 import { executeBidEvaluationDraftSave } from "./BidEvaluationDraftWorkflow.js";
 import { isConfirmedRowVersionConflict } from "../shared/DraftRecoveryStore.js";
 import { buildBidEvaluationRecoveryKey, generalBidEvaluationRecoveryFor } from "./BidEvaluationDraftRecovery.js";
+import { readEvaluationPriceAdjustments } from "./bidEvaluationPriceInputs.js";
 
 async function clearConflictedCompletion({ controller, result, pkg, requestedPackage, isTwoEnvelope, lotDetails, workspaceToken }) {
   if (!isConfirmedRowVersionConflict(result) || (workspaceToken && controller.model.isWorkspaceCurrent?.(workspaceToken) === false)) return;
@@ -172,6 +173,7 @@ function applyCompletedBidRows({
     if (giaDeNghiTrungThauEl) {
       bid.giaDeNghiTrungThau = model.parseVND(giaDeNghiTrungThauEl.value || "");
     }
+    Object.assign(bid, readEvaluationPriceAdjustments(tr));
     bid.giaDuThau = preparedBid?.giaDuThau ?? bid.giaDuThau;
     bid.tyLeGiamGia = preparedBid?.tyLeGiamGia ?? bid.tyLeGiamGia;
     bid.giaSauGiamGia = preparedBid?.giaSauGiamGia ?? bid.giaSauGiamGia;
@@ -831,6 +833,7 @@ export async function saveDanhGiaHsdt(options = {}) {
         giaSauGiamGia,
         giaXepHang,
         giaDeNghiTrungThau,
+        ...readEvaluationPriceAdjustments(tr),
         chapThuanGiaDeNghiTrungThauDuoi50,
         danhGiaHopLe,
         danhGiaNangLuc,

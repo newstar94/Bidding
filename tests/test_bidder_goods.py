@@ -154,6 +154,29 @@ def test_backend_accepts_consistent_official_batch_and_rejects_cross_package_map
     connection.close()
 
 
+def test_backend_preference_never_adds_the_surcharge_to_the_ranking_price():
+    connection = _connection()
+    line = {
+        "id": "offered-1",
+        "goiThauId": "package-1",
+        "thongTinMoThauId": "opening-1",
+        "goiThauHangHoaId": "required-1",
+        "phanLoId": None,
+        "khoiLuong": 1,
+        "donGiaDuThau": "100",
+        "thanhTienDuThau": "100",
+        "mappingStatus": "matched",
+        "maUuDai": 0,
+        "isDraft": False,
+    }
+    opening = {"id": "opening-1", "giaXepHang": "150"}
+    assert validate_bidder_goods_batch(connection.cursor(), "org-1", [dict(line)], [opening]) == []
+    # ADR 0107: the ranking price is not a base; the legacy value is the price after preference.
+    assert opening["giaXepHang"] == "150"
+    assert opening["giaDanhGiaSauUuDai"] == opening["giaSoSanhSauUuDai"] == 100
+    connection.close()
+
+
 def test_backend_validates_official_bidder_goods_against_pending_aggregate_graph():
     connection = _connection()
     package = {

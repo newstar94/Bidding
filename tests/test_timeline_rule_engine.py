@@ -417,3 +417,27 @@ def test_package_version_infers_a_stable_ehsmt_adjustment_for_legacy_data():
     assert adjustment["title"] == "QĐ phê duyệt điều chỉnh E-HSMT lần 2"
     assert adjustment["so_van_ban"] == "02/QĐ-ĐC"
     assert adjustment["ngay_thuc_te"] == "2026-07-20"
+
+
+def test_later_package_version_keeps_earlier_adjustments_from_lineage():
+    common = {
+        "hinh_thuc_lua_chon": "Đấu thầu rộng rãi",
+        "phuong_thuc_lua_chon": "Một giai đoạn một túi hồ sơ",
+        "yeu_cau_tham_dinh_hsmt_code": "NOT_REQUIRED",
+    }
+    revision_01 = {**common, "id": "pkg-v01", "phien_ban": "01", "so_quyet_dinh": "01/QĐ", "ngay_quyet_dinh": "2026-11-05"}
+    revision_02 = {**common, "id": "pkg-v02", "phien_ban": "02", "so_quyet_dinh": "02/QĐ", "ngay_quyet_dinh": "2026-11-09"}
+    rows = build_effective_timeline(
+        revision_02,
+        {"plan": {"phe_duyet": "Kế hoạch"}, "lineagePackages": [revision_01, revision_02]},
+        [],
+    )
+    adjustments = [
+        (row["title"], row["so_van_ban"], row["ngay_thuc_te"])
+        for row in rows
+        if row["milestone_key"] == "E_HSMT_ADJUSTMENT_APPROVAL"
+    ]
+    assert adjustments == [
+        ("QĐ phê duyệt điều chỉnh E-HSMT lần 1", "01/QĐ", "2026-11-05"),
+        ("QĐ phê duyệt điều chỉnh E-HSMT lần 2", "02/QĐ", "2026-11-09"),
+    ]

@@ -76,6 +76,10 @@ from backend.documents.word_publication_policy import (
 from backend.documents.word_publication_team_policy import (
     validate_word_publication_teams,
 )
+from backend.documents.required_word_variables import (
+    WordRequiredVariablesMissing,
+    validate_required_word_variables,
+)
 from backend.documents.export_policy_registry import governed_export
 from backend.documents.plan_basis_context import (
     PlanBasisSelectionError,
@@ -137,6 +141,9 @@ def _scope_contracts_for_word_publication(context, publication_type):
 
 
 def _docx_error(request, exception, context):
+    if isinstance(exception, WordRequiredVariablesMissing):
+        # ADR 0106: direct exports do not know the caller's role here.
+        return JSONResponse(exception.payload(None), status_code=422)
     if isinstance(exception, custom_exporter.WordTemplateConfigConflictError):
         request_id = get_request_id(request)
         current_revision = exception.current_revision
@@ -1132,6 +1139,8 @@ def _prepare_plan_render(
         template_path, _ = _resolve_template_path(
             owner_type, owner_id, active_template
         )
+    # ADR 0106: workspace result variables a selected template cannot do without.
+    validate_required_word_variables(template_path, mappings)
     return context, manifest, template_path, sensitive_groups
 
 
@@ -1211,6 +1220,8 @@ def _prepare_report_render(
         template_path, _ = _resolve_template_path(
             owner_type, owner_id, active_template
         )
+    # ADR 0106: workspace result variables a selected template cannot do without.
+    validate_required_word_variables(template_path, mappings)
     return context, manifest, template_path, sensitive_groups
 
 

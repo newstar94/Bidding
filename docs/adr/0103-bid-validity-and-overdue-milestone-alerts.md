@@ -1,7 +1,7 @@
 # ADR 0103: Cảnh báo hiệu lực HSDT và mốc tiến độ quá hạn
 
 - Ngày: 2026-11-14
-- Trạng thái: Chủ sản phẩm chọn triển khai (mục 2C, 2026-11-13). Ngưỡng 7 ngày, cách tính ngày hiệu lực và việc bỏ cảnh báo "làm rõ chưa trả lời" là mặc định đề xuất, chờ chủ sản phẩm xác nhận.
+- Trạng thái: Chấp nhận. Chủ sản phẩm chọn triển khai (mục 2C, 2026-11-13) và xác nhận ngày 2026-11-14: cảnh báo trước 7 ngày; ngày có thời điểm đóng thầu là ngày hiệu lực thứ nhất. Không làm cảnh báo "làm rõ chưa trả lời" vì giới hạn dữ liệu (quyết định 5).
 - Phạm vi: `backend/sync/dashboard_summary.py`, `backend/sync/deadline_alerts.py` (mới), `frontend/app/dashboardAlertRules.js`, `DashboardView.js`, `NotificationCenter.js`
 
 ## Bối cảnh

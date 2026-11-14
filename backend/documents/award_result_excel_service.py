@@ -48,6 +48,7 @@ from backend.documents.award_result_excel.normalization import (
 )
 from backend.documents.spreadsheet_security import safe_spreadsheet_text
 from backend.documents.workbook_preservation import patch_worksheet_cells
+from backend.domain.bid_price import corrected_bid_price, has_price_correction
 from backend.shared.async_io import run_owned_task
 from backend.shared.paths import resolve_runtime_path
 
@@ -959,8 +960,9 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
         opening_columns = (
             "opening_id", "ma_phan_lo", "ma_dinh_danh", "nha_thau_id",
             "ten_nha_thau", "ma_nha_thau", "ma_so_thue", "gia_du_thau",
-            "gia_sau_giam_gia", "gia_danh_gia_sau_uu_dai",
+            "gia_sau_giam_gia", "gia_xep_hang",
             "diem", "ly_do_loai", "danh_gia_ket_luan",
+            "ty_le_giam_gia", "gia_tri_sua_loi", "gia_tri_hieu_chinh_sai_lech",
         )
         opening_rows = cursor.execute(
             """SELECT opening.id, opening.ma_phan_lo, opening.ma_dinh_danh,
@@ -968,9 +970,11 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
                       COALESCE(NULLIF(opening.ten_nha_thau, ''), bidder.ten_nha_thau),
                       bidder.ma_nha_thau, bidder.ma_so_thue,
                       opening.gia_du_thau, opening.gia_sau_giam_gia,
-                      opening.gia_danh_gia_sau_uu_dai,
+                      result.gia_xep_hang,
                       result.diem, result.ly_do_loai,
-                      result.danh_gia_ket_luan
+                      result.danh_gia_ket_luan,
+                      opening.ty_le_giam_gia, result.gia_tri_sua_loi,
+                      result.gia_tri_hieu_chinh_sai_lech
                FROM thong_tin_mo_thau AS opening
                JOIN nha_thau AS bidder
                  ON bidder.organization_id = opening.organization_id
@@ -1154,6 +1158,16 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
             if opening["gia_sau_giam_gia"] is not None
             else opening["gia_du_thau"]
         )
+        if has_price_correction(
+            opening["gia_tri_sua_loi"], opening["gia_tri_hieu_chinh_sai_lech"],
+        ):
+            # ADR 0107: G = (bid price + corrections) × (1 − discount rate).
+            corrected_price = corrected_bid_price(
+                opening["gia_du_thau"],
+                opening["gia_tri_sua_loi"],
+                opening["gia_tri_hieu_chinh_sai_lech"],
+                opening["ty_le_giam_gia"],
+            )
         if parsed_outcome is not None and corrected_price is None:
             dataset_errors.append(
                 _issue(
@@ -1322,7 +1336,8 @@ def load_award_result_dataset(package_id: str, organization_id: str, *, database
                     ) if goods is not None else None,
                     corrected_price=_number(item_corrected_price),
                     technical_score=_number(opening["diem"]),
-                    evaluated_price=_number(opening["gia_danh_gia_sau_uu_dai"]),
+                    # ADR 0107: "Giá đánh giá" is the single ranking price (giá xếp hạng).
+                    evaluated_price=_number(opening["gia_xep_hang"]),
                     award_quantity=award_quantity,
                     award_unit_price=award_unit_price,
                     award_price=item_award_price,

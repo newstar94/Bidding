@@ -10,7 +10,7 @@ from .mapper import json_key_for_column
 from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
 from backend.shared.text_utils import normalize_lot_code, safe_int
-from backend.shared.numeric_utils import parse_vnd_amount
+from backend.shared.numeric_utils import parse_signed_vnd_amount, parse_vnd_amount
 from backend.shared.domain_enums import PACKAGE_STATUS_LABELS, enum_label
 from backend.sync.evaluation_metadata import parse_evaluation_metadata
 from backend.sync.bid_evaluation_rules import is_combined_evaluation_method
@@ -94,6 +94,8 @@ SYNC_VIRTUAL_FIELDS = {
         "phanLoId",
         "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
         "giaXepHang", "giaDeNghiTrungThau", "chapThuanGiaDeNghiTrungThauDuoi50",
+        "giaTriSuaLoi", "giaTriHieuChinhSaiLech", "giaTriQuyDoi",
+        "giaXepHangNhapTay", "giaDeNghiTrungThauNhapTay",
         "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "lamRoHopLe",
         "lamRoNangLuc", "lamRoKyThuat", "lamRoTaiChinh",
         "nguyenNhanKhongDatHopLe", "nguyenNhanKhongDatNangLuc",
@@ -1315,6 +1317,30 @@ def _validate_rules_for_thong_tin_mo_thau(table_name, item, errors, allowed_cont
             errors.append(f"{label} không được nhỏ hơn 0.")
         else:
             item[field] = str(parsed_value)
+
+    for field, label in (
+        ("giaTriSuaLoi", "Giá trị sửa lỗi"),
+        ("giaTriHieuChinhSaiLech", "Giá trị hiệu chỉnh sai lệch"),
+        ("giaTriQuyDoi", "Giá trị quy đổi ΔG"),
+    ):
+        raw_value = item.get(field)
+        if raw_value in (None, ""):
+            continue
+        parsed_value = parse_signed_vnd_amount(raw_value)
+        if parsed_value is None:
+            errors.append(f"{label} phải là số nguyên VND hợp lệ.")
+        else:
+            item[field] = str(parsed_value)
+
+    for field, label in (
+        ("giaXepHangNhapTay", "Chế độ giá xếp hạng"),
+        ("giaDeNghiTrungThauNhapTay", "Chế độ giá đề nghị trúng thầu"),
+    ):
+        raw_value = item.get(field)
+        if raw_value not in (None, "", True, False, 0, 1):
+            errors.append(f"{label} không hợp lệ.")
+        elif raw_value not in (None, ""):
+            item[field] = bool(raw_value)
 
     low_price_acceptance = item.get("chapThuanGiaDeNghiTrungThauDuoi50")
     if low_price_acceptance not in (None, "", True, False, 0, 1):

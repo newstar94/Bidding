@@ -81,6 +81,32 @@ function activeRecords(items) {
   return (Array.isArray(items) ? items : []).filter((item) => !firstValue(item, ["archivedAt", "archived_at", "deletedAt", "deleted_at"]));
 }
 
+function versionSequence(record) {
+  return Number.parseInt(String(firstValue(record, ["phienBan", "phien_ban"]) || "0"), 10) || 0;
+}
+
+// Earlier package versions each carry one E-HSMT adjustment (their own phienBan).
+// A later version must still show those adjustments as separate instances.
+function lineageVersionAdjustments(packageData, lineagePackages) {
+  const currentId = String(firstValue(packageData, ["id"]) || "");
+  const currentSequence = versionSequence(packageData);
+  if (!Array.isArray(lineagePackages) || currentSequence <= 1) return [];
+  const bySequence = new Map();
+  lineagePackages.forEach((version) => {
+    const sequence = versionSequence(version);
+    const id = String(firstValue(version, ["id"]) || "");
+    if (!id || id === currentId || sequence <= 0 || sequence >= currentSequence) return;
+    if (!bySequence.has(sequence)) bySequence.set(sequence, version);
+  });
+  return [...bySequence.values()].map((version) => buildVersionEhsmtAdjustment({
+    id: firstValue(version, ["id"]),
+    phienBan: firstValue(version, ["phienBan", "phien_ban"]),
+    soQuyetDinh: firstValue(version, ["soQuyetDinh", "so_quyet_dinh"]),
+    ngayQuyetDinh: firstValue(version, ["ngayQuyetDinh", "ngay_quyet_dinh"]),
+    thoiGianDangTai: firstValue(version, ["thoiGianDangTai", "thoi_gian_dang_tai"])
+  })).filter(Boolean);
+}
+
 function buildRelated(packageData, relatedEntities = {}) {
   const contracts = activeRecords(relatedEntities.contracts || relatedEntities.hopDong || []);
   const metadata = parseMetadata(firstValue(packageData, ["danhGiaHsdtMetadata", "danh_gia_hsdt_metadata"]));
@@ -99,7 +125,14 @@ function buildRelated(packageData, relatedEntities = {}) {
   ));
   const inferredAdjustments = versionAdjustment && !hasVersionAdjustment
     ? [...rawAdjustments, versionAdjustment]
-    : rawAdjustments;
+    : [...rawAdjustments];
+  lineageVersionAdjustments(packageData, relatedEntities.lineagePackages).forEach((adjustment) => {
+    const exists = inferredAdjustments.some((item) => (
+      String(firstValue(item, ["id"]) || "") === adjustment.id
+      || Number(firstValue(item, ["sequence", "thuTu", "thu_tu"])) === adjustment.sequence
+    ));
+    if (!exists) inferredAdjustments.push(adjustment);
+  });
   const result = {
     ...relatedEntities,
     contracts,

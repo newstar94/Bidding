@@ -48,6 +48,10 @@ def apply_custom_mappings(context, mappings_rows):
         'hop_dong': ['hop_dong'],
         'hop_dong_list': ['hop_dong_list'],
         'qd_hsmt_list': ['qd_hsmt_list'],
+        # ADR 0106: one row per contractor across its lots.
+        'ds_nha_thau_tong_hop': ['ds_nha_thau_tong_hop'],
+        'ds_nha_thau_tong_hop_dat_ky_thuat': ['ds_nha_thau_tong_hop_dat_ky_thuat'],
+        'ds_nha_thau_tong_hop_xep_hang_1': ['ds_nha_thau_tong_hop_xep_hang_1'],
         'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
         'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],
         'tai_khoan': ['user'],
@@ -206,6 +210,10 @@ def apply_custom_mappings(context, mappings_rows):
                 'hop_dong_list': ['hop_dong_list'],
                 # ADR 0102: E-HSMT approval/adjustment decisions.
                 'qd_hsmt_list': ['qd_hsmt_list'],
+                # ADR 0106: one row per contractor across its lots.
+                'ds_nha_thau_tong_hop': ['ds_nha_thau_tong_hop'],
+                'ds_nha_thau_tong_hop_dat_ky_thuat': ['ds_nha_thau_tong_hop_dat_ky_thuat'],
+                'ds_nha_thau_tong_hop_xep_hang_1': ['ds_nha_thau_tong_hop_xep_hang_1'],
                 # ADR 0100: consultant firm roots of package exports.
                 'don_vi_tu_van_lap': ['don_vi_tu_van_lap'],
                 'don_vi_tu_van_tham': ['don_vi_tu_van_tham'],

@@ -158,8 +158,13 @@ function applyRecoveredDraft({ controller, rows, dirtyState, recovered }) {
       const control = selector ? row.querySelector?.(selector) : null;
       if (!control) return;
       control.value = value ?? "";
+      // Only typed prices become dirty draft fields, so a restored price is manual.
+      if ((field === "giaXepHang" || field === "giaDeNghiTrungThau") && control.dataset) {
+        control.dataset.priceAuto = "false";
+      }
       dirtyState.markBidField(patch.id, field);
     });
+    row.__bfRefreshEvaluationPrices?.();
   });
   return true;
 }

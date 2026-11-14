@@ -10,9 +10,9 @@ repository. It is provenance for `views/css/tokens.css` and
   the existing application styles. It defines aliases such as `--canvas`,
   `--surface`, `--ink`, `--line`, `--primary`, role accents, the legacy type
   scale, radii, shadows, and the 44px minimum touch target.
-- `views/css/tokens.css` records the newer primitive and component layer in
-  OKLCH, including spacing, typography, motion, component, shell, and overlay
-  tokens.
+- `views/css/tokens.css` records the newer primitive and component layer
+  (hex and OKLCH values), including spacing, typography, motion, component,
+  shell, and overlay tokens.
 - `views/css/ui-redesign.css` consumes both layers as presentation overrides.
   It must not change DOM hooks, business state, authorization, or field
   visibility.
@@ -25,17 +25,41 @@ not implied by this file.
 
 ## Visual direction
 
+Since 2026-11-14 the workspace follows a Minimal UI direction, approved by the
+product owner from the mockups in `artifacts/minimals-preview/`. It is a
+presentation-only re-skin: DOM hooks, data visibility, roles, permissions and
+entitlements are unchanged. The visual language is re-implemented in plain
+CSS; no Minimal UI (minimals.cc) source code, React components, illustrations
+or icons are bundled.
+
 - Product character: operational workbench with restrained editorial hierarchy.
-- Main surface: cool paper/canvas with white working surfaces.
-- Anchor accent: cobalt for primary action and focus.
-- Status colors: teal/green for success, amber for warning, red for danger.
-- Active-role accents: violet for Super Admin, cobalt for Manager, teal for
-  Employee. These colors communicate the already-selected persona; they do not
+- Main surface: white canvas with white cards that carry soft elevation instead
+  of borders (`--card-shadow`); table rows are separated by dashed rules and
+  table headers sit on the `#f4f6f8` subtle surface.
+- Anchor accent: green. The vivid `#00a76f` (`--color-accent`) is for marks,
+  tints and focus; text and links use the text-safe `#007867` (`--brand`).
+- Primary actions: contained ink buttons (`--button-bg`), outlined secondary
+  buttons and borderless circular icon buttons in table rows.
+- Status colors: success, warning, danger and info families. Vivid mains
+  (`--color-*-main`) are only for tints and data marks; text tones keep at
+  least 4.5:1 on their 16% soft tint. Status labels are soft, borderless and
+  use the 6px `--radius-label`.
+- Active-role accents: violet for Super Admin, green for Manager, cyan for
+  Employee, shown as a soft tint with a strong label on the selected sidebar
+  item. These colors communicate the already-selected persona; they do not
   grant or imply permissions.
-- Typography: Plus Jakarta Sans for display and body, with system monospace for
+- Typography: Public Sans (`--font-workspace`) inside the signed-in workspace
+  (`body[data-active-role]`); public pages (landing, legal, not found) and the
+  platform-admin console keep Plus Jakarta Sans. System monospace remains for
   technical values.
-- Elevation: borders and small surface shadows for normal content; the larger
-  dialog shadow is reserved for overlays.
+- Elevation: the card shadow for normal content; the larger dialog shadow is
+  reserved for overlays.
+- Page layouts: the dashboard opens with a welcome banner and a "next 7 days"
+  card (`frontend/app/DashboardHero.js`), and the package "Thông tin gói thầu"
+  step shows a progress/assignee/documents rail
+  (`frontend/packages/detail/PackageOverviewRail.js`). Both only re-present
+  data the page already loads for the current scope; they add no data source,
+  alert rule, permission or export path.
 
 ## Token architecture as implemented
 
@@ -44,8 +68,10 @@ not implied by this file.
 `views/css/tokens.css` owns the explicit primitive scales:
 
 - Color: `--color-paper*`, `--color-surface*`, `--color-ink`,
-  `--color-muted`, `--color-rule*`, `--color-accent*`, status colors,
-  `--color-focus`, and `--color-scrim`.
+  `--color-muted`, `--color-rule*`, `--color-accent*`, status colors and
+  their vivid `--color-*-main` tints, `--color-focus`, and `--color-scrim`.
+- Font: `--font-display`, `--font-body`, `--font-mono` and the workspace
+  `--font-workspace`.
 - Space: `--space-1` through `--space-12` on a 4px base.
 - Type: `--text-xs` through `--text-2xl`.
 - Motion: `--ease-*` and `--dur-*`.
@@ -73,7 +99,8 @@ The component tokens in `views/css/tokens.css` cover the stable shared seams:
 - Button: `--button-bg`, `--button-fg`, `--button-hover-bg`,
   `--button-radius`.
 - Input: `--input-bg`, `--input-border`, `--input-focus-ring`.
-- Card: `--card-bg`, `--card-border`, `--card-radius`.
+- Card: `--card-bg`, `--card-border`, `--card-radius`, `--card-shadow`.
+- Table: `--row-hover`; labels use `--radius-label`.
 - Shell: `--shell-sidebar-width`, `--shell-header-height`,
   `--control-height`.
 

@@ -81,10 +81,7 @@ Mỗi mốc không lặp trên tab Tiến độ (48 mốc) có hai biến hệ t
 ## 4. Trạng thái 101 mẫu trong `Templates_Bidding`
 
 - Cả 101 mẫu đều kết xuất được qua bản mô phỏng pipeline Bidding và là file Word hợp lệ.
-- **28 chỗ còn để `[[...]]`** (13/11/2026: 465 chỗ TVL/TVT theo ADR 0100; 14/11/2026: "Bảo đảm thực hiện hợp đồng" theo ADR 0105, xem mục 5c):
-  - 3 chỗ: Ưu đãi, Giá trị ưu đãi tổng. Có cột cộng ưu đãi nhưng không phải trường Word.
-  - 5 chỗ: không có dữ liệu. Gồm "Ngày cuối hoàn thiện" (3) và "Ngày báo cáo" trong mẫu KQCĐ CXN (2).
-  - 20 chỗ: số liệu theo từng nhà thầu trong mẫu phân lô: Số phần tham dự/đạt/không đạt/xếp hạng 1, Giá phần lô tham dự (đạt xếp hạng 1) tổng. `ds_nt_tham_du` có một dòng cho mỗi cặp nhà thầu–phần lô, nên cần danh sách mới gộp theo nhà thầu.
+- **Không còn chỗ `[[...]]` luôn hiện** (14/11/2026). Đã xử lý: 465 chỗ TVL/TVT (ADR 0100), "Bảo đảm thực hiện hợp đồng" và các dòng tổng kế hoạch (ADR 0105, mục 5c), ưu đãi, bảng tổng hợp theo nhà thầu trong mẫu phân lô, "Ngày cuối hoàn thiện" và "Ngày báo cáo" (ADR 0106, mục 5d). Sheet "Chưa có dữ liệu" trống.
 - **137 chỗ chỉ hiện `[[...]]` khi thiếu dữ liệu:**
   - Địa danh (66): khi địa chỉ chủ đầu tư không có tỉnh.
   - Địa danh TVL (23) / TVT (31): khi địa chỉ đơn vị tư vấn không có tỉnh.
@@ -141,12 +138,20 @@ Chủ sản phẩm đã duyệt ngày 12/11/2026 phương án "Chỉ thông tin 
 - Công cụ: `mapping.py` (`_total` dùng biến tổng, `Giá tổng dự toán` → `tmdt_tru_da_th`, `Bảo đảm thực hiện hợp đồng` trong `BID_ITEMS`), `bf.py` và `render_test.py` tính giá trị giả lập bằng chính hàm backend.
 - Chuyển lại mẫu: chỉ 12 mẫu đổi (10 mẫu Kế hoạch, 2 Thư chấp thuận), so sánh văn bản xác nhận chỉ đổi đúng các chỗ trên; `render_test.py` 101/101. Cần tải lại 12 mẫu này lên "Biểu mẫu Word" sau khi khởi động lại Bidding.
 
+## 5d. ADR 0106: tổng hợp theo nhà thầu, ưu đãi, hạn trong thư (14/11/2026, chưa commit)
+
+- Hạn trong thư là **biến kết quả** mỗi không gian tự đặt công thức: `ngay_han_hoan_thien_hd` (Thư chấp thuận), `ngay_han_xac_nhan_nl` (Giấy mời xác nhận năng lực, Báo cáo tư cách hợp lệ). Ví dụ `addDays(ngay_thu_chap_thuan, 10)`. Chưa cấu hình thì ứng dụng chặn xuất các mẫu này và mời quản lý cấu hình. Ngày in "dd/m/yyyy"; mẫu tự thêm chữ "ngày" khi câu chưa có.
+- Ưu đãi: trường dòng nhà thầu `tong_gia_tri_cong_uu_dai`.
+- Danh sách mỗi nhà thầu một dòng: `ds_nt_tong_hop`, `ds_nt_tong_hop_dat_kt`, `ds_nt_tong_hop_hang_1` (trường xem ADR 0106). "Đạt" theo tiêu chí của từng bảng, "xếp hạng nhất" theo xếp hạng khi đánh giá.
+- Danh mục biến v22. Công cụ: `mapping.py` (nhóm `NTSUM*`, `ntsum_group`, định dạng `computeddate`), `convert.py` (`row_list`, `item_of`, `root_expr`), `bf.py`, `render_test.py` (giả lập không gian đã cấu hình hai biến hạn).
+- Chuyển lại mẫu: 9 mẫu đổi, văn bản ngoài biến giữ nguyên; `render_test.py` 101/101. Cần tải lại 9 mẫu này lên "Biểu mẫu Word".
+
 ## 6. Việc còn mở (chờ chủ sản phẩm quyết)
 
 1. ~~Đưa thông tin đơn vị tư vấn ra Word (465 chỗ).~~ Xong: code theo ADR 0100, mẫu chuyển lại ngày 13/11/2026 (mục 5b).
 2. ~~Xóa tên "Ngô Anh Tuấn" gõ sẵn trong mẫu PLQT2.~~ Xong ngày 13/11/2026.
 3. Nếu đơn vị dùng phần mềm luôn là đơn vị tư vấn lập thì ánh xạ `[[Tư vấn lập]]` → `{ten_to_chuc}`.
 4. Chuyển thư mục mẫu ra `D:\Templates_Bidding`.
-5. ~~Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"~~ (xong, ADR 0105). Còn: số liệu theo từng nhà thầu trong mẫu phân lô (đếm và cộng theo phần lô), chốt nghĩa "đạt"/"xếp hạng nhất"; nguồn giá trị ưu đãi; nơi nhập "Ngày cuối hoàn thiện" và "Ngày báo cáo".
+5. ~~Tạo biến tính toán "Bảo đảm thực hiện hợp đồng"; số liệu theo từng nhà thầu; ưu đãi; "Ngày cuối hoàn thiện", "Ngày báo cáo"~~ (xong, ADR 0105 và 0106).
 6. ~~Commit git các thay đổi code~~ (đã commit `a01a5a0f`, `e36129e5`); còn khởi động lại Bidding.
 7. Lần chạy test để lại 6 thư mục `data\document-worker-temp\job-*`. Bidding tự dọn sau 1 giờ.

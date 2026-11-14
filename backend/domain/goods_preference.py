@@ -32,8 +32,7 @@ def _integer(value, label):
     return int(parsed)
 
 
-def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=None,
-                               evaluation_base=None):
+def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=None):
     """Return authoritative per-line and scope preference breakdown."""
     normalized = []
     for index, line in enumerate(lines or ()):
@@ -107,9 +106,10 @@ def calculate_goods_preference(lines, *, discount_rate=0, scope_after_discount=N
         "heSoUuDaiCaoNhatBp": maximum,
         "tongGiaTriCongUuDai": total_surcharge,
         "giaSoSanhSauUuDai": comparison_price,
-        "giaDanhGiaSauUuDai": (
-            _integer(evaluation_base, "Giá đánh giá nền") + total_surcharge
-            if evaluation_base not in (None, "") else None
-        ),
+        # Legacy column kept for compatibility; ADR 0107 makes the ranking price
+        # (giá xếp hạng) the single evaluated price, so this only mirrors the
+        # price after discount and preference.
+        "giaDanhGiaSauUuDai": comparison_price,
         "trangThaiTinhUuDai": "ready",
     }
+

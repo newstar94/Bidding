@@ -4,6 +4,7 @@ import {
 } from "./evaluationMetadata.js";
 import { parseTechnicalScore, serializeTechnicalScore } from "./evaluationMethodRules.js";
 import { parseVietnameseNumber } from "../shared/formatters.js";
+import { parseSignedMoney } from "./bidEvaluationPriceDefaults.js";
 
 const BID_FIELD_READERS = Object.freeze({
   danhGiaHopLe: [".mt-dg-hop-le", readText],
@@ -22,6 +23,9 @@ const BID_FIELD_READERS = Object.freeze({
   giaSauGiamGia: [".mt-gia-sau-giam-gia", readMoney],
   giaXepHang: [".mt-gia-xep-hang", readMoney],
   giaDeNghiTrungThau: [".mt-gia-de-nghi-trung-thau", readMoney],
+  giaTriSuaLoi: [".mt-gia-tri-sua-loi", readSignedMoney],
+  giaTriHieuChinhSaiLech: [".mt-gia-tri-hieu-chinh-sai-lech", readSignedMoney],
+  giaTriQuyDoi: [".mt-gia-tri-quy-doi", readSignedMoney],
   giaTriDamBao: [".mt-gia-tri-dam-bao", readMoney],
   tyLeGiamGia: [".mt-ty-le-giam-gia", readDecimal],
   hieuLucHsdt: [".mt-hieu-luc-hsdt", readInteger],
@@ -51,6 +55,11 @@ function readTechnicalScore(control) {
 function readMoney(control, parseMoney) {
   const raw = readText(control);
   return raw ? parseMoney(raw) : "";
+}
+
+function readSignedMoney(control) {
+  const amount = parseSignedMoney(readText(control));
+  return amount === null ? "" : amount.toString();
 }
 
 function readDecimal(control) {

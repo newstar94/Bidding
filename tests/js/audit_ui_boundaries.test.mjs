@@ -12,7 +12,7 @@ test("the shared focus token stays thin and adds a soft glow", async () => {
 
   assert.match(variables, /--focus-ring-width:\s*1px;/u);
   assert.match(variables, /--focus-ring-offset:\s*0;/u);
-  assert.match(variables, /--focus-ring-glow:\s*0 0 10px rgba\(49, 87, 232, 0\.18\);/u);
+  assert.match(variables, /--focus-ring-glow:\s*0 0 10px rgba\(0, 167, 111, 0\.18\);/u);
   assert.match(
     base,
     /\):focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring\)[^}]*box-shadow:\s*var\(--focus-ring-glow\)\s*!important/su,

@@ -440,7 +440,6 @@ def validate_bidder_goods_batch(
                     scope_items,
                     discount_rate=opening.get("ty_le_giam_gia") or 0,
                     scope_after_discount=opening.get("gia_sau_giam_gia"),
-                    evaluation_base=(opening_payload or {}).get("giaXepHang"),
                 )
                 by_id = {str(line.get("id")): line for line in calculation["lines"]}
                 for item in scope_items:

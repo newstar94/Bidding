@@ -88,10 +88,14 @@ test("timeline preserves the selected plan snapshot and all E-HSMT revisions", a
       const state = globalThis.timelineSnapshotView._packageTimelineState;
       return state.displayRows.filter((row) => ["E_HSMT_APPROVAL", "E_HSMT_ADJUSTMENT_APPROVAL"].includes(row.milestoneKey))
         .map((row) => row.soVanBan);
-    }), ["42/QĐ-CLCB", "DC-2"]);
-    assert.deepEqual(await page.evaluate(() => globalThis.timelineSnapshotView._packageTimelineState
-      .dateHistoryByMilestone.E_HSMT_ADJUSTMENT_APPROVAL.map((date) => date.value)),
-    ["2026-03-11", "2026-03-12"]);
+    }), ["42/QĐ-CLCB", "DC-1", "DC-2"]);
+    // Each adjustment keeps its own date; adjustment 1 is not shown as history under adjustment 2.
+    assert.deepEqual(await page.evaluate(() => {
+      const history = globalThis.timelineSnapshotView._packageTimelineState.dateHistoryByMilestone;
+      return ["revision-1", "revision-2"].map((id) => (
+        history[`E_HSMT_ADJUSTMENT_APPROVAL::package-version:${id}`] || []
+      ).map((date) => date.value));
+    }), [["2026-03-11"], ["2026-03-12"]]);
   } finally {
     await browser?.close();
     await closeServer(server);

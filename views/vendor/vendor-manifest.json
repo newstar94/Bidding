@@ -46,6 +46,17 @@
         "fonts/plus-jakarta-sans-vietnamese.woff2": "b275d1258601dda240fc6a1d4a6cad56e691d898f5cdf1b0e4fd6ca0022d8e40",
         "fonts/OFL.txt": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99"
       }
+    },
+    {
+      "name": "Public Sans",
+      "version": "google-fonts-v21-subsets-2026-11-14",
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/main/ofl/publicsans",
+      "files": {
+        "fonts/public-sans-latin.woff2": "5ed4d31c988e73b258894244f209069ebe77dc7e564861954b21198b6de90d68",
+        "fonts/public-sans-vietnamese.woff2": "94593e69fad0885b2b0b74cd18d036c7e9cd6051b2256ab281a20f5bc9ccb46f",
+        "fonts/OFL-public-sans.txt": "157a9e77f7580246e97c769490e2e977ae94399f9d30f4556015c41fe8c28bac"
+      }
     }
   ]
 }
